@@ -200,20 +200,20 @@ Deno.test(
   },
 );
 
- Deno.test({
-   name: "[node/fs filehandle.chmod] Change the permissions of the file",
-   ignore: Deno.build.os === "windows",
-   async fn() {
-     const fileHandle = await fs.open(testData);
+Deno.test({
+  name: "[node/fs filehandle.chmod] Change the permissions of the file",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fileHandle = await fs.open(testData);
 
-     const readOnly = 0o444;
-     await fileHandle.chmod(readOnly.toString(8));
-     assertEquals(Deno.statSync(testData).mode! & 0o777, readOnly);
+    const readOnly = 0o444;
+    await fileHandle.chmod(readOnly.toString(8));
+    assertEquals(Deno.statSync(testData).mode! & 0o777, readOnly);
 
-     const readWrite = 0o666;
-     await fileHandle.chmod(readWrite.toString(8));
-     assertEquals(Deno.statSync(testData).mode! & 0o777, readWrite);
+    const readWrite = 0o666;
+    await fileHandle.chmod(readWrite.toString(8));
+    assertEquals(Deno.statSync(testData).mode! & 0o777, readWrite);
 
-     await fileHandle.close();
-   },
- });
+    await fileHandle.close();
+  },
+});
