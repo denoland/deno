@@ -39,6 +39,7 @@ use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::WorkspaceLintOptions;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
@@ -291,7 +292,7 @@ impl WorkspaceLinter {
       lint_rules.incremental_cache_state().map(|state| {
         Arc::new(IncrementalCache::new(
           self.caches.lint_incremental_cache_db(),
-          &state,
+          CacheDBHash::from_hashable(&state),
           &paths,
         ))
       });
