@@ -238,28 +238,40 @@ impl SerializeCtx {
     id
   }
 
-  fn update_parent_link(&mut self, parent_id: u32, ref_id: u32) {
-    eprintln!("set parent {} for {}", parent_id, ref_id);
-    let node = self.nodes.get_mut(ref_id as usize).expect("Invalid id");
-    node.parent = parent_id;
+  fn get_node(&mut self, id: u32) -> &mut Node {
+    self.nodes.get_mut(id as usize).unwrap()
   }
 
-  fn update_ref_links(&mut self, parent_id: u32, ref_id: u32) {
-    self.update_parent_link(parent_id, ref_id);
+  fn set_parent(&mut self, child_id: u32, parent_id: u32) {
+    let child = self.get_node(child_id);
+    child.parent = parent_id;
+  }
+
+  fn set_child(&mut self, parent_id: u32, child_id: u32) {
+    let parent = self.get_node(parent_id);
+    parent.child = child_id;
+  }
+
+  fn set_next(&mut self, node_id: u32, next_id: u32) {
+    let node = self.get_node(node_id);
+    node.next = next_id;
+  }
+
+  fn update_ref_links(&mut self, parent_id: u32, child_id: u32) {
+    self.set_parent(child_id, parent_id);
+
+    let parent = self.get_node(parent_id);
+    if parent.child == 0 {
+      parent.child = child_id;
+    }
 
     // Update next pointer of previous sibling
     if let Some(prev_id) = self.prev_sibling_node {
-      eprintln!("set next {} for {}", ref_id, prev_id);
-      let node = self.nodes.get_mut(prev_id as usize).unwrap();
-      node.next = ref_id;
-    } else {
-      // Update parent child pointer
-      eprintln!("set child {} for {}", ref_id, parent_id);
-      let node = self.nodes.get_mut(parent_id as usize).unwrap();
-      node.child = ref_id;
+      eprintln!("set next {} for {}", child_id, prev_id);
+      self.set_next(prev_id, child_id);
     }
 
-    self.prev_sibling_node = Some(ref_id)
+    self.prev_sibling_node = Some(child_id)
   }
 
   fn append_inner<K>(
@@ -427,7 +439,7 @@ impl SerializeCtx {
   pub fn write_ref_vec<P>(
     &mut self,
     prop: P,
-    parent: &PendingRef,
+    parent_ref: &PendingRef,
     value: Vec<NodeRef>,
   ) where
     P: Into<u8> + Display + Clone,
@@ -438,10 +450,22 @@ impl SerializeCtx {
     append_u32(&mut self.field_buf, group_id);
 
     self.append_inner(GROUP_KIND, 0, 0, 0);
-    self.update_parent_link(parent.0, group_id);
 
-    for item in value {
-      self.update_parent_link(group_id, item.0);
+    eprintln!("buf group {} {:#?}", group_id, self.nodes);
+    self.set_child(parent_ref.0, group_id);
+    self.set_parent(group_id, parent_ref.0);
+
+    let mut prev_id = 0;
+    for (i, item) in value.iter().enumerate() {
+      self.set_parent(item.0, group_id);
+
+      if i == 0 {
+        self.set_child(group_id, item.0);
+      } else {
+        self.set_next(prev_id, item.0);
+      }
+
+      prev_id = item.0;
     }
   }
 

@@ -525,7 +525,7 @@ function readPropOffset(buf, idx) {
  * @returns {number}
  */
 function readChild(buf, idx) {
-  const offset = (idx * NODE_SIZE) * CHILD_OFFSET;
+  const offset = (idx * NODE_SIZE) + CHILD_OFFSET;
   return readU32(buf, offset);
 }
 /**
@@ -534,7 +534,7 @@ function readChild(buf, idx) {
  * @returns {number}
  */
 function readNext(buf, idx) {
-  const offset = (idx * NODE_SIZE) * NEXT_OFFSET;
+  const offset = (idx * NODE_SIZE) + NEXT_OFFSET;
   return readU32(buf, offset);
 }
 
@@ -544,7 +544,7 @@ function readNext(buf, idx) {
  * @returns {number}
  */
 function readParent(buf, idx) {
-  const offset = (idx * NODE_SIZE) * PARENT_OFFSET;
+  const offset = (idx * NODE_SIZE) + PARENT_OFFSET;
   return readU32(buf, offset);
 }
 
