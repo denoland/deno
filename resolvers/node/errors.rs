@@ -354,8 +354,6 @@ pub struct ClosestPkgJsonError(pub Box<ClosestPkgJsonErrorKind>);
 pub enum ClosestPkgJsonErrorKind {
   #[class(inherit)]
   #[error(transparent)]
-  #[class(inherit)]
-  #[error(transparent)]
   Load(#[from] PackageJsonLoadError),
 }
 

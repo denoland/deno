@@ -9,6 +9,7 @@ pub use byonm::ByonmNpmResolver;
 pub use byonm::ByonmNpmResolverCreateOptions;
 pub use byonm::ByonmNpmResolverRc;
 pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 pub use local::normalize_pkg_name_for_node_modules_deno_folder;

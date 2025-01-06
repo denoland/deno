@@ -20,8 +20,6 @@ use std::time::SystemTime;
 
 use deno_core::anyhow;
 use deno_core::anyhow::anyhow;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedSender;
 use deno_core::futures::future::BoxFuture;
@@ -33,6 +31,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+use deno_error::JsError;
 use once_cell::sync::Lazy;
 use once_cell::sync::OnceCell;
 use opentelemetry::logs::AnyValue;
@@ -83,6 +82,7 @@ use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_NAME;
 use opentelemetry_semantic_conventions::resource::TELEMETRY_SDK_VERSION;
 use serde::Deserialize;
 use serde::Serialize;
+use thiserror::Error;
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
@@ -1237,6 +1237,16 @@ struct JsSpanContext {
   trace_flags: u8,
 }
 
+#[derive(Debug, Error, JsError)]
+#[error("OtelSpan cannot be constructed.")]
+#[class(type)]
+struct OtelSpanCannotBeConstructedError;
+
+#[derive(Debug, Error, JsError)]
+#[error("invalid span status code")]
+#[class(type)]
+struct InvalidSpanStatusCodeError;
+
 // boxed because of https://github.com/denoland/rusty_v8/issues/1676
 #[derive(Debug)]
 struct OtelSpan(RefCell<Box<OtelSpanState>>);
@@ -1254,8 +1264,8 @@ impl deno_core::GarbageCollected for OtelSpan {}
 impl OtelSpan {
   #[constructor]
   #[cppgc]
-  fn new() -> Result<OtelSpan, AnyError> {
-    Err(type_error("OtelSpan can not be constructed."))
+  fn new() -> Result<OtelSpan, OtelSpanCannotBeConstructedError> {
+    Err(OtelSpanCannotBeConstructedError)
   }
 
   #[serde]
@@ -1277,7 +1287,7 @@ impl OtelSpan {
     &self,
     #[smi] status: u8,
     #[string] error_description: String,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), InvalidSpanStatusCodeError> {
     let mut state = self.0.borrow_mut();
     let OtelSpanState::Recording(span) = &mut **state else {
       return Ok(());
@@ -1288,7 +1298,7 @@ impl OtelSpan {
       2 => SpanStatus::Error {
         description: Cow::Owned(error_description),
       },
-      _ => return Err(type_error("invalid span status code")),
+      _ => return Err(InvalidSpanStatusCodeError),
     };
     Ok(())
   }

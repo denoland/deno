@@ -33,6 +33,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_error::JsErrorBox;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;

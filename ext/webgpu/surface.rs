@@ -11,6 +11,8 @@ use deno_core::ResourceId;
 use serde::Deserialize;
 use wgpu_types::SurfaceStatus;
 
+use crate::error::WebGpuResult;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SurfaceError {
   #[class(inherit)]
