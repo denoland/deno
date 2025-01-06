@@ -89,7 +89,10 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        deno_telemetry::init(crate::args::otel_runtime_config())?;
+        deno_telemetry::init(
+          crate::args::otel_runtime_config(),
+          &data.metadata.otel_config,
+        )?;
         util::logger::init(
           data.metadata.log_level,
           Some(data.metadata.otel_config.clone()),
