@@ -1,6 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-use std::borrow::Cow;
-use std::rc::Rc;
 
 use deno_core::error::ResourceError;
 use deno_core::AsyncRefCell;

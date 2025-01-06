@@ -1155,7 +1155,10 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<Cow<'static, str>, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self.sys.fs_read_to_string_lossy(path).map_err(JsErrorBox::from_err)?;
+    let text = self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .map_err(JsErrorBox::from_err)?;
     if media_type.is_emittable() {
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;

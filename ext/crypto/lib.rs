@@ -9,9 +9,7 @@ use aes_kw::KekAes256;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
-
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
