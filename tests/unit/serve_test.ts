@@ -2,7 +2,7 @@
 
 // deno-lint-ignore-file no-console
 
-import { assertMatch, assertRejects } from "@std/assert";
+import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
@@ -4378,3 +4378,46 @@ Deno.test(
     await server.finished;
   },
 );
+
+Deno.test({
+  name:
+    "req.body.getReader().read() throws the error with reasonable error message",
+}, async () => {
+  const { promise, resolve, reject } = Promise.withResolvers<Error>();
+  const server = Deno.serve({ onListen, port: 0 }, async (req) => {
+    const reader = req.body!.getReader();
+
+    try {
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+    } catch (e) {
+      // deno-lint-ignore no-explicit-any
+      resolve(e as any);
+    }
+
+    reject(new Error("Should not reach here"));
+    server.shutdown();
+    return new Response();
+  });
+
+  async function onListen({ port }: { port: number }) {
+    const body = "a".repeat(1000);
+    const request = `POST / HTTP/1.1\r\n` +
+      `Host: 127.0.0.1:${port}\r\n` +
+      `Content-Length: 1000\r\n` +
+      "\r\n" + body;
+
+    const connection = await Deno.connect({ hostname: "127.0.0.1", port });
+    await connection.write(new TextEncoder().encode(request));
+    connection.close();
+  }
+  await server.finished;
+  const e = await promise;
+  assertIsError(
+    e,
+    Deno.errors.BadResource,
+    "Cannot read request body as underlying resource unavailable",
+  );
+});

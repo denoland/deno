@@ -370,7 +370,25 @@ class InnerRequest {
       return null;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
-    this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
+    this.#body = new InnerBody(
+      readableStreamForRid(
+        this.#streamRid,
+        false,
+        undefined,
+        (controller, error) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+            // TODO(kt3k): We would like to pass `error` as `cause` when BadResource supports it.
+            controller.error(
+              new error.constructor(
+                `Cannot read request body as underlying resource unavailable`,
+              ),
+            );
+          } else {
+            controller.error(error);
+          }
+        },
+      ),
+    );
     return this.#body;
   }
 
