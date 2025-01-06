@@ -1286,8 +1286,8 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
 }
 
 fn serialize_ts_index_sig(
-  ctx: &mut TsEsTreeBuilder,
-  node: &TsIndexSignature,
+  _ctx: &mut TsEsTreeBuilder,
+  _node: &TsIndexSignature,
 ) -> NodeRef {
   todo!()
   // let raw = ctx.header(AstNode::TSMethodSignature, parent, &node.span);

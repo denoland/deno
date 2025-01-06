@@ -138,27 +138,6 @@ pub struct NodeRef(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PendingRef(pub u32);
 
-#[derive(Debug)]
-pub struct KindPropCount(pub u8, u8);
-
-impl KindPropCount {
-  fn set_kind(&mut self, kind: u8) {
-    self.0 = kind;
-  }
-
-  fn set_prop_count(&mut self, count: u8) {
-    self.1 = count;
-  }
-}
-
-#[derive(Debug)]
-struct Node {
-  kind: KindPropCount,
-  child: NodeRef,
-  next: NodeRef,
-  parent: NodeRef,
-}
-
 pub trait AstBufSerializer {
   fn serialize(&mut self) -> Vec<u8>;
 }
@@ -169,13 +148,12 @@ pub struct SerializeCtx {
 
   start_buf: NodeRef,
 
-  nodes: Vec<Node>,
   /// Node buffer for traversal
   buf: Vec<u8>,
   field_buf: Vec<u8>,
 
   /// Vec of spans
-  spans: Vec<u8>,
+  spans: Vec<u32>,
 
   /// Maps string id to the actual string
   str_table: StringTable,
@@ -191,10 +169,11 @@ pub struct SerializeCtx {
 }
 
 /// <type u8>
+/// <prop offset u32>
 /// <child idx u32>
 /// <next idx u32>
 /// <parent idx u32>
-const NODE_SIZE: u32 = 1 + 4 + 4 + 4;
+const NODE_SIZE: u32 = 1 + 4 + 4 + 4 + 4;
 
 /// This is the internal context used to allocate and fill the buffer. The point
 /// is to be able to write absolute offsets directly in place.
@@ -219,8 +198,6 @@ impl SerializeCtx {
       field_count: 0,
       field_offset: 0,
       prev_sibling_node: None,
-
-      nodes: vec![],
     };
 
     let empty_str = ctx.str_table.insert("");
@@ -229,7 +206,7 @@ impl SerializeCtx {
     ctx.append_node(0, &DUMMY_SP);
     ctx.kind_name_map[0] = empty_str;
     ctx.kind_name_map[1] = empty_str;
-    ctx.start_buf = NodeRef(ctx.buf.len());
+    ctx.start_buf = NodeRef(ctx.buf.len() as u32);
 
     // Insert default props that are always present
     let type_str = ctx.str_table.insert("type");
@@ -301,7 +278,13 @@ impl SerializeCtx {
     self.prev_sibling_node = Some(ref_id)
   }
 
-  fn append_inner(&mut self, kind: u8, span_lo: u32, span_hi: u32) {
+  fn append_inner(
+    &mut self,
+    kind: u8,
+    field_offset: usize,
+    span_lo: u32,
+    span_hi: u32,
+  ) {
     // type
     self.buf.push(kind);
 
@@ -312,14 +295,15 @@ impl SerializeCtx {
       }
     }
 
-    // child idx + next idx + parent idx
+    // field offset + child idx + next idx + parent idx
+    append_usize(&mut self.buf, field_offset);
     append_usize(&mut self.buf, 0);
     append_usize(&mut self.buf, 0);
     append_usize(&mut self.buf, 0);
 
     // write spans
-    append_u32(&mut self.spans, span_lo);
-    append_u32(&mut self.spans, span_hi);
+    self.spans.push(span_lo);
+    self.spans.push(span_hi);
   }
 
   /// The node buffer contains enough information for traversal
@@ -329,12 +313,12 @@ impl SerializeCtx {
   {
     let id = self.get_id();
 
-    // type
-    let kind_u8 = kind.clone().into();
-    self.append_inner(kind_u8, span.lo.0, span.hi.0);
-
     self.field_offset = self.field_buf.len();
     self.field_buf.push(0);
+
+    // type
+    let kind_u8 = kind.clone().into();
+    self.append_inner(kind_u8, self.field_offset, span.lo.0, span.hi.0);
 
     PendingRef(id)
   }
@@ -356,7 +340,7 @@ impl SerializeCtx {
     append_usize(&mut self.field_buf, len);
   }
 
-  /// Allocate an undefined field
+  /// Allocate an null field
   pub fn write_null<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
@@ -371,6 +355,28 @@ impl SerializeCtx {
     P: Into<u8> + Display + Clone,
   {
     self.field_header(prop, PropFlags::Number);
+
+    let id = self.str_table.insert(value);
+    append_usize(&mut self.field_buf, id);
+  }
+
+  /// Allocate a bigint field
+  pub fn write_bigint<P>(&mut self, prop: P, value: &str)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::BigInt);
+
+    let id = self.str_table.insert(value);
+    append_usize(&mut self.field_buf, id);
+  }
+
+  /// Allocate a RegExp field
+  pub fn write_regex<P>(&mut self, prop: P, value: &str)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Regex);
 
     let id = self.str_table.insert(value);
     append_usize(&mut self.field_buf, id);
@@ -444,7 +450,8 @@ impl SerializeCtx {
 
     append_u32(&mut self.field_buf, group_id);
 
-    self.append_inner(GROUP_KIND, 0, 0);
+    // TODO(@marvinhagemeister) This is wrong
+    self.append_inner(GROUP_KIND, 0, 0, 0);
     self.update_parent_link(parent.0, group_id);
 
     for item in value {
@@ -500,14 +507,23 @@ impl SerializeCtx {
       append_usize(&mut buf, *v);
     }
 
+    // Spans are rarely needed, so they're stored in a separate array.
+    // They're indexed by the node id.
+    let offset_spans = buf.len();
+    append_usize(&mut buf, self.spans.len());
+    for v in &self.spans {
+      append_u32(&mut buf, *v);
+    }
+
     // Putting offsets of relevant parts of the buffer at the end. This
     // allows us to hop to the relevant part by merely looking at the last
     // for values in the message. Each value represents an offset into the
     // buffer.
+    append_usize(&mut buf, offset_spans);
     append_usize(&mut buf, offset_kind_map);
     append_usize(&mut buf, offset_prop_map);
     append_usize(&mut buf, offset_str_table);
-    append_usize(&mut buf, self.start_buf.0);
+    append_u32(&mut buf, self.start_buf.0);
 
     buf
   }

@@ -1570,7 +1570,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  pub fn write_ts_class_implements(
+  pub fn _write_ts_class_implements(
     &mut self,
     span: &Span,
     expr: NodeRef,

@@ -12,6 +12,7 @@ export interface AstContext {
   strTableOffset: number;
   rootOffset: number;
   nodes: Map<number, NodeFacade>;
+  spansOffset: number;
   strByType: number[];
   strByProp: number[];
   typeByStr: Map<string, number>;
