@@ -14,7 +14,6 @@ use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::FastInsecureHasher;
 
 pub static INCREMENTAL_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(

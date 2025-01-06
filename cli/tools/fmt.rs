@@ -203,10 +203,7 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      CacheDBHash::from_hashable(&(
-        &fmt_options.options,
-        &fmt_options.unstable,
-      )),
+      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
       &paths,
     ));
     formatter
