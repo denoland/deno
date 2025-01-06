@@ -2280,7 +2280,7 @@ impl Permissions {
     Self::none(false)
   }
 
-  pub fn none(prompt: bool) -> Self {
+  fn none(prompt: bool) -> Self {
     Self {
       read: Permissions::new_unary(None, None, prompt),
       write: Permissions::new_unary(None, None, prompt),
