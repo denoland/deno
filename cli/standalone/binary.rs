@@ -51,6 +51,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -188,7 +189,7 @@ pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
   pub code_cache_key: Option<u64>,
-  pub permissions: PermissionFlags,
+  pub permissions: PermissionsOptions,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
@@ -793,7 +794,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permission_flags().clone(),
+      permissions: self.cli_options.permissions_options(),
       v8_flags: self.cli_options.v8_flags().clone(),
       unsafely_ignore_certificate_errors: self
         .cli_options

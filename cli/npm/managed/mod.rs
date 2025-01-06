@@ -24,7 +24,6 @@ use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -167,6 +166,7 @@ fn create_inner(
     sys.clone(),
     npm_rc.clone(),
   ));
+
   let fs_resolver = create_npm_fs_resolver(
     npm_cache.clone(),
     &npm_install_deps_provider,
@@ -752,14 +752,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path> {
     self.fs_resolver.node_modules_path()
-  }
-
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
-    self.fs_resolver.ensure_read_permission(permissions, path)
   }
 
   fn check_state_hash(&self) -> Option<u64> {
