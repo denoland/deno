@@ -1105,7 +1105,7 @@ export function bootstrap(
 }
 
 export const telemetry = {
-  TracerProvider,
-  ContextManager,
-  MeterProvider,
+  tracerProvider: TracerProvider,
+  contextManager: ContextManager,
+  meterProvider: MeterProvider,
 };
