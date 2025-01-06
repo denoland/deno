@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -41,6 +41,13 @@ delete Object.prototype.__proto__;
     "listen",
     "listenDatagram",
     "openKv",
+    "connectQuic",
+    "listenQuic",
+    "QuicBidirectionalStream",
+    "QuicConn",
+    "QuicListener",
+    "QuicReceiveStream",
+    "QuicSendStream",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -402,9 +409,20 @@ delete Object.prototype.__proto__;
       messageText = formatMessage(msgText, ri.code);
     }
     if (start !== undefined && length !== undefined && file) {
-      const startPos = file.getLineAndCharacterOfPosition(start);
-      const sourceLine = file.getFullText().split("\n")[startPos.line];
-      const fileName = file.fileName;
+      let startPos = file.getLineAndCharacterOfPosition(start);
+      let sourceLine = file.getFullText().split("\n")[startPos.line];
+      const originalFileName = file.fileName;
+      const fileName = ops.op_remap_specifier
+        ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
+        : file.fileName;
+      // Bit of a hack to detect when we have a .wasm file and want to hide
+      // the .d.ts text. This is not perfect, but will work in most scenarios
+      if (
+        fileName.endsWith(".wasm") && originalFileName.endsWith(".wasm.d.mts")
+      ) {
+        startPos = { line: 0, character: 0 };
+        sourceLine = undefined;
+      }
       return {
         start: startPos,
         end: file.getLineAndCharacterOfPosition(start + length),
@@ -468,6 +486,9 @@ delete Object.prototype.__proto__;
     2792,
     // TS2307: Cannot find module '{0}' or its corresponding type declarations.
     2307,
+    // Relative import errors to add an extension
+    2834,
+    2835,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -1030,24 +1051,27 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const checkFiles = localOnly
-      ? rootNames
-        .filter((n) => !n.startsWith("http"))
-        .map((checkName) => {
-          const sourceFile = program.getSourceFile(checkName);
-          if (sourceFile == null) {
-            throw new Error("Could not find source file for: " + checkName);
-          }
-          return sourceFile;
-        })
-      : undefined;
+    let checkFiles = undefined;
 
-    if (checkFiles != null) {
+    if (localOnly) {
+      const checkFileNames = new Set();
+      checkFiles = [];
+
+      for (const checkName of rootNames) {
+        if (checkName.startsWith("http")) {
+          continue;
+        }
+        const sourceFile = program.getSourceFile(checkName);
+        if (sourceFile != null) {
+          checkFiles.push(sourceFile);
+        }
+        checkFileNames.add(checkName);
+      }
+
       // When calling program.getSemanticDiagnostics(...) with a source file, we
       // need to call this code first in order to get it to invalidate cached
       // diagnostics correctly. This is what program.getSemanticDiagnostics()
       // does internally when calling without any arguments.
-      const checkFileNames = new Set(checkFiles.map((f) => f.fileName));
       while (
         program.getSemanticDiagnosticsOfNextAffectedFile(
           undefined,

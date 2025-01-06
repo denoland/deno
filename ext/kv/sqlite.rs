@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 
-use crate::DatabaseHandler;
 use async_trait::async_trait;
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -26,6 +25,8 @@ use denokv_sqlite::SqliteConfig;
 use denokv_sqlite::SqliteNotifier;
 use rand::SeedableRng;
 use rusqlite::OpenFlags;
+
+use crate::DatabaseHandler;
 
 static SQLITE_NOTIFIERS_MAP: OnceLock<Mutex<HashMap<PathBuf, SqliteNotifier>>> =
   OnceLock::new();

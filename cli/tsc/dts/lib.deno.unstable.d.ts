@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="deno.ns" />
@@ -293,7 +293,8 @@ declare namespace Deno {
    * executions. Each element in the array represents the number of milliseconds
    * to wait before retrying the execution. For example, `[1000, 5000, 10000]`
    * means that a failed execution will be retried at most 3 times, with 1
-   * second, 5 seconds, and 10 seconds delay between each retry.
+   * second, 5 seconds, and 10 seconds delay between each retry. There is a
+   * limit of 5 retries and a maximum interval of 1 hour (3600000 milliseconds).
    *
    * @category Cloud
    * @experimental

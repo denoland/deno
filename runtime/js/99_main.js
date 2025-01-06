@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
@@ -170,12 +170,14 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
 
 let isClosing = false;
 let globalDispatchEvent;
+let closeOnIdle;
 
 function hasMessageEventListener() {
   // the function name is kind of a misnomer, but we want to behave
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
-  return event.listenerCount(globalThis, "message") > 0 ||
+  return (event.listenerCount(globalThis, "message") > 0 &&
+    !globalThis[messagePort.unrefParentPort]) ||
     messagePort.refedMessagePortsCount > 0;
 }
 
@@ -188,7 +190,10 @@ async function pollForMessages() {
   }
   while (!isClosing) {
     const recvMessage = op_worker_recv_message();
-    if (globalThis[messagePort.unrefPollForMessages] === true) {
+    // In a Node.js worker, unref() the op promise to prevent it from
+    // keeping the event loop alive. This avoids the need to explicitly
+    // call self.close() or worker.terminate().
+    if (closeOnIdle) {
       core.unrefOpPromise(recvMessage);
     }
     const data = await recvMessage;
@@ -520,6 +525,9 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_input",
   // Used in jupyter API
   "op_base64_encode",
+
+  // Used in the lint API
+  "op_lint_create_serialized_ast",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -915,6 +923,7 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      14: closeOnIdle_,
     } = runtimeOptions;
 
     performance.setTimeOrigin();
@@ -967,6 +976,7 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
+    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];

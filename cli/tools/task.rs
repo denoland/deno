@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -25,7 +25,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
-use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
@@ -36,6 +35,7 @@ use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -231,7 +231,7 @@ pub async fn execute_script(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           "",
           &TaskDefinition {
-            command: task_flags.task.as_ref().unwrap().to_string(),
+            command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -267,7 +267,7 @@ struct RunSingleOptions<'a> {
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
   npm_resolver: &'a dyn CliNpmResolver,
-  node_resolver: &'a NodeResolver,
+  node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
   concurrency: usize,
@@ -448,6 +448,16 @@ impl<'a> TaskRunner<'a> {
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let Some(command) = &definition.command else {
+      log::info!(
+        "{} {} {}",
+        colors::green("Task"),
+        colors::cyan(task_name),
+        colors::gray("(no command)")
+      );
+      return Ok(0);
+    };
+
     if let Some(npm_resolver) = self.npm_resolver.as_managed() {
       npm_resolver.ensure_top_level_package_json_install().await?;
       npm_resolver
@@ -469,7 +479,7 @@ impl<'a> TaskRunner<'a> {
     self
       .run_single(RunSingleOptions {
         task_name,
-        script: &definition.command,
+        script: command,
         cwd: &cwd,
         custom_commands,
         kill_signal,
@@ -837,7 +847,7 @@ fn print_available_tasks(
           is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
-            command: script.to_string(),
+            command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -873,11 +883,13 @@ fn print_available_tasks(
         )?;
       }
     }
-    writeln!(
-      writer,
-      "    {}",
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
-    )?;
+    if let Some(command) = &desc.task.command {
+      writeln!(
+        writer,
+        "    {}",
+        strip_ansi_codes_and_escape_control_chars(command)
+      )?;
+    };
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc
         .task

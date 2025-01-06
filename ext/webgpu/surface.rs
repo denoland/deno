@@ -1,14 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::WebGpuResult;
+use std::borrow::Cow;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::rc::Rc;
 use wgpu_types::SurfaceStatus;
+
+use super::WebGpuResult;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SurfaceError {

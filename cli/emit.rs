@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::cache::EmitCache;
-use crate::cache::FastInsecureHasher;
-use crate::cache::ParsedSourceCache;
-use crate::resolver::CjsTracker;
+use std::sync::Arc;
 
+use deno_ast::EmittedSourceText;
 use deno_ast::ModuleKind;
 use deno_ast::SourceMapOption;
 use deno_ast::SourceRange;
@@ -20,7 +18,11 @@ use deno_core::ModuleSpecifier;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use std::sync::Arc;
+
+use crate::cache::EmitCache;
+use crate::cache::FastInsecureHasher;
+use crate::cache::ParsedSourceCache;
+use crate::resolver::CjsTracker;
 
 #[derive(Debug)]
 pub struct Emitter {
@@ -132,6 +134,7 @@ impl Emitter {
               &transpile_and_emit_options.0,
               &transpile_and_emit_options.1,
             )
+            .map(|r| r.text)
           }
         })
         .await
@@ -166,7 +169,8 @@ impl Emitter {
           source.clone(),
           &self.transpile_and_emit_options.0,
           &self.transpile_and_emit_options.1,
-        )?;
+        )?
+        .text;
         helper.post_emit_parsed_source(
           specifier,
           &transpiled_source,
@@ -175,6 +179,31 @@ impl Emitter {
         Ok(transpiled_source)
       }
     }
+  }
+
+  pub fn emit_parsed_source_for_deno_compile(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    module_kind: deno_ast::ModuleKind,
+    source: &Arc<str>,
+  ) -> Result<(String, String), AnyError> {
+    let mut emit_options = self.transpile_and_emit_options.1.clone();
+    emit_options.inline_sources = false;
+    emit_options.source_map = SourceMapOption::Separate;
+    // strip off the path to have more deterministic builds as we don't care
+    // about the source name because we manually provide the source map to v8
+    emit_options.source_map_base = Some(deno_path_util::url_parent(specifier));
+    let source = EmitParsedSourceHelper::transpile(
+      &self.parsed_source_cache,
+      specifier,
+      media_type,
+      module_kind,
+      source.clone(),
+      &self.transpile_and_emit_options.0,
+      &emit_options,
+    )?;
+    Ok((source.text, source.source_map.unwrap()))
   }
 
   /// Expects a file URL, panics otherwise.
@@ -282,7 +311,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     source: Arc<str>,
     transpile_options: &deno_ast::TranspileOptions,
     emit_options: &deno_ast::EmitOptions,
-  ) -> Result<String, AnyError> {
+  ) -> Result<EmittedSourceText, AnyError> {
     // nothing else needs the parsed source at this point, so remove from
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
@@ -302,8 +331,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
         source
       }
     };
-    debug_assert!(transpiled_source.source_map.is_none());
-    Ok(transpiled_source.text)
+    Ok(transpiled_source)
   }
 
   pub fn post_emit_parsed_source(

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -8,9 +8,14 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
+use super::deps::Dep;
+use super::deps::DepManager;
+use super::deps::DepManagerArgs;
+use super::deps::PackageLatestVersion;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
@@ -20,18 +25,13 @@ use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::tools::registry::pm::deps::DepKind;
 
-use super::deps::Dep;
-use super::deps::DepManager;
-use super::deps::DepManagerArgs;
-use super::deps::PackageLatestVersion;
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
   kind: DepKind,
   latest: String,
   semver_compatible: String,
   current: String,
-  name: String,
+  name: StackString,
 }
 
 #[allow(clippy::print_stdout)]
@@ -184,6 +184,7 @@ pub async fn outdated(
   let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
     true,

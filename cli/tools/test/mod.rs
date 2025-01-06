@@ -1,23 +1,24 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::TestFlags;
-use crate::args::TestReporterConfig;
-use crate::colors;
-use crate::display;
-use crate::factory::CliFactory;
-use crate::file_fetcher::CliFileFetcher;
-use crate::graph_util::has_graph_root_local_dependent_changed;
-use crate::ops;
-use crate::util::extract::extract_doc_tests;
-use crate::util::file_watcher;
-use crate::util::fs::collect_specifiers;
-use crate::util::path::get_extension;
-use crate::util::path::is_script_ext;
-use crate::util::path::matches_pattern_or_exact_path;
-use crate::worker::CliMainWorkerFactory;
-use crate::worker::CoverageCollector;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::env;
+use std::fmt::Write as _;
+use std::future::poll_fn;
+use std::io::Write;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Poll;
+use std::time::Duration;
+use std::time::Instant;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::File;
@@ -65,26 +66,27 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::env;
-use std::fmt::Write as _;
-use std::future::poll_fn;
-use std::io::Write;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::task::Poll;
-use std::time::Duration;
-use std::time::Instant;
 use tokio::signal;
+
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::TestFlags;
+use crate::args::TestReporterConfig;
+use crate::colors;
+use crate::display;
+use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
+use crate::graph_util::has_graph_root_local_dependent_changed;
+use crate::ops;
+use crate::sys::CliSys;
+use crate::util::extract::extract_doc_tests;
+use crate::util::file_watcher;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::get_extension;
+use crate::util::path::is_script_ext;
+use crate::util::path::matches_pattern_or_exact_path;
+use crate::worker::CliMainWorkerFactory;
+use crate::worker::CoverageCollector;
 
 mod channel;
 pub mod fmt;
@@ -616,7 +618,10 @@ async fn configure_main_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
       permissions_container,
-      vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
+      vec![
+        ops::testing::deno_test::init_ops(worker_sender.sender),
+        ops::lint::deno_lint::init_ops(),
+      ],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
@@ -1191,7 +1196,7 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 async fn test_specifiers(
   worker_factory: Arc<CliMainWorkerFactory>,
   permissions: &Permissions,
-  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser>,
+  permission_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
   specifiers: Vec<ModuleSpecifier>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {

@@ -1,22 +1,22 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::num::NonZeroU32;
+use std::path::PathBuf;
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
 use aes_kw::KekAes256;
-
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
 use deno_core::error::not_supported;
 use deno_core::op2;
-use deno_core::ToJsBuffer;
-
 use deno_core::unsync::spawn_blocking;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use serde::Deserialize;
-
+use deno_core::ToJsBuffer;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
+pub use rand;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
 use rand::thread_rng;
@@ -41,15 +41,12 @@ use rsa::traits::SignatureScheme;
 use rsa::Pss;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
+use serde::Deserialize;
 use sha1::Sha1;
 use sha2::Digest;
 use sha2::Sha256;
 use sha2::Sha384;
-use sha2::Sha512;
-use std::num::NonZeroU32;
-use std::path::PathBuf;
-
-pub use rand; // Re-export rand
+use sha2::Sha512; // Re-export rand
 
 mod decrypt;
 mod ed25519;

@@ -1,18 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
-use crate::args::Flags;
-use crate::args::JupyterFlags;
-use crate::cdp;
-use crate::lsp::ReplCompletionItem;
-use crate::ops;
-use crate::tools::repl;
-use crate::tools::test::create_single_test_event_channel;
-use crate::tools::test::reporters::PrettyTestReporter;
-use crate::tools::test::TestEventWorkerSender;
-use crate::tools::test::TestFailureFormatOptions;
-use crate::CliFactory;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::generic_error;
@@ -33,6 +22,18 @@ use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
+
+use crate::args::Flags;
+use crate::args::JupyterFlags;
+use crate::cdp;
+use crate::lsp::ReplCompletionItem;
+use crate::ops;
+use crate::tools::repl;
+use crate::tools::test::create_single_test_event_channel;
+use crate::tools::test::reporters::PrettyTestReporter;
+use crate::tools::test::TestEventWorkerSender;
+use crate::tools::test::TestFailureFormatOptions;
+use crate::CliFactory;
 
 mod install;
 pub mod server;

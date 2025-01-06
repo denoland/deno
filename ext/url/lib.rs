@@ -1,6 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod urlpattern;
+
+use std::path::PathBuf;
 
 use deno_core::error::type_error;
 use deno_core::error::AnyError;
@@ -10,12 +12,10 @@ use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use std::path::PathBuf;
+pub use urlpattern::UrlPatternError;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
-
-pub use urlpattern::UrlPatternError;
 
 deno_core::extension!(
   deno_url,

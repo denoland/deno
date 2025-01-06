@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::util::progress_bar::UpdateGuard;
-use crate::version;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::thread::ThreadId;
 
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
@@ -23,11 +24,10 @@ use http::header::CONTENT_LENGTH;
 use http::HeaderMap;
 use http::StatusCode;
 use http_body_util::BodyExt;
-
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::thread::ThreadId;
 use thiserror::Error;
+
+use crate::util::progress_bar::UpdateGuard;
+use crate::version;
 
 #[derive(Debug, Error)]
 pub enum SendError {

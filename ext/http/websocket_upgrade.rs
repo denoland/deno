@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::marker::PhantomData;
 
@@ -169,8 +169,9 @@ impl<T: Default> WebSocketUpgrade<T> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use hyper_v014::Body;
+
+  use super::*;
 
   type ExpectedResponseAndHead = Option<(Response<Body>, &'static [u8])>;
 

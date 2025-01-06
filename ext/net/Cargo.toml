@@ -1,4 +1,4 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_net"
@@ -20,6 +20,7 @@ deno_tls.workspace = true
 hickory-proto = "0.25.0-alpha.4"
 hickory-resolver.workspace = true
 pin-project.workspace = true
+quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rustls-tokio-stream.workspace = true
 serde.workspace = true
 socket2.workspace = true

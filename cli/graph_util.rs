@@ -1,4 +1,41 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashSet;
+use std::error::Error;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::workspace::JsrPackageConfig;
+use deno_core::anyhow::bail;
+use deno_core::error::custom_error;
+use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::ModuleSpecifier;
+use deno_graph::source::Loader;
+use deno_graph::source::LoaderChecksum;
+use deno_graph::source::ResolutionKind;
+use deno_graph::source::ResolveError;
+use deno_graph::FillFromLockfileOptions;
+use deno_graph::GraphKind;
+use deno_graph::JsrLoadError;
+use deno_graph::ModuleError;
+use deno_graph::ModuleGraph;
+use deno_graph::ModuleGraphError;
+use deno_graph::ModuleLoadError;
+use deno_graph::ResolutionError;
+use deno_graph::SpecifierError;
+use deno_graph::WorkspaceFastCheckOption;
+use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_runtime::deno_node;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageNv;
+use deno_semver::SmallStackString;
+use import_map::ImportMapError;
+use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
@@ -13,52 +50,18 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::errors::get_error_class_name;
+use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
+use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
-use deno_config::deno_json::JsxImportSourceConfig;
-use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
-use deno_graph::source::LoaderChecksum;
-use deno_graph::source::ResolutionKind;
-use deno_graph::FillFromLockfileOptions;
-use deno_graph::JsrLoadError;
-use deno_graph::ModuleLoadError;
-use deno_graph::WorkspaceFastCheckOption;
-
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::ModuleSpecifier;
-use deno_graph::source::Loader;
-use deno_graph::source::ResolveError;
-use deno_graph::GraphKind;
-use deno_graph::ModuleError;
-use deno_graph::ModuleGraph;
-use deno_graph::ModuleGraphError;
-use deno_graph::ResolutionError;
-use deno_graph::SpecifierError;
-use deno_path_util::url_to_file_path;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_semver::jsr::JsrDepPackageReq;
-use deno_semver::package::PackageNv;
-use import_map::ImportMapError;
-use node_resolver::InNpmPackageChecker;
-use std::collections::HashSet;
-use std::error::Error;
-use std::ops::Deref;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct GraphValidOptions {
@@ -79,7 +82,7 @@ pub struct GraphValidOptions {
 /// for the CLI.
 pub fn graph_valid(
   graph: &ModuleGraph,
-  fs: &Arc<dyn FileSystem>,
+  sys: &CliSys,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
 ) -> Result<(), AnyError> {
@@ -89,7 +92,7 @@ pub fn graph_valid(
 
   let mut errors = graph_walk_errors(
     graph,
-    fs,
+    sys,
     roots,
     GraphWalkErrorsOptions {
       check_js: options.check_js,
@@ -139,7 +142,7 @@ pub struct GraphWalkErrorsOptions {
 /// and enhances them with CLI information.
 pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
-  fs: &'a Arc<dyn FileSystem>,
+  sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
 ) -> impl Iterator<Item = AnyError> + 'a {
@@ -162,29 +165,15 @@ pub fn graph_walk_errors<'a>(
           roots.contains(error.specifier())
         }
       };
-      let mut message = match &error {
-        ModuleGraphError::ResolutionError(resolution_error) => {
-          enhanced_resolution_error_message(resolution_error)
-        }
-        ModuleGraphError::TypesResolutionError(resolution_error) => {
-          format!(
-            "Failed resolving types. {}",
-            enhanced_resolution_error_message(resolution_error)
-          )
-        }
-        ModuleGraphError::ModuleError(error) => {
-          enhanced_integrity_error_message(error)
-            .or_else(|| enhanced_sloppy_imports_error_message(fs, error))
-            .unwrap_or_else(|| format_deno_graph_error(error))
-        }
-      };
-
-      if let Some(range) = error.maybe_range() {
-        if !is_root && !range.specifier.as_str().contains("/$deno$eval") {
-          message.push_str("\n    at ");
-          message.push_str(&format_range_with_colors(range));
-        }
-      }
+      let message = enhance_graph_error(
+        sys,
+        &error,
+        if is_root {
+          EnhanceGraphErrorMode::HideRange
+        } else {
+          EnhanceGraphErrorMode::ShowRange
+        },
+      );
 
       if graph.graph_kind() == GraphKind::TypesOnly
         && matches!(
@@ -196,8 +185,59 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_error_class_name(&error.into()), message))
+      if graph.graph_kind().include_types()
+        && (message.contains(RUN_WITH_SLOPPY_IMPORTS_MSG)
+          || matches!(
+            error,
+            ModuleGraphError::ModuleError(ModuleError::Missing(..))
+          ))
+      {
+        // ignore and let typescript surface this as a diagnostic instead
+        log::debug!("Ignoring: {}", message);
+        return None;
+      }
+
+      Some(custom_error(get_module_graph_error_class(&error), message))
     })
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum EnhanceGraphErrorMode {
+  ShowRange,
+  HideRange,
+}
+
+pub fn enhance_graph_error(
+  sys: &CliSys,
+  error: &ModuleGraphError,
+  mode: EnhanceGraphErrorMode,
+) -> String {
+  let mut message = match &error {
+    ModuleGraphError::ResolutionError(resolution_error) => {
+      enhanced_resolution_error_message(resolution_error)
+    }
+    ModuleGraphError::TypesResolutionError(resolution_error) => {
+      format!(
+        "Failed resolving types. {}",
+        enhanced_resolution_error_message(resolution_error)
+      )
+    }
+    ModuleGraphError::ModuleError(error) => {
+      enhanced_integrity_error_message(error)
+        .or_else(|| enhanced_sloppy_imports_error_message(sys, error))
+        .unwrap_or_else(|| format_deno_graph_error(error))
+    }
+  };
+
+  if let Some(range) = error.maybe_range() {
+    if mode == EnhanceGraphErrorMode::ShowRange
+      && !range.specifier.as_str().contains("/$deno$eval")
+    {
+      message.push_str("\n    at ");
+      message.push_str(&format_range_with_colors(range));
+    }
+  }
+  message
 }
 
 pub fn graph_exit_integrity_errors(graph: &ModuleGraph) {
@@ -432,7 +472,6 @@ pub struct ModuleGraphBuilder {
   cjs_tracker: Arc<CjsTracker>,
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
-  fs: Arc<dyn FileSystem>,
   global_http_cache: Arc<GlobalHttpCache>,
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -442,6 +481,7 @@ pub struct ModuleGraphBuilder {
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
+  sys: CliSys,
 }
 
 impl ModuleGraphBuilder {
@@ -451,7 +491,6 @@ impl ModuleGraphBuilder {
     cjs_tracker: Arc<CjsTracker>,
     cli_options: Arc<CliOptions>,
     file_fetcher: Arc<CliFileFetcher>,
-    fs: Arc<dyn FileSystem>,
     global_http_cache: Arc<GlobalHttpCache>,
     in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
     lockfile: Option<Arc<CliLockfile>>,
@@ -461,13 +500,13 @@ impl ModuleGraphBuilder {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
+    sys: CliSys,
   ) -> Self {
     Self {
       caches,
       cjs_tracker,
       cli_options,
       file_fetcher,
-      fs,
       global_http_cache,
       in_npm_pkg_checker,
       lockfile,
@@ -477,6 +516,7 @@ impl ModuleGraphBuilder {
       parsed_source_cache,
       resolver,
       root_permissions_container,
+      sys,
     }
   }
 
@@ -592,7 +632,7 @@ impl ModuleGraphBuilder {
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
-          file_system: &DenoGraphFsAdapter(self.fs.as_ref()),
+          file_system: &self.sys,
           jsr_url_provider: &CliJsrUrlProvider,
           npm_resolver: Some(&graph_npm_resolver),
           module_analyzer: &analyzer,
@@ -680,7 +720,7 @@ impl ModuleGraphBuilder {
           for (from, to) in graph.packages.mappings() {
             lockfile.insert_package_specifier(
               JsrDepPackageReq::jsr(from.clone()),
-              to.version.to_string(),
+              to.version.to_custom_string::<SmallStackString>(),
             );
           }
         }
@@ -746,10 +786,10 @@ impl ModuleGraphBuilder {
   ) -> cache::FetchCacher {
     cache::FetchCacher::new(
       self.file_fetcher.clone(),
-      self.fs.clone(),
       self.global_http_cache.clone(),
       self.in_npm_pkg_checker.clone(),
       self.module_info_cache.clone(),
+      self.sys.clone(),
       cache::FetchCacherOptions {
         file_header_overrides: self.cli_options.resolve_file_header_overrides(),
         permissions,
@@ -778,7 +818,7 @@ impl ModuleGraphBuilder {
   ) -> Result<(), AnyError> {
     graph_valid(
       graph,
-      &self.fs,
+      &self.sys,
       roots,
       GraphValidOptions {
         kind: if self.cli_options.type_check_mode().is_true() {
@@ -833,24 +873,38 @@ pub fn enhanced_resolution_error_message(error: &ResolutionError) -> String {
   message
 }
 
+static RUN_WITH_SLOPPY_IMPORTS_MSG: &str =
+  "or run with --unstable-sloppy-imports";
+
 fn enhanced_sloppy_imports_error_message(
-  fs: &Arc<dyn FileSystem>,
+  sys: &CliSys,
   error: &ModuleError,
 ) -> Option<String> {
   match error {
     ModuleError::LoadingErr(specifier, _, ModuleLoadError::Loader(_)) // ex. "Is a directory" error
     | ModuleError::Missing(specifier, _) => {
-      let additional_message = CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(fs.clone()))
-        .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-        .as_suggestion_message();
+      let additional_message = maybe_additional_sloppy_imports_message(sys, specifier)?;
       Some(format!(
-        "{} {} or run with --unstable-sloppy-imports",
+        "{} {}",
         error,
         additional_message,
       ))
     }
     _ => None,
   }
+}
+
+pub fn maybe_additional_sloppy_imports_message(
+  sys: &CliSys,
+  specifier: &ModuleSpecifier,
+) -> Option<String> {
+  Some(format!(
+    "{} {}",
+    CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
+      .resolve(specifier, SloppyImportsResolutionKind::Execution)?
+      .as_suggestion_message(),
+    RUN_WITH_SLOPPY_IMPORTS_MSG
+  ))
 }
 
 fn enhanced_integrity_error_message(err: &ModuleError) -> Option<String> {
@@ -1078,71 +1132,6 @@ impl deno_graph::source::Reporter for FileWatcherReporter {
         .watch_paths(file_paths.drain(..).collect())
         .unwrap();
     }
-  }
-}
-
-pub struct DenoGraphFsAdapter<'a>(
-  pub &'a dyn deno_runtime::deno_fs::FileSystem,
-);
-
-impl<'a> deno_graph::source::FileSystem for DenoGraphFsAdapter<'a> {
-  fn read_dir(
-    &self,
-    dir_url: &deno_graph::ModuleSpecifier,
-  ) -> Vec<deno_graph::source::DirEntry> {
-    use deno_core::anyhow;
-    use deno_graph::source::DirEntry;
-    use deno_graph::source::DirEntryKind;
-
-    let dir_path = match dir_url.to_file_path() {
-      Ok(path) => path,
-      // ignore, treat as non-analyzable
-      Err(()) => return vec![],
-    };
-    let entries = match self.0.read_dir_sync(&dir_path) {
-      Ok(dir) => dir,
-      Err(err)
-        if matches!(
-          err.kind(),
-          std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
-        ) =>
-      {
-        return vec![];
-      }
-      Err(err) => {
-        return vec![DirEntry {
-          kind: DirEntryKind::Error(
-            anyhow::Error::from(err)
-              .context("Failed to read directory.".to_string()),
-          ),
-          url: dir_url.clone(),
-        }];
-      }
-    };
-    let mut dir_entries = Vec::with_capacity(entries.len());
-    for entry in entries {
-      let entry_path = dir_path.join(&entry.name);
-      dir_entries.push(if entry.is_directory {
-        DirEntry {
-          kind: DirEntryKind::Dir,
-          url: ModuleSpecifier::from_directory_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_file {
-        DirEntry {
-          kind: DirEntryKind::File,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else if entry.is_symlink {
-        DirEntry {
-          kind: DirEntryKind::Symlink,
-          url: ModuleSpecifier::from_file_path(&entry_path).unwrap(),
-        }
-      } else {
-        continue;
-      });
-    }
-
-    dir_entries
   }
 }
 

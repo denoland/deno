@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -7,20 +7,18 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::FmtFlags;
-use crate::args::FmtOptions;
-use crate::args::FmtOptionsConfig;
-use crate::args::ProseWrap;
-use crate::args::UnstableFmtOptions;
-use crate::cache::Caches;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::util::diff::diff;
-use crate::util::file_watcher;
-use crate::util::fs::canonicalize_path;
-use crate::util::path::get_extension;
+use std::borrow::Cow;
+use std::fs;
+use std::io::stdin;
+use std::io::stdout;
+use std::io::Read;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use deno_ast::ParsedSource;
 use deno_config::glob::FileCollector;
@@ -37,19 +35,23 @@ use deno_core::url::Url;
 use log::debug;
 use log::info;
 use log::warn;
-use std::borrow::Cow;
-use std::fs;
-use std::io::stdin;
-use std::io::stdout;
-use std::io::Read;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::FmtFlags;
+use crate::args::FmtOptions;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
+use crate::args::UnstableFmtOptions;
+use crate::cache::Caches;
 use crate::cache::IncrementalCache;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::sys::CliSys;
+use crate::util::diff::diff;
+use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::get_extension;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
@@ -57,7 +59,7 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
-    let cli_options = CliOptions::from_flags(flags)?;
+    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -230,7 +232,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&CliSys::default(), files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks

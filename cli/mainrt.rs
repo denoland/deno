@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Allow unused code warnings because we share
 // code between the two bin targets.
@@ -18,10 +18,17 @@ mod node;
 mod npm;
 mod resolver;
 mod shared;
+mod sys;
 mod task_runner;
 mod util;
 mod version;
 mod worker;
+
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::env::current_exe;
+use std::sync::Arc;
 
 use deno_core::error::generic_error;
 use deno_core::error::AnyError;
@@ -31,11 +38,7 @@ use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use indexmap::IndexMap;
-
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::env::current_exe;
+use standalone::DenoCompileFileSystem;
 
 use crate::args::Flags;
 
@@ -92,7 +95,9 @@ fn main() {
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let exit_code = standalone::run(data).await?;
+        let fs = DenoCompileFileSystem::new(data.vfs.clone());
+        let sys = crate::sys::CliSys::DenoCompile(fs.clone());
+        let exit_code = standalone::run(Arc::new(fs), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),

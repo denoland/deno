@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -278,8 +278,10 @@ fn add_npm_packages_to_json(
           });
         if let Some(pkg) = maybe_package {
           if let Some(module) = module.as_object_mut() {
-            module
-              .insert("npmPackage".to_string(), pkg.id.as_serialized().into());
+            module.insert(
+              "npmPackage".to_string(),
+              pkg.id.as_serialized().into_string().into(),
+            );
           }
         }
       }
@@ -296,7 +298,7 @@ fn add_npm_packages_to_json(
               {
                 dep.insert(
                   "npmPackage".to_string(),
-                  pkg.id.as_serialized().into(),
+                  pkg.id.as_serialized().into_string().into(),
                 );
               }
             }
@@ -324,19 +326,19 @@ fn add_npm_packages_to_json(
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
     let mut kv = serde_json::Map::new();
-    kv.insert("name".to_string(), pkg.id.nv.name.clone().into());
+    kv.insert("name".to_string(), pkg.id.nv.name.to_string().into());
     kv.insert("version".to_string(), pkg.id.nv.version.to_string().into());
     let mut deps = pkg.dependencies.values().collect::<Vec<_>>();
     deps.sort();
     let deps = deps
       .into_iter()
-      .map(|id| serde_json::Value::String(id.as_serialized()))
+      .map(|id| serde_json::Value::String(id.as_serialized().into_string()))
       .collect::<Vec<_>>();
     kv.insert("dependencies".to_string(), deps.into());
     let registry_url = npmrc.get_registry_url(&pkg.id.nv.name);
     kv.insert("registryUrl".to_string(), registry_url.to_string().into());
 
-    json_packages.insert(pkg.id.as_serialized(), kv.into());
+    json_packages.insert(pkg.id.as_serialized().into_string(), kv.into());
   }
 
   json.insert("npmPackages".to_string(), json_packages.into());
@@ -549,7 +551,7 @@ impl<'a> GraphDisplayContext<'a> {
       None => Specifier(module.specifier().clone()),
     };
     let was_seen = !self.seen.insert(match &package_or_specifier {
-      Package(package) => package.id.as_serialized(),
+      Package(package) => package.id.as_serialized().into_string(),
       Specifier(specifier) => specifier.to_string(),
     });
     let header_text = if was_seen {
@@ -631,7 +633,8 @@ impl<'a> GraphDisplayContext<'a> {
       ));
       if let Some(package) = self.npm_info.packages.get(dep_id) {
         if !package.dependencies.is_empty() {
-          let was_seen = !self.seen.insert(package.id.as_serialized());
+          let was_seen =
+            !self.seen.insert(package.id.as_serialized().into_string());
           if was_seen {
             child.text = format!("{} {}", child.text, colors::gray("*"));
           } else {

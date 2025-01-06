@@ -1,4 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::cell::RefCell;
+use std::fmt;
+use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Context;
+use std::task::Poll;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
@@ -33,6 +43,7 @@ use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
+use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
 use deno_terminal::colors;
@@ -45,20 +56,10 @@ use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
 use log::debug;
-use std::cell::RefCell;
-use std::fmt;
-use std::rc::Rc;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU32;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
 use crate::ops::process::NpmProcessStateProviderRc;
-use crate::ops::worker_host::WorkersTable;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -338,7 +339,7 @@ fn create_handles(
   (internal_handle, external_handle)
 }
 
-pub struct WebWorkerServiceOptions {
+pub struct WebWorkerServiceOptions<TExtNodeSys: ExtNodeSys + 'static> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -346,7 +347,7 @@ pub struct WebWorkerServiceOptions {
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices>,
+  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -385,7 +386,6 @@ pub struct WebWorker {
   pub js_runtime: JsRuntime,
   pub name: String,
   close_on_idle: bool,
-  has_executed_main_module: bool,
   internal_handle: WebWorkerInternalHandle,
   pub worker_type: WebWorkerType,
   pub main_module: ModuleSpecifier,
@@ -404,8 +404,8 @@ impl Drop for WebWorker {
 }
 
 impl WebWorker {
-  pub fn bootstrap_from_options(
-    services: WebWorkerServiceOptions,
+  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
+    services: WebWorkerServiceOptions<TExtNodeSys>,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     let (mut worker, handle, bootstrap_options) =
@@ -414,8 +414,8 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options(
-    services: WebWorkerServiceOptions,
+  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
+    services: WebWorkerServiceOptions<TExtNodeSys>,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
     deno_core::extension!(deno_permissions_web_worker,
@@ -506,7 +506,7 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer>(
+      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
         services.node_services,
         services.fs,
       ),
@@ -658,7 +658,6 @@ impl WebWorker {
         has_message_event_listener_fn: None,
         bootstrap_fn_global: Some(bootstrap_fn_global),
         close_on_idle: options.close_on_idle,
-        has_executed_main_module: false,
         maybe_worker_metadata: options.maybe_worker_metadata,
       },
       external_handle,
@@ -799,7 +798,6 @@ impl WebWorker {
 
       maybe_result = &mut receiver => {
         debug!("received worker module evaluate {:#?}", maybe_result);
-        self.has_executed_main_module = true;
         maybe_result
       }
 
@@ -837,6 +835,9 @@ impl WebWorker {
         }
 
         if self.close_on_idle {
+          if self.has_message_event_listener() {
+            return Poll::Pending;
+          }
           return Poll::Ready(Ok(()));
         }
 
@@ -851,22 +852,7 @@ impl WebWorker {
           Poll::Ready(Ok(()))
         }
       }
-      Poll::Pending => {
-        // This is special code path for workers created from `node:worker_threads`
-        // module that have different semantics than Web workers.
-        // We want the worker thread to terminate automatically if we've done executing
-        // Top-Level await, there are no child workers spawned by that workers
-        // and there's no "message" event listener.
-        if self.close_on_idle
-          && self.has_executed_main_module
-          && !self.has_child_workers()
-          && !self.has_message_event_listener()
-        {
-          Poll::Ready(Ok(()))
-        } else {
-          Poll::Pending
-        }
-      }
+      Poll::Pending => Poll::Pending,
     }
   }
 
@@ -903,15 +889,6 @@ impl WebWorker {
       Some(result) => result.is_true(),
       None => false,
     }
-  }
-
-  fn has_child_workers(&mut self) -> bool {
-    !self
-      .js_runtime
-      .op_state()
-      .borrow()
-      .borrow::<WorkersTable>()
-      .is_empty()
   }
 }
 

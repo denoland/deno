@@ -250,6 +250,7 @@
     "ext:deno_node/_util/std_fmt_colors.ts": "../ext/node/polyfills/_util/std_fmt_colors.ts",
     "ext:deno_telemetry/telemetry.ts": "../ext/deno_telemetry/telemetry.ts",
     "ext:deno_telemetry/util.ts": "../ext/deno_telemetry/util.ts",
+    "ext:cli/40_lint_selector.js": "../cli/js/40_lint_selector.js",
     "@std/archive": "../tests/util/std/archive/mod.ts",
     "@std/archive/tar": "../tests/util/std/archive/tar.ts",
     "@std/archive/untar": "../tests/util/std/archive/untar.ts",

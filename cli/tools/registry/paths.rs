@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Validation logic in this file is shared with registry/api/src/ids.rs
 
@@ -13,10 +13,10 @@ use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
 use thiserror::Error;
 
-use crate::args::CliOptions;
-
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::args::CliOptions;
+use crate::sys::CliSys;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.
@@ -323,11 +323,11 @@ fn collect_paths(
   file_patterns: FilePatterns,
 ) -> Result<Vec<PathBuf>, AnyError> {
   FileCollector::new(|e| {
-    if !e.metadata.is_file {
+    if !e.metadata.file_type().is_file() {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {
         diagnostics_collector.push(PublishDiagnostic::UnsupportedFileType {
           specifier,
-          kind: if e.metadata.is_symlink {
+          kind: if e.metadata.file_type().is_symlink() {
             "symlink".to_string()
           } else {
             "Unknown".to_string()
@@ -345,5 +345,5 @@ fn collect_paths(
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
   .use_gitignore()
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)
+  .collect_file_patterns(&CliSys::default(), file_patterns)
 }

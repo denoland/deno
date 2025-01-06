@@ -1,4 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::env;
+use std::fmt::Write as _;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -27,16 +38,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::env;
-use std::fmt::Write as _;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -108,6 +109,7 @@ use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
+use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -279,7 +281,7 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs(),
+        &CliSys::default(),
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
@@ -961,6 +963,7 @@ impl Inner {
     let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
       self.http_client_provider.clone(),
+      CliSys::default(),
       Default::default(),
       None,
       true,
@@ -1855,20 +1858,12 @@ impl Inner {
       }
 
       let changes = if code_action_data.fix_id == "fixMissingImport" {
-        fix_ts_import_changes(
-          &code_action_data.specifier,
-          maybe_asset_or_doc
-            .as_ref()
-            .and_then(|d| d.document())
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &combined_code_actions.changes,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+        fix_ts_import_changes(&combined_code_actions.changes, self).map_err(
+          |err| {
+            error!("Unable to remap changes: {:#}", err);
+            LspError::internal_error()
+          },
+        )?
       } else {
         combined_code_actions.changes
       };
@@ -1912,20 +1907,16 @@ impl Inner {
           asset_or_doc.scope().cloned(),
         )
         .await?;
-      if kind_suffix == ".rewrite.function.returnType" {
-        refactor_edit_info.edits = fix_ts_import_changes(
-          &action_data.specifier,
-          asset_or_doc
-            .document()
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &refactor_edit_info.edits,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+      if kind_suffix == ".rewrite.function.returnType"
+        || kind_suffix == ".move.newFile"
+      {
+        refactor_edit_info.edits =
+          fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+            |err| {
+              error!("Unable to remap changes: {:#}", err);
+              LspError::internal_error()
+            },
+          )?
       }
       code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
@@ -3624,11 +3615,11 @@ impl Inner {
     let workspace = match config_data {
       Some(d) => d.member_dir.clone(),
       None => Arc::new(WorkspaceDirectory::discover(
+        &CliSys::default(),
         deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
           initial_cwd.clone()
         ]),
         &WorkspaceDiscoverOptions {
-          fs: Default::default(), // use real fs,
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
@@ -3645,6 +3636,7 @@ impl Inner {
       )?),
     };
     let cli_options = CliOptions::new(
+      &CliSys::default(),
       Arc::new(Flags {
         internal: InternalFlags {
           cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3793,7 +3785,7 @@ impl Inner {
         for (name, command) in scripts {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.clone(),
+            command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
           });
@@ -3972,9 +3964,10 @@ impl Inner {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_walk_workspace() {

@@ -1,11 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::DatabaseHandler;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -26,6 +25,8 @@ use denokv_remote::RemoteResponse;
 use denokv_remote::RemoteTransport;
 use http_body_util::BodyExt;
 use url::Url;
+
+use crate::DatabaseHandler;
 
 #[derive(Clone)]
 pub struct HttpOptions {
