@@ -42,7 +42,7 @@ const Runners = {
     os: "macos",
     arch: "aarch64",
     runner:
-      `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -593,6 +593,13 @@ const ci = {
           name: "Install macOS aarch64 lld",
           run: [
             "./tools/install_prebuilt.js ld64.lld",
+          ].join("\n"),
+          if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
+        },
+        {
+          name: "Install macOS aarch64 cmake",
+          run: [
+            "brew install cmake",
           ].join("\n"),
           if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
         },
