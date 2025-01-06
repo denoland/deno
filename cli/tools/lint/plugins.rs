@@ -103,7 +103,8 @@ macro_rules! v8_static_strings {
 }
 
 v8_static_strings! {
-  INSTALL_PLUGIN = "installPlugin",
+  DEFAULT = "default",
+  INSTALL_PLUGINS = "installPlugins",
   RUN_PLUGINS_FOR_FILE = "runPluginsForFile",
 }
 
@@ -133,7 +134,7 @@ impl PluginHostProxy {
 
 pub struct PluginHost {
   worker: MainWorker,
-  install_plugin_fn: Rc<v8::Global<v8::Function>>,
+  install_plugins_fn: Rc<v8::Global<v8::Function>>,
   run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
   tx: Sender<PluginHostResponse>,
   rx: Receiver<PluginHostRequest>,
@@ -183,17 +184,17 @@ async fn create_plugin_runner_inner(
   let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
   logger.log("After plugin loaded, capturing exports");
-  let (install_plugin_fn, run_plugins_for_file_fn) = {
+  let (install_plugins_fn, run_plugins_for_file_fn) = {
     let scope = &mut runtime.handle_scope();
     let module_exports: v8::Local<v8::Object> =
       v8::Local::new(scope, obj).try_into().unwrap();
 
-    let install_plugin_fn_name = INSTALL_PLUGIN.v8_string(scope).unwrap();
-    let install_plugin_fn_val = module_exports
-      .get(scope, install_plugin_fn_name.into())
+    let install_plugins_fn_name = INSTALL_PLUGINS.v8_string(scope).unwrap();
+    let install_plugins_fn_val = module_exports
+      .get(scope, install_plugins_fn_name.into())
       .unwrap();
-    let install_plugin_fn: v8::Local<v8::Function> =
-      install_plugin_fn_val.try_into().unwrap();
+    let install_plugins_fn: v8::Local<v8::Function> =
+      install_plugins_fn_val.try_into().unwrap();
 
     let run_plugins_for_file_fn_name =
       RUN_PLUGINS_FOR_FILE.v8_string(scope).unwrap();
@@ -204,14 +205,14 @@ async fn create_plugin_runner_inner(
       run_plugins_for_file_fn_val.try_into().unwrap();
 
     (
-      Rc::new(v8::Global::new(scope, install_plugin_fn)),
+      Rc::new(v8::Global::new(scope, install_plugins_fn)),
       Rc::new(v8::Global::new(scope, run_plugins_for_file_fn)),
     )
   };
 
   Ok(PluginHost {
     worker,
-    install_plugin_fn,
+    install_plugins_fn,
     run_plugins_for_file_fn,
     tx: tx_res,
     rx: rx_req,
@@ -407,41 +408,57 @@ impl PluginHost {
       .run_event_loop(PollEventLoopOptions::default())
       .await?;
 
-    let mut infos = Vec::with_capacity(load_futures.len());
+    let mut plugin_handles = Vec::with_capacity(load_futures.len());
 
     for (fut, mod_id) in load_futures {
       fut.await?;
       let module = self.worker.js_runtime.get_module_namespace(mod_id).unwrap();
       let scope = &mut self.worker.js_runtime.handle_scope();
       let module_local = v8::Local::new(scope, module);
-      let default_export_str = v8::String::new(scope, "default").unwrap();
+      let default_export_str = DEFAULT.v8_string(scope).unwrap();
       let default_export =
         module_local.get(scope, default_export_str.into()).unwrap();
-      let install_plugins_local =
-        v8::Local::new(scope, &*self.install_plugin_fn.clone());
-      let undefined = v8::undefined(scope);
-
-      let exclude_v8: v8::Local<v8::Value> =
-        exclude.clone().map_or(v8::null(scope).into(), |v| {
-          let elems = v
-            .iter()
-            .map(|item| v8::String::new(scope, item).unwrap().into())
-            .collect::<Vec<_>>();
-
-          v8::Array::new_with_elements(scope, elems.as_slice()).into()
-        });
-
-      let args = &[default_export, exclude_v8];
-
-      self.logger.log("Installing plugin...");
-      // TODO(bartlomieju): do it in a try/catch scope
-      let plugin_info = install_plugins_local
-        .call(scope, undefined.into(), args)
-        .unwrap();
-      let info: PluginInfo = deno_core::serde_v8::from_v8(scope, plugin_info)?;
-      self.logger.log(&format!("Plugin installed: {}", info.name));
-      infos.push(info);
+      let default_export_global = v8::Global::new(scope, default_export);
+      plugin_handles.push(default_export_global);
     }
+
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let install_plugins_local =
+      v8::Local::new(scope, &*self.install_plugins_fn.clone());
+    let exclude_v8: v8::Local<v8::Value> =
+      exclude.map_or(v8::null(scope).into(), |v| {
+        let elems = v
+          .iter()
+          .map(|item| v8::String::new(scope, item).unwrap().into())
+          .collect::<Vec<_>>();
+
+        v8::Array::new_with_elements(scope, elems.as_slice()).into()
+      });
+
+    let undefined = v8::undefined(scope);
+
+    let local_handles = {
+      let arr = v8::Array::new(scope, plugin_handles.len().try_into().unwrap());
+      for (idx, plugin_handle) in plugin_handles.into_iter().enumerate() {
+        let handle = v8::Local::new(scope, plugin_handle);
+        arr
+          .set_index(scope, idx.try_into().unwrap(), handle)
+          .unwrap();
+      }
+      arr
+    };
+    let args = &[local_handles.into(), exclude_v8];
+
+    self.logger.log("Installing plugins...");
+    // TODO(bartlomieju): do it in a try/catch scope, or not? Seems to surface errors properly.
+    let plugins_info = install_plugins_local
+      .call(scope, undefined.into(), args)
+      .unwrap();
+    let infos: Vec<PluginInfo> =
+      deno_core::serde_v8::from_v8(scope, plugins_info)?;
+    self
+      .logger
+      .log(&format!("Plugins installed: {}", infos.len()));
 
     Ok(infos)
   }

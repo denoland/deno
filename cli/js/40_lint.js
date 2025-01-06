@@ -236,10 +236,23 @@ export class Context {
 }
 
 /**
- * @param {LintPlugin} plugin
+ * @param {LintPlugin[]} plugins
  * @param {string[]} exclude
  */
-export function installPlugin(plugin, exclude) {
+export function installPlugins(plugins, exclude) {
+  if (Array.isArray(exclude)) {
+    for (let i = 0; i < exclude.length; i++) {
+      state.ignoredRules.add(exclude[i]);
+    }
+  }
+
+  return plugins.map((plugin) => installPlugin(plugin));
+}
+
+/**
+ * @param {LintPlugin} plugin
+ */
+function installPlugin(plugin) {
   if (typeof plugin !== "object") {
     throw new Error("Linter plugin must be an object");
   }
@@ -254,14 +267,6 @@ export function installPlugin(plugin, exclude) {
   }
   state.plugins.push(plugin);
   state.installedPlugins.add(plugin.name);
-
-  // TODO(@marvinhagemeister): This should be done once instead of
-  // for every plugin
-  if (Array.isArray(exclude)) {
-    for (let i = 0; i < exclude.length; i++) {
-      state.ignoredRules.add(exclude[i]);
-    }
-  }
 
   return {
     name: plugin.name,
@@ -1280,7 +1285,7 @@ function _dump(ctx) {
 
 // These are captured by Rust and called when plugins need to be loaded
 // or run.
-internals.installPlugin = installPlugin;
+internals.installPlugins = installPlugins;
 internals.runPluginsForFile = runPluginsForFile;
 internals.resetState = resetState;
 
@@ -1290,7 +1295,7 @@ internals.resetState = resetState;
  * @param {string} sourceText
  */
 function runLintPlugin(plugin, fileName, sourceText) {
-  installPlugin(plugin, []);
+  installPlugin(plugin);
   const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
   const diagnostics = [];
