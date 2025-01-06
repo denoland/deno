@@ -50,6 +50,7 @@ const {
 const {
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeThen,
+  Symbol,
   SymbolAsyncIterator,
   SafePromisePrototypeFinally,
 } = primordials;
@@ -76,10 +77,14 @@ function transportOptions({
   };
 }
 
+const kRid = Symbol("rid");
+
 class QuicEndpoint {
   #endpoint;
 
-  constructor({ hostname = "::", port = 0, rid } = { __proto__: null }) {
+  constructor(
+    { hostname = "::", port = 0, [kRid]: rid } = { __proto__: null },
+  ) {
     this.#endpoint = rid ?? op_quic_endpoint_create({ hostname, port }, true);
   }
 
@@ -400,7 +405,7 @@ async function* uniStream(conn, closed) {
 function connectQuic(options) {
   const endpoint = options.endpoint ??
     new QuicEndpoint({
-      rid: op_quic_endpoint_create({ hostname: "::", port: 0 }, 0, false),
+      [kRid]: op_quic_endpoint_create({ hostname: "::", port: 0 }, 0, false),
     });
   const keyPair = loadTlsKeyPair("Deno.connectQuic", {
     cert: options.cert,
