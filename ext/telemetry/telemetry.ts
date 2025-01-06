@@ -1075,6 +1075,11 @@ export function builtinTracer(): Tracer {
   return builtinTracerCache;
 }
 
+// We specify a very high version number, to allow any `@opentelemetry/api`
+// version to load this module. This does cause @opentelemetry/api to not be
+// able to register anything itself with the global registration methods.
+const OTEL_API_COMPAT_VERSION = "1.999.999";
+
 export function bootstrap(
   config: [
     0 | 1,
@@ -1101,6 +1106,19 @@ export function bootstrap(
       break;
     default:
       break;
+  }
+
+  if (TRACING_ENABLED || METRICS_ENABLED) {
+    const otel = globalThis[SymbolFor("opentelemetry.js.api.1")] ??= {
+      version: OTEL_API_COMPAT_VERSION,
+    };
+    if (TRACING_ENABLED) {
+      otel.trace = TracerProvider;
+      otel.context = ContextManager;
+    }
+    if (METRICS_ENABLED) {
+      otel.metrics = MeterProvider;
+    }
   }
 }
 
