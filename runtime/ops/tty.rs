@@ -55,6 +55,7 @@ use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
 use winapi::um::wincon;
 
+#[cfg(unix)]
 use crate::ops::process::JsNixError;
 
 deno_core::extension!(

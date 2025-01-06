@@ -1098,6 +1098,13 @@ pub enum SymlinkPackageDirError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error("Creating junction in node_modules folder")]
+  FailedCreatingJunction {
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
 }
 
 fn symlink_package_dir(
@@ -1138,7 +1145,7 @@ fn junction_or_symlink_dir(
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), SymlinkPackageDirError> {
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -1147,8 +1154,9 @@ fn junction_or_symlink_dir(
     // needing to elevate privileges on Windows.
     // Note: junctions don't support relative paths, so we need to use the
     // absolute path here.
-    return junction::create(old_path, new_path)
-      .context("Failed creating junction in node_modules folder");
+    return junction::create(old_path, new_path).map_err(|source| {
+      SymlinkPackageDirError::FailedCreatingJunction { source }
+    });
   }
 
   match symlink_dir(&crate::sys::CliSys::default(), old_path_relative, new_path)
@@ -1158,8 +1166,9 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1167,8 +1176,9 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
   }
 }

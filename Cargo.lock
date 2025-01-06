@@ -1657,6 +1657,7 @@ dependencies = [
  "libc",
  "serde",
  "serde_json",
+ "thiserror 2.0.3",
  "tokio",
  "url",
 ]

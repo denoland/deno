@@ -371,8 +371,10 @@ fn set_up_bin_shim(
 
   cmd_shim.set_extension("cmd");
   let shim = format!("@deno run -A npm:{}/{bin_name} %*", package.id.nv);
-  fs::write(&cmd_shim, shim).with_context(|| {
-    format!("Can't set up '{}' bin at {}", bin_name, cmd_shim.display())
+  fs::write(&cmd_shim, shim).map_err(|err| BinEntriesError::SetUpBin {
+    name: bin_name.to_string(),
+    path: cmd_shim.clone(),
+    source: Box::new(err.into()),
   })?;
 
   Ok(())
