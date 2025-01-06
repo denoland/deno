@@ -599,7 +599,11 @@ const ci = {
         {
           name: "Install macOS aarch64 cmake",
           run: [
-            "brew install cmake",
+            "curl -LO https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-macos-universal.dmg",
+            "hdiutil attach cmake-3.28.1-macos-universal.dmg",
+            'sudo cp -R "/Volumes/cmake-3.28.1-macos-universal/CMake.app" /Applications/',
+            'hdiutil detach "/Volumes/cmake-3.28.1-macos-universal"',
+            'echo "/Applications/CMake.app/Contents/bin" >> $GITHUB_PATH',
           ].join("\n"),
           if: `matrix.os == 'macos' && matrix.arch == 'aarch64'`,
         },
