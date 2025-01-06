@@ -9,7 +9,7 @@ const telemetry = Deno.telemetry ?? Deno.tracing;
  * Register `Deno.telemetry` with the OpenTelemetry library.
  */
 export function register() {
-  context.setGlobalContextManager(telemetry.ContextManager);
-  trace.setGlobalTracerProvider(telemetry.TracerProvider);
-  metrics.setGlobalMeterProvider(telemetry.MeterProvider);
+  context.setGlobalContextManager(telemetry.contextManager);
+  trace.setGlobalTracerProvider(telemetry.tracerProvider);
+  metrics.setGlobalMeterProvider(telemetry.meterProvider);
 }
