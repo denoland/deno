@@ -68,6 +68,12 @@ const state = {
   ignoredRules: new Set(),
 };
 
+function resetState() {
+  state.plugins = [];
+  state.installedPlugins.clear();
+  state.ignoredRules.clear();
+}
+
 /**
  * This implementation calls into Rust to check if Tokio's cancellation token
  * has already been canceled.
@@ -1276,6 +1282,7 @@ function _dump(ctx) {
 // or run.
 internals.installPlugin = installPlugin;
 internals.runPluginsForFile = runPluginsForFile;
+internals.resetState = resetState;
 
 /**
  * @param {LintPlugin} plugin
@@ -1299,8 +1306,7 @@ function runLintPlugin(plugin, fileName, sourceText) {
   try {
     runPluginsForFile(fileName, serializedAst);
   } finally {
-    // During testing we don't want to keep plugins around
-    state.installedPlugins.clear();
+    resetState();
   }
   doReport = op_lint_report;
   return diagnostics;
