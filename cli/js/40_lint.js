@@ -422,7 +422,7 @@ function toJsValue(ctx, idx) {
   let out = node;
   let skip = 0;
 
-  let offset = readPropOffset(buf, idx);
+  let offset = readPropOffset(ctx, idx);
 
   const count = buf[offset++];
   for (let i = 0; i < count; i++) {
@@ -509,13 +509,22 @@ function readSpan(ctx, idx) {
 }
 
 /**
- * @param {AstContext["buf"]} buf
+ * @param {AstContext} ctx
  * @param {number} idx
  * @returns {number}
  */
-function readPropOffset(buf, idx) {
+function readRawPropOffset(ctx, idx) {
   const offset = (idx * NODE_SIZE) + PROP_OFFSET;
-  return readU32(buf, offset);
+  return readU32(ctx.buf, offset);
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} idx
+ * @returns {number}
+ */
+function readPropOffset(ctx, idx) {
+  return readRawPropOffset(ctx, idx) + ctx.propsOffset;
 }
 
 /**
@@ -656,7 +665,7 @@ function readValue(ctx, idx, search) {
     return getNode(ctx, parent);
   }
 
-  const propOffset = readPropOffset(buf, idx);
+  const propOffset = readPropOffset(ctx, idx);
 
   const offset = findPropOffset(ctx.buf, propOffset, search);
   if (offset === -1) return undefined;
@@ -891,6 +900,7 @@ function createAstContext(buf) {
 
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
+  const propsOffset = readU32(buf, buf.length - 24);
   const spansOffset = readU32(buf, buf.length - 20);
   const typeMapOffset = readU32(buf, buf.length - 16);
   const propMapOffset = readU32(buf, buf.length - 12);
@@ -955,6 +965,7 @@ function createAstContext(buf) {
     strTable,
     rootOffset,
     spansOffset,
+    propsOffset,
     nodes: new Map(),
     strTableOffset,
     strByProp,
@@ -1195,6 +1206,10 @@ function _dump(ctx) {
   // deno-lint-ignore no-console
   console.log();
 
+  // @ts-ignore dump fn
+  // deno-lint-ignore no-console
+  console.log();
+
   let idx = 0;
   while (idx < (strTableOffset / NODE_SIZE)) {
     const type = readType(buf, idx);
@@ -1219,11 +1234,14 @@ function _dump(ctx) {
     // deno-lint-ignore no-console
     console.log(`  range: ${range[0]}, ${range[1]}`);
 
-    let propOffset = readPropOffset(buf, idx);
+    const rawOffset = readRawPropOffset(ctx, idx);
+    let propOffset = readPropOffset(ctx, idx);
     const count = buf[propOffset++];
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`  prop count: ${count}`);
+    console.log(
+      `  prop count: ${count}, prop offset: ${propOffset} raw offset: ${rawOffset}`,
+    );
 
     for (let i = 0; i < count; i++) {
       const prop = buf[propOffset++];

@@ -13,6 +13,7 @@ export interface AstContext {
   rootOffset: number;
   nodes: Map<number, NodeFacade>;
   spansOffset: number;
+  propsOffset: number;
   strByType: number[];
   strByProp: number[];
   typeByStr: Map<string, number>;
