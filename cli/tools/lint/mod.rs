@@ -39,7 +39,9 @@ use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::WorkspaceLintOptions;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
+use crate::cache::FastInsecureHasher;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
@@ -297,17 +299,18 @@ impl WorkspaceLinter {
 
     // TODO(bartlomieju): how do we decide if plugins support incremental cache?
     if lint_rules.supports_incremental_cache() {
-      maybe_incremental_cache =
-        Some(Arc::new(IncrementalCache::new_with_callback(
-          self.caches.lint_incremental_cache_db(),
-          &paths,
-          |hasher| {
-            hasher.write_hashable(lint_rules.incremental_cache_state());
-            if let Some(plugin_specifiers) = maybe_plugin_specifiers.as_ref() {
-              hasher.write_hashable(plugin_specifiers);
-            }
-          },
-        )));
+      let mut hasher = FastInsecureHasher::new_deno_versioned();
+      hasher.write_hashable(lint_rules.incremental_cache_state());
+      if let Some(plugin_specifiers) = maybe_plugin_specifiers.as_ref() {
+        hasher.write_hashable(plugin_specifiers);
+      }
+      let state_hash = hasher.finish();
+
+      maybe_incremental_cache = Some(Arc::new(IncrementalCache::new(
+        self.caches.lint_incremental_cache_db(),
+        CacheDBHash::new(state_hash),
+        &paths,
+      )));
     }
 
     #[allow(clippy::print_stdout)]

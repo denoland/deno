@@ -14,7 +14,6 @@ use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::cache_db::CacheDBHash;
 use super::cache_db::CacheFailure;
-use super::FastInsecureHasher;
 
 pub static INCREMENTAL_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   table_initializer: concat!(
@@ -35,23 +34,15 @@ pub static INCREMENTAL_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
 pub struct IncrementalCache(IncrementalCacheInner);
 
 impl IncrementalCache {
-  pub fn new<TState: std::hash::Hash>(
+  pub fn new(
     db: CacheDB,
-    state: &TState,
+    state_hash: CacheDBHash,
     initial_file_paths: &[PathBuf],
   ) -> Self {
-    IncrementalCache(IncrementalCacheInner::new(db, state, initial_file_paths))
-  }
-
-  pub fn new_with_callback<TState: std::hash::Hash>(
-    db: CacheDB,
-    initial_file_paths: &[PathBuf],
-    callback: impl FnOnce(&mut FastInsecureHasher) -> TState,
-  ) -> Self {
-    IncrementalCache(IncrementalCacheInner::new_with_callback(
+    IncrementalCache(IncrementalCacheInner::new(
       db,
+      state_hash,
       initial_file_paths,
-      callback,
     ))
   }
 
@@ -80,22 +71,11 @@ struct IncrementalCacheInner {
 }
 
 impl IncrementalCacheInner {
-  pub fn new<TState: std::hash::Hash>(
+  pub fn new(
     db: CacheDB,
-    state: &TState,
+    state_hash: CacheDBHash,
     initial_file_paths: &[PathBuf],
   ) -> Self {
-    let state_hash = CacheDBHash::from_source(state);
-    let sql_cache = SqlIncrementalCache::new(db, state_hash);
-    Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
-  }
-
-  pub fn new_with_callback<TState: std::hash::Hash>(
-    db: CacheDB,
-    initial_file_paths: &[PathBuf],
-    callback: impl FnOnce(&mut FastInsecureHasher) -> TState,
-  ) -> Self {
-    let state_hash = CacheDBHash::from_callback(callback);
     let sql_cache = SqlIncrementalCache::new(db, state_hash);
     Self::from_sql_incremental_cache(sql_cache, initial_file_paths)
   }
@@ -135,13 +115,13 @@ impl IncrementalCacheInner {
 
   pub fn is_file_same(&self, file_path: &Path, file_text: &str) -> bool {
     match self.previous_hashes.get(file_path) {
-      Some(hash) => *hash == CacheDBHash::from_source(file_text),
+      Some(hash) => *hash == CacheDBHash::from_hashable(file_text),
       None => false,
     }
   }
 
   pub fn update_file(&self, file_path: &Path, file_text: &str) {
-    let hash = CacheDBHash::from_source(file_text);
+    let hash = CacheDBHash::from_hashable(file_text);
     if let Some(previous_hash) = self.previous_hashes.get(file_path) {
       if *previous_hash == hash {
         return; // do not bother updating the db file because nothing has changed
@@ -285,7 +265,7 @@ mod test {
     let sql_cache = SqlIncrementalCache::new(conn, CacheDBHash::new(1));
     let file_path = PathBuf::from("/mod.ts");
     let file_text = "test";
-    let file_hash = CacheDBHash::from_source(file_text);
+    let file_hash = CacheDBHash::from_hashable(file_text);
     sql_cache.set_source_hash(&file_path, file_hash).unwrap();
     let cache = IncrementalCacheInner::from_sql_incremental_cache(
       sql_cache,
