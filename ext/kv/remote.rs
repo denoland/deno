@@ -1,11 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::DatabaseHandler;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -26,6 +25,8 @@ use denokv_remote::RemoteResponse;
 use denokv_remote::RemoteTransport;
 use http_body_util::BodyExt;
 use url::Url;
+
+use crate::DatabaseHandler;
 
 #[derive(Clone)]
 pub struct HttpOptions {
@@ -122,9 +123,7 @@ impl RemoteTransport for FetchClient {
     headers: http::HeaderMap,
     body: Bytes,
   ) -> Result<(Url, http::StatusCode, Self::Response), anyhow::Error> {
-    let body = http_body_util::Full::new(body)
-      .map_err(|never| match never {})
-      .boxed();
+    let body = deno_fetch::ReqBody::full(body);
     let mut req = http::Request::new(body);
     *req.method_mut() = http::Method::POST;
     *req.uri_mut() = url.as_str().parse()?;

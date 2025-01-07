@@ -1,0 +1,45 @@
+name: npm_publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version'
+        type: string
+  release:
+    types: [published]
+
+permissions:
+  id-token: write
+
+jobs:
+  build:
+    name: npm publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Configure git
+        run: |
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: ./tools/release/npm/build.ts ${{ github.event.inputs.version }} --publish

@@ -1,7 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { trace } from "npm:@opentelemetry/api@1.9.0";
-import "jsr:@deno/otel@0.0.2/register";
 
 const tracer = trace.getTracer("example-tracer");
 

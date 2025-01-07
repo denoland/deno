@@ -1,4 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
@@ -7,10 +11,6 @@ use aes::cipher::KeyIvInit;
 use deno_core::Resource;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 type Tag = Option<Vec<u8>>;
 
@@ -172,27 +172,19 @@ impl Cipher {
   ) -> Result<Self, CipherError> {
     use Cipher::*;
     Ok(match algorithm_name {
-      "aes-128-cbc" => {
+      "aes128" | "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
-        }
-
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
-        }
-
         let cipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 
@@ -395,20 +387,12 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
-        }
-
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes128>::new(key.into(), iv);
 
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
-        }
-
         let decipher =
           aead_gcm_stream::AesGcm::<aes::Aes256>::new(key.into(), iv);
 

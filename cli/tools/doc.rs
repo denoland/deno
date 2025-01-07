@@ -1,17 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::DocFlags;
-use crate::args::DocHtmlFlag;
-use crate::args::DocSourceFileFlag;
-use crate::args::Flags;
-use crate::colors;
-use crate::display;
-use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_integrity_errors;
-use crate::graph_util::graph_walk_errors;
-use crate::graph_util::GraphWalkErrorsOptions;
-use crate::tsc::get_types_declaration_file_text;
-use crate::util::fs::collect_specifiers;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -31,9 +23,20 @@ use deno_graph::ModuleSpecifier;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
-use std::collections::BTreeMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::args::DocFlags;
+use crate::args::DocHtmlFlag;
+use crate::args::DocSourceFileFlag;
+use crate::args::Flags;
+use crate::colors;
+use crate::display;
+use crate::factory::CliFactory;
+use crate::graph_util::graph_exit_integrity_errors;
+use crate::graph_util::graph_walk_errors;
+use crate::graph_util::GraphWalkErrorsOptions;
+use crate::sys::CliSys;
+use crate::tsc::get_types_declaration_file_text;
+use crate::util::fs::collect_specifiers;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -114,7 +117,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let fs = factory.fs();
+      let sys = CliSys::default();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -131,13 +134,17 @@ pub async fn doc(
         |_| true,
       )?;
       let graph = module_graph_creator
-        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
+        .create_graph(
+          GraphKind::TypesOnly,
+          module_specifiers.clone(),
+          crate::graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
 
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
         &graph,
-        fs,
+        &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
           check_js: false,
@@ -339,14 +346,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let name = &res.req().name;
           Some((
             format!("https://www.npmjs.com/package/{name}"),
-            name.to_owned(),
+            name.to_string(),
           ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+          Some((format!("https://jsr.io/{name}"), name.to_string()))
         }
         _ => None,
       }

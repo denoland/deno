@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::cell::RefCell;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::serde_json::Value;
-use std::cell::RefCell;
 use tokio::sync::mpsc::channel;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::Receiver;

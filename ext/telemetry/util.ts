@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import type { Span } from "ext:deno_telemetry/telemetry.ts";

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -219,8 +219,9 @@ fn get_atomic_dir_path(file_path: &Path) -> PathBuf {
 }
 
 fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
+  use std::fmt::Write;
+  (0..4).fold(String::with_capacity(8), |mut output, _| {
+    write!(&mut output, "{:02x}", rand::random::<u8>()).unwrap();
     output
   })
 }
@@ -235,7 +236,7 @@ mod test {
   #[test]
   pub fn test_verify_tarball() {
     let package = PackageNv {
-      name: "package".to_string(),
+      name: "package".into(),
       version: Version::parse_from_npm("1.0.0").unwrap(),
     };
     let actual_checksum =

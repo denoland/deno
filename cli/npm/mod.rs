@@ -1,9 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod byonm;
 mod managed;
+mod permission_checker;
 
-use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -17,8 +17,6 @@ use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::NodePermissions;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -28,40 +26,38 @@ use managed::create_managed_in_npm_pkg_checker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use crate::file_fetcher::FileFetcher;
-use crate::http_util::HttpClientProvider;
-use crate::util::fs::atomic_write_file_with_retries_and_fs;
-use crate::util::fs::hard_link_dir_recursive;
-use crate::util::fs::AtomicWriteFileFsAdapter;
-use crate::util::progress_bar::ProgressBar;
-
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
+pub use self::managed::PackageCaching;
+pub use self::permission_checker::NpmRegistryReadPermissionChecker;
+pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
+use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
+use crate::util::progress_bar::ProgressBar;
 
-pub type CliNpmTarballCache = deno_npm_cache::TarballCache<CliNpmCacheEnv>;
-pub type CliNpmCache = deno_npm_cache::NpmCache<CliNpmCacheEnv>;
+pub type CliNpmTarballCache =
+  deno_npm_cache::TarballCache<CliNpmCacheHttpClient, CliSys>;
+pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
-  deno_npm_cache::RegistryInfoProvider<CliNpmCacheEnv>;
+  deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
 
 #[derive(Debug)]
-pub struct CliNpmCacheEnv {
-  fs: Arc<dyn FileSystem>,
+pub struct CliNpmCacheHttpClient {
   http_client_provider: Arc<HttpClientProvider>,
   progress_bar: ProgressBar,
 }
 
-impl CliNpmCacheEnv {
+impl CliNpmCacheHttpClient {
   pub fn new(
-    fs: Arc<dyn FileSystem>,
     http_client_provider: Arc<HttpClientProvider>,
     progress_bar: ProgressBar,
   ) -> Self {
     Self {
-      fs,
       http_client_provider,
       progress_bar,
     }
@@ -69,35 +65,7 @@ impl CliNpmCacheEnv {
 }
 
 #[async_trait::async_trait(?Send)]
-impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
-  fn exists(&self, path: &Path) -> bool {
-    self.fs.exists_sync(path)
-  }
-
-  fn hard_link_dir_recursive(
-    &self,
-    from: &Path,
-    to: &Path,
-  ) -> Result<(), AnyError> {
-    // todo(dsherret): use self.fs here instead
-    hard_link_dir_recursive(from, to)
-  }
-
-  fn atomic_write_file_with_retries(
-    &self,
-    file_path: &Path,
-    data: &[u8],
-  ) -> std::io::Result<()> {
-    atomic_write_file_with_retries_and_fs(
-      &AtomicWriteFileFsAdapter {
-        fs: self.fs.as_ref(),
-        write_mode: crate::cache::CACHE_PERM,
-      },
-      file_path,
-      data,
-    )
-  }
-
+impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
@@ -114,14 +82,14 @@ impl deno_npm_cache::NpmCacheEnv for CliNpmCacheEnv {
       .download_with_progress_and_retries(url, maybe_auth_header, &guard)
       .await
       .map_err(|err| {
-        use crate::http_util::DownloadError::*;
-        let status_code = match &err {
+        use crate::http_util::DownloadErrorKind::*;
+        let status_code = match err.as_kind() {
           Fetch { .. }
           | UrlParse { .. }
           | HttpParse { .. }
           | Json { .. }
           | ToStr { .. }
-          | NoRedirectHeader { .. }
+          | RedirectHeaderParse { .. }
           | TooManyRedirects => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)
@@ -216,12 +184,6 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
 
   fn root_node_modules_path(&self) -> Option<&Path>;
 
-  fn ensure_read_permission<'a>(
-    &self,
-    permissions: &mut dyn NodePermissions,
-    path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
-
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.
   fn check_state_hash(&self) -> Option<u64>;
@@ -231,13 +193,13 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
 pub struct NpmFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   info_by_name: DashMap<String, Option<Arc<NpmPackageInfo>>>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   npmrc: Arc<ResolvedNpmRc>,
 }
 
 impl NpmFetchResolver {
   pub fn new(
-    file_fetcher: Arc<FileFetcher>,
+    file_fetcher: Arc<CliFileFetcher>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {

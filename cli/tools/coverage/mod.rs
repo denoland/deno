@@ -1,14 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::CliOptions;
-use crate::args::CoverageFlags;
-use crate::args::FileFlags;
-use crate::args::Flags;
-use crate::cdp;
-use crate::factory::CliFactory;
-use crate::tools::fmt::format_json;
-use crate::tools::test::is_supported_test_path;
-use crate::util::text_encoding::source_map_from_code;
+use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
@@ -27,15 +25,20 @@ use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
-use std::fs;
-use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 use text_lines::TextLines;
 use uuid::Uuid;
+
+use crate::args::CliOptions;
+use crate::args::CoverageFlags;
+use crate::args::FileFlags;
+use crate::args::Flags;
+use crate::cdp;
+use crate::factory::CliFactory;
+use crate::file_fetcher::TextDecodedFile;
+use crate::sys::CliSys;
+use crate::tools::fmt::format_json;
+use crate::tools::test::is_supported_test_path;
+use crate::util::text_encoding::source_map_from_code;
 
 mod merge;
 mod range_tree;
@@ -197,7 +200,7 @@ pub struct CoverageReport {
 fn generate_coverage_report(
   script_coverage: &cdp::ScriptCoverage,
   script_source: String,
-  maybe_source_map: &Option<Vec<u8>>,
+  maybe_source_map: Option<&[u8]>,
   output: &Option<PathBuf>,
 ) -> CoverageReport {
   let maybe_source_map = maybe_source_map
@@ -427,7 +430,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, file_patterns)?;
+  .collect_file_patterns(&CliSys::default(), file_patterns)?;
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -559,6 +562,12 @@ pub fn cover_files(
     },
     None => None,
   };
+  let get_message = |specifier: &ModuleSpecifier| -> String {
+    format!(
+      "Failed to fetch \"{}\" from cache. Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
+      specifier,
+    )
+  };
 
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
@@ -566,21 +575,14 @@ pub fn cover_files(
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file = if module_specifier.scheme() == "file" {
-      file_fetcher.get_source(&module_specifier)
-    } else {
-      file_fetcher
-        .fetch_cached(&module_specifier, 10)
-        .with_context(|| {
-          format!("Failed to fetch \"{module_specifier}\" from cache.")
-        })?
+    let maybe_file_result = file_fetcher
+      .get_cached_source_or_local(&module_specifier)
+      .map_err(AnyError::from);
+    let file = match maybe_file_result {
+      Ok(Some(file)) => TextDecodedFile::decode(file)?,
+      Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
+      Err(err) => return Err(err).context(get_message(&module_specifier)),
     };
-    let file = maybe_file.ok_or_else(|| {
-      anyhow!("Failed to fetch \"{}\" from cache.
-          Before generating coverage report, run `deno test --coverage` to ensure consistent state.",
-          module_specifier
-        )
-    })?.into_text_decoded()?;
 
     let original_source = file.source.clone();
     // Check if file was transpiled
@@ -625,7 +627,7 @@ pub fn cover_files(
     let coverage_report = generate_coverage_report(
       &script_coverage,
       runtime_code.as_str().to_owned(),
-      &source_map,
+      source_map.as_deref(),
       &out_mode,
     );
 

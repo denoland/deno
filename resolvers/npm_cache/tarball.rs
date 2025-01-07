@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,13 +15,22 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use http::StatusCode;
 use parking_lot::Mutex;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::tarball_extract::verify_and_extract_tarball;
 use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
-use crate::NpmCacheEnv;
+use crate::NpmCacheHttpClient;
 use crate::NpmCacheSetting;
 
 type LoadResult = Result<(), Arc<AnyError>>;
@@ -42,22 +51,54 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct TarballCache<TEnv: NpmCacheEnv> {
-  cache: Arc<NpmCache<TEnv>>,
-  env: Arc<TEnv>,
+pub struct TarballCache<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsRemoveFile
+    + FsReadDir
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+> {
+  cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<THttpClient>,
+  sys: TSys,
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
 }
 
-impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsReadDir
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > TarballCache<THttpClient, TSys>
+{
   pub fn new(
-    cache: Arc<NpmCache<TEnv>>,
-    env: Arc<TEnv>,
+    cache: Arc<NpmCache<TSys>>,
+    http_client: Arc<THttpClient>,
+    sys: TSys,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache,
-      env,
+      http_client,
+      sys,
       npmrc,
       memory_cache: Default::default(),
     }
@@ -131,7 +172,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       let package_folder =
         tarball_cache.cache.package_folder_for_nv_and_url(&package_nv, registry_url);
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
-      let package_folder_exists = tarball_cache.env.exists(&package_folder);
+      let package_folder_exists = tarball_cache.sys.fs_exists_no_err(&package_folder);
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
@@ -156,7 +197,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
 
-      let result = tarball_cache.env
+      let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header)
         .await;
       let maybe_bytes = match result {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -49,19 +49,6 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
     .extension()
     .and_then(|e| e.to_str())
     .map(|e| e.to_lowercase());
-}
-
-pub fn get_atomic_file_path(file_path: &Path) -> PathBuf {
-  let rand = gen_rand_path_component();
-  let extension = format!("{rand}.tmp");
-  file_path.with_extension(extension)
-}
-
-fn gen_rand_path_component() -> String {
-  (0..4).fold(String::new(), |mut output, _| {
-    output.push_str(&format!("{:02x}", rand::random::<u8>()));
-    output
-  })
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take

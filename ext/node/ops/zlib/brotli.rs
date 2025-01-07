@@ -1,4 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::cell::RefCell;
+use std::io::Read;
+
 use brotli::enc::backward_references::BrotliEncoderMode;
 use brotli::enc::encode::BrotliEncoderCompress;
 use brotli::enc::encode::BrotliEncoderOperation;
@@ -14,8 +17,6 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ToJsBuffer;
-use std::cell::RefCell;
-use std::io::Read;
 
 #[derive(Debug, thiserror::Error)]
 pub enum BrotliError {
