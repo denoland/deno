@@ -40,6 +40,7 @@ use indexmap::IndexMap;
 use standalone::DenoCompileFileSystem;
 
 use crate::args::Flags;
+use crate::util::result::any_and_jserrorbox_downcast_ref;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
@@ -64,7 +65,7 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Err(error) => {
       let mut error_string = format!("{:?}", error);
 
-      if let Some(CoreError::Js(js_error)) = error.downcast_ref::<CoreError>() {
+      if let Some(CoreError::Js(js_error)) = any_and_jserrorbox_downcast_ref::<CoreError>(&error) {
         error_string = format_js_error(js_error);
       }
 

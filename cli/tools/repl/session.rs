@@ -402,11 +402,11 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
+          match crate::util::result::any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(&err) {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<ParseDiagnosticsError>() {
+            None => match crate::util::result::any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(&err) {
               Some(diagnostics) => Ok(EvaluationOutput::Error(
                 diagnostics
                   .0

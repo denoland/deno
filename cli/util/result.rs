@@ -2,7 +2,7 @@
 
 use std::convert::Infallible;
 use std::fmt::{Debug, Display};
-use deno_core::error::AnyError;
+use deno_core::error::{AnyError, CoreError};
 use deno_error::{JsErrorBox, JsErrorClass};
 
 pub trait InfallibleResultExt<T> {
@@ -22,5 +22,13 @@ pub fn any_and_jserrorbox_downcast_ref<E: Display + Debug + Send + Sync + 'stati
   err.downcast_ref::<E>()
     .or_else(|| {
       err.downcast_ref::<JsErrorBox>().and_then(|e| e.as_any().downcast_ref::<E>())
+    })
+    .or_else(|| {
+      err.downcast_ref::<CoreError>().and_then(|e| {
+        match e {
+          CoreError::JsNative(e) => e.as_any().downcast_ref::<E>(),
+          _ => None
+        }
+      })
     })
 }

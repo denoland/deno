@@ -81,7 +81,7 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match err.downcast_ref::<CoreError>() {
+    let error_string = match crate::util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&err) {
       Some(CoreError::Js(e)) => format_js_error(e),
       _ => format!("{err:?}"),
     };
