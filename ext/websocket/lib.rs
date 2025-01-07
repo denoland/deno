@@ -758,9 +758,8 @@ pub async fn op_ws_close(
     return Ok(());
   };
 
-  let frame = reason
-    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
-    .unwrap_or_else(|| Frame::close_raw(vec![].into()));
+  let code = code.unwrap_or(1005);
+  let frame = Frame::close(code, reason.unwrap_or_default().as_bytes());
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();
