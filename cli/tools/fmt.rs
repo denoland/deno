@@ -42,6 +42,7 @@ use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::args::UnstableFmtOptions;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
@@ -201,7 +202,7 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      &(&fmt_options.options, &fmt_options.unstable), // cache key
+      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
       &paths,
     ));
     formatter
