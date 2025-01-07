@@ -128,7 +128,7 @@ elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh"
 encoding_rs = "=0.8.33"
 fast-socks5 = "0.9.6"
 faster-hex = "0.9"
-#fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
+# fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 fastwebsockets = { git = "https://github.com/littledivy/fastwebsockets", branch = "allow_no_status_code", features = ["upgrade", "unstable-split"] }
 
 filetime = "0.2.16"
