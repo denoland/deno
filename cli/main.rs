@@ -201,7 +201,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = util::result::any_and_jserrorbox_downcast_ref::<ResolvePkgFolderFromDenoReqError>(dbg!(&script_err)) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
