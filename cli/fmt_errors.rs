@@ -6,14 +6,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::args::flags_from_vec;
-use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
-
 use color_print::cformat;
 use color_print::cstr;
 use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::ModuleLoader;
 use deno_core::ResolutionKind;
@@ -23,6 +21,7 @@ use deno_runtime::fmt_errors::FixSuggestion;
 use deno_runtime::fmt_errors::IndexedErrorReference;
 use regex::Regex;
 
+use crate::args::flags_from_vec;
 use crate::factory::CliFactory;
 use crate::util::fs::specifier_from_file_path;
 

@@ -35,7 +35,6 @@ mod util;
 mod version;
 mod worker;
 
-use crate::util::display;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::env;
@@ -54,6 +53,7 @@ use indexmap::IndexMap;
 use standalone::DenoCompileFileSystem;
 
 use crate::args::Flags;
+use crate::util::display;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
