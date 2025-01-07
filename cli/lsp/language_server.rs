@@ -4005,12 +4005,14 @@ mod tests {
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/folder2/inner_folder");
     temp_dir.create_dir_all("root2/sub_folder");
     temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
     temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/folder2/inner_folder/main.ts", ""); // yes, enabled (regression test for https://github.com/denoland/vscode_deno/issues/1239)
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
@@ -4051,6 +4053,7 @@ mod tests {
             enable_paths: Some(vec![
               "file1.ts".to_string(),
               "folder".to_string(),
+              "folder2/inner_folder".to_string(),
             ]),
             disable_paths: vec!["folder/other.ts".to_string()],
             ..Default::default()
@@ -4101,6 +4104,10 @@ mod tests {
         temp_dir.url().join("root1/folder/mod.ts").unwrap(),
         temp_dir.url().join("root2/folder/main.ts").unwrap(),
         temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir
+          .url()
+          .join("root2/folder2/inner_folder/main.ts")
+          .unwrap(),
       ])
     );
   }
