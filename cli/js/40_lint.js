@@ -310,9 +310,6 @@ function getNode(ctx, idx) {
  * @returns {number}
  */
 function findPropOffset(buf, offset, search) {
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
-
   const propCount = buf[offset];
   offset += 1;
 
@@ -612,15 +609,15 @@ function readProperty(ctx, offset) {
     const value = readU32(buf, offset);
     return getNode(ctx, value);
   } else if (kind === PropFlags.RefArr) {
-    // FIXME: This is broken atm
-    const len = readU32(buf, offset);
-    offset += 4;
+    const groupId = readU32(buf, offset);
 
-    const nodes = new Array(len);
-    for (let i = 0; i < len; i++) {
-      nodes[i] = getNode(ctx, readU32(buf, offset));
-      offset += 4;
+    const nodes = [];
+    let next = readChild(buf, groupId);
+    while (next > AST_IDX_INVALID) {
+      nodes.push(getNode(ctx, next));
+      next = readNext(buf, next);
     }
+
     return nodes;
   } else if (kind === PropFlags.Bool) {
     const v = readU32(buf, offset);
