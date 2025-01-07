@@ -853,7 +853,8 @@ impl Settings {
       Some(false)
     } else if let Some(enable_paths) = &enable_paths {
       for enable_path in enable_paths {
-        if path.starts_with(enable_path) {
+        // Also enable if the checked path is a dir containing an enabled path.
+        if path.starts_with(enable_path) || enable_path.starts_with(&path) {
           return Some(true);
         }
       }
