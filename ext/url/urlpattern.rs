@@ -18,6 +18,11 @@ pub static GROUP_STRING_FALLBACK: AtomicBool = AtomicBool::new(false);
 #[derive(Debug, thiserror::Error)]
 #[error(transparent)]
 pub enum UrlPatternError {
+  #[error("{prefix}: {key} is invalid")]
+  InvalidRegexp {
+    prefix: &'static str,
+    key: &'static str,
+  },
   #[error(transparent)]
   UrlPattern(#[from] urlpattern::Error),
   #[error(transparent)]
@@ -81,16 +86,13 @@ enum URLPatternInput {
 impl<'a> WebIdlConverter<'a> for URLPatternInput {
   type Options = ();
 
-  fn convert<C>(
+  fn convert<'b>(
     scope: &mut v8::HandleScope<'a>,
     value: v8::Local<'a, v8::Value>,
     prefix: Cow<'static, str>,
-    context: C,
+    context: deno_core::webidl::ContextFn,
     _: &Self::Options,
-  ) -> Result<Self, WebIdlError>
-  where
-    C: Fn() -> Cow<'static, str>,
-  {
+  ) -> Result<Self, WebIdlError> {
     if value.is_object() {
       Ok(URLPatternInput::URLPatternInit(URLPatternInit::convert(
         scope,
@@ -180,21 +182,21 @@ impl URLPattern {
         scope,
         input,
         PREFIX.into(),
-        || "Argument 1".into(),
+        deno_core::webidl::ContextFn::from(|| "Argument 1".into()),
         &Default::default(),
       )?;
       let base_url = Some(String::convert(
         scope,
         base_url_or_options,
         PREFIX.into(),
-        || "Argument 2".into(),
+        deno_core::webidl::ContextFn::from(|| "Argument 2".into()),
         &Default::default(),
       )?);
       let options = URLPatternOptions::convert(
         scope,
         maybe_options,
         PREFIX.into(),
-        || "Argument 3".into(),
+        deno_core::webidl::ContextFn::from(|| "Argument 3".into()),
         &Default::default(),
       )?;
       (input, base_url, options)
@@ -204,7 +206,7 @@ impl URLPattern {
           scope,
           input,
           PREFIX.into(),
-          || "Argument 1".into(),
+          deno_core::webidl::ContextFn::from(|| "Argument 1".into()),
           &Default::default(),
         )?
       } else {
@@ -214,7 +216,7 @@ impl URLPattern {
         scope,
         base_url_or_options,
         PREFIX.into(),
-        || "Argument 2".into(),
+        deno_core::webidl::ContextFn::from(|| "Argument 2".into()),
         &Default::default(),
       )?;
       (input, None, options)
@@ -225,59 +227,39 @@ impl URLPattern {
       base_url.as_deref(),
     )?;
 
-    let opts = options.clone();
+    let flags = if options.ignore_case {
+      v8::RegExpCreationFlags::UNICODE | v8::RegExpCreationFlags::IGNORE_CASE
+    } else {
+      v8::RegExpCreationFlags::UNICODE
+    };
+    
     let pattern = quirks::parse_pattern(init, options.into())?;
 
-    fn create_regexp_global(
-      scope: &mut v8::HandleScope,
-      pattern: &str,
-      options: &URLPatternOptions,
-    ) -> Result<v8::Global<v8::RegExp>, UrlPatternError> {
-      let pattern = v8::String::new(scope, pattern).unwrap();
-
-      let flags = if options.ignore_case {
-        v8::RegExpCreationFlags::UNICODE | v8::RegExpCreationFlags::IGNORE_CASE
-      } else {
-        v8::RegExpCreationFlags::UNICODE
-      };
-
-      let regexp = v8::RegExp::new(scope, pattern, flags).unwrap(); // TODO: throw new TypeError(`${prefix}: ${key} is invalid; ${e.message}`);
-      Ok(v8::Global::new(scope, regexp))
+    macro_rules! create_regexp_global {
+      ($scope:expr, $key:tt, $pattern:expr, $flags:expr) => {
+        {
+          let pattern = v8::String::new($scope, &$pattern.$key.regexp_string).unwrap();
+    
+          let Some(regexp) = v8::RegExp::new($scope, pattern, $flags) else {
+            return Err(UrlPatternError::InvalidRegexp {
+              prefix: PREFIX,
+              key: stringify!($key),
+            })
+          };
+          v8::Global::new($scope, regexp)
+        }
+      }
     }
 
     Ok(URLPattern {
-      protocol: create_regexp_global(
-        scope,
-        &pattern.protocol.regexp_string,
-        &opts,
-      )?,
-      username: create_regexp_global(
-        scope,
-        &pattern.username.regexp_string,
-        &opts,
-      )?,
-      password: create_regexp_global(
-        scope,
-        &pattern.password.regexp_string,
-        &opts,
-      )?,
-      hostname: create_regexp_global(
-        scope,
-        &pattern.hostname.regexp_string,
-        &opts,
-      )?,
-      port: create_regexp_global(scope, &pattern.port.regexp_string, &opts)?,
-      pathname: create_regexp_global(
-        scope,
-        &pattern.pathname.regexp_string,
-        &opts,
-      )?,
-      search: create_regexp_global(
-        scope,
-        &pattern.search.regexp_string,
-        &opts,
-      )?,
-      hash: create_regexp_global(scope, &pattern.hash.regexp_string, &opts)?,
+      protocol: create_regexp_global!(scope, protocol, pattern, flags),
+      username: create_regexp_global!(scope, username, pattern, flags),
+      password: create_regexp_global!(scope, password, pattern, flags),
+      hostname: create_regexp_global!(scope, hostname, pattern, flags),
+      port: create_regexp_global!(scope, port, pattern, flags),
+      pathname: create_regexp_global!(scope, pathname, pattern, flags),
+      search: create_regexp_global!(scope, search, pattern, flags),
+      hash: create_regexp_global!(scope, hash, pattern, flags),
       pattern,
     })
   }
