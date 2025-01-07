@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -27,7 +26,6 @@ use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
-use thiserror::Error;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::NpmCache;
@@ -36,33 +34,6 @@ use crate::NpmCacheSetting;
 
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
-
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct AnyhowJsError(pub deno_core::error::AnyError);
-
-impl deno_error::JsErrorClass for AnyhowJsError {
-  fn get_class(&self) -> std::borrow::Cow<'static, str> {
-    deno_error::builtin_classes::GENERIC_ERROR.into()
-  }
-
-  fn get_message(&self) -> std::borrow::Cow<'static, str> {
-    self.0.to_string().into()
-  }
-
-  fn get_additional_properties(
-    &self,
-  ) -> Vec<(
-    std::borrow::Cow<'static, str>,
-    std::borrow::Cow<'static, str>,
-  )> {
-    vec![]
-  }
-
-  fn as_any(&self) -> &dyn Any {
-    self
-  }
-}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
