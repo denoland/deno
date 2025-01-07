@@ -1559,7 +1559,7 @@ dependencies = [
  "tokio",
  "url",
  "v8",
- "wasm_dep_analyzer 0.2.0",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -1759,21 +1759,19 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.86.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ceaff8e0b1ea21369c1aff28d75fed0c4194896195cf57c2fbee4f7db3e4c42"
 dependencies = [
- "anyhow",
  "async-trait",
  "capacity_builder 0.5.0",
  "data-url",
  "deno_ast",
+ "deno_error",
  "deno_media_type",
  "deno_path_util 0.3.0",
  "deno_semver",
  "deno_unsync",
  "encoding_rs",
  "futures",
- "import_map 0.20.1",
+ "import_map 0.21.0",
  "indexmap 2.3.0",
  "log",
  "monch",
@@ -1787,7 +1785,7 @@ dependencies = [
  "thiserror 2.0.3",
  "twox-hash",
  "url",
- "wasm_dep_analyzer 0.1.0",
+ "wasm_dep_analyzer",
 ]
 
 [[package]]
@@ -8650,15 +8648,6 @@ dependencies = [
 
 [[package]]
 name = "wasm_dep_analyzer"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f270206a91783fd90625c8bb0d8fbd459d0b1d1bf209b656f713f01ae7c04b8"
-dependencies = [
- "thiserror 1.0.64",
-]
-
-[[package]]
-name = "wasm_dep_analyzer"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2eeee3bdea6257cc36d756fa745a70f9d393571e47d69e0ed97581676a5369ca"
@@ -9337,7 +9326,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_graph"
-version = "0.86.7"

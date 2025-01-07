@@ -26,11 +26,11 @@ use crate::FfiPermissions;
 
 deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
   match err {
-    dlopen2::Error::NullCharacter(_) => "InvalidData",
+    dlopen2::Error::NullCharacter(_) => "InvalidData".into(),
     dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
     dlopen2::Error::SymbolGettingError(e) => e.get_class(),
     dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
-    dlopen2::Error::NullSymbol => "NotFound",
+    dlopen2::Error::NullSymbol => "NotFound".into(),
   }
 });
 
