@@ -1754,13 +1754,14 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.86.7"
+version = "0.86.8"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
  "data-url",
  "deno_ast",
  "deno_error",
+ "deno_media_type",
  "deno_path_util 0.3.0",
  "deno_semver",
  "deno_unsync",
