@@ -897,9 +897,7 @@ impl MainWorker {
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
-  pub fn dispatch_process_beforeexit_event(
-    &mut self,
-  ) -> Result<bool, JsError> {
+  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(

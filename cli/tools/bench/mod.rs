@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
-use deno_core::error::{AnyError, CoreError};
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -170,7 +171,7 @@ async fn bench_specifier(
       ))?;
       Ok(())
     }
-    Err(e) => Err(e.into())
+    Err(e) => Err(e.into()),
   }
 }
 
@@ -228,14 +229,18 @@ async fn bench_specifier_inner(
       .partial_cmp(&groups.get_index_of(&d2.group).unwrap())
       .unwrap()
   });
-  sender.send(BenchEvent::Plan(BenchPlan {
-    origin: specifier.to_string(),
-    total: benchmarks.len(),
-    used_only,
-    names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
-  })).map_err(JsErrorBox::from_err)?;
+  sender
+    .send(BenchEvent::Plan(BenchPlan {
+      origin: specifier.to_string(),
+      total: benchmarks.len(),
+      used_only,
+      names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
+    }))
+    .map_err(JsErrorBox::from_err)?;
   for (desc, function) in benchmarks {
-    sender.send(BenchEvent::Wait(desc.id)).map_err(JsErrorBox::from_err)?;
+    sender
+      .send(BenchEvent::Wait(desc.id))
+      .map_err(JsErrorBox::from_err)?;
     let call = worker.js_runtime.call(&function);
     let result = worker
       .js_runtime
@@ -243,8 +248,11 @@ async fn bench_specifier_inner(
       .await?;
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<BenchResult>(scope, result).map_err(JsErrorBox::from_err)?;
-    sender.send(BenchEvent::Result(desc.id, result)).map_err(JsErrorBox::from_err)?;
+    let result = serde_v8::from_v8::<BenchResult>(scope, result)
+      .map_err(JsErrorBox::from_err)?;
+    sender
+      .send(BenchEvent::Result(desc.id, result))
+      .map_err(JsErrorBox::from_err)?;
   }
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the

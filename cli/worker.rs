@@ -514,16 +514,15 @@ impl CliMainWorkerFactory {
       }
 
       // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer =
-        ModuleSpecifier::from_directory_path(self.shared.fs.cwd().map_err(JsErrorBox::from_err)?)
-          .unwrap()
-          .join("package.json")?;
+      let referrer = ModuleSpecifier::from_directory_path(
+        self.shared.fs.cwd().map_err(JsErrorBox::from_err)?,
+      )
+      .unwrap()
+      .join("package.json")?;
       let package_folder = shared
         .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(
-          package_ref.req(),
-          &referrer,
-        ).map_err(JsErrorBox::from_err)?;
+        .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
+        .map_err(JsErrorBox::from_err)?;
       let main_module = self
         .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
 

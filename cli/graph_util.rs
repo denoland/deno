@@ -4,12 +4,14 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
+
 use deno_config::deno_json;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::{serde_json, ModuleSpecifier};
+use deno_core::serde_json;
+use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
@@ -56,7 +58,8 @@ use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::sys::CliSys;
 use crate::tools::check;
-use crate::tools::check::{CheckError, TypeChecker};
+use crate::tools::check::CheckError;
+use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
@@ -471,7 +474,9 @@ pub enum BuildGraphWithNpmResolutionError {
   SerdeJson(#[from] serde_json::Error),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(#[from] deno_json::ToMaybeJsxImportSourceConfigError),
+  ToMaybeJsxImportSourceConfig(
+    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   NodeModulesDirParse(#[from] deno_json::NodeModulesDirParseError),
@@ -705,7 +710,7 @@ impl ModuleGraphBuilder {
     if roots.iter().any(|r| r.scheme() == "npm")
       && self.npm_resolver.as_byonm().is_some()
     {
-      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay)
+      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
     }
 
     graph.build(roots, loader, options).await;
@@ -848,7 +853,10 @@ impl ModuleGraphBuilder {
     )
   }
 
-  fn create_graph_resolver(&self) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError> {
+  fn create_graph_resolver(
+    &self,
+  ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
+  {
     let jsx_import_source_config = self
       .cli_options
       .workspace()

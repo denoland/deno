@@ -1154,7 +1154,9 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
     ..Default::default()
   });
 
-  runtime.execute_script(located_script_name!(), exec_source).map_err(ExecError::Core)?;
+  runtime
+    .execute_script(located_script_name!(), exec_source)
+    .map_err(ExecError::Core)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();

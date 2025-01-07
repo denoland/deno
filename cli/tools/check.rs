@@ -124,7 +124,9 @@ pub enum CheckError {
   ConfigFile(#[from] deno_json::ConfigFileError),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(#[from] deno_json::ToMaybeJsxImportSourceConfigError),
+  ToMaybeJsxImportSourceConfig(
+    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   TscExec(#[from] tsc::ExecError),

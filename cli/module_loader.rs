@@ -78,7 +78,8 @@ use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
 use crate::tools::check;
-use crate::tools::check::{CheckError, TypeChecker};
+use crate::tools::check::CheckError;
+use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -89,7 +90,9 @@ use crate::worker::ModuleLoaderFactory;
 pub enum PrepareModuleLoadError {
   #[class(inherit)]
   #[error(transparent)]
-  BuildGraphWithNpmResolution(#[from] crate::graph_util::BuildGraphWithNpmResolutionError),
+  BuildGraphWithNpmResolution(
+    #[from] crate::graph_util::BuildGraphWithNpmResolutionError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   Check(#[from] CheckError),
@@ -1006,7 +1009,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           permissions,
           None,
         )
-        .await.map_err(JsErrorBox::from_err)?;
+        .await
+        .map_err(JsErrorBox::from_err)?;
       update_permit.commit();
       Ok(())
     }

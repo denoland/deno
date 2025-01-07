@@ -1251,7 +1251,10 @@ impl CliOptions {
 
   pub fn node_modules_dir(
     &self,
-  ) -> Result<Option<NodeModulesDirMode>, deno_config::deno_json::NodeModulesDirParseError> {
+  ) -> Result<
+    Option<NodeModulesDirMode>,
+    deno_config::deno_json::NodeModulesDirParseError,
+  > {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }

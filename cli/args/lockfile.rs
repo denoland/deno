@@ -104,7 +104,10 @@ impl CliLockfile {
       &lockfile.filename,
       &bytes,
       cache::CACHE_PERM,
-    ).map_err(|source| JsErrorBox::from_err(AtomicWriteFileWithRetriesError { source }))?;
+    )
+    .map_err(|source| {
+      JsErrorBox::from_err(AtomicWriteFileWithRetriesError { source })
+    })?;
     lockfile.has_content_changed = false;
     Ok(())
   }

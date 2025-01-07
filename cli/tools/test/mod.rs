@@ -105,6 +105,7 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
 use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
@@ -645,7 +646,8 @@ async fn configure_main_worker(
       send_test_event(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-      ).map_err(JsErrorBox::from_err)?;
+      )
+      .map_err(JsErrorBox::from_err)?;
       Ok(())
     }
     Err(err) => Err(err),
@@ -688,14 +690,11 @@ pub async fn test_specifier(
     Err(CoreError::Js(err)) => {
       send_test_event(
         &worker.js_runtime.op_state(),
-        TestEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(err),
-        ),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
       )?;
       Ok(())
     }
-    Err(e) => Err(e.into())
+    Err(e) => Err(e.into()),
   }
 }
 
