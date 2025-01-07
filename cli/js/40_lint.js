@@ -366,12 +366,12 @@ class FacadeNode {
    * @returns {string}
    */
   [Symbol.for("Deno.customInspect")](_, options) {
-    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_IDX]);
+    const json = nodeToJson(this[INTERNAL_CTX], this[INTERNAL_IDX]);
     return Deno.inspect(json, options);
   }
 
   [Symbol.for("Deno.lint.toJsValue")]() {
-    return toJsValue(this[INTERNAL_CTX], this[INTERNAL_IDX]);
+    return nodeToJson(this[INTERNAL_CTX], this[INTERNAL_IDX]);
   }
 }
 
@@ -394,92 +394,60 @@ function setNodeGetters(ctx) {
 
     Object.defineProperty(FacadeNode.prototype, name, {
       get() {
-        return readValue(this[INTERNAL_CTX], this[INTERNAL_IDX], i);
+        return readValue(
+          this[INTERNAL_CTX],
+          this[INTERNAL_IDX],
+          i,
+          nodeToFacade,
+        );
       },
     });
   }
 }
 
 /**
- * Serialize a node recursively to plain JSON
  * @param {AstContext} ctx
  * @param {number} idx
- * @returns {*}
  */
-function toJsValue(ctx, idx) {
-  const { buf } = ctx;
-
+function nodeToJson(ctx, idx) {
   /** @type {Record<string, any>} */
   const node = {
-    type: readValue(ctx, idx, AST_PROP_TYPE),
-    range: readValue(ctx, idx, AST_PROP_RANGE),
+    type: readValue(ctx, idx, AST_PROP_TYPE, nodeToJson),
+    range: readValue(ctx, idx, AST_PROP_RANGE, nodeToJson),
   };
 
-  /** @type {Record<string, any>} */
-  let out = node;
-  let skip = 0;
-
+  const { buf } = ctx;
   let offset = readPropOffset(ctx, idx);
 
   const count = buf[offset++];
-  for (let i = 0; i < count; i++) {
-    const prop = buf[offset++];
-    const kind = buf[offset++];
-    const name = getString(ctx.strTable, ctx.strByProp[prop]);
-    if (skip > 0) {
-      skip--;
-      if (skip === 0) {
-        // TODO(@marvinhagemeister): Support recursiveness
-        out = node;
-      }
-    }
 
-    if (kind === PropFlags.Ref) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      out[name] = v === 0 ? null : toJsValue(ctx, v);
-    } else if (kind === PropFlags.RefArr) {
+  for (let i = 0; i < count; i++) {
+    const kind = buf[offset];
+    const prop = buf[offset + 1];
+    const name = getString(ctx.strTable, ctx.strByProp[prop]);
+
+    node[name] = readProperty(ctx, offset, nodeToJson);
+
+    if (kind === PropFlags.Obj) {
+      offset += 1 + 1;
       const len = readU32(buf, offset);
       offset += 4;
-      const nodes = new Array(len);
-      for (let i = 0; i < len; i++) {
-        const v = readU32(buf, offset);
-        if (v === 0) continue;
-        nodes[i] = toJsValue(ctx, v);
-        offset += 4;
-      }
-      out[name] = nodes;
-    } else if (kind === PropFlags.Bool) {
-      const v = buf[offset++];
-      out[name] = v === 1;
-    } else if (kind === PropFlags.String) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      out[name] = getString(ctx.strTable, v);
-    } else if (kind === PropFlags.Number) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      out[name] = Number(getString(ctx.strTable, v));
-    } else if (kind === PropFlags.Regex) {
-      const v = readU32(buf, offset);
-      offset += 4;
-
-      out[name] = readRegex(ctx.strTable, v);
-    } else if (kind === PropFlags.Null) {
-      out[name] = null;
-    } else if (kind === PropFlags.Undefined) {
-      out[name] = undefined;
-    } else if (kind === PropFlags.Obj) {
-      const v = readU32(buf, offset);
-      skip += v;
-      offset += 4;
-      const obj = {};
-      out = obj;
-      out[name] = obj;
+      offset += (1 + 1 + 4) * len;
+    } else {
+      // prop + type + value
+      offset += 1 + 1 + 4;
     }
   }
 
   return node;
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} idx
+ */
+function nodeToFacade(ctx, idx) {
+  return getNode(ctx, idx);
 }
 
 /**
@@ -570,9 +538,10 @@ function readRegex(strTable, strId) {
 /**
  * @param {AstContext} ctx
  * @param {number} offset
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
  * @returns {Record<string, any>}
  */
-function readObject(ctx, offset) {
+function readObject(ctx, offset, parseNode) {
   const { buf, strTable, strByProp } = ctx;
 
   /** @type {Record<string, any>} */
@@ -585,7 +554,7 @@ function readObject(ctx, offset) {
     const start = offset;
     const prop = buf[offset++];
     const name = getString(strTable, strByProp[prop]);
-    const value = readProperty(ctx, start);
+    const value = readProperty(ctx, start, parseNode);
 
     obj[name] = value;
   }
@@ -596,9 +565,10 @@ function readObject(ctx, offset) {
 /**
  * @param {AstContext} ctx
  * @param {number} offset
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
  * @returns {any}
  */
-function readProperty(ctx, offset) {
+function readProperty(ctx, offset, parseNode) {
   const { buf } = ctx;
 
   const kind = buf[offset++];
@@ -614,7 +584,7 @@ function readProperty(ctx, offset) {
     const nodes = [];
     let next = readChild(buf, groupId);
     while (next > AST_IDX_INVALID) {
-      nodes.push(getNode(ctx, next));
+      nodes.push(parseNode(ctx, next));
       next = readNext(buf, next);
     }
 
@@ -636,7 +606,7 @@ function readProperty(ctx, offset) {
   } else if (kind === PropFlags.Undefined) {
     return undefined;
   } else if (kind === PropFlags.Obj) {
-    return readObject(ctx, offset);
+    return readObject(ctx, offset, parseNode);
   }
 
   throw new Error(`Unknown prop kind: ${kind}`);
@@ -647,9 +617,10 @@ function readProperty(ctx, offset) {
  * @param {AstContext} ctx
  * @param {number} idx
  * @param {number} search
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
  * @returns {*}
  */
-function readValue(ctx, idx, search) {
+function readValue(ctx, idx, search, parseNode) {
   const { buf } = ctx;
 
   if (search === AST_PROP_TYPE) {
@@ -667,7 +638,7 @@ function readValue(ctx, idx, search) {
   const offset = findPropOffset(ctx.buf, propOffset, search);
   if (offset === -1) return undefined;
 
-  return readProperty(ctx, offset);
+  return readProperty(ctx, offset, parseNode);
 }
 
 const DECODER = new TextDecoder();
