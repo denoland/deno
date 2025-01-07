@@ -1098,6 +1098,7 @@ pub enum SymlinkPackageDirError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] std::io::Error),
+  #[cfg(windows)]
   #[class(inherit)]
   #[error("Creating junction in node_modules folder")]
   FailedCreatingJunction {

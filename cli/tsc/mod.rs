@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
@@ -1066,10 +1065,20 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum ExecError {
+  #[class(generic)]
+  #[error("The response for the exec request was not set.")]
+  ResponseNotSet,
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(deno_core::error::CoreError),
+}
+
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, AnyError> {
+pub fn exec(request: Request) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -1145,7 +1154,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime.execute_script(located_script_name!(), exec_source)?;
+  runtime.execute_script(located_script_name!(), exec_source).map_err(ExecError::Core)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -1162,7 +1171,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       stats,
     })
   } else {
-    Err(anyhow!("The response for the exec request was not set."))
+    Err(ExecError::ResponseNotSet)
   }
 }
 
@@ -1248,7 +1257,7 @@ mod tests {
 
   async fn test_exec(
     specifier: &ModuleSpecifier,
-  ) -> Result<Response, AnyError> {
+  ) -> Result<Response, ExecError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let loader = MockLoader { fixtures };

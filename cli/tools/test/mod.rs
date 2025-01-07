@@ -48,6 +48,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -104,6 +105,7 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
@@ -611,7 +613,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), CoreError> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -643,7 +645,7 @@ async fn configure_main_worker(
       send_test_event(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
-      )?;
+      ).map_err(JsErrorBox::from_err)?;
       Ok(())
     }
     Err(err) => Err(err),
@@ -683,21 +685,17 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(err)) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(
+          specifier.to_string(),
+          Box::new(err),
+        ),
+      )?;
+      Ok(())
     }
+    Err(e) => Err(e.into())
   }
 }
 
@@ -710,7 +708,7 @@ async fn test_specifier_inner(
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
-) -> Result<(), AnyError> {
+) -> Result<(), CoreError> {
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
@@ -776,13 +774,11 @@ pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), CoreError> {
 pub fn send_test_event(
   op_state: &RefCell<OpState>,
   event: TestEvent,
-) -> Result<(), AnyError> {
-  Ok(
-    op_state
-      .borrow_mut()
-      .borrow_mut::<TestEventSender>()
-      .send(event)?,
-  )
+) -> Result<(), ChannelClosedError> {
+  op_state
+    .borrow_mut()
+    .borrow_mut::<TestEventSender>()
+    .send(event)
 }
 
 pub async fn run_tests_for_worker(

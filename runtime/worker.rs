@@ -12,7 +12,6 @@ use std::time::Instant;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
@@ -832,7 +831,7 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_load_event_fn =
@@ -841,7 +840,7 @@ impl MainWorker {
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
@@ -849,7 +848,7 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  pub fn dispatch_unload_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_unload_event_fn =
@@ -858,13 +857,13 @@ impl MainWorker {
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
 
   /// Dispatches process.emit("exit") event for node compat.
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_exit_event_fn =
@@ -873,7 +872,7 @@ impl MainWorker {
     dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
@@ -881,7 +880,7 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, AnyError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_beforeunload_event_fn =
@@ -891,7 +890,7 @@ impl MainWorker {
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
@@ -900,7 +899,7 @@ impl MainWorker {
   /// Dispatches process.emit("beforeExit") event for node compat.
   pub fn dispatch_process_beforeexit_event(
     &mut self,
-  ) -> Result<bool, AnyError> {
+  ) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
@@ -915,7 +914,7 @@ impl MainWorker {
     );
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_true())

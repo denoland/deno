@@ -78,12 +78,25 @@ use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
 use crate::tools::check;
-use crate::tools::check::TypeChecker;
+use crate::tools::check::{CheckError, TypeChecker};
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PrepareModuleLoadError {
+  #[class(inherit)]
+  #[error(transparent)]
+  BuildGraphWithNpmResolution(#[from] crate::graph_util::BuildGraphWithNpmResolutionError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Check(#[from] CheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -124,7 +137,7 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PrepareModuleLoadError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
@@ -993,7 +1006,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           permissions,
           None,
         )
-        .await?;
+        .await.map_err(JsErrorBox::from_err)?;
       update_permit.commit();
       Ok(())
     }

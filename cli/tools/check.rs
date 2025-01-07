@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json;
 use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
@@ -112,6 +114,25 @@ pub struct TypeChecker {
   sys: CliSys,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CheckError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Diagnostics(#[from] Diagnostics),
+  #[class(inherit)]
+  #[error(transparent)]
+  ConfigFile(#[from] deno_json::ConfigFileError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ToMaybeJsxImportSourceConfig(#[from] deno_json::ToMaybeJsxImportSourceConfigError),
+  #[class(inherit)]
+  #[error(transparent)]
+  TscExec(#[from] tsc::ExecError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 impl TypeChecker {
   pub fn new(
     caches: Arc<Caches>,
@@ -141,7 +162,7 @@ impl TypeChecker {
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<Arc<ModuleGraph>, AnyError> {
+  ) -> Result<Arc<ModuleGraph>, CheckError> {
     let (graph, mut diagnostics) =
       self.check_diagnostics(graph, options).await?;
     diagnostics.emit_warnings();
@@ -160,7 +181,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
+  ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }

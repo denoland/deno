@@ -120,12 +120,12 @@ fn is_file_removed(event_path: &PathBuf) -> bool {
 
 deno_error::js_error_wrapper!(NotifyError, JsNotifyError, |err| {
   match &err.kind {
-    notify::ErrorKind::Generic(_) => GENERIC_ERROR,
+    notify::ErrorKind::Generic(_) => GENERIC_ERROR.into(),
     notify::ErrorKind::Io(e) => e.get_class(),
-    notify::ErrorKind::PathNotFound => "NotFound",
-    notify::ErrorKind::WatchNotFound => "NotFound",
-    notify::ErrorKind::InvalidConfig(_) => "InvalidData",
-    notify::ErrorKind::MaxFilesWatch => GENERIC_ERROR,
+    notify::ErrorKind::PathNotFound => "NotFound".into(),
+    notify::ErrorKind::WatchNotFound => "NotFound".into(),
+    notify::ErrorKind::InvalidConfig(_) => "InvalidData".into(),
+    notify::ErrorKind::MaxFilesWatch => GENERIC_ERROR.into(),
   }
 });
 

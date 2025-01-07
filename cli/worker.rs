@@ -18,6 +18,7 @@ use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_error::JsErrorBox;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -465,7 +466,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-  ) -> Result<CliMainWorker, AnyError> {
+  ) -> Result<CliMainWorker, CoreError> {
     self
       .create_custom_worker(
         mode,
@@ -484,7 +485,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-  ) -> Result<CliMainWorker, AnyError> {
+  ) -> Result<CliMainWorker, CoreError> {
     let shared = &self.shared;
     let CreateModuleLoaderResult {
       module_loader,
@@ -514,7 +515,7 @@ impl CliMainWorkerFactory {
 
       // use a fake referrer that can be used to discover the package.json if necessary
       let referrer =
-        ModuleSpecifier::from_directory_path(self.shared.fs.cwd()?)
+        ModuleSpecifier::from_directory_path(self.shared.fs.cwd().map_err(JsErrorBox::from_err)?)
           .unwrap()
           .join("package.json")?;
       let package_folder = shared
@@ -522,7 +523,7 @@ impl CliMainWorkerFactory {
         .resolve_pkg_folder_from_deno_module_req(
           package_ref.req(),
           &referrer,
-        )?;
+        ).map_err(JsErrorBox::from_err)?;
       let main_module = self
         .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
 

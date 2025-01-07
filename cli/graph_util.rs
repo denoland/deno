@@ -4,13 +4,12 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
-
+use deno_config::deno_json;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
-use deno_core::ModuleSpecifier;
+use deno_core::{serde_json, ModuleSpecifier};
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
@@ -57,7 +56,7 @@ use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::SloppyImportsCachedFs;
 use crate::sys::CliSys;
 use crate::tools::check;
-use crate::tools::check::TypeChecker;
+use crate::tools::check::{CheckError, TypeChecker};
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
@@ -442,7 +441,7 @@ impl ModuleGraphCreator {
   async fn type_check_graph(
     &self,
     graph: ModuleGraph,
-  ) -> Result<Arc<ModuleGraph>, AnyError> {
+  ) -> Result<Arc<ModuleGraph>, CheckError> {
     self
       .type_checker
       .check(
@@ -463,6 +462,25 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum BuildGraphWithNpmResolutionError {
+  #[class(inherit)]
+  #[error(transparent)]
+  SerdeJson(#[from] serde_json::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  ToMaybeJsxImportSourceConfig(#[from] deno_json::ToMaybeJsxImportSourceConfigError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NodeModulesDirParse(#[from] deno_json::NodeModulesDirParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+  #[class(generic)]
+  #[error("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead")]
+  UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 
 pub struct ModuleGraphBuilder {
@@ -522,7 +540,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: CreateGraphOptions<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
       Owned(cache::FetchCacher),
@@ -650,7 +668,7 @@ impl ModuleGraphBuilder {
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BuildGraphWithNpmResolutionError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self
@@ -687,7 +705,7 @@ impl ModuleGraphBuilder {
     if roots.iter().any(|r| r.scheme() == "npm")
       && self.npm_resolver.as_byonm().is_some()
     {
-      bail!("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead");
+      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay)
     }
 
     graph.build(roots, loader, options).await;
@@ -738,7 +756,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: BuildFastCheckGraphOptions,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), deno_json::ToMaybeJsxImportSourceConfigError> {
     if !graph.graph_kind().include_types() {
       return Ok(());
     }
@@ -830,7 +848,7 @@ impl ModuleGraphBuilder {
     )
   }
 
-  fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
+  fn create_graph_resolver(&self) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError> {
     let jsx_import_source_config = self
       .cli_options
       .workspace()

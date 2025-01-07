@@ -42,8 +42,8 @@ type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 pub struct AnyhowJsError(pub deno_core::error::AnyError);
 
 impl deno_error::JsErrorClass for AnyhowJsError {
-  fn get_class(&self) -> &'static str {
-    "generic"
+  fn get_class(&self) -> std::borrow::Cow<'static, str> {
+    deno_error::builtin_classes::GENERIC_ERROR.into()
   }
 
   fn get_message(&self) -> std::borrow::Cow<'static, str> {
@@ -140,11 +140,12 @@ pub enum LoadFileCachedPackageInfoError {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
-#[error(r#"Failed loading {url} for package \"{name}\": {inner}"#)]
+#[error("Failed loading {url} for package \"{name}\"")]
 pub struct LoadPackageInfoError {
   url: Url,
   name: String,
   #[inherit]
+  #[source]
   inner: LoadPackageInfoInnerError,
 }
 

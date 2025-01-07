@@ -448,16 +448,16 @@ mod tests {
 deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
   match err {
     ReadlineError::Io(e) => e.get_class(),
-    ReadlineError::Eof => GENERIC_ERROR,
-    ReadlineError::Interrupted => GENERIC_ERROR,
+    ReadlineError::Eof => GENERIC_ERROR.into(),
+    ReadlineError::Interrupted => GENERIC_ERROR.into(),
     #[cfg(unix)]
     ReadlineError::Errno(e) => JsNixError(*e).get_class(),
-    ReadlineError::WindowResized => GENERIC_ERROR,
+    ReadlineError::WindowResized => GENERIC_ERROR.into(),
     #[cfg(windows)]
-    ReadlineError::Decode(_) => GENERIC_ERROR,
+    ReadlineError::Decode(_) => GENERIC_ERROR.into(),
     #[cfg(windows)]
-    ReadlineError::SystemError(_) => GENERIC_ERROR,
-    _ => GENERIC_ERROR,
+    ReadlineError::SystemError(_) => GENERIC_ERROR.into(),
+    _ => GENERIC_ERROR.into(),
   }
 });
 
