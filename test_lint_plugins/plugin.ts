@@ -1,3 +1,6 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+// deno-lint-ignore-file
+
 const PLUGIN_NAME = "test-plugin-local";
 const RULE1_NAME = "first-rule";
 
