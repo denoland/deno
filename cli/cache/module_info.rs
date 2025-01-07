@@ -194,7 +194,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
     source: &Arc<str>,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
@@ -228,7 +228,7 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     media_type: MediaType,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(&source);
+    let source_hash = CacheDBHash::from_hashable(&source);
     if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
