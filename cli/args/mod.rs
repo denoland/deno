@@ -1526,7 +1526,7 @@ impl CliOptions {
     self.flags.no_npm
   }
 
-  pub fn permissions_options(&self) -> PermissionsOptions {
+  pub fn permissions_options(&self) -> Result<PermissionsOptions, AnyError> {
     // bury this in here to ensure people use cli_options.permissions_options()
     fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
       fn handle_allow<T: Default>(
@@ -1564,7 +1564,99 @@ impl CliOptions {
 
     let mut permissions_options = flags_to_options(&self.flags.permissions);
     self.augment_import_permissions(&mut permissions_options);
-    permissions_options
+
+    let sets = self.start_dir.to_permission_sets()?;
+
+    fn do_thing(
+      allow_deny: &deno_config::deno_json::AllowDeny,
+      current_allow: &mut Option<Vec<String>>,
+      current_deny: &mut Option<Vec<String>>,
+    ) {
+      if current_allow.is_none() {
+        match &allow_deny.allow {
+          deno_config::deno_json::Permission::All => {
+            *current_allow = Some(vec![])
+          }
+          deno_config::deno_json::Permission::Some(vec) => {
+            *current_allow = Some(vec.clone())
+          }
+          _ => {}
+        }
+      }
+      if current_deny.is_none() {
+        match &allow_deny.deny {
+          deno_config::deno_json::Permission::All => {
+            *current_deny = Some(vec![])
+          }
+          deno_config::deno_json::Permission::Some(vec) => {
+            *current_deny = Some(vec.clone())
+          }
+          _ => {}
+        }
+      }
+    }
+
+    macro_rules! merge {
+        ($perms: ident; $($field: ident),*) => {
+            $(
+              paste::paste! {
+                do_thing(&$perms.$field, &mut permissions_options.[<allow_ $field>], &mut permissions_options.[<deny_ $field>]);
+              }
+            )*
+        };
+    }
+
+    macro_rules! set_allows {
+        ($($field: ident),*) => {
+            paste::paste! {
+              $(
+                permissions_options.[<allow_ $field>] = Some(Default::default());
+              )*
+            }
+        };
+    }
+
+    if let Some(name) = &self.flags.permission_set {
+      let set = sets.sets.get(name).ok_or_else(|| {
+        deno_core::anyhow::anyhow!(
+          "failed to find permission set named \"{name}\""
+        )
+      })?;
+      match set {
+        deno_config::deno_json::PermissionSet::Flags(_) => todo!(),
+        deno_config::deno_json::PermissionSet::Object(permissions_object) => {
+          merge!(permissions_object; read, write, net, env, run, ffi, sys);
+
+          if !permissions_options.allow_all {
+            permissions_options.allow_all =
+              permissions_object.all.unwrap_or(false);
+            if permissions_options.allow_all {
+              set_allows!(read, write, net, env, run, ffi, sys, import);
+              return Ok(permissions_options);
+            }
+          }
+
+          if permissions_options.prompt {
+            permissions_options.prompt =
+              permissions_object.prompt.unwrap_or(true);
+          }
+
+          if permissions_options.allow_import.is_none() {
+            match &permissions_object.import {
+              deno_config::deno_json::Permission::All => {
+                permissions_options.allow_import = Some(vec![])
+              }
+              deno_config::deno_json::Permission::Some(vec) => {
+                permissions_options.allow_import = Some(vec.clone())
+              }
+              _ => {}
+            }
+          }
+        }
+      }
+    }
+
+    Ok(permissions_options)
   }
 
   fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
