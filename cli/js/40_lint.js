@@ -719,9 +719,7 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    let offset = idx * NODE_SIZE;
-    offset += 1 + 4 + 4;
-    return readU32(this.buf, offset);
+    return readParent(this.buf, idx);
   }
 
   /**
@@ -729,8 +727,7 @@ class MatchCtx {
    * @returns {number}
    */
   getType(idx) {
-    const offset = idx * NODE_SIZE;
-    return this.buf[offset];
+    return readType(this.buf, idx);
   }
 
   /**
@@ -1053,6 +1050,8 @@ export function runPluginsForFile(fileName, serializedAst) {
             try {
               fn(node);
             } catch (err) {
+              // FIXME: Cause is not shown for uncaught errors?
+              console.error(err);
               throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
                 cause: err,
               });
@@ -1125,6 +1124,7 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
+  console.log("TRAVERSE", idx, readType(ctx.buf, idx));
   if (idx === AST_IDX_INVALID) return;
   if (cancellationToken.isCancellationRequested()) return;
 

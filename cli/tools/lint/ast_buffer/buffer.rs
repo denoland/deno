@@ -142,7 +142,7 @@ struct Node {
 
 #[derive(Debug)]
 pub struct SerializeCtx {
-  start_buf: NodeRef,
+  root_idx: Index,
 
   nodes: Vec<Node>,
   field_buf: Vec<u8>,
@@ -176,7 +176,7 @@ impl SerializeCtx {
     let prop_size = prop_len as usize;
     let mut ctx = Self {
       spans: vec![],
-      start_buf: NodeRef(0),
+      root_idx: 0,
       nodes: vec![],
       field_buf: vec![],
       str_table: StringTable::new(),
@@ -193,7 +193,6 @@ impl SerializeCtx {
     ctx.append_node(0, &DUMMY_SP);
     ctx.kind_name_map[0] = empty_str;
     ctx.kind_name_map[1] = empty_str;
-    ctx.start_buf = NodeRef(ctx.nodes.len() as u32);
 
     // Insert default props that are always present
     let type_str = ctx.str_table.insert("type");
@@ -208,13 +207,11 @@ impl SerializeCtx {
     ctx.prop_name_map[3] = range_str;
     ctx.prop_name_map[4] = length_str;
 
-    eprintln!(
-      "START nodes {}, props: {}",
-      ctx.nodes.len(),
-      ctx.field_buf.len()
-    );
-
     ctx
+  }
+
+  pub fn set_root_idx(&mut self, idx: Index) {
+    self.root_idx = idx;
   }
 
   /// Allocate a node's header
@@ -266,7 +263,6 @@ impl SerializeCtx {
 
     // Update next pointer of previous sibling
     if let Some(prev_id) = self.prev_sibling_node {
-      eprintln!("set next {} for {}", child_id, prev_id);
       self.set_next(prev_id, child_id);
     }
 
@@ -318,19 +314,11 @@ impl SerializeCtx {
     self.field_buf.push(0);
 
     let id = self.append_inner(kind, self.field_offset, span.lo.0, span.hi.0);
-    eprintln!(
-      "setting prop count: {}, prop offset: {}, id: {}",
-      self.field_count, self.field_offset, id
-    );
 
     PendingRef(id)
   }
 
   pub fn commit_node(&mut self, id: PendingRef) -> NodeRef {
-    eprintln!(
-      "COMMIT prop count: {}, prop offset: {} id: {}",
-      self.field_count, self.field_offset, id.0
-    );
     self.field_buf[self.field_offset] = self.field_count;
     self.field_count = 0;
     self.prev_sibling_node = None;
@@ -489,8 +477,6 @@ impl SerializeCtx {
   pub fn serialize(&mut self) -> Vec<u8> {
     let mut buf: Vec<u8> = vec![];
 
-    eprintln!("BUFFER {:#?}", self.nodes);
-
     // The buffer starts with the serialized AST first, because that
     // contains absolute offsets. By butting this at the start of the
     // message we don't have to waste time updating any offsets.
@@ -555,7 +541,7 @@ impl SerializeCtx {
     append_usize(&mut buf, offset_kind_map);
     append_usize(&mut buf, offset_prop_map);
     append_usize(&mut buf, offset_str_table);
-    append_u32(&mut buf, self.start_buf.0);
+    append_u32(&mut buf, self.root_idx);
 
     buf
   }

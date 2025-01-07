@@ -406,7 +406,9 @@ export function splitSelectors(input) {
     }
   }
 
-  if (last < input.length - 1) {
+  if (last === 0) {
+    out.push(input);
+  } else if (last < input.length - 1) {
     out.push(input.slice(last).trim());
   }
 

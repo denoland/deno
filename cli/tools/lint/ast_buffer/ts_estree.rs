@@ -474,6 +474,8 @@ impl TsEsTreeBuilder {
     self.ctx.write_str(AstProp::SourceType, source_kind);
     self.ctx.write_ref_vec(AstProp::Body, &id, body);
 
+    self.ctx.set_root_idx(id.0);
+
     self.ctx.commit_node(id)
   }
 
