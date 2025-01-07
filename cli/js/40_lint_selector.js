@@ -406,8 +406,9 @@ export function splitSelectors(input) {
     }
   }
 
-  if (last < input.length - 1) {
-    out.push(input.slice(last).trim());
+  const remaining = input.slice(last).trim();
+  if (remaining.length > 0) {
+    out.push(remaining);
   }
 
   return out;
