@@ -51,6 +51,7 @@ use crate::args::DenoSubcommand;
 use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::errors;
+use crate::fmt_errors::map_err_suggestions;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
@@ -231,7 +232,9 @@ impl CliMainWorker {
         self
           .worker
           .run_event_loop(maybe_coverage_collector.is_none())
-          .await?;
+          .await
+          // to catch the error that caused by import call
+          .map_err(|e| self.map_err_suggestions(e))?;
       }
 
       let web_continue = self.worker.dispatch_beforeunload_event()?;
@@ -297,7 +300,8 @@ impl CliMainWorker {
         let result = loop {
           match self.inner.worker.run_event_loop(false).await {
             Ok(()) => {}
-            Err(error) => break Err(error),
+            // to catch the error that caused by import call
+            Err(error) => break Err(self.inner.map_err_suggestions(error)),
           }
           let web_continue = self.inner.worker.dispatch_beforeunload_event()?;
           if !web_continue {
@@ -332,8 +336,18 @@ impl CliMainWorker {
   }
 
   pub async fn execute_main_module(&mut self) -> Result<(), AnyError> {
-    let id = self.worker.preload_main_module(&self.main_module).await?;
-    self.worker.evaluate_module(id).await
+    let id = self
+      .worker
+      .preload_main_module(&self.main_module)
+      .await
+      // to catch the error that caused by static import
+      .map_err(|e| self.map_err_suggestions(e))?;
+    self
+      .worker
+      .evaluate_module(id)
+      .await
+      // to catch the error that caused by evaluating import call
+      .map_err(|e| self.map_err_suggestions(e))
   }
 
   pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
@@ -395,6 +409,16 @@ impl CliMainWorker {
     source_code: &'static str,
   ) -> Result<v8::Global<v8::Value>, AnyError> {
     self.worker.js_runtime.execute_script(name, source_code)
+  }
+
+  fn map_err_suggestions(&self, e: AnyError) -> AnyError {
+    let permissions = self.shared.root_permissions.clone();
+    let module_loader = &self
+      .shared
+      .module_loader_factory
+      .create_for_main(permissions)
+      .module_loader;
+    map_err_suggestions(e, module_loader)
   }
 }
 

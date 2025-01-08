@@ -1,0 +1,15 @@
+{
+  "steps": [{
+    "args": "run --quiet sub_paths_non_explicit_cjs_import_faillure/main1.js",
+    "output": "sub_paths_non_explicit_cjs_import_faillure/main1.out",
+    "exitCode": 1
+  }, {
+    "args": "run --quiet sub_paths_non_explicit_cjs_import_faillure/main2.js",
+    "output": "sub_paths_non_explicit_cjs_import_faillure/main2.out",
+    "exitCode": 1
+  }, {
+    "args": "run --quiet sub_paths_non_explicit_cjs_import_faillure/main3.js",
+    "output": "sub_paths_non_explicit_cjs_import_faillure/main3.out",
+    "exitCode": 1
+  }]
+}

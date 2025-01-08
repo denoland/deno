@@ -1,0 +1,12 @@
+error: Uncaught (in promise) TypeError: Unable to load [WILDCARD]server imported from [WILDCARD]main3.js
+  Caused by:
+[WILDCARD]
+const Server = await import("npm:@denotest/cjs-non-explicit-file@1.0.0/server");
+               ^
+    at async [WILDCARD]main3.js:[WILDCARD]
+
+    info: The module that you are trying to import seems to be a CommonJS.
+          However it is not listed in the exports of package.json.
+          So it cannot be statically resolved when imported from ESM.
+          Consider to include an extension of the module.
+    hint: Did you mean to import "npm:@denotest/cjs-non-explicit-file@1.0.0/server.js"?

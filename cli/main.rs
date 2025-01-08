@@ -7,6 +7,7 @@ mod emit;
 mod errors;
 mod factory;
 mod file_fetcher;
+mod fmt_errors;
 mod graph_container;
 mod graph_util;
 mod http_util;

@@ -9,17 +9,28 @@ mod standalone;
 
 mod args;
 mod cache;
+mod cdp;
 mod emit;
 mod errors;
+mod factory;
 mod file_fetcher;
+mod fmt_errors;
+mod graph_container;
+mod graph_util;
 mod http_util;
 mod js;
+mod jsr;
+mod lsp;
+mod module_loader;
 mod node;
 mod npm;
+mod ops;
 mod resolver;
 mod shared;
 mod sys;
 mod task_runner;
+mod tools;
+mod tsc;
 mod util;
 mod version;
 mod worker;
@@ -37,10 +48,12 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
+use factory::CliFactory;
 use indexmap::IndexMap;
 use standalone::DenoCompileFileSystem;
 
 use crate::args::Flags;
+use crate::util::display;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(

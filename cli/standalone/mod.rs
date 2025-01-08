@@ -75,6 +75,7 @@ use crate::cache::Caches;
 use crate::cache::DenoDirProvider;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
+use crate::graph_container::MainModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
