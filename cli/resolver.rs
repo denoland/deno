@@ -226,10 +226,10 @@ impl CliResolver {
         ) => match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => {
+          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+          MappedResolutionError::Workspace(e) => {
             ResolveError::Other(JsErrorBox::from_err(e))
           }
-          err => ResolveError::Other(JsErrorBox::from_err(err)),
         },
         err => ResolveError::Other(JsErrorBox::from_err(err)),
       })?;
