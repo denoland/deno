@@ -152,6 +152,14 @@ export class FileHandle extends EventEmitter {
     assertNotClosed(this, promises.chmod.name);
     return promises.chmod(this.#path, mode);
   }
+
+  utimes(
+    atime: number | string | Date,
+    mtime: number | string | Date,
+  ): Promise<void> {
+    assertNotClosed(this, promises.utimes.name);
+    return promises.utimes(this.#path, atime, mtime);
+  }
 }
 
 function assertNotClosed(handle: FileHandle, syscall: string) {
