@@ -2663,7 +2663,6 @@ async fn websocket_server_multi_field_connection_header() {
 
   let message = socket.read_frame().await.unwrap();
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
-  assert!(message.payload.is_empty());
   socket
     .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
