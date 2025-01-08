@@ -6,9 +6,8 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_error::JsErrorBox;
 use deno_runtime::deno_node::NodePermissions;
 use sys_traits::FsCanonicalize;
 
@@ -28,6 +27,16 @@ pub struct NpmRegistryReadPermissionChecker {
   mode: NpmRegistryReadPermissionCheckerMode,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(inherit)]
+#[error("failed canonicalizing '{path}'")]
+struct EnsureRegistryReadPermissionError {
+  path: PathBuf,
+  #[source]
+  #[inherit]
+  source: std::io::Error,
+}
+
 impl NpmRegistryReadPermissionChecker {
   pub fn new(sys: CliSys, mode: NpmRegistryReadPermissionCheckerMode) -> Self {
     Self {
@@ -42,7 +51,7 @@ impl NpmRegistryReadPermissionChecker {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if permissions.query_read_all() {
       return Ok(Cow::Borrowed(path)); // skip permissions checks below
     }
@@ -52,7 +61,9 @@ impl NpmRegistryReadPermissionChecker {
         if path.components().any(|c| c.as_os_str() == "node_modules") {
           Ok(Cow::Borrowed(path))
         } else {
-          permissions.check_read_path(path).map_err(Into::into)
+          permissions
+            .check_read_path(path)
+            .map_err(JsErrorBox::from_err)
         }
       }
       NpmRegistryReadPermissionCheckerMode::Global(registry_path)
@@ -66,7 +77,7 @@ impl NpmRegistryReadPermissionChecker {
         if is_path_in_node_modules {
           let mut cache = self.cache.lock();
           let mut canonicalize =
-            |path: &Path| -> Result<Option<PathBuf>, AnyError> {
+            |path: &Path| -> Result<Option<PathBuf>, JsErrorBox> {
               match cache.get(path) {
                 Some(canon) => Ok(Some(canon.clone())),
                 None => match self.sys.fs_canonicalize(path) {
@@ -78,9 +89,12 @@ impl NpmRegistryReadPermissionChecker {
                     if e.kind() == ErrorKind::NotFound {
                       return Ok(None);
                     }
-                    Err(AnyError::from(e)).with_context(|| {
-                      format!("failed canonicalizing '{}'", path.display())
-                    })
+                    Err(JsErrorBox::from_err(
+                      EnsureRegistryReadPermissionError {
+                        path: path.to_path_buf(),
+                        source: e,
+                      },
+                    ))
                   }
                 },
               }
@@ -98,7 +112,9 @@ impl NpmRegistryReadPermissionChecker {
           }
         }
 
-        permissions.check_read_path(path).map_err(Into::into)
+        permissions
+          .check_read_path(path)
+          .map_err(JsErrorBox::from_err)
       }
     }
   }

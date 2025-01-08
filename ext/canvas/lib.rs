@@ -12,10 +12,12 @@ use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
+  #[class(type)]
   #[error("Color type '{0:?}' not supported")]
   UnsupportedColorType(ColorType),
+  #[class(generic)]
   #[error(transparent)]
   Image(#[from] image::ImageError),
 }

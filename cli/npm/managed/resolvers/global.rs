@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
+use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
@@ -134,7 +134,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     Ok(
       self
         .cache
@@ -145,7 +145,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     let package_partitions = match caching {
       PackageCaching::All => self
         .resolution
@@ -155,13 +155,16 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
         .subset(&reqs)
         .all_system_packages_partitioned(&self.system_info),
     };
-    cache_packages(&package_partitions.packages, &self.tarball_cache).await?;
+    cache_packages(&package_partitions.packages, &self.tarball_cache)
+      .await
+      .map_err(JsErrorBox::from_err)?;
 
     // create the copy package folders
     for copy in package_partitions.copy_packages {
       self
         .cache
-        .ensure_copy_package(&copy.get_package_cache_folder_id())?;
+        .ensure_copy_package(&copy.get_package_cache_folder_id())
+        .map_err(JsErrorBox::from_err)?;
     }
 
     let mut lifecycle_scripts =
@@ -174,7 +177,9 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
       lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
     }
 
-    lifecycle_scripts.warn_not_run_scripts()?;
+    lifecycle_scripts
+      .warn_not_run_scripts()
+      .map_err(JsErrorBox::from_err)?;
 
     Ok(())
   }
@@ -183,7 +188,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 async fn cache_packages(
   packages: &[NpmResolutionPackage],
   tarball_cache: &Arc<CliNpmTarballCache>,
-) -> Result<(), AnyError> {
+) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
     futures_unordered.push(async move {
@@ -235,7 +240,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> std::result::Result<(), std::io::Error> {
     log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
     for (package, _) in packages {
       log::warn!("┠─ {}", colors::gray(format!("npm:{}", package.id.nv)));
@@ -261,7 +266,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     _package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> Result<(), std::io::Error> {
     Ok(())
   }
 

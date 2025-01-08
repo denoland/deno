@@ -19,12 +19,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
@@ -140,7 +139,7 @@ impl LocalNpmPackageResolver {
   fn resolve_package_folder_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
+  ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
       return Ok(None);
     };
@@ -225,7 +224,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     let Some(folder_path) =
       self.resolve_package_folder_from_specifier(specifier)?
     else {
@@ -251,7 +250,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     let snapshot = match caching {
       PackageCaching::All => self.resolution.snapshot(),
       PackageCaching::Only(reqs) => self.resolution.subset(&reqs),
@@ -267,6 +266,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.lifecycle_scripts,
     )
     .await
+    .map_err(JsErrorBox::from_err)
   }
 }
 
@@ -285,6 +285,38 @@ fn local_node_modules_package_contents_path(
     .join(&package.id.nv.name)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SyncResolutionWithFsError {
+  #[class(inherit)]
+  #[error("Creating '{path}'")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  CopyDirRecursive(#[from] crate::util::fs::CopyDirRecursiveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  SymlinkPackageDir(#[from] SymlinkPackageDirError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BinEntries(#[from] bin_entries::BinEntriesError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LifecycleScripts(
+    #[from] super::common::lifecycle_scripts::LifecycleScriptsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 /// Creates a pnpm style folder structure.
 #[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
@@ -296,7 +328,7 @@ async fn sync_resolution_with_fs(
   root_node_modules_dir_path: &Path,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
-) -> Result<(), AnyError> {
+) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty()
     && npm_install_deps_provider.workspace_pkgs().is_empty()
   {
@@ -311,12 +343,18 @@ async fn sync_resolution_with_fs(
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
-  fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
-    format!("Creating '{}'", deno_local_registry_dir.display())
+  fs::create_dir_all(&deno_node_modules_dir).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: deno_local_registry_dir.to_path_buf(),
+      source,
+    }
   })?;
   let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
-  fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
-    format!("Creating '{}'", bin_node_modules_dir_path.display())
+  fs::create_dir_all(&bin_node_modules_dir_path).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: deno_local_registry_dir.to_path_buf(),
+      source,
+    }
   })?;
 
   let single_process_lock = LaxSingleProcessFsFlag::lock(
@@ -420,7 +458,8 @@ async fn sync_resolution_with_fs(
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
-          .await?;
+          .await
+          .map_err(JsErrorBox::from_err)?;
         let pb_guard = progress_bar.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -441,10 +480,12 @@ async fn sync_resolution_with_fs(
             // write out a file that indicates this folder has been initialized
             fs::write(initialized_file, tags)?;
 
-            Ok::<_, AnyError>(())
+            Ok::<_, SyncResolutionWithFsError>(())
           }
         })
-        .await??;
+        .await
+        .map_err(JsErrorBox::from_err)?
+        .map_err(JsErrorBox::from_err)?;
 
         if package.bin.is_some() {
           bin_entries_to_setup.borrow_mut().add(package, package_path);
@@ -458,7 +499,7 @@ async fn sync_resolution_with_fs(
 
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
-        Ok::<_, AnyError>(())
+        Ok::<_, JsErrorBox>(())
       });
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;
@@ -597,8 +638,11 @@ async fn sync_resolution_with_fs(
         // symlink the dep into the package's child node_modules folder
         let dest_node_modules = remote.base_dir.join("node_modules");
         if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
-          fs::create_dir_all(&dest_node_modules).with_context(|| {
-            format!("Creating '{}'", dest_node_modules.display())
+          fs::create_dir_all(&dest_node_modules).map_err(|source| {
+            SyncResolutionWithFsError::Creating {
+              path: dest_node_modules.clone(),
+              source,
+            }
           })?;
           existing_child_node_modules_dirs.insert(dest_node_modules.clone());
         }
@@ -813,7 +857,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> std::result::Result<(), std::io::Error> {
     std::fs::write(self.ran_scripts_file(package), "")?;
     Ok(())
   }
@@ -821,7 +865,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), std::io::Error> {
     if !packages.is_empty() {
       log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
 
@@ -1041,15 +1085,42 @@ fn get_package_folder_id_from_folder_name(
   })
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SymlinkPackageDirError {
+  #[class(inherit)]
+  #[error("Creating '{parent}'")]
+  Creating {
+    parent: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] std::io::Error),
+  #[cfg(windows)]
+  #[class(inherit)]
+  #[error("Creating junction in node_modules folder")]
+  FailedCreatingJunction {
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+}
+
 fn symlink_package_dir(
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), SymlinkPackageDirError> {
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
     // create the parent folder that will contain the symlink
-    fs::create_dir_all(new_parent)
-      .with_context(|| format!("Creating '{}'", new_parent.display()))?;
+    fs::create_dir_all(new_parent).map_err(|source| {
+      SymlinkPackageDirError::Creating {
+        parent: new_parent.to_path_buf(),
+        source,
+      }
+    })?;
   }
 
   // need to delete the previous symlink before creating a new one
@@ -1075,7 +1146,7 @@ fn junction_or_symlink_dir(
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), SymlinkPackageDirError> {
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -1084,8 +1155,9 @@ fn junction_or_symlink_dir(
     // needing to elevate privileges on Windows.
     // Note: junctions don't support relative paths, so we need to use the
     // absolute path here.
-    return junction::create(old_path, new_path)
-      .context("Failed creating junction in node_modules folder");
+    return junction::create(old_path, new_path).map_err(|source| {
+      SymlinkPackageDirError::FailedCreatingJunction { source }
+    });
   }
 
   match symlink_dir(&crate::sys::CliSys::default(), old_path_relative, new_path)
@@ -1095,8 +1167,9 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1104,8 +1177,9 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
   }
 }

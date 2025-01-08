@@ -10,6 +10,7 @@ use std::sync::Arc;
 use deno_npm::NpmSystemInfo;
 
 pub use self::common::NpmPackageFsResolver;
+pub use self::common::NpmPackageFsResolverPackageFolderError;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 use super::resolution::NpmResolution;

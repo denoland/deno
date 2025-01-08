@@ -10,16 +10,20 @@ use deno_core::ResourceId;
 use crate::dlfcn::DynamicLibraryResource;
 use crate::symbol::NativeType;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum StaticError {
+  #[class(inherit)]
   #[error(transparent)]
   Dlfcn(super::DlfcnError),
+  #[class(type)]
   #[error("Invalid FFI static type 'void'")]
   InvalidTypeVoid,
+  #[class(type)]
   #[error("Invalid FFI static type 'struct'")]
   InvalidTypeStruct,
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
 }
 
 #[op2]
@@ -31,10 +35,7 @@ pub fn op_ffi_get_static<'scope>(
   #[serde] static_type: NativeType,
   optional: bool,
 ) -> Result<v8::Local<'scope, v8::Value>, StaticError> {
-  let resource = state
-    .resource_table
-    .get::<DynamicLibraryResource>(rid)
-    .map_err(StaticError::Resource)?;
+  let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
 
   let data_ptr = match resource.get_static(name) {
     Ok(data_ptr) => data_ptr,
