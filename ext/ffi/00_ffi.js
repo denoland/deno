@@ -7,12 +7,9 @@ const {
   isTypedArray,
 } = core;
 import {
-  op_ffi_buf_copy_into,
   op_ffi_call_nonblocking,
   op_ffi_call_ptr,
   op_ffi_call_ptr_nonblocking,
-  op_ffi_cstr_read,
-  op_ffi_get_buf,
   op_ffi_get_static,
   op_ffi_load,
   op_ffi_ptr_create,
@@ -21,21 +18,10 @@ import {
   op_ffi_ptr_of_exact,
   op_ffi_ptr_offset,
   op_ffi_ptr_value,
-  op_ffi_read_bool,
-  op_ffi_read_f32,
-  op_ffi_read_f64,
-  op_ffi_read_i16,
-  op_ffi_read_i32,
-  op_ffi_read_i64,
-  op_ffi_read_i8,
-  op_ffi_read_ptr,
-  op_ffi_read_u16,
-  op_ffi_read_u32,
-  op_ffi_read_u64,
-  op_ffi_read_u8,
   op_ffi_unsafe_callback_close,
   op_ffi_unsafe_callback_create,
   op_ffi_unsafe_callback_ref,
+  UnsafePointerView,
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
@@ -73,149 +59,6 @@ function getBufferSourceByteLength(source) {
     return DataViewPrototypeGetByteLength(source);
   }
   return ArrayBufferPrototypeGetByteLength(source);
-}
-class UnsafePointerView {
-  pointer;
-
-  constructor(pointer) {
-    this.pointer = pointer;
-  }
-
-  getBool(offset = 0) {
-    return op_ffi_read_bool(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getUint8(offset = 0) {
-    return op_ffi_read_u8(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getInt8(offset = 0) {
-    return op_ffi_read_i8(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getUint16(offset = 0) {
-    return op_ffi_read_u16(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getInt16(offset = 0) {
-    return op_ffi_read_i16(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getUint32(offset = 0) {
-    return op_ffi_read_u32(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getInt32(offset = 0) {
-    return op_ffi_read_i32(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getBigUint64(offset = 0) {
-    return op_ffi_read_u64(
-      this.pointer,
-      // We return a BigInt, so the turbocall
-      // is forced to use BigInts everywhere.
-      BigInt(offset),
-    );
-  }
-
-  getBigInt64(offset = 0) {
-    return op_ffi_read_i64(
-      this.pointer,
-      // We return a BigInt, so the turbocall
-      // is forced to use BigInts everywhere.
-      BigInt(offset),
-    );
-  }
-
-  getFloat32(offset = 0) {
-    return op_ffi_read_f32(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getFloat64(offset = 0) {
-    return op_ffi_read_f64(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getPointer(offset = 0) {
-    return op_ffi_read_ptr(
-      this.pointer,
-      offset,
-    );
-  }
-
-  getCString(offset = 0) {
-    return op_ffi_cstr_read(
-      this.pointer,
-      offset,
-    );
-  }
-
-  static getCString(pointer, offset = 0) {
-    return op_ffi_cstr_read(
-      pointer,
-      offset,
-    );
-  }
-
-  getArrayBuffer(byteLength, offset = 0) {
-    return op_ffi_get_buf(
-      this.pointer,
-      offset,
-      byteLength,
-    );
-  }
-
-  static getArrayBuffer(pointer, byteLength, offset = 0) {
-    return op_ffi_get_buf(
-      pointer,
-      offset,
-      byteLength,
-    );
-  }
-
-  copyInto(destination, offset = 0) {
-    op_ffi_buf_copy_into(
-      this.pointer,
-      offset,
-      destination,
-      getBufferSourceByteLength(destination),
-    );
-  }
-
-  static copyInto(pointer, destination, offset = 0) {
-    op_ffi_buf_copy_into(
-      pointer,
-      offset,
-      destination,
-      getBufferSourceByteLength(destination),
-    );
-  }
 }
 
 const POINTER_TO_BUFFER_WEAK_MAP = new SafeWeakMap();
