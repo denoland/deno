@@ -969,7 +969,16 @@ function matchElem(part, next) {
  */
 function matchAttrExists(attr, next) {
   return (ctx, id) => {
-    return ctx.hasAttrPath(id, attr.prop, 0) ? next(ctx, id) : false;
+    try {
+      ctx.getAttrPathValue(id, attr.prop, 0);
+      return next(ctx, id);
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+
+      throw err;
+    }
   };
 }
 
@@ -980,9 +989,15 @@ function matchAttrExists(attr, next) {
  */
 function matchAttrBin(attr, next) {
   return (ctx, id) => {
-    if (!ctx.hasAttrPath(id, attr.prop, 0)) return false;
-    const value = ctx.getAttrPathValue(id, attr.prop, 0);
-    if (!matchAttrValue(attr, value)) return false;
+    try {
+      const value = ctx.getAttrPathValue(id, attr.prop, 0);
+      if (!matchAttrValue(attr, value)) return false;
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+      throw err;
+    }
     return next(ctx, id);
   };
 }

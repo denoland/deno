@@ -145,6 +145,8 @@ pub struct SerializeCtx {
   root_idx: Index,
 
   nodes: Vec<Node>,
+  prop_stack: Vec<Vec<u8>>,
+  field_count: Vec<usize>,
   field_buf: Vec<u8>,
 
   /// Vec of spans
@@ -157,9 +159,6 @@ pub struct SerializeCtx {
   /// Maps prop id to string id
   prop_name_map: Vec<usize>,
 
-  /// Internal, used for creating schemas
-  field_count: u8,
-  field_offset: usize,
   prev_sibling_node: Option<u32>,
 }
 
@@ -178,12 +177,12 @@ impl SerializeCtx {
       spans: vec![],
       root_idx: 0,
       nodes: vec![],
+      prop_stack: vec![vec![]],
+      field_count: vec![0],
       field_buf: vec![],
       str_table: StringTable::new(),
       kind_name_map: vec![0; kind_size],
       prop_name_map: vec![0; prop_size],
-      field_count: 0,
-      field_offset: 0,
       prev_sibling_node: None,
     };
 
@@ -229,9 +228,14 @@ impl SerializeCtx {
       }
     }
 
-    self.field_count += 1;
-    self.field_buf.push(n);
-    self.field_buf.push(flags);
+    // Increment field counter
+    let idx = self.field_count.len() - 1;
+    let count = self.field_count[idx];
+    self.field_count[idx] = count + 1;
+
+    let buf = self.prop_stack.last_mut().unwrap();
+    buf.push(n);
+    buf.push(flags);
   }
 
   fn get_node(&mut self, id: Index) -> &mut Node {
@@ -269,13 +273,19 @@ impl SerializeCtx {
     self.prev_sibling_node = Some(child_id)
   }
 
-  fn append_inner<K>(
+  pub fn append_node<K>(&mut self, kind: K, span: &Span) -> PendingRef
+  where
+    K: Into<u8> + Display + Clone,
+  {
+    self.append_inner(kind, span.lo.0, span.hi.0)
+  }
+
+  pub fn append_inner<K>(
     &mut self,
     kind: K,
-    prop_offset: usize,
     span_lo: u32,
     span_hi: u32,
-  ) -> Index
+  ) -> PendingRef
   where
     K: Into<u8> + Display + Clone,
   {
@@ -285,7 +295,7 @@ impl SerializeCtx {
 
     self.nodes.push(Node {
       kind: kind_u8,
-      prop_offset: prop_offset as u32,
+      prop_offset: 0,
       child: 0,
       next: 0,
       parent: 0,
@@ -298,41 +308,52 @@ impl SerializeCtx {
       }
     }
 
+    self.field_count.push(0);
+    self.prop_stack.push(vec![]);
+
     // write spans
     self.spans.push(span_lo);
     self.spans.push(span_hi);
-
-    id
-  }
-
-  /// The node buffer contains enough information for traversal
-  pub fn append_node<N>(&mut self, kind: N, span: &Span) -> PendingRef
-  where
-    N: Into<u8> + Display + Clone,
-  {
-    self.field_offset = self.field_buf.len();
-    self.field_buf.push(0);
-
-    let id = self.append_inner(kind, self.field_offset, span.lo.0, span.hi.0);
 
     PendingRef(id)
   }
 
   pub fn commit_node(&mut self, id: PendingRef) -> NodeRef {
-    self.field_buf[self.field_offset] = self.field_count;
-    self.field_count = 0;
+    let mut buf = self.prop_stack.pop().unwrap();
+    let count = self.field_count.pop().unwrap();
+    let offset = self.field_buf.len();
+
+    // All nodes have <10 fields
+    self.field_buf.push(count as u8);
+    self.field_buf.append(&mut buf);
+
+    let node = self.nodes.get_mut(id.0 as usize).unwrap();
+    node.prop_offset = offset as u32;
+
     self.prev_sibling_node = None;
 
     NodeRef(id.0)
   }
 
   // Allocate an object field
-  pub fn write_obj<P>(&mut self, prop: P, len: usize)
+  pub fn open_obj(&mut self) {
+    self.field_count.push(0);
+    self.prop_stack.push(vec![]);
+  }
+
+  pub fn commit_obj<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
   {
+    let mut buf = self.prop_stack.pop().unwrap();
+    let count = self.field_count.pop().unwrap();
+    let offset = self.field_buf.len();
+    append_usize(&mut self.field_buf, count);
+    self.field_buf.append(&mut buf);
+
     self.field_header(prop, PropFlags::Object);
-    append_usize(&mut self.field_buf, len);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, offset);
   }
 
   /// Allocate an null field
@@ -341,7 +362,9 @@ impl SerializeCtx {
     P: Into<u8> + Display + Clone,
   {
     self.field_header(prop, PropFlags::Null);
-    append_u32(&mut self.field_buf, 0);
+
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, 0);
   }
 
   /// Allocate a number field
@@ -352,7 +375,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Number);
 
     let id = self.str_table.insert(value);
-    append_usize(&mut self.field_buf, id);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Allocate a bigint field
@@ -363,7 +387,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::BigInt);
 
     let id = self.str_table.insert(value);
-    append_usize(&mut self.field_buf, id);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Allocate a RegExp field
@@ -374,7 +399,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Regex);
 
     let id = self.str_table.insert(value);
-    append_usize(&mut self.field_buf, id);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Store the string in our string table and save the id of the string
@@ -386,7 +412,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::String);
 
     let id = self.str_table.insert(value);
-    append_usize(&mut self.field_buf, id);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Write a bool to a field.
@@ -397,7 +424,8 @@ impl SerializeCtx {
     self.field_header(prop, PropFlags::Bool);
 
     let n = if value { 1 } else { 0 };
-    append_u32(&mut self.field_buf, n);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, n);
   }
 
   /// Replace the placeholder of a reference field with the actual offset
@@ -407,7 +435,8 @@ impl SerializeCtx {
     P: Into<u8> + Display + Clone,
   {
     self.field_header(prop, PropFlags::Ref);
-    append_u32(&mut self.field_buf, value.0);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, value.0);
 
     if parent.0 > 0 {
       self.update_ref_links(parent.0, value.0);
@@ -441,9 +470,11 @@ impl SerializeCtx {
     P: Into<u8> + Display + Clone,
   {
     self.field_header(prop, PropFlags::RefArr);
+    let group_id = self.append_node(GROUP_KIND, &DUMMY_SP);
+    let group_id = self.commit_node(group_id).0;
 
-    let group_id = self.append_inner(GROUP_KIND, 0, 0, 0);
-    append_u32(&mut self.field_buf, group_id);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, group_id);
 
     self.set_child(parent_ref.0, group_id);
     self.set_parent(group_id, parent_ref.0);

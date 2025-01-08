@@ -422,21 +422,14 @@ function nodeToJson(ctx, idx) {
   const count = buf[offset++];
 
   for (let i = 0; i < count; i++) {
-    const kind = buf[offset];
-    const prop = buf[offset + 1];
-    const name = getString(ctx.strTable, ctx.strByProp[prop]);
+    const prop = buf[offset];
+    const _kind = buf[offset + 1];
 
+    const name = getString(ctx.strTable, ctx.strByProp[prop]);
     node[name] = readProperty(ctx, offset, nodeToJson);
 
-    if (kind === PropFlags.Obj) {
-      offset += 1 + 1;
-      const len = readU32(buf, offset);
-      offset += 4;
-      offset += (1 + 1 + 4) * len;
-    } else {
-      // prop + type + value
-      offset += 1 + 1 + 4;
-    }
+    // prop + type + value
+    offset += 1 + 1 + 4;
   }
 
   return node;
@@ -530,7 +523,7 @@ function readRegex(strTable, strId) {
   const raw = getString(strTable, strId);
   const idx = raw.lastIndexOf("/");
   const pattern = raw.slice(1, idx);
-  const flags = idx < raw.length - 1 ? raw.slice(idx) : undefined;
+  const flags = idx < raw.length - 1 ? raw.slice(idx + 1) : undefined;
 
   return new RegExp(pattern, flags);
 }
@@ -551,12 +544,11 @@ function readObject(ctx, offset, parseNode) {
   offset += 4;
 
   for (let i = 0; i < count; i++) {
-    const start = offset;
-    const prop = buf[offset++];
+    const prop = buf[offset];
     const name = getString(strTable, strByProp[prop]);
-    const value = readProperty(ctx, start, parseNode);
-
-    obj[name] = value;
+    obj[name] = readProperty(ctx, offset, parseNode);
+    // name + kind + value
+    offset += 1 + 1 + 4;
   }
 
   return obj;
@@ -571,13 +563,13 @@ function readObject(ctx, offset, parseNode) {
 function readProperty(ctx, offset, parseNode) {
   const { buf } = ctx;
 
-  const kind = buf[offset++];
   // skip over name
-  offset++;
+  const _name = buf[offset++];
+  const kind = buf[offset++];
 
   if (kind === PropFlags.Ref) {
     const value = readU32(buf, offset);
-    return getNode(ctx, value);
+    return parseNode(ctx, value);
   } else if (kind === PropFlags.RefArr) {
     const groupId = readU32(buf, offset);
 
@@ -606,7 +598,8 @@ function readProperty(ctx, offset, parseNode) {
   } else if (kind === PropFlags.Undefined) {
     return undefined;
   } else if (kind === PropFlags.Obj) {
-    return readObject(ctx, offset, parseNode);
+    const objOffset = readU32(buf, offset) + ctx.propsOffset;
+    return readObject(ctx, objOffset, parseNode);
   }
 
   throw new Error(`Unknown prop kind: ${kind}`);
@@ -716,18 +709,18 @@ class MatchCtx {
       }
       case AST_PROP_PARENT:
       case AST_PROP_RANGE:
-        throw new Error(`Not supported`);
+        throw -1;
     }
 
     offset = findPropOffset(buf, offset, propId);
-    if (offset === -1) return undefined;
+    if (offset === -1) throw -1;
     const _prop = buf[offset++];
     const kind = buf[offset++];
 
     if (kind === PropFlags.Ref) {
       const value = readU32(buf, offset);
       // Checks need to end with a value, not a node
-      if (idx === propIds.length - 1) return undefined;
+      if (idx === propIds.length - 1) throw -1;
       return this.getAttrPathValue(value, propIds, idx + 1);
     } else if (kind === PropFlags.RefArr) {
       const count = readU32(buf, offset);
@@ -738,10 +731,13 @@ class MatchCtx {
       }
 
       // TODO(@marvinhagemeister): Allow traversing into array children?
+      throw -1;
+    } else if (kind === PropFlags.Obj) {
+      // TODO(@marvinhagemeister)
     }
 
     // Cannot traverse into primitives further
-    if (idx < propIds.length - 1) return undefined;
+    if (idx < propIds.length - 1) throw -1;
 
     if (kind === PropFlags.String) {
       const s = readU32(buf, offset);
@@ -760,54 +756,7 @@ class MatchCtx {
       return undefined;
     }
 
-    return undefined;
-  }
-
-  /**
-   * @param {number} offset
-   * @param {number[]} propIds
-   * @param {number} idx
-   * @returns {boolean}
-   */
-  hasAttrPath(offset, propIds, idx) {
-    const { buf } = this;
-
-    const propId = propIds[idx];
-    // If propId is 0 then the property doesn't exist in the AST
-    if (propId === 0) return false;
-
-    switch (propId) {
-      case AST_PROP_TYPE:
-      case AST_PROP_PARENT:
-      case AST_PROP_RANGE:
-        return true;
-    }
-
-    offset = findPropOffset(buf, offset, propId);
-    if (offset === -1) return false;
-    if (idx === propIds.length - 1) return true;
-
-    const _prop = buf[offset++];
-    const kind = buf[offset++];
-    if (kind === PropFlags.Ref) {
-      const value = readU32(buf, offset);
-      return this.hasAttrPath(value, propIds, idx + 1);
-    } else if (kind === PropFlags.RefArr) {
-      const _count = readU32(buf, offset);
-      offset += 4;
-
-      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
-        return true;
-      }
-
-      // TODO(@marvinhagemeister): Allow traversing into array children?
-    }
-
-    // Primitives cannot be traversed further. This means we
-    // didn't found the attribute.
-    if (idx < propIds.length - 1) return false;
-
-    return true;
+    throw -1;
   }
 
   /**
@@ -1092,7 +1041,6 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
-  console.log("TRAVERSE", idx, readType(ctx.buf, idx));
   if (idx === AST_IDX_INVALID) return;
   if (cancellationToken.isCancellationRequested()) return;
 
@@ -1268,11 +1216,17 @@ function _dump(ctx) {
         // deno-lint-ignore no-console
         console.log(`    ${name}: ${raw} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Obj) {
+        let offset = v + ctx.propsOffset;
+        const count = readU32(ctx.buf, offset);
+        offset += 4;
+
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.log(`    ${name}: Object (${v}) (${kindName}, ${prop})`);
+        console.log(
+          `    ${name}: Object (${count}) (${kindName}, ${prop}), raw offset ${v}`,
+        );
 
-        // FIXME: Materialize object
+        // TODO(@marvinhagemeister): Show object
       }
     }
 

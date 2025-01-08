@@ -1406,11 +1406,12 @@ impl TsEsTreeBuilder {
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Literal, span);
 
-    self.ctx.write_obj(AstProp::Regex, 2);
-    self.ctx.write_str(AstProp::Flags, flags);
-    self.ctx.write_str(AstProp::Pattern, pattern);
     self.ctx.write_regex(AstProp::Value, value);
     self.ctx.write_str(AstProp::Raw, raw);
+    self.ctx.open_obj();
+    self.ctx.write_str(AstProp::Flags, flags);
+    self.ctx.write_str(AstProp::Pattern, pattern);
+    self.ctx.commit_obj(AstProp::Regex);
 
     self.ctx.commit_node(id)
   }

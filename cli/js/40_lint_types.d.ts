@@ -156,7 +156,6 @@ export interface MatchContext {
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;
-  hasAttrPath(id: number, propIds: number[], idx: number): boolean;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 
