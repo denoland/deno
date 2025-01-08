@@ -33,6 +33,7 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::PackageCaching;
+pub use self::managed::ResolvePkgFolderFromDenoModuleError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
 pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
@@ -90,7 +91,9 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           | Json { .. }
           | ToStr { .. }
           | RedirectHeaderParse { .. }
-          | TooManyRedirects => None,
+          | TooManyRedirects
+          | NotFound
+          | Other(_) => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)
           }

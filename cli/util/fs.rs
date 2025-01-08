@@ -13,7 +13,6 @@ use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
@@ -129,7 +128,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), files)?;
+    .collect_file_patterns(&CliSys::default(), files);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -169,7 +168,7 @@ pub fn clone_dir_recursive<
   sys: &TSys,
   from: &Path,
   to: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), CopyDirRecursiveError> {
   if cfg!(target_vendor = "apple") {
     if let Some(parent) = to.parent() {
       sys.fs_create_dir_all(parent)?;
@@ -200,6 +199,47 @@ pub fn clone_dir_recursive<
   Ok(())
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CopyDirRecursiveError {
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Reading {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Dir {from} to {to}")]
+  Dir {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Box<Self>,
+  },
+  #[class(inherit)]
+  #[error("Copying {from} to {to}")]
+  Copying {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] Error),
+}
+
 /// Copies a directory to another directory.
 ///
 /// Note: Does not handle symlinks.
@@ -213,13 +253,20 @@ pub fn copy_dir_recursive<
   sys: &TSys,
   from: &Path,
   to: &Path,
-) -> Result<(), AnyError> {
-  sys
-    .fs_create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = sys
-    .fs_read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
+) -> Result<(), CopyDirRecursiveError> {
+  sys.fs_create_dir_all(to).map_err(|source| {
+    CopyDirRecursiveError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  let read_dir =
+    sys
+      .fs_read_dir(from)
+      .map_err(|source| CopyDirRecursiveError::Reading {
+        path: from.to_path_buf(),
+        source,
+      })?;
 
   for entry in read_dir {
     let entry = entry?;
@@ -228,12 +275,20 @@ pub fn copy_dir_recursive<
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      copy_dir_recursive(sys, &new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
+      copy_dir_recursive(sys, &new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Dir {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source: Box::new(source),
+        }
       })?;
     } else if file_type.is_file() {
-      sys.fs_copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
+      sys.fs_copy(&new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Copying {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source,
+        }
       })?;
     }
   }
