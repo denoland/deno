@@ -424,40 +424,57 @@ fn generate_docs_directory(
       )
     })),
   };
-  
+
   if let Some(built_in_types) = built_in_types {
-    let ctx = deno_doc::html::GenerateCtx::create_basic(deno_doc::html::GenerateOptions {
-      package_name: None,
-      main_entrypoint: Some(ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap()),
-      href_resolver: Rc::new(DocResolver {
-        deno_ns: Default::default(),
-        strip_trailing_html: false,
-      }),
-      usage_composer: Rc::new(DocComposer),
-      rewrite_map: Default::default(),
-      category_docs: Default::default(),
-      disable_search: Default::default(),
-      symbol_redirect_map: Default::default(),
-      default_symbol_map: Default::default(),
-      markdown_renderer: deno_doc::html::comrak::create_renderer(
-        None, None, None,
-      ),
-      markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
-      head_inject: None,
-    }, IndexMap::from([(ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(), built_in_types)]))?;
+    let ctx = deno_doc::html::GenerateCtx::create_basic(
+      deno_doc::html::GenerateOptions {
+        package_name: None,
+        main_entrypoint: Some(
+          ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
+        ),
+        href_resolver: Rc::new(DocResolver {
+          deno_ns: Default::default(),
+          strip_trailing_html: false,
+        }),
+        usage_composer: Rc::new(DocComposer),
+        rewrite_map: Default::default(),
+        category_docs: Default::default(),
+        disable_search: Default::default(),
+        symbol_redirect_map: Default::default(),
+        default_symbol_map: Default::default(),
+        markdown_renderer: deno_doc::html::comrak::create_renderer(
+          None, None, None,
+        ),
+        markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
+        head_inject: None,
+      },
+      IndexMap::from([(
+        ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
+        built_in_types,
+      )]),
+    )?;
 
     let deno_ns = deno_doc::html::compute_namespaced_symbols(
       &ctx,
-      Box::new(ctx.doc_nodes.values().next().unwrap().iter().map(std::borrow::Cow::Borrowed))
+      Box::new(
+        ctx
+          .doc_nodes
+          .values()
+          .next()
+          .unwrap()
+          .iter()
+          .map(std::borrow::Cow::Borrowed),
+      ),
     );
-    
+
     options.href_resolver = Rc::new(DocResolver {
       deno_ns,
       strip_trailing_html: html_options.strip_trailing_html,
     });
   }
 
-  let ctx = deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url)?;
+  let ctx =
+    deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url)?;
 
   let mut files = deno_doc::html::generate(ctx)
     .context("Failed to generate HTML documentation")?;
