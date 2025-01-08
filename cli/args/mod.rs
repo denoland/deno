@@ -1107,10 +1107,7 @@ impl CliOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| {
-        std::fs::read_to_string(path)
-          .map_err(JsErrorBox::from_err)
-      },
+      |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
     )?)
   }
 

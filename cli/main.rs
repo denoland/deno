@@ -372,10 +372,14 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(CoreError::Js(e)) = util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&error) {
+  if let Some(CoreError::Js(e)) =
+    util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&error)
+  {
     error_string = format_js_error(e);
   } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-    util::result::any_and_jserrorbox_downcast_ref::<SnapshotFromLockfileError>(&error)
+    util::result::any_and_jserrorbox_downcast_ref::<SnapshotFromLockfileError>(
+      &error,
+    )
   {
     error_string = e.to_string();
     error_code = 10;

@@ -402,21 +402,29 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match crate::util::result::any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(&err) {
+          match crate::util::result::any_and_jserrorbox_downcast_ref::<
+            deno_ast::ParseDiagnostic,
+          >(&err)
+          {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match crate::util::result::any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(&err) {
-              Some(diagnostics) => Ok(EvaluationOutput::Error(
-                diagnostics
-                  .0
-                  .iter()
-                  .map(format_diagnostic)
-                  .collect::<Vec<_>>()
-                  .join("\n\n"),
-              )),
-              None => Err(err),
-            },
+            None => {
+              match crate::util::result::any_and_jserrorbox_downcast_ref::<
+                ParseDiagnosticsError,
+              >(&err)
+              {
+                Some(diagnostics) => Ok(EvaluationOutput::Error(
+                  diagnostics
+                    .0
+                    .iter()
+                    .map(format_diagnostic)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                )),
+                None => Err(err),
+              }
+            }
           }
         }
       }
