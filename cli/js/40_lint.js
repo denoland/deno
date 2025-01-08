@@ -895,7 +895,7 @@ function createAstContext(buf) {
   setNodeGetters(ctx);
 
   // DEV ONLY: Enable this to inspect the buffer message
-  _dump(ctx);
+  // _dump(ctx);
 
   return ctx;
 }
