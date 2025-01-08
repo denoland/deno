@@ -1299,8 +1299,8 @@ impl DenoDiagnostic {
         let mut message;
         message = enhanced_resolution_error_message(err);
         if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
-            if let Some(ImportMapErrorKind::UnmappedBareSpecifier(specifier, _)) = resolve_error.as_any().downcast_ref::<ImportMapError>().map(|e| &**e) {
+          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
+            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
               if specifier.chars().next().unwrap_or('\0') == '@'{
                 let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
                 message.push_str(hint.as_str());
