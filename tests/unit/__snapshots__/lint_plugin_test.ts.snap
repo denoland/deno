@@ -81,19 +81,22 @@ snapshot[`Plugin - Literal 7`] = `
   ],
   raw: "1n",
   type: "Literal",
-  value: "1",
+  value: 1n,
 }
 `;
 
 snapshot[`Plugin - Literal 8`] = `
 {
-  flags: "g",
-  pattern: "foo",
   range: [
     1,
     7,
   ],
   raw: "/foo/g",
+  regex: {
+    flags: "g",
+    pattern: "foo",
+  },
   type: "Literal",
+  value: /foo/g,
 }
 `;

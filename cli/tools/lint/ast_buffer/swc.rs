@@ -2,10 +2,12 @@
 
 use deno_ast::swc::ast::AssignTarget;
 use deno_ast::swc::ast::AssignTargetPat;
+use deno_ast::swc::ast::BindingIdent;
 use deno_ast::swc::ast::BlockStmtOrExpr;
 use deno_ast::swc::ast::Callee;
 use deno_ast::swc::ast::ClassMember;
 use deno_ast::swc::ast::Decl;
+use deno_ast::swc::ast::Decorator;
 use deno_ast::swc::ast::ExportSpecifier;
 use deno_ast::swc::ast::Expr;
 use deno_ast::swc::ast::ExprOrSpread;
@@ -28,6 +30,7 @@ use deno_ast::swc::ast::JSXMemberExpr;
 use deno_ast::swc::ast::JSXNamespacedName;
 use deno_ast::swc::ast::JSXObject;
 use deno_ast::swc::ast::JSXOpeningElement;
+use deno_ast::swc::ast::Key;
 use deno_ast::swc::ast::Lit;
 use deno_ast::swc::ast::MemberExpr;
 use deno_ast::swc::ast::MemberProp;
@@ -37,6 +40,7 @@ use deno_ast::swc::ast::ModuleItem;
 use deno_ast::swc::ast::ObjectPatProp;
 use deno_ast::swc::ast::OptChainBase;
 use deno_ast::swc::ast::Param;
+use deno_ast::swc::ast::ParamOrTsParamProp;
 use deno_ast::swc::ast::Pat;
 use deno_ast::swc::ast::PrivateName;
 use deno_ast::swc::ast::Program;
@@ -49,11 +53,13 @@ use deno_ast::swc::ast::SuperProp;
 use deno_ast::swc::ast::Tpl;
 use deno_ast::swc::ast::TsEntityName;
 use deno_ast::swc::ast::TsEnumMemberId;
+use deno_ast::swc::ast::TsExprWithTypeArgs;
 use deno_ast::swc::ast::TsFnOrConstructorType;
 use deno_ast::swc::ast::TsFnParam;
 use deno_ast::swc::ast::TsIndexSignature;
 use deno_ast::swc::ast::TsLit;
 use deno_ast::swc::ast::TsLitType;
+use deno_ast::swc::ast::TsParamPropParam;
 use deno_ast::swc::ast::TsThisTypeOrIdent;
 use deno_ast::swc::ast::TsType;
 use deno_ast::swc::ast::TsTypeAnn;
@@ -70,6 +76,7 @@ use deno_ast::swc::common::SyntaxContext;
 use deno_ast::view::Accessibility;
 use deno_ast::view::AssignOp;
 use deno_ast::view::BinaryOp;
+use deno_ast::view::MethodKind;
 use deno_ast::view::TsKeywordTypeKind;
 use deno_ast::view::TsTypeOperatorOp;
 use deno_ast::view::UnaryOp;
@@ -693,8 +700,41 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         body,
       )
     }
-    Expr::Class(_node) => {
-      todo!()
+    Expr::Class(node) => {
+      let ident = node.ident.as_ref().map(|ident| serialize_ident(ctx, ident));
+
+      let super_class = node
+        .class
+        .super_class
+        .as_ref()
+        .map(|expr| serialize_expr(ctx, expr.as_ref()));
+
+      let implements = node
+        .class
+        .implements
+        .iter()
+        .map(|item| serialize_ts_expr_with_type_args(ctx, item))
+        .collect::<Vec<_>>();
+
+      let members = node
+        .class
+        .body
+        .iter()
+        .map(|member| serialize_class_member(ctx, member))
+        .flatten()
+        .collect::<Vec<_>>();
+
+      let body = ctx.write_class_body(&node.class.span, members);
+
+      ctx.write_class_expr(
+        &node.class.span,
+        false,
+        node.class.is_abstract,
+        ident,
+        super_class,
+        implements,
+        body,
+      )
     }
     Expr::Yield(node) => {
       let arg = node
@@ -993,78 +1033,41 @@ fn serialize_module_export_name(
 
 fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
   match decl {
-    Decl::Class(_node) => {
-      todo!()
-      // let raw = ctx.header(AstNode::ClassDeclaration, parent, &node.class.span);
-      // let declare_pos = ctx.bool_field(AstProp::Declare);
-      // let abstract_pos = ctx.bool_field(AstProp::Abstract);
-      // let id_pos = ctx.ref_field(AstProp::Id);
-      // let body_pos = ctx.ref_field(AstProp::Body);
-      // let type_params_pos = ctx.ref_field(AstProp::TypeParameters);
-      // let super_pos = ctx.ref_field(AstProp::SuperClass);
-      // let super_type_pos = ctx.ref_field(AstProp::SuperTypeArguments);
-      // let impl_pos =
-      //   ctx.ref_vec_field(AstProp::Implements, node.class.implements.len());
-      // let id = ctx.commit_schema(raw);
+    Decl::Class(node) => {
+      let ident = serialize_ident(ctx, &node.ident);
 
-      // let body_raw = ctx.header(AstNode::ClassBody, id, &node.class.span);
-      // let body_body_pos =
-      //   ctx.ref_vec_field(AstProp::Body, node.class.body.len());
-      // let body_id = ctx.commit_schema(body_raw);
+      let super_class = node
+        .class
+        .super_class
+        .as_ref()
+        .map(|expr| serialize_expr(ctx, expr.as_ref()));
 
-      // let ident = serialize_ident(ctx, &node.ident);
-      // let type_params =
-      //   maybe_serialize_ts_type_param(ctx, &node.class.type_params);
+      let implements = node
+        .class
+        .implements
+        .iter()
+        .map(|item| serialize_ts_expr_with_type_args(ctx, item))
+        .collect::<Vec<_>>();
 
-      // let super_class = node
-      //   .class
-      //   .super_class
-      //   .as_ref()
-      //   .map(|super_class| serialize_expr(ctx, super_class));
+      let members = node
+        .class
+        .body
+        .iter()
+        .map(|member| serialize_class_member(ctx, member))
+        .flatten()
+        .collect::<Vec<_>>();
 
-      // let super_type_params = node
-      //   .class
-      //   .super_type_params
-      //   .as_ref()
-      //   .map(|super_params| serialize_ts_param_inst(ctx, super_params));
+      let body = ctx.write_class_body(&node.class.span, members);
 
-      // let implement_ids = node
-      //   .class
-      //   .implements
-      //   .iter()
-      //   .map(|implements| {
-      //     let type_args = implements
-      //       .type_args
-      //       .clone()
-      //       .map(|args| serialize_ts_param_inst(ctx, &args));
-
-      //     let expr = serialize_expr(ctx, &implements.expr);
-
-      //     ctx.write_ts_class_implements(&implements.span, expr, type_args)
-      //   })
-      //   .collect::<Vec<_>>();
-
-      // let member_ids = node
-      //   .class
-      //   .body
-      //   .iter()
-      //   .map(|member| serialize_class_member(ctx, member))
-      //   .collect::<Vec<_>>();
-
-      // ctx.write_ref(body_pos, body_id);
-
-      // ctx.write_bool(declare_pos, node.declare);
-      // ctx.write_bool(abstract_pos, node.class.is_abstract);
-      // ctx.write_ref(id_pos, ident);
-      // ctx.write_maybe_ref(type_params_pos, type_params);
-      // ctx.write_maybe_ref(super_pos, super_class);
-      // ctx.write_maybe_ref(super_type_pos, super_type_params);
-      // ctx.write_refs(impl_pos, implement_ids);
-
-      // // body
-      // ctx.write_refs(body_body_pos, member_ids);
-
-      // id
+      ctx.write_class_decl(
+        &node.class.span,
+        false,
+        node.class.is_abstract,
+        ident,
+        super_class,
+        implements,
+        body,
+      )
     }
     Decl::Fn(node) => {
       let ident_id = serialize_ident(ctx, &node.ident);
@@ -1314,7 +1317,7 @@ fn serialize_ts_index_sig(
   // pos
 }
 
-fn _accessibility_to_str(accessibility: Accessibility) -> String {
+fn accessibility_to_str(accessibility: &Accessibility) -> String {
   match accessibility {
     Accessibility::Public => "public".to_string(),
     Accessibility::Protected => "protected".to_string(),
@@ -1675,6 +1678,303 @@ fn serialize_lit(ctx: &mut TsEsTreeBuilder, lit: &Lit) -> NodeRef {
       ctx.write_jsx_text(&node.span, &node.raw, &node.value)
     }
   }
+}
+
+fn serialize_class_member(
+  ctx: &mut TsEsTreeBuilder,
+  member: &ClassMember,
+) -> Option<NodeRef> {
+  match member {
+    ClassMember::Constructor(node) => {
+      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+
+      let key = serialize_prop_name(ctx, &node.key);
+      let params = node
+        .params
+        .iter()
+        .map(|param| match param {
+          ParamOrTsParamProp::TsParamProp(prop) => {
+            let a11y =
+              node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+
+            let decorators = prop
+              .decorators
+              .iter()
+              .map(|deco| serialize_decorator(ctx, deco))
+              .collect::<Vec<_>>();
+
+            let paramter = match &prop.param {
+              TsParamPropParam::Ident(binding_ident) => {
+                serialize_binding_ident(ctx, binding_ident)
+              }
+              TsParamPropParam::Assign(assign_pat) => {
+                serialize_pat(ctx, &Pat::Assign(assign_pat.clone()))
+              }
+            };
+
+            ctx.write_ts_param_prop(
+              &prop.span,
+              prop.is_override,
+              prop.readonly,
+              a11y,
+              decorators,
+              paramter,
+            )
+          }
+          ParamOrTsParamProp::Param(param) => serialize_pat(ctx, &param.pat),
+        })
+        .collect::<Vec<_>>();
+
+      let body = node
+        .body
+        .as_ref()
+        .map(|body| serialize_stmt(ctx, &Stmt::Block(body.clone())));
+
+      let value = ctx.write_fn_expr(
+        &node.span, false, false, None, None, params, None, body,
+      );
+
+      Some(ctx.write_class_method(
+        &node.span,
+        false,
+        false,
+        node.is_optional,
+        false,
+        false,
+        "constructor",
+        a11y,
+        key,
+        value,
+      ))
+    }
+    ClassMember::Method(node) => {
+      let key = serialize_prop_name(ctx, &node.key);
+
+      Some(serialize_class_method(
+        ctx,
+        &node.span,
+        node.is_abstract,
+        node.is_override,
+        node.is_optional,
+        node.is_static,
+        node.accessibility,
+        &node.kind,
+        key,
+        &node.function,
+      ))
+    }
+    ClassMember::PrivateMethod(node) => {
+      let key = serialize_private_name(ctx, &node.key);
+
+      Some(serialize_class_method(
+        ctx,
+        &node.span,
+        node.is_abstract,
+        node.is_override,
+        node.is_optional,
+        node.is_static,
+        node.accessibility,
+        &node.kind,
+        key,
+        &node.function,
+      ))
+    }
+    ClassMember::ClassProp(node) => {
+      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+
+      let key = serialize_prop_name(ctx, &node.key);
+      let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
+
+      let decorators = node
+        .decorators
+        .iter()
+        .map(|deco| serialize_decorator(ctx, deco))
+        .collect::<Vec<_>>();
+
+      Some(ctx.write_class_prop(
+        &node.span,
+        node.declare,
+        false,
+        node.is_optional,
+        node.is_override,
+        node.readonly,
+        node.is_static,
+        a11y,
+        decorators,
+        key,
+        value,
+      ))
+    }
+    ClassMember::PrivateProp(node) => {
+      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+
+      let decorators = node
+        .decorators
+        .iter()
+        .map(|deco| serialize_decorator(ctx, deco))
+        .collect::<Vec<_>>();
+
+      let key = serialize_private_name(ctx, &node.key);
+
+      let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
+
+      Some(ctx.write_class_prop(
+        &node.span,
+        false,
+        false,
+        node.is_optional,
+        node.is_override,
+        node.readonly,
+        node.is_static,
+        a11y,
+        decorators,
+        key,
+        value,
+      ))
+    }
+    ClassMember::TsIndexSignature(node) => {
+      Some(serialize_ts_index_sig(ctx, node))
+    }
+    ClassMember::Empty(_) => None,
+    ClassMember::StaticBlock(node) => {
+      let body = serialize_stmt(ctx, &Stmt::Block(node.body.clone()));
+      Some(ctx.write_static_block(&node.span, body))
+    }
+    ClassMember::AutoAccessor(node) => {
+      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+      let decorators = node
+        .decorators
+        .iter()
+        .map(|deco| serialize_decorator(ctx, deco))
+        .collect::<Vec<_>>();
+
+      let key = match &node.key {
+        Key::Private(private_name) => serialize_private_name(ctx, private_name),
+        Key::Public(prop_name) => serialize_prop_name(ctx, &prop_name),
+      };
+
+      let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
+
+      Some(ctx.write_accessor_property(
+        &node.span,
+        false,
+        false,
+        false,
+        node.is_override,
+        false,
+        node.is_static,
+        a11y,
+        decorators,
+        key,
+        value,
+      ))
+    }
+  }
+}
+
+fn serialize_class_method(
+  ctx: &mut TsEsTreeBuilder,
+  span: &Span,
+  is_abstract: bool,
+  is_override: bool,
+  is_optional: bool,
+  is_static: bool,
+  accessibility: Option<Accessibility>,
+  method_kind: &MethodKind,
+  key: NodeRef,
+  function: &Function,
+) -> NodeRef {
+  let kind = match method_kind {
+    MethodKind::Method => "method",
+    MethodKind::Getter => "getter",
+    MethodKind::Setter => "setter",
+  };
+
+  let type_params = maybe_serialize_ts_type_param(ctx, &function.type_params);
+  let params = function
+    .params
+    .iter()
+    .map(|param| serialize_pat(ctx, &param.pat))
+    .collect::<Vec<_>>();
+
+  let return_type = maybe_serialize_ts_type_ann(ctx, &function.return_type);
+
+  let body = function
+    .body
+    .as_ref()
+    .map(|body| serialize_stmt(ctx, &Stmt::Block(body.clone())));
+
+  let value = if let Some(body) = body {
+    ctx.write_fn_expr(
+      &function.span,
+      function.is_async,
+      function.is_generator,
+      None,
+      type_params,
+      params,
+      return_type,
+      Some(body),
+    )
+  } else {
+    ctx.write_ts_empty_body_fn_expr(
+      &span,
+      false,
+      false,
+      function.is_async,
+      function.is_generator,
+      None,
+      type_params,
+      params,
+      return_type,
+    )
+  };
+
+  let a11y = accessibility.as_ref().map(|v| accessibility_to_str(v));
+
+  if is_abstract {
+    ctx.write_ts_abstract_method_def(
+      &span,
+      false,
+      is_optional,
+      is_override,
+      false,
+      a11y,
+      key,
+      value,
+    )
+  } else {
+    ctx.write_class_method(
+      &span,
+      false,
+      false,
+      is_optional,
+      is_override,
+      is_static,
+      kind,
+      a11y,
+      key,
+      value,
+    )
+  }
+}
+
+fn serialize_ts_expr_with_type_args(
+  ctx: &mut TsEsTreeBuilder,
+  node: &TsExprWithTypeArgs,
+) -> NodeRef {
+  todo!()
+}
+
+fn serialize_decorator(ctx: &mut TsEsTreeBuilder, node: &Decorator) -> NodeRef {
+  let expr = serialize_expr(ctx, &node.expr);
+  ctx.write_decorator(&node.span, expr)
+}
+
+fn serialize_binding_ident(
+  ctx: &mut TsEsTreeBuilder,
+  node: &BindingIdent,
+) -> NodeRef {
+  todo!()
 }
 
 fn serialize_ts_param_inst(

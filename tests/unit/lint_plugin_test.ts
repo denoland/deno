@@ -775,7 +775,7 @@ Deno.test("Plugin - YieldExpression", async (t) => {
   await assertSnapshot(t, node[0]);
 });
 
-Deno.test.only("Plugin - Literal", async (t) => {
+Deno.test("Plugin - Literal", async (t) => {
   let node = testLintNode("1", "Literal");
   await assertSnapshot(t, node[0]);
 

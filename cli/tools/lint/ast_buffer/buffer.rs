@@ -367,6 +367,17 @@ impl SerializeCtx {
     append_u32(buf, 0);
   }
 
+  /// Allocate an null field
+  pub fn write_undefined<P>(&mut self, prop: P)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Undefined);
+
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, 0);
+  }
+
   /// Allocate a number field
   pub fn write_num<P>(&mut self, prop: P, value: &str)
   where

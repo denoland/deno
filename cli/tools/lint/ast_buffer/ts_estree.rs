@@ -4,6 +4,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 
+use deno_ast::swc::common::pass::AstKindPath;
 use deno_ast::swc::common::Span;
 
 use super::buffer::AstBufSerializer;
@@ -71,6 +72,7 @@ pub enum AstNode {
   ChainExpression,
   ClassExpression,
   ConditionalExpression,
+  EmptyExpr,
   FunctionExpression,
   Identifier,
   ImportExpression,
@@ -93,11 +95,8 @@ pub enum AstNode {
   UpdateExpression,
   YieldExpression,
 
-  // TODO: TSEsTree uses a single literal node
-  // Literals
+  // Other
   Literal,
-
-  EmptyExpr,
   SpreadElement,
   Property,
   VariableDeclarator,
@@ -107,6 +106,10 @@ pub enum AstNode {
   TemplateElement,
   MethodDefinition,
   ClassBody,
+  PropertyDefinition,
+  Decorator,
+  StaticBlock,
+  AccessorProperty,
 
   // Patterns
   ArrayPattern,
@@ -160,6 +163,9 @@ pub enum AstNode {
   TSRestType,
   TSArrayType,
   TSClassImplements,
+  TSAbstractMethodDefinition,
+  TSEmptyBodyFunctionExpression,
+  TSParameterProperty,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -226,6 +232,7 @@ pub enum AstProp {
   Declaration,
   Declarations,
   Declare,
+  Decorators,
   Default,
   Definite,
   Delegate,
@@ -273,7 +280,9 @@ pub enum AstProp {
   Optional,
   Options,
   Out,
+  Override,
   Param,
+  Parameter,
   ParameterName,
   Params,
   Pattern,
@@ -346,6 +355,7 @@ impl Display for AstProp {
       AstProp::Declaration => "declaration",
       AstProp::Declarations => "declarations",
       AstProp::Declare => "declare",
+      AstProp::Decorators => "decorators",
       AstProp::Default => "default",
       AstProp::Definite => "definite",
       AstProp::Delegate => "delegate",
@@ -393,7 +403,9 @@ impl Display for AstProp {
       AstProp::Optional => "optional",
       AstProp::Options => "options",
       AstProp::Out => "out",
+      AstProp::Override => "override",
       AstProp::Param => "param",
+      AstProp::Parameter => "parameter",
       AstProp::ParameterName => "parameterName",
       AstProp::Params => "params",
       AstProp::Pattern => "pattern",
@@ -634,6 +646,164 @@ impl TsEsTreeBuilder {
       .write_maybe_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.write_maybe_ref(AstProp::Body, &id, body);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_decorator(&mut self, span: &Span, expr: NodeRef) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::Decorator, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_class_decl(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_abstract: bool,
+    ident: NodeRef,
+    super_class: Option<NodeRef>,
+    implements: Vec<NodeRef>,
+    body: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::ClassDeclaration, span);
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Abstract, is_abstract);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::SuperClass, &id, super_class);
+    self.ctx.write_ref_vec(AstProp::Implements, &id, implements);
+    self.ctx.write_ref(AstProp::Body, &id, body);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_class_expr(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_abstract: bool,
+    ident: Option<NodeRef>,
+    super_class: Option<NodeRef>,
+    implements: Vec<NodeRef>,
+    body: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::ClassExpression, span);
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Abstract, is_abstract);
+    self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::SuperClass, &id, super_class);
+    self.ctx.write_ref_vec(AstProp::Implements, &id, implements);
+    self.ctx.write_ref(AstProp::Body, &id, body);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_class_body(
+    &mut self,
+    span: &Span,
+    body: Vec<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::ClassBody, span);
+    self.ctx.write_ref_vec(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_static_block(&mut self, span: &Span, body: NodeRef) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::StaticBlock, span);
+    self.ctx.write_ref(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_accessor_property(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_computed: bool,
+    is_optional: bool,
+    is_override: bool,
+    is_readonly: bool,
+    is_static: bool,
+    accessibility: Option<String>,
+    decorators: Vec<NodeRef>,
+    key: NodeRef,
+    value: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::AccessorProperty, span);
+
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Readonly, is_readonly);
+    self.ctx.write_bool(AstProp::Static, is_static);
+    self.write_accessibility(accessibility);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_maybe_ref(AstProp::Value, &id, value);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_class_prop(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_computed: bool,
+    is_optional: bool,
+    is_override: bool,
+    is_readonly: bool,
+    is_static: bool,
+    accessibility: Option<String>,
+    decorators: Vec<NodeRef>,
+    key: NodeRef,
+    value: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::PropertyDefinition, span);
+
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Readonly, is_readonly);
+    self.ctx.write_bool(AstProp::Static, is_static);
+
+    self.write_accessibility(accessibility);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
+
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_maybe_ref(AstProp::Value, &id, value);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_class_method(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_computed: bool,
+    is_optional: bool,
+    is_override: bool,
+    is_static: bool,
+    kind: &str,
+    accessibility: Option<String>,
+    key: NodeRef,
+    value: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::MethodDefinition, span);
+
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Static, is_static);
+    self.ctx.write_str(AstProp::Kind, kind);
+    self.write_accessibility(accessibility);
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref(AstProp::Value, &id, value);
 
     self.ctx.commit_node(id)
   }
@@ -1589,6 +1759,88 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  pub fn write_ts_abstract_method_def(
+    &mut self,
+    span: &Span,
+    is_computed: bool,
+    is_optional: bool,
+    is_override: bool,
+    is_static: bool,
+    accessibility: Option<String>,
+    key: NodeRef,
+    value: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSAbstractMethodDefinition, span);
+
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Static, is_static);
+
+    self.write_accessibility(accessibility);
+
+    self.ctx.write_str(AstProp::Kind, "method");
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref(AstProp::Key, &id, value);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_empty_body_fn_expr(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_expression: bool,
+    is_async: bool,
+    is_generator: bool,
+    ident: Option<NodeRef>,
+    type_params: Option<NodeRef>,
+    params: Vec<NodeRef>,
+    return_type: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSEmptyBodyFunctionExpression, span);
+
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Expression, is_expression);
+    self.ctx.write_bool(AstProp::Async, is_async);
+    self.ctx.write_bool(AstProp::Generator, is_generator);
+    self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_param_prop(
+    &mut self,
+    span: &Span,
+    is_override: bool,
+    is_readonly: bool,
+    accessibility: Option<String>,
+    decorators: Vec<NodeRef>,
+    param: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSParameterProperty, span);
+
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Readonly, is_readonly);
+    self.ctx.write_bool(AstProp::Static, false);
+    self.write_accessibility(accessibility);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
+    self.ctx.write_ref(AstProp::Parameter, &id, param);
+
+    self.ctx.commit_node(id)
+  }
+
   pub fn write_ts_call_sig_decl(
     &mut self,
     span: &Span,
@@ -2150,6 +2402,14 @@ impl TsEsTreeBuilder {
     let id = self.ctx.append_node(AstNode::TSFunctionType, span);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self.ctx.commit_node(id)
+  }
+
+  fn write_accessibility(&mut self, accessibility: Option<String>) {
+    if let Some(value) = accessibility {
+      self.ctx.write_str(AstProp::Accessibility, &value);
+    } else {
+      self.ctx.write_undefined(AstProp::Accessibility);
+    }
   }
 }
 
