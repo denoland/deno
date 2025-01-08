@@ -52,11 +52,12 @@ class GPUCanvasContext {
   configure(configuration) {
     webidl.assertBranded(this, GPUCanvasContextPrototype);
     const prefix = "Failed to execute 'configure' on 'GPUCanvasContext'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
-    configuration = webidl.converters.GPUCanvasConfiguration(configuration, {
+    webidl.requiredArguments(arguments.length, 1, prefix);
+    configuration = webidl.converters.GPUCanvasConfiguration(
+      configuration,
       prefix,
-      context: "Argument 1",
-    });
+      "Argument 1",
+    );
 
     const { _device, assertDevice } = loadWebGPU();
     this[_device] = configuration.device[_device];
@@ -97,7 +98,8 @@ class GPUCanvasContext {
     if (this[_configuration] === null) {
       throw new DOMException("Context is not configured", "InvalidStateError");
     }
-    const { createGPUTexture, assertDevice } = loadWebGPU();
+    const { assertDevice, createGPUTexture, GPU_RESOURCE_REGISTRY } =
+      loadWebGPU();
 
     const device = assertDevice(this, { prefix, context: "this" });
 
@@ -127,6 +129,8 @@ class GPUCanvasContext {
       rid,
     );
     device.trackResource(texture);
+    GPU_RESOURCE_REGISTRY.register(texture, rid, texture);
+
     this[_currentTexture] = texture;
     return texture;
   }

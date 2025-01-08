@@ -392,7 +392,7 @@ pub struct GpuAdapterRes {
   rid: ResourceId,
   limits: wgpu_types::Limits,
   features: Vec<&'static str>,
-  is_fallback: bool,
+  is_fallback_adapter: bool,
 }
 
 #[derive(Serialize)]
@@ -466,7 +466,7 @@ pub fn op_webgpu_request_adapter(
     features,
     limits: adapter_limits,
     // TODO(lucacasonato): report correctly from wgpu
-    is_fallback: false,
+    is_fallback_adapter: false,
   }))
 }
 
@@ -678,7 +678,7 @@ pub fn op_webgpu_request_device(
   let mut state = state.borrow_mut();
   let adapter_resource = state
     .resource_table
-    .take::<WebGpuAdapter>(adapter_rid)
+    .get::<WebGpuAdapter>(adapter_rid)
     .map_err(InitError::Resource)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
@@ -696,7 +696,6 @@ pub fn op_webgpu_request_device(
     None,
     None
   ));
-  adapter_resource.close();
   if let Some(err) = maybe_err {
     return Err(InitError::RequestDevice(err));
   }

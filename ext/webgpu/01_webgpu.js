@@ -111,6 +111,7 @@ const {
   PromiseReject,
   PromiseResolve,
   SafeArrayIterator,
+  SafeFinalizationRegistry,
   SafeSet,
   SafeWeakRef,
   SetPrototypeHas,
@@ -354,6 +355,11 @@ class GPUUncapturedErrorEvent extends Event {
 }
 const GPUUncapturedErrorEventPrototype = GPUUncapturedErrorEvent.prototype;
 
+// A finalization registry to clean up underlying resources that are GC'ed.
+const GPU_RESOURCE_REGISTRY = new SafeFinalizationRegistry((rid) => {
+  core.tryClose(rid);
+});
+
 class GPU {
   [webidl.brand] = webidl.brand;
 
@@ -373,15 +379,23 @@ class GPU {
       "Argument 1",
     );
 
-    const { err, ...data } = op_webgpu_request_adapter(
-      options.powerPreference,
-      options.forceFallbackAdapter,
-    );
+    const { err, rid, features, limits, isFallbackAdapter } =
+      op_webgpu_request_adapter(
+        options.powerPreference,
+        options.forceFallbackAdapter,
+      );
 
     if (err) {
       return null;
     } else {
-      return createGPUAdapter(data);
+      const adapter = createGPUAdapter(
+        rid,
+        features,
+        limits,
+        isFallbackAdapter,
+      );
+      GPU_RESOURCE_REGISTRY.register(adapter, rid, adapter);
+      return adapter;
     }
   }
 
@@ -410,16 +424,20 @@ const GPUPrototype = GPU.prototype;
  */
 
 /**
- * @param {InnerGPUAdapter} inner
+ * @param {number} rid
+ * @param {string[]} features
+ * @param {InnerAdapterLimits} limits
+ * @param {boolean} isFallbackAdapter
  * @returns {GPUAdapter}
  */
-function createGPUAdapter(inner) {
+function createGPUAdapter(rid, features, limits, isFallbackAdapter) {
   /** @type {GPUAdapter} */
   const adapter = webidl.createBranded(GPUAdapter);
   adapter[_adapter] = {
-    ...inner,
-    features: createGPUSupportedFeatures(inner.features),
-    limits: createGPUSupportedLimits(inner.limits),
+    rid,
+    features: createGPUSupportedFeatures(features),
+    limits: createGPUSupportedLimits(limits),
+    isFallbackAdapter,
   };
   adapter[_adapterInfo] = undefined;
   adapter[_invalid] = false;
@@ -447,7 +465,31 @@ class GPUAdapter {
   /** @returns {boolean} */
   get isFallbackAdapter() {
     webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].isFallback;
+    return this[_adapter].isFallbackAdapter;
+  }
+
+  /** @returns {GPUAdapterInfo} */
+  get info() {
+    webidl.assertBranded(this, GPUAdapterPrototype);
+
+    if (this[_adapterInfo] !== undefined) {
+      return this[_adapterInfo];
+    }
+
+    const {
+      vendor,
+      architecture,
+      device,
+      description,
+    } = op_webgpu_request_adapter_info(this[_adapter].rid);
+    const adapterInfo = createGPUAdapterInfo(
+      vendor,
+      architecture,
+      device,
+      description,
+    );
+    this[_adapterInfo] = adapterInfo;
+    return adapterInfo;
   }
 
   constructor() {
@@ -467,6 +509,7 @@ class GPUAdapter {
       prefix,
       "Argument 1",
     );
+
     const requiredFeatures = descriptor.requiredFeatures ?? [];
     for (let i = 0; i < requiredFeatures.length; ++i) {
       const feature = requiredFeatures[i];
@@ -500,47 +543,20 @@ class GPUAdapter {
       features: createGPUSupportedFeatures(features),
       limits: createGPUSupportedLimits(limits),
     });
+
     const queue = createGPUQueue(descriptor.label, inner, queueRid);
     inner.trackResource(queue);
+    GPU_RESOURCE_REGISTRY.register(queue, queueRid, queue);
+
     const device = createGPUDevice(
       descriptor.label,
       inner,
       queue,
     );
     inner.device = device;
+    GPU_RESOURCE_REGISTRY.register(device, rid, device);
+
     return device;
-  }
-
-  /**
-   * @returns {GPUAdapterInfo}
-   */
-  get info() {
-    webidl.assertBranded(this, GPUAdapterPrototype);
-
-    if (this[_adapterInfo] !== undefined) {
-      return this[_adapterInfo];
-    }
-
-    if (this[_invalid]) {
-      throw new TypeError(
-        "The adapter cannot be reused, as it has been invalidated by a device creation",
-      );
-    }
-
-    const {
-      vendor,
-      architecture,
-      device,
-      description,
-    } = op_webgpu_request_adapter_info(this[_adapter].rid);
-
-    const adapterInfo = webidl.createBranded(GPUAdapterInfo);
-    adapterInfo[_vendor] = vendor;
-    adapterInfo[_architecture] = architecture;
-    adapterInfo[_device] = device;
-    adapterInfo[_description] = description;
-    this[_adapterInfo] = adapterInfo;
-    return adapterInfo;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -560,6 +576,22 @@ class GPUAdapter {
   }
 }
 const GPUAdapterPrototype = GPUAdapter.prototype;
+
+/**
+ * @param {string} vendor
+ * @param {string} architecture
+ * @param {string} device
+ * @param {string} description
+ * @returns {GPUAdapterInfo}
+ */
+function createGPUAdapterInfo(vendor, architecture, device, description) {
+  const adapterInfo = webidl.createBranded(GPUAdapterInfo);
+  adapterInfo[_vendor] = vendor;
+  adapterInfo[_architecture] = architecture;
+  adapterInfo[_device] = device;
+  adapterInfo[_description] = description;
+  return adapterInfo;
+}
 
 class GPUAdapterInfo {
   /** @type {string} */
@@ -612,6 +644,10 @@ class GPUAdapterInfo {
 }
 const GPUAdapterInfoPrototype = GPUAdapterInfo.prototype;
 
+/**
+ * @param {InnerAdapterLimits} limits
+ * @returns {GPUSupportedLimits}
+ */
 function createGPUSupportedLimits(limits) {
   /** @type {GPUSupportedLimits} */
   const adapterFeatures = webidl.createBranded(GPUSupportedLimits);
@@ -665,6 +701,7 @@ function normalizeLimit(limit) {
 class GPUSupportedLimits {
   /** @type {InnerAdapterLimits} */
   [_limits];
+
   constructor() {
     webidl.illegalConstructor();
   }
@@ -841,6 +878,10 @@ class GPUSupportedLimits {
 }
 const GPUSupportedLimitsPrototype = GPUSupportedLimits.prototype;
 
+/**
+ * @param {string[]} features
+ * @returns {GPUSupportedFeatures}
+ */
 function createGPUSupportedFeatures(features) {
   /** @type {GPUSupportedFeatures} */
   const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
@@ -1093,6 +1134,7 @@ class GPUDevice extends EventTarget {
     const rid = device.rid;
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       device.rid = undefined;
     }
@@ -1109,6 +1151,31 @@ class GPUDevice extends EventTarget {
   get queue() {
     webidl.assertBranded(this, GPUDevicePrototype);
     return this[_queue];
+  }
+
+  /** @returns {GPUAdapterInfo} */
+  get adapterInfo() {
+    webidl.assertBranded(this, GPUDevicePrototype);
+
+    const adapter = this[_device].adapter;
+    if (adapter[_adapterInfo] !== undefined) {
+      return adapter[_adapterInfo];
+    }
+
+    const {
+      vendor,
+      architecture,
+      device,
+      description,
+    } = op_webgpu_request_adapter_info(adapter[_adapter].rid);
+    const adapterInfo = createGPUAdapterInfo(
+      vendor,
+      architecture,
+      device,
+      description,
+    );
+    adapter[_adapterInfo] = adapterInfo;
+    return adapterInfo;
   }
 
   constructor() {
@@ -1134,6 +1201,7 @@ class GPUDevice extends EventTarget {
       prefix,
       "Argument 1",
     );
+
     const device = assertDevice(this, prefix, "this");
     const { rid, err } = op_webgpu_create_buffer(
       device.rid,
@@ -1143,6 +1211,7 @@ class GPUDevice extends EventTarget {
       descriptor.mappedAtCreation,
     );
     device.pushError(err);
+
     /** @type {CreateGPUBufferOptions} */
     let options;
     if (descriptor.mappedAtCreation) {
@@ -1169,6 +1238,8 @@ class GPUDevice extends EventTarget {
       options,
     );
     device.trackResource(buffer);
+    GPU_RESOURCE_REGISTRY.register(buffer, rid, buffer);
+
     return buffer;
   }
 
@@ -1200,6 +1271,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(texture);
+    GPU_RESOURCE_REGISTRY.register(texture, rid, texture);
+
     return texture;
   }
 
@@ -1228,6 +1301,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(sampler);
+    GPU_RESOURCE_REGISTRY.register(sampler, rid, sampler);
+
     return sampler;
   }
 
@@ -1273,6 +1348,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+
     return bindGroupLayout;
   }
 
@@ -1316,6 +1393,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(pipelineLayout);
+    GPU_RESOURCE_REGISTRY.register(pipelineLayout, rid, pipelineLayout);
+
     return pipelineLayout;
   }
 
@@ -1386,6 +1465,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(bindGroup);
+    GPU_RESOURCE_REGISTRY.register(bindGroup, rid, bindGroup);
+
     return bindGroup;
   }
 
@@ -1415,6 +1496,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(shaderModule);
+    GPU_RESOURCE_REGISTRY.register(shaderModule, rid, shaderModule);
+
     return shaderModule;
   }
 
@@ -1471,6 +1554,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(computePipeline);
+    GPU_RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
+
     return computePipeline;
   }
 
@@ -1551,6 +1636,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderPipeline);
+    GPU_RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
+
     return renderPipeline;
   }
 
@@ -1622,6 +1709,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(computePipeline);
+    GPU_RESOURCE_REGISTRY.register(computePipeline, rid, computePipeline);
+
     return PromiseResolve(computePipeline);
   }
 
@@ -1717,6 +1806,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderPipeline);
+    GPU_RESOURCE_REGISTRY.register(renderPipeline, rid, renderPipeline);
+
     return PromiseResolve(renderPipeline);
   }
 
@@ -1745,6 +1836,8 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(commandEncoder);
+    GPU_RESOURCE_REGISTRY.register(commandEncoder, rid, commandEncoder);
+
     return commandEncoder;
   }
 
@@ -1756,7 +1849,7 @@ class GPUDevice extends EventTarget {
     webidl.assertBranded(this, GPUDevicePrototype);
     const prefix =
       "Failed to execute 'createRenderBundleEncoder' on 'GPUDevice'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     descriptor = webidl.converters.GPURenderBundleEncoderDescriptor(
       descriptor,
       prefix,
@@ -1775,6 +1868,12 @@ class GPUDevice extends EventTarget {
       rid,
     );
     device.trackResource(renderBundleEncoder);
+    GPU_RESOURCE_REGISTRY.register(
+      renderBundleEncoder,
+      rid,
+      renderBundleEncoder,
+    );
+
     return renderBundleEncoder;
   }
 
@@ -1805,6 +1904,8 @@ class GPUDevice extends EventTarget {
       descriptor,
     );
     device.trackResource(querySet);
+    GPU_RESOURCE_REGISTRY.register(querySet, rid, querySet);
+
     return querySet;
   }
 
@@ -1859,6 +1960,7 @@ class GPUDevice extends EventTarget {
         object: this,
         evaluate: ObjectPrototypeIsPrototypeOf(GPUDevicePrototype, this),
         keys: [
+          "adapterInfo",
           "features",
           "label",
           "limits",
@@ -1924,6 +2026,7 @@ class GPUQueue {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -1939,9 +2042,7 @@ class GPUQueue {
   submit(commandBuffers) {
     webidl.assertBranded(this, GPUQueuePrototype);
     const prefix = "Failed to execute 'submit' on 'GPUQueue'";
-    webidl.requiredArguments(arguments.length, 1, {
-      prefix,
-    });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     commandBuffers = webidl.converters["sequence<GPUCommandBuffer>"](
       commandBuffers,
       prefix,
@@ -2104,7 +2205,7 @@ const GPUQueuePrototype = GPUQueue.prototype;
  * @typedef CreateGPUBufferOptions
  * @property {ArrayBuffer | null} mapping
  * @property {number[] | null} mappingRange
- * @property {[ArrayBuffer, number, number][] | null} mappedRanges
+ * @property {[ArrayBuffer, rid: number, offset: number][] | null} mappedRanges
  * @property {"mapped" | "mapped at creation" | "mapped pending" | "unmapped" | "destroy" } state
  */
 
@@ -2144,7 +2245,7 @@ class GPUBuffer {
   [_state];
   /** @type {[number, number] | null} */
   [_mappingRange];
-  /** @type {[ArrayBuffer, number, number][] | null} */
+  /** @type {[ArrayBuffer, rid: number, offset: number][] | null} */
   [_mappedRanges];
   /** @type {number} */
   [_mapMode];
@@ -2156,12 +2257,14 @@ class GPUBuffer {
         const mappedRange = ArrayPrototypePop(mappedRanges);
         if (mappedRange !== undefined) {
           core.close(mappedRange[1]);
+          GPU_RESOURCE_REGISTRY.unregister(mappedRange);
         }
       }
     }
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2275,7 +2378,7 @@ class GPUBuffer {
     }
     this[_state] = "mapped";
     this[_mappingRange] = [offset, offset + rangeSize];
-    /** @type {[ArrayBuffer, number, number][] | null} */
+    /** @type {[ArrayBuffer, rid: number, offset: number][] | null} */
     this[_mappedRanges] = [];
   }
 
@@ -2327,7 +2430,9 @@ class GPUBuffer {
       new Uint8Array(buffer),
     );
 
-    ArrayPrototypePush(mappedRanges, [buffer, rid, offset]);
+    const mappedRange = [buffer, rid, offset];
+    ArrayPrototypePush(mappedRanges, mappedRange);
+    GPU_RESOURCE_REGISTRY.register(mappedRange, rid, mappedRange);
 
     return buffer;
   }
@@ -2524,6 +2629,7 @@ class GPUTexture {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2559,6 +2665,8 @@ class GPUTexture {
       rid,
     );
     ArrayPrototypePush(this[_views], new SafeWeakRef(textureView));
+    GPU_RESOURCE_REGISTRY.register(textureView, rid, textureView);
+
     return textureView;
   }
 
@@ -2677,6 +2785,7 @@ class GPUTextureView {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2701,6 +2810,7 @@ class GPUTextureView {
 }
 GPUObjectBaseMixin("GPUTextureView", GPUTextureView);
 const GPUTextureViewPrototype = GPUTextureView.prototype;
+
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2715,6 +2825,7 @@ function createGPUSampler(label, device, rid) {
   sampler[_rid] = rid;
   return sampler;
 }
+
 class GPUSampler {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2725,6 +2836,7 @@ class GPUSampler {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2744,6 +2856,7 @@ class GPUSampler {
 }
 GPUObjectBaseMixin("GPUSampler", GPUSampler);
 const GPUSamplerPrototype = GPUSampler.prototype;
+
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2758,6 +2871,7 @@ function createGPUBindGroupLayout(label, device, rid) {
   bindGroupLayout[_rid] = rid;
   return bindGroupLayout;
 }
+
 class GPUBindGroupLayout {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2768,6 +2882,7 @@ class GPUBindGroupLayout {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2795,6 +2910,7 @@ class GPUBindGroupLayout {
 }
 GPUObjectBaseMixin("GPUBindGroupLayout", GPUBindGroupLayout);
 const GPUBindGroupLayoutPrototype = GPUBindGroupLayout.prototype;
+
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2809,6 +2925,7 @@ function createGPUPipelineLayout(label, device, rid) {
   pipelineLayout[_rid] = rid;
   return pipelineLayout;
 }
+
 class GPUPipelineLayout {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2819,6 +2936,7 @@ class GPUPipelineLayout {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2861,6 +2979,7 @@ function createGPUBindGroup(label, device, rid) {
   bindGroup[_rid] = rid;
   return bindGroup;
 }
+
 class GPUBindGroup {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2871,6 +2990,7 @@ class GPUBindGroup {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2895,6 +3015,7 @@ class GPUBindGroup {
 }
 GPUObjectBaseMixin("GPUBindGroup", GPUBindGroup);
 const GPUBindGroupPrototype = GPUBindGroup.prototype;
+
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -2909,6 +3030,7 @@ function createGPUShaderModule(label, device, rid) {
   bindGroup[_rid] = rid;
   return bindGroup;
 }
+
 class GPUShaderModule {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2919,6 +3041,7 @@ class GPUShaderModule {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -2975,6 +3098,7 @@ function createGPUComputePipeline(label, device, rid) {
   pipeline[_rid] = rid;
   return pipeline;
 }
+
 class GPUComputePipeline {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -2985,6 +3109,7 @@ class GPUComputePipeline {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3002,7 +3127,7 @@ class GPUComputePipeline {
     webidl.assertBranded(this, GPUComputePipelinePrototype);
     const prefix =
       "Failed to execute 'getBindGroupLayout' on 'GPUComputePipeline'";
-    webidl.requiredArguments(arguments.length, 1, { prefix });
+    webidl.requiredArguments(arguments.length, 1, prefix);
     index = webidl.converters["unsigned long"](index, prefix, "Argument 1");
     const device = assertDevice(this, prefix, "this");
     const computePipelineRid = assertResource(this, prefix, "this");
@@ -3019,6 +3144,8 @@ class GPUComputePipeline {
       rid,
     );
     device.trackResource(bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+
     return bindGroupLayout;
   }
 
@@ -3055,6 +3182,7 @@ function createGPURenderPipeline(label, device, rid) {
   pipeline[_rid] = rid;
   return pipeline;
 }
+
 class GPURenderPipeline {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -3065,6 +3193,7 @@ class GPURenderPipeline {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3097,6 +3226,8 @@ class GPURenderPipeline {
       rid,
     );
     device.trackResource(bindGroupLayout);
+    GPU_RESOURCE_REGISTRY.register(bindGroupLayout, rid, bindGroupLayout);
+
     return bindGroupLayout;
   }
 
@@ -3156,6 +3287,7 @@ function createGPUCommandEncoder(label, device, rid) {
   encoder[_encoders] = [];
   return encoder;
 }
+
 class GPUCommandEncoder {
   /** @type {InnerGPUDevice} */
   [_device];
@@ -3175,6 +3307,7 @@ class GPUCommandEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3337,6 +3470,8 @@ class GPUCommandEncoder {
       rid,
     );
     ArrayPrototypePush(this[_encoders], new SafeWeakRef(renderPassEncoder));
+    GPU_RESOURCE_REGISTRY.register(renderPassEncoder, rid, renderPassEncoder);
+
     return renderPassEncoder;
   }
 
@@ -3384,6 +3519,8 @@ class GPUCommandEncoder {
       rid,
     );
     ArrayPrototypePush(this[_encoders], new SafeWeakRef(computePassEncoder));
+    GPU_RESOURCE_REGISTRY.register(computePassEncoder, rid, computePassEncoder);
+
     return computePassEncoder;
   }
 
@@ -3751,7 +3888,7 @@ class GPUCommandEncoder {
   ) {
     webidl.assertBranded(this, GPUCommandEncoderPrototype);
     const prefix = "Failed to execute 'resolveQuerySet' on 'GPUCommandEncoder'";
-    webidl.requiredArguments(arguments.length, 5, { prefix });
+    webidl.requiredArguments(arguments.length, 5, prefix);
     querySet = webidl.converters.GPUQuerySet(querySet, prefix, "Argument 1");
     firstQuery = webidl.converters.GPUSize32(firstQuery, prefix, "Argument 2");
     queryCount = webidl.converters.GPUSize32(queryCount, prefix, "Argument 3");
@@ -3818,6 +3955,8 @@ class GPUCommandEncoder {
       rid,
     );
     device.trackResource(commandBuffer);
+    GPU_RESOURCE_REGISTRY.register(commandBuffer, rid, commandBuffer);
+
     return commandBuffer;
   }
 
@@ -3865,6 +4004,7 @@ class GPURenderPassEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -3885,7 +4025,7 @@ class GPURenderPassEncoder {
   setViewport(x, y, width, height, minDepth, maxDepth) {
     webidl.assertBranded(this, GPURenderPassEncoderPrototype);
     const prefix = "Failed to execute 'setViewport' on 'GPUComputePassEncoder'";
-    webidl.requiredArguments(arguments.length, 6, { prefix });
+    webidl.requiredArguments(arguments.length, 6, prefix);
     x = webidl.converters.float(x, prefix, "Argument 1");
     y = webidl.converters.float(y, prefix, "Argument 2");
     width = webidl.converters.float(width, prefix, "Argument 3");
@@ -4474,6 +4614,7 @@ class GPUComputePassEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4749,6 +4890,7 @@ class GPUCommandBuffer {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4799,6 +4941,7 @@ class GPURenderBundleEncoder {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -4834,6 +4977,8 @@ class GPURenderBundleEncoder {
       rid,
     );
     device.trackResource(renderBundle);
+    GPU_RESOURCE_REGISTRY.register(renderBundle, rid, renderBundle);
+
     return renderBundle;
   }
 
@@ -5190,6 +5335,7 @@ class GPURenderBundle {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -5214,6 +5360,7 @@ class GPURenderBundle {
 }
 GPUObjectBaseMixin("GPURenderBundle", GPURenderBundle);
 const GPURenderBundlePrototype = GPURenderBundle.prototype;
+
 /**
  * @param {string | null} label
  * @param {InnerGPUDevice} device
@@ -5246,6 +5393,7 @@ class GPUQuerySet {
     const rid = this[_rid];
     if (rid !== undefined) {
       core.close(rid);
+      GPU_RESOURCE_REGISTRY.unregister(this);
       /** @type {number | undefined} */
       this[_rid] = undefined;
     }
@@ -7479,6 +7627,7 @@ export {
   createGPUTexture,
   GPU,
   gpu,
+  GPU_RESOURCE_REGISTRY,
   GPUAdapter,
   GPUAdapterInfo,
   GPUBindGroup,
