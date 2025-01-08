@@ -1498,6 +1498,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.42.0"
+source = "git+https://github.com/denoland/deno_config?branch=error-rework#82585a97beee45b91aa832986c07bea066ed91db"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -1528,7 +1529,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.328.0"
+version = "0.329.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1eae4be63b3b4d5fa595f368b81c6af22515f583462c08a3f2dc558237d26e9d"
 dependencies = [
  "anyhow",
  "az",
@@ -1759,6 +1762,7 @@ dependencies = [
 [[package]]
 name = "deno_graph"
 version = "0.86.8"
+source = "git+https://github.com/denoland/deno_graph?branch=more-specific-errors#f9554d6e93b5c11fa11dcf8cff2ead96118f4388"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -2119,7 +2123,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.204.0"
+version = "0.205.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f64ab466a8778b7cf4049ab036b5ac39a4e3a7677da70dd10d344466c8bbe081"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -2521,6 +2527,7 @@ dependencies = [
 [[package]]
 name = "denokv_proto"
 version = "0.8.4"
+source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2535,6 +2542,7 @@ dependencies = [
 [[package]]
 name = "denokv_remote"
 version = "0.8.4"
+source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2559,6 +2567,7 @@ dependencies = [
 [[package]]
 name = "denokv_sqlite"
 version = "0.8.4"
+source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -6834,7 +6843,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.237.0"
+version = "0.238.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d1009c0b6320f9f352679c57c9b0057888db0a77580e5e3c66e1eeb788290c0"
 dependencies = [
  "deno_error",
  "num-bigint",

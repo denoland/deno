@@ -56,6 +56,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 pub use deno_json::check_warn_tsconfig;
 use deno_lint::linter::LintConfig as DenoLintConfig;
@@ -1108,7 +1109,7 @@ impl CliOptions {
       },
       |path| {
         std::fs::read_to_string(path)
-          .map_err(|e| Box::new(e) as Box<dyn deno_error::JsErrorClass>)
+          .map_err(JsErrorBox::from_err)
       },
     )?)
   }

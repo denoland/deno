@@ -41,6 +41,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
@@ -1575,7 +1576,7 @@ impl ConfigData {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| std::fs::read_to_string(path).map_err(|e| Box::new(e) as _),
+        |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
       )
       .inspect_err(|err| {
         lsp_warn!(
