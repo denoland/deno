@@ -758,8 +758,14 @@ pub async fn op_ws_close(
     return Ok(());
   };
 
-  let code = code.unwrap_or(1005);
-  let frame = Frame::close(code, reason.unwrap_or_default().as_bytes());
+  const EMPTY_PAYLOAD: &[u8] = &[];
+
+  let frame = reason
+    .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
+    .unwrap_or_else(|| match code {
+      Some(code) => Frame::close(code, EMPTY_PAYLOAD),
+      _ => Frame::close_raw(EMPTY_PAYLOAD.into()),
+    });
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();
