@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const { StringPrototypeToLowerCase, ArrayPrototypeIncludes, ReflectApply } =
-  primordials;
+const {
+  StringPrototypeToLowerCase,
+  ArrayPrototypeIncludes,
+  ReflectApply,
+  Error,
+} = primordials;
 import {
   O_APPEND,
   O_CREAT,
