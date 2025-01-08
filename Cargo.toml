@@ -63,10 +63,10 @@ deno_terminal = "0.2.0"
 napi_sym = { version = "0.114.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.8.4"
-denokv_remote = "0.8.4"
+denokv_proto = "0.9.0"
+denokv_remote = "0.9.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.4" }
+denokv_sqlite = { default-features = false, version = "0.9.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.178.0", path = "./ext/broadcast_channel" }
@@ -346,6 +346,6 @@ opt-level = 3
 [patch.crates-io]
 deno_graph = { git = "https://github.com/denoland/deno_graph", branch = "more-specific-errors" }
 deno_config = { git = "https://github.com/denoland/deno_config", branch = "error-rework" }
-denokv_sqlite = { git = "https://github.com/denoland/denokv", branch = "error-rework" }
-denokv_proto = { git = "https://github.com/denoland/denokv", branch = "error-rework" }
-denokv_remote = { git = "https://github.com/denoland/denokv", branch = "error-rework" }
+deno_core = { git = "https://github.com/crowlKats/deno_core", branch = "revert-js_class_and_message_to_exception" }
+deno_ops = { git = "https://github.com/crowlKats/deno_core", branch = "revert-js_class_and_message_to_exception" }
+serde_v8 = { git = "https://github.com/crowlKats/deno_core", branch = "revert-js_class_and_message_to_exception" }

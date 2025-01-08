@@ -1530,8 +1530,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.329.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1eae4be63b3b4d5fa595f368b81c6af22515f583462c08a3f2dc558237d26e9d"
+source = "git+https://github.com/crowlKats/deno_core?branch=revert-js_class_and_message_to_exception#6a60de991b3f93af8abb94265772aadf95da5228"
 dependencies = [
  "anyhow",
  "az",
@@ -2124,8 +2123,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.205.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f64ab466a8778b7cf4049ab036b5ac39a4e3a7677da70dd10d344466c8bbe081"
+source = "git+https://github.com/crowlKats/deno_core?branch=revert-js_class_and_message_to_exception#6a60de991b3f93af8abb94265772aadf95da5228"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -2526,8 +2524,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.8.4"
-source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5b77de4d3b9215e14624d4f4eb16cb38c0810e3f5860ba3b3fc47d0537f9a4d"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2541,8 +2540,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.8.4"
-source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6497c28eec268ed99f1e8664f0842935f02d1508529c67d94c57ca5d893d743"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2566,8 +2566,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.8.4"
-source = "git+https://github.com/denoland/denokv?branch=error-rework#1538f9fce3df927215d30406e2770647ac7eb436"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc0f21a450a35eb85760761401fddf9bfff9840127be07a6ca5c31863127913d"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -6844,8 +6845,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.238.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d1009c0b6320f9f352679c57c9b0057888db0a77580e5e3c66e1eeb788290c0"
+source = "git+https://github.com/crowlKats/deno_core?branch=revert-js_class_and_message_to_exception#6a60de991b3f93af8abb94265772aadf95da5228"
 dependencies = [
  "deno_error",
  "num-bigint",
