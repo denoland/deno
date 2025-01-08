@@ -101,7 +101,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
 
   const notImplementedEncodings = ["utf16le", "latin1", "ucs2"];
 
-  if (notImplementedEncodings.includes(encoding as string)) {
+  if (ArrayPrototypeIncludes(notImplementedEncodings, encoding as string)) {
     notImplemented(`"${encoding}" encoding`);
   }
 
