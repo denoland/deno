@@ -78,7 +78,7 @@ pub enum AstNode {
   ImportExpression,
   LogicalExpression,
   MemberExpression,
-  MetaProp,
+  MetaProperty,
   NewExpression,
   ObjectExpression,
   PrivateIdentifier,
@@ -1378,6 +1378,12 @@ impl TsEsTreeBuilder {
   pub fn write_await_expr(&mut self, span: &Span, arg: NodeRef) -> NodeRef {
     let id = self.ctx.append_node(AstNode::AwaitExpression, span);
     self.ctx.write_ref(AstProp::Argument, &id, arg);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_meta_prop(&mut self, span: &Span, prop: NodeRef) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::MetaProperty, span);
+    self.ctx.write_ref(AstProp::Property, &id, prop);
     self.ctx.commit_node(id)
   }
 

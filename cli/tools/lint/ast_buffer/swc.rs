@@ -744,8 +744,9 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
 
       ctx.write_yield_expr(&node.span, node.delegate, arg)
     }
-    Expr::MetaProp(_node) => {
-      todo!()
+    Expr::MetaProp(node) => {
+      let prop = ctx.write_identifier(&node.span, "meta", false, None);
+      ctx.write_meta_prop(&node.span, prop)
     }
     Expr::Await(node) => {
       let arg = serialize_expr(ctx, node.arg.as_ref());
@@ -983,29 +984,6 @@ fn serialize_member_expr(
   ctx.write_member_expr(&node.span, optional, computed, obj, prop)
 }
 
-fn _serialize_class_member(
-  ctx: &mut TsEsTreeBuilder,
-  member: &ClassMember,
-) -> NodeRef {
-  match member {
-    ClassMember::Constructor(_constructor) => {
-      todo!()
-    }
-    ClassMember::Method(_method) => {
-      todo!()
-    }
-    ClassMember::PrivateMethod(_) => todo!(),
-    ClassMember::ClassProp(_) => todo!(),
-    ClassMember::PrivateProp(_) => todo!(),
-    ClassMember::TsIndexSignature(member) => {
-      serialize_ts_index_sig(ctx, member)
-    }
-    ClassMember::Empty(_) => unreachable!(),
-    ClassMember::StaticBlock(_) => todo!(),
-    ClassMember::AutoAccessor(_) => todo!(),
-  }
-}
-
 fn serialize_expr_or_spread(
   ctx: &mut TsEsTreeBuilder,
   arg: &ExprOrSpread,
@@ -1126,8 +1104,30 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
 
       ctx.write_var_decl(&node.span, node.declare, kind, children)
     }
-    Decl::Using(_) => {
-      todo!();
+    Decl::Using(node) => {
+      let kind = if node.is_await {
+        "await using"
+      } else {
+        "using"
+      };
+
+      let children = node
+        .decls
+        .iter()
+        .map(|decl| {
+          // TODO(@marvinhagemeister): Definite?
+
+          let ident = serialize_pat(ctx, &decl.name);
+          let init = decl
+            .init
+            .as_ref()
+            .map(|init| serialize_expr(ctx, init.as_ref()));
+
+          ctx.write_var_declarator(&decl.span, ident, init)
+        })
+        .collect::<Vec<_>>();
+
+      ctx.write_var_decl(&node.span, false, kind, children)
     }
     Decl::TsInterface(node) => {
       let ident_id = serialize_ident(ctx, &node.id);
