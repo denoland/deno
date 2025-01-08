@@ -5,7 +5,14 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { Mode, promises, read, write } from "node:fs";
+import {
+  Mode,
+  promises,
+  read,
+  write,
+  createReadStream,
+  ReadStream,
+} from "node:fs";
 import { core } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
@@ -16,6 +23,7 @@ import {
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { CreateReadStreamOptions } from "node:fs/promises";
 
 interface WriteResult {
   bytesWritten: number;
@@ -46,14 +54,14 @@ export class FileHandle extends EventEmitter {
     buffer: Uint8Array,
     offset?: number,
     length?: number,
-    position?: number | null,
+    position?: number | null
   ): Promise<ReadResult>;
   read(options?: ReadOptions): Promise<ReadResult>;
   read(
     bufferOrOpt: Uint8Array | ReadOptions,
     offset?: number,
     length?: number,
-    position?: number | null,
+    position?: number | null
   ): Promise<ReadResult> {
     if (bufferOrOpt instanceof Uint8Array) {
       return new Promise((resolve, reject) => {
@@ -66,7 +74,7 @@ export class FileHandle extends EventEmitter {
           (err, bytesRead, buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesRead });
-          },
+          }
         );
       });
     } else {
@@ -84,7 +92,7 @@ export class FileHandle extends EventEmitter {
   }
 
   readFile(
-    opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument,
+    opt?: TextOptionsArgument | BinaryOptionsArgument | FileOptionsArgument
   ): Promise<string | Buffer> {
     return promises.readFile(this, opt);
   }
@@ -93,14 +101,14 @@ export class FileHandle extends EventEmitter {
     buffer: Buffer,
     offset: number,
     length: number,
-    position: number,
+    position: number
   ): Promise<WriteResult>;
   write(str: string, position: number, encoding: string): Promise<WriteResult>;
   write(
     bufferOrStr: Uint8Array | string,
     offsetOrPosition: number,
     lengthOrEncoding: number | string,
-    position?: number,
+    position?: number
   ): Promise<WriteResult> {
     if (bufferOrStr instanceof Uint8Array) {
       const buffer = bufferOrStr;
@@ -117,7 +125,7 @@ export class FileHandle extends EventEmitter {
           (err, bytesWritten, buffer) => {
             if (err) reject(err);
             else resolve({ buffer, bytesWritten });
-          },
+          }
         );
       });
     } else {
@@ -153,6 +161,7 @@ export class FileHandle extends EventEmitter {
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
   }
+
   chmod(mode: Mode): Promise<void> {
     assertNotClosed(this, promises.chmod.name);
     return promises.chmod(this.#path, mode);
@@ -160,10 +169,16 @@ export class FileHandle extends EventEmitter {
 
   utimes(
     atime: number | string | Date,
-    mtime: number | string | Date,
+    mtime: number | string | Date
   ): Promise<void> {
     assertNotClosed(this, promises.utimes.name);
     return promises.utimes(this.#path, atime, mtime);
+  }
+
+  createReadStream(options?: CreateReadStreamOptions): ReadStream {
+    assertNotClosed(this, createReadStream.name);
+    const opts = options as Omit<CreateReadStreamOptions, "encoding">;
+    return createReadStream(this.#path, opts);
   }
 }
 

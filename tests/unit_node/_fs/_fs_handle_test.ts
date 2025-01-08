@@ -45,7 +45,7 @@ Deno.test("read specify opt", async function () {
   assertEquals(res.bytesRead, 5);
   assertEquals(
     new TextDecoder().decode(res.buffer.subarray(6) as Uint8Array),
-    "world",
+    "world"
   );
 
   const opt2 = {
@@ -58,7 +58,7 @@ Deno.test("read specify opt", async function () {
   assertEquals(res.bytesRead, 5);
   assertEquals(
     decoder.decode(res.buffer.subarray(0, 5) as Uint8Array),
-    "hello",
+    "hello"
   );
 
   await fileHandle.close();
@@ -134,7 +134,7 @@ Deno.test(
 
     assertEquals(res.bytesWritten, 11);
     assertEquals(decoder.decode(data), "hello world");
-  },
+  }
 );
 
 Deno.test(
@@ -154,7 +154,7 @@ Deno.test(
     await fileHandle.close();
 
     assertEquals(decoder.decode(data), "hello lorem ipsum");
-  },
+  }
 );
 
 Deno.test(
@@ -172,7 +172,7 @@ Deno.test(
     await fileHandle.close();
 
     assertEquals(decoder.decode(data), "hello");
-  },
+  }
 );
 
 Deno.test(
@@ -190,7 +190,7 @@ Deno.test(
     await fileHandle.close();
 
     assertEquals(decoder.decode(data), "");
-  },
+  }
 );
 
 Deno.test(
@@ -217,7 +217,7 @@ Deno.test(
     assertEquals(data[2], 0);
     assertEquals(data[3], 0);
     assertEquals(data[4], 0);
-  },
+  }
 );
 
 Deno.test(
@@ -236,7 +236,7 @@ Deno.test(
 
     assertEquals(decoder.decode(data), "");
     assertEquals(data.length, 0);
-  },
+  }
 );
 
 Deno.test({
@@ -258,8 +258,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "[node/fs filehandle.utimes] Change the file system timestamps of the file",
+  name: "[node/fs filehandle.utimes] Change the file system timestamps of the file",
   async fn() {
     const fileHandle = await fs.open(testData);
 
@@ -273,3 +272,36 @@ Deno.test({
     await fileHandle.close();
   },
 });
+
+Deno.test(
+  "[node/fs filehandle.createReadStream] Create a read stream",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.createReadStream();
+    const fileSize = (await fileHandle.stat()).size;
+
+    assertEquals(stream.bytesRead, 0);
+    assertEquals(stream.readable, true);
+
+    let bytesRead = 0;
+
+    stream.on("open", () => assertEquals(stream.bytesRead, 0));
+
+    stream.on("data", (data) => {
+      assertEquals(data instanceof Buffer, true);
+      assertEquals((data as Buffer).byteOffset % 8, 0);
+      bytesRead += data.length;
+      assertEquals(stream.bytesRead, bytesRead);
+    });
+
+    stream.on("end", () => {
+      assertEquals(stream.bytesRead, fileSize);
+      assertEquals(bytesRead, fileSize);
+    });
+
+    await new Promise((resolve) => {
+      stream.close(resolve);
+    });
+    await fileHandle.close();
+  }
+);
