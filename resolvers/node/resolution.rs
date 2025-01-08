@@ -316,7 +316,7 @@ impl<
       Ok(FileType::File) => Ok(resolved),
       _ => Err(
         ModuleNotFoundError {
-          specifier: resolved,
+          specifier: resolved.to_string(),
           maybe_referrer: maybe_referrer.map(ToOwned::to_owned),
           typ: "module",
         }
@@ -1453,7 +1453,9 @@ impl<
     } else {
       Err(
         ModuleNotFoundError {
-          specifier: url_from_file_path(&directory.join("index.js")).unwrap(),
+          specifier: url_from_file_path(&directory.join("index.js"))
+            .unwrap()
+            .to_string(),
           typ: "module",
           maybe_referrer: maybe_referrer.cloned(),
         }

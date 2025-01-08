@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
-use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::Context;
@@ -20,6 +19,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::errors::ModuleNotFoundError;
 use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
 use crate::IsBuiltInNodeModuleChecker;
@@ -319,7 +319,8 @@ impl<
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .file_extension_probe(parent.join(specifier), &referrer)
+          .map_err(AnyError::from)
           .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
           .map(Some);
       } else {
@@ -389,7 +390,8 @@ impl<
           return Ok(Some(url_from_file_path(&d.join("index.js").clean())?));
         }
         return self
-          .file_extension_probe(d, &referrer_path)
+          .file_extension_probe(d, &referrer)
+          .map_err(AnyError::from)
           .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
           .map(Some);
       } else if let Some(main) =
@@ -414,20 +416,27 @@ impl<
       } else {
         parent.join("node_modules").join(specifier)
       };
-      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
+      if let Ok(path) = self.file_extension_probe(path, &referrer) {
         return Ok(Some(url_from_file_path(&path)?));
       }
       last = parent;
     }
 
-    Err(not_found(specifier, &referrer_path))
+    Err(
+      ModuleNotFoundError {
+        specifier: specifier.to_string(),
+        typ: "module",
+        maybe_referrer: Some(referrer.clone()),
+      }
+      .into(),
+    )
   }
 
   fn file_extension_probe(
     &self,
     p: PathBuf,
-    referrer: &Path,
-  ) -> Result<PathBuf, AnyError> {
+    referrer_url: &Url,
+  ) -> Result<PathBuf, ModuleNotFoundError> {
     let p = p.clean();
     if self.sys.fs_exists_no_err(&p) {
       let file_name = p.file_name().unwrap();
@@ -456,7 +465,13 @@ impl<
         }
       }
     }
-    Err(not_found(&p.to_string_lossy(), referrer))
+    Err(ModuleNotFoundError {
+      specifier: deno_path_util::url_from_file_path(&p)
+        .map(|p| p.to_string())
+        .unwrap_or_else(|_| p.to_string_lossy().to_string()),
+      typ: "module",
+      maybe_referrer: Some(referrer_url.clone()),
+    })
   }
 }
 
@@ -615,15 +630,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   };
 
   Some((package_name, package_subpath))
-}
-
-fn not_found(path: &str, referrer: &Path) -> AnyError {
-  let msg = format!(
-    "[ERR_MODULE_NOT_FOUND] Cannot find module \"{}\" imported from \"{}\"",
-    path,
-    referrer.to_string_lossy()
-  );
-  std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
 }
 
 fn to_double_quote_string(text: &str) -> String {
