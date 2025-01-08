@@ -75,8 +75,9 @@ export function getEncoding(
     return null;
   }
 
-  const encoding =
-    typeof optOrCallback === "string" ? optOrCallback : optOrCallback.encoding;
+  const encoding = typeof optOrCallback === "string"
+    ? optOrCallback
+    : optOrCallback.encoding;
   if (!encoding) return null;
   return encoding;
 }
