@@ -1,19 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-pub mod bin_entries;
-pub mod lifecycle_scripts;
-
 use std::path::Path;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
 use deno_ast::ModuleSpecifier;
-use deno_error::JsErrorBox;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use node_resolver::errors::PackageFolderResolveError;
-
-use super::super::PackageCaching;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
@@ -47,9 +41,4 @@ pub trait NpmPackageFsResolver: Send + Sync {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error>;
-
-  async fn cache_packages<'a>(
-    &self,
-    caching: PackageCaching<'a>,
-  ) -> Result<(), JsErrorBox>;
 }
