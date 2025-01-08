@@ -58,6 +58,7 @@ pub enum BinEntriesError {
     #[inherit]
     source: std::io::Error,
   },
+  #[cfg(unix)]
   #[class(inherit)]
   #[error("Setting permissions on '{path}'")]
   Permissions {
@@ -75,6 +76,7 @@ pub enum BinEntriesError {
     #[inherit]
     source: Box<Self>,
   },
+  #[cfg(unix)]
   #[class(inherit)]
   #[error("Setting permissions on '{path}'")]
   RemoveBinSymlink {
