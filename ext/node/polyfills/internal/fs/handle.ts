@@ -14,6 +14,7 @@ import {
   ReadStream,
 } from "node:fs";
 import { core } from "ext:core/mod.js";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
