@@ -590,6 +590,9 @@ function readProperty(ctx, offset, parseNode) {
   } else if (kind === PropFlags.Number) {
     const v = readU32(buf, offset);
     return Number(getString(ctx.strTable, v));
+  } else if (kind === PropFlags.BigInt) {
+    const v = readU32(buf, offset);
+    return BigInt(getString(ctx.strTable, v));
   } else if (kind === PropFlags.Regex) {
     const v = readU32(buf, offset);
     return readRegex(ctx.strTable, v);
