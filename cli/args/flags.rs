@@ -98,6 +98,7 @@ pub struct BenchFlags {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
+  pub permit_no_files: bool,
   pub watch: Option<WatchFlags>,
 }
 
@@ -1724,6 +1725,12 @@ If you specify a directory instead of a file, the path is expanded to all contai
           .long("no-run")
           .help("Cache bench modules, but don't run benchmarks")
           .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("permit-no-files")
+          .long("permit-no-files")
+          .help("Don't return an error code if no bench files were found")
+          .action(ArgAction::SetTrue)
       )
       .arg(watch_arg(false))
       .arg(watch_exclude_arg())
@@ -4453,6 +4460,8 @@ fn bench_parse(
   flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
+  #[allow(clippy::print_stderr)]
+  let permit_no_files = matches.get_flag("permit-no-files");
 
   let ignore = match matches.remove_many::<String>("ignore") {
     Some(f) => f
@@ -4482,6 +4491,7 @@ fn bench_parse(
     filter,
     json,
     no_run,
+    permit_no_files,
     watch: watch_arg_parse(matches)?,
   });
 
@@ -10775,6 +10785,7 @@ mod tests {
             ignore: vec![],
           },
           watch: Default::default(),
+          permit_no_files: false,
         }),
         no_npm: true,
         no_remote: true,
@@ -10806,6 +10817,7 @@ mod tests {
             ignore: vec![],
           },
           watch: Some(Default::default()),
+          permit_no_files: false
         }),
         permissions: PermissionFlags {
           no_prompt: true,
@@ -10817,6 +10829,32 @@ mod tests {
     );
   }
 
+  #[test]
+  fn bench_no_files() {
+    let r = flags_from_vec(svec!["deno", "bench", "--permit-no-files"]);
+    assert_eq!(
+      r.unwrap(),
+      Flags {
+        subcommand: DenoSubcommand::Bench(BenchFlags {
+          filter: None,
+          json: false,
+          no_run: false,
+          files: FileFlags {
+            include: vec![],
+            ignore: vec![],
+          },
+          watch: None,
+          permit_no_files: true
+        }),
+        permissions: PermissionFlags {
+          no_prompt: true,
+          ..Default::default()
+        },
+        type_check_mode: TypeCheckMode::Local,
+        ..Flags::default()
+      }
+    );
+  }
   #[test]
   fn run_with_check() {
     let r = flags_from_vec(svec!["deno", "run", "--check", "script.ts",]);

@@ -222,6 +222,7 @@ pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
+  pub permit_no_files: bool,
 }
 
 impl WorkspaceBenchOptions {
@@ -230,6 +231,7 @@ impl WorkspaceBenchOptions {
       filter: bench_flags.filter.clone(),
       json: bench_flags.json,
       no_run: bench_flags.no_run,
+      permit_no_files: bench_flags.permit_no_files,
     }
   }
 }
