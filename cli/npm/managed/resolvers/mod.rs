@@ -16,7 +16,6 @@ use super::resolution::NpmResolution;
 use crate::npm::CliNpmCache;
 use crate::sys::CliSys;
 
-#[allow(clippy::too_many_arguments)]
 pub fn create_npm_fs_resolver(
   npm_cache: Arc<CliNpmCache>,
   resolution: Arc<NpmResolution>,
