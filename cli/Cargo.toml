@@ -74,7 +74,7 @@ deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "=0.161.3", features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph = { version = "=0.86.8" }
+deno_graph = { version = "=0.86.9" }
 deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
