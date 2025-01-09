@@ -76,7 +76,7 @@ impl Debug for ConditionsFromResolutionMode {
 }
 
 impl ConditionsFromResolutionMode {
-  pub fn new(func: dyn Fn(ResolutionMode) -> &'static [&'static str]) -> Self {
+  pub fn new(func: impl Fn(ResolutionMode) -> &'static [&'static str]) -> Self {
     Self {
       func: MaybeArc::new(func),
     }
