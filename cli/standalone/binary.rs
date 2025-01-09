@@ -794,7 +794,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permissions_options(),
+      permissions: self.cli_options.permissions_options()?,
       v8_flags: self.cli_options.v8_flags().clone(),
       unsafely_ignore_certificate_errors: self
         .cli_options

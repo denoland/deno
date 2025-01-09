@@ -1321,6 +1321,7 @@ dependencies = [
  "once_cell",
  "open",
  "p256",
+ "paste",
  "pathdiff",
  "percent-encoding",
  "phf",
@@ -1498,8 +1499,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.43.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c4c11bd51ef6738cabfc3c53f16c209a0b8615cb1e4e5bf3b14e3b5deebfe21"
+source = "git+https://github.com/nathanwhit/deno_config?branch=permission-sets#14b1659a30cecc042a6bdb4a2d76bdca0fb7897d"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -5553,9 +5553,9 @@ dependencies = [
 
 [[package]]
 name = "paste"
-version = "1.0.14"
+version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "path-clean"

@@ -646,6 +646,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub permission_set: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3398,6 +3399,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
                                              <p(245)>--deny-run  |  --deny-run="whoami,ps"</>
       <g>--deny-ffi[=<<PATH>...]</>               (Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files.
                                              <p(245)>--deny-ffi  |  --deny-ffi="./libfoo.so"</>
+      <g>-P, --permission-set[=<<NAME>]</>
       <g>DENO_TRACE_PERMISSIONS</>               Environmental variable to enable stack traces in permission prompts.
                                              <p(245)>DENO_TRACE_PERMISSIONS=1 deno run main.ts</>
 "#))
@@ -3726,6 +3728,21 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           if requires != "global" {
             arg = arg.requires(requires)
           }
+        }
+        arg
+      }
+    )
+    .arg(
+      {
+        let mut arg = Arg::new("permission-set")
+          .long("permission-set")
+          .action(ArgAction::Set)
+          .num_args(0..=1)
+          .require_equals(true)
+          .default_missing_value("default")
+          .short('P');
+        if let Some(requires) = requires {
+          arg = arg.requires(requires);
         }
         arg
       }
@@ -5504,6 +5521,9 @@ fn permission_args_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
+  if let Some(set) = matches.remove_one::<String>("permission-set") {
+    flags.permission_set = Some(set);
+  }
   if let Some(read_wl) = matches.remove_many::<String>("allow-read") {
     let read_wl = read_wl
       .flat_map(flat_escape_split_commas)
