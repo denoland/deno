@@ -81,6 +81,7 @@ impl LintPluginContainer {
     let specifier = self.specifier.clone().unwrap();
     let start_pos = source_text_info.start_pos();
     let source_range = SourceRange::new(start_pos + start, start_pos + end);
+    // TODO(bartlomieju): validate this is a correct range
     let range = LintDiagnosticRange {
       range: source_range,
       description: None,
@@ -93,6 +94,7 @@ impl LintPluginContainer {
       fixes.push(LintFix {
         changes: vec![LintFixChange {
           new_text: fix.text.into(),
+          // TODO(bartlomieju): validate this is a correct range
           range: SourceRange::new(
             start_pos + fix.range.0,
             start_pos + fix.range.1,

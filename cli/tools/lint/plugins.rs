@@ -371,6 +371,7 @@ impl PluginHost {
       &self.run_plugins_for_file_fn,
       &[file_name_v8, ast_uint8arr_v8],
     );
+    // TODO: this loses `cause` property on the error, fix it
     let result = self
       .worker
       .js_runtime
