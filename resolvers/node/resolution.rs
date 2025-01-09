@@ -54,12 +54,25 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-pub fn deno_conditions_from_resolution_mode(
+fn deno_conditions_from_resolution_mode(
   resolution_mode: ResolutionMode,
 ) -> &'static [&'static str] {
   match resolution_mode {
     ResolutionMode::Import => DEFAULT_CONDITIONS,
     ResolutionMode::Require => REQUIRE_CONDITIONS,
+  }
+}
+
+#[derive(Debug)]
+pub struct ConditionsFromResolutionMode {
+  pub func: &'static dyn Fn(ResolutionMode) -> &'static [&'static str],
+}
+
+impl ConditionsFromResolutionMode {
+  pub fn new(
+    func: &'static dyn Fn(ResolutionMode) -> &'static [&'static str],
+  ) -> Self {
+    Self { func }
   }
 }
 
@@ -112,7 +125,6 @@ pub type NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
 
 #[derive(Debug)]
 pub struct NodeResolver<
-  'a,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
@@ -121,8 +133,7 @@ pub struct NodeResolver<
   npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: TSys,
-  conditions_from_resolution_mode:
-    &'a dyn Fn(ResolutionMode) -> &'static [&'static str],
+  conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
 
 impl<
@@ -136,9 +147,7 @@ impl<
     npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: TSys,
-    conditions_from_resolution_mode: &dyn Fn(
-      ResolutionMode,
-    ) -> &'static [&'static str],
+    conditions_from_resolution_mode: ConditionsFromResolutionMode,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -208,7 +217,7 @@ impl<
       specifier,
       referrer,
       resolution_mode,
-      (self.conditions_from_resolution_mode)(resolution_mode),
+      (self.conditions_from_resolution_mode.func)(resolution_mode),
       resolution_kind,
     )?;
 
@@ -350,7 +359,7 @@ impl<
       &package_subpath,
       maybe_referrer,
       resolution_mode,
-      (self.conditions_from_resolution_mode)(resolution_mode),
+      (self.conditions_from_resolution_mode.func)(resolution_mode),
       resolution_kind,
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -481,7 +490,7 @@ impl<
         /* sub path */ ".",
         maybe_referrer,
         resolution_mode,
-        (self.conditions_from_resolution_mode)(resolution_mode),
+        (self.conditions_from_resolution_mode.func)(resolution_mode),
         NodeResolutionKind::Types,
       );
       if let Ok(resolution) = resolution_result {

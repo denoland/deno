@@ -9,7 +9,7 @@ mod npm;
 mod package_json;
 mod path;
 mod resolution;
-pub use resolution::deno_conditions_from_resolution_mode;
+
 mod sync;
 
 pub use deno_package_json::PackageJson;
@@ -21,8 +21,10 @@ pub use package_json::PackageJsonResolver;
 pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
+pub use resolution::deno_conditions_from_resolution_mode;
 pub use resolution::parse_npm_pkg_name;
 pub use resolution::resolve_specifier_into_node_modules;
+pub use resolution::ConditionsFromResolutionMode;
 pub use resolution::IsBuiltInNodeModuleChecker;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionKind;
