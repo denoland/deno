@@ -335,9 +335,61 @@ Deno.test("Plugin - Program", () => {
   });
 });
 
+Deno.test("Plugin - ImportDeclaration", async (t) => {
+  await testSnapshot(t, 'import "foo";', "ImportDeclaration");
+  await testSnapshot(t, 'import foo from "foo";', "ImportDeclaration");
+  await testSnapshot(t, 'import * as foo from "foo";', "ImportDeclaration");
+  await testSnapshot(
+    t,
+    'import { foo, bar as baz } from "foo";',
+    "ImportDeclaration",
+  );
+});
+
+Deno.test("Plugin - ExportNamedDeclaration", async (t) => {
+  await testSnapshot(t, 'export foo from "foo";', "ExportNamedDeclaration");
+  await testSnapshot(
+    t,
+    'export { foo, bar as baz } from "foo";',
+    "ExportNamedDeclaration",
+  );
+});
+
+Deno.test.only("Plugin - ExportDefaultDeclaration", async (t) => {
+  await testSnapshot(
+    t,
+    "export default function foo() {}",
+    "ExportDefaultDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "export default function () {}",
+    "ExportDefaultDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "export default class Foo {}",
+    "ExportDefaultDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "export default class {}",
+    "ExportDefaultDeclaration",
+  );
+  await testSnapshot(t, "export default bar;", "ExportDefaultDeclaration");
+  await testSnapshot(
+    t,
+    "export default interface Foo {};",
+    "ExportDefaultDeclaration",
+  );
+});
+
+Deno.test("Plugin - ExportAllDeclaration", async (t) => {
+  await testSnapshot(t, 'export * as foo from "foo";', "ExportAllDeclaration");
+});
+
 Deno.test("Plugin - BlockStatement", async (t) => {
-  const node = testLintNode("{ foo; }", "BlockStatement");
-  await assertSnapshot(t, node[0]);
+  await testSnapshot(t, "{ foo; }", "BlockStatement");
 });
 
 Deno.test("Plugin - BreakStatement", async (t) => {
@@ -636,9 +688,10 @@ Deno.test("Plugin - TS Interface", async (t) => {
   await testSnapshot(t, "interface A {}", "TSInterface");
   await testSnapshot(t, "interface A<T> {}", "TSInterface");
   await testSnapshot(t, "interface A extends Foo<T>, Bar<T> {}", "TSInterface");
+  await testSnapshot(t, "interface A { foo: any, bar?: any }", "TSInterface");
   await testSnapshot(
     t,
-    "interface A { foo: any, bar?: any, [key: string]: any }",
+    "interface A { readonly [key: string]: any }",
     "TSInterface",
   );
 

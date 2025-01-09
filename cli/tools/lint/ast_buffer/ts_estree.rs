@@ -35,6 +35,7 @@ pub enum AstNode {
   FunctionDeclaration,
   TSEnumDeclaration,
   TSInterface,
+  TSInterfaceDeclaration,
   TsModule,
   TSTypeAliasDeclaration,
   Using,
@@ -283,6 +284,7 @@ pub enum AstProp {
   Override,
   Param,
   Parameter,
+  Parameters,
   ParameterName,
   Params,
   Pattern,
@@ -406,6 +408,7 @@ impl Display for AstProp {
       AstProp::Override => "override",
       AstProp::Param => "param",
       AstProp::Parameter => "parameter",
+      AstProp::Parameters => "parameters",
       AstProp::ParameterName => "parameterName",
       AstProp::Params => "params",
       AstProp::Pattern => "pattern",
@@ -513,16 +516,14 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_only: bool,
     local: NodeRef,
-    imported: Option<NodeRef>,
+    imported: NodeRef,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ImportSpecifier, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ImportKind, kind);
 
-    let actual = imported.unwrap_or(local.clone());
-
-    self.ctx.write_ref(AstProp::Imported, &id, actual);
+    self.ctx.write_ref(AstProp::Imported, &id, imported);
     self.ctx.write_ref(AstProp::Local, &id, local);
 
     self.ctx.commit_node(id)
@@ -551,8 +552,37 @@ impl TsEsTreeBuilder {
   }
 
   pub fn write_export_decl(&mut self, span: &Span, decl: NodeRef) -> NodeRef {
-    // TSEstree mixes these types :/
     let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
+    self.ctx.write_ref(AstProp::Declaration, &id, decl);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_export_all_decl(
+    &mut self,
+    span: &Span,
+    is_type_only: bool,
+    exported: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::ExportAllDeclaration, span);
+
+    let value = if is_type_only { "type" } else { "value" };
+    self.ctx.write_str(AstProp::ExportKind, value);
+    self.ctx.write_ref(AstProp::Exported, &id, exported);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_export_default_decl(
+    &mut self,
+    span: &Span,
+    is_type_only: bool,
+    decl: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::ExportDefaultDeclaration, span);
+
+    let value = if is_type_only { "type" } else { "value" };
+    self.ctx.write_str(AstProp::ExportKind, value);
     self.ctx.write_ref(AstProp::Declaration, &id, decl);
     self.ctx.commit_node(id)
   }
@@ -626,7 +656,9 @@ impl TsEsTreeBuilder {
     is_declare: bool,
     is_async: bool,
     is_generator: bool,
-    ident: NodeRef,
+    // Ident is required in most cases, but optional as default export
+    // declaration. TsEstree is weird...
+    ident: Option<NodeRef>,
     type_param: Option<NodeRef>,
     return_type: Option<NodeRef>,
     body: Option<NodeRef>,
@@ -637,7 +669,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_bool(AstProp::Declare, is_declare);
     self.ctx.write_bool(AstProp::Async, is_async);
     self.ctx.write_bool(AstProp::Generator, is_generator);
-    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
     self
       .ctx
       .write_maybe_ref(AstProp::TypeParameters, &id, type_param);
@@ -661,7 +693,9 @@ impl TsEsTreeBuilder {
     span: &Span,
     is_declare: bool,
     is_abstract: bool,
-    ident: NodeRef,
+    // Ident is required in most cases, but optional as default export
+    // declaration. TsEstree is weird...
+    ident: Option<NodeRef>,
     super_class: Option<NodeRef>,
     implements: Vec<NodeRef>,
     body: NodeRef,
@@ -669,7 +703,7 @@ impl TsEsTreeBuilder {
     let id = self.ctx.append_node(AstNode::ClassDeclaration, span);
     self.ctx.write_bool(AstProp::Declare, is_declare);
     self.ctx.write_bool(AstProp::Abstract, is_abstract);
-    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
     self
       .ctx
       .write_maybe_ref(AstProp::SuperClass, &id, super_class);
@@ -2045,6 +2079,28 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  pub fn write_ts_interface_decl(
+    &mut self,
+    span: &Span,
+    declare: bool,
+    ident: NodeRef,
+    type_param: Option<NodeRef>,
+    extends: Vec<NodeRef>,
+    body: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSInterfaceDeclaration, span);
+
+    self.ctx.write_bool(AstProp::Declare, declare);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Extends, &id, type_param);
+    self
+      .ctx
+      .write_ref_vec(AstProp::TypeParameters, &id, extends);
+    self.ctx.write_ref(AstProp::Body, &id, body);
+
+    self.ctx.commit_node(id)
+  }
+
   pub fn write_ts_interface_body(
     &mut self,
     span: &Span,
@@ -2058,7 +2114,7 @@ impl TsEsTreeBuilder {
   pub fn write_ts_construct_sig(
     &mut self,
     span: &Span,
-    type_params: Vec<NodeRef>,
+    type_params: Option<NodeRef>,
     params: Vec<NodeRef>,
     return_type: NodeRef,
   ) -> NodeRef {
@@ -2067,7 +2123,7 @@ impl TsEsTreeBuilder {
       .append_node(AstNode::TSConstructSignatureDeclaration, span);
     self
       .ctx
-      .write_ref_vec(AstProp::TypeParameters, &id, type_params);
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self.ctx.write_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.commit_node(id)
@@ -2125,6 +2181,24 @@ impl TsEsTreeBuilder {
     self
       .ctx
       .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_index_sig(
+    &mut self,
+    span: &Span,
+    is_readonly: bool,
+    params: Vec<NodeRef>,
+    type_ann: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSIndexSignature, span);
+
+    self.ctx.write_bool(AstProp::Readonly, is_readonly);
+    self.ctx.write_ref_vec(AstProp::Parameters, &id, params);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
   }
