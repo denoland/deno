@@ -79,14 +79,16 @@ impl Debug for ConditionsFromResolutionMode {
 impl ConditionsFromResolutionMode {
   pub fn new(
     func: Option<
-      impl Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
+      Box<
+        dyn Fn(ResolutionMode) -> &'static [&'static str]
+          + Send
+          + Sync
+          + 'static,
+      >,
     >,
   ) -> Self {
     Self {
-      func: match func {
-        Some(func) => Box::new(func),
-        None => Box::new(deno_conditions_from_resolution_mode),
-      },
+      func: func.unwrap_or(Box::new(deno_conditions_from_resolution_mode)),
     }
   }
 }
