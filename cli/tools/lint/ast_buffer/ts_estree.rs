@@ -5,6 +5,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 
 use deno_ast::swc::common::Span;
+use deno_ast::view::TruePlusMinus;
 
 use super::buffer::AstBufSerializer;
 use super::buffer::NodeRef;
@@ -149,6 +150,7 @@ pub enum AstNode {
   TSTypeReference,
   TSThisType,
   TSLiteralType,
+  TSTypeLiteral,
   TSInferType,
   TSConditionalType,
   TSUnionType,
@@ -174,6 +176,8 @@ pub enum AstNode {
   TSEmptyBodyFunctionExpression,
   TSParameterProperty,
   TSConstructSignatureDeclaration,
+  TSQualifiedName,
+  TSOptionalType,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -1748,12 +1752,16 @@ impl TsEsTreeBuilder {
     self_closing: bool,
     name: NodeRef,
     attrs: Vec<NodeRef>,
+    type_args: Option<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::JSXOpeningElement, span);
 
     self.ctx.write_bool(AstProp::SelfClosing, self_closing);
     self.ctx.write_ref(AstProp::Name, &id, name);
     self.ctx.write_ref_vec(AstProp::Attributes, &id, attrs);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
 
     self.ctx.commit_node(id)
   }
@@ -2269,6 +2277,35 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  pub fn write_ts_method_sig(
+    &mut self,
+    span: &Span,
+    is_computed: bool,
+    is_optional: bool,
+    key: NodeRef,
+    type_params: Option<NodeRef>,
+    params: Vec<NodeRef>,
+    return_type: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSMethodSignature, span);
+
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Readonly, false);
+    self.ctx.write_bool(AstProp::Static, false);
+    self.ctx.write_str(AstProp::Kind, "method");
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+
+    self.ctx.commit_node(id)
+  }
+
   pub fn write_ts_interface_heritage(
     &mut self,
     span: &Span,
@@ -2417,12 +2454,16 @@ impl TsEsTreeBuilder {
   pub fn write_ts_mapped_type(
     &mut self,
     span: &Span,
+    readonly: Option<TruePlusMinus>,
+    optional: Option<TruePlusMinus>,
     name: Option<NodeRef>,
     type_ann: Option<NodeRef>,
     type_param: NodeRef,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSMappedType, span);
 
+    self.write_plus_minus_true(AstProp::Readonly, readonly);
+    self.write_plus_minus_true(AstProp::Optional, optional);
     self.ctx.write_maybe_ref(AstProp::NameType, &id, name);
     self
       .ctx
@@ -2435,6 +2476,26 @@ impl TsEsTreeBuilder {
   pub fn write_ts_lit_type(&mut self, span: &Span, lit: NodeRef) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSLiteralType, span);
     self.ctx.write_ref(AstProp::Literal, &id, lit);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_type_lit(
+    &mut self,
+    span: &Span,
+    members: Vec<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSTypeLiteral, span);
+    self.ctx.write_ref_vec(AstProp::Members, &id, members);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_optional_type(
+    &mut self,
+    span: &Span,
+    type_ann: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSOptionalType, span);
+    self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.commit_node(id)
   }
 
@@ -2608,11 +2669,38 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  pub fn write_ts_qualified_name(
+    &mut self,
+    span: &Span,
+    left: NodeRef,
+    right: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSQualifiedName, span);
+
+    self.ctx.write_ref(AstProp::Left, &id, left);
+    self.ctx.write_ref(AstProp::Right, &id, right);
+
+    self.ctx.commit_node(id)
+  }
+
   fn write_accessibility(&mut self, accessibility: Option<String>) {
     if let Some(value) = accessibility {
       self.ctx.write_str(AstProp::Accessibility, &value);
     } else {
       self.ctx.write_undefined(AstProp::Accessibility);
+    }
+  }
+
+  fn write_plus_minus_true(
+    &mut self,
+    prop: AstProp,
+    value: Option<TruePlusMinus>,
+  ) {
+    match value {
+      Some(TruePlusMinus::Plus) => self.ctx.write_str(prop, "+"),
+      Some(TruePlusMinus::Minus) => self.ctx.write_str(prop, "-"),
+      Some(TruePlusMinus::True) => self.ctx.write_bool(prop, true),
+      _ => self.ctx.write_undefined(prop),
     }
   }
 }

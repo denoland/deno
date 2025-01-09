@@ -745,7 +745,7 @@ export function compileSelector(selector) {
         fn = matchNthChild(node, fn);
         break;
       case PSEUDO_HAS:
-        // FIXME
+        // TODO(@marvinhagemeister)
         // fn = matchIs(part, fn);
         throw new Error("TODO: :has");
       case PSEUDO_NOT:

@@ -721,6 +721,24 @@ Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "/foo/g", "Literal");
 });
 
+Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
+  await testSnapshot(t, "<div />", "JSXElement");
+  await testSnapshot(t, "<div></div>", "JSXElement");
+  await testSnapshot(t, "<div a></div>", "JSXElement");
+  await testSnapshot(t, '<div a="b" />', "JSXElement");
+  await testSnapshot(t, "<div a={2} />", "JSXElement");
+  await testSnapshot(t, "<div>foo{2}</div>", "JSXElement");
+  await testSnapshot(t, "<a.b />", "JSXElement");
+  await testSnapshot(t, "<div a:b={2} />", "JSXElement");
+  await testSnapshot(t, "<Foo />", "JSXElement");
+  await testSnapshot(t, "<Foo<T> />", "JSXElement");
+});
+
+Deno.test("Plugin - JSXFragment + JSXOpeningFragment + JSXClosingFragment", async (t) => {
+  await testSnapshot(t, "<></>", "JSXFragment");
+  await testSnapshot(t, "<>foo{2}</>", "JSXFragment");
+});
+
 Deno.test("Plugin - TSAsExpression", async (t) => {
   await testSnapshot(t, "a as any", "TSAsExpression");
   await testSnapshot(t, '"foo" as const', "TSAsExpression");
@@ -755,6 +773,12 @@ Deno.test("Plugin - TSInterface", async (t) => {
   await testSnapshot(t, "interface A { a: new <T>(a: T) => T }", "TSInterface");
   await testSnapshot(t, "interface A { get a(): string }", "TSInterface");
   await testSnapshot(t, "interface A { set a(v: string) }", "TSInterface");
+
+  await testSnapshot(
+    t,
+    "interface A { a<T>(arg?: any, ...args: any[]): any",
+    "TSInterface",
+  );
 });
 
 Deno.test("Plugin - TSSatisfiesExpression", async (t) => {
@@ -786,4 +810,120 @@ Deno.test("Plugin - TSModuleDeclaration", async (t) => {
     "declare module A { export function A(): void }",
     "TSModuleDeclaration",
   );
+});
+
+Deno.test("Plugin - TSModuleDeclaration + TSModuleBlock", async (t) => {
+  await testSnapshot(t, "module A {}", "TSModuleDeclaration");
+  await testSnapshot(
+    t,
+    "namespace A { namespace B {} }",
+    "TSModuleDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSQualifiedName", async (t) => {
+  await testSnapshot(t, "type A = a.b;", "TSQualifiedName");
+  await testSnapshot(
+    t,
+    "declare module A { export function A(): void }",
+    "TSQualifiedName",
+  );
+});
+
+Deno.test("Plugin - TSTypeLiteral", async (t) => {
+  await testSnapshot(t, "type A = { a: 1 };", "TSTypeLiteral");
+});
+
+Deno.test("Plugin - TSOptionalType", async (t) => {
+  await testSnapshot(t, "type A = [number?]", "TSOptionalType");
+});
+
+Deno.test("Plugin - TSRestType", async (t) => {
+  await testSnapshot(t, "type A = [...number[]]", "TSRestType");
+});
+
+Deno.test("Plugin - TSConditionalType", async (t) => {
+  await testSnapshot(
+    t,
+    "type A = B extends C ? number : string;",
+    "TSConditionalType",
+  );
+});
+
+Deno.test("Plugin - TSInferType", async (t) => {
+  await testSnapshot(
+    t,
+    "type A<T> = T extends Array<infer Item> ? Item : T;",
+    "TSInferType",
+  );
+});
+
+Deno.test("Plugin - TSTypeOperator", async (t) => {
+  await testSnapshot(t, "type A = keyof B", "TSTypeOperator");
+  await testSnapshot(t, "declare const sym1: unique symbol;", "TSTypeOperator");
+  await testSnapshot(t, "type A = readonly []", "TSTypeOperator");
+});
+
+Deno.test("Plugin - TSMappedType", async (t) => {
+  await testSnapshot(
+    t,
+    "type A<T> = { [P in keyof T]: boolean; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { readonly [P in keyof T]: []; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { -readonly [P in keyof T]: []; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { +readonly [P in keyof T]: []; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { [P in keyof T]?: boolean; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { [P in keyof T]-?: boolean; };",
+    "TSMappedType",
+  );
+  await testSnapshot(
+    t,
+    "type A<T> = { [P in keyof T]+?: boolean; };",
+    "TSMappedType",
+  );
+});
+
+Deno.test("Plugin - TSLiteralType", async (t) => {
+  await testSnapshot(t, "type A = true", "TSLiteralType");
+  await testSnapshot(t, "type A = false", "TSLiteralType");
+  await testSnapshot(t, "type A = 1", "TSLiteralType");
+  await testSnapshot(t, "type A = 'foo''", "TSLiteralType");
+});
+
+Deno.test("Plugin - TSTemplateLiteralType", async (t) => {
+  await testSnapshot(
+    t,
+    "type A<B extends string> = `a ${B}`",
+    "TSTemplateLiteralType",
+  );
+});
+
+Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
+  await testSnapshot(t, "type A = [number]", "TSTupleType");
+  await testSnapshot(t, "type A = [x: number]", "TSTupleType");
+  await testSnapshot(t, "type A = [x: number]", "TSTupleType");
+  await testSnapshot(t, "type A = [...x: number[]]", "TSTupleType");
+});
+
+Deno.test("Plugin - TSTypeQuery", async (t) => {
+  await testSnapshot(t, "type A = typeof B", "TSTupleType");
 });
