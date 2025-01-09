@@ -45,16 +45,21 @@ impl From<PermissionState> for PermissionStatus {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionError {
+  #[class(reference)]
   #[error("No such permission name: {0}")]
   InvalidPermissionName(String),
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] ::deno_permissions::PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
   NetDescriptorParse(#[from] ::deno_permissions::NetDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   SysDescriptorParse(#[from] ::deno_permissions::SysDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   RunDescriptorParse(#[from] ::deno_permissions::RunDescriptorParseError),
 }

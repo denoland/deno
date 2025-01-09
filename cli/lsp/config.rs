@@ -41,6 +41,7 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
@@ -853,7 +854,8 @@ impl Settings {
       Some(false)
     } else if let Some(enable_paths) = &enable_paths {
       for enable_path in enable_paths {
-        if path.starts_with(enable_path) {
+        // Also enable if the checked path is a dir containing an enabled path.
+        if path.starts_with(enable_path) || enable_path.starts_with(&path) {
           return Some(true);
         }
       }
@@ -1574,7 +1576,7 @@ impl ConfigData {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| Ok(std::fs::read_to_string(path)?),
+        |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
       )
       .inspect_err(|err| {
         lsp_warn!(

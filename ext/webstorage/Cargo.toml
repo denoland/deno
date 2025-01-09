@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 deno_web.workspace = true
 rusqlite.workspace = true
 thiserror.workspace = true

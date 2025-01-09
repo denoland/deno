@@ -26,6 +26,7 @@ use deno_ast::SourceMapOption;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::ConfigFileError;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
@@ -55,6 +56,7 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 pub use deno_json::check_warn_tsconfig;
 use deno_lint::linter::LintConfig as DenoLintConfig;
@@ -604,7 +606,8 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, deno_error::JsError)]
+#[class(generic)]
 pub enum RootCertStoreLoadError {
   #[error(
     "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"
@@ -1104,7 +1107,7 @@ impl CliOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| Ok(std::fs::read_to_string(path)?),
+      |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
     )?)
   }
 
@@ -1246,11 +1249,14 @@ impl CliOptions {
 
   pub fn node_modules_dir(
     &self,
-  ) -> Result<Option<NodeModulesDirMode>, AnyError> {
+  ) -> Result<
+    Option<NodeModulesDirMode>,
+    deno_config::deno_json::NodeModulesDirParseError,
+  > {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }
-    self.workspace().node_modules_dir().map_err(Into::into)
+    self.workspace().node_modules_dir()
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1260,7 +1266,7 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigForEmit, AnyError> {
+  ) -> Result<TsConfigForEmit, ConfigFileError> {
     self.workspace().resolve_ts_config_for_emit(config_type)
   }
 
@@ -1289,7 +1295,7 @@ impl CliOptions {
 
   pub fn to_compiler_option_types(
     &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
+  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
     self
       .workspace()
       .to_compiler_option_types()

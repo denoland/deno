@@ -14,11 +14,9 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::custom_error;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
+use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::Future;
 use deno_core::parking_lot::Mutex;
@@ -31,6 +29,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::SourceCodeCacheInfo;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_graph::GraphKind;
 use deno_graph::JsModule;
 use deno_graph::JsonModule;
@@ -59,7 +59,6 @@ use crate::cache::CodeCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::emit::Emitter;
-use crate::errors::get_module_error_class;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
@@ -79,12 +78,28 @@ use crate::resolver::NotSupportedKindInNpmError;
 use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
 use crate::tools::check;
+use crate::tools::check::CheckError;
 use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
 use crate::worker::CreateModuleLoaderResult;
 use crate::worker::ModuleLoaderFactory;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum PrepareModuleLoadError {
+  #[class(inherit)]
+  #[error(transparent)]
+  BuildGraphWithNpmResolution(
+    #[from] crate::graph_util::BuildGraphWithNpmResolutionError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Check(#[from] CheckError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
 
 pub struct ModuleLoadPreparer {
   options: Arc<CliOptions>,
@@ -125,7 +140,7 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), PrepareModuleLoadError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
@@ -206,7 +221,7 @@ impl ModuleLoadPreparer {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_roots_valid(graph, roots)
   }
 }
@@ -423,7 +438,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
     requested_module_type: RequestedModuleType,
-  ) -> Result<ModuleSource, AnyError> {
+  ) -> Result<ModuleSource, ModuleLoaderError> {
     let code_source = self.load_code_source(specifier, maybe_referrer).await?;
     let code = if self.shared.is_inspecting
       || code_source.media_type == MediaType::Wasm
@@ -446,7 +461,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     if module_type == ModuleType::Json
       && requested_module_type != RequestedModuleType::Json
     {
-      return Err(generic_error("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement."));
+      return Err(JsErrorBox::generic("Attempted to load JSON module without specifying \"type\": \"json\" attribute in the import statement.").into());
     }
 
     let code_cache = if module_type == ModuleType::JavaScript {
@@ -507,7 +522,7 @@ impl<TGraphContainer: ModuleGraphContainer>
   fn resolve_referrer(
     &self,
     referrer: &str,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let referrer = if referrer.is_empty() && self.shared.is_repl {
       // FIXME(bartlomieju): this is a hacky way to provide compatibility with REPL
       // and `Deno.core.evalContext` API. Ideally we should always have a referrer filled
@@ -533,7 +548,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     raw_specifier: &str,
     referrer: &ModuleSpecifier,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let graph = self.graph_container.graph();
     let resolution = match graph.get(referrer) {
       Some(Module::Js(module)) => module
@@ -547,19 +562,25 @@ impl<TGraphContainer: ModuleGraphContainer>
     let specifier = match resolution {
       Resolution::Ok(resolved) => Cow::Borrowed(&resolved.specifier),
       Resolution::Err(err) => {
-        return Err(custom_error(
-          "TypeError",
-          format!("{}\n", err.to_string_with_range()),
-        ));
+        return Err(
+          JsErrorBox::type_error(format!("{}\n", err.to_string_with_range()))
+            .into(),
+        );
       }
-      Resolution::None => Cow::Owned(self.shared.resolver.resolve(
-        raw_specifier,
-        referrer,
-        deno_graph::Position::zeroed(),
-        // if we're here, that means it's resolving a dynamic import
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )?),
+      Resolution::None => Cow::Owned(
+        self
+          .shared
+          .resolver
+          .resolve(
+            raw_specifier,
+            referrer,
+            deno_graph::Position::zeroed(),
+            // if we're here, that means it's resolving a dynamic import
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
+          )
+          .map_err(JsErrorBox::from_err)?,
+      ),
     };
 
     if self.shared.is_repl {
@@ -574,7 +595,7 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(AnyError::from);
+          .map_err(|e| JsErrorBox::from_err(e).into());
       }
     }
 
@@ -585,7 +606,8 @@ impl<TGraphContainer: ModuleGraphContainer>
           .npm_resolver
           .as_managed()
           .unwrap() // byonm won't create a Module::Npm
-          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())?;
+          .resolve_pkg_folder_from_deno_module(module.nv_reference.nv())
+          .map_err(JsErrorBox::from_err)?;
         self
           .shared
           .node_resolver
@@ -701,7 +723,7 @@ impl<TGraphContainer: ModuleGraphContainer>
     &self,
     graph: &'graph ModuleGraph,
     specifier: &ModuleSpecifier,
-  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, AnyError> {
+  ) -> Result<Option<CodeOrDeferredEmit<'graph>>, JsErrorBox> {
     if specifier.scheme() == "node" {
       // Node built-in modules should be handled internally.
       unreachable!("Deno bug. {} was misconfigured internally.", specifier);
@@ -710,8 +732,8 @@ impl<TGraphContainer: ModuleGraphContainer>
     let maybe_module = match graph.try_get(specifier) {
       Ok(module) => module,
       Err(err) => {
-        return Err(custom_error(
-          get_module_error_class(err),
+        return Err(JsErrorBox::new(
+          err.get_class(),
           enhance_graph_error(
             &self.shared.sys,
             &ModuleGraphError::ModuleError(err.clone()),
@@ -739,11 +761,12 @@ impl<TGraphContainer: ModuleGraphContainer>
         is_script,
         ..
       })) => {
-        if self.shared.cjs_tracker.is_cjs_with_known_is_script(
-          specifier,
-          *media_type,
-          *is_script,
-        )? {
+        if self
+          .shared
+          .cjs_tracker
+          .is_cjs_with_known_is_script(specifier, *media_type, *is_script)
+          .map_err(JsErrorBox::from_err)?
+        {
           return Ok(Some(CodeOrDeferredEmit::Cjs {
             specifier,
             media_type: *media_type,
@@ -875,16 +898,16 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &str,
     referrer: &str,
     _kind: deno_core::ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     fn ensure_not_jsr_non_jsr_remote_import(
       specifier: &ModuleSpecifier,
       referrer: &ModuleSpecifier,
-    ) -> Result<(), AnyError> {
+    ) -> Result<(), JsErrorBox> {
       if referrer.as_str().starts_with(jsr_url().as_str())
         && !specifier.as_str().starts_with(jsr_url().as_str())
         && matches!(specifier.scheme(), "http" | "https")
       {
-        bail!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier);
+        return Err(JsErrorBox::generic(format!("Importing {} blocked. JSR packages cannot import non-JSR remote modules for security reasons.", specifier)));
       }
       Ok(())
     }
@@ -937,7 +960,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     specifier: &ModuleSpecifier,
     _maybe_referrer: Option<String>,
     is_dynamic: bool,
-  ) -> Pin<Box<dyn Future<Output = Result<(), AnyError>>>> {
+  ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
@@ -986,7 +1009,8 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           permissions,
           None,
         )
-        .await?;
+        .await
+        .map_err(JsErrorBox::from_err)?;
       update_permit.commit();
       Ok(())
     }
@@ -1130,35 +1154,37 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a Path,
-  ) -> Result<std::borrow::Cow<'a, Path>, AnyError> {
+  ) -> Result<Cow<'a, Path>, JsErrorBox> {
     if let Ok(url) = deno_path_util::url_from_file_path(path) {
       // allow reading if it's in the module graph
       if self.graph_container.graph().get(&url).is_some() {
-        return Ok(std::borrow::Cow::Borrowed(path));
+        return Ok(Cow::Borrowed(path));
       }
     }
     self
       .npm_registry_permission_checker
       .ensure_read_permission(permissions, path)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, AnyError> {
+  ) -> Result<Cow<'static, str>, JsErrorBox> {
     // todo(dsherret): use the preloaded module from the graph if available?
     let media_type = MediaType::from_path(path);
-    let text = self.sys.fs_read_to_string_lossy(path)?;
+    let text = self
+      .sys
+      .fs_read_to_string_lossy(path)
+      .map_err(JsErrorBox::from_err)?;
     if media_type.is_emittable() {
-      let specifier = deno_path_util::url_from_file_path(path)?;
+      let specifier = deno_path_util::url_from_file_path(path)
+        .map_err(JsErrorBox::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Err(
-          NotSupportedKindInNpmError {
-            media_type,
-            specifier,
-          }
-          .into(),
-        );
+        return Err(JsErrorBox::from_err(NotSupportedKindInNpmError {
+          media_type,
+          specifier,
+        }));
       }
       self
         .emitter
@@ -1172,6 +1198,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
           &text.into(),
         )
         .map(Cow::Owned)
+        .map_err(JsErrorBox::from_err)
     } else {
       Ok(text)
     }

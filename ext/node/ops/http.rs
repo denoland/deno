@@ -10,8 +10,7 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::bad_resource;
-use deno_core::error::type_error;
+use deno_core::error::ResourceError;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -33,6 +32,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsError;
+use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
@@ -88,32 +89,45 @@ impl deno_core::Resource for NodeHttpClientResponse {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, JsError)]
 pub enum ConnError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[class(inherit)]
   #[error(transparent)]
   Url(#[from] url::ParseError),
+  #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class("Busy")]
   #[error("TLS stream is currently in use")]
   TlsStreamBusy,
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class("Http")]
   #[error(transparent)]
   Hyper(#[from] hyper::Error),
 }
@@ -274,8 +288,11 @@ pub async fn op_node_http_await_response(
     .resource_table
     .take::<NodeHttpClientResponse>(rid)
     .map_err(ConnError::Resource)?;
-  let resource = Rc::try_unwrap(resource)
-    .map_err(|_| ConnError::Resource(bad_resource("NodeHttpClientResponse")))?;
+  let resource = Rc::try_unwrap(resource).map_err(|_| {
+    ConnError::Resource(ResourceError::Other(
+      "NodeHttpClientResponse".to_string(),
+    ))
+  })?;
 
   let res = resource.response.await??;
   let status = res.status();
@@ -296,7 +313,7 @@ pub async fn op_node_http_await_response(
   };
 
   let (parts, body) = res.into_parts();
-  let body = body.map_err(deno_core::anyhow::Error::from);
+  let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
   let body = body.boxed();
 
   let res = http::Response::from_parts(parts, body);
@@ -523,7 +540,7 @@ impl Resource for NodeHttpResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -547,9 +564,7 @@ impl Resource for NodeHttpResponseResource {
 #[allow(clippy::type_complexity)]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<
-    Pin<Box<dyn Future<Output = Result<BufView, deno_core::anyhow::Error>>>>,
-  >,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
 );
 
 impl NodeHttpResourceToBodyAdapter {
@@ -565,7 +580,7 @@ unsafe impl Send for NodeHttpResourceToBodyAdapter {}
 unsafe impl Sync for NodeHttpResourceToBodyAdapter {}
 
 impl Stream for NodeHttpResourceToBodyAdapter {
-  type Item = Result<Bytes, deno_core::anyhow::Error>;
+  type Item = Result<Bytes, JsErrorBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -596,7 +611,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
 
 impl hyper::body::Body for NodeHttpResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = deno_core::anyhow::Error;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,

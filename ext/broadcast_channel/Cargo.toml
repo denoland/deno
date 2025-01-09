@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
