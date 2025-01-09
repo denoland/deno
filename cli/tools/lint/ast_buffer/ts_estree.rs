@@ -4,7 +4,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-use deno_ast::swc::common::pass::AstKindPath;
 use deno_ast::swc::common::Span;
 
 use super::buffer::AstBufSerializer;
@@ -166,6 +165,7 @@ pub enum AstNode {
   TSAbstractMethodDefinition,
   TSEmptyBodyFunctionExpression,
   TSParameterProperty,
+  TSConstructSignatureDeclaration,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -1749,7 +1749,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  pub fn _write_ts_class_implements(
+  pub fn write_ts_class_implements(
     &mut self,
     span: &Span,
     expr: NodeRef,
@@ -2052,6 +2052,24 @@ impl TsEsTreeBuilder {
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSInterfaceBody, span);
     self.ctx.write_ref_vec(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_construct_sig(
+    &mut self,
+    span: &Span,
+    type_params: Vec<NodeRef>,
+    params: Vec<NodeRef>,
+    return_type: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSConstructSignatureDeclaration, span);
+    self
+      .ctx
+      .write_ref_vec(AstProp::TypeParameters, &id, type_params);
+    self.ctx.write_ref_vec(AstProp::Params, &id, params);
+    self.ctx.write_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.commit_node(id)
   }
 

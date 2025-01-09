@@ -392,7 +392,8 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
 
       let ident = node.ident.as_ref().map(|ident| serialize_ident(ctx, ident));
 
-      let type_params = maybe_serialize_ts_type_param(ctx, &fn_obj.type_params);
+      let type_params =
+        maybe_serialize_ts_type_param_decl(ctx, &fn_obj.type_params);
 
       let params = fn_obj
         .params
@@ -673,7 +674,8 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
       ctx.write_tagged_template_expr(&node.span, tag, type_param, quasi)
     }
     Expr::Arrow(node) => {
-      let type_param = maybe_serialize_ts_type_param(ctx, &node.type_params);
+      let type_param =
+        maybe_serialize_ts_type_param_decl(ctx, &node.type_params);
 
       let params = node
         .params
@@ -1050,7 +1052,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
     Decl::Fn(node) => {
       let ident_id = serialize_ident(ctx, &node.ident);
       let type_param_id =
-        maybe_serialize_ts_type_param(ctx, &node.function.type_params);
+        maybe_serialize_ts_type_param_decl(ctx, &node.function.type_params);
       let return_type =
         maybe_serialize_ts_type_ann(ctx, &node.function.return_type);
 
@@ -1131,7 +1133,8 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
     }
     Decl::TsInterface(node) => {
       let ident_id = serialize_ident(ctx, &node.id);
-      let type_param = maybe_serialize_ts_type_param(ctx, &node.type_params);
+      let type_param =
+        maybe_serialize_ts_type_param_decl(ctx, &node.type_params);
 
       let extend_ids = node
         .extends
@@ -1154,7 +1157,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .map(|item| match item {
           TsTypeElement::TsCallSignatureDecl(ts_call) => {
             let type_ann =
-              maybe_serialize_ts_type_param(ctx, &ts_call.type_params);
+              maybe_serialize_ts_type_param_decl(ctx, &ts_call.type_params);
             let return_type =
               maybe_serialize_ts_type_ann(ctx, &ts_call.type_ann);
             let params = ts_call
@@ -1249,7 +1252,8 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
     Decl::TsTypeAlias(node) => {
       let ident = serialize_ident(ctx, &node.id);
       let type_ann = serialize_ts_type(ctx, &node.type_ann);
-      let type_param = maybe_serialize_ts_type_param(ctx, &node.type_params);
+      let type_param =
+        maybe_serialize_ts_type_param_decl(ctx, &node.type_params);
 
       ctx.write_ts_type_alias(
         &node.span,
@@ -1890,7 +1894,8 @@ fn serialize_class_method(
     MethodKind::Setter => "setter",
   };
 
-  let type_params = maybe_serialize_ts_type_param(ctx, &function.type_params);
+  let type_params =
+    maybe_serialize_ts_type_param_decl(ctx, &function.type_params);
   let params = function
     .params
     .iter()
@@ -1962,7 +1967,13 @@ fn serialize_ts_expr_with_type_args(
   ctx: &mut TsEsTreeBuilder,
   node: &TsExprWithTypeArgs,
 ) -> NodeRef {
-  todo!()
+  let expr = serialize_expr(ctx, &node.expr);
+  let type_args = node
+    .type_args
+    .as_ref()
+    .map(|arg| serialize_ts_param_inst(ctx, arg));
+
+  ctx.write_ts_class_implements(&node.span, expr, type_args)
 }
 
 fn serialize_decorator(ctx: &mut TsEsTreeBuilder, node: &Decorator) -> NodeRef {
@@ -1974,7 +1985,8 @@ fn serialize_binding_ident(
   ctx: &mut TsEsTreeBuilder,
   node: &BindingIdent,
 ) -> NodeRef {
-  todo!()
+  let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
+  ctx.write_identifier(&node.span, &node.sym, node.optional, type_ann)
 }
 
 fn serialize_ts_param_inst(
@@ -2022,8 +2034,22 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
 
         ctx.write_ts_fn_type(&node.span, param_ids)
       }
-      TsFnOrConstructorType::TsConstructorType(_) => {
-        todo!()
+      TsFnOrConstructorType::TsConstructorType(node) => {
+        // interface Foo { new<T>(arg1: any): any }
+        let type_params = node
+          .type_params
+          .iter()
+          .map(|param| serialize_ts_type_param_decl(ctx, param))
+          .collect::<Vec<_>>();
+        let params = node
+          .params
+          .iter()
+          .map(|param| serialize_ts_fn_param(ctx, param))
+          .collect::<Vec<_>>();
+
+        let return_type = serialize_ts_type_ann(ctx, node.type_ann.as_ref());
+
+        ctx.write_ts_construct_sig(&node.span, type_params, params, return_type)
       }
     },
     TsType::TsTypeRef(node) => {
@@ -2267,19 +2293,26 @@ fn serialize_ts_type_param(
   )
 }
 
-fn maybe_serialize_ts_type_param(
+fn maybe_serialize_ts_type_param_decl(
   ctx: &mut TsEsTreeBuilder,
   node: &Option<Box<TsTypeParamDecl>>,
 ) -> Option<NodeRef> {
-  node.as_ref().map(|node| {
-    let params = node
-      .params
-      .iter()
-      .map(|param| serialize_ts_type_param(ctx, param))
-      .collect::<Vec<_>>();
+  node
+    .as_ref()
+    .map(|node| serialize_ts_type_param_decl(ctx, node))
+}
 
-    ctx.write_ts_type_param_decl(&node.span, params)
-  })
+fn serialize_ts_type_param_decl(
+  ctx: &mut TsEsTreeBuilder,
+  node: &TsTypeParamDecl,
+) -> NodeRef {
+  let params = node
+    .params
+    .iter()
+    .map(|param| serialize_ts_type_param(ctx, param))
+    .collect::<Vec<_>>();
+
+  ctx.write_ts_type_param_decl(&node.span, params)
 }
 
 fn serialize_ts_fn_param(

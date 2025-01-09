@@ -970,8 +970,6 @@ export function runPluginsForFile(fileName, serializedAst) {
             try {
               fn(node);
             } catch (err) {
-              // FIXME: Cause is not shown for uncaught errors?
-              console.error(err);
               throw new Error(`Visitor "${name}" of plugin "${id}" errored`, {
                 cause: err,
               });
