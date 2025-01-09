@@ -5,13 +5,13 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_path_util::url_from_directory_path;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
@@ -22,8 +22,8 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
+use super::resolution::NpmResolutionRc;
 use super::NpmPackageFsResolver;
-use super::NpmResolution;
 use crate::npm::local::get_package_folder_id_folder_name;
 
 /// Resolver that creates a local node_modules directory
@@ -32,7 +32,7 @@ use crate::npm::local::get_package_folder_id_folder_name;
 pub struct LocalNpmPackageResolver<
   TSys: FsCanonicalize + FsMetadata + Send + Sync,
 > {
-  resolution: Arc<NpmResolution>,
+  resolution: NpmResolutionRc,
   sys: TSys,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -43,14 +43,14 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    resolution: Arc<NpmResolution>,
+    resolution: NpmResolutionRc,
     sys: TSys,
     node_modules_folder: PathBuf,
   ) -> Self {
     Self {
       resolution,
       sys,
-      root_node_modules_url: Url::from_directory_path(&node_modules_folder)
+      root_node_modules_url: url_from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
@@ -81,7 +81,7 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
       return Ok(None);
     }
     // it's within the directory, so use it
-    let Some(path) = specifier.to_file_path().ok() else {
+    let Some(path) = deno_path_util::url_to_file_path(specifier).ok() else {
       return Ok(None);
     };
     // Canonicalize the path so it's not pointing to the symlinked directory

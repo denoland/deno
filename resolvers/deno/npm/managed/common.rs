@@ -9,6 +9,10 @@ use deno_npm::NpmPackageId;
 use node_resolver::errors::PackageFolderResolveError;
 use url::Url;
 
+#[allow(clippy::disallowed_types)]
+pub(super) type NpmPackageFsResolverRc =
+  crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
 #[error("Package folder not found for '{0}'")]

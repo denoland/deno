@@ -15,7 +15,6 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
-use serde_json;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;

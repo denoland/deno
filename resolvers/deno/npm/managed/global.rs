@@ -4,11 +4,8 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_cache_dir::npm::NpmCacheDir;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_semver::package::PackageNv;
@@ -19,22 +16,24 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use url::Url;
 
+use super::resolution::NpmResolutionRc;
+use super::NpmCacheDirRc;
 use super::NpmPackageFsResolver;
-use super::NpmResolution;
+use crate::ResolvedNpmRcRc;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  cache: Arc<NpmCacheDir>,
-  npm_rc: Arc<ResolvedNpmRc>,
-  resolution: Arc<NpmResolution>,
+  cache: NpmCacheDirRc,
+  npm_rc: ResolvedNpmRcRc,
+  resolution: NpmResolutionRc,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
-    cache: Arc<NpmCacheDir>,
-    npm_rc: Arc<ResolvedNpmRc>,
-    resolution: Arc<NpmResolution>,
+    cache: NpmCacheDirRc,
+    npm_rc: ResolvedNpmRcRc,
+    resolution: NpmResolutionRc,
   ) -> Self {
     Self {
       cache,

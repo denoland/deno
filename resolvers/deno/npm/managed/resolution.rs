@@ -17,6 +17,9 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use parking_lot::RwLock;
 
+#[allow(clippy::disallowed_types)]
+pub(super) type NpmResolutionRc = crate::sync::MaybeArc<NpmResolution>;
+
 /// Handles updating and storing npm resolution in memory.
 ///
 /// This does not interact with the file system.
