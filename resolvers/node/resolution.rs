@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::sync::MaybeArc;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::path::Path;
@@ -48,6 +47,7 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::npm::InNpmPackageCheckerRc;
+use crate::sync::MaybeArc;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
