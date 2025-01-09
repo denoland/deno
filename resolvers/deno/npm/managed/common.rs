@@ -4,10 +4,14 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use node_resolver::errors::PackageFolderResolveError;
+use url::Url;
+
+#[allow(clippy::disallowed_types)]
+pub(super) type NpmPackageFsResolverRc =
+  crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
@@ -34,11 +38,11 @@ pub trait NpmPackageFsResolver: Send + Sync {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error>;
 }

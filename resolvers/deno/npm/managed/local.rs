@@ -5,49 +5,50 @@
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
-use deno_cache_dir::npm::mixed_case_package_name_decode;
-use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
-use deno_semver::package::PackageNv;
-use deno_semver::StackString;
+use deno_path_util::url_from_directory_path;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
+use url::Url;
 
-use super::super::resolution::NpmResolution;
-use super::common::NpmPackageFsResolver;
-use crate::sys::CliSys;
+use super::resolution::NpmResolutionRc;
+use super::NpmPackageFsResolver;
+use crate::npm::local::get_package_folder_id_folder_name_from_parts;
+use crate::npm::local::get_package_folder_id_from_folder_name;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
-pub struct LocalNpmPackageResolver {
-  resolution: Arc<NpmResolution>,
-  sys: CliSys,
+pub struct LocalNpmPackageResolver<
+  TSys: FsCanonicalize + FsMetadata + Send + Sync,
+> {
+  resolution: NpmResolutionRc,
+  sys: TSys,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
 }
 
-impl LocalNpmPackageResolver {
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
+  LocalNpmPackageResolver<TSys>
+{
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    resolution: Arc<NpmResolution>,
-    sys: CliSys,
+    resolution: NpmResolutionRc,
+    sys: TSys,
     node_modules_folder: PathBuf,
   ) -> Self {
     Self {
       resolution,
       sys,
-      root_node_modules_url: Url::from_directory_path(&node_modules_folder)
+      root_node_modules_url: url_from_directory_path(&node_modules_folder)
         .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
@@ -67,7 +68,7 @@ impl LocalNpmPackageResolver {
 
   fn resolve_folder_for_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(relative_url) =
       self.root_node_modules_url.make_relative(specifier)
@@ -78,7 +79,7 @@ impl LocalNpmPackageResolver {
       return Ok(None);
     }
     // it's within the directory, so use it
-    let Some(path) = specifier.to_file_path().ok() else {
+    let Some(path) = deno_path_util::url_to_file_path(specifier).ok() else {
       return Ok(None);
     };
     // Canonicalize the path so it's not pointing to the symlinked directory
@@ -88,7 +89,7 @@ impl LocalNpmPackageResolver {
 
   fn resolve_package_folder_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
       return Ok(None);
@@ -99,31 +100,36 @@ impl LocalNpmPackageResolver {
 }
 
 #[async_trait(?Send)]
-impl NpmPackageFsResolver for LocalNpmPackageResolver {
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
+  for LocalNpmPackageResolver<TSys>
+{
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let cache_folder_id = self
+    let folder_copy_index = self
       .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
     // package is stored at:
     // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
     Some(
       self
         .root_node_modules_path
         .join(".deno")
-        .join(get_package_folder_id_folder_name(&cache_folder_id))
+        .join(get_package_folder_id_folder_name_from_parts(
+          &id.nv,
+          folder_copy_index,
+        ))
         .join("node_modules")
-        .join(&cache_folder_id.nv.name),
+        .join(&id.nv.name),
     )
   }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
       .resolve_folder_for_specifier(referrer)
@@ -173,7 +179,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     let Some(folder_path) =
       self.resolve_package_folder_from_specifier(specifier)?
@@ -198,43 +204,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   }
 }
 
-pub fn get_package_folder_id_folder_name(
-  folder_id: &NpmPackageCacheFolderId,
-) -> String {
-  let copy_str = if folder_id.copy_index == 0 {
-    Cow::Borrowed("")
-  } else {
-    Cow::Owned(format!("_{}", folder_id.copy_index))
-  };
-  let nv = &folder_id.nv;
-  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
-  format!("{}@{}{}", name, nv.version, copy_str)
-}
-
-fn get_package_folder_id_from_folder_name(
-  folder_name: &str,
-) -> Option<NpmPackageCacheFolderId> {
-  let folder_name = folder_name.replace('+', "/");
-  let (name, ending) = folder_name.rsplit_once('@')?;
-  let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
-    StackString::from_string(mixed_case_package_name_decode(encoded_name)?)
-  } else {
-    name.into()
-  };
-  let (raw_version, copy_index) = match ending.split_once('_') {
-    Some((raw_version, copy_index)) => {
-      let copy_index = copy_index.parse::<u8>().ok()?;
-      (raw_version, copy_index)
-    }
-    None => (ending, 0),
-  };
-  let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
-  Some(NpmPackageCacheFolderId {
-    nv: PackageNv { name, version },
-    copy_index,
-  })
-}
-
 fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
   let mut path = path.to_path_buf();
   // ensure backslashes are used on windows
@@ -242,37 +211,4 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
     path = path.join(part);
   }
   path
-}
-
-#[cfg(test)]
-mod test {
-  use deno_npm::NpmPackageCacheFolderId;
-  use deno_semver::package::PackageNv;
-
-  use super::*;
-
-  #[test]
-  fn test_get_package_folder_id_folder_name() {
-    let cases = vec![
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("@types/foo@1.2.3").unwrap(),
-          copy_index: 1,
-        },
-        "@types+foo@1.2.3_1".to_string(),
-      ),
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("JSON@3.2.1").unwrap(),
-          copy_index: 0,
-        },
-        "_jjju6tq@3.2.1".to_string(),
-      ),
-    ];
-    for (input, output) in cases {
-      assert_eq!(get_package_folder_id_folder_name(&input), output);
-      let folder_id = get_package_folder_id_from_folder_name(&output).unwrap();
-      assert_eq!(folder_id, input);
-    }
-  }
 }

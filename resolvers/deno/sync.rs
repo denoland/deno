@@ -46,3 +46,9 @@ mod inner {
     }
   }
 }
+
+#[allow(clippy::disallowed_types)]
+#[inline]
+pub fn new_rc<T>(value: T) -> MaybeArc<T> {
+  MaybeArc::new(value)
+}
