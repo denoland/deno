@@ -79,7 +79,7 @@ impl Debug for ConditionsFromResolutionMode {
 
 impl ConditionsFromResolutionMode {
   pub fn new(
-    func: impl Fn(ResolutionMode) -> &'static [&'static str] + 'static,
+    func: impl Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
   ) -> Self {
     Self {
       #[allow(clippy::disallowed_types)]
