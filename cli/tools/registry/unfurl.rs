@@ -660,6 +660,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
+  use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
@@ -668,7 +669,6 @@ mod tests {
   use test_util::testdata_path;
 
   use super::*;
-  use crate::resolver::SloppyImportsCachedFs;
   use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {

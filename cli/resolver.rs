@@ -1,12 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
@@ -22,6 +19,7 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs;
@@ -30,8 +28,6 @@ use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use sys_traits::FsMetadata;
-use sys_traits::FsMetadataValue;
 use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
@@ -45,11 +41,12 @@ use crate::util::text_encoding::from_utf8_lossy_cow;
 
 pub type CjsTracker = deno_resolver::cjs::CjsTracker<CliSys>;
 pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<CliSys>;
+pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
 pub type CliSloppyImportsResolver =
-  SloppyImportsResolver<SloppyImportsCachedFs>;
+  SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   RealIsBuiltInNodeModuleChecker,
-  SloppyImportsCachedFs,
+  CliSloppyImportsCachedFs,
   CliSys,
 >;
 pub type CliNpmReqResolver =
@@ -395,62 +392,5 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
   fn enables_bare_builtin_node_module(&self) -> bool {
     self.bare_node_builtins_enabled
-  }
-}
-
-#[derive(Debug)]
-pub struct SloppyImportsCachedFs {
-  sys: CliSys,
-  cache: Option<
-    DashMap<
-      PathBuf,
-      Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry>,
-    >,
-  >,
-}
-
-impl SloppyImportsCachedFs {
-  pub fn new(sys: CliSys) -> Self {
-    Self {
-      sys,
-      cache: Some(Default::default()),
-    }
-  }
-
-  pub fn new_without_stat_cache(fs: CliSys) -> Self {
-    Self {
-      sys: fs,
-      cache: None,
-    }
-  }
-}
-
-impl deno_resolver::sloppy_imports::SloppyImportResolverFs
-  for SloppyImportsCachedFs
-{
-  fn stat_sync(
-    &self,
-    path: &Path,
-  ) -> Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry> {
-    if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.get(path) {
-        return *entry;
-      }
-    }
-
-    let entry = self.sys.fs_metadata(path).ok().and_then(|stat| {
-      if stat.file_type().is_file() {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::File)
-      } else if stat.file_type().is_dir() {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::Dir)
-      } else {
-        None
-      }
-    });
-
-    if let Some(cache) = &self.cache {
-      cache.insert(path.to_owned(), entry);
-    }
-    entry
   }
 }
