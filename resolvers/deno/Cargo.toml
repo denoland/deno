@@ -14,7 +14,7 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
-sync = ["dashmap"]
+sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
 anyhow.workspace = true
@@ -27,10 +27,10 @@ deno_config.workspace = true
 deno_error.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
-deno_package_json = { workspace = true, features = ["sync"] }
+deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
-node_resolver = { workspace = true, features = ["sync"] }
+node_resolver.workspace = true
 parking_lot.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true

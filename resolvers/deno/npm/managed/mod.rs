@@ -5,10 +5,13 @@ mod global;
 mod local;
 mod resolution;
 
+use std::path::Path;
 use std::path::PathBuf;
 
+use node_resolver::InNpmPackageChecker;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
+use url::Url;
 
 pub use self::common::NpmPackageFsResolver;
 pub use self::common::NpmPackageFsResolverPackageFolderError;
@@ -42,4 +45,33 @@ pub fn create_npm_fs_resolver<
       resolution,
     )),
   }
+}
+
+#[derive(Debug)]
+pub struct ManagedInNpmPackageChecker {
+  root_dir: Url,
+}
+
+impl InNpmPackageChecker for ManagedInNpmPackageChecker {
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    specifier.as_ref().starts_with(self.root_dir.as_str())
+  }
+}
+
+pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
+  pub root_cache_dir_url: &'a Url,
+  pub maybe_node_modules_path: Option<&'a Path>,
+}
+
+pub fn create_managed_in_npm_pkg_checker(
+  options: ManagedInNpmPkgCheckerCreateOptions,
+) -> ManagedInNpmPackageChecker {
+  let root_dir = match options.maybe_node_modules_path {
+    Some(node_modules_folder) => {
+      deno_path_util::url_from_directory_path(node_modules_folder).unwrap()
+    }
+    None => options.root_cache_dir_url.clone(),
+  };
+  debug_assert!(root_dir.as_str().ends_with('/'));
+  ManagedInNpmPackageChecker { root_dir }
 }

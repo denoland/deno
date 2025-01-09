@@ -14,7 +14,6 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -23,13 +22,10 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
-use managed::create_managed_in_npm_pkg_checker;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
-pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
@@ -131,22 +127,6 @@ pub async fn create_cli_npm_resolver(
   match options {
     Managed(options) => managed::create_managed_npm_resolver(options).await,
     Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
-  }
-}
-
-pub enum CreateInNpmPkgCheckerOptions<'a> {
-  Managed(CliManagedInNpmPkgCheckerCreateOptions<'a>),
-  Byonm,
-}
-
-pub fn create_in_npm_pkg_checker(
-  options: CreateInNpmPkgCheckerOptions,
-) -> Arc<dyn InNpmPackageChecker> {
-  match options {
-    CreateInNpmPkgCheckerOptions::Managed(options) => {
-      create_managed_in_npm_pkg_checker(options)
-    }
-    CreateInNpmPkgCheckerOptions::Byonm => Arc::new(ByonmInNpmPackageChecker),
   }
 }
 
