@@ -9,6 +9,7 @@ mod npm;
 mod package_json;
 mod path;
 mod resolution;
+pub use resolution::deno_conditions_from_resolution_mode;
 mod sync;
 
 pub use deno_package_json::PackageJson;

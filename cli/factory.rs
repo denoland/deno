@@ -59,6 +59,7 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::node;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
@@ -671,6 +672,7 @@ impl CliFactory {
               .into_npm_pkg_folder_resolver(),
             self.pkg_json_resolver().clone(),
             self.sys(),
+            &node_resolver::deno_conditions_from_resolution_mode,
           )))
         }
         .boxed_local(),
