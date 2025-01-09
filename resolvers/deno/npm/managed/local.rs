@@ -7,13 +7,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use deno_cache_dir::npm::mixed_case_package_name_decode;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::url_from_directory_path;
-use deno_semver::package::PackageNv;
-use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
@@ -24,7 +21,8 @@ use url::Url;
 
 use super::resolution::NpmResolutionRc;
 use super::NpmPackageFsResolver;
-use crate::npm::local::get_package_folder_id_folder_name;
+use crate::npm::local::get_package_folder_id_folder_name_from_parts;
+use crate::npm::local::get_package_folder_id_from_folder_name;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
@@ -110,18 +108,21 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let cache_folder_id = self
+    let folder_copy_index = self
       .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
     // package is stored at:
     // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
     Some(
       self
         .root_node_modules_path
         .join(".deno")
-        .join(get_package_folder_id_folder_name(&cache_folder_id))
+        .join(get_package_folder_id_folder_name_from_parts(
+          &id.nv,
+          folder_copy_index,
+        ))
         .join("node_modules")
-        .join(&cache_folder_id.nv.name),
+        .join(&id.nv.name),
     )
   }
 
@@ -203,30 +204,6 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
   }
 }
 
-fn get_package_folder_id_from_folder_name(
-  folder_name: &str,
-) -> Option<NpmPackageCacheFolderId> {
-  let folder_name = folder_name.replace('+', "/");
-  let (name, ending) = folder_name.rsplit_once('@')?;
-  let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
-    StackString::from_string(mixed_case_package_name_decode(encoded_name)?)
-  } else {
-    name.into()
-  };
-  let (raw_version, copy_index) = match ending.split_once('_') {
-    Some((raw_version, copy_index)) => {
-      let copy_index = copy_index.parse::<u8>().ok()?;
-      (raw_version, copy_index)
-    }
-    None => (ending, 0),
-  };
-  let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
-  Some(NpmPackageCacheFolderId {
-    nv: PackageNv { name, version },
-    copy_index,
-  })
-}
-
 fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
   let mut path = path.to_path_buf();
   // ensure backslashes are used on windows
@@ -234,37 +211,4 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
     path = path.join(part);
   }
   path
-}
-
-#[cfg(test)]
-mod test {
-  use deno_npm::NpmPackageCacheFolderId;
-  use deno_semver::package::PackageNv;
-
-  use super::*;
-
-  #[test]
-  fn test_get_package_folder_id_folder_name() {
-    let cases = vec![
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("@types/foo@1.2.3").unwrap(),
-          copy_index: 1,
-        },
-        "@types+foo@1.2.3_1".to_string(),
-      ),
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("JSON@3.2.1").unwrap(),
-          copy_index: 0,
-        },
-        "_jjju6tq@3.2.1".to_string(),
-      ),
-    ];
-    for (input, output) in cases {
-      assert_eq!(get_package_folder_id_folder_name(&input), output);
-      let folder_id = get_package_folder_id_from_folder_name(&output).unwrap();
-      assert_eq!(folder_id, input);
-    }
-  }
 }

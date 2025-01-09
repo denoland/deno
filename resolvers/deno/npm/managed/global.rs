@@ -68,15 +68,14 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    // todo(THIS PR): avoid the cloning that happens here and only return back a copy index
-    let folder_id = self
+    let folder_copy_index = self
       .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
     let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
     Some(self.cache.package_folder_for_id(
       &id.nv.name,
       &id.nv.version.to_string(),
-      folder_id.copy_index,
+      folder_copy_index,
       registry_url,
     ))
   }

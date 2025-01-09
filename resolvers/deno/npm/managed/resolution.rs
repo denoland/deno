@@ -51,15 +51,15 @@ impl NpmResolution {
     }
   }
 
-  pub fn resolve_pkg_cache_folder_id_from_pkg_id(
+  pub fn resolve_pkg_cache_folder_copy_index_from_pkg_id(
     &self,
     id: &NpmPackageId,
-  ) -> Option<NpmPackageCacheFolderId> {
+  ) -> Option<u8> {
     self
       .snapshot
       .read()
       .package_from_id(id)
-      .map(|p| p.get_package_cache_folder_id())
+      .map(|p| p.copy_index)
   }
 
   pub fn resolve_pkg_id_from_pkg_cache_folder_id(
