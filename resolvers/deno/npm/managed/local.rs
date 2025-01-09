@@ -6,7 +6,6 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use async_trait::async_trait;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
@@ -15,6 +14,7 @@ use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use node_resolver::NpmPackageFolderResolver;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
@@ -99,33 +99,9 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
   }
 }
 
-#[async_trait(?Send)]
-impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
-  for LocalNpmPackageResolver<TSys>
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync + std::fmt::Debug>
+  NpmPackageFolderResolver for LocalNpmPackageResolver<TSys>
 {
-  fn node_modules_path(&self) -> Option<&Path> {
-    Some(self.root_node_modules_path.as_ref())
-  }
-
-  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let folder_copy_index = self
-      .resolution
-      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
-    // package is stored at:
-    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-    Some(
-      self
-        .root_node_modules_path
-        .join(".deno")
-        .join(get_package_folder_id_folder_name_from_parts(
-          &id.nv,
-          folder_copy_index,
-        ))
-        .join("node_modules")
-        .join(&id.nv.name),
-    )
-  }
-
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
@@ -159,7 +135,13 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
 
       let sub_dir = join_package_name(&node_modules_folder, name);
       if self.sys.fs_is_dir_no_err(&sub_dir) {
-        return Ok(sub_dir);
+        return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(|err| {
+          PackageFolderResolveIoError {
+            package_name: name.to_string(),
+            referrer: referrer.clone(),
+            source: err,
+          }
+        })?);
       }
 
       if current_folder == self.root_node_modules_path {
@@ -174,6 +156,33 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
         referrer_extra: None,
       }
       .into(),
+    )
+  }
+}
+
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync + std::fmt::Debug>
+  NpmPackageFsResolver for LocalNpmPackageResolver<TSys>
+{
+  fn node_modules_path(&self) -> Option<&Path> {
+    Some(self.root_node_modules_path.as_ref())
+  }
+
+  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    let folder_copy_index = self
+      .resolution
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    Some(
+      self
+        .root_node_modules_path
+        .join(".deno")
+        .join(get_package_folder_id_folder_name_from_parts(
+          &id.nv,
+          folder_copy_index,
+        ))
+        .join("node_modules")
+        .join(&id.nv.name),
     )
   }
 

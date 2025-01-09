@@ -25,7 +25,7 @@ use crate::NpmCacheDirRc;
 use crate::ResolvedNpmRcRc;
 
 pub fn create_npm_fs_resolver<
-  TSys: FsCanonicalize + FsMetadata + Send + Sync + 'static,
+  TSys: FsCanonicalize + FsMetadata + std::fmt::Debug + Send + Sync + 'static,
 >(
   npm_cache_dir: &NpmCacheDirRc,
   npm_rc: &ResolvedNpmRcRc,

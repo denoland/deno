@@ -136,7 +136,7 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+pub trait CliNpmResolver: CliNpmReqResolver {
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver>;
