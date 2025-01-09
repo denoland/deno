@@ -112,6 +112,7 @@ pub type NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
 
 #[derive(Debug)]
 pub struct NodeResolver<
+  'a,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
@@ -121,7 +122,7 @@ pub struct NodeResolver<
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: TSys,
   conditions_from_resolution_mode:
-    &dyn Fn(ResolutionMode) -> &'static [&'static str],
+    &'a dyn Fn(ResolutionMode) -> &'static [&'static str],
 }
 
 impl<
