@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
