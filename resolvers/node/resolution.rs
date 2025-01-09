@@ -67,8 +67,7 @@ pub fn deno_conditions_from_resolution_mode(
 }
 
 pub struct ConditionsFromResolutionMode {
-  #[allow(clippy::disallowed_types)]
-  pub func: MaybeArc<
+  pub func: Box<
     dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
   >,
 }
@@ -81,11 +80,15 @@ impl Debug for ConditionsFromResolutionMode {
 
 impl ConditionsFromResolutionMode {
   pub fn new(
-    func: impl Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
+    func: Option<
+      impl Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
+    >,
   ) -> Self {
     Self {
-      #[allow(clippy::disallowed_types)]
-      func: MaybeArc::new(func),
+      func: match func {
+        Some(func) => Box::new(func),
+        None => Box::new(deno_conditions_from_resolution_mode),
+      },
     }
   }
 }
