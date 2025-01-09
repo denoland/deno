@@ -3972,6 +3972,11 @@ impl CompletionEntry {
         if let Some(mut new_specifier) = import_mapper
           .check_specifier(&import_data.normalized, specifier)
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
+          .or_else(|| {
+            ModuleSpecifier::parse(&import_data.raw.module_specifier)
+              .is_ok()
+              .then(|| import_data.normalized.to_string())
+          })
         {
           if new_specifier.contains("/node_modules/") {
             return None;
