@@ -11,6 +11,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::error::custom_error;
 use deno_core::error::AnyError;
+use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url_or_path;
@@ -450,10 +451,16 @@ impl PluginHost {
     let args = &[local_handles.into(), exclude_v8];
 
     self.logger.log("Installing plugins...");
-    // TODO(bartlomieju): do it in a try/catch scope, or not? Seems to surface errors properly.
-    let plugins_info = install_plugins_local
-      .call(scope, undefined.into(), args)
-      .unwrap();
+
+    let mut tc_scope = v8::TryCatch::new(scope);
+    let plugins_info_result =
+      install_plugins_local.call(&mut tc_scope, undefined.into(), args);
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(&mut tc_scope, exception);
+      return Err(error.into());
+    }
+    drop(tc_scope);
+    let plugins_info = plugins_info_result.unwrap();
     let infos: Vec<PluginInfo> =
       deno_core::serde_v8::from_v8(scope, plugins_info)?;
     self
