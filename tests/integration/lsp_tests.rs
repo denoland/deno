@@ -9937,6 +9937,74 @@ fn lsp_auto_imports_npm_auto() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/23869.
+#[test]
+fn lsp_auto_imports_remote_dts() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "http://localhost:4545/subdir/imports_interface.ts";
+        const a: SomeInterface
+      "#,
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 21),
+    json!({ "triggerKind": 2 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "SomeInterface")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "SomeInterface",
+      "labelDetails": {
+        "description": "http://localhost:4545/subdir/interface.d.ts",
+      },
+      "kind": 8,
+      "detail": "interface SomeInterface",
+      "documentation": {
+        "kind": "markdown",
+        "value": "",
+      },
+      "sortText": "￿16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "newText": "        import { SomeInterface } from \"http://localhost:4545/subdir/interface.d.ts\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
