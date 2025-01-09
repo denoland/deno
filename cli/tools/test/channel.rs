@@ -37,7 +37,8 @@ const HALF_SYNC_MARKER: &[u8; 4] = &[226, 128, 139, 0];
 const BUFFER_SIZE: usize = 4096;
 
 /// The test channel has been closed and cannot be used to send further messages.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, deno_error::JsError)]
+#[class(generic)]
 pub struct ChannelClosedError;
 
 impl std::error::Error for ChannelClosedError {}

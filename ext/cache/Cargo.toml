@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 async-trait.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 sha2.workspace = true

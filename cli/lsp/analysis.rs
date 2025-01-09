@@ -10,13 +10,13 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_config::workspace::MappedResolution;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::PathClean;
@@ -1072,10 +1072,13 @@ impl CodeActionCollection {
       // we wrap tsc, we can't handle the asynchronous response, so it is
       // actually easier to return errors if we ever encounter one of these,
       // which we really wouldn't expect from the Deno lsp.
-      return Err(custom_error(
-        "UnsupportedFix",
-        "The action returned from TypeScript is unsupported.",
-      ));
+      return Err(
+        JsErrorBox::new(
+          "UnsupportedFix",
+          "The action returned from TypeScript is unsupported.",
+        )
+        .into(),
+      );
     }
     let Some(action) =
       fix_ts_import_action(specifier, resolution_mode, action, language_server)

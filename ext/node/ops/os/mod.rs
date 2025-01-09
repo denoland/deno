@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 
 use deno_core::op2;
 use deno_core::OpState;
+use deno_permissions::PermissionCheckError;
 use sys_traits::EnvHomeDir;
 
 use crate::NodePermissions;
@@ -11,16 +12,28 @@ use crate::NodePermissions;
 mod cpus;
 pub mod priority;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Priority(priority::PriorityError),
+  Priority(#[inherit] priority::PriorityError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+  #[class(type)]
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
+  #[class(inherit)]
   #[error("Failed to get user info")]
-  FailedToGetUserInfo(#[source] std::io::Error),
+  FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
 #[op2(fast, stack_trace)]
@@ -215,9 +228,7 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_geteuid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -236,9 +247,7 @@ where
 }
 
 #[op2(fast, stack_trace)]
-pub fn op_getegid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -274,7 +283,7 @@ where
 #[string]
 pub fn op_homedir<P>(
   state: &mut OpState,
-) -> Result<Option<String>, deno_core::error::AnyError>
+) -> Result<Option<String>, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {

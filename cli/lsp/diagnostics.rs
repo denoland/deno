@@ -34,7 +34,7 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
-use import_map::ImportMapError;
+use import_map::ImportMapErrorKind;
 use log::error;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
@@ -1300,8 +1300,8 @@ impl DenoDiagnostic {
         let mut message;
         message = enhanced_resolution_error_message(err);
         if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
-            if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) = resolve_error.downcast_ref::<ImportMapError>() {
+          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
+            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
               if specifier.chars().next().unwrap_or('\0') == '@'{
                 let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
                 message.push_str(hint.as_str());

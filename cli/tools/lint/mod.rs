@@ -18,7 +18,6 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -81,9 +80,7 @@ pub async fn lint(
 ) -> Result<(), AnyError> {
   if lint_flags.watch.is_some() {
     if lint_flags.is_stdin() {
-      return Err(generic_error(
-        "Lint watch on standard input is not supported.",
-      ));
+      return Err(anyhow!("Lint watch on standard input is not supported.",));
     }
 
     return lint_with_watch(flags, lint_flags).await;
@@ -227,7 +224,7 @@ fn resolve_paths_with_options_batches(
   let mut paths_with_options_batches =
     Vec::with_capacity(members_lint_options.len());
   for (dir, lint_options) in members_lint_options {
-    let files = collect_lint_files(cli_options, lint_options.files.clone())?;
+    let files = collect_lint_files(cli_options, lint_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         dir,
@@ -237,7 +234,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
 }
@@ -485,7 +482,7 @@ impl WorkspaceLinter {
 fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_script_ext(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
@@ -574,7 +571,7 @@ fn lint_stdin(
   }
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
-    return Err(generic_error("Failed to read from stdin"));
+    return Err(anyhow!("Failed to read from stdin"));
   }
 
   let linter = CliLinter::new(CliLinterOptions {

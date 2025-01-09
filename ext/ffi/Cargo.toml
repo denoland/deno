@@ -15,6 +15,7 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 deno_permissions.workspace = true
 dlopen2.workspace = true
 dynasmrt = "1.2.3"

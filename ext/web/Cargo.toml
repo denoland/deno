@@ -18,6 +18,7 @@ async-trait.workspace = true
 base64-simd = "0.8"
 bytes.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_permissions.workspace = true
 encoding_rs.workspace = true
 flate2 = { workspace = true, features = ["default"] }

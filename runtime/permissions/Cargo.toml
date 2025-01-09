@@ -16,6 +16,7 @@ path = "lib.rs"
 [dependencies]
 capacity_builder.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
 fqdn = "0.3.4"

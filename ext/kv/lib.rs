@@ -17,7 +17,6 @@ use base64::Engine;
 use boxed_error::Boxed;
 use chrono::DateTime;
 use chrono::Utc;
-use deno_core::error::get_custom_error_class;
 use deno_core::futures::StreamExt;
 use deno_core::op2;
 use deno_core::serde_v8::AnyValue;
@@ -32,6 +31,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use denokv_proto::decode_key;
 use denokv_proto::encode_key;
 use denokv_proto::AtomicWrite;
@@ -115,65 +116,93 @@ impl Resource for DatabaseWatcherResource {
   }
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct KvError(pub Box<KvErrorKind>);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
-  DatabaseHandler(deno_core::error::AnyError),
+  DatabaseHandler(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(type)]
   #[error("Too many ranges (max {0})")]
   TooManyRanges(usize),
+  #[class(type)]
   #[error("Too many entries (max {0})")]
   TooManyEntries(usize),
+  #[class(type)]
   #[error("Too many checks (max {0})")]
   TooManyChecks(usize),
+  #[class(type)]
   #[error("Too many mutations (max {0})")]
   TooManyMutations(usize),
+  #[class(type)]
   #[error("Too many keys (max {0})")]
   TooManyKeys(usize),
+  #[class(type)]
   #[error("limit must be greater than 0")]
   InvalidLimit,
+  #[class(type)]
   #[error("Invalid boundary key")]
   InvalidBoundaryKey,
+  #[class(type)]
   #[error("Key too large for read (max {0} bytes)")]
   KeyTooLargeToRead(usize),
+  #[class(type)]
   #[error("Key too large for write (max {0} bytes)")]
   KeyTooLargeToWrite(usize),
+  #[class(type)]
   #[error("Total mutation size too large (max {0} bytes)")]
   TotalMutationTooLarge(usize),
+  #[class(type)]
   #[error("Total key size too large (max {0} bytes)")]
   TotalKeyTooLarge(usize),
+  #[class(inherit)]
   #[error(transparent)]
-  Kv(deno_core::error::AnyError),
+  Kv(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(type)]
   #[error("Queue message not found")]
   QueueMessageNotFound,
+  #[class(type)]
   #[error("Start key is not in the keyspace defined by prefix")]
   StartKeyNotInKeyspace,
+  #[class(type)]
   #[error("End key is not in the keyspace defined by prefix")]
   EndKeyNotInKeyspace,
+  #[class(type)]
   #[error("Start key is greater than end key")]
   StartKeyGreaterThanEndKey,
+  #[class(inherit)]
   #[error("Invalid check")]
   InvalidCheck(#[source] KvCheckError),
+  #[class(inherit)]
   #[error("Invalid mutation")]
   InvalidMutation(#[source] KvMutationError),
+  #[class(inherit)]
   #[error("Invalid enqueue")]
   InvalidEnqueue(#[source] std::io::Error),
+  #[class(type)]
   #[error("key cannot be empty")]
-  EmptyKey, // TypeError
+  EmptyKey,
+  #[class(type)]
   #[error("Value too large (max {0} bytes)")]
-  ValueTooLarge(usize), // TypeError
+  ValueTooLarge(usize),
+  #[class(type)]
   #[error("enqueue payload too large (max {0} bytes)")]
-  EnqueuePayloadTooLarge(usize), // TypeError
+  EnqueuePayloadTooLarge(usize),
+  #[class(type)]
   #[error("invalid cursor")]
   InvalidCursor,
+  #[class(type)]
   #[error("cursor out of bounds")]
   CursorOutOfBounds,
+  #[class(type)]
   #[error("Invalid range")]
   InvalidRange,
 }
@@ -418,7 +447,7 @@ where
       match state.resource_table.get::<DatabaseResource<DBH::DB>>(rid) {
         Ok(resource) => resource,
         Err(err) => {
-          if get_custom_error_class(&err) == Some("BadResource") {
+          if err.get_class() == "BadResource" {
             return Ok(None);
           } else {
             return Err(KvErrorKind::Resource(err).into_box());
@@ -568,10 +597,12 @@ where
   Ok(())
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvCheckError {
+  #[class(type)]
   #[error("invalid versionstamp")]
   InvalidVersionstamp,
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
 }
@@ -597,14 +628,22 @@ fn check_from_v8(value: V8KvCheck) -> Result<Check, KvCheckError> {
   })
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum KvMutationError {
+  #[class(generic)]
   #[error(transparent)]
   BigInt(#[from] num_bigint::TryFromBigIntError<num_bigint::BigInt>),
+  #[class(inherit)]
   #[error(transparent)]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(type)]
   #[error("Invalid mutation '{0}' with value")]
   InvalidMutationWithValue(String),
+  #[class(type)]
   #[error("Invalid mutation '{0}' without value")]
   InvalidMutationWithoutValue(String),
 }
