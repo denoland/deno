@@ -8,40 +8,21 @@ mod resolution;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_npm_cache::NpmCache;
-pub use resolution::NpmResolution;
+use deno_cache_dir::npm::NpmCacheDir;
 use sys_traits::FsCanonicalize;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
 
 pub use self::common::NpmPackageFsResolver;
 pub use self::common::NpmPackageFsResolverPackageFolderError;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
+pub use self::resolution::NpmResolution;
 
 pub fn create_npm_fs_resolver<
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + FsCanonicalize
-    + Send
-    + Sync
-    + 'static,
+  TSys: FsCanonicalize + FsMetadata + Send + Sync + 'static,
 >(
-  npm_cache: Arc<NpmCache<TSys>>,
+  npm_cache_dir: &Arc<NpmCacheDir>,
+  npm_rc: &Arc<deno_npm::npm_rc::ResolvedNpmRc>,
   resolution: Arc<NpmResolution>,
   sys: TSys,
   maybe_node_modules_path: Option<PathBuf>,
@@ -52,6 +33,10 @@ pub fn create_npm_fs_resolver<
       sys,
       node_modules_folder,
     )),
-    None => Arc::new(GlobalNpmPackageResolver::new(npm_cache, resolution)),
+    None => Arc::new(GlobalNpmPackageResolver::new(
+      npm_cache_dir.clone(),
+      npm_rc.clone(),
+      resolution,
+    )),
   }
 }

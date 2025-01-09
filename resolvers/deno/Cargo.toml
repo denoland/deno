@@ -27,7 +27,6 @@ deno_config.workspace = true
 deno_error.workspace = true
 deno_media_type.workspace = true
 deno_npm.workspace = true
-deno_npm_cache.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_semver.workspace = true

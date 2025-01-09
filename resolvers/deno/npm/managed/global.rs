@@ -7,21 +7,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_cache_dir::npm::NpmCacheDir;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use deno_npm_cache::NpmCache;
+use deno_semver::package::PackageNv;
+use deno_semver::StackString;
+use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
-use sys_traits::FsCreateDirAll;
-use sys_traits::FsHardLink;
-use sys_traits::FsMetadata;
-use sys_traits::FsOpen;
-use sys_traits::FsReadDir;
-use sys_traits::FsRemoveFile;
-use sys_traits::FsRename;
-use sys_traits::SystemRandom;
-use sys_traits::ThreadSleep;
 use url::Url;
 
 use super::NpmPackageFsResolver;
@@ -29,69 +24,62 @@ use super::NpmResolution;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
-pub struct GlobalNpmPackageResolver<
-  TSys: FsCreateDirAll
-    + FsHardLink
-    + FsMetadata
-    + FsOpen
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + Send
-    + Sync,
-> {
-  cache: Arc<NpmCache<TSys>>,
+pub struct GlobalNpmPackageResolver {
+  cache: Arc<NpmCacheDir>,
+  npm_rc: Arc<ResolvedNpmRc>,
   resolution: Arc<NpmResolution>,
 }
 
-impl<
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync,
-  > GlobalNpmPackageResolver<TSys>
-{
+impl GlobalNpmPackageResolver {
   pub fn new(
-    cache: Arc<NpmCache<TSys>>,
+    cache: Arc<NpmCacheDir>,
+    npm_rc: Arc<ResolvedNpmRc>,
     resolution: Arc<NpmResolution>,
   ) -> Self {
-    Self { cache, resolution }
+    Self {
+      cache,
+      npm_rc,
+      resolution,
+    }
+  }
+
+  fn resolve_package_cache_folder_id_from_specifier_inner(
+    &self,
+    specifier: &Url,
+  ) -> Option<NpmPackageCacheFolderId> {
+    self
+      .cache
+      .resolve_package_folder_id_from_specifier(specifier)
+      .and_then(|cache_id| {
+        Some(NpmPackageCacheFolderId {
+          nv: PackageNv {
+            name: StackString::from_string(cache_id.name),
+            version: Version::parse_from_npm(&cache_id.version).ok()?,
+          },
+          copy_index: cache_id.copy_index,
+        })
+      })
   }
 }
 
 #[async_trait(?Send)]
-impl<
-    TSys: FsCreateDirAll
-      + FsHardLink
-      + FsMetadata
-      + FsOpen
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + Send
-      + Sync,
-  > NpmPackageFsResolver for GlobalNpmPackageResolver<TSys>
-{
+impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn node_modules_path(&self) -> Option<&Path> {
     None
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    // todo(THIS PR): avoid the cloning that happens here and only return back a copy index
     let folder_id = self
       .resolution
       .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
-    Some(self.cache.package_folder_for_id(&folder_id))
+    let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
+    Some(self.cache.package_folder_for_id(
+      &id.nv.name,
+      &id.nv.version.to_string(),
+      folder_id.copy_index,
+      registry_url,
+    ))
   }
 
   fn resolve_package_folder_from_package(
@@ -100,9 +88,8 @@ impl<
     referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
-    let Some(referrer_cache_folder_id) = self
-      .cache
-      .resolve_package_folder_id_from_specifier(referrer)
+    let Some(referrer_cache_folder_id) =
+      self.resolve_package_cache_folder_id_from_specifier_inner(referrer)
     else {
       return Err(
         ReferrerNotFoundError {
@@ -158,10 +145,6 @@ impl<
     &self,
     specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
-    Ok(
-      self
-        .cache
-        .resolve_package_folder_id_from_specifier(specifier),
-    )
+    Ok(self.resolve_package_cache_folder_id_from_specifier_inner(specifier))
   }
 }

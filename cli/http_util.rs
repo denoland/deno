@@ -17,7 +17,6 @@ use deno_error::JsErrorBox;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
-use deno_runtime::deno_fetch::HttpClientCreateError;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use http::header::HeaderName;

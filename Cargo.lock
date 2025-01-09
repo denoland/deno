@@ -2204,7 +2204,6 @@ dependencies = [
  "deno_error",
  "deno_media_type",
  "deno_npm",
- "deno_npm_cache",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",

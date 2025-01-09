@@ -103,6 +103,7 @@ pub async fn create_managed_npm_resolver_for_lsp(
     create_inner(
       http_client,
       npm_cache,
+      options.npm_cache_dir,
       options.npm_install_deps_provider,
       npm_api,
       options.sys,
@@ -132,6 +133,7 @@ pub async fn create_managed_npm_resolver(
   Ok(create_inner(
     http_client,
     npm_cache,
+    options.npm_cache_dir,
     options.npm_install_deps_provider,
     api,
     options.sys,
@@ -149,6 +151,7 @@ pub async fn create_managed_npm_resolver(
 fn create_inner(
   http_client: Arc<CliNpmCacheHttpClient>,
   npm_cache: Arc<CliNpmCache>,
+  npm_cache_dir: Arc<NpmCacheDir>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   sys: CliSys,
@@ -180,7 +183,8 @@ fn create_inner(
     lifecycle_scripts.clone(),
   );
   let fs_resolver = create_npm_fs_resolver(
-    npm_cache.clone(),
+    &npm_cache_dir,
+    &npm_rc,
     resolution.clone(),
     sys.clone(),
     node_modules_dir_path,
@@ -191,7 +195,9 @@ fn create_inner(
     maybe_lockfile,
     registry_info_provider,
     npm_cache,
+    npm_cache_dir,
     npm_install_deps_provider,
+    npm_rc,
     resolution,
     sys,
     tarball_cache,
@@ -313,7 +319,9 @@ pub struct ManagedCliNpmResolver {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_cache: Arc<CliNpmCache>,
+  npm_cache_dir: Arc<NpmCacheDir>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+  npm_rc: Arc<ResolvedNpmRc>,
   sys: CliSys,
   resolution: Arc<NpmResolution>,
   resolution_installer: NpmResolutionInstaller,
@@ -362,7 +370,9 @@ impl ManagedCliNpmResolver {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     npm_cache: Arc<CliNpmCache>,
+    npm_cache_dir: Arc<NpmCacheDir>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
+    npm_rc: Arc<ResolvedNpmRc>,
     resolution: Arc<NpmResolution>,
     sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
@@ -381,7 +391,9 @@ impl ManagedCliNpmResolver {
       maybe_lockfile,
       registry_info_provider,
       npm_cache,
+      npm_cache_dir,
       npm_install_deps_provider,
+      npm_rc,
       text_only_progress_bar,
       resolution,
       resolution_installer,
@@ -670,11 +682,11 @@ impl ManagedCliNpmResolver {
   }
 
   pub fn global_cache_root_path(&self) -> &Path {
-    self.npm_cache.root_dir_path()
+    self.npm_cache_dir.root_dir()
   }
 
   pub fn global_cache_root_url(&self) -> &Url {
-    self.npm_cache.root_dir_url()
+    self.npm_cache_dir.root_dir_url()
   }
 }
 
@@ -771,7 +783,8 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.lifecycle_scripts.clone(),
       ),
       create_npm_fs_resolver(
-        self.npm_cache.clone(),
+        &self.npm_cache_dir,
+        &self.npm_rc,
         npm_resolution.clone(),
         self.sys.clone(),
         self.root_node_modules_path().map(ToOwned::to_owned),
@@ -779,7 +792,9 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       self.maybe_lockfile.clone(),
       self.registry_info_provider.clone(),
       self.npm_cache.clone(),
+      self.npm_cache_dir.clone(),
       self.npm_install_deps_provider.clone(),
+      self.npm_rc.clone(),
       npm_resolution,
       self.sys.clone(),
       self.tarball_cache.clone(),
