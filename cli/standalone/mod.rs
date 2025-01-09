@@ -39,6 +39,9 @@ use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::create_in_npm_pkg_checker;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
@@ -81,14 +84,11 @@ use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver;
-use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::resolver::CjsTracker;
@@ -738,7 +738,7 @@ pub async fn run(
         .map(|node_modules_dir| root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
         create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
           },
@@ -796,7 +796,7 @@ pub async fn run(
       ));
       let in_npm_pkg_checker =
         create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
           },
