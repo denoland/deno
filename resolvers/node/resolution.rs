@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use crate::sync::MaybeArc;
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
@@ -66,7 +66,7 @@ pub fn deno_conditions_from_resolution_mode(
 }
 
 pub struct ConditionsFromResolutionMode {
-  pub func: Arc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
+  pub func: MaybeArc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
 }
 
 impl Debug for ConditionsFromResolutionMode {
@@ -76,10 +76,10 @@ impl Debug for ConditionsFromResolutionMode {
 }
 
 impl ConditionsFromResolutionMode {
-  pub fn new(
-    func: Arc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
-  ) -> Self {
-    Self { func }
+  pub fn new(func: dyn Fn(ResolutionMode) -> &'static [&'static str]) -> Self {
+    Self {
+      func: MaybeArc::new(func),
+    }
   }
 }
 
