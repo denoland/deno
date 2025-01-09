@@ -9953,7 +9953,7 @@ fn lsp_auto_imports_remote_dts() {
       "languageId": "typescript",
       "version": 1,
       "text": r#"
-        import "http://localhost:4545/subdir/imports_interface.ts";
+        import "http://localhost:4545/subdir/imports_declaration/imports_interface.ts";
         const a: SomeInterface
       "#,
     },
@@ -9982,7 +9982,7 @@ fn lsp_auto_imports_remote_dts() {
     json!({
       "label": "SomeInterface",
       "labelDetails": {
-        "description": "http://localhost:4545/subdir/interface.d.ts",
+        "description": "http://localhost:4545/subdir/imports_declaration/interface.d.ts",
       },
       "kind": 8,
       "detail": "interface SomeInterface",
@@ -9997,7 +9997,7 @@ fn lsp_auto_imports_remote_dts() {
             "start": { "line": 2, "character": 0 },
             "end": { "line": 2, "character": 0 },
           },
-          "newText": "        import { SomeInterface } from \"http://localhost:4545/subdir/interface.d.ts\";\n",
+          "newText": "        import { SomeInterface } from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\";\n",
         },
       ],
     }),
