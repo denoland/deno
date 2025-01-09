@@ -47,6 +47,7 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::npm::InNpmPackageCheckerRc;
+#[allow(clippy::disallowed_types)]
 use crate::sync::MaybeArc;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
@@ -66,6 +67,7 @@ pub fn deno_conditions_from_resolution_mode(
 }
 
 pub struct ConditionsFromResolutionMode {
+  #[allow(clippy::disallowed_types)]
   pub func: MaybeArc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
 }
 
@@ -80,6 +82,7 @@ impl ConditionsFromResolutionMode {
     func: impl Fn(ResolutionMode) -> &'static [&'static str] + 'static,
   ) -> Self {
     Self {
+      #[allow(clippy::disallowed_types)]
       func: MaybeArc::new(func),
     }
   }
