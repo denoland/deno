@@ -47,8 +47,6 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::npm::InNpmPackageCheckerRc;
-#[allow(clippy::disallowed_types)]
-use crate::sync::MaybeArc;
 use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
