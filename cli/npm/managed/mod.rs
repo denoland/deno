@@ -38,7 +38,6 @@ use installers::create_npm_fs_installer;
 use installers::NpmPackageFsInstaller;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 use super::CliNpmCache;
@@ -274,35 +273,6 @@ async fn snapshot_from_lockfile(
   )
   .await?;
   Ok(snapshot)
-}
-
-#[derive(Debug)]
-struct ManagedInNpmPackageChecker {
-  root_dir: Url,
-}
-
-impl InNpmPackageChecker for ManagedInNpmPackageChecker {
-  fn in_npm_package(&self, specifier: &Url) -> bool {
-    specifier.as_ref().starts_with(self.root_dir.as_str())
-  }
-}
-
-pub struct CliManagedInNpmPkgCheckerCreateOptions<'a> {
-  pub root_cache_dir_url: &'a Url,
-  pub maybe_node_modules_path: Option<&'a Path>,
-}
-
-pub fn create_managed_in_npm_pkg_checker(
-  options: CliManagedInNpmPkgCheckerCreateOptions,
-) -> Arc<dyn InNpmPackageChecker> {
-  let root_dir = match options.maybe_node_modules_path {
-    Some(node_modules_folder) => {
-      deno_path_util::url_from_directory_path(node_modules_folder).unwrap()
-    }
-    None => options.root_cache_dir_url.clone(),
-  };
-  debug_assert!(root_dir.as_str().ends_with('/'));
-  Arc::new(ManagedInNpmPackageChecker { root_dir })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

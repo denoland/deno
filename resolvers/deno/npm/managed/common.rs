@@ -9,6 +9,9 @@ use deno_npm::NpmPackageId;
 use node_resolver::errors::PackageFolderResolveError;
 use url::Url;
 
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+
 #[allow(clippy::disallowed_types)]
 pub(super) type NpmPackageFsResolverRc =
   crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
@@ -20,7 +23,7 @@ pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
 
 /// Part of the resolution that interacts with the file system.
 #[async_trait(?Send)]
-pub trait NpmPackageFsResolver: Send + Sync {
+pub trait NpmPackageFsResolver: MaybeSend + MaybeSync {
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&Path>;
 

@@ -34,10 +34,31 @@ pub use self::byonm::ByonmNpmResolverRc;
 pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
 pub use self::local::get_package_folder_id_folder_name;
 pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+use self::managed::create_managed_in_npm_pkg_checker;
+use self::managed::ManagedInNpmPkgCheckerCreateOptions;
+use crate::sync::new_rc;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 mod byonm;
 mod local;
 pub mod managed;
+
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+pub fn create_in_npm_pkg_checker(
+  options: CreateInNpmPkgCheckerOptions,
+) -> InNpmPackageCheckerRc {
+  match options {
+    CreateInNpmPkgCheckerOptions::Managed(options) => {
+      new_rc(create_managed_in_npm_pkg_checker(options))
+    }
+    CreateInNpmPkgCheckerOptions::Byonm => new_rc(ByonmInNpmPackageChecker),
+  }
+}
 
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
@@ -99,7 +120,7 @@ pub type CliNpmReqResolverRc = crate::sync::MaybeArc<dyn CliNpmReqResolver>;
 
 // todo(dsherret): a temporary trait until we extract
 // out the CLI npm resolver into here
-pub trait CliNpmReqResolver: Debug + Send + Sync {
+pub trait CliNpmReqResolver: Debug + MaybeSend + MaybeSync {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
