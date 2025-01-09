@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -63,9 +64,14 @@ fn deno_conditions_from_resolution_mode(
   }
 }
 
-#[derive(Debug)]
 pub struct ConditionsFromResolutionMode {
   pub func: &'static dyn Fn(ResolutionMode) -> &'static [&'static str],
+}
+
+impl Debug for ConditionsFromResolutionMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ConditionsFromResolutionMode").finish()
+  }
 }
 
 impl ConditionsFromResolutionMode {
