@@ -77,7 +77,7 @@ impl Debug for ConditionsFromResolutionMode {
 
 impl ConditionsFromResolutionMode {
   pub fn new(
-    func: &'static dyn Fn(ResolutionMode) -> &'static [&'static str],
+    func: Arc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
   ) -> Self {
     Self { func }
   }
