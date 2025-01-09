@@ -207,7 +207,7 @@ impl<
       specifier,
       referrer,
       resolution_mode,
-      self.conditions_from_resolution_mode(resolution_mode),
+      (self.conditions_from_resolution_mode)(resolution_mode),
       resolution_kind,
     )?;
 
@@ -349,7 +349,7 @@ impl<
       &package_subpath,
       maybe_referrer,
       resolution_mode,
-      self.conditions_from_resolution_mode(resolution_mode),
+      (self.conditions_from_resolution_mode)(resolution_mode),
       resolution_kind,
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -480,7 +480,7 @@ impl<
         /* sub path */ ".",
         maybe_referrer,
         resolution_mode,
-        self.conditions_from_resolution_mode(resolution_mode),
+        (self.conditions_from_resolution_mode)(resolution_mode),
         NodeResolutionKind::Types,
       );
       if let Ok(resolution) = resolution_result {
