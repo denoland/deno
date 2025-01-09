@@ -721,7 +721,24 @@ Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "/foo/g", "Literal");
 });
 
-Deno.test("Plugin - TS Interface", async (t) => {
+Deno.test("Plugin - TSAsExpression", async (t) => {
+  await testSnapshot(t, "a as any", "TSAsExpression");
+  await testSnapshot(t, '"foo" as const', "TSAsExpression");
+});
+
+Deno.test("Plugin - TSEnumDeclaration", async (t) => {
+  await testSnapshot(t, "enum Foo {}", "TSEnumDeclaration");
+  await testSnapshot(t, "const enum Foo {}", "TSEnumDeclaration");
+  await testSnapshot(t, "enum Foo { A, B }", "TSEnumDeclaration");
+  await testSnapshot(t, 'enum Foo { "a-b" }', "TSEnumDeclaration");
+  await testSnapshot(
+    t,
+    "enum Foo { A = 1, B = 2, C = A | B }",
+    "TSEnumDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSInterface", async (t) => {
   await testSnapshot(t, "interface A {}", "TSInterface");
   await testSnapshot(t, "interface A<T> {}", "TSInterface");
   await testSnapshot(t, "interface A extends Foo<T>, Bar<T> {}", "TSInterface");
@@ -736,4 +753,37 @@ Deno.test("Plugin - TS Interface", async (t) => {
   await testSnapshot(t, "interface A { <T>(a: T): T }", "TSInterface");
   await testSnapshot(t, "interface A { new <T>(a: T): T }", "TSInterface");
   await testSnapshot(t, "interface A { a: new <T>(a: T) => T }", "TSInterface");
+  await testSnapshot(t, "interface A { get a(): string }", "TSInterface");
+  await testSnapshot(t, "interface A { set a(v: string) }", "TSInterface");
+});
+
+Deno.test("Plugin - TSSatisfiesExpression", async (t) => {
+  await testSnapshot(t, "{} satisfies A", "TSSatisfiesExpression");
+});
+
+Deno.test("Plugin - TSTypeAliasDeclaration", async (t) => {
+  await testSnapshot(t, "type A = any", "TSTypeAliasDeclaration");
+  await testSnapshot(t, "type A<T> = any", "TSTypeAliasDeclaration");
+  await testSnapshot(t, "declare type A<T> = any", "TSTypeAliasDeclaration");
+});
+
+Deno.test("Plugin - TSNonNullExpression", async (t) => {
+  await testSnapshot(t, "a!", "TSNonNullExpression");
+});
+
+Deno.test("Plugin - TSUnionType", async (t) => {
+  await testSnapshot(t, "type A = B | C", "TSUnionType");
+});
+
+Deno.test("Plugin - TSIntersectionType", async (t) => {
+  await testSnapshot(t, "type A = B & C", "TSIntersectionType");
+});
+
+Deno.test("Plugin - TSModuleDeclaration", async (t) => {
+  await testSnapshot(t, "module A;", "TSModuleDeclaration");
+  await testSnapshot(
+    t,
+    "declare module A { export function A(): void }",
+    "TSModuleDeclaration",
+  );
 });

@@ -61,7 +61,9 @@ use deno_ast::swc::ast::TsFnParam;
 use deno_ast::swc::ast::TsIndexSignature;
 use deno_ast::swc::ast::TsLit;
 use deno_ast::swc::ast::TsLitType;
+use deno_ast::swc::ast::TsModuleName;
 use deno_ast::swc::ast::TsModuleRef;
+use deno_ast::swc::ast::TsNamespaceBody;
 use deno_ast::swc::ast::TsParamPropParam;
 use deno_ast::swc::ast::TsThisTypeOrIdent;
 use deno_ast::swc::ast::TsType;
@@ -965,8 +967,10 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
     Expr::TsConstAssertion(node) => {
       let expr = serialize_expr(ctx, node.expr.as_ref());
 
-      // TODO(@marvinhagemeister): type_ann
-      ctx.write_ts_as_expr(&node.span, expr, NodeRef(0))
+      let type_name = ctx.write_identifier(&node.span, "const", false, None);
+      let type_ann = ctx.write_ts_type_ref(&node.span, type_name, None);
+
+      ctx.write_ts_as_expr(&node.span, expr, type_ann)
     }
     Expr::TsNonNull(node) => {
       let expr = serialize_expr(ctx, node.expr.as_ref());
@@ -1278,8 +1282,6 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .decls
         .iter()
         .map(|decl| {
-          // TODO(@marvinhagemeister): Definite?
-
           let ident = serialize_pat(ctx, &decl.name);
           let init = decl
             .init
@@ -1309,8 +1311,6 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .decls
         .iter()
         .map(|decl| {
-          // TODO(@marvinhagemeister): Definite?
-
           let ident = serialize_pat(ctx, &decl.name);
           let init = decl
             .init
@@ -1397,8 +1397,30 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
       let body = ctx.write_ts_enum_body(&node.span, members);
       ctx.write_ts_enum(&node.span, node.declare, node.is_const, id, body)
     }
-    Decl::TsModule(_) => {
-      todo!()
+    Decl::TsModule(node) => {
+      let ident = match node.id {
+        TsModuleName::Ident(ident) => serialize_ident(ctx, &ident),
+        TsModuleName::Str(str_lit) => {
+          serialize_lit(ctx, &Lit::Str(str_lit.clone()))
+        }
+      };
+
+      let body = node.body.as_ref().map(|body| match body {
+        TsNamespaceBody::TsModuleBlock(mod_block) => {
+          let items = mod_block.body;
+          // TODO
+          ctx.write_ts_module_block(&mod_block.span, items)
+        }
+        TsNamespaceBody::TsNamespaceDecl(ts_namespace_decl) => todo!(),
+      });
+
+      ctx.write_ts_module_decl(
+        &node.span,
+        node.declare,
+        node.global,
+        ident,
+        body,
+      )
     }
   }
 }

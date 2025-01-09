@@ -33,6 +33,8 @@ pub enum AstNode {
   TSNamespaceExportDeclaration,
   TSImportEqualsDeclaration,
   TSExternalModuleReference,
+  TSModuleDeclaration,
+  TSModuleBlock,
 
   // Decls
   ClassDeclaration,
@@ -257,6 +259,7 @@ pub enum AstProp {
   Finalizer,
   Flags,
   Generator,
+  Global,
   Handler,
   Id,
   In,
@@ -327,8 +330,6 @@ pub enum AstProp {
   Value, // Last value is used for max value
 }
 
-// TODO: Feels like there should be an easier way to iterater over an
-// enum in Rust and lowercase the first letter.
 impl Display for AstProp {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let s = match self {
@@ -382,6 +383,7 @@ impl Display for AstProp {
       AstProp::Finalizer => "finalizer",
       AstProp::Flags => "flags",
       AstProp::Generator => "generator",
+      AstProp::Global => "global",
       AstProp::Handler => "handler",
       AstProp::Id => "id",
       AstProp::In => "in",
@@ -472,8 +474,6 @@ impl AstBufSerializer for TsEsTreeBuilder {
   }
 }
 
-// TODO: Add a builder API to make it easier to convert from different source
-// ast formats.
 impl TsEsTreeBuilder {
   pub fn new() -> Self {
     // Max values
@@ -670,7 +670,7 @@ impl TsEsTreeBuilder {
     let id = self
       .ctx
       .append_node(AstNode::TSExternalModuleReference, span);
-    self.ctx.write_str(AstProp::Expression, expr);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
     self.ctx.commit_node(id)
   }
 
@@ -1853,6 +1853,33 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Object, &id, obj);
     self.ctx.write_ref(AstProp::Property, &id, prop);
 
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_module_decl(
+    &mut self,
+    span: &Span,
+    is_declare: bool,
+    is_global: bool,
+    ident: NodeRef,
+    body: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSModuleDeclaration, span);
+
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Global, is_global);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_maybe_ref(AstProp::Body, &id, body);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_module_block(
+    &mut self,
+    span: &Span,
+    body: Vec<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSModuleBlock, span);
+    self.ctx.write_ref_vec(AstProp::Body, &id, body);
     self.ctx.commit_node(id)
   }
 
