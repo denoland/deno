@@ -30,6 +30,9 @@ pub enum AstNode {
   TsExportAssignment,
   TsImportEquals,
   TsNamespaceExport,
+  TSNamespaceExportDeclaration,
+  TSImportEqualsDeclaration,
+  TSExternalModuleReference,
 
   // Decls
   ClassDeclaration,
@@ -161,6 +164,7 @@ pub enum AstNode {
   TSTypeOperator,
   TSTypePredicate,
   TSImportType,
+  TSExportAssignment,
   TSRestType,
   TSArrayType,
   TSClassImplements,
@@ -271,6 +275,7 @@ pub enum AstProp {
   Members,
   Meta,
   Method,
+  ModuleReference,
   Name,
   Namespace,
   NameType,
@@ -395,6 +400,7 @@ impl Display for AstProp {
       AstProp::Members => "members",
       AstProp::Meta => "meta",
       AstProp::Method => "method",
+      AstProp::ModuleReference => "moduleReference",
       AstProp::Name => "name",
       AstProp::Namespace => "namespace",
       AstProp::NameType => "nameType",
@@ -622,6 +628,49 @@ impl TsEsTreeBuilder {
     self.ctx.write_maybe_ref(AstProp::Source, &id, source);
     self.ctx.write_ref_vec(AstProp::Attributes, &id, attributes);
 
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_export_ts_namespace(
+    &mut self,
+    span: &Span,
+    ident: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSNamespaceExportDeclaration, span);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_export_ts_import_equals(
+    &mut self,
+    span: &Span,
+    is_type_only: bool,
+    ident: NodeRef,
+    reference: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSImportEqualsDeclaration, span);
+
+    let value = if is_type_only { "type" } else { "value" };
+    self.ctx.write_str(AstProp::ImportKind, value);
+    self.ctx.write_ref(AstProp::Id, &id, ident);
+    self.ctx.write_ref(AstProp::ModuleReference, &id, reference);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_external_mod_ref(
+    &mut self,
+    span: &Span,
+    expr: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSExternalModuleReference, span);
+    self.ctx.write_str(AstProp::Expression, expr);
     self.ctx.commit_node(id)
   }
 
@@ -2513,6 +2562,12 @@ impl TsEsTreeBuilder {
       .ctx
       .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
 
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_export_assign(&mut self, span: &Span, expr: NodeRef) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSExportAssignment, span);
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
     self.ctx.commit_node(id)
   }
 

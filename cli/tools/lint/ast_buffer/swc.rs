@@ -61,6 +61,7 @@ use deno_ast::swc::ast::TsFnParam;
 use deno_ast::swc::ast::TsIndexSignature;
 use deno_ast::swc::ast::TsLit;
 use deno_ast::swc::ast::TsLitType;
+use deno_ast::swc::ast::TsModuleRef;
 use deno_ast::swc::ast::TsParamPropParam;
 use deno_ast::swc::ast::TsThisTypeOrIdent;
 use deno_ast::swc::ast::TsType;
@@ -351,14 +352,32 @@ fn serialize_module_decl(
 
       ctx.write_export_all_decl(&node.span, node.type_only, src, None, attrs)
     }
-    ModuleDecl::TsImportEquals(_) => {
-      todo!()
+    ModuleDecl::TsImportEquals(node) => {
+      let ident = serialize_ident(ctx, &node.id);
+      let module_ref = match &node.module_ref {
+        TsModuleRef::TsEntityName(entity) => {
+          serialize_ts_entity_name(ctx, &entity)
+        }
+        TsModuleRef::TsExternalModuleRef(external) => {
+          let expr = serialize_lit(ctx, &Lit::Str(external.expr.clone()));
+          ctx.write_ts_external_mod_ref(&external.span, expr)
+        }
+      };
+
+      ctx.write_export_ts_import_equals(
+        &node.span,
+        node.is_type_only,
+        ident,
+        module_ref,
+      )
     }
-    ModuleDecl::TsExportAssignment(_) => {
-      todo!()
+    ModuleDecl::TsExportAssignment(node) => {
+      let expr = serialize_expr(ctx, &node.expr);
+      ctx.write_export_assign(&node.span, expr)
     }
-    ModuleDecl::TsNamespaceExport(_) => {
-      todo!()
+    ModuleDecl::TsNamespaceExport(node) => {
+      let decl = serialize_ident(ctx, &node.id);
+      ctx.write_export_ts_namespace(&node.span, decl)
     }
   }
 }

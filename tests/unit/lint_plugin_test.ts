@@ -404,6 +404,27 @@ Deno.test("Plugin - ExportAllDeclaration", async (t) => {
   );
 });
 
+Deno.test("Plugin - TSExportAssignment", async (t) => {
+  await testSnapshot(t, "export = foo;", "TSExportAssignment");
+});
+
+Deno.test("Plugin - TSNamespaceExportDeclaration", async (t) => {
+  await testSnapshot(
+    t,
+    "export as namespace A;",
+    "TSNamespaceExportDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSImportEqualsDeclaration", async (t) => {
+  await testSnapshot(t, "import a = b", "TSImportEqualsDeclaration");
+  await testSnapshot(
+    t,
+    'import a = require("foo")',
+    "TSImportEqualsDeclaration",
+  );
+});
+
 Deno.test("Plugin - BlockStatement", async (t) => {
   await testSnapshot(t, "{ foo; }", "BlockStatement");
 });
