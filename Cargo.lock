@@ -1499,7 +1499,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.43.0"
-source = "git+https://github.com/nathanwhit/deno_config?branch=permission-sets#313f290d13f82604c8eecca5728af0e7b0fc2a94"
+source = "git+https://github.com/nathanwhit/deno_config?branch=permission-sets#14b1659a30cecc042a6bdb4a2d76bdca0fb7897d"
 dependencies = [
  "boxed_error",
  "deno_error",
