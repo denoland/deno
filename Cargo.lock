@@ -1497,9 +1497,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.43.0"
+version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c4c11bd51ef6738cabfc3c53f16c209a0b8615cb1e4e5bf3b14e3b5deebfe21"
+checksum = "eaab541eb5f1ca576c0bc3d3e9deacc9c648f4da0961b9ff626c3bdfa2247c9a"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -9471,8 +9471,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "deno_config"
-version = "0.42.0"
-source = "git+https://github.com/denoland/deno_config.git?branch=deno_lint_rules#9639942b42463d6b3ab7876284d192f84b1b6da0"

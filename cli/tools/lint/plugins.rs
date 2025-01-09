@@ -9,7 +9,7 @@ use ::tokio_util::sync::CancellationToken;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_core::error::custom_error;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
@@ -498,7 +498,7 @@ impl PluginHostProxy {
       *self.plugin_info.lock() = infos;
       return Ok(());
     }
-    Err(custom_error("AlreadyClosed", "Plugin host has closed"))
+    bail!("Plugin host has closed")
   }
 
   pub async fn run_rules(
@@ -522,7 +522,7 @@ impl PluginHostProxy {
     if let Some(PluginHostResponse::Run(diagnostics_result)) = rx.recv().await {
       return diagnostics_result;
     }
-    Err(custom_error("AlreadyClosed", "Plugin host has closed"))
+    bail!("Plugin host has closed")
   }
 
   pub fn serialize_ast(
