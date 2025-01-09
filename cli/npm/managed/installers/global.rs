@@ -11,8 +11,8 @@ use deno_core::futures::StreamExt;
 use deno_error::JsErrorBox;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::managed::NpmResolution;
 
-use super::super::resolution::NpmResolution;
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsInstaller;
 use crate::args::LifecycleScriptsConfig;

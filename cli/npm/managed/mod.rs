@@ -23,6 +23,10 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_resolver::npm::managed::create_npm_fs_resolver;
+use deno_resolver::npm::managed::NpmPackageFsResolver;
+use deno_resolver::npm::managed::NpmPackageFsResolverPackageFolderError;
+use deno_resolver::npm::managed::NpmResolution;
 use deno_resolver::npm::CliNpmReqResolver;
 use deno_runtime::colors;
 use deno_runtime::ops::process::NpmProcessStateProvider;
@@ -37,9 +41,6 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
-use self::resolution::NpmResolution;
-use self::resolvers::create_npm_fs_resolver;
-use self::resolvers::NpmPackageFsResolver;
 use super::CliNpmCache;
 use super::CliNpmCacheHttpClient;
 use super::CliNpmRegistryInfoProvider;
@@ -60,8 +61,6 @@ use crate::util::sync::AtomicFlag;
 
 mod installer;
 mod installers;
-mod resolution;
-mod resolvers;
 
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<CliLockfile>),
@@ -338,7 +337,7 @@ pub enum ResolvePkgFolderFromPkgIdError {
   #[class(inherit)]
   #[error("{0}")]
   NpmPackageFsResolverPackageFolder(
-    #[from] resolvers::NpmPackageFsResolverPackageFolderError,
+    #[from] NpmPackageFsResolverPackageFolderError,
   ),
   #[class(inherit)]
   #[error("{0}")]

@@ -2,6 +2,21 @@
 
 use std::borrow::Cow;
 
+use deno_npm::NpmPackageCacheFolderId;
+
+pub fn get_package_folder_id_folder_name(
+  folder_id: &NpmPackageCacheFolderId,
+) -> String {
+  let copy_str = if folder_id.copy_index == 0 {
+    Cow::Borrowed("")
+  } else {
+    Cow::Owned(format!("_{}", folder_id.copy_index))
+  };
+  let nv = &folder_id.nv;
+  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
+  format!("{}@{}{}", name, nv.version, copy_str)
+}
+
 /// Normalizes a package name for use at `node_modules/.deno/<pkg-name>@<version>[_<copy_index>]`
 pub fn normalize_pkg_name_for_node_modules_deno_folder(name: &str) -> Cow<str> {
   let name = if name.to_lowercase() == name {

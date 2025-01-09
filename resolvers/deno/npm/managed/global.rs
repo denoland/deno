@@ -7,32 +7,82 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm_cache::NpmCache;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
+use url::Url;
 
-use super::super::resolution::NpmResolution;
-use super::common::NpmPackageFsResolver;
-use crate::npm::CliNpmCache;
+use super::NpmPackageFsResolver;
+use super::NpmResolution;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
-pub struct GlobalNpmPackageResolver {
-  cache: Arc<CliNpmCache>,
+pub struct GlobalNpmPackageResolver<
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync,
+> {
+  cache: Arc<NpmCache<TSys>>,
   resolution: Arc<NpmResolution>,
 }
 
-impl GlobalNpmPackageResolver {
-  pub fn new(cache: Arc<CliNpmCache>, resolution: Arc<NpmResolution>) -> Self {
+impl<
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync,
+  > GlobalNpmPackageResolver<TSys>
+{
+  pub fn new(
+    cache: Arc<NpmCache<TSys>>,
+    resolution: Arc<NpmResolution>,
+  ) -> Self {
     Self { cache, resolution }
   }
 }
 
 #[async_trait(?Send)]
-impl NpmPackageFsResolver for GlobalNpmPackageResolver {
+impl<
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync,
+  > NpmPackageFsResolver for GlobalNpmPackageResolver<TSys>
+{
   fn node_modules_path(&self) -> Option<&Path> {
     None
   }
@@ -47,7 +97,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
     let Some(referrer_cache_folder_id) = self
@@ -106,7 +156,7 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     Ok(
       self

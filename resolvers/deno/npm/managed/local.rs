@@ -8,40 +8,43 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::mixed_case_package_name_decode;
-use deno_core::url::Url;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
+use url::Url;
 
-use super::super::resolution::NpmResolution;
-use super::common::NpmPackageFsResolver;
-use crate::sys::CliSys;
+use super::NpmPackageFsResolver;
+use super::NpmResolution;
+use crate::npm::local::get_package_folder_id_folder_name;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
-pub struct LocalNpmPackageResolver {
+pub struct LocalNpmPackageResolver<
+  TSys: FsCanonicalize + FsMetadata + Send + Sync,
+> {
   resolution: Arc<NpmResolution>,
-  sys: CliSys,
+  sys: TSys,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
 }
 
-impl LocalNpmPackageResolver {
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
+  LocalNpmPackageResolver<TSys>
+{
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     resolution: Arc<NpmResolution>,
-    sys: CliSys,
+    sys: TSys,
     node_modules_folder: PathBuf,
   ) -> Self {
     Self {
@@ -67,7 +70,7 @@ impl LocalNpmPackageResolver {
 
   fn resolve_folder_for_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(relative_url) =
       self.root_node_modules_url.make_relative(specifier)
@@ -88,7 +91,7 @@ impl LocalNpmPackageResolver {
 
   fn resolve_package_folder_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<PathBuf>, std::io::Error> {
     let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
       return Ok(None);
@@ -99,7 +102,9 @@ impl LocalNpmPackageResolver {
 }
 
 #[async_trait(?Send)]
-impl NpmPackageFsResolver for LocalNpmPackageResolver {
+impl<TSys: FsCanonicalize + FsMetadata + Send + Sync> NpmPackageFsResolver
+  for LocalNpmPackageResolver<TSys>
+{
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())
   }
@@ -123,7 +128,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
       .resolve_folder_for_specifier(referrer)
@@ -173,7 +178,7 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
     let Some(folder_path) =
       self.resolve_package_folder_from_specifier(specifier)?
@@ -196,19 +201,6 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &folder_name.to_string_lossy(),
     ))
   }
-}
-
-pub fn get_package_folder_id_folder_name(
-  folder_id: &NpmPackageCacheFolderId,
-) -> String {
-  let copy_str = if folder_id.copy_index == 0 {
-    Cow::Borrowed("")
-  } else {
-    Cow::Owned(format!("_{}", folder_id.copy_index))
-  };
-  let nv = &folder_id.nv;
-  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
-  format!("{}@{}{}", name, nv.version, copy_str)
 }
 
 fn get_package_folder_id_from_folder_name(

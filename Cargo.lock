@@ -2096,12 +2096,10 @@ dependencies = [
 name = "deno_npm_cache"
 version = "0.3.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "base64 0.21.7",
  "boxed_error",
  "deno_cache_dir",
- "deno_core",
  "deno_error",
  "deno_npm",
  "deno_path_util",
@@ -2197,16 +2195,21 @@ name = "deno_resolver"
 version = "0.15.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "base32",
  "boxed_error",
  "dashmap",
+ "deno_cache_dir",
  "deno_config",
  "deno_error",
  "deno_media_type",
+ "deno_npm",
+ "deno_npm_cache",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
  "node_resolver",
+ "parking_lot",
  "sys_traits",
  "test_server",
  "thiserror 2.0.3",

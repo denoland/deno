@@ -11,6 +11,7 @@ use dashmap::DashMap;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmInNpmPackageChecker;
@@ -100,7 +101,7 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         };
         deno_npm_cache::DownloadError {
           status_code,
-          error: err.into(),
+          error: JsErrorBox::from_err(err),
         }
       })
   }

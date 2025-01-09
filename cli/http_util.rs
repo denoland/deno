@@ -17,6 +17,7 @@ use deno_error::JsErrorBox;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
+use deno_runtime::deno_fetch::HttpClientCreateError;
 use deno_runtime::deno_fetch::ResBody;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use http::header::HeaderName;
@@ -70,7 +71,7 @@ impl HttpClientProvider {
     }
   }
 
-  pub fn get_or_create(&self) -> Result<HttpClient, AnyError> {
+  pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
     use std::collections::hash_map::Entry;
     let thread_id = std::thread::current().id();
     let mut clients = self.clients_by_thread_id.lock();
@@ -87,7 +88,8 @@ impl HttpClientProvider {
             },
             ..self.options.clone()
           },
-        )?;
+        )
+        .map_err(JsErrorBox::from_err)?;
         entry.insert(client.clone());
         Ok(HttpClient::new(client))
       }

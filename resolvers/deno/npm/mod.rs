@@ -4,15 +4,9 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
-pub use byonm::ByonmInNpmPackageChecker;
-pub use byonm::ByonmNpmResolver;
-pub use byonm::ByonmNpmResolverCreateOptions;
-pub use byonm::ByonmNpmResolverRc;
-pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-pub use local::normalize_pkg_name_for_node_modules_deno_folder;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -33,8 +27,17 @@ use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+pub use self::byonm::ByonmInNpmPackageChecker;
+pub use self::byonm::ByonmNpmResolver;
+pub use self::byonm::ByonmNpmResolverCreateOptions;
+pub use self::byonm::ByonmNpmResolverRc;
+pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
+pub use self::local::get_package_folder_id_folder_name;
+pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+
 mod byonm;
 mod local;
+pub mod managed;
 
 #[derive(Debug, Error, JsError)]
 #[class(generic)]

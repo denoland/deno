@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use deno_core::parking_lot::RwLock;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
@@ -16,10 +15,9 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use parking_lot::RwLock;
 
-/// Handles updating and storing npm resolution in memory where the underlying
-/// snapshot can be updated concurrently. Additionally handles updating the lockfile
-/// based on changes to the resolution.
+/// Handles updating and storing npm resolution in memory.
 ///
 /// This does not interact with the file system.
 pub struct NpmResolution {
