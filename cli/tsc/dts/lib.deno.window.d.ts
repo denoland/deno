@@ -94,6 +94,8 @@ declare var closed: boolean;
  * Note: Use this function cautiously, as it will stop the execution of the
  * entire Deno program immediately.
  *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/close
+ *
  * @example
  * ```ts
  * console.log("About to close the Deno process.");
