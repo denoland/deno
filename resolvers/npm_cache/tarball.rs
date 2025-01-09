@@ -3,16 +3,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use deno_core::futures::future::LocalBoxFuture;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
 use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
+use futures::future::LocalBoxFuture;
+use futures::FutureExt;
 use http::StatusCode;
+use parking_lot::Mutex;
 use sys_traits::FsCreateDirAll;
 use sys_traits::FsHardLink;
 use sys_traits::FsMetadata;
@@ -22,6 +21,7 @@ use sys_traits::FsRemoveFile;
 use sys_traits::FsRename;
 use sys_traits::SystemRandom;
 use sys_traits::ThreadSleep;
+use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::tarball_extract::verify_and_extract_tarball;

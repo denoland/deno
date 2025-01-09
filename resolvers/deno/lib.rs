@@ -6,12 +6,14 @@
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -46,6 +48,12 @@ mod sync;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
+
+#[allow(clippy::disallowed_types)]
+pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+
+#[allow(clippy::disallowed_types)]
+pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {

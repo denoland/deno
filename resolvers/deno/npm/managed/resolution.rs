@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 
-use deno_core::parking_lot::RwLock;
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
@@ -16,10 +15,12 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use parking_lot::RwLock;
 
-/// Handles updating and storing npm resolution in memory where the underlying
-/// snapshot can be updated concurrently. Additionally handles updating the lockfile
-/// based on changes to the resolution.
+#[allow(clippy::disallowed_types)]
+pub(super) type NpmResolutionRc = crate::sync::MaybeArc<NpmResolution>;
+
+/// Handles updating and storing npm resolution in memory.
 ///
 /// This does not interact with the file system.
 pub struct NpmResolution {
@@ -50,15 +51,15 @@ impl NpmResolution {
     }
   }
 
-  pub fn resolve_pkg_cache_folder_id_from_pkg_id(
+  pub fn resolve_pkg_cache_folder_copy_index_from_pkg_id(
     &self,
     id: &NpmPackageId,
-  ) -> Option<NpmPackageCacheFolderId> {
+  ) -> Option<u8> {
     self
       .snapshot
       .read()
       .package_from_id(id)
-      .map(|p| p.get_package_cache_folder_id())
+      .map(|p| p.copy_index)
   }
 
   pub fn resolve_pkg_id_from_pkg_cache_folder_id(

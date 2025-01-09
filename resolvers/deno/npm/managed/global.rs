@@ -4,30 +4,60 @@
 
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_semver::package::PackageNv;
+use deno_semver::StackString;
+use deno_semver::Version;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
+use url::Url;
 
-use super::super::resolution::NpmResolution;
-use super::common::NpmPackageFsResolver;
-use crate::npm::CliNpmCache;
+use super::resolution::NpmResolutionRc;
+use super::NpmCacheDirRc;
+use super::NpmPackageFsResolver;
+use crate::ResolvedNpmRcRc;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]
 pub struct GlobalNpmPackageResolver {
-  cache: Arc<CliNpmCache>,
-  resolution: Arc<NpmResolution>,
+  cache: NpmCacheDirRc,
+  npm_rc: ResolvedNpmRcRc,
+  resolution: NpmResolutionRc,
 }
 
 impl GlobalNpmPackageResolver {
-  pub fn new(cache: Arc<CliNpmCache>, resolution: Arc<NpmResolution>) -> Self {
-    Self { cache, resolution }
+  pub fn new(
+    cache: NpmCacheDirRc,
+    npm_rc: ResolvedNpmRcRc,
+    resolution: NpmResolutionRc,
+  ) -> Self {
+    Self {
+      cache,
+      npm_rc,
+      resolution,
+    }
+  }
+
+  fn resolve_package_cache_folder_id_from_specifier_inner(
+    &self,
+    specifier: &Url,
+  ) -> Option<NpmPackageCacheFolderId> {
+    self
+      .cache
+      .resolve_package_folder_id_from_specifier(specifier)
+      .and_then(|cache_id| {
+        Some(NpmPackageCacheFolderId {
+          nv: PackageNv {
+            name: StackString::from_string(cache_id.name),
+            version: Version::parse_from_npm(&cache_id.version).ok()?,
+          },
+          copy_index: cache_id.copy_index,
+        })
+      })
   }
 }
 
@@ -38,21 +68,26 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
   }
 
   fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let folder_id = self
+    let folder_copy_index = self
       .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
-    Some(self.cache.package_folder_for_id(&folder_id))
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
+    let registry_url = self.npm_rc.get_registry_url(&id.nv.name);
+    Some(self.cache.package_folder_for_id(
+      &id.nv.name,
+      &id.nv.version.to_string(),
+      folder_copy_index,
+      registry_url,
+    ))
   }
 
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &ModuleSpecifier,
+    referrer: &Url,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     use deno_npm::resolution::PackageNotFoundFromReferrerError;
-    let Some(referrer_cache_folder_id) = self
-      .cache
-      .resolve_package_folder_id_from_specifier(referrer)
+    let Some(referrer_cache_folder_id) =
+      self.resolve_package_cache_folder_id_from_specifier_inner(referrer)
     else {
       return Err(
         ReferrerNotFoundError {
@@ -106,12 +141,8 @@ impl NpmPackageFsResolver for GlobalNpmPackageResolver {
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
-    Ok(
-      self
-        .cache
-        .resolve_package_folder_id_from_specifier(specifier),
-    )
+    Ok(self.resolve_package_cache_folder_id_from_specifier_inner(specifier))
   }
 }
