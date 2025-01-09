@@ -1,22 +1,249 @@
 export const snapshot = {};
 
-snapshot[`Plugin - ExportAllDeclaration 1`] = `
+snapshot[`Plugin - ImportDeclaration 1`] = `
 {
-  exportKind: "value",
-  exported: {
-    name: "foo",
-    optional: false,
+  attributes: [],
+  importKind: "value",
+  range: [
+    1,
+    14,
+  ],
+  source: {
     range: [
+      8,
       13,
-      16,
     ],
-    type: "Identifier",
-    typeAnnotation: null,
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
   },
+  specifiers: [],
+  type: "ImportDeclaration",
+}
+`;
+
+snapshot[`Plugin - ImportDeclaration 2`] = `
+{
+  attributes: [],
+  importKind: "value",
+  range: [
+    1,
+    23,
+  ],
+  source: {
+    range: [
+      17,
+      22,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
+  },
+  specifiers: [
+    {
+      local: {
+        name: "foo",
+        optional: false,
+        range: [
+          8,
+          11,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        8,
+        11,
+      ],
+      type: "ImportDefaultSpecifier",
+    },
+  ],
+  type: "ImportDeclaration",
+}
+`;
+
+snapshot[`Plugin - ImportDeclaration 3`] = `
+{
+  attributes: [],
+  importKind: "value",
   range: [
     1,
     28,
   ],
-  type: "ExportAllDeclaration",
+  source: {
+    range: [
+      22,
+      27,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
+  },
+  specifiers: [
+    {
+      local: {
+        name: "foo",
+        optional: false,
+        range: [
+          13,
+          16,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        8,
+        16,
+      ],
+      type: "ImportNamespaceSpecifier",
+    },
+  ],
+  type: "ImportDeclaration",
+}
+`;
+
+snapshot[`Plugin - ImportDeclaration 4`] = `
+{
+  attributes: [],
+  importKind: "value",
+  range: [
+    1,
+    39,
+  ],
+  source: {
+    range: [
+      33,
+      38,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
+  },
+  specifiers: [
+    {
+      importKind: "value",
+      imported: {
+        name: "foo",
+        optional: false,
+        range: [
+          10,
+          13,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      local: {
+        name: "foo",
+        optional: false,
+        range: [
+          10,
+          13,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        10,
+        13,
+      ],
+      type: "ImportSpecifier",
+    },
+    {
+      importKind: "value",
+      imported: {
+        name: "bar",
+        optional: false,
+        range: [
+          15,
+          18,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      local: {
+        name: "baz",
+        optional: false,
+        range: [
+          22,
+          25,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        15,
+        25,
+      ],
+      type: "ImportSpecifier",
+    },
+  ],
+  type: "ImportDeclaration",
+}
+`;
+
+snapshot[`Plugin - ImportDeclaration 5`] = `
+{
+  attributes: [
+    {
+      key: {
+        name: "type",
+        optional: false,
+        range: [
+          30,
+          34,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        30,
+        42,
+      ],
+      type: "ImportAttribute",
+      value: {
+        range: [
+          36,
+          42,
+        ],
+        raw: '"json"',
+        type: "Literal",
+        value: "json",
+      },
+    },
+  ],
+  importKind: "value",
+  range: [
+    1,
+    45,
+  ],
+  source: {
+    range: [
+      17,
+      22,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
+  },
+  specifiers: [
+    {
+      local: {
+        name: "foo",
+        optional: false,
+        range: [
+          8,
+          11,
+        ],
+        type: "Identifier",
+        typeAnnotation: null,
+      },
+      range: [
+        8,
+        11,
+      ],
+      type: "ImportDefaultSpecifier",
+    },
+  ],
+  type: "ImportDeclaration",
 }
 `;

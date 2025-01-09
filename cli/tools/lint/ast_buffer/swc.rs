@@ -38,6 +38,7 @@ use deno_ast::swc::ast::MemberProp;
 use deno_ast::swc::ast::ModuleDecl;
 use deno_ast::swc::ast::ModuleExportName;
 use deno_ast::swc::ast::ModuleItem;
+use deno_ast::swc::ast::ObjectLit;
 use deno_ast::swc::ast::ObjectPatProp;
 use deno_ast::swc::ast::OptChainBase;
 use deno_ast::swc::ast::Param;
@@ -131,6 +132,9 @@ fn serialize_module_decl(
 ) -> NodeRef {
   match module_decl {
     ModuleDecl::Import(node) => {
+      let src = serialize_lit(ctx, &Lit::Str(node.src.as_ref().clone()));
+      let attrs = serialize_import_attrs(ctx, &node.with);
+
       let specifiers = node
         .specifiers
         .iter()
@@ -161,18 +165,14 @@ fn serialize_module_decl(
         })
         .collect::<Vec<_>>();
 
-      ctx.write_import_decl(
-        &node.span,
-        node.type_only,
-        &node.src.as_ref().value,
-        specifiers,
-      )
+      ctx.write_import_decl(&node.span, node.type_only, src, specifiers, attrs)
     }
     ModuleDecl::ExportDecl(node) => {
       let decl = serialize_decl(ctx, &node.decl);
       ctx.write_export_decl(&node.span, decl)
     }
     ModuleDecl::ExportNamed(node) => {
+      let attrs = serialize_import_attrs(ctx, &node.with);
       let source = node
         .src
         .as_ref()
@@ -180,7 +180,13 @@ fn serialize_module_decl(
 
       if let Some(ExportSpecifier::Namespace(ns)) = node.specifiers.first() {
         let exported = serialize_module_export_name(ctx, &ns.name);
-        ctx.write_export_all_decl(&node.span, node.type_only, exported)
+        ctx.write_export_all_decl(
+          &node.span,
+          node.type_only,
+          exported,
+          source,
+          attrs,
+        )
       } else {
         let specifiers = node
           .specifiers
@@ -203,14 +209,15 @@ fn serialize_module_decl(
                 )
               }
 
-              // These two aren't syntactically valid
+              // Already handled earlier
               ExportSpecifier::Namespace(_) => unreachable!(),
+              // this is not syntactically valid
               ExportSpecifier::Default(_) => unreachable!(),
             }
           })
           .collect::<Vec<_>>();
 
-        ctx.write_export_named_decl(&node.span, specifiers, source)
+        ctx.write_export_named_decl(&node.span, specifiers, source, attrs)
       }
     }
     ModuleDecl::ExportDefaultDecl(node) => {
@@ -332,13 +339,17 @@ fn serialize_module_decl(
         }
       };
 
-      ctx.write_export_all_decl(&node.span, is_type_only, decl)
+      ctx.write_export_default_decl(&node.span, is_type_only, decl)
     }
-    ModuleDecl::ExportDefaultExpr(_) => {
-      todo!()
+    ModuleDecl::ExportDefaultExpr(node) => {
+      let expr = serialize_expr(ctx, &node.expr);
+      ctx.write_export_default_decl(&node.span, false, expr)
     }
-    ModuleDecl::ExportAll(_) => {
-      todo!()
+    ModuleDecl::ExportAll(node) => {
+      let src = serialize_lit(ctx, &Lit::Str(node.src.as_ref().clone()));
+      let attrs = serialize_import_attrs(ctx, &node.with);
+
+      ctx.write_export_all_decl(&node.span, node.type_only, src, None, attrs)
     }
     ModuleDecl::TsImportEquals(_) => {
       todo!()
@@ -350,6 +361,42 @@ fn serialize_module_decl(
       todo!()
     }
   }
+}
+
+fn serialize_import_attrs(
+  ctx: &mut TsEsTreeBuilder,
+  raw_attrs: &Option<Box<ObjectLit>>,
+) -> Vec<NodeRef> {
+  raw_attrs.as_ref().map_or(vec![], |obj| {
+    obj
+      .props
+      .iter()
+      .map(|prop| {
+        let (key, value) = match prop {
+          // Invalid syntax
+          PropOrSpread::Spread(_) => unreachable!(),
+          PropOrSpread::Prop(prop) => {
+            match prop.as_ref() {
+              Prop::Shorthand(ident) => {
+                (serialize_ident(ctx, ident), serialize_ident(ctx, ident))
+              }
+              Prop::KeyValue(kv) => (
+                serialize_prop_name(ctx, &kv.key),
+                serialize_expr(ctx, &kv.value.as_ref()),
+              ),
+              // Invalid syntax
+              Prop::Assign(_)
+              | Prop::Getter(_)
+              | Prop::Setter(_)
+              | Prop::Method(_) => unreachable!(),
+            }
+          }
+        };
+
+        ctx.write_import_attr(&prop.span(), key, value)
+      })
+      .collect::<Vec<_>>()
+  })
 }
 
 fn serialize_stmt(ctx: &mut TsEsTreeBuilder, stmt: &Stmt) -> NodeRef {
@@ -1169,7 +1216,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         &node.class.span,
         false,
         node.class.is_abstract,
-        ident,
+        Some(ident),
         super_class,
         implements,
         body,

@@ -24,6 +24,7 @@ pub enum AstNode {
   ExportNamedDeclaration,
   ImportDeclaration,
   ImportSpecifier,
+  ImportAttribute,
   ImportDefaultSpecifier,
   ImportNamespaceSpecifier,
   TsExportAssignment,
@@ -498,15 +499,17 @@ impl TsEsTreeBuilder {
     &mut self,
     span: &Span,
     type_only: bool,
-    source: &str,
+    source: NodeRef,
     specifiers: Vec<NodeRef>,
+    attributes: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ImportDeclaration, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ImportKind, kind);
-    self.ctx.write_str(AstProp::Source, source);
+    self.ctx.write_ref(AstProp::Source, &id, source);
     self.ctx.write_ref_vec(AstProp::Specifiers, &id, specifiers);
+    self.ctx.write_ref_vec(AstProp::Attributes, &id, attributes);
 
     self.ctx.commit_node(id)
   }
@@ -525,6 +528,20 @@ impl TsEsTreeBuilder {
 
     self.ctx.write_ref(AstProp::Imported, &id, imported);
     self.ctx.write_ref(AstProp::Local, &id, local);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_import_attr(
+    &mut self,
+    span: &Span,
+    key: NodeRef,
+    value: NodeRef,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::ImportAttribute, span);
+
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref(AstProp::Value, &id, value);
 
     self.ctx.commit_node(id)
   }
@@ -561,13 +578,18 @@ impl TsEsTreeBuilder {
     &mut self,
     span: &Span,
     is_type_only: bool,
-    exported: NodeRef,
+    source: NodeRef,
+    exported: Option<NodeRef>,
+    attributes: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ExportAllDeclaration, span);
 
     let value = if is_type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ExportKind, value);
-    self.ctx.write_ref(AstProp::Exported, &id, exported);
+
+    self.ctx.write_maybe_ref(AstProp::Exported, &id, exported);
+    self.ctx.write_ref(AstProp::Source, &id, source);
+    self.ctx.write_ref_vec(AstProp::Attributes, &id, attributes);
     self.ctx.commit_node(id)
   }
 
@@ -592,11 +614,13 @@ impl TsEsTreeBuilder {
     span: &Span,
     specifiers: Vec<NodeRef>,
     source: Option<NodeRef>,
+    attributes: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
 
     self.ctx.write_ref_vec(AstProp::Specifiers, &id, specifiers);
     self.ctx.write_maybe_ref(AstProp::Source, &id, source);
+    self.ctx.write_ref_vec(AstProp::Attributes, &id, attributes);
 
     self.ctx.commit_node(id)
   }

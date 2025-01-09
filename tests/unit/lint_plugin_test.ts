@@ -344,6 +344,11 @@ Deno.test("Plugin - ImportDeclaration", async (t) => {
     'import { foo, bar as baz } from "foo";',
     "ImportDeclaration",
   );
+  await testSnapshot(
+    t,
+    'import foo from "foo" with { type: "json" };',
+    "ImportDeclaration",
+  );
 });
 
 Deno.test("Plugin - ExportNamedDeclaration", async (t) => {
@@ -353,9 +358,14 @@ Deno.test("Plugin - ExportNamedDeclaration", async (t) => {
     'export { foo, bar as baz } from "foo";',
     "ExportNamedDeclaration",
   );
+  await testSnapshot(
+    t,
+    'export { foo } from "foo" with { type: "json" };',
+    "ExportNamedDeclaration",
+  );
 });
 
-Deno.test.only("Plugin - ExportDefaultDeclaration", async (t) => {
+Deno.test("Plugin - ExportDefaultDeclaration", async (t) => {
   await testSnapshot(
     t,
     "export default function foo() {}",
@@ -385,7 +395,13 @@ Deno.test.only("Plugin - ExportDefaultDeclaration", async (t) => {
 });
 
 Deno.test("Plugin - ExportAllDeclaration", async (t) => {
+  await testSnapshot(t, 'export * from "foo";', "ExportAllDeclaration");
   await testSnapshot(t, 'export * as foo from "foo";', "ExportAllDeclaration");
+  await testSnapshot(
+    t,
+    'export * from "foo" with { type: "json" };',
+    "ExportAllDeclaration",
+  );
 });
 
 Deno.test("Plugin - BlockStatement", async (t) => {
