@@ -65,7 +65,7 @@ pub fn deno_conditions_from_resolution_mode(
 }
 
 pub struct ConditionsFromResolutionMode {
-  pub func: &'static dyn Fn(ResolutionMode) -> &'static [&'static str],
+  pub func: Arc<dyn Fn(ResolutionMode) -> &'static [&'static str]>,
 }
 
 impl Debug for ConditionsFromResolutionMode {
