@@ -8,15 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 2.1.5 / 2025.01.09
 
-- Revert "ci: use self-hosted mac arm runner only on main branch (#27347)"
-  (#27354)
-- Revert "perf: build denort with panic = "abort" for releases (#27507)"
-  (#27573)
-- feat(ext/web): add `[[ErrorData]]` slot to `DOMException` (#27342)
-- feat(node/fs): Add a chmod method to the FileHandle class (#27522)
-- feat(permission): separate PermissionDeniedError to Retryable and Fatal
-  (#27282)
-- feat(unstable): Implement QUIC (#21942)
+- feat(unstable): implement QUIC (#21942)
 - feat(unstable): add JS linting plugin infrastructure (#27416)
 - feat(unstable): add OTEL MeterProvider (#27240)
 - feat(unstable): no config npm:@opentelemetry/api integration (#27541)
@@ -37,9 +29,9 @@ https://github.com/denoland/deno_install
   unavailable (#27463)
 - fix(ext/net): update moka cache to avoid potential panic in `Deno.resolveDns`
   on some laptops with Ryzen CPU (#27572)
-- fix(ext/node): Fix `fs.access`/`fs.promises.access` with `X_OK` mode parameter
+- fix(ext/node): fix `fs.access`/`fs.promises.access` with `X_OK` mode parameter
   on Windows (#27407)
-- fix(ext/node): Fix `os.cpus()` on Linux (#27592)
+- fix(ext/node): fix `os.cpus()` on Linux (#27592)
 - fix(ext/node): RangeError timingSafeEqual with different byteLength (#27470)
 - fix(ext/node): add `truncate` method to the `FileHandle` class (#27389)
 - fix(ext/node): add support of any length IV for aes-(128|256)-gcm ciphers
@@ -52,6 +44,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): sort list of built-in modules alphabetically (#27410)
 - fix(ext/node): support createConnection option in node:http.request() (#25470)
 - fix(ext/node): support private key export in JWK format (#27325)
+- fix(ext/web): add `[[ErrorData]]` slot to `DOMException` (#27342)
 - fix(ext/websocket): Fix close code without reason (#27578)
 - fix(jsr): Wasm imports fail to load (#27594)
 - fix(kv): improve backoff error message and inline documentation (#27537)
@@ -66,7 +59,8 @@ https://github.com/denoland/deno_install
 - fix(lsp): sql and component file formatting (#27350)
 - fix(lsp): use verbatim specifier for URL auto-imports (#27605)
 - fix(no-slow-types): handle rest param with internal assignments (#27581)
-- fix(node): Add missing `inspector/promises` (#27491)
+- fix(node/fs): add a chmod method to the FileHandle class (#27522)
+- fix(node): add missing `inspector/promises` (#27491)
 - fix(node): handle cjs exports with escaped chars (#27438)
 - fix(npm): deterministically output tags to initialized file (#27514)
 - fix(npm): search node_modules folder for package matching npm specifier
@@ -86,7 +80,6 @@ https://github.com/denoland/deno_install
 - fix: upgrade deno_doc to 0.161.3 (#27377)
 - perf(fs/windows): stat - only open file once (#27487)
 - perf(node/fs/copy): reduce metadata lookups copying directory (#27495)
-- perf: build denort with `panic = "abort"` for releases (#27507)
 - perf: don't store duplicate info for ops in the snapshot (#27430)
 - perf: remove now needless canonicalization getting closest package.json
   (#27437)
