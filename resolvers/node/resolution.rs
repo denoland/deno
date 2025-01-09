@@ -55,7 +55,7 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-fn deno_conditions_from_resolution_mode(
+pub fn deno_conditions_from_resolution_mode(
   resolution_mode: ResolutionMode,
 ) -> &'static [&'static str] {
   match resolution_mode {
