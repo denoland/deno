@@ -617,9 +617,9 @@ async fn configure_main_worker(
   #[allow(clippy::print_stderr)]
   fn linter_logger(msg: &str, is_err: bool) {
     if is_err {
-      eprintln!("{}", msg);
+      eprint!("{}", msg);
     } else {
-      println!("{}", msg);
+      print!("{}", msg);
     }
   }
   let logger = crate::tools::lint::PluginLogger::new(linter_logger, true);

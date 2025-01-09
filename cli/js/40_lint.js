@@ -259,6 +259,7 @@ function installPlugin(plugin) {
   if (typeof plugin.name !== "string") {
     throw new Error("Linter plugin name must be a string");
   }
+  // TODO(bartlomieju): lowercase and dashes for plugin.name
   if (typeof plugin.rules !== "object") {
     throw new Error("Linter plugin rules must be an object");
   }
