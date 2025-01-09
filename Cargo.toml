@@ -48,10 +48,10 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.327.0" }
+deno_core = { version = "0.330.0" }
 
 deno_bench_util = { version = "0.178.0", path = "./bench_util" }
-deno_config = { version = "=0.42.0", features = ["workspace", "sync"] }
+deno_config = { version = "=0.43.0", features = ["workspace", "sync"] }
 deno_lockfile = "=0.24.0"
 deno_media_type = { version = "0.2.3", features = ["module_specifier"] }
 deno_npm = "=0.27.0"
@@ -63,10 +63,10 @@ deno_terminal = "0.2.0"
 napi_sym = { version = "0.114.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
-denokv_proto = "0.8.4"
-denokv_remote = "0.8.4"
+denokv_proto = "0.9.0"
+denokv_remote = "0.9.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
-denokv_sqlite = { default-features = false, version = "0.8.4" }
+denokv_sqlite = { default-features = false, version = "0.9.0" }
 
 # exts
 deno_broadcast_channel = { version = "0.178.0", path = "./ext/broadcast_channel" }
@@ -119,7 +119,7 @@ dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
 deno_cache_dir = "=0.16.0"
-deno_error = "=0.5.2"
+deno_error = "=0.5.3"
 deno_package_json = { version = "0.4.0", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"

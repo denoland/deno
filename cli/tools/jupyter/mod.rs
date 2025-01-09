@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -137,10 +137,10 @@ pub async fn kernel(
   }
   let cwd_url =
     Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-      generic_error(format!(
+      anyhow!(
         "Unable to construct URL from the path of cwd: {}",
         cli_options.initial_cwd().to_string_lossy(),
-      ))
+      )
     })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(

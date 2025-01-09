@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -23,6 +23,7 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use tokio::select;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
@@ -80,10 +81,13 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match err.downcast_ref::<JsError>() {
-      Some(e) => format_js_error(e),
-      None => format!("{err:?}"),
-    };
+    let error_string =
+      match crate::util::result::any_and_jserrorbox_downcast_ref::<CoreError>(
+        &err,
+      ) {
+        Some(CoreError::Js(e)) => format_js_error(e),
+        _ => format!("{err:?}"),
+      };
     log::error!(
       "{}: {}",
       colors::red_bold("error"),
@@ -171,9 +175,9 @@ impl WatcherCommunicator {
 
   pub async fn watch_for_changed_paths(
     &self,
-  ) -> Result<Option<Vec<PathBuf>>, AnyError> {
+  ) -> Result<Option<Vec<PathBuf>>, RecvError> {
     let mut rx = self.changed_paths_rx.resubscribe();
-    rx.recv().await.map_err(AnyError::from)
+    rx.recv().await
   }
 
   pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {

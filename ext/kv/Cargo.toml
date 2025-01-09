@@ -21,6 +21,7 @@ boxed_error.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
 deno_core.workspace = true
+deno_error.workspace = true
 deno_fetch.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true

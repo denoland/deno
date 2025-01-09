@@ -1,17 +1,27 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_npm::npm_rc::RegistryConfig;
 use http::header;
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum AuthHeaderForNpmRegistryError {
+  #[class(type)]
+  #[error("Both the username and password must be provided for basic auth")]
+  Both,
+  #[class(type)]
+  #[error("The password in npmrc is an invalid base64 string: {0}")]
+  Base64(base64::DecodeError),
+}
+
 // TODO(bartlomieju): support more auth methods besides token and basic auth
 pub fn maybe_auth_header_for_npm_registry(
   registry_config: &RegistryConfig,
-) -> Result<Option<(header::HeaderName, header::HeaderValue)>, AnyError> {
+) -> Result<
+  Option<(header::HeaderName, header::HeaderValue)>,
+  AuthHeaderForNpmRegistryError,
+> {
   if let Some(token) = registry_config.auth_token.as_ref() {
     return Ok(Some((
       header::AUTHORIZATION,
@@ -33,7 +43,7 @@ pub fn maybe_auth_header_for_npm_registry(
   if (username.is_some() && password.is_none())
     || (username.is_none() && password.is_some())
   {
-    bail!("Both the username and password must be provided for basic auth")
+    return Err(AuthHeaderForNpmRegistryError::Both);
   }
 
   if username.is_some() && password.is_some() {
@@ -42,7 +52,7 @@ pub fn maybe_auth_header_for_npm_registry(
     // https://github.com/npm/cli/blob/780afc50e3a345feb1871a28e33fa48235bc3bd5/workspaces/config/lib/index.js#L846-L851
     let pw_base64 = BASE64_STANDARD
       .decode(password.unwrap())
-      .with_context(|| "The password in npmrc is an invalid base64 string")?;
+      .map_err(AuthHeaderForNpmRegistryError::Base64)?;
     let bearer = BASE64_STANDARD.encode(format!(
       "{}:{}",
       username.unwrap(),

@@ -10,27 +10,40 @@ use serde::Serialize;
 
 use crate::NodePermissions;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsError {
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
   #[cfg(windows)]
+  #[class(generic)]
   #[error("Path has no root.")]
   PathHasNoRoot,
   #[cfg(not(any(unix, windows)))]
+  #[class(generic)]
   #[error("Unsupported platform.")]
   UnsupportedPlatform,
+  #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] deno_io::fs::FsError),
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
 }
 
 #[op2(fast, stack_trace)]
 pub fn op_node_fs_exists_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<bool, deno_core::error::AnyError>
+) -> Result<bool, deno_permissions::PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
