@@ -65,7 +65,7 @@ pub fn deno_conditions_from_resolution_mode(
 }
 
 pub struct ConditionsFromResolutionMode {
-  pub func: Box<
+  func: Box<
     dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
   >,
 }
@@ -77,19 +77,16 @@ impl Debug for ConditionsFromResolutionMode {
 }
 
 impl ConditionsFromResolutionMode {
+  pub fn default_conditions() -> Self {
+    Self::new(Box::new(deno_conditions_from_resolution_mode))
+  }
+
   pub fn new(
-    func: Option<
-      Box<
-        dyn Fn(ResolutionMode) -> &'static [&'static str]
-          + Send
-          + Sync
-          + 'static,
-      >,
+    func: Box<
+      dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
     >,
   ) -> Self {
-    Self {
-      func: func.unwrap_or(Box::new(deno_conditions_from_resolution_mode)),
-    }
+    Self { func: func }
   }
 }
 

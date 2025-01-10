@@ -783,7 +783,7 @@ impl<'a> ResolverFactory<'a> {
           npm_resolver.clone().into_npm_pkg_folder_resolver(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),
-          node_resolver::ConditionsFromResolutionMode::new(None),
+          node_resolver::ConditionsFromResolutionMode::default_conditions(),
         )))
       })
       .as_ref()
