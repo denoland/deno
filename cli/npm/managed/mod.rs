@@ -22,8 +22,8 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCacheSetting;
+use deno_resolver::npm::managed::NpmManagedResolverPackageFolderError;
 use deno_resolver::npm::managed::NpmResolution;
-use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::ManagedNpmResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -285,7 +285,7 @@ pub enum ResolvePkgFolderFromDenoModuleError {
   PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+  ResolvePkgFolderFromPkgId(#[from] NpmManagedResolverPackageFolderError),
 }
 
 /// An npm resolver where the resolution is managed by Deno rather than
@@ -363,14 +363,8 @@ impl ManagedCliNpmResolver {
   pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     pkg_id: &NpmPackageId,
-  ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
-    let path = self.managed_npm_resolver.package_folder(pkg_id)?;
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      pkg_id.as_serialized(),
-      path.display()
-    );
-    Ok(path)
+  ) -> Result<PathBuf, NpmManagedResolverPackageFolderError> {
+    self.managed_npm_resolver.package_folder(pkg_id)
   }
 
   /// Resolves the package id from the provided specifier.
@@ -420,7 +414,7 @@ impl ManagedCliNpmResolver {
     self
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
-      .and_then(|id| self.managed_npm_resolver.maybe_package_folder(&id))
+      .and_then(|id| self.managed_npm_resolver.package_folder(&id).ok())
       .map(|folder| folder.exists())
       .unwrap_or(false)
   }

@@ -32,18 +32,28 @@ use crate::NpmCacheDirRc;
 use crate::ResolvedNpmRcRc;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Package folder not found for '{0}'")]
-pub struct NpmManagedResolverPackageFolderError(deno_semver::StackString);
+#[error(transparent)]
+pub enum NpmManagedResolverPackageFolderError {
+  #[class(inherit)]
+  #[error(transparent)]
+  NotFound(#[from] NpmManagedPackageFolderNotFoundError),
+  #[class(inherit)]
+  #[error(transparent)]
+  FailedCanonicalizing(#[from] FailedCanonicalizingError),
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolvePkgFolderFromPkgIdError {
-  #[class(inherit)]
-  #[error(transparent)]
-  NpmManagedResolverPackageFolder(#[from] NpmManagedResolverPackageFolderError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
+#[class(generic)]
+#[error("Package folder not found for '{0}'")]
+pub struct NpmManagedPackageFolderNotFoundError(deno_semver::StackString);
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Failed canonicalizing '{}'", path.display())]
+pub struct FailedCanonicalizingError {
+  path: PathBuf,
+  #[source]
+  source: std::io::Error,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -53,7 +63,7 @@ pub enum ManagedResolvePkgFolderFromDenoReqError {
   PackageReqNotFound(#[from] PackageReqNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+  ResolvePkgFolderFromPkgId(#[from] NpmManagedResolverPackageFolderError),
 }
 
 #[allow(clippy::disallowed_types)]
@@ -108,29 +118,30 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     self.fs_resolver.node_modules_path()
   }
 
-  #[inline]
-  pub fn maybe_package_folder(
-    &self,
-    package_id: &NpmPackageId,
-  ) -> Option<PathBuf> {
-    self.fs_resolver.maybe_package_folder(package_id)
-  }
-
   pub fn package_folder(
     &self,
     package_id: &NpmPackageId,
   ) -> Result<PathBuf, NpmManagedResolverPackageFolderError> {
-    self.maybe_package_folder(package_id).ok_or_else(|| {
-      NpmManagedResolverPackageFolderError(package_id.as_serialized())
-    })
-  }
-
-  pub fn resolve_pkg_folder_from_pkg_id(
-    &self,
-    pkg_id: &NpmPackageId,
-  ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
-    let path = self.package_folder(pkg_id)?;
-    Ok(canonicalize_path_maybe_not_exists(&self.sys, &path)?)
+    let path = self
+      .fs_resolver
+      .maybe_package_folder(package_id)
+      .ok_or_else(|| {
+        NpmManagedPackageFolderNotFoundError(package_id.as_serialized())
+      })?;
+    // todo(dsherret): investigate if this canonicalization is always
+    // necessary. For example, maybe it's not necessary for the global cache
+    let path = canonicalize_path_maybe_not_exists(&self.sys, &path).map_err(
+      |source| FailedCanonicalizingError {
+        path: path.to_path_buf(),
+        source,
+      },
+    )?;
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      package_id.as_serialized(),
+      path.display()
+    );
+    Ok(path)
   }
 
   pub fn resolve_pkg_folder_from_deno_module_req(
@@ -139,7 +150,7 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     _referrer: &Url,
   ) -> Result<PathBuf, ManagedResolvePkgFolderFromDenoReqError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_pkg_req(req)?;
-    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
+    Ok(self.package_folder(&pkg_id)?)
   }
 
   #[inline]
