@@ -4,11 +4,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::managed::NpmResolution;
 
 pub use self::common::NpmPackageFsInstaller;
 use self::global::GlobalNpmPackageInstaller;
 use self::local::LocalNpmPackageInstaller;
-use super::resolution::NpmResolution;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::npm::CliNpmCache;

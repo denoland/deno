@@ -13,13 +13,13 @@ use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
+use deno_resolver::npm::managed::NpmResolution;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
 use deno_semver::VersionReq;
 
-use super::resolution::NpmResolution;
 use crate::args::CliLockfile;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::util::sync::TaskQueue;
