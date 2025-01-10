@@ -10,6 +10,7 @@ use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 pub use urlpattern::GROUP_STRING_FALLBACK as URLPATTERN_GROUP_STRING_FALLBACK;
 
 use crate::urlpattern::URLPattern;

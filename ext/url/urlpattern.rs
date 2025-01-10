@@ -15,16 +15,19 @@ use urlpattern::quirks;
 
 pub static GROUP_STRING_FALLBACK: AtomicBool = AtomicBool::new(false);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error(transparent)]
 pub enum UrlPatternError {
+  #[class(type)]
   #[error("{prefix}: {key} is invalid")]
   InvalidRegexp {
     prefix: &'static str,
     key: &'static str,
   },
+  #[class(type)]
   #[error(transparent)]
   UrlPattern(#[from] urlpattern::Error),
+  #[class(inherit)]
   #[error(transparent)]
   WebIDL(#[from] WebIdlError),
 }
@@ -236,19 +239,18 @@ impl URLPattern {
     let pattern = quirks::parse_pattern(init, options.into())?;
 
     macro_rules! create_regexp_global {
-      ($scope:expr, $key:tt, $pattern:expr, $flags:expr) => {
-        {
-          let pattern = v8::String::new($scope, &$pattern.$key.regexp_string).unwrap();
+      ($scope:expr, $key:tt, $pattern:expr, $flags:expr) => {{
+        let pattern =
+          v8::String::new($scope, &$pattern.$key.regexp_string).unwrap();
 
-          let Some(regexp) = v8::RegExp::new($scope, pattern, $flags) else {
-            return Err(UrlPatternError::InvalidRegexp {
-              prefix: PREFIX,
-              key: stringify!($key),
-            })
-          };
-          v8::Global::new($scope, regexp)
-        }
-      }
+        let Some(regexp) = v8::RegExp::new($scope, pattern, $flags) else {
+          return Err(UrlPatternError::InvalidRegexp {
+            prefix: PREFIX,
+            key: stringify!($key),
+          });
+        };
+        v8::Global::new($scope, regexp)
+      }};
     }
 
     Ok(URLPattern {
