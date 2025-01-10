@@ -149,10 +149,10 @@ function getNode(ctx, idx) {
  * @returns {number}
  */
 function findPropOffset(buf, offset, search) {
-  const propCount = buf[offset];
+  const count = buf[offset];
   offset += 1;
 
-  for (let i = 0; i < propCount; i++) {
+  for (let i = 0; i < count; i++) {
     const maybe = offset;
     const prop = buf[offset++];
     const kind = buf[offset++];
@@ -160,6 +160,7 @@ function findPropOffset(buf, offset, search) {
 
     if (kind === PropFlags.Obj) {
       const len = readU32(buf, offset);
+      offset += 4;
       // prop + kind + value
       offset += len * (1 + 1 + 4);
     } else {
@@ -304,13 +305,13 @@ function readSpan(ctx, idx) {
 }
 
 /**
- * @param {AstContext} ctx
+ * @param {AstContext["buf"]} buf
  * @param {number} idx
  * @returns {number}
  */
-function readRawPropOffset(ctx, idx) {
+function readRawPropOffset(buf, idx) {
   const offset = (idx * NODE_SIZE) + PROP_OFFSET;
-  return readU32(ctx.buf, offset);
+  return readU32(buf, offset);
 }
 
 /**
@@ -319,7 +320,7 @@ function readRawPropOffset(ctx, idx) {
  * @returns {number}
  */
 function readPropOffset(ctx, idx) {
-  return readRawPropOffset(ctx, idx) + ctx.propsOffset;
+  return readRawPropOffset(ctx.buf, idx) + ctx.propsOffset;
 }
 
 /**
@@ -505,14 +506,10 @@ function getString(strTable, id) {
 /** @implements {MatchContext} */
 class MatchCtx {
   /**
-   * @param {AstContext["buf"]} buf
-   * @param {AstContext["strTable"]} strTable
-   * @param {AstContext["strByType"]} strByType
+   * @param {AstContext} ctx
    */
-  constructor(buf, strTable, strByType) {
-    this.buf = buf;
-    this.strTable = strTable;
-    this.strByType = strByType;
+  constructor(ctx) {
+    this.ctx = ctx;
   }
 
   /**
@@ -520,7 +517,7 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    return readParent(this.buf, idx);
+    return readParent(this.ctx.buf, idx);
   }
 
   /**
@@ -528,29 +525,33 @@ class MatchCtx {
    * @returns {number}
    */
   getType(idx) {
-    return readType(this.buf, idx);
+    return readType(this.ctx.buf, idx);
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx - Node idx
    * @param {number[]} propIds
-   * @param {number} idx
+   * @param {number} propIdx
    * @returns {unknown}
    */
-  getAttrPathValue(offset, propIds, idx) {
-    const { buf } = this;
+  getAttrPathValue(idx, propIds, propIdx) {
+    if (idx === 0) throw -1;
 
-    const propId = propIds[idx];
+    const { buf, strTable, strByType } = this.ctx;
+
+    const propId = propIds[propIdx];
 
     switch (propId) {
       case AST_PROP_TYPE: {
-        const type = this.getType(offset);
-        return getString(this.strTable, this.strByType[type]);
+        const type = readType(buf, idx);
+        return getString(strTable, strByType[type]);
       }
       case AST_PROP_PARENT:
       case AST_PROP_RANGE:
         throw -1;
     }
+
+    let offset = readPropOffset(this.ctx, idx);
 
     offset = findPropOffset(buf, offset, propId);
     if (offset === -1) throw -1;
@@ -560,13 +561,22 @@ class MatchCtx {
     if (kind === PropFlags.Ref) {
       const value = readU32(buf, offset);
       // Checks need to end with a value, not a node
-      if (idx === propIds.length - 1) throw -1;
-      return this.getAttrPathValue(value, propIds, idx + 1);
+      if (propIdx === propIds.length - 1) throw -1;
+      return this.getAttrPathValue(value, propIds, propIdx + 1);
     } else if (kind === PropFlags.RefArr) {
-      const count = readU32(buf, offset);
+      const arrIdx = readU32(buf, offset);
       offset += 4;
 
-      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
+      let count = 0;
+      let child = readChild(buf, arrIdx);
+      while (child > AST_IDX_INVALID) {
+        count++;
+        child = readNext(buf, child);
+      }
+
+      if (
+        propIdx < propIds.length - 1 && propIds[propIdx + 1] === AST_PROP_LENGTH
+      ) {
         return count;
       }
 
@@ -577,19 +587,19 @@ class MatchCtx {
     }
 
     // Cannot traverse into primitives further
-    if (idx < propIds.length - 1) throw -1;
+    if (propIdx < propIds.length - 1) throw -1;
 
     if (kind === PropFlags.String) {
       const s = readU32(buf, offset);
-      return getString(this.strTable, s);
+      return getString(strTable, s);
     } else if (kind === PropFlags.Number) {
       const s = readU32(buf, offset);
-      return Number(getString(this.strTable, s));
+      return Number(getString(strTable, s));
     } else if (kind === PropFlags.Regex) {
       const v = readU32(buf, offset);
-      return readRegex(this.strTable, v);
+      return readRegex(strTable, v);
     } else if (kind === PropFlags.Bool) {
-      return buf[offset] === 1;
+      return readU32(buf, offset) === 1;
     } else if (kind === PropFlags.Null) {
       return null;
     } else if (kind === PropFlags.Undefined) {
@@ -622,7 +632,7 @@ class MatchCtx {
    * @returns {number[]}
    */
   getSiblings(idx) {
-    const { buf } = this;
+    const { buf } = this.ctx;
     const parent = readParent(buf, idx);
 
     // Only RefArrays have siblings
@@ -631,13 +641,11 @@ class MatchCtx {
       return [];
     }
 
-    const child = readChild(buf, parent);
-    const out = [child];
-
-    let next = readNext(buf, child);
-    while (next > AST_IDX_INVALID) {
-      out.push(next);
-      next = readNext(buf, next);
+    const out = [];
+    let child = readChild(buf, parent);
+    while (child > AST_IDX_INVALID) {
+      out.push(child);
+      child = readNext(buf, child);
     }
 
     return out;
@@ -726,13 +734,14 @@ function createAstContext(buf) {
     strByType,
     typeByStr,
     propByStr,
-    matcher: new MatchCtx(buf, strTable, strByType),
+    matcher: /** @type {*} */ (null),
   };
+  ctx.matcher = new MatchCtx(ctx);
 
   setNodeGetters(ctx);
 
   // DEV ONLY: Enable this to inspect the buffer message
-  // _dump(ctx);
+  _dump(ctx);
 
   return ctx;
 }
@@ -979,7 +988,7 @@ function _dump(ctx) {
     // deno-lint-ignore no-console
     console.log(`  range: ${range[0]}, ${range[1]}`);
 
-    const rawOffset = readRawPropOffset(ctx, idx);
+    const rawOffset = readRawPropOffset(ctx.buf, idx);
     let propOffset = readPropOffset(ctx, idx);
     const count = buf[propOffset++];
     // @ts-ignore dump fn

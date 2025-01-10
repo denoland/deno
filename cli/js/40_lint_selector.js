@@ -766,8 +766,7 @@ export function compileSelector(selector) {
  */
 function matchFirstChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const first = ctx.getFirstChild(parent);
+    const first = ctx.getFirstChild(id);
     return first === id && next(ctx, first);
   };
 }
@@ -778,8 +777,7 @@ function matchFirstChild(next) {
  */
 function matchLastChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const last = ctx.getLastChild(parent);
+    const last = ctx.getLastChild(id);
     return last === id && next(ctx, id);
   };
 }
@@ -954,7 +952,9 @@ function matchElem(part, next) {
     else if (part.elem === 0) return false;
 
     const type = ctx.getType(id);
-    if (type > 0 && type === part.elem) return next(ctx, id);
+    if (type > 0 && type === part.elem) {
+      return next(ctx, id);
+    }
 
     return false;
   };

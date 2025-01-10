@@ -148,6 +148,7 @@ pub struct SerializeCtx {
   prop_stack: Vec<Vec<u8>>,
   field_count: Vec<usize>,
   field_buf: Vec<u8>,
+  prev_sibling_stack: Vec<Index>,
 
   /// Vec of spans
   spans: Vec<u32>,
@@ -158,8 +159,6 @@ pub struct SerializeCtx {
   kind_name_map: Vec<usize>,
   /// Maps prop id to string id
   prop_name_map: Vec<usize>,
-
-  prev_sibling_node: Option<u32>,
 }
 
 /// This is the internal context used to allocate and fill the buffer. The point
@@ -178,12 +177,12 @@ impl SerializeCtx {
       root_idx: 0,
       nodes: vec![],
       prop_stack: vec![vec![]],
+      prev_sibling_stack: vec![0],
       field_count: vec![0],
       field_buf: vec![],
       str_table: StringTable::new(),
       kind_name_map: vec![0; kind_size],
       prop_name_map: vec![0; prop_size],
-      prev_sibling_node: None,
     };
 
     let empty_str = ctx.str_table.insert("");
@@ -258,19 +257,17 @@ impl SerializeCtx {
   }
 
   fn update_ref_links(&mut self, parent_id: Index, child_id: Index) {
-    self.set_parent(child_id, parent_id);
-
+    let last_idx = self.prev_sibling_stack.len() - 1;
     let parent = self.get_node(parent_id);
     if parent.child == 0 {
       parent.child = child_id;
-    }
-
-    // Update next pointer of previous sibling
-    if let Some(prev_id) = self.prev_sibling_node {
+    } else {
+      let prev_id = self.prev_sibling_stack[last_idx];
       self.set_next(prev_id, child_id);
     }
 
-    self.prev_sibling_node = Some(child_id)
+    self.prev_sibling_stack[last_idx] = child_id;
+    self.set_parent(child_id, parent_id);
   }
 
   pub fn append_node<K>(&mut self, kind: K, span: &Span) -> PendingRef
@@ -310,6 +307,7 @@ impl SerializeCtx {
 
     self.field_count.push(0);
     self.prop_stack.push(vec![]);
+    self.prev_sibling_stack.push(0);
 
     // write spans
     self.spans.push(span_lo);
@@ -330,7 +328,7 @@ impl SerializeCtx {
     let node = self.nodes.get_mut(id.0 as usize).unwrap();
     node.prop_offset = offset as u32;
 
-    self.prev_sibling_node = None;
+    self.prev_sibling_stack.pop();
 
     NodeRef(id.0)
   }
