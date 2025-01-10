@@ -464,7 +464,7 @@ impl PluginHost {
       deno_core::serde_v8::from_v8(scope, plugins_info)?;
     self
       .logger
-      .log(&format!("Plugins installed: {}", infos.len()));
+      .debug(&format!("Plugins installed: {}", infos.len()));
 
     Ok(infos)
   }
