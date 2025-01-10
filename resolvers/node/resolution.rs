@@ -55,19 +55,12 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-pub struct ConditionsFromResolutionMode {
-  func: Box<
-    dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
-  >,
-}
+type ConditionsFromResolutionModeFn = Box<
+  dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
+>;
 
-impl Default for ConditionsFromResolutionMode {
-  fn default() -> Self {
-    Self {
-      func: Box::new(ResolutionMode::default_conditions),
-    }
-  }
-}
+#[derive(Default)]
+pub struct ConditionsFromResolutionMode(Option<ConditionsFromResolutionModeFn>);
 
 impl Debug for ConditionsFromResolutionMode {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -76,12 +69,18 @@ impl Debug for ConditionsFromResolutionMode {
 }
 
 impl ConditionsFromResolutionMode {
-  pub fn new(
-    func: Box<
-      dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
-    >,
-  ) -> Self {
-    Self { func }
+  pub fn new(func: ConditionsFromResolutionModeFn) -> Self {
+    Self(Some(func))
+  }
+
+  fn resolve(
+    &self,
+    resolution_mode: ResolutionMode,
+  ) -> &'static [&'static str] {
+    match &self.0 {
+      Some(func) => func(ResolutionMode::Import),
+      None => resolution_mode.default_conditions(),
+    }
   }
 }
 
@@ -92,10 +91,8 @@ pub enum ResolutionMode {
 }
 
 impl ResolutionMode {
-  fn default_conditions(
-    resolution_mode: ResolutionMode,
-  ) -> &'static [&'static str] {
-    match resolution_mode {
+  pub fn default_conditions(&self) -> &'static [&'static str] {
+    match self {
       ResolutionMode::Import => DEFAULT_CONDITIONS,
       ResolutionMode::Require => REQUIRE_CONDITIONS,
     }
@@ -233,11 +230,14 @@ impl<
       }
     }
 
+    let conditions = self
+      .conditions_from_resolution_mode
+      .resolve(resolution_mode);
     let url = self.module_resolve(
       specifier,
       referrer,
       resolution_mode,
-      (self.conditions_from_resolution_mode.func)(resolution_mode),
+      conditions,
       resolution_kind,
     )?;
 
@@ -247,6 +247,7 @@ impl<
         &file_path,
         Some(referrer),
         resolution_mode,
+        conditions,
       )?
     } else {
       url
@@ -379,7 +380,9 @@ impl<
       &package_subpath,
       maybe_referrer,
       resolution_mode,
-      (self.conditions_from_resolution_mode.func)(resolution_mode),
+      self
+        .conditions_from_resolution_mode
+        .resolve(resolution_mode),
       resolution_kind,
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -447,6 +450,7 @@ impl<
     path: &Path,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
   ) -> Result<Url, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
       sys: &TSys,
@@ -510,7 +514,7 @@ impl<
         /* sub path */ ".",
         maybe_referrer,
         resolution_mode,
-        (self.conditions_from_resolution_mode.func)(resolution_mode),
+        conditions,
         NodeResolutionKind::Types,
       );
       if let Ok(resolution) = resolution_result {
@@ -891,6 +895,7 @@ impl<
           &path,
           maybe_referrer,
           resolution_mode,
+          conditions,
         )?));
       } else {
         return Ok(Some(url));
@@ -1248,6 +1253,7 @@ impl<
           package_subpath,
           maybe_referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| {
@@ -1285,6 +1291,7 @@ impl<
                 package_json,
                 referrer,
                 resolution_mode,
+                conditions,
                 resolution_kind,
               )
               .map_err(|err| {
@@ -1304,6 +1311,7 @@ impl<
           package_json,
           referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| {
@@ -1317,6 +1325,7 @@ impl<
         package_subpath,
         referrer,
         resolution_mode,
+        conditions,
         resolution_kind,
       )
       .map_err(|err| {
@@ -1330,12 +1339,18 @@ impl<
     package_subpath: &str,
     referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
     let file_path = directory.join(package_subpath);
     if resolution_kind.is_types() {
-      Ok(self.path_to_declaration_url(&file_path, referrer, resolution_mode)?)
+      Ok(self.path_to_declaration_url(
+        &file_path,
+        referrer,
+        resolution_mode,
+        conditions,
+      )?)
     } else {
       Ok(url_from_file_path(&file_path).unwrap())
     }
@@ -1347,6 +1362,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, LegacyResolveError> {
     if package_subpath == "." {
@@ -1363,6 +1379,7 @@ impl<
           package_subpath,
           maybe_referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| err.into())
@@ -1374,6 +1391,7 @@ impl<
     package_json: &PackageJson,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, LegacyResolveError> {
     let pkg_json_kind = match resolution_mode {
@@ -1392,6 +1410,7 @@ impl<
               &main,
               maybe_referrer,
               resolution_mode,
+              conditions,
             );
             // don't surface errors, fallback to checking the index now
             if let Ok(url) = decl_url_result {
