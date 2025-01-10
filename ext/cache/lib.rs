@@ -15,7 +15,12 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
 
+mod lsc_shard;
+mod lscache;
 mod sqlite;
+
+pub use lsc_shard::CacheShard;
+pub use lscache::LscBackend;
 pub use sqlite::SqliteBackedCache;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -23,6 +28,9 @@ pub enum CacheError {
   #[class(type)]
   #[error("CacheStorage is not available in this context")]
   ContextUnsupported,
+  #[class(type)]
+  #[error("Cache name cannot be empty")]
+  EmptyName,
   #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),

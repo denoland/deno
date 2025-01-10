@@ -1444,14 +1444,25 @@ dependencies = [
 name = "deno_cache"
 version = "0.117.0"
 dependencies = [
+ "anyhow",
+ "async-stream",
  "async-trait",
+ "base64 0.21.7",
+ "bytes",
+ "chrono",
  "deno_core",
  "deno_error",
+ "futures",
+ "http 1.1.0",
+ "hyper 1.4.1",
+ "reqwest",
  "rusqlite",
  "serde",
  "sha2",
+ "slab",
  "thiserror 2.0.3",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
