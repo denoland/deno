@@ -23,12 +23,14 @@ use super::resolution::NpmResolutionRc;
 use super::NpmPackageFsResolver;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
 pub struct LocalNpmPackageResolver<
-  TSys: FsCanonicalize + FsMetadata + Send + Sync,
+  TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync,
 > {
   resolution: NpmResolutionRc,
   sys: TSys,
@@ -36,7 +38,7 @@ pub struct LocalNpmPackageResolver<
   root_node_modules_url: Url,
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
+impl<TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync>
   LocalNpmPackageResolver<TSys>
 {
   #[allow(clippy::too_many_arguments)]
@@ -99,8 +101,9 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync>
   }
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + Send + Sync + std::fmt::Debug>
-  NpmPackageFolderResolver for LocalNpmPackageResolver<TSys>
+impl<
+    TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync + std::fmt::Debug,
+  > NpmPackageFolderResolver for LocalNpmPackageResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -160,8 +163,9 @@ impl<TSys: FsCanonicalize + FsMetadata + Send + Sync + std::fmt::Debug>
   }
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + Send + Sync + std::fmt::Debug>
-  NpmPackageFsResolver for LocalNpmPackageResolver<TSys>
+impl<
+    TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync + std::fmt::Debug,
+  > NpmPackageFsResolver for LocalNpmPackageResolver<TSys>
 {
   fn node_modules_path(&self) -> Option<&Path> {
     Some(self.root_node_modules_path.as_ref())

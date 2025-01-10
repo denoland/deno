@@ -5,6 +5,7 @@ mod managed;
 mod permission_checker;
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -15,7 +16,7 @@ use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -136,17 +137,17 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: CliNpmReqResolver {
+// todo(dsherret): replace with an enum
+pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
-  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
-    None
-  }
+  fn into_byonm_or_managed(
+    self: Arc<Self>,
+  ) -> ByonmOrManagedNpmResolver<CliSys>;
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -165,6 +166,12 @@ pub trait CliNpmResolver: CliNpmReqResolver {
       InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
     }
   }
+
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   fn root_node_modules_path(&self) -> Option<&Path>;
 

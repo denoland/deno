@@ -849,11 +849,10 @@ pub async fn run(
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let npm_req_resolver =
     Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-      byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
       sys: sys.clone(),
       in_npm_pkg_checker: in_npm_pkg_checker.clone(),
       node_resolver: node_resolver.clone(),
-      npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+      npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
     }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
