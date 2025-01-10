@@ -81,7 +81,7 @@ impl ConditionsFromResolutionMode {
       dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
     >,
   ) -> Self {
-    Self { func: func }
+    Self { func }
   }
 }
 
