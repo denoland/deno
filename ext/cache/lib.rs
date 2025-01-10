@@ -31,6 +31,15 @@ pub enum CacheError {
   #[class(type)]
   #[error("Cache name cannot be empty")]
   EmptyName,
+  #[class(type)]
+  #[error("Cache is not available")]
+  NotAvailable,
+  #[class(type)]
+  #[error("Cache not found")]
+  NotFound,
+  #[class(type)]
+  #[error("Cache deletion is not supported")]
+  DeletionNotSupported,
   #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
@@ -46,6 +55,12 @@ pub enum CacheError {
   #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class(type)]
+  #[error(transparent)]
+  InvalidHeaderName(#[from] hyper::header::InvalidHeaderName),
+  #[class(type)]
+  #[error(transparent)]
+  InvalidHeaderValue(#[from] hyper::header::InvalidHeaderValue),
   #[class(generic)]
   #[error("Failed to create cache storage directory {}", .dir.display())]
   CacheStorageDirectory {

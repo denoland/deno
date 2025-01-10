@@ -82,7 +82,7 @@ impl Cache for LscBackend {
     &self,
     _cache_name: String,
   ) -> Result<bool, CacheError> {
-    Err(type_error("Cache deletion is not supported"))
+    Err(CacheError::DeletionNotSupported)
   }
 
   /// Writes an entry to the cache.
@@ -92,7 +92,7 @@ impl Cache for LscBackend {
     resource: Option<Rc<dyn Resource>>,
   ) -> Result<(), CacheError> {
     let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(type_error("Cache is not available"));
+      return Err(CacheError::NotAvailable);
     };
 
     let Some(cache_name) = self
@@ -101,7 +101,7 @@ impl Cache for LscBackend {
       .get(request_response.cache_id as usize)
       .cloned()
     else {
-      return Err(type_error("Cache not found"));
+      return Err(CacheError::NotFound);
     };
     let object_key = build_cache_object_key(
       cache_name.as_bytes(),
@@ -143,7 +143,7 @@ impl Cache for LscBackend {
     let body = try_stream! {
       if let Some(resource) = resource {
         loop {
-          let (size, buf) = resource.clone().read_byob(BufMutView::new(64 * 1024)).await?;
+          let (size, buf) = resource.clone().read_byob(BufMutView::new(64 * 1024)).await.map_err(CacheError::Other)?;
           if size == 0 {
             break;
           }
@@ -167,7 +167,7 @@ impl Cache for LscBackend {
     CacheError,
   > {
     let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(type_error("Cache is not available"));
+      return Err(CacheError::NotAvailable);
     };
     let Some(cache_name) = self
       .id2name
@@ -175,7 +175,7 @@ impl Cache for LscBackend {
       .get(request.cache_id as usize)
       .cloned()
     else {
-      return Err(type_error("Cache not found"));
+      return Err(CacheError::NotFound);
     };
     let object_key = build_cache_object_key(
       cache_name.as_bytes(),
@@ -269,7 +269,7 @@ impl Cache for LscBackend {
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
     let Some(shard) = self.shard.borrow().as_ref().cloned() else {
-      return Err(type_error("Cache is not available"));
+      return Err(CacheError::NotAvailable);
     };
 
     let Some(cache_name) = self
@@ -278,7 +278,7 @@ impl Cache for LscBackend {
       .get(request.cache_id as usize)
       .cloned()
     else {
-      return Err(type_error("Cache not found"));
+      return Err(CacheError::NotFound);
     };
     let object_key = build_cache_object_key(
       cache_name.as_bytes(),
