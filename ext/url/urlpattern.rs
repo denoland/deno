@@ -3,7 +3,9 @@
 use std::borrow::Cow;
 use std::convert::Infallible;
 use std::sync::atomic::AtomicBool;
-use deno_core::convert::{OptionNull, OptionUndefined};
+
+use deno_core::convert::OptionNull;
+use deno_core::convert::OptionUndefined;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::HandleScope;
@@ -416,15 +418,16 @@ impl URLPattern {
             }
             for i in 0..component.group_name_list.len() {
               // TODO(lucacasonato): this is vulnerable to override mistake
-              let res = exec_result
-                .get_index(scope, (i as u32) + 1)
-                .and_then(|res| {
-                  if res.is_undefined() {
-                    None
-                  } else {
-                    Some(res.to_rust_string_lossy(scope))
-                  }
-                });
+              let res =
+                exec_result
+                  .get_index(scope, (i as u32) + 1)
+                  .and_then(|res| {
+                    if res.is_undefined() {
+                      None
+                    } else {
+                      Some(res.to_rust_string_lossy(scope))
+                    }
+                  });
               let res = if GROUP_STRING_FALLBACK
                 .load(std::sync::atomic::Ordering::Relaxed)
               {
@@ -432,7 +435,7 @@ impl URLPattern {
               } else {
                 res
               };
-              
+
               result
                 .groups
                 .insert(component.group_name_list[i].clone(), res);
@@ -449,18 +452,21 @@ impl URLPattern {
       inputs.push(URLPatternInput::String(original_input));
     }
 
-    Ok(Some(URLPatternResult {
-      inputs,
+    Ok(
+      Some(URLPatternResult {
+        inputs,
 
-      protocol: handle_component!(protocol),
-      username: handle_component!(username),
-      password: handle_component!(password),
-      hostname: handle_component!(hostname),
-      port: handle_component!(port),
-      pathname: handle_component!(pathname),
-      search: handle_component!(search),
-      hash: handle_component!(hash),
-    }).into())
+        protocol: handle_component!(protocol),
+        username: handle_component!(username),
+        password: handle_component!(password),
+        hostname: handle_component!(hostname),
+        port: handle_component!(port),
+        pathname: handle_component!(pathname),
+        search: handle_component!(search),
+        hash: handle_component!(hash),
+      })
+      .into(),
+    )
   }
 }
 
@@ -500,7 +506,10 @@ v8_static_strings! {
 impl<'a> ToV8<'a> for URLPatternInit {
   type Error = Infallible;
 
-  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+  fn to_v8(
+    self,
+    scope: &mut HandleScope<'a>,
+  ) -> Result<Local<'a, Value>, Self::Error> {
     let names = vec![
       PROTOCOL.v8_string(scope).unwrap().into(),
       USERNAME.v8_string(scope).unwrap().into(),
@@ -524,7 +533,7 @@ impl<'a> ToV8<'a> for URLPatternInit {
       OptionUndefined::from(self.hash).to_v8(scope)?,
       OptionUndefined::from(self.base_url).to_v8(scope)?,
     ];
-    
+
     let obj = v8::Object::new(scope);
 
     for (key, val) in names.into_iter().zip(values.into_iter()) {
@@ -538,11 +547,12 @@ impl<'a> ToV8<'a> for URLPatternInit {
 impl<'a> ToV8<'a> for URLPatternInput {
   type Error = Infallible;
 
-  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+  fn to_v8(
+    self,
+    scope: &mut HandleScope<'a>,
+  ) -> Result<Local<'a, Value>, Self::Error> {
     match self {
-      URLPatternInput::URLPatternInit(init) => {
-        Ok(init.to_v8(scope)?)
-      }
+      URLPatternInput::URLPatternInit(init) => Ok(init.to_v8(scope)?),
       URLPatternInput::String(s) => {
         Ok(v8::String::new(scope, &s).unwrap().into())
       }
@@ -553,7 +563,10 @@ impl<'a> ToV8<'a> for URLPatternInput {
 impl<'a> ToV8<'a> for URLPatternResult {
   type Error = Infallible;
 
-  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+  fn to_v8(
+    self,
+    scope: &mut HandleScope<'a>,
+  ) -> Result<Local<'a, Value>, Self::Error> {
     let names = vec![
       INPUTS.v8_string(scope).unwrap().into(),
       PROTOCOL.v8_string(scope).unwrap().into(),
@@ -566,7 +579,11 @@ impl<'a> ToV8<'a> for URLPatternResult {
       HASH.v8_string(scope).unwrap().into(),
     ];
 
-    let inputs = self.inputs.into_iter().map(|input| input.to_v8(scope)).collect::<Result<Vec<_>, _>>()?;
+    let inputs = self
+      .inputs
+      .into_iter()
+      .map(|input| input.to_v8(scope))
+      .collect::<Result<Vec<_>, _>>()?;
 
     let inputs = v8::Array::new_with_elements(scope, &inputs);
 
