@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use deno_config::deno_json;
 use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -52,6 +53,8 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
@@ -264,6 +267,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
@@ -272,12 +276,14 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
+      npm_installer,
       npm_resolver,
       module_graph_builder,
       type_checker,
@@ -401,9 +407,9 @@ impl ModuleGraphCreator {
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_installer) = &self.npm_installer {
       if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
 
@@ -498,6 +504,7 @@ pub struct ModuleGraphBuilder {
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
@@ -517,6 +524,7 @@ impl ModuleGraphBuilder {
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
@@ -533,6 +541,7 @@ impl ModuleGraphBuilder {
       lockfile,
       maybe_file_watcher_reporter,
       module_info_cache,
+      npm_installer,
       npm_resolver,
       parsed_source_cache,
       resolver,
@@ -679,16 +688,15 @@ impl ModuleGraphBuilder {
     if self
       .cli_options
       .node_modules_dir()?
-      .map(|m| m.uses_node_modules_dir())
+      .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
     {
-      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        let already_done =
-          npm_resolver.ensure_top_level_package_json_install().await?;
+      if let Some(npm_installer) = &self.npm_installer {
+        let already_done = npm_installer
+          .ensure_top_level_package_json_install()
+          .await?;
         if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
-          npm_resolver
-            .cache_packages(crate::npm::PackageCaching::All)
-            .await?;
+          npm_installer.cache_packages(PackageCaching::All).await?;
         }
       }
     }

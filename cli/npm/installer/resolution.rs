@@ -13,7 +13,7 @@ use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
-use deno_resolver::npm::managed::NpmResolution;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -35,9 +35,10 @@ pub struct AddPkgReqsResult {
 }
 
 /// Updates the npm resolution with the provided package requirements.
+#[derive(Debug)]
 pub struct NpmResolutionInstaller {
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-  resolution: Arc<NpmResolution>,
+  resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   update_queue: TaskQueue,
 }
@@ -45,7 +46,7 @@ pub struct NpmResolutionInstaller {
 impl NpmResolutionInstaller {
   pub fn new(
     registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-    resolution: Arc<NpmResolution>,
+    resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     Self {

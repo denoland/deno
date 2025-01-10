@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
@@ -24,6 +23,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
@@ -42,7 +42,6 @@ use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CliLockfile;
-use crate::args::NpmInstallDepsProvider;
 use crate::factory::Deferred;
 use crate::graph_util::to_node_resolution_kind;
 use crate::graph_util::to_node_resolution_mode;
@@ -53,17 +52,20 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver_for_lsp;
+use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
+use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliResolverOptions;
 use crate::resolver::IsCjsResolver;
 use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::sys::CliSys;
@@ -645,11 +647,30 @@ impl<'a> ResolverFactory<'a> {
         cache.deno_dir().npm_folder_path(),
         npmrc.get_all_known_registries_urls(),
       ));
-      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
-        http_client_provider: http_client_provider.clone(),
-        // only used for top level install, so we can ignore this
-        npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
-        snapshot: match self.config_data.and_then(|d| d.lockfile.as_ref()) {
+      let npm_cache = Arc::new(CliNpmCache::new(
+        npm_cache_dir.clone(),
+        sys.clone(),
+        // Use an "only" cache setting in order to make the
+        // user do an explicit "cache" command and prevent
+        // the cache from being filled with lots of packages while
+        // the user is typing.
+        deno_npm_cache::NpmCacheSetting::Only,
+        npmrc.clone(),
+      ));
+      let npm_client = Arc::new(CliNpmCacheHttpClient::new(
+        http_client_provider.clone(),
+        ProgressBar::new(ProgressBarStyle::TextOnly),
+      ));
+      let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
+        npm_cache,
+        npm_client,
+        npmrc.clone(),
+      ));
+      let npm_resolution = Arc::new(NpmResolutionCell::default());
+      let npm_resolution_initializer = NpmResolutionInitializer::new(
+        registry_info_provider,
+        npm_resolution.clone(),
+        match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
               lockfile.clone(),
@@ -657,14 +678,19 @@ impl<'a> ResolverFactory<'a> {
           }
           None => CliNpmResolverManagedSnapshotOption::Specified(None),
         },
+      );
+      // spawn due to the lsp's `Send` requirement
+      deno_core::unsync::spawn(async move {
+        if let Err(err) = npm_resolution_initializer.ensure_initialized().await
+        {
+          log::warn!("failed to initialize npm resolution: {}", err);
+        }
+      })
+      .await
+      .unwrap();
+      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
-        // Use an "only" cache setting in order to make the
-        // user do an explicit "cache" command and prevent
-        // the cache from being filled with lots of packages while
-        // the user is typing.
-        cache_setting: CacheSetting::Only,
-        text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
         // Don't provide the lockfile. We don't want these resolvers
         // updating it. Only the cache request should update the lockfile.
         maybe_lockfile: None,
@@ -672,11 +698,11 @@ impl<'a> ResolverFactory<'a> {
           .config_data
           .and_then(|d| d.node_modules_dir.clone()),
         npmrc,
+        npm_resolution,
         npm_system_info: NpmSystemInfo::default(),
-        lifecycle_scripts: Default::default(),
       })
     };
-    self.set_npm_resolver(create_cli_npm_resolver_for_lsp(options).await);
+    self.set_npm_resolver(create_cli_npm_resolver(options));
   }
 
   pub fn set_npm_resolver(&mut self, npm_resolver: Arc<dyn CliNpmResolver>) {
@@ -720,13 +746,7 @@ impl<'a> ResolverFactory<'a> {
         is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
         maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
       }));
-      Arc::new(CliResolver::new(CliResolverOptions {
-        deno_resolver,
-        npm_resolver: self.npm_resolver().cloned(),
-        bare_node_builtins_enabled: self
-          .config_data
-          .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
-      }))
+      Arc::new(CliResolver::new(deno_resolver))
     })
   }
 

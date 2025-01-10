@@ -34,6 +34,7 @@ use crate::graph_util::maybe_additional_sloppy_imports_message;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
+use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -109,6 +110,7 @@ pub struct TypeChecker {
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   sys: CliSys,
@@ -142,6 +144,7 @@ impl TypeChecker {
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     sys: CliSys,
   ) -> Self {
@@ -151,6 +154,7 @@ impl TypeChecker {
       cli_options,
       module_graph_builder,
       node_resolver,
+      npm_installer,
       npm_resolver,
       sys,
     }
@@ -191,9 +195,9 @@ impl TypeChecker {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_installer) = &self.npm_installer {
       if graph.has_node_specifier {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
 

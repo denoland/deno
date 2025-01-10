@@ -33,8 +33,9 @@ use thiserror::Error;
 use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
 use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
@@ -164,45 +165,21 @@ impl NpmModuleLoader {
   }
 }
 
-pub struct CliResolverOptions {
-  pub deno_resolver: Arc<CliDenoResolver>,
-  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub bare_node_builtins_enabled: bool,
-}
-
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliResolver {
   deno_resolver: Arc<CliDenoResolver>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: AtomicFlag,
-  bare_node_builtins_enabled: bool,
   warned_pkgs: DashSet<PackageReq>,
 }
 
 impl CliResolver {
-  pub fn new(options: CliResolverOptions) -> Self {
+  pub fn new(deno_resolver: Arc<CliDenoResolver>) -> Self {
     Self {
-      deno_resolver: options.deno_resolver,
-      npm_resolver: options.npm_resolver,
+      deno_resolver,
       found_package_json_dep_flag: Default::default(),
-      bare_node_builtins_enabled: options.bare_node_builtins_enabled,
       warned_pkgs: Default::default(),
-    }
-  }
-
-  // todo(dsherret): move this off CliResolver as CliResolver is acting
-  // like a factory by doing this (it's beyond its responsibility)
-  pub fn create_graph_npm_resolver(
-    &self,
-    npm_caching: NpmCachingStrategy,
-  ) -> WorkerCliNpmGraphResolver {
-    WorkerCliNpmGraphResolver {
-      npm_resolver: self.npm_resolver.as_ref(),
-      found_package_json_dep_flag: &self.found_package_json_dep_flag,
-      bare_node_builtins_enabled: self.bare_node_builtins_enabled,
-      npm_caching,
     }
   }
 
@@ -261,6 +238,7 @@ impl CliResolver {
 
 #[derive(Debug)]
 pub struct WorkerCliNpmGraphResolver<'a> {
+  npm_installer: Option<&'a NpmInstaller>,
   npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: &'a AtomicFlag,
   bare_node_builtins_enabled: bool,
@@ -316,17 +294,10 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     &self,
     package_reqs: &[PackageReq],
   ) -> NpmResolvePkgReqsResult {
-    match &self.npm_resolver {
-      Some(npm_resolver) => {
-        let npm_resolver = match npm_resolver.as_inner() {
-          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
-          // if we are using byonm, then this should never be called because
-          // we don't use deno_graph's npm resolution in this case
-          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
-        };
-
+    match &self.npm_installer {
+      Some(npm_installer) => {
         let top_level_result = if self.found_package_json_dep_flag.is_raised() {
-          npm_resolver
+          npm_installer
             .ensure_top_level_package_json_install()
             .await
             .map(|_| ())
@@ -334,15 +305,13 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           Ok(())
         };
 
-        let result = npm_resolver
+        let result = npm_installer
           .add_package_reqs_raw(
             package_reqs,
             match self.npm_caching {
-              NpmCachingStrategy::Eager => {
-                Some(crate::npm::PackageCaching::All)
-              }
+              NpmCachingStrategy::Eager => Some(PackageCaching::All),
               NpmCachingStrategy::Lazy => {
-                Some(crate::npm::PackageCaching::Only(package_reqs.into()))
+                Some(PackageCaching::Only(package_reqs.into()))
               }
               NpmCachingStrategy::Manual => None,
             },
