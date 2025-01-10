@@ -46,7 +46,6 @@ use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
 use crate::npm::installer::NpmInstaller;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;

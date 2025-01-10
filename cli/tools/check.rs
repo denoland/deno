@@ -138,6 +138,7 @@ pub enum CheckError {
 }
 
 impl TypeChecker {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,

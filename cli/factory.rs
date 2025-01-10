@@ -458,11 +458,6 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       Ok(Arc::new(CliNpmGraphResolver::new(
         self.npm_installer_if_managed()?.cloned(),
-        if cli_options.no_npm() {
-          None
-        } else {
-          Some(self.npm_resolver().clone())
-        },
         self.services.found_pkg_json_dep_flag.clone(),
         cli_options.unstable_bare_node_builtins(),
         cli_options.default_npm_caching_strategy(),
@@ -939,7 +934,6 @@ impl CliFactory {
         Ok(Arc::new(ModuleGraphCreator::new(
           cli_options.clone(),
           self.npm_installer_if_managed()?.cloned(),
-          self.npm_resolver().await?.clone(),
           self.module_graph_builder().await?.clone(),
           self.type_checker().await?.clone(),
         )))

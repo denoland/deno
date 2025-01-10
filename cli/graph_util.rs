@@ -269,7 +269,6 @@ pub struct CreateGraphOptions<'a> {
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
 }
@@ -278,14 +277,12 @@ impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
       npm_installer,
-      npm_resolver,
       module_graph_builder,
       type_checker,
     }

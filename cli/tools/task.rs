@@ -219,7 +219,7 @@ pub async fn execute_script(
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,
-    npm_installer: npm_installer.as_deref(),
+    npm_installer: npm_installer.map(|n| n.as_ref()),
     npm_resolver: npm_resolver.as_ref(),
     node_resolver: node_resolver.as_ref(),
     env_vars,

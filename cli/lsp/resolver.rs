@@ -87,6 +87,7 @@ struct LspScopeResolver {
   is_cjs_resolver: Arc<IsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
@@ -107,6 +108,7 @@ impl Default for LspScopeResolver {
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
       npm_graph_resolver: factory.npm_graph_resolver().clone(),
+      npm_installer: None,
       npm_resolver: None,
       node_resolver: None,
       npm_pkg_req_resolver: None,
@@ -132,6 +134,7 @@ impl LspScopeResolver {
     }
     let in_npm_pkg_checker = factory.in_npm_pkg_checker().clone();
     let npm_resolver = factory.npm_resolver().cloned();
+    let npm_installer = factory.npm_installer().cloned();
     let node_resolver = factory.node_resolver().cloned();
     let npm_pkg_req_resolver = factory.npm_pkg_req_resolver().cloned();
     let cli_resolver = factory.cli_resolver().clone();
@@ -144,8 +147,7 @@ impl LspScopeResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = cli_resolver
-      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager);
+    let npm_graph_resolver = factory.npm_graph_resolver();
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
@@ -167,7 +169,7 @@ impl LspScopeResolver {
                 imports,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(&npm_graph_resolver),
+                Some(npm_graph_resolver.as_ref()),
               );
               (referrer, graph_import)
             })
@@ -221,6 +223,7 @@ impl LspScopeResolver {
       npm_graph_resolver: factory.npm_graph_resolver().clone(),
       npm_pkg_req_resolver,
       npm_resolver,
+      npm_installer,
       node_resolver,
       pkg_json_resolver,
       redirect_resolver,
@@ -244,6 +247,8 @@ impl LspScopeResolver {
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
       npm_graph_resolver: factory.npm_graph_resolver().clone(),
+      // npm installer isn't necessary for a snapshot
+      npm_installer: None,
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
       npm_resolver: factory.npm_resolver().cloned(),
       node_resolver: factory.node_resolver().cloned(),
@@ -331,14 +336,12 @@ impl LspResolver {
       if let Some(dep_info) = dep_info {
         *resolver.dep_info.lock() = dep_info.clone();
       }
-      if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
-        if let Some(npm_resolver) = npm_resolver.as_managed() {
-          let reqs = dep_info
-            .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-          if let Err(err) = npm_resolver.set_package_reqs(&reqs).await {
-            lsp_warn!("Could not set npm package requirements: {:#}", err);
-          }
+      if let Some(npm_installer) = resolver.npm_installer.as_ref() {
+        let reqs = dep_info
+          .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
+          .unwrap_or_default();
+        if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
+          lsp_warn!("Could not set npm package requirements: {:#}", err);
         }
       }
     }
@@ -352,14 +355,12 @@ impl LspResolver {
     resolver.resolver.as_ref()
   }
 
-  pub fn create_graph_npm_resolver(
+  pub fn as_graph_npm_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> CliNpmGraphResolver {
+  ) -> &Arc<CliNpmGraphResolver> {
     let resolver = self.get_scope_resolver(file_referrer);
-    resolver
-      .resolver
-      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager)
+    &resolver.npm_graph_resolver
   }
 
   pub fn as_is_cjs_resolver(
@@ -812,7 +813,6 @@ impl<'a> ResolverFactory<'a> {
     self.services.npm_graph_resolver.get_or_init(|| {
       Arc::new(CliNpmGraphResolver::new(
         None,
-        self.npm_resolver().cloned(),
         self.services.found_pkg_json_dep_flag.clone(),
         self
           .config_data

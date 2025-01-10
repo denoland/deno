@@ -35,7 +35,6 @@ use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
-use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
@@ -245,7 +244,6 @@ impl CliResolver {
 #[derive(Debug)]
 pub struct CliNpmGraphResolver {
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
@@ -254,14 +252,12 @@ pub struct CliNpmGraphResolver {
 impl CliNpmGraphResolver {
   pub fn new(
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
     found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
     bare_node_builtins_enabled: bool,
     npm_caching: NpmCachingStrategy,
   ) -> Self {
     Self {
       npm_installer,
-      npm_resolver,
       found_package_json_dep_flag,
       bare_node_builtins_enabled,
       npm_caching,
@@ -300,15 +296,12 @@ impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
   }
 
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
-    match &self.npm_installer {
-      Some(npm_installer) => {
-        let npm_installer = npm_installer.clone();
-        let package_name = package_name.to_string();
-        deno_core::unsync::spawn(async move {
-          let _ignore = npm_installer.cache_package_info(&package_name).await;
-        });
-      }
-      _ => {}
+    if let Some(npm_installer) = &self.npm_installer {
+      let npm_installer = npm_installer.clone();
+      let package_name = package_name.to_string();
+      deno_core::unsync::spawn(async move {
+        let _ignore = npm_installer.cache_package_info(&package_name).await;
+      });
     }
   }
 

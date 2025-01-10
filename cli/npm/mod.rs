@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -33,6 +32,7 @@ pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolvePkgFolderFromDenoModuleError;
+pub use self::managed::ResolveSnapshotError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
 pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;

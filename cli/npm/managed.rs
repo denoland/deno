@@ -6,10 +6,11 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::serde_json;
+use deno_core::unsync::sync::MultiRuntimeAsyncValueCreator;
 use deno_core::url::Url;
+use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
@@ -29,6 +30,7 @@ use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmPackageFolderResolver;
+use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
 use super::CliNpmResolver;
@@ -39,7 +41,7 @@ use crate::args::NpmProcessStateKind;
 use crate::cache::FastInsecureHasher;
 use crate::sys::CliSys;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
@@ -47,9 +49,7 @@ pub enum CliNpmResolverManagedSnapshotOption {
 
 #[derive(Debug)]
 pub struct NpmResolutionInitializer {
-  npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-  npm_resolution: Arc<NpmResolutionCell>,
-  snapshot_option: CliNpmResolverManagedSnapshotOption,
+  initialize: MultiRuntimeAsyncValueCreator<Result<(), ResolveSnapshotError>>,
 }
 
 impl NpmResolutionInitializer {
@@ -59,30 +59,31 @@ impl NpmResolutionInitializer {
     snapshot_option: CliNpmResolverManagedSnapshotOption,
   ) -> Self {
     Self {
-      npm_registry_info_provider,
-      npm_resolution,
-      snapshot_option,
+      initialize: MultiRuntimeAsyncValueCreator::new(Box::new(move || {
+        let npm_registry_info_provider = npm_registry_info_provider.clone();
+        let npm_resolution = npm_resolution.clone();
+        let snapshot_option = snapshot_option.clone();
+        async move {
+          let snapshot =
+            resolve_snapshot(&npm_registry_info_provider, snapshot_option)
+              .await?;
+          if let Some(snapshot) = snapshot {
+            npm_resolution.set_snapshot(NpmResolutionSnapshot::new(snapshot));
+          }
+          Ok(())
+        }
+        .boxed_local()
+      })),
     }
   }
 
   #[cfg(debug_assertions)]
   pub fn debug_assert_initialized(&self) {
-    // todo:
     // assert!(self.npm_resolution.snapshot().());
   }
 
   pub async fn ensure_initialized(&self) -> Result<(), JsErrorBox> {
-    // todo(THIS PR): take the value out of the snapshot_option and
-    // ensure all threads are syncronized on creating this (use an async mutex)
-    let snapshot =
-      resolve_snapshot(&self.npm_registry_info_provider, self.snapshot_option)
-        .await?;
-    if let Some(snapshot) = snapshot {
-      self
-        .npm_resolution
-        .set_snapshot(NpmResolutionSnapshot::new(snapshot));
-    }
-    Ok(())
+    self.initialize.get().await.map_err(JsErrorBox::from_err)
   }
 }
 
@@ -118,10 +119,36 @@ pub fn create_managed_npm_resolver(
   ))
 }
 
+#[derive(Debug, Error, Clone, JsError)]
+#[error("failed reading lockfile '{}'", lockfile_path.display())]
+#[class(inherit)]
+pub struct ResolveSnapshotError {
+  lockfile_path: PathBuf,
+  #[inherit]
+  #[source]
+  source: SnapshotFromLockfileError,
+}
+
+impl ResolveSnapshotError {
+  pub fn maybe_integrity_check_error(
+    &self,
+  ) -> Option<&deno_npm::resolution::IntegrityCheckFailedError> {
+    match &self.source {
+      SnapshotFromLockfileError::SnapshotFromLockfile(
+        deno_npm::resolution::SnapshotFromLockfileError::IntegrityCheckFailed(
+          err,
+        ),
+      ) => Some(err),
+      _ => None,
+    }
+  }
+}
+
 async fn resolve_snapshot(
   registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
-) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
+) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
+{
   match snapshot {
     CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(lockfile) => {
       if !lockfile.overwrite() {
@@ -130,8 +157,9 @@ async fn resolve_snapshot(
           &registry_info_provider.as_npm_registry_api(),
         )
         .await
-        .with_context(|| {
-          format!("failed reading lockfile '{}'", lockfile.filename.display())
+        .map_err(|source| ResolveSnapshotError {
+          lockfile_path: lockfile.filename.clone(),
+          source,
         })?;
         Ok(Some(snapshot))
       } else {
@@ -142,10 +170,22 @@ async fn resolve_snapshot(
   }
 }
 
+#[derive(Debug, Error, Clone, JsError)]
+pub enum SnapshotFromLockfileError {
+  #[error(transparent)]
+  #[class(inherit)]
+  IncompleteError(
+    #[from] deno_npm::resolution::IncompleteSnapshotFromLockfileError,
+  ),
+  #[error(transparent)]
+  #[class(inherit)]
+  SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
+}
+
 async fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   api: &dyn NpmRegistryApi,
-) -> Result<ValidSerializedNpmResolutionSnapshot, AnyError> {
+) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let (incomplete_snapshot, skip_integrity_check) = {
     let lock = lockfile.lock();
     (
