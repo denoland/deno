@@ -1072,9 +1072,10 @@ function _dump(ctx) {
  */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
-  const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
   try {
+    const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
+
     runPluginsForFile(fileName, serializedAst);
   } finally {
     // During testing we don't want to keep plugins around
