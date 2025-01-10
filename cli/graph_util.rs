@@ -57,6 +57,7 @@ use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
+use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
@@ -504,6 +505,7 @@ pub struct ModuleGraphBuilder {
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
+  npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -524,6 +526,7 @@ impl ModuleGraphBuilder {
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
+    npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     parsed_source_cache: Arc<ParsedSourceCache>,
@@ -541,6 +544,7 @@ impl ModuleGraphBuilder {
       lockfile,
       maybe_file_watcher_reporter,
       module_info_cache,
+      npm_graph_resolver,
       npm_installer,
       npm_resolver,
       parsed_source_cache,
@@ -640,10 +644,7 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver =
-      cli_resolver.create_graph_npm_resolver(options.npm_caching);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -664,7 +665,7 @@ impl ModuleGraphBuilder {
           executor: Default::default(),
           file_system: &self.sys,
           jsr_url_provider: &CliJsrUrlProvider,
-          npm_resolver: Some(&graph_npm_resolver),
+          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
@@ -784,11 +785,7 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
-      self.cli_options.default_npm_caching_strategy(),
-    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -797,7 +794,7 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(&graph_npm_resolver),
+        npm_resolver: Some(self.npm_graph_resolver.as_ref()),
         workspace_fast_check: options.workspace_fast_check,
       },
     );

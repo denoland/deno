@@ -7,6 +7,8 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_error::JsErrorBox;
+use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::colors;
@@ -195,6 +197,16 @@ impl NpmInstaller {
     Ok(())
   }
 
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    self
+      .npm_resolution_installer
+      .cache_package_info(package_name)
+      .await
+  }
+
   pub async fn cache_packages(
     &self,
     caching: PackageCaching<'_>,
@@ -239,12 +251,12 @@ impl NpmInstaller {
       return Ok(true); // already did this
     }
 
+    self.npm_resolution_initializer.ensure_initialized().await?;
+
     let pkg_json_remote_pkgs = self.npm_install_deps_provider.remote_pkgs();
     if pkg_json_remote_pkgs.is_empty() {
       return Ok(true);
     }
-
-    self.npm_resolution_initializer.ensure_initialized().await?;
 
     // check if something needs resolving before bothering to load all
     // the package information (which is slow)

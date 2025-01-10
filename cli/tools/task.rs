@@ -205,7 +205,7 @@ pub async fn execute_script(
     }]
   };
 
-  let npm_installer = factory.npm_installer_if_managed().await?;
+  let npm_installer = factory.npm_installer_if_managed()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
@@ -219,7 +219,7 @@ pub async fn execute_script(
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,
-    npm_installer,
+    npm_installer: npm_installer.as_deref(),
     npm_resolver: npm_resolver.as_ref(),
     node_resolver: node_resolver.as_ref(),
     env_vars,

@@ -85,10 +85,11 @@ use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliDenoResolver;
+use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
+use crate::resolver::FoundPackageJsonDepFlag;
 use crate::resolver::NpmModuleLoader;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
@@ -197,6 +198,7 @@ struct CliFactoryServices {
   emitter: Deferred<Arc<Emitter>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
+  found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   fs: Deferred<Arc<dyn deno_fs::FileSystem>>,
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
@@ -214,6 +216,7 @@ struct CliFactoryServices {
   npm_cache: Deferred<Arc<CliNpmCache>>,
   npm_cache_dir: Deferred<Arc<NpmCacheDir>>,
   npm_cache_http_client: Deferred<Arc<CliNpmCacheHttpClient>>,
+  npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
   npm_installer: Deferred<Arc<NpmInstaller>>,
   npm_registry_info_provider: Deferred<Arc<CliNpmRegistryInfoProvider>>,
   npm_req_resolver: Deferred<Arc<CliNpmReqResolver>>,
@@ -448,6 +451,25 @@ impl CliFactory {
     })
   }
 
+  pub fn npm_graph_resolver(
+    &self,
+  ) -> Result<&Arc<CliNpmGraphResolver>, AnyError> {
+    self.services.npm_graph_resolver.get_or_try_init(|| {
+      let cli_options = self.cli_options()?;
+      Ok(Arc::new(CliNpmGraphResolver::new(
+        self.npm_installer_if_managed()?.cloned(),
+        if cli_options.no_npm() {
+          None
+        } else {
+          Some(self.npm_resolver().clone())
+        },
+        self.services.found_pkg_json_dep_flag.clone(),
+        cli_options.unstable_bare_node_builtins(),
+        cli_options.default_npm_caching_strategy(),
+      )))
+    })
+  }
+
   pub fn npm_installer_if_managed(
     &self,
   ) -> Result<Option<&Arc<NpmInstaller>>, AnyError> {
@@ -467,10 +489,10 @@ impl CliFactory {
         Arc::new(NpmInstallDepsProvider::from_workspace(
           cli_options.workspace(),
         )),
-        self.npm_resolution_initializer()?.clone(),
-        self.text_only_progress_bar(),
         self.npm_resolution().clone(),
+        self.npm_resolution_initializer()?.clone(),
         self.npm_resolution_installer()?.clone(),
+        self.text_only_progress_bar(),
         self.sys(),
         self.npm_tarball_cache()?.clone(),
         cli_options.maybe_lockfile().cloned(),
@@ -695,18 +717,10 @@ impl CliFactory {
       .resolver
       .get_or_try_init_async(
         async {
-          let cli_options = self.cli_options()?;
-          Ok(Arc::new(CliResolver::new(CliResolverOptions {
-            npm_installer: self.npm_installer_if_managed()?.cloned(),
-            npm_resolver: if cli_options.no_npm() {
-              None
-            } else {
-              Some(self.npm_resolver().await?.clone())
-            },
-            bare_node_builtins_enabled: cli_options
-              .unstable_bare_node_builtins(),
-            deno_resolver: self.deno_resolver().await?.clone(),
-          })))
+          Ok(Arc::new(CliResolver::new(
+            self.deno_resolver().await?.clone(),
+            self.services.found_pkg_json_dep_flag.clone(),
+          )))
         }
         .boxed_local(),
       )
@@ -902,6 +916,7 @@ impl CliFactory {
           cli_options.maybe_lockfile().cloned(),
           self.maybe_file_watcher_reporter().clone(),
           self.module_info_cache()?.clone(),
+          self.npm_graph_resolver()?.clone(),
           self.npm_installer_if_managed()?.cloned(),
           self.npm_resolver().await?.clone(),
           self.parsed_source_cache().clone(),

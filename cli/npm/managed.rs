@@ -105,7 +105,7 @@ pub fn create_managed_npm_resolver(
       &options.npmrc,
       options.npm_resolution.clone(),
       options.sys.clone(),
-      options.maybe_node_modules_dir_path,
+      options.maybe_node_modules_path,
     ));
   Arc::new(ManagedCliNpmResolver::new(
     options.maybe_lockfile,

@@ -690,18 +690,12 @@ pub async fn run(
     ca_data: metadata.ca_data.map(CaData::Bytes),
     cell: Default::default(),
   });
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client_provider = Arc::new(HttpClientProvider::new(
-    Some(root_cert_store_provider.clone()),
-    metadata.unsafely_ignore_certificate_errors.clone(),
-  ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let cache_setting = CacheSetting::Only;
   let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {

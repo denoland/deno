@@ -165,20 +165,26 @@ impl NpmModuleLoader {
   }
 }
 
+#[derive(Debug, Default)]
+pub struct FoundPackageJsonDepFlag(AtomicFlag);
+
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliResolver {
   deno_resolver: Arc<CliDenoResolver>,
-  found_package_json_dep_flag: AtomicFlag,
+  found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   warned_pkgs: DashSet<PackageReq>,
 }
 
 impl CliResolver {
-  pub fn new(deno_resolver: Arc<CliDenoResolver>) -> Self {
+  pub fn new(
+    deno_resolver: Arc<CliDenoResolver>,
+    found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
+  ) -> Self {
     Self {
       deno_resolver,
-      found_package_json_dep_flag: Default::default(),
+      found_package_json_dep_flag,
       warned_pkgs: Default::default(),
     }
   }
@@ -210,7 +216,7 @@ impl CliResolver {
 
     if resolution.found_package_json_dep {
       // mark that we need to do an "npm install" later
-      self.found_package_json_dep_flag.raise();
+      self.found_package_json_dep_flag.0.raise();
     }
 
     if let Some(diagnostic) = resolution.maybe_diagnostic {
@@ -237,16 +243,34 @@ impl CliResolver {
 }
 
 #[derive(Debug)]
-pub struct WorkerCliNpmGraphResolver<'a> {
-  npm_installer: Option<&'a NpmInstaller>,
-  npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: &'a AtomicFlag,
+pub struct CliNpmGraphResolver {
+  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
 }
 
+impl CliNpmGraphResolver {
+  pub fn new(
+    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+    found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
+    bare_node_builtins_enabled: bool,
+    npm_caching: NpmCachingStrategy,
+  ) -> Self {
+    Self {
+      npm_installer,
+      npm_resolver,
+      found_package_json_dep_flag,
+      bare_node_builtins_enabled,
+      npm_caching,
+    }
+  }
+}
+
 #[async_trait(?Send)]
-impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
+impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
   fn resolve_builtin_node_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -276,14 +300,12 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   }
 
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
-    match self.npm_resolver {
-      Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
-        let npm_resolver = npm_resolver.clone();
+    match &self.npm_installer {
+      Some(npm_installer) => {
+        let npm_installer = npm_installer.clone();
         let package_name = package_name.to_string();
         deno_core::unsync::spawn(async move {
-          if let Some(managed) = npm_resolver.as_managed() {
-            let _ignore = managed.cache_package_info(&package_name).await;
-          }
+          let _ignore = npm_installer.cache_package_info(&package_name).await;
         });
       }
       _ => {}
@@ -296,7 +318,8 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   ) -> NpmResolvePkgReqsResult {
     match &self.npm_installer {
       Some(npm_installer) => {
-        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
+        let top_level_result = if self.found_package_json_dep_flag.0.is_raised()
+        {
           npm_installer
             .ensure_top_level_package_json_install()
             .await

@@ -8,7 +8,9 @@ use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
@@ -55,6 +57,14 @@ impl NpmResolutionInstaller {
       maybe_lockfile,
       update_queue: Default::default(),
     }
+  }
+
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    // this will internally cache the package information
+    self.registry_info_provider.package_info(package_name).await
   }
 
   pub async fn add_package_reqs(
