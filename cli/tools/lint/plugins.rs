@@ -11,6 +11,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
@@ -347,43 +348,39 @@ impl PluginHost {
       container.set_cancellation_token(maybe_token);
     }
 
-    let (file_name_v8, ast_uint8arr_v8) = {
-      let scope = &mut self.worker.js_runtime.handle_scope();
-      let file_name_v8: v8::Local<v8::Value> =
-        v8::String::new(scope, &file_path.display().to_string())
-          .unwrap()
-          .into();
+    let scope = &mut self.worker.js_runtime.handle_scope();
+    let file_name_v8: v8::Local<v8::Value> =
+      v8::String::new(scope, &file_path.display().to_string())
+        .unwrap()
+        .into();
 
-      let store = v8::ArrayBuffer::new_backing_store_from_vec(serialized_ast);
-      let ast_buf =
-        v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
-      let ast_bin_v8: v8::Local<v8::Value> =
-        v8::Uint8Array::new(scope, ast_buf, 0, ast_buf.byte_length())
-          .unwrap()
-          .into();
-      (
-        v8::Global::new(scope, file_name_v8),
-        v8::Global::new(scope, ast_bin_v8),
-      )
-    };
+    let store = v8::ArrayBuffer::new_backing_store_from_vec(serialized_ast);
+    let ast_buf =
+      v8::ArrayBuffer::with_backing_store(scope, &store.make_shared());
+    let ast_bin_v8: v8::Local<v8::Value> =
+      v8::Uint8Array::new(scope, ast_buf, 0, ast_buf.byte_length())
+        .unwrap()
+        .into();
+    let run_plugins_for_file =
+      v8::Local::new(scope, &*self.run_plugins_for_file_fn);
+    let undefined = v8::undefined(scope);
 
-    let call = self.worker.js_runtime.call_with_args(
-      &self.run_plugins_for_file_fn,
-      &[file_name_v8, ast_uint8arr_v8],
+    let mut tc_scope = v8::TryCatch::new(scope);
+    let _run_plugins_result = run_plugins_for_file.call(
+      &mut tc_scope,
+      undefined.into(),
+      &[file_name_v8, ast_bin_v8],
     );
-    // TODO: this loses `cause` property on the error, fix it
-    let result = self
-      .worker
-      .js_runtime
-      .with_event_loop_promise(call, PollEventLoopOptions::default())
-      .await;
-    match result {
-      Ok(_r) => self.logger.log("plugins finished"),
-      Err(error) => {
-        self.logger.log(&format!("error running plugins {}", error));
-      }
-    }
 
+    if let Some(exception) = tc_scope.exception() {
+      let error = JsError::from_v8_exception(&mut tc_scope, exception);
+      self.logger.log("error running plugins");
+      let core_err = CoreError::Js(error);
+      return Err(core_err.into());
+    }
+    drop(tc_scope);
+
+    self.logger.log("plugins finished");
     Ok(())
   }
 

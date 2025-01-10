@@ -187,7 +187,7 @@ pub fn get_lint_references(
   linter: &CliLinter,
   token: CancellationToken,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_diagnostics = linter.lint_with_ast(parsed_source, token);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source, token)?;
 
   Ok(
     lint_diagnostics

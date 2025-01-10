@@ -344,4 +344,5 @@ opt-level = 3
 opt-level = 3
 
 [patch.crates-io]
-deno_lint = { git = "https://github.com/bartlomieju/deno_lint.git", branch = "add_apis" }
+# deno_lint = { git = "https://github.com/bartlomieju/deno_lint.git", branch = "add_apis" }
+deno_lint = { path = "../deno_lint" }
