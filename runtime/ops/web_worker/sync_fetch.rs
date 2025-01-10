@@ -26,30 +26,53 @@ fn mime_type_essence(mime_type: &str) -> String {
   essence.trim().to_ascii_lowercase()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SyncFetchError {
+  #[class(type)]
   #[error("Blob URLs are not supported in this context.")]
   BlobUrlsNotSupportedInContext,
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
+  #[class(type)]
   #[error("Invalid script URL")]
   InvalidScriptUrl,
+  #[class(type)]
   #[error("http status error: {0}")]
   InvalidStatusCode(http::StatusCode),
+  #[class(type)]
   #[error("Classic scripts with scheme {0}: are not supported in workers")]
   ClassicScriptSchemeUnsupportedInWorkers(String),
+  #[class(generic)]
   #[error("{0}")]
   InvalidUri(#[from] http::uri::InvalidUri),
+  #[class("DOMExceptionNetworkError")]
   #[error("Invalid MIME type {0:?}.")]
   InvalidMimeType(String),
+  #[class("DOMExceptionNetworkError")]
   #[error("Missing MIME type.")]
   MissingMimeType,
+  #[class(inherit)]
   #[error(transparent)]
-  Fetch(#[from] FetchError),
+  Fetch(
+    #[from]
+    #[inherit]
+    FetchError,
+  ),
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] deno_error::JsErrorBox),
 }
 
 #[derive(Serialize, Deserialize)]

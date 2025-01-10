@@ -4,14 +4,9 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
-pub use byonm::ByonmInNpmPackageChecker;
-pub use byonm::ByonmNpmResolver;
-pub use byonm::ByonmNpmResolverCreateOptions;
-pub use byonm::ByonmNpmResolverRc;
-pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-pub use local::normalize_pkg_name_for_node_modules_deno_folder;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -32,52 +27,90 @@ use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+pub use self::byonm::ByonmInNpmPackageChecker;
+pub use self::byonm::ByonmNpmResolver;
+pub use self::byonm::ByonmNpmResolverCreateOptions;
+pub use self::byonm::ByonmNpmResolverRc;
+pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
+pub use self::local::get_package_folder_id_folder_name;
+pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+use self::managed::create_managed_in_npm_pkg_checker;
+use self::managed::ManagedInNpmPkgCheckerCreateOptions;
+use crate::sync::new_rc;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+
 mod byonm;
 mod local;
+pub mod managed;
 
-#[derive(Debug, Error)]
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+pub fn create_in_npm_pkg_checker(
+  options: CreateInNpmPkgCheckerOptions,
+) -> InNpmPackageCheckerRc {
+  match options {
+    CreateInNpmPkgCheckerOptions::Managed(options) => {
+      new_rc(create_managed_in_npm_pkg_checker(options))
+    }
+    CreateInNpmPkgCheckerOptions::Byonm => new_rc(ByonmInNpmPackageChecker),
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", specifier)]
 pub struct NodeModulesOutOfDateError {
   pub specifier: String,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", package_json_path.display())]
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveIfForNpmPackageError(
   pub Box<ResolveIfForNpmPackageErrorKind>,
 );
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveIfForNpmPackageErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   NodeResolve(#[from] NodeResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveReqWithSubPathErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolvePkgFolderFromDenoReqError {
-  // todo(dsherret): don't use anyhow here
-  #[error(transparent)]
-  Managed(anyhow::Error),
+  #[class(inherit)]
+  #[error("{0}")]
+  Managed(Box<dyn deno_error::JsErrorClass>),
+  #[class(inherit)]
   #[error(transparent)]
   Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
 }
@@ -87,7 +120,7 @@ pub type CliNpmReqResolverRc = crate::sync::MaybeArc<dyn CliNpmReqResolver>;
 
 // todo(dsherret): a temporary trait until we extract
 // out the CLI npm resolver into here
-pub trait CliNpmReqResolver: Debug + Send + Sync {
+pub trait CliNpmReqResolver: Debug + MaybeSend + MaybeSync {
   fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,

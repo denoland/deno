@@ -15,18 +15,23 @@ use deno_core::ResourceId;
 
 use crate::surface::WebGpuSurface;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ByowError {
+  #[class(type)]
   #[error("Cannot create surface outside of WebGPU context. Did you forget to call `navigator.gpu.requestAdapter()`?")]
   WebGPUNotInitiated,
+  #[class(type)]
   #[error("Invalid parameters")]
   InvalidParameters,
+  #[class(generic)]
   #[error(transparent)]
   CreateSurface(wgpu_core::instance::CreateSurfaceError),
   #[cfg(target_os = "windows")]
+  #[class(type)]
   #[error("Invalid system on Windows")]
   InvalidSystem,
   #[cfg(target_os = "macos")]
+  #[class(type)]
   #[error("Invalid system on macOS")]
   InvalidSystem,
   #[cfg(any(
@@ -34,6 +39,7 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
+  #[class(type)]
   #[error("Invalid system on Linux/BSD")]
   InvalidSystem,
   #[cfg(any(
@@ -42,6 +48,7 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
+  #[class(type)]
   #[error("window is null")]
   NullWindow,
   #[cfg(any(
@@ -49,9 +56,11 @@ pub enum ByowError {
     target_os = "freebsd",
     target_os = "openbsd"
   ))]
+  #[class(type)]
   #[error("display is null")]
   NullDisplay,
   #[cfg(target_os = "macos")]
+  #[class(type)]
   #[error("ns_view is null")]
   NSViewDisplay,
 }
@@ -199,6 +208,6 @@ fn raw_window(
   _system: &str,
   _window: *const c_void,
   _display: *const c_void,
-) -> Result<RawHandles, deno_core::error::AnyError> {
-  Err(deno_core::error::type_error("Unsupported platform"))
+) -> Result<RawHandles, deno_error::JsErrorBox> {
+  Err(deno_error::JsErrorBox::type_error("Unsupported platform"))
 }

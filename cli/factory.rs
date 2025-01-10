@@ -10,8 +10,12 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
+use deno_error::JsErrorBox;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
@@ -63,14 +67,11 @@ use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver;
-use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::resolver::CjsTracker;
@@ -80,7 +81,6 @@ use crate::resolver::CliResolver;
 use crate::resolver::CliResolverOptions;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::NpmModuleLoader;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::check::TypeChecker;
@@ -118,7 +118,7 @@ impl CliRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for CliRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
     self
       .cell
       .get_or_try_init(|| {
@@ -128,7 +128,7 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
           self.maybe_ca_data.clone(),
         )
       })
-      .map_err(|e| e.into())
+      .map_err(JsErrorBox::from_err)
   }
 }
 
@@ -386,7 +386,7 @@ impl CliFactory {
         CreateInNpmPkgCheckerOptions::Byonm
       } else {
         CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: self.npm_cache_dir()?.root_dir_url(),
             maybe_node_modules_path: cli_options
               .node_modules_dir_path()
@@ -394,7 +394,7 @@ impl CliFactory {
           },
         )
       };
-      Ok(create_in_npm_pkg_checker(options))
+      Ok(deno_resolver::npm::create_in_npm_pkg_checker(options))
     })
   }
 

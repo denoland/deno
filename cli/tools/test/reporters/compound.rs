@@ -129,7 +129,7 @@ impl TestReporter for CompoundTestReporter {
     if errors.is_empty() {
       Ok(())
     } else {
-      bail!(
+      anyhow::bail!(
         "error in one or more wrapped reporters:\n{}",
         errors
           .iter()

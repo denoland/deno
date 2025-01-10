@@ -8,7 +8,8 @@ use libffi::middle::Arg;
 
 use crate::symbol::NativeType;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum IRError {
   #[error("Invalid FFI u8 type, expected boolean")]
   InvalidU8ExpectedBoolean,

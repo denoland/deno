@@ -232,14 +232,14 @@ impl URLPattern {
     } else {
       v8::RegExpCreationFlags::UNICODE
     };
-    
+
     let pattern = quirks::parse_pattern(init, options.into())?;
 
     macro_rules! create_regexp_global {
       ($scope:expr, $key:tt, $pattern:expr, $flags:expr) => {
         {
           let pattern = v8::String::new($scope, &$pattern.$key.regexp_string).unwrap();
-    
+
           let Some(regexp) = v8::RegExp::new($scope, pattern, $flags) else {
             return Err(UrlPatternError::InvalidRegexp {
               prefix: PREFIX,
