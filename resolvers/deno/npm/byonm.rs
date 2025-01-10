@@ -400,14 +400,14 @@ impl<
 }
 
 impl<
-    Sys: FsCanonicalize
+    TSys: FsCanonicalize
       + FsMetadata
       + FsRead
       + FsReadDir
       + Send
       + Sync
       + std::fmt::Debug,
-  > NpmPackageFolderResolver for ByonmNpmResolver<Sys>
+  > NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
