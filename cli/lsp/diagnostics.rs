@@ -839,6 +839,7 @@ fn generate_lint_diagnostics(
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
+            // TODO(bartlomieju): handle linter plugins here before landing
             maybe_plugin_runner: None,
           })),
         )

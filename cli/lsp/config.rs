@@ -1646,9 +1646,13 @@ impl ConfigData {
           lint_options.rules.exclude.clone(),
         )
         .await;
-      // eprintln!("plugin load result {:#?}", plugin_load_result);
-      if let Ok(runner) = plugin_load_result {
-        plugin_runner = Some(Arc::new(Mutex::new(runner)));
+      match plugin_load_result {
+        Ok(runner) => {
+          plugin_runner = Some(Arc::new(Mutex::new(runner)));
+        }
+        Err(err) => {
+          lsp_warn!("Failed to load lint plugins: {}", err);
+        }
       }
     }
 
