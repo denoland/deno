@@ -33,7 +33,7 @@ use crate::ResolvedNpmRcRc;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error(transparent)]
-pub enum NpmManagedResolverPackageFolderError {
+pub enum ResolvePkgFolderFromPkgIdError {
   #[class(inherit)]
   #[error(transparent)]
   NotFound(#[from] NpmManagedPackageFolderNotFoundError),
@@ -63,7 +63,7 @@ pub enum ManagedResolvePkgFolderFromDenoReqError {
   PackageReqNotFound(#[from] PackageReqNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolvePkgFolderFromPkgId(#[from] NpmManagedResolverPackageFolderError),
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
 }
 
 #[allow(clippy::disallowed_types)]
@@ -118,10 +118,10 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     self.fs_resolver.node_modules_path()
   }
 
-  pub fn package_folder(
+  pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     package_id: &NpmPackageId,
-  ) -> Result<PathBuf, NpmManagedResolverPackageFolderError> {
+  ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
     let path = self
       .fs_resolver
       .maybe_package_folder(package_id)
@@ -150,7 +150,7 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     _referrer: &Url,
   ) -> Result<PathBuf, ManagedResolvePkgFolderFromDenoReqError> {
     let pkg_id = self.resolution.resolve_pkg_id_from_pkg_req(req)?;
-    Ok(self.package_folder(&pkg_id)?)
+    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
   }
 
   #[inline]
@@ -172,9 +172,16 @@ impl<TSys: FsCanonicalize + std::fmt::Debug + MaybeSend + MaybeSync>
     specifier: &str,
     referrer: &Url,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
-    self
+    let path = self
       .fs_resolver
-      .resolve_package_folder_from_package(specifier, referrer)
+      .resolve_package_folder_from_package(specifier, referrer)?;
+    log::debug!(
+      "Resolved {} from {} to {}",
+      specifier,
+      referrer,
+      path.display()
+    );
+    Ok(path)
   }
 }
 

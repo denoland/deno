@@ -22,8 +22,8 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCacheSetting;
-use deno_resolver::npm::managed::NpmManagedResolverPackageFolderError;
 use deno_resolver::npm::managed::NpmResolution;
+use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::ManagedNpmResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -285,7 +285,7 @@ pub enum ResolvePkgFolderFromDenoModuleError {
   PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolvePkgFolderFromPkgId(#[from] NpmManagedResolverPackageFolderError),
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
 }
 
 /// An npm resolver where the resolution is managed by Deno rather than
@@ -363,8 +363,10 @@ impl ManagedCliNpmResolver {
   pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     pkg_id: &NpmPackageId,
-  ) -> Result<PathBuf, NpmManagedResolverPackageFolderError> {
-    self.managed_npm_resolver.package_folder(pkg_id)
+  ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
+    self
+      .managed_npm_resolver
+      .resolve_pkg_folder_from_pkg_id(pkg_id)
   }
 
   /// Resolves the package id from the provided specifier.
@@ -397,8 +399,9 @@ impl ManagedCliNpmResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    let package_folder =
-      self.managed_npm_resolver.package_folder(package_id)?;
+    let package_folder = self
+      .managed_npm_resolver
+      .resolve_pkg_folder_from_pkg_id(package_id)?;
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
@@ -414,7 +417,12 @@ impl ManagedCliNpmResolver {
     self
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
-      .and_then(|id| self.managed_npm_resolver.package_folder(&id).ok())
+      .and_then(|id| {
+        self
+          .managed_npm_resolver
+          .resolve_pkg_folder_from_pkg_id(&id)
+          .ok()
+      })
       .map(|folder| folder.exists())
       .unwrap_or(false)
   }
