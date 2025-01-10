@@ -1,16 +1,21 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::convert::Infallible;
 use std::sync::atomic::AtomicBool;
-
+use deno_core::convert::{OptionNull, OptionUndefined};
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::HandleScope;
+use deno_core::v8::Local;
+use deno_core::v8::Value;
+use deno_core::v8_static_strings;
 use deno_core::webidl::WebIdlConverter;
 use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
+use deno_core::ToV8;
 use deno_core::WebIDL;
 use indexmap::IndexMap;
-use serde::Serialize;
 use urlpattern::quirks;
 
 pub static GROUP_STRING_FALLBACK: AtomicBool = AtomicBool::new(false);
@@ -32,7 +37,7 @@ pub enum UrlPatternError {
   WebIDL(#[from] WebIdlError),
 }
 
-#[derive(WebIDL, Default, Debug, Serialize)]
+#[derive(WebIDL, Default, Debug)]
 #[webidl(dictionary)]
 struct URLPatternInit {
   protocol: Option<String>,
@@ -43,7 +48,6 @@ struct URLPatternInit {
   pathname: Option<String>,
   search: Option<String>,
   hash: Option<String>,
-  #[serde(rename = "baseURL")]
   #[webidl(rename = "baseURL")]
   base_url: Option<String>,
 }
@@ -79,8 +83,7 @@ impl From<quirks::UrlPatternInit> for URLPatternInit {
   }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
+#[derive(Debug)]
 enum URLPatternInput {
   URLPatternInit(URLPatternInit),
   String(String),
@@ -370,21 +373,21 @@ impl URLPattern {
   }
 
   #[required(1)]
-  #[serde]
+  #[to_v8]
   fn exec(
     &self,
     scope: &mut v8::HandleScope,
     #[webidl] input: URLPatternInput,
     #[webidl] base_url: Option<String>,
-  ) -> Result<Option<URLPatternResult>, UrlPatternError> {
+  ) -> Result<OptionNull<URLPatternResult>, UrlPatternError> {
     let res = quirks::process_match_input(input.into(), base_url.as_deref())?;
 
     let Some((input, original_inputs)) = res else {
-      return Ok(None);
+      return Ok(None.into());
     };
 
     let Some(values) = quirks::parse_match_input(input) else {
-      return Ok(None);
+      return Ok(None.into());
     };
 
     macro_rules! handle_component {
@@ -397,7 +400,7 @@ impl URLPattern {
         match component.regexp_string.as_str() {
           "^$" => {
             if values.$t != "" {
-              return Ok(None);
+              return Ok(None.into());
             }
           }
           "^(.*)$" => {
@@ -409,13 +412,19 @@ impl URLPattern {
             // TODO: handle unwrap
             let exec_result = regexp.exec(scope, subject).unwrap();
             if exec_result.is_null() {
-              return Ok(None);
+              return Ok(None.into());
             }
             for i in 0..component.group_name_list.len() {
               // TODO(lucacasonato): this is vulnerable to override mistake
               let res = exec_result
                 .get_index(scope, (i as u32) + 1)
-                .map(|res| res.to_rust_string_lossy(scope));
+                .and_then(|res| {
+                  if res.is_undefined() {
+                    None
+                  } else {
+                    Some(res.to_rust_string_lossy(scope))
+                  }
+                });
               let res = if GROUP_STRING_FALLBACK
                 .load(std::sync::atomic::Ordering::Relaxed)
               {
@@ -423,6 +432,7 @@ impl URLPattern {
               } else {
                 res
               };
+              
               result
                 .groups
                 .insert(component.group_name_list[i].clone(), res);
@@ -450,11 +460,10 @@ impl URLPattern {
       pathname: handle_component!(pathname),
       search: handle_component!(search),
       hash: handle_component!(hash),
-    }))
+    }).into())
   }
 }
 
-#[derive(Debug, Serialize)]
 struct URLPatternResult {
   inputs: Vec<URLPatternInput>,
 
@@ -468,8 +477,155 @@ struct URLPatternResult {
   hash: UrlPatternComponentResult,
 }
 
-#[derive(Debug, Serialize)]
 pub struct UrlPatternComponentResult {
   pub input: String,
   pub groups: IndexMap<String, Option<String>>,
+}
+
+v8_static_strings! {
+  BASE_URL = "baseURL",
+  INPUTS = "inputs",
+  PROTOCOL = "protocol",
+  USERNAME = "username",
+  PASSWORD = "password",
+  HOSTNAME = "hostname",
+  PORT = "port",
+  PATHNAME = "pathname",
+  SEARCH = "search",
+  HASH = "hash",
+  INPUT = "input",
+  GROUPS = "groups",
+}
+
+impl<'a> ToV8<'a> for URLPatternInit {
+  type Error = Infallible;
+
+  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+    let names = vec![
+      PROTOCOL.v8_string(scope).unwrap().into(),
+      USERNAME.v8_string(scope).unwrap().into(),
+      PASSWORD.v8_string(scope).unwrap().into(),
+      HOSTNAME.v8_string(scope).unwrap().into(),
+      PORT.v8_string(scope).unwrap().into(),
+      PATHNAME.v8_string(scope).unwrap().into(),
+      SEARCH.v8_string(scope).unwrap().into(),
+      HASH.v8_string(scope).unwrap().into(),
+      BASE_URL.v8_string(scope).unwrap().into(),
+    ];
+
+    let values = vec![
+      OptionUndefined::from(self.protocol).to_v8(scope)?,
+      OptionUndefined::from(self.username).to_v8(scope)?,
+      OptionUndefined::from(self.password).to_v8(scope)?,
+      OptionUndefined::from(self.hostname).to_v8(scope)?,
+      OptionUndefined::from(self.port).to_v8(scope)?,
+      OptionUndefined::from(self.pathname).to_v8(scope)?,
+      OptionUndefined::from(self.search).to_v8(scope)?,
+      OptionUndefined::from(self.hash).to_v8(scope)?,
+      OptionUndefined::from(self.base_url).to_v8(scope)?,
+    ];
+    
+    let obj = v8::Object::new(scope);
+
+    for (key, val) in names.into_iter().zip(values.into_iter()) {
+      obj.set(scope, key, val);
+    }
+
+    Ok(obj.into())
+  }
+}
+
+impl<'a> ToV8<'a> for URLPatternInput {
+  type Error = Infallible;
+
+  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+    match self {
+      URLPatternInput::URLPatternInit(init) => {
+        Ok(init.to_v8(scope)?)
+      }
+      URLPatternInput::String(s) => {
+        Ok(v8::String::new(scope, &s).unwrap().into())
+      }
+    }
+  }
+}
+
+impl<'a> ToV8<'a> for URLPatternResult {
+  type Error = Infallible;
+
+  fn to_v8(self, scope: &mut HandleScope<'a>) -> Result<Local<'a, Value>, Self::Error> {
+    let names = vec![
+      INPUTS.v8_string(scope).unwrap().into(),
+      PROTOCOL.v8_string(scope).unwrap().into(),
+      USERNAME.v8_string(scope).unwrap().into(),
+      PASSWORD.v8_string(scope).unwrap().into(),
+      HOSTNAME.v8_string(scope).unwrap().into(),
+      PORT.v8_string(scope).unwrap().into(),
+      PATHNAME.v8_string(scope).unwrap().into(),
+      SEARCH.v8_string(scope).unwrap().into(),
+      HASH.v8_string(scope).unwrap().into(),
+    ];
+
+    let inputs = self.inputs.into_iter().map(|input| input.to_v8(scope)).collect::<Result<Vec<_>, _>>()?;
+
+    let inputs = v8::Array::new_with_elements(scope, &inputs);
+
+    let values = vec![
+      inputs.into(),
+      self.protocol.to_v8(scope)?,
+      self.username.to_v8(scope)?,
+      self.password.to_v8(scope)?,
+      self.hostname.to_v8(scope)?,
+      self.port.to_v8(scope)?,
+      self.pathname.to_v8(scope)?,
+      self.search.to_v8(scope)?,
+      self.hash.to_v8(scope)?,
+    ];
+
+    let obj = v8::Object::new(scope);
+
+    for (key, val) in names.into_iter().zip(values.into_iter()) {
+      obj.set(scope, key, val);
+    }
+
+    Ok(obj.into())
+  }
+}
+
+impl<'a> ToV8<'a> for UrlPatternComponentResult {
+  type Error = Infallible;
+
+  fn to_v8(
+    self,
+    scope: &mut HandleScope<'a>,
+  ) -> Result<Local<'a, Value>, Self::Error> {
+    let input = self.input.to_v8(scope)?;
+
+    let groups = {
+      let len = self.groups.len();
+      let mut names = Vec::with_capacity(len);
+      let mut values = Vec::with_capacity(len);
+
+      for (key, val) in self.groups {
+        names.push(v8::String::new(scope, &key).unwrap().into());
+        values.push(OptionUndefined(val).to_v8(scope)?)
+      }
+
+      let obj = v8::Object::new(scope);
+
+      for (key, val) in names.into_iter().zip(values.into_iter()) {
+        obj.set(scope, key, val);
+      }
+
+      obj
+    };
+
+    let obj = v8::Object::new(scope);
+    let key = INPUT.v8_string(scope).unwrap().into();
+    obj.set(scope, key, input);
+    let key = GROUPS.v8_string(scope).unwrap().into();
+    obj.set(scope, key, groups.into());
+
+    Ok(obj.into())
+  }
 }
