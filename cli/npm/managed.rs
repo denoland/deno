@@ -6,9 +6,8 @@ use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
-use deno_core::unsync::sync::MultiRuntimeAsyncValueCreator;
 use deno_core::url::Url;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
@@ -48,8 +47,18 @@ pub enum CliNpmResolverManagedSnapshotOption {
 }
 
 #[derive(Debug)]
+enum SyncState {
+  Pending(Option<CliNpmResolverManagedSnapshotOption>),
+  Err(ResolveSnapshotError),
+  Success,
+}
+
+#[derive(Debug)]
 pub struct NpmResolutionInitializer {
-  initialize: MultiRuntimeAsyncValueCreator<Result<(), ResolveSnapshotError>>,
+  npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+  npm_resolution: Arc<NpmResolutionCell>,
+  queue: tokio::sync::Mutex<()>,
+  sync_state: Mutex<SyncState>,
 }
 
 impl NpmResolutionInitializer {
@@ -59,31 +68,72 @@ impl NpmResolutionInitializer {
     snapshot_option: CliNpmResolverManagedSnapshotOption,
   ) -> Self {
     Self {
-      initialize: MultiRuntimeAsyncValueCreator::new(Box::new(move || {
-        let npm_registry_info_provider = npm_registry_info_provider.clone();
-        let npm_resolution = npm_resolution.clone();
-        let snapshot_option = snapshot_option.clone();
-        async move {
-          let snapshot =
-            resolve_snapshot(&npm_registry_info_provider, snapshot_option)
-              .await?;
-          if let Some(snapshot) = snapshot {
-            npm_resolution.set_snapshot(NpmResolutionSnapshot::new(snapshot));
-          }
-          Ok(())
-        }
-        .boxed_local()
-      })),
+      npm_registry_info_provider,
+      npm_resolution,
+      queue: tokio::sync::Mutex::new(()),
+      sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
     }
   }
 
   #[cfg(debug_assertions)]
   pub fn debug_assert_initialized(&self) {
-    // assert!(self.npm_resolution.snapshot().());
+    if !matches!(*self.sync_state.lock(), SyncState::Success) {
+      panic!("debug assert: npm resolution must be initialized before calling this code");
+    }
   }
 
   pub async fn ensure_initialized(&self) -> Result<(), JsErrorBox> {
-    self.initialize.get().await.map_err(JsErrorBox::from_err)
+    // fast exit if not pending
+    {
+      match &*self.sync_state.lock() {
+        SyncState::Pending(_) => {}
+        SyncState::Err(err) => return Err(JsErrorBox::from_err(err.clone())),
+        SyncState::Success => return Ok(()),
+      }
+    }
+
+    // only allow one task in here at a time
+    let _guard = self.queue.lock().await;
+
+    let snapshot_option = {
+      let mut sync_state = self.sync_state.lock();
+      match &mut *sync_state {
+        SyncState::Pending(snapshot_option) => {
+          // this should never panic, but if it does it means that a
+          // previous future was dropped while initialization occurred...
+          // that should never happen because this is initialized during
+          // startup
+          snapshot_option.take().unwrap()
+        }
+        // another thread updated the state while we were waiting
+        SyncState::Err(resolve_snapshot_error) => {
+          return Err(JsErrorBox::from_err(resolve_snapshot_error.clone()));
+        }
+        SyncState::Success => {
+          return Ok(());
+        }
+      }
+    };
+
+    match resolve_snapshot(&self.npm_registry_info_provider, snapshot_option)
+      .await
+    {
+      Ok(maybe_snapshot) => {
+        if let Some(snapshot) = maybe_snapshot {
+          self
+            .npm_resolution
+            .set_snapshot(NpmResolutionSnapshot::new(snapshot));
+        }
+        let mut sync_state = self.sync_state.lock();
+        *sync_state = SyncState::Success;
+        Ok(())
+      }
+      Err(err) => {
+        let mut sync_state = self.sync_state.lock();
+        *sync_state = SyncState::Err(err.clone());
+        Err(JsErrorBox::from_err(err))
+      }
+    }
   }
 }
 
