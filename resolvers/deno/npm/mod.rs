@@ -36,9 +36,9 @@ pub use self::local::get_package_folder_id_folder_name;
 pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
 use self::managed::create_managed_in_npm_pkg_checker;
 use self::managed::ManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::ManagedNpmResolver;
+pub use self::managed::ManagedNpmResolverRc;
 use crate::sync::new_rc;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 mod byonm;
 mod local;
@@ -108,37 +108,50 @@ pub enum ResolveReqWithSubPathErrorKind {
 #[derive(Debug, Error, JsError)]
 pub enum ResolvePkgFolderFromDenoReqError {
   #[class(inherit)]
-  #[error("{0}")]
-  Managed(Box<dyn deno_error::JsErrorClass>),
+  #[error(transparent)]
+  Managed(managed::ManagedResolvePkgFolderFromDenoReqError),
   #[class(inherit)]
   #[error(transparent)]
-  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
+  Byonm(byonm::ByonmResolvePkgFolderFromDenoReqError),
 }
 
-#[allow(clippy::disallowed_types)]
-pub type CliNpmReqResolverRc = crate::sync::MaybeArc<dyn CliNpmReqResolver>;
+#[derive(Debug, Clone)]
+pub enum ByonmOrManagedNpmResolver<
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+> {
+  /// The resolver when "bring your own node_modules" is enabled where Deno
+  /// does not setup the node_modules directories automatically, but instead
+  /// uses what already exists on the file system.
+  Byonm(ByonmNpmResolverRc<TSys>),
+  Managed(ManagedNpmResolverRc<TSys>),
+}
 
-// todo(dsherret): a temporary trait until we extract
-// out the CLI npm resolver into here
-pub trait CliNpmReqResolver: Debug + MaybeSend + MaybeSync {
-  fn resolve_pkg_folder_from_deno_module_req(
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  ByonmOrManagedNpmResolver<TSys>
+{
+  pub fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
     referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    match self {
+      ByonmOrManagedNpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
+      ByonmOrManagedNpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .map_err(ResolvePkgFolderFromDenoReqError::Managed),
+    }
+  }
 }
 
 pub struct NpmReqResolverOptions<
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  /// The resolver when "bring your own node_modules" is enabled where Deno
-  /// does not setup the node_modules directories automatically, but instead
-  /// uses what already exists on the file system.
-  pub byonm_resolver: Option<ByonmNpmResolverRc<TSys>>,
   pub in_npm_pkg_checker: InNpmPackageCheckerRc,
   pub node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
-  pub npm_req_resolver: CliNpmReqResolverRc,
+  pub npm_resolver: ByonmOrManagedNpmResolver<TSys>,
   pub sys: TSys,
 }
 
@@ -151,11 +164,10 @@ pub struct NpmReqResolver<
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  byonm_resolver: Option<ByonmNpmResolverRc<TSys>>,
   sys: TSys,
   in_npm_pkg_checker: InNpmPackageCheckerRc,
   node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
-  npm_resolver: CliNpmReqResolverRc,
+  npm_resolver: ByonmOrManagedNpmResolver<TSys>,
 }
 
 impl<
@@ -167,11 +179,10 @@ impl<
     options: NpmReqResolverOptions<TIsBuiltInNodeModuleChecker, TSys>,
   ) -> Self {
     Self {
-      byonm_resolver: options.byonm_resolver,
       sys: options.sys,
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_resolver: options.node_resolver,
-      npm_resolver: options.npm_req_resolver,
+      npm_resolver: options.npm_resolver,
     }
   }
 
@@ -213,7 +224,7 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if self.byonm_resolver.is_some() {
+        if matches!(self.npm_resolver, ByonmOrManagedNpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
             return Err(
@@ -281,7 +292,10 @@ impl<
                         .into_box(),
                       );
                     }
-                    if let Some(byonm_npm_resolver) = &self.byonm_resolver {
+                    if let ByonmOrManagedNpmResolver::Byonm(
+                      byonm_npm_resolver,
+                    ) = &self.npm_resolver
+                    {
                       if byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,

@@ -1,13 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
-use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::ops::process::NpmProcessStateProvider;
+use deno_semver::package::PackageReq;
 use node_resolver::NpmPackageFolderResolver;
 
 use super::CliNpmResolver;
@@ -44,18 +48,16 @@ impl CliNpmResolver for CliByonmNpmResolver {
     self
   }
 
-  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver> {
-    self
-  }
-
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider> {
     Arc::new(CliByonmWrapper(self))
   }
 
-  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
-    Some(self)
+  fn into_byonm_or_managed(
+    self: Arc<Self>,
+  ) -> ByonmOrManagedNpmResolver<CliSys> {
+    ByonmOrManagedNpmResolver::Byonm(self)
   }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
@@ -74,5 +76,15 @@ impl CliNpmResolver for CliByonmNpmResolver {
     // it is very difficult to determine the check state hash for byonm
     // so we just return None to signify check caching is not supported
     None
+  }
+
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    self
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)
+      .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
   }
 }
