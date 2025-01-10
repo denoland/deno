@@ -43,7 +43,13 @@ mod inner {
   }
 
   impl<K: Eq + Hash, V, S: BuildHasher> MaybeDashMap<K, V, S> {
-    pub fn get<'a>(&'a self, key: &K) -> Option<Ref<'a, V>> {
+    pub fn get<'a, Q: Eq + Hash + ?Sized>(
+      &'a self,
+      key: &Q,
+    ) -> Option<Ref<'a, V>>
+    where
+      K: std::borrow::Borrow<Q>,
+    {
       Ref::filter_map(self.0.borrow(), |map| map.get(key)).ok()
     }
 

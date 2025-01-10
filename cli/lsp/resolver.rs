@@ -797,10 +797,9 @@ impl<'a> ResolverFactory<'a> {
         let node_resolver = self.node_resolver()?;
         let npm_resolver = self.npm_resolver()?;
         Some(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-          byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
           node_resolver: node_resolver.clone(),
-          npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
           sys: self.sys.clone(),
         })))
       })

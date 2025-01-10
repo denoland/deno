@@ -12,13 +12,8 @@ use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 
 #[allow(clippy::disallowed_types)]
-pub(super) type NpmPackageFsResolverRc =
+pub type NpmPackageFsResolverRc =
   crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Package folder not found for '{0}'")]
-pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
 
 /// Part of the resolution that interacts with the file system.
 pub trait NpmPackageFsResolver:
@@ -28,15 +23,6 @@ pub trait NpmPackageFsResolver:
   fn node_modules_path(&self) -> Option<&Path>;
 
   fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
-
-  fn package_folder(
-    &self,
-    package_id: &NpmPackageId,
-  ) -> Result<PathBuf, NpmPackageFsResolverPackageFolderError> {
-    self.maybe_package_folder(package_id).ok_or_else(|| {
-      NpmPackageFsResolverPackageFolderError(package_id.as_serialized())
-    })
-  }
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
