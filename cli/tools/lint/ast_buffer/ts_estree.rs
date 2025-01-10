@@ -178,6 +178,7 @@ pub enum AstNode {
   TSConstructSignatureDeclaration,
   TSQualifiedName,
   TSOptionalType,
+  TSTemplateLiteralType,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -683,15 +684,14 @@ impl TsEsTreeBuilder {
     span: &Span,
     type_only: bool,
     local: NodeRef,
-    exported: Option<NodeRef>,
+    exported: NodeRef,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ExportSpecifier, span);
 
     let kind = if type_only { "type" } else { "value" };
     self.ctx.write_str(AstProp::ExportKind, kind);
 
-    let actual = exported.unwrap_or(local.clone());
-    self.ctx.write_ref(AstProp::Exported, &id, actual);
+    self.ctx.write_ref(AstProp::Exported, &id, exported);
     self.ctx.write_ref(AstProp::Local, &id, local);
 
     self.ctx.commit_node(id)
@@ -977,7 +977,7 @@ impl TsEsTreeBuilder {
     span: &Span,
     label: Option<NodeRef>,
   ) -> NodeRef {
-    let id = self.ctx.append_node(AstNode::LabeledStatement, span);
+    let id = self.ctx.append_node(AstNode::BreakStatement, span);
     self.ctx.write_maybe_ref(AstProp::Label, &id, label);
     self.ctx.commit_node(id)
   }
@@ -2476,6 +2476,20 @@ impl TsEsTreeBuilder {
   pub fn write_ts_lit_type(&mut self, span: &Span, lit: NodeRef) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSLiteralType, span);
     self.ctx.write_ref(AstProp::Literal, &id, lit);
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_tpl_lit(
+    &mut self,
+    span: &Span,
+    quasis: Vec<NodeRef>,
+    types: Vec<NodeRef>,
+  ) -> NodeRef {
+    let id = self.ctx.append_node(AstNode::TSTemplateLiteralType, span);
+
+    self.ctx.write_ref_vec(AstProp::Quasis, &id, quasis);
+    self.ctx.write_ref_vec(AstProp::Types, &id, types);
+
     self.ctx.commit_node(id)
   }
 
