@@ -487,8 +487,7 @@ impl SerializeCtx {
     let buf = self.prop_stack.last_mut().unwrap();
     append_u32(buf, group_id);
 
-    self.set_child(parent_ref.0, group_id);
-    self.set_parent(group_id, parent_ref.0);
+    self.update_ref_links(parent_ref.0, group_id);
 
     let mut prev_id = 0;
     for (i, item) in value.iter().enumerate() {
