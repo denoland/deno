@@ -101,42 +101,18 @@ impl CliLinter {
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     // TODO(bartlomieju): surface error is running plugin fails
 
-    let mut external_linter_error = None;
-    let external_linter: Option<ExternalLinterCb> =
-      if let Some(plugin_runner) = self.maybe_plugin_runner.clone() {
-        external_linter_error = Some(Arc::new(Mutex::new(None)));
-        let external_linter_error_ = external_linter_error.clone();
-        Some(Arc::new(move |parsed_source: ParsedSource| {
-          // TODO: clean this up
-          let file_path = parsed_source.specifier().to_file_path().unwrap();
-          let r = run_plugins(
-            plugin_runner.clone(),
-            parsed_source,
-            file_path,
-            Some(token.clone()),
-          );
-
-          match r {
-            Ok(d) => Some(d),
-            Err(err) => {
-              *external_linter_error_.as_ref().unwrap().lock() = Some(err);
-              None
-            }
-          }
-        }))
-      } else {
-        None
-      };
+    let external_linter_container = ExternalLinterContainer::new(
+      self.maybe_plugin_runner.clone(),
+      Some(token),
+    );
 
     let d = self.linter.lint_with_ast(
       parsed_source,
       self.deno_lint_config.clone(),
-      external_linter,
+      external_linter_container.get_callback(),
     );
-    if let Some(maybe_external_linter_error) = external_linter_error.as_ref() {
-      if let Some(err) = maybe_external_linter_error.lock().take() {
-        return Err(err);
-      }
+    if let Some(err) = external_linter_container.take_error() {
+      return Err(err);
     }
     Ok(d)
   }
@@ -156,29 +132,8 @@ impl CliLinter {
       MediaType::from_specifier(&specifier)
     };
 
-    let mut external_linter_error = None;
-    let external_linter: Option<ExternalLinterCb> =
-      if let Some(plugin_runner) = self.maybe_plugin_runner.clone() {
-        external_linter_error = Some(Arc::new(Mutex::new(None)));
-        let external_linter_error_ = external_linter_error.clone();
-
-        Some(Arc::new(move |parsed_source: ParsedSource| {
-          // TODO: clean this up
-          let file_path = parsed_source.specifier().to_file_path().unwrap();
-          let r =
-            run_plugins(plugin_runner.clone(), parsed_source, file_path, None);
-
-          match r {
-            Ok(d) => Some(d),
-            Err(err) => {
-              *external_linter_error_.as_ref().unwrap().lock() = Some(err);
-              None
-            }
-          }
-        }))
-      } else {
-        None
-      };
+    let external_linter_container =
+      ExternalLinterContainer::new(self.maybe_plugin_runner.clone(), None);
 
     if self.fix {
       self.lint_file_and_fix(
@@ -186,8 +141,7 @@ impl CliLinter {
         media_type,
         source_code,
         file_path,
-        external_linter,
-        external_linter_error,
+        external_linter_container,
       )
     } else {
       let (source, diagnostics) = self
@@ -197,15 +151,12 @@ impl CliLinter {
           media_type,
           source_code,
           config: self.deno_lint_config.clone(),
-          external_linter,
+          external_linter: external_linter_container.get_callback(),
         })
         .map_err(AnyError::from)?;
 
-      if let Some(maybe_external_linter_error) = external_linter_error.as_ref()
-      {
-        if let Some(err) = maybe_external_linter_error.lock().take() {
-          return Err(err);
-        }
+      if let Some(err) = external_linter_container.take_error() {
+        return Err(err);
       }
 
       Ok((source, diagnostics))
@@ -218,8 +169,7 @@ impl CliLinter {
     media_type: MediaType,
     source_code: String,
     file_path: &Path,
-    external_linter: Option<ExternalLinterCb>,
-    external_linter_error: Option<Arc<Mutex<Option<AnyError>>>>,
+    external_linter_container: ExternalLinterContainer,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
     // initial lint
     let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
@@ -227,13 +177,11 @@ impl CliLinter {
       media_type,
       source_code,
       config: self.deno_lint_config.clone(),
-      external_linter: external_linter.clone(),
+      external_linter: external_linter_container.get_callback(),
     })?;
 
-    if let Some(maybe_external_linter_error) = external_linter_error.as_ref() {
-      if let Some(err) = maybe_external_linter_error.lock().take() {
-        return Err(err);
-      }
+    if let Some(err) = external_linter_container.take_error() {
+      return Err(err);
     }
 
     // Try applying fixes repeatedly until the file has none left or
@@ -251,8 +199,7 @@ impl CliLinter {
         self.deno_lint_config.clone(),
         source.text_info_lazy(),
         &diagnostics,
-        external_linter.clone(),
-        external_linter_error.clone(),
+        &external_linter_container,
       )?;
       match change {
         Some(change) => {
@@ -298,8 +245,7 @@ fn apply_lint_fixes_and_relint(
   config: DenoLintConfig,
   text_info: &SourceTextInfo,
   diagnostics: &[LintDiagnostic],
-  external_linter: Option<ExternalLinterCb>,
-  external_linter_error: Option<Arc<Mutex<Option<AnyError>>>>,
+  external_linter_container: &ExternalLinterContainer,
 ) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
   let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
     return Ok(None);
@@ -311,16 +257,14 @@ fn apply_lint_fixes_and_relint(
       source_code: new_text,
       media_type,
       config,
-      external_linter,
+      external_linter: external_linter_container.get_callback(),
     })
     .context(
       "An applied lint fix caused a syntax error. Please report this bug.",
     )?;
 
-  if let Some(maybe_external_linter_error) = external_linter_error.as_ref() {
-    if let Some(err) = maybe_external_linter_error.lock().take() {
-      return Err(err);
-    }
+  if let Some(err) = external_linter_container.take_error() {
+    return Err(err);
   }
 
   Ok(Some((source, diagnostics)))
@@ -404,4 +348,50 @@ fn run_plugins(
     diagnostics: plugin_diagnostics,
     rules: plugin_info,
   })
+}
+
+struct ExternalLinterContainer {
+  cb: Option<ExternalLinterCb>,
+  error: Option<Arc<Mutex<Option<AnyError>>>>,
+}
+
+impl ExternalLinterContainer {
+  pub fn new(
+    maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
+    maybe_token: Option<CancellationToken>,
+  ) -> Self {
+    let mut s = Self {
+      cb: None,
+      error: None,
+    };
+    if let Some(plugin_runner) = maybe_plugin_runner {
+      s.error = Some(Arc::new(Mutex::new(None)));
+      let error_ = s.error.clone();
+      let cb = Arc::new(move |parsed_source: ParsedSource| {
+        let token_ = maybe_token.clone();
+        // TODO: clean this up
+        let file_path = parsed_source.specifier().to_file_path().unwrap();
+        let r =
+          run_plugins(plugin_runner.clone(), parsed_source, file_path, token_);
+
+        match r {
+          Ok(d) => Some(d),
+          Err(err) => {
+            *error_.as_ref().unwrap().lock() = Some(err);
+            None
+          }
+        }
+      });
+      s.cb = Some(cb);
+    }
+    s
+  }
+
+  pub fn get_callback(&self) -> Option<ExternalLinterCb> {
+    self.cb.clone()
+  }
+
+  pub fn take_error(&self) -> Option<AnyError> {
+    self.error.as_ref().map(|e| e.lock().take()).flatten()
+  }
 }
