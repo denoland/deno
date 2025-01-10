@@ -130,13 +130,7 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
     let path = self.package_folder(pkg_id)?;
-    let path = canonicalize_path_maybe_not_exists(&self.sys, &path)?;
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      pkg_id.as_serialized(),
-      path.display()
-    );
-    Ok(path)
+    Ok(canonicalize_path_maybe_not_exists(&self.sys, &path)?)
   }
 
   pub fn resolve_pkg_folder_from_deno_module_req(

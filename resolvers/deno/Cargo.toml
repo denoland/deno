@@ -30,7 +30,6 @@ deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
-log.workspace = true
 node_resolver.workspace = true
 parking_lot.workspace = true
 sys_traits.workspace = true

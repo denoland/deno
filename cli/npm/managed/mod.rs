@@ -364,9 +364,13 @@ impl ManagedCliNpmResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
-    self
-      .managed_npm_resolver
-      .resolve_pkg_folder_from_pkg_id(pkg_id)
+    let path = self.managed_npm_resolver.package_folder(pkg_id)?;
+    log::debug!(
+      "Resolved package folder of {} to {}",
+      pkg_id.as_serialized(),
+      path.display()
+    );
+    Ok(path)
   }
 
   /// Resolves the package id from the provided specifier.
