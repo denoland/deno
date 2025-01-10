@@ -119,7 +119,7 @@ dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
 deno_cache_dir = "=0.16.0"
-deno_error = "=0.5.3"
+deno_error = "=0.5.4"
 deno_package_json = { version = "0.4.0", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
@@ -342,3 +342,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { path = "../deno_core/core" }
+deno_ops = { path = "../deno_core/ops" }
+serde_v8 = { path = "../deno_core/serde_v8" }

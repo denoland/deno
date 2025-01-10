@@ -105,9 +105,14 @@ pub enum RequireErrorKind {
     JsErrorBox,
   ),
   #[class(inherit)]
-  #[error("Unable to get CWD: {0}")]
-  UnableToGetCwd(#[inherit] std::io::Error),
+  #[error(transparent)]
+  UnableToGetCwd(UnableToGetCwdError),
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("Unable to get CWD")]
+#[class(inherit)]
+pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
 #[serde]
@@ -176,7 +181,7 @@ pub fn op_require_node_module_paths<
   } else {
     let current_dir = &sys
       .env_current_dir()
-      .map_err(RequireErrorKind::UnableToGetCwd)?;
+      .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
     normalize_path(current_dir.join(from))
   };
 
