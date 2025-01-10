@@ -727,6 +727,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_fn_decl(
     &mut self,
     span: &Span,
@@ -765,6 +766,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_class_decl(
     &mut self,
     span: &Span,
@@ -790,6 +792,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_class_expr(
     &mut self,
     span: &Span,
@@ -829,6 +832,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_accessor_property(
     &mut self,
     span: &Span,
@@ -859,6 +863,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_class_prop(
     &mut self,
     span: &Span,
@@ -891,6 +896,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_class_method(
     &mut self,
     span: &Span,
@@ -1210,6 +1216,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_fn_expr(
     &mut self,
     span: &Span,
@@ -1238,6 +1245,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_arrow_fn_expr(
     &mut self,
     span: &Span,
@@ -1598,6 +1606,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_property(
     &mut self,
     span: &Span,
@@ -1907,6 +1916,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_abstract_method_def(
     &mut self,
     span: &Span,
@@ -1936,6 +1946,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_empty_body_fn_expr(
     &mut self,
     span: &Span,
@@ -2277,6 +2288,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_method_sig(
     &mut self,
     span: &Span,
@@ -2625,6 +2637,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_type_param(
     &mut self,
     span: &Span,

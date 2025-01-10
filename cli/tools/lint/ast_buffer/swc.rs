@@ -147,7 +147,7 @@ fn serialize_module_decl(
               .imported
               .as_ref()
               .map_or(serialize_ident(ctx, &spec.local, None), |v| {
-                serialize_module_export_name(ctx, &v)
+                serialize_module_export_name(ctx, v)
               });
             ctx.write_import_spec(
               &spec.span,
@@ -247,8 +247,7 @@ fn serialize_module_decl(
             .class
             .body
             .iter()
-            .map(|member| serialize_class_member(ctx, member))
-            .flatten()
+            .filter_map(|member| serialize_class_member(ctx, member))
             .collect::<Vec<_>>();
 
           let body = ctx.write_class_body(&node.class.span, members);
@@ -361,7 +360,7 @@ fn serialize_module_decl(
       let ident = serialize_ident(ctx, &node.id, None);
       let module_ref = match &node.module_ref {
         TsModuleRef::TsEntityName(entity) => {
-          serialize_ts_entity_name(ctx, &entity)
+          serialize_ts_entity_name(ctx, entity)
         }
         TsModuleRef::TsExternalModuleRef(external) => {
           let expr = serialize_lit(ctx, &Lit::Str(external.expr.clone()));
@@ -407,7 +406,7 @@ fn serialize_import_attrs(
               ),
               Prop::KeyValue(kv) => (
                 serialize_prop_name(ctx, &kv.key),
-                serialize_expr(ctx, &kv.value.as_ref()),
+                serialize_expr(ctx, kv.value.as_ref()),
               ),
               // Invalid syntax
               Prop::Assign(_)
@@ -695,7 +694,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         AssignTarget::Simple(simple_assign_target) => {
           match simple_assign_target {
             SimpleAssignTarget::Ident(target) => {
-              serialize_binding_ident(ctx, &target)
+              serialize_binding_ident(ctx, target)
             }
             SimpleAssignTarget::Member(target) => {
               serialize_expr(ctx, &Expr::Member(target.clone()))
@@ -932,8 +931,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         .class
         .body
         .iter()
-        .map(|member| serialize_class_member(ctx, member))
-        .flatten()
+        .filter_map(|member| serialize_class_member(ctx, member))
         .collect::<Vec<_>>();
 
       let body = ctx.write_class_body(&node.class.span, members);
@@ -1242,8 +1240,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .class
         .body
         .iter()
-        .map(|member| serialize_class_member(ctx, member))
-        .flatten()
+        .filter_map(|member| serialize_class_member(ctx, member))
         .collect::<Vec<_>>();
 
       let body = ctx.write_class_body(&node.class.span, members);
@@ -1412,7 +1409,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
     }
     Decl::TsModule(node) => {
       let ident = match &node.id {
-        TsModuleName::Ident(ident) => serialize_ident(ctx, &ident, None),
+        TsModuleName::Ident(ident) => serialize_ident(ctx, ident, None),
         TsModuleName::Str(str_lit) => {
           serialize_lit(ctx, &Lit::Str(str_lit.clone()))
         }
@@ -1939,7 +1936,7 @@ fn serialize_class_member(
 ) -> Option<NodeRef> {
   match member {
     ClassMember::Constructor(node) => {
-      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+      let a11y = node.accessibility.as_ref().map(accessibility_to_str);
 
       let key = serialize_prop_name(ctx, &node.key);
       let params = node
@@ -1947,8 +1944,7 @@ fn serialize_class_member(
         .iter()
         .map(|param| match param {
           ParamOrTsParamProp::TsParamProp(prop) => {
-            let a11y =
-              node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+            let a11y = node.accessibility.as_ref().map(accessibility_to_str);
 
             let decorators = prop
               .decorators
@@ -2033,7 +2029,7 @@ fn serialize_class_member(
       ))
     }
     ClassMember::ClassProp(node) => {
-      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+      let a11y = node.accessibility.as_ref().map(accessibility_to_str);
 
       let key = serialize_prop_name(ctx, &node.key);
       let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
@@ -2059,7 +2055,7 @@ fn serialize_class_member(
       ))
     }
     ClassMember::PrivateProp(node) => {
-      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+      let a11y = node.accessibility.as_ref().map(accessibility_to_str);
 
       let decorators = node
         .decorators
@@ -2094,7 +2090,7 @@ fn serialize_class_member(
       Some(ctx.write_static_block(&node.span, body))
     }
     ClassMember::AutoAccessor(node) => {
-      let a11y = node.accessibility.as_ref().map(|v| accessibility_to_str(v));
+      let a11y = node.accessibility.as_ref().map(accessibility_to_str);
       let decorators = node
         .decorators
         .iter()
@@ -2103,7 +2099,7 @@ fn serialize_class_member(
 
       let key = match &node.key {
         Key::Private(private_name) => serialize_private_name(ctx, private_name),
-        Key::Public(prop_name) => serialize_prop_name(ctx, &prop_name),
+        Key::Public(prop_name) => serialize_prop_name(ctx, prop_name),
       };
 
       let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
@@ -2125,6 +2121,7 @@ fn serialize_class_member(
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn serialize_class_method(
   ctx: &mut TsEsTreeBuilder,
   span: &Span,
@@ -2171,7 +2168,7 @@ fn serialize_class_method(
     )
   } else {
     ctx.write_ts_empty_body_fn_expr(
-      &span,
+      span,
       false,
       false,
       function.is_async,
@@ -2183,11 +2180,11 @@ fn serialize_class_method(
     )
   };
 
-  let a11y = accessibility.as_ref().map(|v| accessibility_to_str(v));
+  let a11y = accessibility.as_ref().map(accessibility_to_str);
 
   if is_abstract {
     ctx.write_ts_abstract_method_def(
-      &span,
+      span,
       false,
       is_optional,
       is_override,
@@ -2198,7 +2195,7 @@ fn serialize_class_method(
     )
   } else {
     ctx.write_class_method(
-      &span,
+      span,
       false,
       false,
       is_optional,
@@ -2516,7 +2513,7 @@ fn serialize_ts_lit_type(
       let types = lit
         .types
         .iter()
-        .map(|ts_type| serialize_ts_type(ctx, &ts_type))
+        .map(|ts_type| serialize_ts_type(ctx, ts_type))
         .collect::<Vec<_>>();
 
       ctx.write_ts_tpl_lit(&node.span, quasis, types)
