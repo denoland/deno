@@ -3,11 +3,17 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::NpmPackageFolderResolver;
+use url::Url;
+
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
+
+#[allow(clippy::disallowed_types)]
+pub(super) type NpmPackageFsResolverRc =
+  crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(generic)]
@@ -15,8 +21,9 @@ use node_resolver::errors::PackageFolderResolveError;
 pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait(?Send)]
-pub trait NpmPackageFsResolver: Send + Sync {
+pub trait NpmPackageFsResolver:
+  NpmPackageFolderResolver + MaybeSend + MaybeSync
+{
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&Path>;
 
@@ -31,14 +38,8 @@ pub trait NpmPackageFsResolver: Send + Sync {
     })
   }
 
-  fn resolve_package_folder_from_package(
-    &self,
-    name: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, PackageFolderResolveError>;
-
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error>;
 }
