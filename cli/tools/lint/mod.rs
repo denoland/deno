@@ -313,11 +313,10 @@ impl WorkspaceLinter {
     #[allow(clippy::print_stdout)]
     #[allow(clippy::print_stderr)]
     fn logger_printer(msg: &str, is_err: bool) {
-      // TODO(bartlomieju): fix newlines
       if is_err {
-        eprintln!("{}", msg);
+        eprint!("{}", msg);
       } else {
-        println!("{}", msg);
+        print!("{}", msg);
       }
     }
 

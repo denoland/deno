@@ -86,6 +86,7 @@ impl PluginLogger {
   pub fn debug(&self, msg: &str) {
     if self.debug {
       (self.print)(msg, false);
+      (self.print)("\n", false);
     }
   }
 }
@@ -181,11 +182,11 @@ async fn create_plugin_runner_inner(
   let mut worker = worker.into_main_worker();
   let runtime = &mut worker.js_runtime;
 
-  logger.log("before loaded");
+  logger.debug("before loaded");
 
   let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
-  logger.log("After plugin loaded, capturing exports");
+  logger.debug("After plugin loaded, capturing exports");
   let (install_plugins_fn, run_plugins_for_file_fn) = {
     let scope = &mut runtime.handle_scope();
     let module_exports: v8::Local<v8::Object> =
@@ -246,19 +247,19 @@ impl PluginHost {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
-    logger.log("spawning thread");
+    logger.debug("spawning thread");
     let logger_ = logger.clone();
     let join_handle = std::thread::spawn(move || {
       let logger = logger_;
-      logger.log("PluginHost thread spawned");
+      logger.debug("PluginHost thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
         let runner =
           create_plugin_runner_inner(logger.clone(), rx_req, tx_res).await?;
         // TODO(bartlomieju): send "host ready" message to the proxy
-        logger.log("running host loop");
+        logger.debug("running host loop");
         runner.run_loop().await?;
-        logger.log(&format!(
+        logger.debug(&format!(
           "PluginHost thread finished, took {:?}",
           std::time::Instant::now() - start
         ));
@@ -268,7 +269,7 @@ impl PluginHost {
       tokio_util::create_and_run_current_thread(fut)
     });
 
-    logger.log(&format!("is thread finished {}", join_handle.is_finished()));
+    logger.debug(&format!("is thread finished {}", join_handle.is_finished()));
     let proxy = PluginHostProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
@@ -281,9 +282,9 @@ impl PluginHost {
   }
 
   async fn run_loop(mut self) -> Result<(), AnyError> {
-    self.logger.log("waiting for message");
+    self.logger.debug("waiting for message");
     while let Some(req) = self.rx.recv().await {
-      self.logger.log("received message");
+      self.logger.debug("received message");
       match req {
         PluginHostRequest::LoadPlugins {
           specifiers,
@@ -311,7 +312,7 @@ impl PluginHost {
             Ok(()) => Ok(self.take_diagnostics()),
             Err(err) => Err(err),
           };
-          self.logger.log(&format!(
+          self.logger.debug(&format!(
             "Running rules took {:?}",
             std::time::Instant::now() - start
           ));
@@ -319,7 +320,7 @@ impl PluginHost {
         }
       }
     }
-    self.logger.log("breaking loop");
+    self.logger.debug("breaking loop");
     Ok(())
   }
 
@@ -374,13 +375,13 @@ impl PluginHost {
 
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      self.logger.log("error running plugins");
+      self.logger.debug("error running plugins");
       let core_err = CoreError::Js(error);
       return Err(core_err.into());
     }
     drop(tc_scope);
 
-    self.logger.log("plugins finished");
+    self.logger.debug("plugins finished");
     Ok(())
   }
 
@@ -448,7 +449,7 @@ impl PluginHost {
     };
     let args = &[local_handles.into(), exclude_v8];
 
-    self.logger.log("Installing plugins...");
+    self.logger.debug("Installing plugins...");
 
     let mut tc_scope = v8::TryCatch::new(scope);
     let plugins_info_result =
@@ -483,7 +484,7 @@ impl PluginHostProxy {
       })
       .await?;
     let mut rx = self.rx.lock().await;
-    self.logger.log("receiving load plugins");
+    self.logger.debug("receiving load plugins");
     if let Some(val) = rx.recv().await {
       let PluginHostResponse::LoadPlugin(result) = val else {
         unreachable!()
@@ -515,7 +516,7 @@ impl PluginHostProxy {
       })
       .await?;
     let mut rx = self.rx.lock().await;
-    self.logger.log("receiving diagnostics");
+    self.logger.debug("receiving diagnostics");
     if let Some(PluginHostResponse::Run(diagnostics_result)) = rx.recv().await {
       return diagnostics_result;
     }
