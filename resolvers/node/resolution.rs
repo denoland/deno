@@ -55,19 +55,18 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-pub fn deno_conditions_from_resolution_mode(
-  resolution_mode: ResolutionMode,
-) -> &'static [&'static str] {
-  match resolution_mode {
-    ResolutionMode::Import => DEFAULT_CONDITIONS,
-    ResolutionMode::Require => REQUIRE_CONDITIONS,
-  }
-}
-
 pub struct ConditionsFromResolutionMode {
   func: Box<
     dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
   >,
+}
+
+impl Default for ConditionsFromResolutionMode {
+  fn default() -> Self {
+    Self {
+      func: Box::new(ResolutionMode::default_conditions),
+    }
+  }
 }
 
 impl Debug for ConditionsFromResolutionMode {
@@ -77,10 +76,6 @@ impl Debug for ConditionsFromResolutionMode {
 }
 
 impl ConditionsFromResolutionMode {
-  pub fn default_conditions() -> Self {
-    Self::new(Box::new(deno_conditions_from_resolution_mode))
-  }
-
   pub fn new(
     func: Box<
       dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
@@ -94,6 +89,17 @@ impl ConditionsFromResolutionMode {
 pub enum ResolutionMode {
   Import,
   Require,
+}
+
+impl ResolutionMode {
+  fn default_conditions(
+    resolution_mode: ResolutionMode,
+  ) -> &'static [&'static str] {
+    match resolution_mode {
+      ResolutionMode::Import => DEFAULT_CONDITIONS,
+      ResolutionMode::Require => REQUIRE_CONDITIONS,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
