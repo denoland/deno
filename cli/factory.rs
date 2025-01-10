@@ -720,11 +720,10 @@ impl CliFactory {
       .get_or_try_init_async(async {
         let npm_resolver = self.npm_resolver().await?;
         Ok(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-          byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
           sys: self.sys(),
           in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
           node_resolver: self.node_resolver().await?.clone(),
-          npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
         })))
       })
       .await

@@ -2207,6 +2207,7 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
+ "log",
  "node_resolver",
  "parking_lot",
  "sys_traits",

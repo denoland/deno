@@ -22,12 +22,11 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::NpmCacheSetting;
-use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_resolver::npm::managed::create_npm_fs_resolver;
-use deno_resolver::npm::managed::NpmPackageFsResolver;
-use deno_resolver::npm::managed::NpmPackageFsResolverPackageFolderError;
 use deno_resolver::npm::managed::NpmResolution;
-use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
+use deno_resolver::npm::ManagedNpmResolver;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::colors;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
@@ -36,8 +35,6 @@ use installer::AddPkgReqsResult;
 use installer::NpmResolutionInstaller;
 use installers::create_npm_fs_installer;
 use installers::NpmPackageFsInstaller;
-use node_resolver::errors::PackageFolderResolveError;
-use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::NpmPackageFolderResolver;
 
 use super::CliNpmCache;
@@ -46,7 +43,6 @@ use super::CliNpmRegistryInfoProvider;
 use super::CliNpmResolver;
 use super::CliNpmTarballCache;
 use super::InnerCliNpmResolverRef;
-use super::ResolvePkgFolderFromDenoReqError;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
@@ -181,22 +177,23 @@ fn create_inner(
     npm_system_info.clone(),
     lifecycle_scripts.clone(),
   );
-  let fs_resolver = create_npm_fs_resolver(
-    &npm_cache_dir,
-    &npm_rc,
-    resolution.clone(),
-    sys.clone(),
-    node_modules_dir_path,
-  );
+  let managed_npm_resolver =
+    Arc::new(ManagedNpmResolver::<CliSys>::new::<CliSys>(
+      &npm_cache_dir,
+      &npm_rc,
+      resolution.clone(),
+      sys.clone(),
+      node_modules_dir_path,
+    ));
   Arc::new(ManagedCliNpmResolver::new(
     fs_installer,
-    fs_resolver,
     maybe_lockfile,
-    registry_info_provider,
+    managed_npm_resolver,
     npm_cache,
     npm_cache_dir,
     npm_install_deps_provider,
     npm_rc,
+    registry_info_provider,
     resolution,
     sys,
     tarball_cache,
@@ -281,13 +278,23 @@ pub enum PackageCaching<'a> {
   All,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolvePkgFolderFromDenoModuleError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+}
+
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
 pub struct ManagedCliNpmResolver {
   fs_installer: Arc<dyn NpmPackageFsInstaller>,
-  fs_resolver: Arc<dyn NpmPackageFsResolver>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+  managed_npm_resolver: Arc<ManagedNpmResolver<CliSys>>,
   npm_cache: Arc<CliNpmCache>,
   npm_cache_dir: Arc<NpmCacheDir>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -304,45 +311,23 @@ pub struct ManagedCliNpmResolver {
 
 impl std::fmt::Debug for ManagedCliNpmResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_struct("ManagedNpmResolver")
+    f.debug_struct("ManagedCliNpmResolver")
       .field("<omitted>", &"<omitted>")
       .finish()
   }
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolvePkgFolderFromPkgIdError {
-  #[class(inherit)]
-  #[error("{0}")]
-  NpmPackageFsResolverPackageFolder(
-    #[from] NpmPackageFsResolverPackageFolderError,
-  ),
-  #[class(inherit)]
-  #[error("{0}")]
-  Io(#[from] std::io::Error),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolvePkgFolderFromDenoModuleError {
-  #[class(inherit)]
-  #[error("{0}")]
-  PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
-  #[class(inherit)]
-  #[error("{0}")]
-  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
 }
 
 impl ManagedCliNpmResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     fs_installer: Arc<dyn NpmPackageFsInstaller>,
-    fs_resolver: Arc<dyn NpmPackageFsResolver>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
+    managed_npm_resolver: Arc<ManagedNpmResolver<CliSys>>,
     npm_cache: Arc<CliNpmCache>,
     npm_cache_dir: Arc<NpmCacheDir>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     npm_rc: Arc<ResolvedNpmRc>,
+    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     resolution: Arc<NpmResolution>,
     sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
@@ -357,13 +342,13 @@ impl ManagedCliNpmResolver {
     );
     Self {
       fs_installer,
-      fs_resolver,
       maybe_lockfile,
-      registry_info_provider,
+      managed_npm_resolver,
       npm_cache,
       npm_cache_dir,
       npm_install_deps_provider,
       npm_rc,
+      registry_info_provider,
       text_only_progress_bar,
       resolution,
       resolution_installer,
@@ -379,14 +364,9 @@ impl ManagedCliNpmResolver {
     &self,
     pkg_id: &NpmPackageId,
   ) -> Result<PathBuf, ResolvePkgFolderFromPkgIdError> {
-    let path = self.fs_resolver.package_folder(pkg_id)?;
-    let path = canonicalize_path_maybe_not_exists(&self.sys, &path)?;
-    log::debug!(
-      "Resolved package folder of {} to {}",
-      pkg_id.as_serialized(),
-      path.display()
-    );
-    Ok(path)
+    self
+      .managed_npm_resolver
+      .resolve_pkg_folder_from_pkg_id(pkg_id)
   }
 
   /// Resolves the package id from the provided specifier.
@@ -395,7 +375,7 @@ impl ManagedCliNpmResolver {
     specifier: &ModuleSpecifier,
   ) -> Result<Option<NpmPackageId>, AnyError> {
     let Some(cache_folder_id) = self
-      .fs_resolver
+      .managed_npm_resolver
       .resolve_package_cache_folder_id_from_specifier(specifier)?
     else {
       return Ok(None);
@@ -419,7 +399,8 @@ impl ManagedCliNpmResolver {
     &self,
     package_id: &NpmPackageId,
   ) -> Result<u64, AnyError> {
-    let package_folder = self.fs_resolver.package_folder(package_id)?;
+    let package_folder =
+      self.managed_npm_resolver.package_folder(package_id)?;
     Ok(crate::util::fs::dir_size(&package_folder)?)
   }
 
@@ -435,7 +416,7 @@ impl ManagedCliNpmResolver {
     self
       .resolve_pkg_id_from_pkg_req(req)
       .ok()
-      .and_then(|id| self.fs_resolver.package_folder(&id).ok())
+      .and_then(|id| self.managed_npm_resolver.maybe_package_folder(&id))
       .map(|folder| folder.exists())
       .unwrap_or(false)
   }
@@ -648,7 +629,7 @@ impl ManagedCliNpmResolver {
   }
 
   pub fn maybe_node_modules_path(&self) -> Option<&Path> {
-    self.fs_resolver.node_modules_path()
+    self.managed_npm_resolver.node_modules_path()
   }
 
   pub fn global_cache_root_path(&self) -> &Path {
@@ -672,49 +653,12 @@ fn npm_process_state(
   .unwrap()
 }
 
-impl NpmPackageFolderResolver for ManagedCliNpmResolver {
-  fn resolve_package_folder_from_package(
-    &self,
-    name: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, PackageFolderResolveError> {
-    let path = self
-      .fs_resolver
-      .resolve_package_folder_from_package(name, referrer)?;
-    let path =
-      canonicalize_path_maybe_not_exists(&self.sys, &path).map_err(|err| {
-        PackageFolderResolveIoError {
-          package_name: name.to_string(),
-          referrer: referrer.clone(),
-          source: err,
-        }
-      })?;
-    log::debug!("Resolved {} from {} to {}", name, referrer, path.display());
-    Ok(path)
-  }
-}
-
 impl NpmProcessStateProvider for ManagedCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     npm_process_state(
       self.resolution.serialized_valid_snapshot(),
-      self.fs_resolver.node_modules_path(),
+      self.managed_npm_resolver.node_modules_path(),
     )
-  }
-}
-
-impl CliNpmReqResolver for ManagedCliNpmResolver {
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    _referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    let pkg_id = self.resolve_pkg_id_from_pkg_req(req).map_err(|err| {
-      ResolvePkgFolderFromDenoReqError::Managed(Box::new(err))
-    })?;
-    self
-      .resolve_pkg_folder_from_pkg_id(&pkg_id)
-      .map_err(|err| ResolvePkgFolderFromDenoReqError::Managed(Box::new(err)))
   }
 }
 
@@ -722,17 +666,19 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver> {
-    self
-  }
-
-  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver> {
-    self
+    self.managed_npm_resolver.clone()
   }
 
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider> {
     self
+  }
+
+  fn into_byonm_or_managed(
+    self: Arc<Self>,
+  ) -> ByonmOrManagedNpmResolver<CliSys> {
+    ByonmOrManagedNpmResolver::Managed(self.managed_npm_resolver.clone())
   }
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver> {
@@ -752,19 +698,19 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         self.npm_system_info.clone(),
         self.lifecycle_scripts.clone(),
       ),
-      create_npm_fs_resolver(
+      self.maybe_lockfile.clone(),
+      Arc::new(ManagedNpmResolver::<CliSys>::new::<CliSys>(
         &self.npm_cache_dir,
         &self.npm_rc,
         npm_resolution.clone(),
         self.sys.clone(),
         self.root_node_modules_path().map(ToOwned::to_owned),
-      ),
-      self.maybe_lockfile.clone(),
-      self.registry_info_provider.clone(),
+      )),
       self.npm_cache.clone(),
       self.npm_cache_dir.clone(),
       self.npm_install_deps_provider.clone(),
       self.npm_rc.clone(),
+      self.registry_info_provider.clone(),
       npm_resolution,
       self.sys.clone(),
       self.tarball_cache.clone(),
@@ -779,7 +725,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
   }
 
   fn root_node_modules_path(&self) -> Option<&Path> {
-    self.fs_resolver.node_modules_path()
+    self.managed_npm_resolver.node_modules_path()
   }
 
   fn check_state_hash(&self) -> Option<u64> {
@@ -794,11 +740,23 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     let mut hasher = FastInsecureHasher::new_without_deno_version();
     // ensure the cache gets busted when turning nodeModulesDir on or off
     // as this could cause changes in resolution
-    hasher.write_hashable(self.fs_resolver.node_modules_path().is_some());
+    hasher
+      .write_hashable(self.managed_npm_resolver.node_modules_path().is_some());
     for (pkg_req, pkg_nv) in package_reqs {
       hasher.write_hashable(&pkg_req);
       hasher.write_hashable(&pkg_nv);
     }
     Some(hasher.finish())
+  }
+
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    self
+      .managed_npm_resolver
+      .resolve_pkg_folder_from_deno_module_req(req, referrer)
+      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
   }
 }
