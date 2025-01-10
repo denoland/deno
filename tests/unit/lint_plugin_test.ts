@@ -86,9 +86,12 @@ function testVisit(
   return result;
 }
 
-function testLintNode(source: string, ...selectors: string[]) {
-  // deno-lint-ignore no-explicit-any
-  const log: any[] = [];
+async function testSnapshot(
+  t: Deno.TestContext,
+  source: string,
+  ...selectors: string[]
+) {
+  const log: unknown[] = [];
 
   testPlugin(source, {
     create() {
@@ -105,17 +108,7 @@ function testLintNode(source: string, ...selectors: string[]) {
   });
 
   assertEquals(log.length > 0, true);
-
-  return log;
-}
-
-async function testSnapshot(
-  t: Deno.TestContext,
-  source: string,
-  ...selectors: string[]
-) {
-  const res = testLintNode(source, ...selectors);
-  await assertSnapshot(t, res[0]);
+  await assertSnapshot(t, log[0]);
 }
 
 Deno.test("Plugin - visitor enter/exit", () => {
@@ -325,14 +318,8 @@ Deno.test("Plugin - visitor :nth-child", () => {
   assertEquals(result[1].node.name, "foobar");
 });
 
-Deno.test("Plugin - Program", () => {
-  const node = testLintNode("", "Program");
-  assertEquals(node[0], {
-    type: "Program",
-    sourceType: "script",
-    range: [1, 1],
-    body: [],
-  });
+Deno.test("Plugin - Program", async (t) => {
+  await testSnapshot(t, "", "Program");
 });
 
 Deno.test("Plugin - ImportDeclaration", async (t) => {
@@ -352,10 +339,10 @@ Deno.test("Plugin - ImportDeclaration", async (t) => {
 });
 
 Deno.test("Plugin - ExportNamedDeclaration", async (t) => {
-  await testSnapshot(t, 'export foo from "foo";', "ExportNamedDeclaration");
+  await testSnapshot(t, 'export { foo } from "foo";', "ExportNamedDeclaration");
   await testSnapshot(
     t,
-    'export { foo, bar as baz } from "foo";',
+    'export { bar as baz } from "foo";',
     "ExportNamedDeclaration",
   );
   await testSnapshot(
@@ -430,8 +417,8 @@ Deno.test("Plugin - BlockStatement", async (t) => {
 });
 
 Deno.test("Plugin - BreakStatement", async (t) => {
-  await testSnapshot(t, "break;", "BreakStatement");
-  await testSnapshot(t, "break foo;", "BreakStatement");
+  await testSnapshot(t, "while (false) break;", "BreakStatement");
+  await testSnapshot(t, "foo: while (false) break foo;", "BreakStatement");
 });
 
 Deno.test("Plugin - ContinueStatement", async (t) => {
@@ -566,8 +553,7 @@ Deno.test("Plugin - CallExpression", async (t) => {
 });
 
 Deno.test("Plugin - ChainExpression", async (t) => {
-  const node = testLintNode("a?.b", "ChainExpression");
-  await assertSnapshot(t, node[0]);
+  await testSnapshot(t, "a?.b", "ChainExpression");
 });
 
 Deno.test("Plugin - ClassExpression", async (t) => {
@@ -620,7 +606,7 @@ Deno.test("Plugin - Identifier", async (t) => {
 Deno.test("Plugin - ImportExpression", async (t) => {
   await testSnapshot(
     t,
-    "import('foo', { with: { type: 'json' }}",
+    "import('foo', { with: { type: 'json' } })",
     "ImportExpression",
   );
 });
@@ -636,18 +622,19 @@ Deno.test("Plugin - MemberExpression", async (t) => {
   await testSnapshot(t, "a['b']", "MemberExpression");
 });
 
-Deno.test("Plugin - MetaProp", async (t) => {
-  await testSnapshot(t, "import.meta", "MetaProp");
+Deno.test("Plugin - MetaProperty", async (t) => {
+  await testSnapshot(t, "import.meta", "MetaProperty");
 });
 
 Deno.test("Plugin - NewExpression", async (t) => {
   await testSnapshot(t, "new Foo()", "NewExpression");
-  await testSnapshot(t, "new Foo(a?: any, ...b: any[])", "NewExpression");
+  await testSnapshot(t, "new Foo<T>(a, ...b)", "NewExpression");
 });
 
 Deno.test("Plugin - ObjectExpression", async (t) => {
-  await testSnapshot(t, "{}", "ObjectExpression");
-  await testSnapshot(t, "{ a, b: c, [c]: d }", "ObjectExpression");
+  await testSnapshot(t, "a = {}", "ObjectExpression");
+  await testSnapshot(t, "a = { a }", "ObjectExpression");
+  await testSnapshot(t, "a = { b: c, [c]: d }", "ObjectExpression");
 });
 
 Deno.test("Plugin - PrivateIdentifier", async (t) => {
@@ -684,8 +671,7 @@ Deno.test("Plugin - TSAsExpression", async (t) => {
 });
 
 Deno.test("Plugin - TSNonNullExpression", async (t) => {
-  const node = testLintNode("a!", "TSNonNullExpression");
-  await assertSnapshot(t, node[0]);
+  await testSnapshot(t, "a!", "TSNonNullExpression");
 });
 
 Deno.test("Plugin - TSSatisfiesExpression", async (t) => {
@@ -776,13 +762,13 @@ Deno.test("Plugin - TSInterface", async (t) => {
 
   await testSnapshot(
     t,
-    "interface A { a<T>(arg?: any, ...args: any[]): any",
+    "interface A { a<T>(arg?: any, ...args: any[]): any }",
     "TSInterface",
   );
 });
 
 Deno.test("Plugin - TSSatisfiesExpression", async (t) => {
-  await testSnapshot(t, "{} satisfies A", "TSSatisfiesExpression");
+  await testSnapshot(t, "const a = {} satisfies A", "TSSatisfiesExpression");
 });
 
 Deno.test("Plugin - TSTypeAliasDeclaration", async (t) => {
@@ -804,7 +790,7 @@ Deno.test("Plugin - TSIntersectionType", async (t) => {
 });
 
 Deno.test("Plugin - TSModuleDeclaration", async (t) => {
-  await testSnapshot(t, "module A;", "TSModuleDeclaration");
+  await testSnapshot(t, "module A {}", "TSModuleDeclaration");
   await testSnapshot(
     t,
     "declare module A { export function A(): void }",
@@ -823,11 +809,6 @@ Deno.test("Plugin - TSModuleDeclaration + TSModuleBlock", async (t) => {
 
 Deno.test("Plugin - TSQualifiedName", async (t) => {
   await testSnapshot(t, "type A = a.b;", "TSQualifiedName");
-  await testSnapshot(
-    t,
-    "declare module A { export function A(): void }",
-    "TSQualifiedName",
-  );
 });
 
 Deno.test("Plugin - TSTypeLiteral", async (t) => {
@@ -906,15 +887,11 @@ Deno.test("Plugin - TSLiteralType", async (t) => {
   await testSnapshot(t, "type A = true", "TSLiteralType");
   await testSnapshot(t, "type A = false", "TSLiteralType");
   await testSnapshot(t, "type A = 1", "TSLiteralType");
-  await testSnapshot(t, "type A = 'foo''", "TSLiteralType");
+  await testSnapshot(t, 'type A = "foo"', "TSLiteralType");
 });
 
 Deno.test("Plugin - TSTemplateLiteralType", async (t) => {
-  await testSnapshot(
-    t,
-    "type A<B extends string> = `a ${B}`",
-    "TSTemplateLiteralType",
-  );
+  await testSnapshot(t, "type A = `a ${string}`", "TSTemplateLiteralType");
 });
 
 Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
@@ -924,6 +901,26 @@ Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
   await testSnapshot(t, "type A = [...x: number[]]", "TSTupleType");
 });
 
+Deno.test("Plugin - TSArrayType", async (t) => {
+  await testSnapshot(t, "type A = number[]", "TSArrayType");
+});
+
 Deno.test("Plugin - TSTypeQuery", async (t) => {
-  await testSnapshot(t, "type A = typeof B", "TSTupleType");
+  await testSnapshot(t, "type A = typeof B", "TSTypeQuery");
+});
+
+Deno.test("Plugin - TS keywords", async (t) => {
+  await testSnapshot(t, "type A = any", "TSAnyKeyword");
+  await testSnapshot(t, "type A = bigint", "TSBigIntKeyword");
+  await testSnapshot(t, "type A = boolean", "TSBooleanKeyword");
+  await testSnapshot(t, "type A = intrinsic", "TSIntrinsicKeyword");
+  await testSnapshot(t, "type A = never", "TSNeverKeyword");
+  await testSnapshot(t, "type A = null", "TSNullKeyword");
+  await testSnapshot(t, "type A = number", "TSNumberKeyword");
+  await testSnapshot(t, "type A = object", "TSObjectKeyword");
+  await testSnapshot(t, "type A = string", "TSStringKeyword");
+  await testSnapshot(t, "type A = symbol", "TSSymbolKeyword");
+  await testSnapshot(t, "type A = undefined", "TSUndefinedKeyword");
+  await testSnapshot(t, "type A = unknown", "TSUnknownKeyword");
+  await testSnapshot(t, "type A = void", "TSVoidKeyword");
 });
