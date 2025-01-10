@@ -27,8 +27,8 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
-use super::CliNpmReqResolver;
-use super::ResolvePkgFolderFromDenoReqError;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -378,34 +378,12 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
 }
 
 impl<
-    Sys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + Send
-      + Sync
-      + std::fmt::Debug,
-  > CliNpmReqResolver for ByonmNpmResolver<Sys>
-{
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
-      self, req, referrer,
-    )
-    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
-  }
-}
-
-impl<
     TSys: FsCanonicalize
       + FsMetadata
       + FsRead
       + FsReadDir
-      + Send
-      + Sync
+      + MaybeSend
+      + MaybeSync
       + std::fmt::Debug,
   > NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
