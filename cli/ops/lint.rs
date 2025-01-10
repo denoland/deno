@@ -78,11 +78,14 @@ impl LintPluginContainer {
   ) {
     let source_text_info = self.source_text_info.as_ref().unwrap();
     let specifier = self.specifier.clone().unwrap();
+    let source_range = source_text_info.range();
     let start_pos = source_text_info.start_pos();
-    let source_range = SourceRange::new(start_pos + start, start_pos + end);
-    // TODO(bartlomieju): validate this is a correct range
+    let diagnostic_range = SourceRange::new(start_pos + start, start_pos + end);
+    if !source_range.contains(&diagnostic_range) {
+      todo!("Return op error that range is wrong");
+    }
     let range = LintDiagnosticRange {
-      range: source_range,
+      range: diagnostic_range,
       description: None,
       text_info: source_text_info.clone(),
     };
@@ -90,14 +93,15 @@ impl LintPluginContainer {
     let mut fixes: Vec<LintFix> = vec![];
 
     if let Some(fix) = fix {
+      let fix_range =
+        SourceRange::new(start_pos + fix.range.0, start_pos + fix.range.1);
+      if !source_range.contains(&fix_range) {
+        todo!("Return op error that range is wrong");
+      }
       fixes.push(LintFix {
         changes: vec![LintFixChange {
           new_text: fix.text.into(),
-          // TODO(bartlomieju): validate this is a correct range
-          range: SourceRange::new(
-            start_pos + fix.range.0,
-            start_pos + fix.range.1,
-          ),
+          range: fix_range,
         }],
         description: format!("Fix this {} problem", id).into(),
       });
