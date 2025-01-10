@@ -1993,6 +1993,7 @@ dependencies = [
  "bytes",
  "cbc",
  "const-oid",
+ "ctr",
  "data-encoding",
  "deno_core",
  "deno_error",
