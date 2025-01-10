@@ -746,7 +746,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<(String, &'static str)>, ResolveError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -754,9 +754,9 @@ fn op_resolve(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<(String, &'static str)>, ResolveError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, &'static str)> =
+  let mut resolved: Vec<(String, Option<&'static str>)> =
     Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.maybe_remapped_specifier(&args.base)
@@ -770,14 +770,14 @@ fn op_resolve_inner(
     if specifier.starts_with("node:") {
       resolved.push((
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ));
       continue;
     }
 
     if specifier.starts_with("asset:///") {
       let ext = MediaType::from_str(&specifier).as_ts_extension();
-      resolved.push((specifier, ext));
+      resolved.push((specifier, Some(ext)));
       continue;
     }
 
@@ -857,14 +857,15 @@ fn op_resolve_inner(
         (
           specifier_str,
           match media_type {
-            MediaType::Css => ".js", // surface these as .js for typescript
-            media_type => media_type.as_ts_extension(),
+            MediaType::Css => Some(".js"), // surface these as .js for typescript
+            MediaType::Unknown => None,
+            media_type => Some(media_type.as_ts_extension()),
           },
         )
       }
       None => (
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ),
     };
     log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);

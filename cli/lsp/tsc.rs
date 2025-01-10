@@ -4513,7 +4513,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
+) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -4598,7 +4598,7 @@ async fn op_poll_requests(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
+) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -4611,7 +4611,11 @@ fn op_resolve_inner(
       o.map(|(s, mt)| {
         (
           state.specifier_map.denormalize(&s),
-          mt.as_ts_extension().to_string(),
+          if matches!(mt, MediaType::Unknown) {
+            None
+          } else {
+            Some(mt.as_ts_extension().to_string())
+          },
         )
       })
     })
@@ -6461,7 +6465,7 @@ mod tests {
       resolved,
       vec![Some((
         temp_dir.url().join("b.ts").unwrap().to_string(),
-        MediaType::TypeScript.as_ts_extension().to_string()
+        Some(MediaType::TypeScript.as_ts_extension().to_string())
       ))]
     );
   }
