@@ -434,26 +434,6 @@ class GPUAdapter {
   /** @type {boolean} */
   [_invalid];
 
-  /** @returns {GPUSupportedFeatures} */
-  get features() {
-    webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].features;
-  }
-  /** @returns {GPUSupportedLimits} */
-  get limits() {
-    webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].limits;
-  }
-  /** @returns {boolean} */
-  get isFallbackAdapter() {
-    webidl.assertBranded(this, GPUAdapterPrototype);
-    return this[_adapter].isFallback;
-  }
-
-  constructor() {
-    webidl.illegalConstructor();
-  }
-
   /**
    * @param {GPUDeviceDescriptor} descriptor
    * @returns {Promise<GPUDevice>}

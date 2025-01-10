@@ -82,6 +82,7 @@ pub mod sampler;
 pub mod shader;
 pub mod surface;
 pub mod texture;
+mod device;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum InitError {
