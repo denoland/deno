@@ -482,7 +482,6 @@ impl AstBufSerializer for TsEsTreeBuilder {
 impl TsEsTreeBuilder {
   pub fn new() -> Self {
     // Max values
-    // TODO: Maybe there is a rust macro to grab the last enum value?
     let kind_max_count: u8 = u8::from(AstNode::TSEnumBody) + 1;
     let prop_max_count: u8 = u8::from(AstProp::Value) + 1;
     Self {
