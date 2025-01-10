@@ -3,10 +3,9 @@
 use std::path::Path;
 use std::path::PathBuf;
 
-use async_trait::async_trait;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use node_resolver::errors::PackageFolderResolveError;
+use node_resolver::NpmPackageFolderResolver;
 use url::Url;
 
 use crate::sync::MaybeSend;
@@ -22,8 +21,9 @@ pub(super) type NpmPackageFsResolverRc =
 pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
 
 /// Part of the resolution that interacts with the file system.
-#[async_trait(?Send)]
-pub trait NpmPackageFsResolver: MaybeSend + MaybeSync {
+pub trait NpmPackageFsResolver:
+  NpmPackageFolderResolver + MaybeSend + MaybeSync
+{
   /// The local node_modules folder if it is applicable to the implementation.
   fn node_modules_path(&self) -> Option<&Path>;
 
@@ -37,12 +37,6 @@ pub trait NpmPackageFsResolver: MaybeSend + MaybeSync {
       NpmPackageFsResolverPackageFolderError(package_id.as_serialized())
     })
   }
-
-  fn resolve_package_folder_from_package(
-    &self,
-    name: &str,
-    referrer: &Url,
-  ) -> Result<PathBuf, PackageFolderResolveError>;
 
   fn resolve_package_cache_folder_id_from_specifier(
     &self,
