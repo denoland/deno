@@ -17221,3 +17221,38 @@ fn lsp_wasm_module() {
   );
   client.shutdown();
 }
+
+#[test]
+fn wildcard_augment() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import styles from "./hello_world.scss";
+
+      function bar(v: string): string {
+        return v;
+      }
+
+      bar(styles);
+    "#,
+  );
+  temp_dir.join("index.d.ts").write(
+    r#"
+      declare module '*.scss' {
+        const content: string;
+        export default content;
+      }
+    "#,
+  );
+  temp_dir
+    .join("hello_world.scss")
+    .write("body { color: red; }");
+
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 0);
+}

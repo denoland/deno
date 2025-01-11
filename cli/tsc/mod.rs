@@ -1442,7 +1442,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, vec![("https://deno.land/x/b.ts".into(), ".ts")]);
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), Some(".ts"))]
+    );
   }
 
   #[tokio::test]
@@ -1461,7 +1464,10 @@ mod tests {
       },
     )
     .expect("should have not errored");
-    assert_eq!(actual, vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts")]);
+    assert_eq!(
+      actual,
+      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), Some(".d.ts"))]
+    );
   }
 
   #[tokio::test]
