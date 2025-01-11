@@ -1320,7 +1320,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(JsErrorBox::from_err(err))),
+        error: Arc::new(ResolveError::ImportMap(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,
