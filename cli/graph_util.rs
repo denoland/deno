@@ -36,7 +36,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
-use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
@@ -1024,14 +1023,11 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(
+    if let ResolveError::ImportMap(error) = (*error).as_ref() {
+      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
         specifier,
         _,
-      )) = error
-        .as_any()
-        .downcast_ref::<ImportMapError>()
-        .map(|e| &**e)
+      ) = error.as_kind()
       {
         Some(specifier.as_str())
       } else {
