@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_node"
-version = "0.119.0"
+version = "0.123.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,10 +14,10 @@ description = "Node compatibility for Deno"
 path = "lib.rs"
 
 [features]
-sync_fs = ["deno_package_json/sync", "node_resolver/sync"]
+sync_fs = ["deno_fs/sync_fs", "deno_package_json/sync", "node_resolver/sync"]
 
 [dependencies]
-aead-gcm-stream = "0.3"
+aead-gcm-stream = "0.4"
 aes.workspace = true
 async-trait.workspace = true
 base64.workspace = true
@@ -29,6 +29,7 @@ cbc.workspace = true
 const-oid = "0.9.5"
 data-encoding.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
@@ -49,7 +50,6 @@ errno = "0.2.8"
 faster-hex.workspace = true
 h2.workspace = true
 hkdf.workspace = true
-home = "0.5.9"
 http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
@@ -93,6 +93,7 @@ simd-json = "0.14.0"
 sm3 = "0.4.2"
 spki.workspace = true
 stable_deref_trait = "1.2.0"
+sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld = "0.2"

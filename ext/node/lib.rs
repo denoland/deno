@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
@@ -8,14 +8,16 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use deno_error::JsErrorBox;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolverRc;
+use node_resolver::PackageJsonResolverRc;
 use once_cell::sync::Lazy;
 
 extern crate libz_sys as zlib;
@@ -155,12 +157,12 @@ pub trait NodeRequireLoader {
     &self,
     permissions: &mut dyn NodePermissions,
     path: &'a Path,
-  ) -> Result<Cow<'a, Path>, AnyError>;
+  ) -> Result<Cow<'a, Path>, JsErrorBox>;
 
   fn load_text_file_lossy(
     &self,
     path: &Path,
-  ) -> Result<Cow<'static, str>, AnyError>;
+  ) -> Result<Cow<'static, str>, JsErrorBox>;
 
   /// Get if the module kind is maybe CJS and loading should determine
   /// if its CJS or ESM.
@@ -183,16 +185,17 @@ fn op_node_build_os() -> String {
 }
 
 #[derive(Clone)]
-pub struct NodeExtInitServices {
+pub struct NodeExtInitServices<TSys: ExtNodeSys> {
   pub node_require_loader: NodeRequireLoaderRc,
-  pub node_resolver: NodeResolverRc,
+  pub node_resolver: NodeResolverRc<TSys>,
   pub npm_resolver: NpmPackageFolderResolverRc,
-  pub pkg_json_resolver: PackageJsonResolverRc,
+  pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pub sys: TSys,
 }
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions],
+  parameters = [P: NodePermissions, TSys: ExtNodeSys],
   ops = [
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
@@ -260,6 +263,7 @@ deno_core::extension!(deno_node,
     ops::crypto::keys::op_node_derive_public_key_from_private_key,
     ops::crypto::keys::op_node_dh_keys_generate_and_export,
     ops::crypto::keys::op_node_export_private_key_der,
+    ops::crypto::keys::op_node_export_private_key_jwk,
     ops::crypto::keys::op_node_export_private_key_pem,
     ops::crypto::keys::op_node_export_public_key_der,
     ops::crypto::keys::op_node_export_public_key_pem,
@@ -389,29 +393,29 @@ deno_core::extension!(deno_node,
     op_node_build_os,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
-    ops::require::op_require_node_module_paths<P>,
+    ops::require::op_require_node_module_paths<P, TSys>,
     ops::require::op_require_proxy_path,
-    ops::require::op_require_is_deno_dir_package,
+    ops::require::op_require_is_deno_dir_package<TSys>,
     ops::require::op_require_resolve_deno_dir,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
-    ops::require::op_require_try_self_parent_path<P>,
-    ops::require::op_require_try_self<P>,
-    ops::require::op_require_real_path<P>,
+    ops::require::op_require_try_self_parent_path<P, TSys>,
+    ops::require::op_require_try_self<P, TSys>,
+    ops::require::op_require_real_path<P, TSys>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
-    ops::require::op_require_stat<P>,
+    ops::require::op_require_stat<P, TSys>,
     ops::require::op_require_path_resolve,
     ops::require::op_require_path_basename,
     ops::require::op_require_read_file<P>,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<P>,
-    ops::require::op_require_read_package_scope<P>,
-    ops::require::op_require_package_imports_resolve<P>,
+    ops::require::op_require_resolve_exports<P, TSys>,
+    ops::require::op_require_read_package_scope<P, TSys>,
+    ops::require::op_require_package_imports_resolve<P, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
-    ops::worker_threads::op_worker_threads_filename<P>,
+    ops::worker_threads::op_worker_threads_filename<P, TSys>,
     ops::ipc::op_node_child_ipc_pipe,
     ops::ipc::op_node_ipc_write,
     ops::ipc::op_node_ipc_read,
@@ -677,13 +681,14 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
-    maybe_init: Option<NodeExtInitServices>,
+    maybe_init: Option<NodeExtInitServices<TSys>>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
     state.put(options.fs.clone());
 
     if let Some(init) = &options.maybe_init {
+      state.put(init.sys.clone());
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
       state.put(init.npm_resolver.clone());
@@ -807,92 +812,32 @@ deno_core::extension!(deno_node,
   },
 );
 
-pub type NodeResolver = node_resolver::NodeResolver<DenoFsNodeResolverEnv>;
-#[allow(clippy::disallowed_types)]
-pub type NodeResolverRc =
-  deno_fs::sync::MaybeArc<node_resolver::NodeResolver<DenoFsNodeResolverEnv>>;
-pub type PackageJsonResolver =
-  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>;
-#[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc = deno_fs::sync::MaybeArc<
-  node_resolver::PackageJsonResolver<DenoFsNodeResolverEnv>,
->;
-
 #[derive(Debug)]
-pub struct DenoFsNodeResolverEnv {
-  fs: deno_fs::FileSystemRc,
-}
+pub struct RealIsBuiltInNodeModuleChecker;
 
-impl DenoFsNodeResolverEnv {
-  pub fn new(fs: deno_fs::FileSystemRc) -> Self {
-    Self { fs }
-  }
-}
-
-impl node_resolver::env::NodeResolverEnv for DenoFsNodeResolverEnv {
+impl IsBuiltInNodeModuleChecker for RealIsBuiltInNodeModuleChecker {
+  #[inline]
   fn is_builtin_node_module(&self, specifier: &str) -> bool {
     is_builtin_node_module(specifier)
   }
-
-  fn realpath_sync(
-    &self,
-    path: &std::path::Path,
-  ) -> std::io::Result<std::path::PathBuf> {
-    self
-      .fs
-      .realpath_sync(path)
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn stat_sync(
-    &self,
-    path: &std::path::Path,
-  ) -> std::io::Result<node_resolver::env::NodeResolverFsStat> {
-    self
-      .fs
-      .stat_sync(path)
-      .map(|stat| node_resolver::env::NodeResolverFsStat {
-        is_file: stat.is_file,
-        is_dir: stat.is_directory,
-        is_symlink: stat.is_symlink,
-      })
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn exists_sync(&self, path: &std::path::Path) -> bool {
-    self.fs.exists_sync(path)
-  }
-
-  fn pkg_json_fs(&self) -> &dyn deno_package_json::fs::DenoPkgJsonFs {
-    self
-  }
 }
 
-impl deno_package_json::fs::DenoPkgJsonFs for DenoFsNodeResolverEnv {
-  fn read_to_string_lossy(
-    &self,
-    path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, std::io::Error> {
-    self
-      .fs
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
+pub trait ExtNodeSys:
+  sys_traits::BaseFsCanonicalize
+  + sys_traits::BaseFsMetadata
+  + sys_traits::BaseFsRead
+  + sys_traits::EnvCurrentDir
+  + Clone
+{
 }
 
-pub struct DenoPkgJsonFsAdapter<'a>(pub &'a dyn deno_fs::FileSystem);
+impl ExtNodeSys for sys_traits::impls::RealSys {}
 
-impl<'a> deno_package_json::fs::DenoPkgJsonFs for DenoPkgJsonFsAdapter<'a> {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> Result<Cow<'static, str>, std::io::Error> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-}
+pub type NodeResolver<TSys> =
+  node_resolver::NodeResolver<RealIsBuiltInNodeModuleChecker, TSys>;
+#[allow(clippy::disallowed_types)]
+pub type NodeResolverRc<TSys> = deno_fs::sync::MaybeArc<NodeResolver<TSys>>;
+#[allow(clippy::disallowed_types)]
 
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,

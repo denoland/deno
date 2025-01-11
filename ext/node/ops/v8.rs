@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ptr::NonNull;
 
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::FastString;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
-use std::ptr::NonNull;
+use deno_error::JsErrorBox;
 use v8::ValueDeserializerHelper;
 use v8::ValueSerializerHelper;
 
@@ -68,6 +70,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getSharedArrayBufferId")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       if let Ok(fun) = v.try_cast::<v8::Function>() {
@@ -89,6 +92,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_getDataCloneError")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       let fun = v
@@ -112,6 +116,7 @@ impl v8::ValueSerializerImpl for SerializerDelegate {
     let obj = self.obj(scope);
     let key = FastString::from_static("_writeHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
     if let Some(v) = obj.get(scope, key) {
       if let Ok(v) = v.try_cast::<v8::Function>() {
@@ -240,6 +245,7 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     let obj = v8::Local::new(scope, &self.obj);
     let key = FastString::from_static("_readHostObject")
       .v8_string(scope)
+      .unwrap()
       .into();
     let scope = &mut v8::AllowJavascriptExecutionScope::new(scope);
     if let Some(v) = obj.get(scope, key) {
@@ -250,7 +256,8 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
           Err(_) => {
             let msg =
               FastString::from_static("readHostObject must return an object")
-                .v8_string(scope);
+                .v8_string(scope)
+                .unwrap();
             let error = v8::Exception::type_error(scope, msg);
             scope.throw_exception(error);
             return None;
@@ -268,13 +275,11 @@ pub fn op_v8_new_deserializer(
   scope: &mut v8::HandleScope,
   obj: v8::Local<v8::Object>,
   buffer: v8::Local<v8::ArrayBufferView>,
-) -> Result<Deserializer<'static>, deno_core::error::AnyError> {
+) -> Result<Deserializer<'static>, JsErrorBox> {
   let offset = buffer.byte_offset();
   let len = buffer.byte_length();
   let backing_store = buffer.get_backing_store().ok_or_else(|| {
-    deno_core::error::generic_error(
-      "deserialization buffer has no backing store",
-    )
+    JsErrorBox::generic("deserialization buffer has no backing store")
   })?;
   let (buf_slice, buf_ptr) = if let Some(data) = backing_store.data() {
     // SAFETY: the offset is valid for the underlying buffer because we're getting it directly from v8
@@ -316,10 +321,10 @@ pub fn op_v8_transfer_array_buffer_de(
 #[op2(fast)]
 pub fn op_v8_read_double(
   #[cppgc] deser: &Deserializer,
-) -> Result<f64, deno_core::error::AnyError> {
+) -> Result<f64, JsErrorBox> {
   let mut double = 0f64;
   if !deser.inner.read_double(&mut double) {
-    return Err(deno_core::error::type_error("ReadDouble() failed"));
+    return Err(JsErrorBox::type_error("ReadDouble() failed"));
   }
   Ok(double)
 }
@@ -354,10 +359,10 @@ pub fn op_v8_read_raw_bytes(
 #[op2(fast)]
 pub fn op_v8_read_uint32(
   #[cppgc] deser: &Deserializer,
-) -> Result<u32, deno_core::error::AnyError> {
+) -> Result<u32, JsErrorBox> {
   let mut value = 0;
   if !deser.inner.read_uint32(&mut value) {
-    return Err(deno_core::error::type_error("ReadUint32() failed"));
+    return Err(JsErrorBox::type_error("ReadUint32() failed"));
   }
 
   Ok(value)
@@ -367,10 +372,10 @@ pub fn op_v8_read_uint32(
 #[serde]
 pub fn op_v8_read_uint64(
   #[cppgc] deser: &Deserializer,
-) -> Result<(u32, u32), deno_core::error::AnyError> {
+) -> Result<(u32, u32), JsErrorBox> {
   let mut val = 0;
   if !deser.inner.read_uint64(&mut val) {
-    return Err(deno_core::error::type_error("ReadUint64() failed"));
+    return Err(JsErrorBox::type_error("ReadUint64() failed"));
   }
 
   Ok(((val >> 32) as u32, val as u32))

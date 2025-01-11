@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use deno_broadcast_channel;
 pub use deno_cache;
@@ -27,7 +27,6 @@ pub use deno_websocket;
 pub use deno_webstorage;
 
 pub mod code_cache;
-pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;

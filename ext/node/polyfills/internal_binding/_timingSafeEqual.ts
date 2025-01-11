@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { Buffer } from "node:buffer";
+import { ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH } from "ext:deno_node/internal/errors.ts";
 
 function toDataView(ab: ArrayBufferLike | ArrayBufferView): DataView {
   if (ArrayBuffer.isView(ab)) {
@@ -19,7 +20,7 @@ function stdTimingSafeEqual(
   b: ArrayBufferView | ArrayBufferLike | DataView,
 ): boolean {
   if (a.byteLength !== b.byteLength) {
-    return false;
+    throw new ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH();
   }
   if (!(a instanceof DataView)) {
     a = toDataView(a);

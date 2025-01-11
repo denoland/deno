@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
@@ -117,5 +117,25 @@ Deno.test({
       gcm.getAuthTag().toString("hex"),
       "bf6d20a38e0c828bea3de63b7ff1dfbd",
     );
+  },
+});
+
+// Issue #27441
+// https://github.com/denoland/deno/issues/27441
+Deno.test({
+  name: "aes-256-gcm supports IV of non standard length",
+  fn() {
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      Buffer.from("eYLEiLFQnpjYksWTiKpwv2sKhw+WJb5Fo/aY2YqXswc=", "base64"),
+      Buffer.from("k5oP3kb8tTbZaL3PxbFWN8ToOb8vfv2b1EuPz1LbmYU=", "base64"), // 256 bits IV
+    );
+    const decrypted = decipher.update(
+      "s0/KBsFec29XLrGbAnLiNA==",
+      "base64",
+      "utf-8",
+    );
+    assertEquals(decrypted, "this is a secret");
+    decipher.final();
   },
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertEquals } from "@std/assert";
 import { Buffer } from "node:buffer";
 import { StringDecoder } from "node:string_decoder";

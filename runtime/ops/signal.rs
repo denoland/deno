@@ -1,13 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use deno_core::op2;
-use deno_core::AsyncRefCell;
-use deno_core::CancelFuture;
-use deno_core::CancelHandle;
-use deno_core::OpState;
-use deno_core::RcRef;
-use deno_core::Resource;
-use deno_core::ResourceId;
-
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::cell::RefCell;
 #[cfg(unix)]
@@ -18,6 +9,15 @@ use std::sync::atomic::AtomicBool;
 #[cfg(unix)]
 use std::sync::Arc;
 
+use deno_core::error::ResourceError;
+use deno_core::op2;
+use deno_core::AsyncRefCell;
+use deno_core::CancelFuture;
+use deno_core::CancelHandle;
+use deno_core::OpState;
+use deno_core::RcRef;
+use deno_core::Resource;
+use deno_core::ResourceId;
 #[cfg(unix)]
 use tokio::signal::unix::signal;
 #[cfg(unix)]
@@ -44,14 +44,18 @@ deno_core::extension!(
   }
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SignalError {
+  #[class(type)]
   #[error(transparent)]
   InvalidSignalStr(#[from] crate::signal::InvalidSignalStrError),
+  #[class(type)]
   #[error(transparent)]
   InvalidSignalInt(#[from] crate::signal::InvalidSignalIntError),
+  #[class(type)]
   #[error("Binding to signal '{0}' is not allowed")]
   SignalNotAllowed(String),
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
 }
@@ -224,7 +228,7 @@ fn op_signal_bind(
 async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<bool, deno_core::error::AnyError> {
+) -> Result<bool, ResourceError> {
   let resource = state
     .borrow_mut()
     .resource_table
@@ -243,7 +247,7 @@ async fn op_signal_poll(
 pub fn op_signal_unbind(
   state: &mut OpState,
   #[smi] rid: ResourceId,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), ResourceError> {
   let resource = state.resource_table.take::<SignalStreamResource>(rid)?;
 
   #[cfg(unix)]

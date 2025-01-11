@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,6 +8,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::url::Url;
 use deno_core::v8;
@@ -17,14 +18,13 @@ use deno_core::FeatureChecker;
 use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
+use deno_error::JsErrorBox;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::NodeExtInitServices;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_node::NodeRequireLoaderRc;
-use deno_runtime::deno_node::NodeResolver;
-use deno_runtime::deno_node::PackageJsonResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -52,8 +52,10 @@ use crate::args::CliLockfile;
 use crate::args::DenoSubcommand;
 use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
-use crate::errors;
+use crate::node::CliNodeResolver;
+use crate::node::CliPackageJsonResolver;
 use crate::npm::CliNpmResolver;
+use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::file_watcher::WatcherRestartMode;
@@ -79,9 +81,9 @@ pub trait ModuleLoaderFactory: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait HmrRunner: Send + Sync {
-  async fn start(&mut self) -> Result<(), AnyError>;
-  async fn stop(&mut self) -> Result<(), AnyError>;
-  async fn run(&mut self) -> Result<(), AnyError>;
+  async fn start(&mut self) -> Result<(), CoreError>;
+  async fn stop(&mut self) -> Result<(), CoreError>;
+  async fn run(&mut self) -> Result<(), CoreError>;
 }
 
 pub trait CliCodeCache: code_cache::CodeCache {
@@ -145,13 +147,14 @@ struct SharedWorkerState {
   maybe_inspector_server: Option<Arc<InspectorServer>>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
-  node_resolver: Arc<NodeResolver>,
+  node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
-  pkg_json_resolver: Arc<PackageJsonResolver>,
+  pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
+  sys: CliSys,
   options: CliMainWorkerOptions,
   subcommand: DenoSubcommand,
   otel_config: OtelConfig,
@@ -162,12 +165,13 @@ impl SharedWorkerState {
   pub fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices {
+  ) -> NodeExtInitServices<CliSys> {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
       npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
+      sys: self.sys.clone(),
     }
   }
 
@@ -192,7 +196,7 @@ impl CliMainWorker {
     Ok(())
   }
 
-  pub async fn run(&mut self) -> Result<i32, AnyError> {
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
     let mut maybe_coverage_collector =
       self.maybe_setup_coverage_collector().await?;
     let mut maybe_hmr_runner = self.maybe_setup_hmr_runner().await?;
@@ -213,7 +217,7 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            result = hmr_result;
+            result = hmr_result.map_err(Into::into);
           },
           event_loop_result = event_loop_future => {
             result = event_loop_result;
@@ -328,12 +332,12 @@ impl CliMainWorker {
     executor.execute().await
   }
 
-  pub async fn execute_main_module(&mut self) -> Result<(), AnyError> {
+  pub async fn execute_main_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_main_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
   }
 
-  pub async fn execute_side_module(&mut self) -> Result<(), AnyError> {
+  pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
   }
@@ -390,7 +394,7 @@ impl CliMainWorker {
     &mut self,
     name: &'static str,
     source_code: &'static str,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
     self.worker.js_runtime.execute_script(name, source_code)
   }
 }
@@ -418,12 +422,13 @@ impl CliMainWorkerFactory {
     maybe_inspector_server: Option<Arc<InspectorServer>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
-    node_resolver: Arc<NodeResolver>,
+    node_resolver: Arc<CliNodeResolver>,
     npm_resolver: Arc<dyn CliNpmResolver>,
-    pkg_json_resolver: Arc<PackageJsonResolver>,
+    pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
+    sys: CliSys,
     subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
     otel_config: OtelConfig,
@@ -448,6 +453,7 @@ impl CliMainWorkerFactory {
         root_permissions,
         shared_array_buffer_store: Default::default(),
         storage_key_resolver,
+        sys,
         options,
         subcommand,
         otel_config,
@@ -460,7 +466,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-  ) -> Result<CliMainWorker, AnyError> {
+  ) -> Result<CliMainWorker, CoreError> {
     self
       .create_custom_worker(
         mode,
@@ -479,7 +485,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-  ) -> Result<CliMainWorker, AnyError> {
+  ) -> Result<CliMainWorker, CoreError> {
     let shared = &self.shared;
     let CreateModuleLoaderResult {
       module_loader,
@@ -508,16 +514,15 @@ impl CliMainWorkerFactory {
       }
 
       // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer =
-        ModuleSpecifier::from_directory_path(self.shared.fs.cwd()?)
-          .unwrap()
-          .join("package.json")?;
+      let referrer = ModuleSpecifier::from_directory_path(
+        self.shared.fs.cwd().map_err(JsErrorBox::from_err)?,
+      )
+      .unwrap()
+      .join("package.json")?;
       let package_folder = shared
         .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(
-          package_ref.req(),
-          &referrer,
-        )?;
+        .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
+        .map_err(JsErrorBox::from_err)?;
       let main_module = self
         .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
 
@@ -612,6 +617,7 @@ impl CliMainWorkerFactory {
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: true,
       },
       extensions: custom_extensions,
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -627,7 +633,6 @@ impl CliMainWorkerFactory {
       should_break_on_first_statement: shared.options.inspect_brk,
       should_wait_for_inspector_session: shared.options.inspect_wait,
       strace_ops: shared.options.strace_ops.clone(),
-      get_error_class_fn: Some(&errors::get_error_class_name),
       cache_storage_dir,
       origin_storage_dir,
       stdio,
@@ -655,7 +660,10 @@ impl CliMainWorkerFactory {
         "40_test_common.js",
         "40_test.js",
         "40_bench.js",
-        "40_jupyter.js"
+        "40_jupyter.js",
+        // TODO(bartlomieju): probably shouldn't include these files here?
+        "40_lint_selector.js",
+        "40_lint.js"
       );
     }
 
@@ -812,6 +820,7 @@ fn create_web_worker_callback(
         serve_port: shared.options.serve_port,
         serve_host: shared.options.serve_host.clone(),
         otel_config: shared.otel_config.clone(),
+        close_on_idle: args.close_on_idle,
       },
       extensions: vec![],
       startup_snapshot: crate::js::deno_isolate_init(),
@@ -824,7 +833,6 @@ fn create_web_worker_callback(
       create_web_worker_cb,
       format_js_error_fn: Some(Arc::new(format_js_error)),
       worker_type: args.worker_type,
-      get_error_class_fn: Some(&errors::get_error_class_name),
       stdio: stdio.clone(),
       cache_storage_dir,
       strace_ops: shared.options.strace_ops.clone(),
@@ -853,25 +861,27 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::resolve_path;
   use deno_core::FsModuleLoader;
   use deno_fs::RealFs;
   use deno_runtime::deno_permissions::Permissions;
   use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 
+  use super::*;
+
   fn create_test_worker() -> MainWorker {
     let main_module =
       resolve_path("./hello.js", &std::env::current_dir().unwrap()).unwrap();
     let fs = Arc::new(RealFs);
-    let permission_desc_parser =
-      Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+    let permission_desc_parser = Arc::new(
+      RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
+    );
     let options = WorkerOptions {
       startup_snapshot: crate::js::deno_isolate_init(),
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options(
+    MainWorker::bootstrap_from_options::<CliSys>(
       main_module,
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),

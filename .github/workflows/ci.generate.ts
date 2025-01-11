@@ -1,11 +1,11 @@
 #!/usr/bin/env -S deno run --allow-write=. --lock=./tools/deno.lock.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 30;
+const cacheVersion = 33;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -360,7 +360,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 180,
+      "timeout-minutes": 240,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -484,6 +484,27 @@ const ci = {
             "    -czvf target/release/deno_src.tar.gz -C .. deno",
           ].join("\n"),
         },
+        {
+          name: "Cache Cargo home",
+          uses: "actions/cache@v4",
+          with: {
+            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
+            path: [
+              "~/.cargo/.crates.toml",
+              "~/.cargo/.crates2.json",
+              "~/.cargo/bin",
+              "~/.cargo/registry/index",
+              "~/.cargo/registry/cache",
+              "~/.cargo/git/db",
+            ].join("\n"),
+            key:
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
+            // We will try to restore from the closest cargo-home we can find
+            "restore-keys":
+              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
+          },
+        },
         installRustStep,
         {
           if:
@@ -606,23 +627,6 @@ const ci = {
           run: [
             installBenchTools,
           ].join("\n"),
-        },
-        {
-          name: "Cache Cargo home",
-          uses: "actions/cache@v4",
-          with: {
-            // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
-            // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
-            path: [
-              "~/.cargo/registry/index",
-              "~/.cargo/registry/cache",
-            ].join("\n"),
-            key:
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-\${{ hashFiles('Cargo.lock') }}`,
-            // We will try to restore from the closest cargo-home we can find
-            "restore-keys":
-              `${cacheVersion}-cargo-home-\${{ matrix.os }}-\${{ matrix.arch }}-`,
-          },
         },
         {
           // Restore cache from the latest 'main' branch build.

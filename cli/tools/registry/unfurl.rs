@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -655,21 +655,21 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::resolver::SloppyImportsCachedFs;
-
-  use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_runtime::deno_fs::RealFs;
+  use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
   use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
+
+  use super::*;
+  use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
@@ -722,10 +722,9 @@ mod tests {
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(fs),
+        SloppyImportsCachedFs::new(CliSys::default()),
       ))),
       Arc::new(workspace_resolver),
       true,
@@ -863,10 +862,10 @@ const warn2 = await import(`${expr}`);
       ],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
+    let sys = CliSys::default();
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(fs),
+        SloppyImportsCachedFs::new(sys),
       ))),
       Arc::new(workspace_resolver),
       true,

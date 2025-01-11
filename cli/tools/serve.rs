@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -73,7 +73,7 @@ async fn do_serve(
     )
     .await?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await,
+    None | Some(1) => return worker.run().await.map_err(Into::into),
     Some(c) => c,
   };
 
@@ -133,7 +133,7 @@ async fn run_worker(
     worker.run_for_watcher().await?;
     Ok(0)
   } else {
-    worker.run().await
+    worker.run().await.map_err(Into::into)
   }
 }
 

@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.191.0"
+version = "0.193.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -79,6 +79,7 @@ deno_console.workspace = true
 deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
+deno_error.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
@@ -122,6 +123,7 @@ same-file = "1.0.6"
 serde.workspace = true
 signal-hook = "0.3.17"
 signal-hook-registry = "1.4.0"
+sys_traits.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

@@ -1,9 +1,32 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::env;
+use std::fs;
+use std::fs::File;
+use std::io;
+use std::io::Write;
+#[cfg(not(windows))]
+use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
+use deno_core::url::Url;
+use deno_semver::npm::NpmPackageReqReference;
+use log::Level;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use regex::RegexBuilder;
 
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
 use crate::args::CaData;
-use crate::args::CacheSetting;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -13,35 +36,12 @@ use crate::args::TypeCheckMode;
 use crate::args::UninstallFlags;
 use crate::args::UninstallKind;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_container::ModuleGraphContainer;
 use crate::http_util::HttpClientProvider;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
-use deno_core::url::Url;
-use deno_semver::npm::NpmPackageReqReference;
-use log::Level;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use regex::RegexBuilder;
-use std::env;
-use std::fs;
-use std::fs::File;
-use std::io;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-
-#[cfg(not(windows))]
-use std::os::unix::fs::PermissionsExt;
-use std::sync::Arc;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
@@ -54,9 +54,7 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(generic_error(format!(
-      "Invalid executable name: {exec_name}"
-    )))
+    Err(anyhow!("Invalid executable name: {exec_name}"))
   }
 }
 
@@ -161,11 +159,11 @@ pub async fn infer_name_from_url(
     let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
-        return Some(sub_path);
+        return Some(sub_path.to_string());
       }
     }
     if !npm_ref.req.name.contains('/') {
-      return Some(npm_ref.req.name);
+      return Some(npm_ref.req.name.into_string());
     }
     return None;
   }
@@ -223,7 +221,7 @@ pub async fn uninstall(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   }
 
@@ -247,10 +245,10 @@ pub async fn uninstall(
   }
 
   if !removed {
-    return Err(generic_error(format!(
+    return Err(anyhow!(
       "No installation found for {}",
       uninstall_flags.name
-    )));
+    ));
   }
 
   // There might be some extra files to delete
@@ -361,18 +359,19 @@ async fn install_global(
   let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
+    log::Level::Trace,
   );
 
   let npmrc = factory.cli_options().unwrap().npmrc();
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
@@ -422,14 +421,14 @@ async fn create_install_shim(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   } else {
     fs::create_dir_all(&shim_data.installation_dir)?;
   };
 
   if shim_data.file_path.exists() && !install_flags_global.force {
-    return Err(generic_error(
+    return Err(anyhow!(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
   };
@@ -491,7 +490,7 @@ async fn resolve_shim_data(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(generic_error(
+    None => return Err(anyhow!(
       "An executable name was not provided. One could not be inferred from the URL. Aborting.",
     )),
   };
@@ -523,9 +522,7 @@ async fn resolve_shim_data(
       let log_level = match log_level {
         Level::Debug => "debug",
         Level::Info => "info",
-        _ => {
-          return Err(generic_error(format!("invalid log level {log_level}")))
-        }
+        _ => return Err(anyhow!(format!("invalid log level {log_level}"))),
       };
       executable_args.push(log_level.to_string());
     }
@@ -658,16 +655,17 @@ fn is_in_path(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::process::Command;
 
+  use test_util::testdata_path;
+  use test_util::TempDir;
+
+  use super::*;
   use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
   use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use std::process::Command;
-  use test_util::testdata_path;
-  use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {

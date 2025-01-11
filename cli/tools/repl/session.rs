@@ -1,6 +1,45 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
+
+use deno_ast::diagnostics::Diagnostic;
+use deno_ast::swc::ast as swc_ast;
+use deno_ast::swc::common::comments::CommentKind;
+use deno_ast::swc::visit::noop_visit_type;
+use deno_ast::swc::visit::Visit;
+use deno_ast::swc::visit::VisitWith;
+use deno_ast::ImportsNotUsedAsValues;
+use deno_ast::ModuleKind;
+use deno_ast::ModuleSpecifier;
+use deno_ast::ParseDiagnosticsError;
+use deno_ast::ParsedSource;
+use deno_ast::SourcePos;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_core::futures::channel::mpsc::UnboundedReceiver;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
+use deno_core::serde_json;
+use deno_core::serde_json::Value;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
+use deno_core::LocalInspectorSession;
+use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
+use deno_graph::Position;
+use deno_graph::PositionRange;
+use deno_graph::SpecifierWithRange;
+use deno_runtime::worker::MainWorker;
+use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
+use regex::Match;
+use regex::Regex;
+use tokio::sync::Mutex;
 
 use crate::args::CliOptions;
 use crate::cdp;
@@ -17,43 +56,6 @@ use crate::tools::test::worker_has_tests;
 use crate::tools::test::TestEvent;
 use crate::tools::test::TestEventReceiver;
 use crate::tools::test::TestFailureFormatOptions;
-
-use deno_ast::diagnostics::Diagnostic;
-use deno_ast::swc::ast as swc_ast;
-use deno_ast::swc::common::comments::CommentKind;
-use deno_ast::swc::visit::noop_visit_type;
-use deno_ast::swc::visit::Visit;
-use deno_ast::swc::visit::VisitWith;
-use deno_ast::ImportsNotUsedAsValues;
-use deno_ast::ModuleKind;
-use deno_ast::ModuleSpecifier;
-use deno_ast::ParseDiagnosticsError;
-use deno_ast::ParsedSource;
-use deno_ast::SourcePos;
-use deno_ast::SourceRangedForSpanned;
-use deno_ast::SourceTextInfo;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::futures::channel::mpsc::UnboundedReceiver;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::serde_json;
-use deno_core::serde_json::Value;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use deno_core::PollEventLoopOptions;
-use deno_graph::Position;
-use deno_graph::PositionRange;
-use deno_graph::SpecifierWithRange;
-use deno_runtime::worker::MainWorker;
-use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
-use once_cell::sync::Lazy;
-use regex::Match;
-use regex::Regex;
-use tokio::sync::Mutex;
 
 fn comment_source_to_position_range(
   comment_start: SourcePos,
@@ -250,10 +252,10 @@ impl ReplSession {
 
     let cwd_url =
       Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-        generic_error(format!(
+        anyhow!(
           "Unable to construct URL from the path of cwd: {}",
           cli_options.initial_cwd().to_string_lossy(),
-        ))
+        )
       })?;
     let ts_config_for_emit = cli_options
       .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
@@ -322,7 +324,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<Value, CoreError> {
     self
       .worker
       .js_runtime
@@ -339,7 +341,7 @@ impl ReplSession {
       .await
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+  pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(true).await
   }
 
@@ -400,21 +402,29 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
+          match crate::util::result::any_and_jserrorbox_downcast_ref::<
+            deno_ast::ParseDiagnostic,
+          >(&err)
+          {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<ParseDiagnosticsError>() {
-              Some(diagnostics) => Ok(EvaluationOutput::Error(
-                diagnostics
-                  .0
-                  .iter()
-                  .map(format_diagnostic)
-                  .collect::<Vec<_>>()
-                  .join("\n\n"),
-              )),
-              None => Err(err),
-            },
+            None => {
+              match crate::util::result::any_and_jserrorbox_downcast_ref::<
+                ParseDiagnosticsError,
+              >(&err)
+              {
+                Some(diagnostics) => Ok(EvaluationOutput::Error(
+                  diagnostics
+                    .0
+                    .iter()
+                    .map(format_diagnostic)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                )),
+                None => Err(err),
+              }
+            }
           }
         }
       }
@@ -742,7 +752,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, AnyError> {
+  ) -> Result<cdp::EvaluateResponse, CoreError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
@@ -765,7 +775,9 @@ impl ReplSession {
         }),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+      .and_then(|res| {
+        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
+      })
   }
 }
 

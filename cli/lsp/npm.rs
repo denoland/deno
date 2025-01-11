@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
@@ -8,24 +10,23 @@ use deno_npm::npm_rc::NpmRc;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::sync::Arc;
-
-use crate::args::npm_registry_url;
-use crate::file_fetcher::FileFetcher;
-use crate::npm::NpmFetchResolver;
 
 use super::search::PackageSearchApi;
+use crate::args::npm_registry_url;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
+use crate::npm::NpmFetchResolver;
 
 #[derive(Debug)]
 pub struct CliNpmSearchApi {
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: NpmFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
 }
 
 impl CliNpmSearchApi {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     let resolver = NpmFetchResolver::new(
       file_fetcher.clone(),
       Arc::new(NpmRc::default().as_resolved(npm_registry_url()).unwrap()),
@@ -57,10 +58,8 @@ impl PackageSearchApi for CliNpmSearchApi {
       .append_pair("text", &format!("{} boost-exact:false", query));
     let file_fetcher = self.file_fetcher.clone();
     let file = deno_core::unsync::spawn(async move {
-      file_fetcher
-        .fetch_bypass_permissions(&search_url)
-        .await?
-        .into_text_decoded()
+      let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
+      TextDecodedFile::decode(file)
     })
     .await??;
     let names = Arc::new(parse_npm_search_response(&file.source)?);

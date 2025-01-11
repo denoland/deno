@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 #[cfg(target_family = "windows")]
 use std::sync::Once;
 
@@ -159,6 +159,7 @@ pub fn hostname() -> String {
     use std::ffi::OsString;
     use std::mem;
     use std::os::windows::ffi::OsStringExt;
+
     use winapi::shared::minwindef::MAKEWORD;
     use winapi::um::winsock2::GetHostNameW;
     use winapi::um::winsock2::WSAStartup;
@@ -278,11 +279,15 @@ pub fn mem_info() -> Option<MemInfo> {
       mem_info.swap_total = xs.xsu_total;
       mem_info.swap_free = xs.xsu_avail;
 
+      extern "C" {
+        fn mach_host_self() -> std::ffi::c_uint;
+      }
+
       let mut count: u32 = libc::HOST_VM_INFO64_COUNT as _;
       let mut stat = std::mem::zeroed::<libc::vm_statistics64>();
       if libc::host_statistics64(
         // TODO(@littledivy): Put this in a once_cell.
-        libc::mach_host_self(),
+        mach_host_self(),
         libc::HOST_VM_INFO64,
         &mut stat as *mut libc::vm_statistics64 as *mut _,
         &mut count,
@@ -291,11 +296,9 @@ pub fn mem_info() -> Option<MemInfo> {
         // TODO(@littledivy): Put this in a once_cell
         let page_size = libc::sysconf(libc::_SC_PAGESIZE) as u64;
         mem_info.available =
-          (stat.free_count as u64 + stat.inactive_count as u64) * page_size
-            / 1024;
+          (stat.free_count as u64 + stat.inactive_count as u64) * page_size;
         mem_info.free =
-          (stat.free_count as u64 - stat.speculative_count as u64) * page_size
-            / 1024;
+          (stat.free_count as u64 - stat.speculative_count as u64) * page_size;
       }
     }
   }
@@ -305,6 +308,7 @@ pub fn mem_info() -> Option<MemInfo> {
   //   - `dwLength` is set to the size of the struct.
   unsafe {
     use std::mem;
+
     use winapi::shared::minwindef;
     use winapi::um::psapi::GetPerformanceInfo;
     use winapi::um::psapi::PERFORMANCE_INFORMATION;

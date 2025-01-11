@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
@@ -66,10 +66,11 @@ impl<R: AsyncRead> Stream for ExternallyAbortableReaderStream<R> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use bytes::Bytes;
   use deno_core::futures::StreamExt;
   use tokio::io::AsyncWriteExt;
+
+  use super::*;
 
   #[tokio::test]
   async fn success() {
