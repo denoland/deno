@@ -4509,6 +4509,7 @@ fn op_release(
 
 #[op2]
 #[serde]
+#[allow(clippy::type_complexity)]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
@@ -4595,6 +4596,7 @@ async fn op_poll_requests(
 }
 
 #[inline]
+#[allow(clippy::type_complexity)]
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
