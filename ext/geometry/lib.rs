@@ -6,7 +6,6 @@ use std::mem;
 use std::path::PathBuf;
 use std::slice;
 
-use deno_core::cppgc;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
@@ -23,7 +22,6 @@ use nalgebra::Vector4;
 deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
-  ops = [op_geometry_create_matrix_identity],
   objects = [DOMPointInner, DOMRectInner, DOMMatrixInner],
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
@@ -140,7 +138,9 @@ impl DOMPointInner {
     &self,
     matrix: v8::Local<v8::Object>,
   ) -> DOMPointInner {
-    let matrix = cast_to_matrix(matrix);
+    // SAFETY: cast v8::Local
+    let matrix: v8::Local<'_, DOMMatrixInner> =
+      unsafe { mem::transmute(matrix) };
     let out = DOMPointInner {
       x: Cell::new(0.0),
       y: Cell::new(0.0),
@@ -150,6 +150,19 @@ impl DOMPointInner {
     matrix_transform_point(&matrix, self, &out);
     out
   }
+}
+
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub struct DOMRectInit {
+  #[webidl(default = 0.0)]
+  x: f64,
+  #[webidl(default = 0.0)]
+  y: f64,
+  #[webidl(default = 0.0)]
+  width: f64,
+  #[webidl(default = 0.0)]
+  height: f64,
 }
 
 pub struct DOMRectInner {
@@ -165,12 +178,28 @@ impl GarbageCollected for DOMRectInner {}
 impl DOMRectInner {
   #[constructor]
   #[cppgc]
-  pub fn constructor(x: f64, y: f64, width: f64, height: f64) -> DOMRectInner {
+  pub fn constructor(
+    #[webidl] x: f64,
+    #[webidl] y: f64,
+    #[webidl] width: f64,
+    #[webidl] height: f64,
+  ) -> DOMRectInner {
     DOMRectInner {
       x: Cell::new(x),
       y: Cell::new(y),
       width: Cell::new(width),
       height: Cell::new(height),
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectInner {
+    DOMRectInner {
+      x: Cell::new(init.x),
+      y: Cell::new(init.y),
+      width: Cell::new(init.width),
+      height: Cell::new(init.height),
     }
   }
 
@@ -180,9 +209,8 @@ impl DOMRectInner {
     self.x.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn x(&self, value: f64) {
+  pub fn x(&self, #[webidl] value: f64) {
     self.x.set(value)
   }
 
@@ -192,9 +220,8 @@ impl DOMRectInner {
     self.y.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn y(&self, value: f64) {
+  pub fn y(&self, #[webidl] value: f64) {
     self.y.set(value)
   }
 
@@ -204,9 +231,8 @@ impl DOMRectInner {
     self.width.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn width(&self, value: f64) {
+  pub fn width(&self, #[webidl] value: f64) {
     self.width.set(value)
   }
 
@@ -216,10 +242,41 @@ impl DOMRectInner {
     self.height.get()
   }
 
-  #[fast]
   #[setter]
-  pub fn height(&self, value: f64) {
+  pub fn height(&self, #[webidl] value: f64) {
     self.height.set(value)
+  }
+
+  #[fast]
+  #[getter]
+  pub fn top(&self) -> f64 {
+    let y = self.y.get();
+    let height = self.height.get();
+    y.min(y + height)
+  }
+
+  #[fast]
+  #[getter]
+  pub fn right(&self) -> f64 {
+    let x = self.x.get();
+    let width = self.width.get();
+    x.max(x + width)
+  }
+
+  #[fast]
+  #[getter]
+  pub fn bottom(&self) -> f64 {
+    let y = self.y.get();
+    let height = self.height.get();
+    y.max(y + height)
+  }
+
+  #[fast]
+  #[getter]
+  pub fn left(&self) -> f64 {
+    let x = self.x.get();
+    let width = self.width.get();
+    x.min(x + width)
   }
 }
 
@@ -421,6 +478,15 @@ impl DOMMatrixInner {
         )),
         is_2d: Cell::new(false),
       })
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn identity() -> DOMMatrixInner {
+    DOMMatrixInner {
+      inner: RefCell::new(Matrix4::identity()),
+      is_2d: Cell::new(true),
     }
   }
 
@@ -994,7 +1060,8 @@ impl DOMMatrixInner {
 
   #[cppgc]
   pub fn multiply(&self, other: v8::Local<v8::Object>) -> DOMMatrixInner {
-    let other = cast_to_matrix(other);
+    // SAFETY: cast v8::Local
+    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
     let out = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
@@ -1005,7 +1072,8 @@ impl DOMMatrixInner {
 
   #[fast]
   pub fn multiply_self(&self, other: v8::Local<v8::Object>) {
-    let other = cast_to_matrix(other);
+    // SAFETY: cast v8::Local
+    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
     let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
@@ -1017,7 +1085,8 @@ impl DOMMatrixInner {
 
   #[fast]
   pub fn pre_multiply_self(&self, other: v8::Local<v8::Object>) {
-    let other = cast_to_matrix(other);
+    // SAFETY: cast v8::Local
+    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
     let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
@@ -1055,7 +1124,8 @@ impl DOMMatrixInner {
 
   #[cppgc]
   pub fn transform_point(&self, point: v8::Local<v8::Object>) -> DOMPointInner {
-    let point = cast_to_point(point);
+    // SAFETY: cast v8::Local
+    let point: v8::Local<'_, DOMPointInner> = unsafe { mem::transmute(point) };
     let out = DOMPointInner {
       x: Cell::new(0.0),
       y: Cell::new(0.0),
@@ -1065,35 +1135,6 @@ impl DOMMatrixInner {
     matrix_transform_point(self, &point, &out);
     out
   }
-}
-
-#[op2]
-pub fn op_geometry_create_matrix_identity<'a>(
-  scope: &mut v8::HandleScope<'a>,
-) -> v8::Local<'a, v8::Object> {
-  cppgc::make_cppgc_object(
-    scope,
-    DOMMatrixInner {
-      inner: RefCell::new(Matrix4::identity()),
-      is_2d: Cell::new(true),
-    },
-  )
-}
-
-#[inline]
-fn cast_to_point(
-  obj: v8::Local<'_, v8::Object>,
-) -> v8::Local<'_, DOMPointInner> {
-  // SAFETY: cast v8::Local
-  unsafe { mem::transmute(obj) }
-}
-
-#[inline]
-fn cast_to_matrix(
-  obj: v8::Local<'_, v8::Object>,
-) -> v8::Local<'_, DOMMatrixInner> {
-  // SAFETY: cast v8::Local
-  unsafe { mem::transmute(obj) }
 }
 
 #[inline]

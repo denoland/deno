@@ -87,12 +87,12 @@ the `extensions` field of your `RuntimeOptions`
 - **deno_webidl**: Provided by the `deno_webidl` crate
 - **deno_web**: Provided by the `deno_web` crate
 - **deno_console**: Provided by the `deno_console` crate
+- **deno_error**: Provided by the `deno_error` crate
 
 ## Provided ops
 
 Following ops are provided, which can be accessed through `Deno.ops`:
 
-- op_geometry_create_matrix_identity
 - DOMMatrixInner
 - DOMPointInner
 - DOMRectInner

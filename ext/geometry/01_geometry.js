@@ -1,12 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-import {
-  DOMMatrixInner,
-  DOMPointInner,
-  DOMRectInner,
-  op_geometry_create_matrix_identity,
-} from "ext:core/ops";
+import { DOMMatrixInner, DOMPointInner, DOMRectInner } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   Float32Array,
@@ -267,29 +262,14 @@ class DOMRectReadOnly {
   [_inner];
 
   constructor(x = 0, y = 0, width = 0, height = 0) {
-    this[_inner] = new DOMRectInner(
-      webidl.converters["unrestricted double"](x),
-      webidl.converters["unrestricted double"](y),
-      webidl.converters["unrestricted double"](width),
-      webidl.converters["unrestricted double"](height),
-    );
+    this[_inner] = new DOMRectInner(x, y, width, height);
     this[_brand] = _brand;
   }
 
   static fromRect(other = { __proto__: null }) {
-    other = webidl.converters.DOMRectInit(
-      other,
-      "Failed to execute 'DOMRectReadOnly.fromRect'",
-      "Argument 1",
-    );
     const rect = webidl.createBranded(DOMRectReadOnly);
     rect[_writable] = false;
-    rect[_inner] = new DOMRectInner(
-      other.x,
-      other.y,
-      other.width,
-      other.height,
-    );
+    rect[_inner] = DOMRectInner.fromRect(other);
     return rect;
   }
 
@@ -315,41 +295,28 @@ class DOMRectReadOnly {
 
   get top() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { y, height } = this[_inner];
-    return MathMin(y, y + height);
+    return this[_inner].top;
   }
 
   get right() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { x, width } = this[_inner];
-    return MathMax(x, x + width);
+    return this[_inner].right;
   }
 
   get bottom() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { y, height } = this[_inner];
-    return MathMax(y, y + height);
+    return this[_inner].bottom;
   }
 
   get left() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { x, width } = this[_inner];
-    return MathMin(x, x + width);
+    return this[_inner].left;
   }
 
   toJSON() {
     webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { x, y, width, height } = this[_inner];
-    return {
-      x,
-      y,
-      width,
-      height,
-      top: MathMin(y, y + height),
-      right: MathMax(x, x + width),
-      bottom: MathMax(y, y + height),
-      left: MathMin(x, x + width),
-    };
+    const { x, y, width, height, top, right, bottom, left } = this[_inner];
+    return { x, y, width, height, top, right, bottom, left };
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -380,19 +347,9 @@ class DOMRect extends DOMRectReadOnly {
   [_writable] = true;
 
   static fromRect(other = { __proto__: null }) {
-    other = webidl.converters.DOMRectInit(
-      other,
-      "Failed to execute 'DOMRect.fromRect'",
-      "Argument 1",
-    );
     const rect = webidl.createBranded(DOMRect);
     rect[_writable] = true;
-    rect[_inner] = new DOMRectInner(
-      other.x,
-      other.y,
-      other.width,
-      other.height,
-    );
+    rect[_inner] = DOMRectInner.fromRect(other);
     return rect;
   }
 
@@ -403,7 +360,7 @@ class DOMRect extends DOMRectReadOnly {
   set x(value) {
     webidl.assertBranded(this, DOMRectPrototype);
     assertWritable(this);
-    this[_inner].x = webidl.converters["unrestricted double"](value);
+    this[_inner].x = value;
   }
 
   get y() {
@@ -413,7 +370,7 @@ class DOMRect extends DOMRectReadOnly {
   set y(value) {
     webidl.assertBranded(this, DOMRectPrototype);
     assertWritable(this);
-    this[_inner].y = webidl.converters["unrestricted double"](value);
+    this[_inner].y = value;
   }
 
   get width() {
@@ -423,7 +380,7 @@ class DOMRect extends DOMRectReadOnly {
   set width(value) {
     webidl.assertBranded(this, DOMRectPrototype);
     assertWritable(this);
-    this[_inner].width = webidl.converters["unrestricted double"](value);
+    this[_inner].width = value;
   }
 
   get height() {
@@ -433,7 +390,7 @@ class DOMRect extends DOMRectReadOnly {
   set height(value) {
     webidl.assertBranded(this, DOMRectPrototype);
     assertWritable(this);
-    this[_inner].height = webidl.converters["unrestricted double"](value);
+    this[_inner].height = value;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -598,7 +555,7 @@ class DOMMatrixReadOnly {
     const prefix = `Failed to construct '${this.constructor.name}'`;
     this[_brand] = _brand;
     if (init === undefined) {
-      this[_inner] = op_geometry_create_matrix_identity();
+      this[_inner] = DOMMatrixInner.identity();
     } else if (
       webidl.type(init) === "Object" && init[SymbolIterator] !== undefined
     ) {
