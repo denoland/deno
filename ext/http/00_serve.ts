@@ -43,10 +43,7 @@ const {
   Uint8Array,
   Promise,
 } = primordials;
-const {
-  getAsyncContext,
-  setAsyncContext,
-} = core;
+const { getAsyncContext, setAsyncContext } = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -90,9 +87,8 @@ import {
 import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
-  endSpan,
+  builtinTracer,
   enterSpan,
-  Span,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -288,28 +284,28 @@ class InnerRequest {
 
     // * is valid for OPTIONS
     if (path === "*") {
-      return this.#urlValue = "*";
+      return (this.#urlValue = "*");
     }
 
     // If the path is empty, return the authority (valid for CONNECT)
     if (path == "") {
-      return this.#urlValue = this.#methodAndUri[1];
+      return (this.#urlValue = this.#methodAndUri[1]);
     }
 
     // CONNECT requires an authority
     if (this.#methodAndUri[0] == "CONNECT") {
-      return this.#urlValue = this.#methodAndUri[1];
+      return (this.#urlValue = this.#methodAndUri[1]);
     }
 
     const hostname = this.#methodAndUri[1];
     if (hostname) {
       // Construct a URL from the scheme, the hostname, and the path
-      return this.#urlValue = this.#context.scheme + hostname + path;
+      return (this.#urlValue = this.#context.scheme + hostname + path);
     }
 
     // Construct a URL from the scheme, the fallback hostname, and the path
-    return this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
-      path;
+    return (this.#urlValue = this.#context.scheme + this.#context.fallbackHost +
+      path);
   }
 
   get completed() {
@@ -370,7 +366,25 @@ class InnerRequest {
       return null;
     }
     this.#streamRid = op_http_read_request_body(this.#external);
-    this.#body = new InnerBody(readableStreamForRid(this.#streamRid, false));
+    this.#body = new InnerBody(
+      readableStreamForRid(
+        this.#streamRid,
+        false,
+        undefined,
+        (controller, error) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error)) {
+            // TODO(kt3k): We would like to pass `error` as `cause` when BadResource supports it.
+            controller.error(
+              new error.constructor(
+                `Cannot read request body as underlying resource unavailable`,
+              ),
+            );
+          } else {
+            controller.error(error);
+          }
+        },
+      ),
+    );
     return this.#body;
   }
 
@@ -396,10 +410,7 @@ class InnerRequest {
       return;
     }
 
-    PromisePrototypeThen(
-      op_http_request_on_cancel(this.#external),
-      callback,
-    );
+    PromisePrototypeThen(op_http_request_on_cancel(this.#external), callback);
   }
 }
 
@@ -503,12 +514,7 @@ function fastSyncResponseOrStream(
     autoClose = true;
   }
   PromisePrototypeThen(
-    op_http_set_response_body_resource(
-      req,
-      rid,
-      autoClose,
-      status,
-    ),
+    op_http_set_response_body_resource(req, rid, autoClose, status),
     (success) => {
       innerRequest?.close(success);
       op_http_close_after_finish(req);
@@ -538,10 +544,7 @@ function mapToCallback(context, callback, onError) {
         updateSpanFromRequest(span, request);
       }
 
-      response = await callback(
-        request,
-        new ServeHandlerInfo(innerRequest),
-      );
+      response = await callback(request, new ServeHandlerInfo(innerRequest));
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
@@ -618,12 +621,12 @@ function mapToCallback(context, callback, onError) {
     mapped = function (req, _span) {
       const oldCtx = getAsyncContext();
       setAsyncContext(context.asyncContext);
-      const span = new Span("deno.serve", { kind: 1 });
+      const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
       try {
         enterSpan(span);
         return SafePromisePrototypeFinally(
           origMapped(req, span),
-          () => endSpan(span),
+          () => span.end(),
         );
       } finally {
         // equiv to exitSpan.
@@ -670,7 +673,7 @@ function formatHostName(hostname: string): string {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
-    (Deno.build.os === "windows") &&
+    Deno.build.os === "windows" &&
     (hostname == "0.0.0.0" || hostname == "::")
   ) {
     return "localhost";
@@ -712,11 +715,12 @@ function serve(arg1, arg2) {
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
   const signal = options.signal;
-  const onError = options.onError ?? function (error) {
-    // deno-lint-ignore no-console
-    console.error(error);
-    return internalServerError();
-  };
+  const onError = options.onError ??
+    function (error) {
+      // deno-lint-ignore no-console
+      console.error(error);
+      return internalServerError();
+    };
 
   if (wantsUnix) {
     const listener = listen({
@@ -825,10 +829,7 @@ function serveHttpOn(context, addr, callback) {
   const promiseErrorHandler = (error) => {
     // Abnormal exit
     // deno-lint-ignore no-console
-    console.error(
-      "Terminating Deno.serve loop due to unexpected error",
-      error,
-    );
+    console.error("Terminating Deno.serve loop due to unexpected error", error);
     context.close();
   };
 
@@ -946,7 +947,7 @@ function registerDeclarativeServer(exports) {
         port: servePort,
         hostname: serveHost,
         [kLoadBalanced]: (serveIsMain && serveWorkerCount > 1) ||
-          (serveWorkerCount !== null),
+          serveWorkerCount !== null,
         onListen: ({ port, hostname }) => {
           if (serveIsMain) {
             const nThreads = serveWorkerCount > 1

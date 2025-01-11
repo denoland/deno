@@ -15,5 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 nalgebra.workspace = true
 thiserror.workspace = true

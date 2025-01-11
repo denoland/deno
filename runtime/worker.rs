@@ -12,14 +12,13 @@ use std::time::Instant;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::merge_op_metrics;
 use deno_core::v8;
 use deno_core::CompiledWasmModuleStore;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
-use deno_core::GetErrorClassFn;
 use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntime;
@@ -59,10 +58,10 @@ use crate::BootstrapOptions;
 pub type FormatJsErrorFn = dyn Fn(&JsError) -> String + Sync + Send;
 
 pub fn import_meta_resolve_callback(
-  loader: &dyn deno_core::ModuleLoader,
+  loader: &dyn ModuleLoader,
   specifier: String,
   referrer: String,
-) -> Result<ModuleSpecifier, AnyError> {
+) -> Result<ModuleSpecifier, deno_core::error::ModuleLoaderError> {
   loader.resolve(
     &specifier,
     &referrer,
@@ -202,9 +201,6 @@ pub struct WorkerOptions {
   /// If Some, print a low-level trace output for ops matching the given patterns.
   pub strace_ops: Option<Vec<String>>,
 
-  /// Allows to map error type to a string "class" used to represent
-  /// error in JavaScript.
-  pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
@@ -225,7 +221,6 @@ impl Default for WorkerOptions {
       strace_ops: Default::default(),
       maybe_inspector_server: Default::default(),
       format_js_error_fn: Default::default(),
-      get_error_class_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
       extensions: Default::default(),
@@ -490,7 +485,6 @@ impl MainWorker {
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
       skip_op_registration: options.skip_op_registration,
-      get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: services.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: services.compiled_wasm_module_store.clone(),
       extensions,
@@ -709,7 +703,7 @@ impl MainWorker {
     &mut self,
     script_name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<v8::Global<v8::Value>, AnyError> {
+  ) -> Result<v8::Global<v8::Value>, CoreError> {
     self.js_runtime.execute_script(script_name, source_code)
   }
 
@@ -717,7 +711,7 @@ impl MainWorker {
   pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, CoreError> {
     self.js_runtime.load_main_es_module(module_specifier).await
   }
 
@@ -725,7 +719,7 @@ impl MainWorker {
   pub async fn preload_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, CoreError> {
     self.js_runtime.load_side_es_module(module_specifier).await
   }
 
@@ -733,7 +727,7 @@ impl MainWorker {
   pub async fn evaluate_module(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     self.wait_for_inspector_session();
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
@@ -758,7 +752,7 @@ impl MainWorker {
   pub async fn run_up_to_duration(
     &mut self,
     duration: Duration,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     match tokio::time::timeout(
       duration,
       self
@@ -777,7 +771,7 @@ impl MainWorker {
   pub async fn execute_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let id = self.preload_side_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
@@ -788,7 +782,7 @@ impl MainWorker {
   pub async fn execute_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let id = self.preload_main_module(module_specifier).await?;
     self.evaluate_module(id).await
   }
@@ -819,10 +813,10 @@ impl MainWorker {
   pub async fn run_event_loop(
     &mut self,
     wait_for_inspector: bool,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     self
       .js_runtime
-      .run_event_loop(deno_core::PollEventLoopOptions {
+      .run_event_loop(PollEventLoopOptions {
         wait_for_inspector,
         ..Default::default()
       })
@@ -838,7 +832,7 @@ impl MainWorker {
   /// Dispatches "load" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "load" event handlers.
-  pub fn dispatch_load_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_load_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_load_event_fn =
@@ -847,7 +841,7 @@ impl MainWorker {
     dispatch_load_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
@@ -855,7 +849,7 @@ impl MainWorker {
   /// Dispatches "unload" event to the JavaScript runtime.
   ///
   /// Does not poll event loop, and thus not await any of the "unload" event handlers.
-  pub fn dispatch_unload_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_unload_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_unload_event_fn =
@@ -864,13 +858,13 @@ impl MainWorker {
     dispatch_unload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
 
   /// Dispatches process.emit("exit") event for node compat.
-  pub fn dispatch_process_exit_event(&mut self) -> Result<(), AnyError> {
+  pub fn dispatch_process_exit_event(&mut self) -> Result<(), JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_exit_event_fn =
@@ -879,7 +873,7 @@ impl MainWorker {
     dispatch_process_exit_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     Ok(())
   }
@@ -887,7 +881,7 @@ impl MainWorker {
   /// Dispatches "beforeunload" event to the JavaScript runtime. Returns a boolean
   /// indicating if the event was prevented and thus event loop should continue
   /// running.
-  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, AnyError> {
+  pub fn dispatch_beforeunload_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_beforeunload_event_fn =
@@ -897,16 +891,14 @@ impl MainWorker {
       dispatch_beforeunload_event_fn.call(tc_scope, undefined.into(), &[]);
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_false())
   }
 
   /// Dispatches process.emit("beforeExit") event for node compat.
-  pub fn dispatch_process_beforeexit_event(
-    &mut self,
-  ) -> Result<bool, AnyError> {
+  pub fn dispatch_process_beforeexit_event(&mut self) -> Result<bool, JsError> {
     let scope = &mut self.js_runtime.handle_scope();
     let tc_scope = &mut v8::TryCatch::new(scope);
     let dispatch_process_beforeexit_event_fn = v8::Local::new(
@@ -921,7 +913,7 @@ impl MainWorker {
     );
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(tc_scope, exception);
-      return Err(error.into());
+      return Err(error);
     }
     let ret_val = ret_val.unwrap();
     Ok(ret_val.is_true())

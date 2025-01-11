@@ -13,12 +13,15 @@ use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum Ed25519Error {
+  #[class("DOMExceptionOperationError")]
   #[error("Failed to export key")]
   FailedExport,
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] rsa::pkcs1::der::Error),
+  #[class(generic)]
   #[error(transparent)]
   KeyRejected(#[from] ring::error::KeyRejected),
 }

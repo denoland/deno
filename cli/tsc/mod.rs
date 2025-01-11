@@ -3,12 +3,10 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::ascii_str;
 use deno_core::error::AnyError;
@@ -455,13 +453,6 @@ impl State {
   }
 }
 
-fn normalize_specifier(
-  specifier: &str,
-  current_dir: &Path,
-) -> Result<ModuleSpecifier, AnyError> {
-  resolve_url_or_path(specifier, current_dir).map_err(|err| err.into())
-}
-
 #[op2]
 #[string]
 fn op_create_hash(s: &mut OpState, #[string] text: &str) -> String {
@@ -532,6 +523,21 @@ pub fn as_ts_script_kind(media_type: MediaType) -> i32 {
 pub const MISSING_DEPENDENCY_SPECIFIER: &str =
   "internal:///missing_dependency.d.ts";
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum LoadError {
+  #[class(generic)]
+  #[error("Unable to load {path}: {error}")]
+  LoadFromNodeModule { path: String, error: std::io::Error },
+  #[class(inherit)]
+  #[error(
+    "Error converting a string module specifier for \"op_resolve\": {0}"
+  )]
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
@@ -546,24 +552,28 @@ struct LoadResponse {
 fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
-) -> Result<Option<LoadResponse>, AnyError> {
+) -> Result<Option<LoadResponse>, LoadError> {
   op_load_inner(state, load_specifier)
 }
 
 fn op_load_inner(
   state: &mut OpState,
   load_specifier: &str,
-) -> Result<Option<LoadResponse>, AnyError> {
+) -> Result<Option<LoadResponse>, LoadError> {
   fn load_from_node_modules(
     specifier: &ModuleSpecifier,
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path)
-      .with_context(|| format!("Unable to load {}", file_path.display()))?;
+    let code = std::fs::read_to_string(&file_path).map_err(|err| {
+      LoadError::LoadFromNodeModule {
+        path: file_path.display().to_string(),
+        error: err,
+      }
+    })?;
     let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
@@ -576,8 +586,7 @@ fn op_load_inner(
 
   let state = state.borrow_mut::<State>();
 
-  let specifier = normalize_specifier(load_specifier, &state.current_dir)
-    .context("Error converting a string module specifier for \"op_load\".")?;
+  let specifier = resolve_url_or_path(load_specifier, &state.current_dir)?;
 
   let mut hash: Option<String> = None;
   let mut media_type = MediaType::Unknown;
@@ -689,6 +698,26 @@ fn op_load_inner(
   }))
 }
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum ResolveError {
+  #[class(inherit)]
+  #[error(
+    "Error converting a string module specifier for \"op_resolve\": {0}"
+  )]
+  ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
+  #[error("{0}")]
+  PackageSubpathResolve(PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolvePkgFolderFromDenoModule(
+    #[from] crate::npm::ResolvePkgFolderFromDenoModuleError,
+  ),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
@@ -718,7 +747,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<(String, &'static str)>, AnyError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -726,32 +755,30 @@ fn op_resolve(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<(String, &'static str)>, AnyError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, &'static str)> =
+  let mut resolved: Vec<(String, Option<&'static str>)> =
     Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.maybe_remapped_specifier(&args.base)
   {
     remapped_specifier.clone()
   } else {
-    normalize_specifier(&args.base, &state.current_dir).context(
-      "Error converting a string module specifier for \"op_resolve\".",
-    )?
+    resolve_url_or_path(&args.base, &state.current_dir)?
   };
   let referrer_module = state.graph.get(&referrer);
   for (is_cjs, specifier) in args.specifiers {
     if specifier.starts_with("node:") {
       resolved.push((
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ));
       continue;
     }
 
     if specifier.starts_with("asset:///") {
       let ext = MediaType::from_str(&specifier).as_ts_extension();
-      resolved.push((specifier, ext));
+      resolved.push((specifier, Some(ext)));
       continue;
     }
 
@@ -831,14 +858,15 @@ fn op_resolve_inner(
         (
           specifier_str,
           match media_type {
-            MediaType::Css => ".js", // surface these as .js for typescript
-            media_type => media_type.as_ts_extension(),
+            MediaType::Css => Some(".js"), // surface these as .js for typescript
+            MediaType::Unknown => None,
+            media_type => Some(media_type.as_ts_extension()),
           },
         )
       }
       None => (
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ),
     };
     log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
@@ -853,7 +881,7 @@ fn resolve_graph_specifier_types(
   referrer: &ModuleSpecifier,
   resolution_mode: ResolutionMode,
   state: &State,
-) -> Result<Option<(ModuleSpecifier, MediaType)>, AnyError> {
+) -> Result<Option<(ModuleSpecifier, MediaType)>, ResolveError> {
   let graph = &state.graph;
   let maybe_module = match graph.try_get(specifier) {
     Ok(Some(module)) => Some(module),
@@ -915,7 +943,7 @@ fn resolve_graph_specifier_types(
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
-            _ => return Err(err.into()),
+            _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
         Ok(Some(into_specifier_and_media_type(maybe_url)))
@@ -937,10 +965,12 @@ fn resolve_graph_specifier_types(
   }
 }
 
-#[derive(Debug, Error)]
-enum ResolveNonGraphSpecifierTypesError {
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum ResolveNonGraphSpecifierTypesError {
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }
@@ -1037,10 +1067,20 @@ fn op_respond_inner(state: &mut OpState, args: RespondArgs) {
   state.maybe_response = Some(args);
 }
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum ExecError {
+  #[class(generic)]
+  #[error("The response for the exec request was not set.")]
+  ResponseNotSet,
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(deno_core::error::CoreError),
+}
+
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, AnyError> {
+pub fn exec(request: Request) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -1116,7 +1156,9 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
     ..Default::default()
   });
 
-  runtime.execute_script(located_script_name!(), exec_source)?;
+  runtime
+    .execute_script(located_script_name!(), exec_source)
+    .map_err(ExecError::Core)?;
 
   let op_state = runtime.op_state();
   let mut op_state = op_state.borrow_mut();
@@ -1133,7 +1175,7 @@ pub fn exec(request: Request) -> Result<Response, AnyError> {
       stats,
     })
   } else {
-    Err(anyhow!("The response for the exec request was not set."))
+    Err(ExecError::ResponseNotSet)
   }
 }
 
@@ -1142,6 +1184,7 @@ mod tests {
   use deno_core::futures::future;
   use deno_core::serde_json;
   use deno_core::OpState;
+  use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
   use test_util::PathRef;
@@ -1168,13 +1211,20 @@ mod tests {
         .replace("://", "_")
         .replace('/', "-");
       let source_path = self.fixtures.join(specifier_text);
-      let response = source_path.read_to_bytes_if_exists().map(|c| {
-        Some(deno_graph::source::LoadResponse::Module {
-          specifier: specifier.clone(),
-          maybe_headers: None,
-          content: c.into(),
+      let response = source_path
+        .read_to_bytes_if_exists()
+        .map(|c| {
+          Some(deno_graph::source::LoadResponse::Module {
+            specifier: specifier.clone(),
+            maybe_headers: None,
+            content: c.into(),
+          })
         })
-      });
+        .map_err(|e| {
+          deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::generic(
+            e.to_string(),
+          )))
+        });
       Box::pin(future::ready(response))
     }
   }
@@ -1211,7 +1261,7 @@ mod tests {
 
   async fn test_exec(
     specifier: &ModuleSpecifier,
-  ) -> Result<Response, AnyError> {
+  ) -> Result<Response, ExecError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let loader = MockLoader { fixtures };
@@ -1393,7 +1443,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, vec![("https://deno.land/x/b.ts".into(), ".ts")]);
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), Some(".ts"))]
+    );
   }
 
   #[tokio::test]
@@ -1412,7 +1465,10 @@ mod tests {
       },
     )
     .expect("should have not errored");
-    assert_eq!(actual, vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts")]);
+    assert_eq!(
+      actual,
+      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), Some(".d.ts"))]
+    );
   }
 
   #[tokio::test]

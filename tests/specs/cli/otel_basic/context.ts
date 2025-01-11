@@ -2,9 +2,7 @@ import { assertEquals } from "@std/assert";
 
 const { ContextManager } = Deno.telemetry;
 
-const cm = new ContextManager();
-
-const a = cm.active();
+const a = ContextManager.active();
 const b = a.setValue("b", 1);
 const c = b.setValue("c", 2);
 

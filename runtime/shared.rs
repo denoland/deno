@@ -6,12 +6,12 @@ use std::path::Path;
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceMapOption;
-use deno_core::error::AnyError;
 use deno_core::extension;
 use deno_core::Extension;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleName;
 use deno_core::SourceMapData;
+use deno_error::JsErrorBox;
 
 extension!(runtime,
   deps = [
@@ -65,10 +65,21 @@ extension!(runtime,
   }
 );
 
+deno_error::js_error_wrapper!(
+  deno_ast::ParseDiagnostic,
+  JsParseDiagnostic,
+  "Error"
+);
+deno_error::js_error_wrapper!(
+  deno_ast::TranspileError,
+  JsTranspileError,
+  "Error"
+);
+
 pub fn maybe_transpile_source(
   name: ModuleName,
   source: ModuleCodeString,
-) -> Result<(ModuleCodeString, Option<SourceMapData>), AnyError> {
+) -> Result<(ModuleCodeString, Option<SourceMapData>), JsErrorBox> {
   // Always transpile `node:` built-in modules, since they might be TypeScript.
   let media_type = if name.starts_with("node:") {
     MediaType::TypeScript
@@ -93,7 +104,8 @@ pub fn maybe_transpile_source(
     capture_tokens: false,
     scope_analysis: false,
     maybe_syntax: None,
-  })?;
+  })
+  .map_err(|e| JsErrorBox::from_err(JsParseDiagnostic(e)))?;
   let transpiled_source = parsed
     .transpile(
       &deno_ast::TranspileOptions {
@@ -109,7 +121,8 @@ pub fn maybe_transpile_source(
         },
         ..Default::default()
       },
-    )?
+    )
+    .map_err(|e| JsErrorBox::from_err(JsTranspileError(e)))?
     .into_source();
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source

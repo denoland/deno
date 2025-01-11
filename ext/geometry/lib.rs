@@ -33,10 +33,11 @@ pub fn get_declaration() -> PathBuf {
   PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_geometry.d.ts")
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GeometryError {
+  #[class(type)]
   #[error("Inconsistent 2d matrix value")]
-  Inconsistent2DMatrix, // TypeError
+  Inconsistent2DMatrix,
 }
 
 #[derive(WebIDL)]

@@ -1966,3 +1966,4 @@ pub fn get_error_class_name(e: &AnyError) -> Option<&'static str> {
       (maybe_get_nix_error_class)()
     })
 }
+

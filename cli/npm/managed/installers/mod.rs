@@ -1,18 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod common;
-mod global;
-mod local;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::managed::NpmResolution;
 
-pub use self::common::NpmPackageFsResolver;
-use self::global::GlobalNpmPackageResolver;
-use self::local::LocalNpmPackageResolver;
-use super::resolution::NpmResolution;
+pub use self::common::NpmPackageFsInstaller;
+use self::global::GlobalNpmPackageInstaller;
+use self::local::LocalNpmPackageInstaller;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::npm::CliNpmCache;
@@ -20,8 +16,12 @@ use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
+mod common;
+mod global;
+mod local;
+
 #[allow(clippy::too_many_arguments)]
-pub fn create_npm_fs_resolver(
+pub fn create_npm_fs_installer(
   npm_cache: Arc<CliNpmCache>,
   npm_install_deps_provider: &Arc<NpmInstallDepsProvider>,
   progress_bar: &ProgressBar,
@@ -31,9 +31,9 @@ pub fn create_npm_fs_resolver(
   maybe_node_modules_path: Option<PathBuf>,
   system_info: NpmSystemInfo,
   lifecycle_scripts: LifecycleScriptsConfig,
-) -> Arc<dyn NpmPackageFsResolver> {
+) -> Arc<dyn NpmPackageFsInstaller> {
   match maybe_node_modules_path {
-    Some(node_modules_folder) => Arc::new(LocalNpmPackageResolver::new(
+    Some(node_modules_folder) => Arc::new(LocalNpmPackageInstaller::new(
       npm_cache,
       npm_install_deps_provider.clone(),
       progress_bar.clone(),
@@ -44,7 +44,7 @@ pub fn create_npm_fs_resolver(
       system_info,
       lifecycle_scripts,
     )),
-    None => Arc::new(GlobalNpmPackageResolver::new(
+    None => Arc::new(GlobalNpmPackageInstaller::new(
       npm_cache,
       tarball_cache,
       resolution,
