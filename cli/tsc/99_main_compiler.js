@@ -410,6 +410,7 @@ delete Object.prototype.__proto__;
     }
     if (start !== undefined && length !== undefined && file) {
       let startPos = file.getLineAndCharacterOfPosition(start);
+      /** @type {string | undefined} */
       let sourceLine = file.getFullText().split("\n")[startPos.line];
       const originalFileName = file.fileName;
       const fileName = ops.op_remap_specifier
@@ -1104,8 +1105,10 @@ delete Object.prototype.__proto__;
 
     performanceProgram({ program });
 
+    const checker = program.getProgram().getTypeChecker();
     ops.op_respond({
       diagnostics: fromTypeScriptDiagnostics(diagnostics),
+      ambientModules: checker.getAmbientModules().map((symbol) => symbol.name),
       stats: performanceEnd(),
     });
     debug("<<< exec stop");

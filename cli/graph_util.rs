@@ -146,6 +146,51 @@ pub fn graph_walk_errors<'a>(
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
+  fn should_ignore_resolution_error_for_types(err: &ResolutionError) -> bool {
+    match err {
+      ResolutionError::InvalidSpecifier { .. } => true,
+      ResolutionError::ResolverError { error, .. } => match error.as_ref() {
+        ResolveError::Specifier(_) => true,
+        ResolveError::ImportMap(err) => match err.as_kind() {
+          import_map::ImportMapErrorKind::UnmappedBareSpecifier(_, _) => true,
+          import_map::ImportMapErrorKind::JsonParse(_)
+          | import_map::ImportMapErrorKind::ImportMapNotObject
+          | import_map::ImportMapErrorKind::ImportsFieldNotObject
+          | import_map::ImportMapErrorKind::ScopesFieldNotObject
+          | import_map::ImportMapErrorKind::ScopePrefixNotObject(_)
+          | import_map::ImportMapErrorKind::BlockedByNullEntry(_)
+          | import_map::ImportMapErrorKind::SpecifierResolutionFailure {
+            ..
+          }
+          | import_map::ImportMapErrorKind::SpecifierBacktracksAbovePrefix {
+            ..
+          } => false,
+        },
+        ResolveError::Other(_) => false,
+      },
+      ResolutionError::InvalidDowngrade { .. }
+      | ResolutionError::InvalidJsrHttpsTypesImport { .. }
+      | ResolutionError::InvalidLocalImport { .. } => false,
+    }
+  }
+
+  fn should_ignore_module_graph_error_for_types(
+    err: &ModuleGraphError,
+  ) -> bool {
+    match err {
+      ModuleGraphError::ResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::TypesResolutionError(err) => {
+        should_ignore_resolution_error_for_types(err)
+      }
+      ModuleGraphError::ModuleError(module_error) => match module_error {
+        ModuleError::Missing { .. } => true,
+        _ => false,
+      },
+    }
+  }
+
   graph
     .walk(
       roots.iter(),
@@ -187,10 +232,7 @@ pub fn graph_walk_errors<'a>(
 
       if graph.graph_kind().include_types()
         && (message.contains(RUN_WITH_SLOPPY_IMPORTS_MSG)
-          || matches!(
-            error,
-            ModuleGraphError::ModuleError(ModuleError::Missing(..))
-          ))
+          || should_ignore_module_graph_error_for_types(&error))
       {
         // ignore and let typescript surface this as a diagnostic instead
         log::debug!("Ignoring: {}", message);

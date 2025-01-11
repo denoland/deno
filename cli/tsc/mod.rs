@@ -384,6 +384,7 @@ pub struct Response {
   pub diagnostics: Diagnostics,
   /// If there was any build info associated with the exec request.
   pub maybe_tsbuildinfo: Option<String>,
+  pub ambient_modules: Vec<String>,
   /// Statistics from the check.
   pub stats: Stats,
 }
@@ -1047,8 +1048,10 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
 }
 
 #[derive(Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
+  pub ambient_modules: Vec<String>,
   pub stats: Stats,
 }
 
@@ -1163,14 +1166,13 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
   let state = op_state.take::<State>();
 
   if let Some(response) = state.maybe_response {
-    let diagnostics = response.diagnostics;
     let maybe_tsbuildinfo = state.maybe_tsbuildinfo;
-    let stats = response.stats;
 
     Ok(Response {
-      diagnostics,
+      diagnostics: response.diagnostics,
+      ambient_modules: response.ambient_modules,
       maybe_tsbuildinfo,
-      stats,
+      stats: response.stats,
     })
   } else {
     Err(ExecError::ResponseNotSet)
@@ -1500,6 +1502,7 @@ mod tests {
           reports_unnecessary: None,
           other: Default::default(),
         }]),
+        ambient_modules: vec![],
         stats: Stats(vec![("a".to_string(), 12)])
       })
     );

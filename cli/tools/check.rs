@@ -295,6 +295,9 @@ impl TypeChecker {
       check_mode: type_check_mode,
     })?;
 
+    eprintln!("Ambient modules: {:?}", response.ambient_modules);
+    panic!("STOP"); // prevent saving the type checker cache
+
     let response_diagnostics =
       response.diagnostics.filter(filter_remote_diagnostics);
 
