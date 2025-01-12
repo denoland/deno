@@ -75,14 +75,20 @@ impl LintPluginContainer {
     start: usize,
     end: usize,
     fix: Option<LintReportFix>,
-  ) {
+  ) -> Result<(), LintReportError> {
     let source_text_info = self.source_text_info.as_ref().unwrap();
     let specifier = self.specifier.clone().unwrap();
     let source_range = source_text_info.range();
     let start_pos = source_text_info.start_pos();
     let diagnostic_range = SourceRange::new(start_pos + start, start_pos + end);
     if !source_range.contains(&diagnostic_range) {
-      todo!("Return op error that range is wrong");
+      return Err(LintReportError::DiagnosticIncorrectRange {
+        // JS uses 1-based indexes
+        start: start + 1,
+        end: end + 1,
+        source_start: source_range.start.as_byte_pos().0,
+        source_end: source_range.end.as_byte_pos().0,
+      });
     }
     let range = LintDiagnosticRange {
       range: diagnostic_range,
@@ -96,7 +102,13 @@ impl LintPluginContainer {
       let fix_range =
         SourceRange::new(start_pos + fix.range.0, start_pos + fix.range.1);
       if !source_range.contains(&fix_range) {
-        todo!("Return op error that range is wrong");
+        return Err(LintReportError::FixIncorrectRange {
+          // JS uses 1-based indexes
+          start: fix.range.0 + 1,
+          end: fix.range.1 + 1,
+          source_start: source_range.start.as_byte_pos().0,
+          source_end: source_range.end.as_byte_pos().0,
+        });
       }
       fixes.push(LintFix {
         changes: vec![LintFixChange {
@@ -120,6 +132,7 @@ impl LintPluginContainer {
       },
     };
     self.diagnostics.push(lint_diagnostic);
+    Ok(())
   }
 }
 
@@ -181,6 +194,27 @@ struct LintReportFix {
   range: (usize, usize),
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LintReportError {
+  #[class(type)]
+  #[error("Invalid diagnostic range [{start}, {end}], the source has a range of [{source_start}, {source_end}]")]
+  DiagnosticIncorrectRange {
+    start: usize,
+    end: usize,
+    source_start: u32,
+    source_end: u32,
+  },
+
+  #[class(type)]
+  #[error("Invalid fix range [{start}, {end}], the source has a range of [{source_start}, {source_end}]")]
+  FixIncorrectRange {
+    start: usize,
+    end: usize,
+    source_start: u32,
+    source_end: u32,
+  },
+}
+
 #[op2]
 fn op_lint_report(
   state: &mut OpState,
@@ -190,9 +224,10 @@ fn op_lint_report(
   #[smi] start: usize,
   #[smi] end: usize,
   #[serde] fix: Option<LintReportFix>,
-) {
+) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, message, hint, start, end, fix);
+  container.report(id, message, hint, start, end, fix)?;
+  Ok(())
 }
 
 #[op2]
