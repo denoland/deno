@@ -299,8 +299,8 @@ class ChildProcess {
     try {
       const onAbort = () => this.kill("SIGTERM");
       signal?.[abortSignal.add](onAbort);
-    } catch (TypeError) {
-      throw new TypeError("Child process has already terminated");
+    } catch (e) {
+      void e;
     }
 
     const waitPromise = op_spawn_wait(this.#rid);
