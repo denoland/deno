@@ -1235,7 +1235,8 @@ export class Socket extends Duplex {
     // @npmcli/agent and pause the socket (and also skips the startTls call
     // if it's TLSSocket)
     const errorStack = new Error().stack;
-    this._isNpmAgent = errorStack?.includes("@npmcli/agent") || errorStack?.includes("npm-check-updates") || false;
+    this._isNpmAgent = errorStack?.includes("@npmcli/agent") ||
+      errorStack?.includes("npm-check-updates") || false;
     if (this._isNpmAgent) {
       this.pause();
     }
