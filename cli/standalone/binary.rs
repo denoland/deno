@@ -788,6 +788,13 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     };
 
     output_vfs(&vfs, display_output_filename);
+    log::info!(
+      "{} {}\n",
+      crate::colors::bold("Remote modules size:"),
+      crate::util::display::human_size(
+        remote_modules_store.get_data_byte_len() as f64
+      )
+    );
 
     let metadata = Metadata {
       argv: compile_flags.args.clone(),

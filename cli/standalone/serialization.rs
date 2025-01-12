@@ -270,6 +270,10 @@ impl RemoteModulesStoreBuilder {
       }
     }
   }
+
+  pub fn get_data_byte_len(&self) -> u64 {
+    self.data_byte_len
+  }
 }
 
 pub enum DenoCompileModuleSource {
