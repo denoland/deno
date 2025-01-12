@@ -28,9 +28,9 @@ pub enum AstNode {
   ImportAttribute,
   ImportDefaultSpecifier,
   ImportNamespaceSpecifier,
-  TsExportAssignment,
-  TsImportEquals,
-  TsNamespaceExport,
+  TSExportAssignment,
+  TSImportEqualss,
+  TSNamespaceExport,
   TSNamespaceExportDeclaration,
   TSImportEqualsDeclaration,
   TSExternalModuleReference,
@@ -43,7 +43,7 @@ pub enum AstNode {
   TSEnumDeclaration,
   TSInterface,
   TSInterfaceDeclaration,
-  TsModule,
+  TSModule,
   TSTypeAliasDeclaration,
   Using,
   VariableDeclaration,
@@ -160,7 +160,7 @@ pub enum AstNode {
   TSTupleType,
   TSNamedTupleMember,
   TSFunctionType,
-  TsCallSignatureDeclaration,
+  TSCallSignatureDeclaration,
   TSPropertySignature,
   TSMethodSignature,
   TSIndexSignature,
@@ -168,7 +168,6 @@ pub enum AstNode {
   TSTypeOperator,
   TSTypePredicate,
   TSImportType,
-  TSExportAssignment,
   TSRestType,
   TSArrayType,
   TSClassImplements,
@@ -2008,7 +2007,7 @@ impl TsEsTreeBuilder {
   ) -> NodeRef {
     let id = self
       .ctx
-      .append_node(AstNode::TsCallSignatureDeclaration, span);
+      .append_node(AstNode::TSCallSignatureDeclaration, span);
 
     self
       .ctx

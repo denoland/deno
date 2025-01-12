@@ -6271,7 +6271,7 @@ snapshot[`Plugin - TSInterface 7`] = `
             },
           },
         },
-        type: "TsCallSignatureDeclaration",
+        type: "TSCallSignatureDeclaration",
         typeAnnotation: {
           params: [
             {
