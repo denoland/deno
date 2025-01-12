@@ -273,3 +273,35 @@ Deno.test({
     await fileHandle.close();
   },
 });
+
+Deno.test({
+  name: "[node/fs filehandle.chown] Change owner of the file",
+  async fn() {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile);
+
+    await fileHandle.chmod(0o700);
+
+    const nobodyUid = 65534;
+    const nobodyGid = 65534;
+
+    try {
+      await fileHandle.chown(nobodyUid, nobodyGid);
+    } catch (e) {
+      assert(
+        e instanceof Deno.errors.PermissionDenied,
+        "Expected permissionDenied error",
+      );
+    }
+
+    const realUid = Deno.uid() || 1000;
+    const realGid = Deno.gid() || 1000;
+
+    await fileHandle.chown(realUid, realGid);
+
+    assertEquals(Deno.statSync(tempFile).uid, realUid);
+    assertEquals(Deno.statSync(tempFile).gid, realGid);
+
+    await fileHandle.close();
+  },
+});
