@@ -296,8 +296,12 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
-    signal?.[abortSignal.add](onAbort);
+    try {
+      const onAbort = () => this.kill("SIGTERM");
+      signal?.[abortSignal.add](onAbort);
+    } catch (TypeError) {
+      throw new TypeError("Child process has already terminated");
+    }
 
     const waitPromise = op_spawn_wait(this.#rid);
     this.#waitPromise = waitPromise;
