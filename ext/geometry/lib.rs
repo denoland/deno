@@ -2,8 +2,10 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::mem;
 use std::path::PathBuf;
+use std::ptr;
 use std::slice;
 
 use deno_core::op2;
@@ -22,7 +24,7 @@ use nalgebra::Vector4;
 deno_core::extension!(
   deno_geometry,
   deps = [deno_webidl, deno_web, deno_console],
-  objects = [DOMPointInner, DOMRectInner, DOMMatrixInner],
+  objects = [DOMPointInner, DOMRectInner, DOMQuadInner, DOMMatrixInner],
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
 );
@@ -277,6 +279,161 @@ impl DOMRectInner {
     let x = self.x.get();
     let width = self.width.get();
     x.min(x + width)
+  }
+}
+
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub struct DOMQuadInit {
+  p1: DOMPointInit,
+  p2: DOMPointInit,
+  p3: DOMPointInit,
+  p4: DOMPointInit,
+}
+
+pub struct DOMQuadInner {
+  p1: UnsafeCell<DOMPointInner>,
+  p2: UnsafeCell<DOMPointInner>,
+  p3: UnsafeCell<DOMPointInner>,
+  p4: UnsafeCell<DOMPointInner>,
+}
+
+impl GarbageCollected for DOMQuadInner {}
+
+#[op2]
+impl DOMQuadInner {
+  #[constructor]
+  #[cppgc]
+  pub fn constructor(
+    #[webidl] p1: DOMPointInit,
+    #[webidl] p2: DOMPointInit,
+    #[webidl] p3: DOMPointInit,
+    #[webidl] p4: DOMPointInit,
+  ) -> DOMQuadInner {
+    #[inline]
+    fn from_point(point: DOMPointInit) -> DOMPointInner {
+      DOMPointInner {
+        x: Cell::new(point.x),
+        y: Cell::new(point.y),
+        z: Cell::new(point.z),
+        w: Cell::new(point.w),
+      }
+    }
+
+    DOMQuadInner {
+      p1: UnsafeCell::new(from_point(p1)),
+      p2: UnsafeCell::new(from_point(p2)),
+      p3: UnsafeCell::new(from_point(p3)),
+      p4: UnsafeCell::new(from_point(p4)),
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn from_rect(#[webidl] rect: DOMRectInit) -> DOMQuadInner {
+    let DOMRectInit {
+      x,
+      y,
+      width,
+      height,
+    } = rect;
+    DOMQuadInner {
+      p1: UnsafeCell::new(DOMPointInner {
+        x: Cell::new(x),
+        y: Cell::new(y),
+        z: Cell::new(0.0),
+        w: Cell::new(1.0),
+      }),
+      p2: UnsafeCell::new(DOMPointInner {
+        x: Cell::new(x + width),
+        y: Cell::new(y),
+        z: Cell::new(0.0),
+        w: Cell::new(1.0),
+      }),
+      p3: UnsafeCell::new(DOMPointInner {
+        x: Cell::new(x + width),
+        y: Cell::new(y + height),
+        z: Cell::new(0.0),
+        w: Cell::new(1.0),
+      }),
+      p4: UnsafeCell::new(DOMPointInner {
+        x: Cell::new(x),
+        y: Cell::new(y + height),
+        z: Cell::new(0.0),
+        w: Cell::new(1.0),
+      }),
+    }
+  }
+
+  #[static_method]
+  #[cppgc]
+  pub fn from_quad(#[webidl] quad: DOMQuadInit) -> DOMQuadInner {
+    #[inline]
+    fn from_point(point: DOMPointInit) -> DOMPointInner {
+      DOMPointInner {
+        x: Cell::new(point.x),
+        y: Cell::new(point.y),
+        z: Cell::new(point.z),
+        w: Cell::new(point.w),
+      }
+    }
+
+    DOMQuadInner {
+      p1: UnsafeCell::new(from_point(quad.p1)),
+      p2: UnsafeCell::new(from_point(quad.p2)),
+      p3: UnsafeCell::new(from_point(quad.p3)),
+      p4: UnsafeCell::new(from_point(quad.p4)),
+    }
+  }
+
+  #[cppgc]
+  #[getter]
+  pub fn p1(&self) -> DOMPointInner {
+    // SAFETY: ptr is alive
+    unsafe { ptr::read(self.p1.get()) }
+  }
+
+  #[cppgc]
+  #[getter]
+  pub fn p2(&self) -> DOMPointInner {
+    // SAFETY: ptr is alive
+    unsafe { ptr::read(self.p2.get()) }
+  }
+
+  #[cppgc]
+  #[getter]
+  pub fn p3(&self) -> DOMPointInner {
+    // SAFETY: ptr is alive
+    unsafe { ptr::read(self.p3.get()) }
+  }
+
+  #[cppgc]
+  #[getter]
+  pub fn p4(&self) -> DOMPointInner {
+    // SAFETY: ptr is alive
+    unsafe { ptr::read(self.p4.get()) }
+  }
+
+  #[cppgc]
+  pub fn get_bounds(&self) -> DOMRectInner {
+    // SAFETY: ptr is alive
+    let p1 = unsafe { ptr::read(self.p1.get()) };
+    // SAFETY: ptr is alive
+    let p2 = unsafe { ptr::read(self.p2.get()) };
+    // SAFETY: ptr is alive
+    let p3 = unsafe { ptr::read(self.p3.get()) };
+    // SAFETY: ptr is alive
+    let p4 = unsafe { ptr::read(self.p4.get()) };
+    let left = p1.x.get().min(p2.x.get()).min(p3.x.get()).min(p4.x.get());
+    let top = p1.y.get().min(p2.y.get()).min(p3.y.get()).min(p4.y.get());
+    let right = p1.x.get().max(p2.x.get()).max(p3.x.get()).max(p4.x.get());
+    let bottom = p1.y.get().max(p2.y.get()).max(p3.y.get()).max(p4.y.get());
+    DOMRectInner {
+      x: Cell::new(left),
+      y: Cell::new(top),
+      width: Cell::new(right - left),
+      height: Cell::new(bottom - top),
+    }
   }
 }
 

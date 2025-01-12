@@ -1,13 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-import { DOMMatrixInner, DOMPointInner, DOMRectInner } from "ext:core/ops";
+import {
+  DOMMatrixInner,
+  DOMPointInner,
+  DOMQuadInner,
+  DOMRectInner,
+} from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
   Float32Array,
   Float64Array,
-  MathMax,
-  MathMin,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   Symbol,
@@ -21,80 +24,6 @@ import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
-webidl.converters.DOMPointInit = webidl.createDictionaryConverter(
-  "DOMPointInit",
-  [
-    {
-      key: "x",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "y",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "z",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "w",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 1,
-    },
-  ],
-);
-
-webidl.converters.DOMRectInit = webidl.createDictionaryConverter(
-  "DOMRectInit",
-  [
-    {
-      key: "x",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "y",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "width",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-    {
-      key: "height",
-      converter: webidl.converters["unrestricted double"],
-      defaultValue: 0,
-    },
-  ],
-);
-
-webidl.converters.DOMQuadInit = webidl.createDictionaryConverter(
-  "DOMQuadInit",
-  [
-    {
-      key: "p1",
-      converter: webidl.converters.DOMPointInit,
-    },
-    {
-      key: "p2",
-      converter: webidl.converters.DOMPointInit,
-    },
-    {
-      key: "p3",
-      converter: webidl.converters.DOMPointInit,
-    },
-    {
-      key: "p4",
-      converter: webidl.converters.DOMPointInit,
-    },
-  ],
-);
-
 const _inner = Symbol("[[inner]]");
 // Property to prevent writing values when an immutable instance is changed to
 // a mutable instance by Object.setPrototypeOf
@@ -104,6 +33,7 @@ const _brand = webidl.brand;
 
 class DOMPointReadOnly {
   [_writable] = false;
+  /** @type {DOMPointInner} */
   [_inner];
 
   constructor(x = 0, y = 0, z = 0, w = 1) {
@@ -158,13 +88,8 @@ class DOMPointReadOnly {
 
   toJSON() {
     webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    const inner = this[_inner];
-    return {
-      x: inner.x,
-      y: inner.y,
-      z: inner.z,
-      w: inner.w,
-    };
+    const { x, y, z, w } = this[_inner];
+    return { x, y, z, w };
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -189,6 +114,8 @@ const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
 
 class DOMPoint extends DOMPointReadOnly {
   [_writable] = true;
+  /** @type {DOMPointInner} */
+  [_inner];
 
   static fromPoint(other = { __proto__: null }) {
     const point = webidl.createBranded(DOMPoint);
@@ -219,7 +146,7 @@ class DOMPoint extends DOMPointReadOnly {
 
   get z() {
     webidl.assertBranded(this, DOMPointPrototype);
-    return this[_inner].x;
+    return this[_inner].z;
   }
   set z(value) {
     webidl.assertBranded(this, DOMPointPrototype);
@@ -259,6 +186,7 @@ const DOMPointPrototype = DOMPoint.prototype;
 
 class DOMRectReadOnly {
   [_writable] = false;
+  /** @type {DOMRectInner} */
   [_inner];
 
   constructor(x = 0, y = 0, width = 0, height = 0) {
@@ -345,6 +273,8 @@ const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
 
 class DOMRect extends DOMRectReadOnly {
   [_writable] = true;
+  /** @type {DOMRectInner} */
+  [_inner];
 
   static fromRect(other = { __proto__: null }) {
     const rect = webidl.createBranded(DOMRect);
@@ -423,13 +353,15 @@ const _p3 = Symbol("[[p3]]");
 const _p4 = Symbol("[[p4]]");
 
 class DOMQuad {
-  /** @type {DOMPoint} */
+  /** @type {DOMQuadInner} */
+  [_inner];
+  /** @type {DOMPoint=} */
   [_p1];
-  /** @type {DOMPoint} */
+  /** @type {DOMPoint=} */
   [_p2];
-  /** @type {DOMPoint} */
+  /** @type {DOMPoint=} */
   [_p3];
-  /** @type {DOMPoint} */
+  /** @type {DOMPoint=} */
   [_p4];
 
   constructor(
@@ -438,82 +370,83 @@ class DOMQuad {
     p3 = { __proto__: null },
     p4 = { __proto__: null },
   ) {
-    this[_p1] = DOMPoint.fromPoint(p1);
-    this[_p2] = DOMPoint.fromPoint(p2);
-    this[_p3] = DOMPoint.fromPoint(p3);
-    this[_p4] = DOMPoint.fromPoint(p4);
+    this[_inner] = new DOMQuadInner(p1, p2, p3, p4);
     this[_brand] = _brand;
   }
 
   static fromRect(other = { __proto__: null }) {
-    other = webidl.converters.DOMRectInit(
-      other,
-      "Failed to execute 'DOMQuad.fromRect'",
-      "Argument 1",
-    );
-    const { x, y, width, height } = other;
     const quad = webidl.createBranded(DOMQuad);
-    quad[_p1] = new DOMPoint(x, y, 0, 1);
-    quad[_p2] = new DOMPoint(x + width, y, 0, 1);
-    quad[_p3] = new DOMPoint(x + width, y + height, 0, 1);
-    quad[_p4] = new DOMPoint(x, y + height, 0, 1);
+    quad[_inner] = DOMQuadInner.fromRect(other);
+    quad[_p1] = undefined;
+    quad[_p2] = undefined;
+    quad[_p3] = undefined;
+    quad[_p4] = undefined;
     return quad;
   }
 
   static fromQuad(other = { __proto__: null }) {
-    other = webidl.converters.DOMQuadInit(
-      other,
-      "Failed to execute 'DOMQuad.fromQuad'",
-      "Argument 1",
-    );
     const quad = webidl.createBranded(DOMQuad);
-    quad[_p1] = DOMPoint.fromPoint(other.p1);
-    quad[_p2] = DOMPoint.fromPoint(other.p2);
-    quad[_p3] = DOMPoint.fromPoint(other.p3);
-    quad[_p4] = DOMPoint.fromPoint(other.p4);
+    quad[_inner] = DOMQuadInner.fromQuad(other);
+    quad[_p1] = undefined;
+    quad[_p2] = undefined;
+    quad[_p3] = undefined;
+    quad[_p4] = undefined;
     return quad;
   }
 
   get p1() {
     webidl.assertBranded(this, DOMQuadPrototype);
-    return this[_p1];
+    if (this[_p1] !== undefined) {
+      return this[_p1];
+    }
+    const point = webidl.createBranded(DOMPoint);
+    point[_writable] = true;
+    point[_inner] = this[_inner].p1;
+    this[_p1] = point;
+    return point;
   }
 
   get p2() {
     webidl.assertBranded(this, DOMQuadPrototype);
-    return this[_p2];
+    if (this[_p2] !== undefined) {
+      return this[_p2];
+    }
+    const point = webidl.createBranded(DOMPoint);
+    point[_writable] = true;
+    point[_inner] = this[_inner].p2;
+    this[_p2] = point;
+    return point;
   }
 
   get p3() {
     webidl.assertBranded(this, DOMQuadPrototype);
-    return this[_p3];
+    if (this[_p3] !== undefined) {
+      return this[_p3];
+    }
+    const point = webidl.createBranded(DOMPoint);
+    point[_writable] = true;
+    point[_inner] = this[_inner].p3;
+    this[_p3] = point;
+    return point;
   }
 
   get p4() {
     webidl.assertBranded(this, DOMQuadPrototype);
-    return this[_p4];
+    if (this[_p4] !== undefined) {
+      return this[_p4];
+    }
+    const point = webidl.createBranded(DOMPoint);
+    point[_writable] = true;
+    point[_inner] = this[_inner].p4;
+    this[_p4] = point;
+    return point;
   }
 
   getBounds() {
     webidl.assertBranded(this, DOMQuadPrototype);
-    const { x: p1x, y: p1y } = this[_p1];
-    const { x: p2x, y: p2y } = this[_p2];
-    const { x: p3x, y: p3y } = this[_p3];
-    const { x: p4x, y: p4y } = this[_p4];
-
-    const left = MathMin(p1x, p2x, p3x, p4x);
-    const top = MathMin(p1y, p2y, p3y, p4y);
-    const right = MathMax(p1x, p2x, p3x, p4x);
-    const bottom = MathMax(p1y, p2y, p3y, p4y);
-
     const bounds = webidl.createBranded(DOMRect);
     bounds[_writable] = true;
-    bounds[_inner] = new DOMRectInner(
-      left,
-      top,
-      right - left,
-      bottom - top,
-    );
+    bounds[_inner] = this[_inner].fromBounds();
     return bounds;
   }
 
@@ -937,32 +870,57 @@ class DOMMatrixReadOnly {
 
   toJSON() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    const inner = this[_inner];
+    const {
+      a,
+      b,
+      c,
+      d,
+      e,
+      f,
+      m11,
+      m12,
+      m13,
+      m14,
+      m21,
+      m22,
+      m23,
+      m24,
+      m31,
+      m32,
+      m33,
+      m34,
+      m41,
+      m42,
+      m43,
+      m44,
+      is2D,
+      isIdentity,
+    } = this[_inner];
     return {
-      a: inner.a,
-      b: inner.b,
-      c: inner.c,
-      d: inner.d,
-      e: inner.e,
-      f: inner.f,
-      m11: inner.m11,
-      m12: inner.m12,
-      m13: inner.m13,
-      m14: inner.m14,
-      m21: inner.m21,
-      m22: inner.m22,
-      m23: inner.m23,
-      m24: inner.m24,
-      m31: inner.m31,
-      m32: inner.m32,
-      m33: inner.m33,
-      m34: inner.m34,
-      m41: inner.m41,
-      m42: inner.m42,
-      m43: inner.m43,
-      m44: inner.m44,
-      is2D: inner.is2D,
-      isIdentity: inner.isIdentity,
+      a,
+      b,
+      c,
+      d,
+      e,
+      f,
+      m11,
+      m12,
+      m13,
+      m14,
+      m21,
+      m22,
+      m23,
+      m24,
+      m31,
+      m32,
+      m33,
+      m34,
+      m41,
+      m42,
+      m43,
+      m44,
+      is2D,
+      isIdentity,
     };
   }
 
