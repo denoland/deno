@@ -1224,15 +1224,18 @@ export class Socket extends Duplex {
 
     super(options);
 
-    // Note: If the socket is created from @npmcli/agent, the 'socket' event
-    // on ClientRequest object happens after 'connect' event on Socket object.
+    // Note: If the socket is created from one of:
+    // - @npmcli/agent
+    // - npm-check-updates (bundles @npmcli/agent as a dependency)
+    // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
     // That swaps the sequence of op_node_http_request_with_conn() call and
     // initial socket read. That causes op_node_http_request_with_conn() not
     // working.
     // To avoid the above situation, we detect the socket created from
     // @npmcli/agent and pause the socket (and also skips the startTls call
     // if it's TLSSocket)
-    this._isNpmAgent = new Error().stack?.includes("@npmcli/agent") || false;
+    const errorStack = new Error().stack;
+    this._isNpmAgent = errorStack?.includes("@npmcli/agent") || errorStack?.includes("npm-check-updates") || false;
     if (this._isNpmAgent) {
       this.pause();
     }
