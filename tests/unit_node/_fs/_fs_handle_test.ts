@@ -276,6 +276,7 @@ Deno.test({
 
 Deno.test({
   name: "[node/fs filehandle.chown] Change owner of the file",
+  ignore: Deno.build.os === "windows",
   async fn() {
     const tempFile: string = await Deno.makeTempFile();
     const fileHandle = await fs.open(tempFile);
