@@ -724,7 +724,7 @@ impl<'a> ResolverFactory<'a> {
         &pb,
         sys.clone(),
         tarball_cache.clone(),
-        maybe_lockfile.clone(),
+        maybe_lockfile,
         maybe_node_modules_path.clone(),
         LifecycleScriptsConfig::default(),
         NpmSystemInfo::default(),
@@ -743,7 +743,6 @@ impl<'a> ResolverFactory<'a> {
       CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
-        maybe_lockfile,
         maybe_node_modules_path,
         npmrc,
         npm_resolution,

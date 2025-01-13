@@ -31,7 +31,6 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::NpmResolutionInitializer;
-pub use self::managed::ResolvePkgFolderFromDenoModuleError;
 pub use self::managed::ResolveSnapshotError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
 pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;

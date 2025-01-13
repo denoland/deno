@@ -746,7 +746,6 @@ pub async fn run(
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
             npm_resolution,
-            maybe_lockfile: None,
             npm_cache_dir,
             sys: sys.clone(),
             maybe_node_modules_path,
@@ -795,7 +794,6 @@ pub async fn run(
             npm_resolution,
             sys: sys.clone(),
             npm_cache_dir,
-            maybe_lockfile: None,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
             npmrc: create_default_npmrc(),

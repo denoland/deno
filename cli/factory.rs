@@ -594,7 +594,6 @@ impl CliFactory {
             CliNpmResolverCreateOptions::Managed(
               CliManagedNpmResolverCreateOptions {
                 sys: self.sys(),
-                maybe_lockfile: cli_options.maybe_lockfile().cloned(),
                 npm_resolution: self.npm_resolution().clone(),
                 npm_cache_dir: self.npm_cache_dir()?.clone(),
                 maybe_node_modules_path: cli_options

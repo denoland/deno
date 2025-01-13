@@ -20,6 +20,7 @@ use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_resolver::npm::managed::ResolvePkgIdFromSpecifierError;
 use deno_resolver::npm::ByonmOrManagedNpmResolver;
@@ -29,6 +30,7 @@ use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::NpmPackageFolderResolver;
+use sys_traits::FsMetadata;
 use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
@@ -138,7 +140,6 @@ impl NpmResolutionInitializer {
 }
 
 pub struct CliManagedNpmResolverCreateOptions {
-  pub maybe_lockfile: Option<Arc<CliLockfile>>,
   pub npm_cache_dir: Arc<NpmCacheDir>,
   pub sys: CliSys,
   pub maybe_node_modules_path: Option<PathBuf>,
@@ -159,7 +160,6 @@ pub fn create_managed_npm_resolver(
       options.maybe_node_modules_path,
     ));
   Arc::new(ManagedCliNpmResolver::new(
-    options.maybe_lockfile,
     managed_npm_resolver,
     options.npm_cache_dir,
     options.npmrc,
@@ -254,20 +254,9 @@ async fn snapshot_from_lockfile(
   Ok(snapshot)
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolvePkgFolderFromDenoModuleError {
-  #[class(inherit)]
-  #[error(transparent)]
-  PackageNvNotFound(#[from] deno_npm::resolution::PackageNvNotFoundError),
-  #[class(inherit)]
-  #[error(transparent)]
-  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
-}
-
 /// An npm resolver where the resolution is managed by Deno rather than
 /// the user bringing their own node_modules (BYONM) on the file system.
 pub struct ManagedCliNpmResolver {
-  maybe_lockfile: Option<Arc<CliLockfile>>,
   managed_npm_resolver: Arc<ManagedNpmResolver<CliSys>>,
   npm_cache_dir: Arc<NpmCacheDir>,
   npm_rc: Arc<ResolvedNpmRc>,
@@ -287,7 +276,6 @@ impl std::fmt::Debug for ManagedCliNpmResolver {
 impl ManagedCliNpmResolver {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    maybe_lockfile: Option<Arc<CliLockfile>>,
     managed_npm_resolver: Arc<ManagedNpmResolver<CliSys>>,
     npm_cache_dir: Arc<NpmCacheDir>,
     npm_rc: Arc<ResolvedNpmRc>,
@@ -296,7 +284,6 @@ impl ManagedCliNpmResolver {
     system_info: NpmSystemInfo,
   ) -> Self {
     Self {
-      maybe_lockfile,
       managed_npm_resolver,
       npm_cache_dir,
       npm_rc,
@@ -350,7 +337,7 @@ impl ManagedCliNpmResolver {
           .resolve_pkg_folder_from_pkg_id(&id)
           .ok()
       })
-      .map(|folder| folder.exists())
+      .map(|folder| self.sys.fs_exists_no_err(folder))
       .unwrap_or(false)
   }
 
@@ -381,8 +368,9 @@ impl ManagedCliNpmResolver {
     &self,
     nv: &PackageNv,
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoModuleError> {
-    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
-    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
+    self
+      .managed_npm_resolver
+      .resolve_pkg_folder_from_deno_module(nv)
   }
 
   pub fn resolve_pkg_id_from_pkg_req(
@@ -451,7 +439,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
       Arc::new(NpmResolutionCell::new(self.resolution.snapshot()));
 
     Arc::new(ManagedCliNpmResolver::new(
-      self.maybe_lockfile.clone(),
       Arc::new(ManagedNpmResolver::<CliSys>::new::<CliSys>(
         &self.npm_cache_dir,
         &self.npm_rc,
