@@ -11691,6 +11691,46 @@ fn lsp_format_exclude_default_config() {
 }
 
 #[test]
+fn lsp_format_untitled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "untitled:Untitled-1",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "  console.log();\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "untitled:Untitled-1",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
