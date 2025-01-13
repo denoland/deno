@@ -159,7 +159,7 @@ class DOMPoint extends DOMPointReadOnly {
   set w(value) {
     webidl.assertBranded(this, DOMPointPrototype);
     assertWritable(this);
-    this[_inner].x = value;
+    this[_inner].w = value;
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -442,7 +442,7 @@ class DOMQuad {
     webidl.assertBranded(this, DOMQuadPrototype);
     const bounds = webidl.createBranded(DOMRect);
     bounds[_writable] = true;
-    bounds[_inner] = this[_inner].fromBounds();
+    bounds[_inner] = this[_inner].getBounds();
     return bounds;
   }
 

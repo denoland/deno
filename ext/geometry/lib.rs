@@ -75,6 +75,7 @@ impl DOMPointInner {
     }
   }
 
+  #[reentrant]
   #[static_method]
   #[cppgc]
   pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointInner {
@@ -181,6 +182,7 @@ impl DOMRectInner {
     }
   }
 
+  #[reentrant]
   #[static_method]
   #[cppgc]
   pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectInner {
@@ -291,6 +293,7 @@ impl GarbageCollected for DOMQuadInner {}
 #[op2]
 impl DOMQuadInner {
   #[constructor]
+  #[reentrant]
   #[cppgc]
   pub fn constructor(
     #[webidl] p1: DOMPointInit,
@@ -315,6 +318,7 @@ impl DOMQuadInner {
     }
   }
 
+  #[reentrant]
   #[static_method]
   #[cppgc]
   pub fn from_rect(#[webidl] rect: DOMRectInit) -> DOMQuadInner {
@@ -340,6 +344,7 @@ impl DOMQuadInner {
     }
   }
 
+  #[reentrant]
   #[static_method]
   #[cppgc]
   pub fn from_quad(#[webidl] quad: DOMQuadInit) -> DOMQuadInner {
@@ -527,6 +532,7 @@ impl DOMMatrixInner {
     }
   }
 
+  #[reentrant]
   #[static_method]
   #[cppgc]
   pub fn from_matrix(
@@ -1335,7 +1341,7 @@ fn matrix_scale_without_origin(
   let is_2d = matrix.is_2d.get();
   let scaling = Vector3::new(sx, sy, sz);
   inner.prepend_nonuniform_scaling_mut(&scaling);
-  matrix.is_2d.set(is_2d && sz == 0.0);
+  matrix.is_2d.set(is_2d && sz == 1.0);
 }
 
 #[inline]
@@ -1356,7 +1362,7 @@ fn matrix_scale_with_origin(
   inner.prepend_nonuniform_scaling_mut(&scaling);
   shift.neg_mut();
   inner.prepend_translation_mut(&shift);
-  matrix.is_2d.set(is_2d && sz == 0.0 && origin_z == 0.0);
+  matrix.is_2d.set(is_2d && sz == 1.0 && origin_z == 0.0);
 }
 
 #[inline]
@@ -1381,7 +1387,7 @@ fn matrix_rotate(
   inner.set_column(2, &result.column(2));
   matrix
     .is_2d
-    .set(is_2d && pitch_deg == 0.0 && yaw_deg == 0.0);
+    .set(is_2d && roll_deg == 0.0 && pitch_deg == 0.0);
 }
 
 #[inline]
