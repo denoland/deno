@@ -1234,6 +1234,7 @@ export class Socket extends Duplex {
     // To avoid the above situation, we detect the socket created from
     // @npmcli/agent and pause the socket (and also skips the startTls call
     // if it's TLSSocket)
+    // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
     this._isNpmAgent = errorStack?.includes("@npmcli/agent") ||
       errorStack?.includes("npm-check-updates") || false;
