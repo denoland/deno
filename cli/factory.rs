@@ -72,7 +72,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;

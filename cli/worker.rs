@@ -19,7 +19,6 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_error::JsErrorBox;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -59,7 +58,6 @@ use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -185,7 +183,7 @@ impl SharedWorkerState {
   }
 
   pub fn npm_process_state_provider(&self) -> NpmProcessStateProviderRc {
-    self.npm_resolver.clone().into_process_state_provider()
+    crate::npm::create_npm_process_state_provider(&self.npm_resolver)
   }
 }
 

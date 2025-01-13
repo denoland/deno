@@ -55,7 +55,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;

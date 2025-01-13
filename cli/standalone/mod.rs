@@ -89,7 +89,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
@@ -136,7 +135,7 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,

@@ -124,8 +124,14 @@ impl NpmResolutionCell {
       .map(|pkg| pkg.id.clone())
   }
 
-  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
-    self.snapshot.read().package_reqs().clone()
+  pub fn package_reqs(&self) -> Vec<(PackageReq, PackageNv)> {
+    self
+      .snapshot
+      .read()
+      .package_reqs()
+      .iter()
+      .map(|(k, v)| (k.clone(), v.clone()))
+      .collect()
   }
 
   pub fn top_level_packages(&self) -> Vec<NpmPackageId> {

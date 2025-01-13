@@ -5,8 +5,6 @@ pub mod installer;
 mod managed;
 mod permission_checker;
 
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -15,21 +13,16 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmOrManagedNpmResolver;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::ops::process::NpmProcessStateProvider;
+use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
-use node_resolver::NpmPackageFolderResolver;
 
-pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
-pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolveSnapshotError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
@@ -62,6 +55,19 @@ impl CliNpmCacheHttpClient {
       http_client_provider,
       progress_bar,
     }
+  }
+}
+
+pub fn create_npm_process_state_provider(
+  npm_resolver: &CliByonmOrManagedNpmResolver,
+) -> NpmProcessStateProviderRc {
+  match npm_resolver {
+    ByonmOrManagedNpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
+      byonm::CliByonmNpmProcessStateProvider(byonm_npm_resolver.clone()),
+    ),
+    ByonmOrManagedNpmResolver::Managed(managed_npm_resolver) => Arc::new(
+      managed::CliManagedNpmProcessStateProvider(managed_npm_resolver.clone()),
+    ),
   }
 }
 
@@ -104,55 +110,6 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         }
       })
   }
-}
-
-pub enum CliNpmResolverCreateOptions {
-  Managed(CliManagedNpmResolverCreateOptions),
-  Byonm(CliByonmNpmResolverCreateOptions),
-}
-
-pub fn create_cli_npm_resolver(
-  options: CliNpmResolverCreateOptions,
-) -> Arc<dyn CliNpmResolver> {
-  use CliNpmResolverCreateOptions::*;
-  match options {
-    Managed(options) => managed::create_managed_npm_resolver(options),
-    Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
-  }
-}
-
-pub enum InnerCliNpmResolverRef<'a> {
-  Managed(&'a ManagedCliNpmResolver),
-  #[allow(dead_code)]
-  Byonm(&'a CliByonmNpmResolver),
-}
-
-// todo(dsherret): replace with an enum
-pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
-  // done
-  fn into_npm_pkg_folder_resolver(
-    self: Arc<Self>,
-  ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_byonm_or_managed(
-    self: Arc<Self>,
-  ) -> ByonmOrManagedNpmResolver<CliSys>;
-  fn as_inner(&self) -> InnerCliNpmResolverRef;
-  fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {
-    match self.as_inner() {
-      InnerCliNpmResolverRef::Managed(inner) => Some(inner),
-      InnerCliNpmResolverRef::Byonm(_) => None,
-    }
-  }
-
-  // todo...
-  fn into_process_state_provider(
-    self: Arc<Self>,
-  ) -> Arc<dyn NpmProcessStateProvider>;
-  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
-
-  /// Returns a hash returning the state of the npm resolver
-  /// or `None` if the state currently can't be determined.
-  fn check_state_hash(&self) -> Option<u64>;
 }
 
 #[derive(Debug)]

@@ -28,6 +28,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
@@ -57,19 +58,16 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliIsCjsResolver;
@@ -90,7 +88,8 @@ struct LspScopeResolver {
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  npm_resolution: Arc<NpmResolutionCell>,
+  npm_resolver: Option<CliByonmOrManagedNpmResolver>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
@@ -113,6 +112,7 @@ impl Default for LspScopeResolver {
       npm_installer: None,
       npm_resolver: None,
       node_resolver: None,
+      npm_resolution: factory.services.npm_resolution.clone(),
       npm_pkg_req_resolver: None,
       pkg_json_resolver: factory.pkg_json_resolver().clone(),
       redirect_resolver: None,
@@ -226,6 +226,7 @@ impl LspScopeResolver {
       npm_pkg_req_resolver,
       npm_resolver,
       npm_installer,
+      npm_resolution: factory.services.npm_resolution.clone(),
       node_resolver,
       pkg_json_resolver,
       redirect_resolver,
@@ -238,6 +239,10 @@ impl LspScopeResolver {
 
   fn snapshot(&self) -> Arc<Self> {
     let mut factory = ResolverFactory::new(self.config_data.as_ref());
+    factory
+      .services
+      .npm_resolution
+      .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver =
       self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
     if let Some(npm_resolver) = &npm_resolver {
@@ -392,7 +397,7 @@ impl LspResolver {
   pub fn maybe_managed_npm_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<&ManagedCliNpmResolver> {
+  ) -> Option<&CliManagedNpmResolver> {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.npm_resolver.as_ref().and_then(|r| r.as_managed())
   }
@@ -614,6 +619,7 @@ struct ResolverFactoryServices {
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<CliByonmOrManagedNpmResolver>,
+  npm_resolution: Arc<NpmResolutionCell>,
 }
 
 struct ResolverFactory<'a> {
@@ -647,7 +653,7 @@ impl<'a> ResolverFactory<'a> {
     let enable_byonm = self.config_data.map(|d| d.byonm).unwrap_or(false);
     let sys = CliSys::default();
     let options = if enable_byonm {
-      CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+      NpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
         sys,
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
@@ -688,10 +694,9 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         npmrc.clone(),
       ));
-      let npm_resolution = Arc::new(NpmResolutionCell::default());
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
         registry_info_provider.clone(),
-        npm_resolution.clone(),
+        self.services.npm_resolution.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -714,13 +719,13 @@ impl<'a> ResolverFactory<'a> {
       ));
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
         registry_info_provider,
-        npm_resolution.clone(),
+        self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
       ));
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
-        npm_resolution.clone(),
+        self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,
         &pb,
@@ -742,27 +747,30 @@ impl<'a> ResolverFactory<'a> {
       .await
       .unwrap();
 
-      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
+      NpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
         maybe_node_modules_path,
         npmrc,
-        npm_resolution,
+        npm_resolution: self.services.npm_resolution.clone(),
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(create_cli_npm_resolver(options));
+    self.set_npm_resolver(CliByonmOrManagedNpmResolver::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<NpmInstaller>) {
     self.services.npm_installer = Some(npm_installer);
   }
 
-  pub fn set_npm_resolver(&mut self, npm_resolver: Arc<dyn CliNpmResolver>) {
+  pub fn set_npm_resolver(
+    &mut self,
+    npm_resolver: CliByonmOrManagedNpmResolver,
+  ) {
     self.services.npm_resolver = Some(npm_resolver);
   }
 
-  pub fn npm_resolver(&self) -> Option<&Arc<dyn CliNpmResolver>> {
+  pub fn npm_resolver(&self) -> Option<&CliByonmOrManagedNpmResolver> {
     self.services.npm_resolver.as_ref()
   }
 

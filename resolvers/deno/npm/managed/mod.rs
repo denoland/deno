@@ -220,6 +220,10 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
     ))
   }
 
+  pub fn package_reqs(&self) -> Vec<(PackageReq, PackageNv)> {
+    self.resolution.package_reqs()
+  }
+
   pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
     self.resolution.top_level_packages()
   }
@@ -229,6 +233,12 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
     system_info: &NpmSystemInfo,
   ) -> Vec<NpmResolutionPackage> {
     self.resolution.all_system_packages(system_info)
+  }
+
+  pub fn serialized_valid_snapshot(
+    &self,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self.resolution.serialized_valid_snapshot()
   }
 
   pub fn serialized_valid_snapshot_for_system(

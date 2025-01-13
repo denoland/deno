@@ -33,8 +33,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
-use crate::npm::ManagedCliNpmResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::util::checksum;
 use crate::util::display::DisplayTreeNode;
 
@@ -357,7 +356,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a ManagedCliNpmResolver,
+    npm_resolver: &'a CliManagedNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -383,7 +382,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a ManagedCliNpmResolver,
+    npm_resolver: &'a CliManagedNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self.packages.insert(package.id.clone(), package.clone());

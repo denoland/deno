@@ -37,7 +37,6 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
@@ -191,6 +190,31 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
+    fn check_state_hash(
+      resolver: &CliByonmOrManagedNpmResolver,
+    ) -> Option<u64> {
+      match resolver {
+        ByonmOrManagedNpmResolver::Byonm(_) => {
+          // not feasible and probably slower to compute
+          None
+        }
+        ByonmOrManagedNpmResolver::Managed(resolver) => {
+          // we should probably go further and check all the individual npm packages
+          let mut package_reqs = resolver.package_reqs();
+          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+          let mut hasher = FastInsecureHasher::new_without_deno_version();
+          // ensure the cache gets busted when turning nodeModulesDir on or off
+          // as this could cause changes in resolution
+          hasher.write_hashable(resolver.root_node_modules_path().is_some());
+          for (pkg_req, pkg_nv) in package_reqs {
+            hasher.write_hashable(&pkg_req);
+            hasher.write_hashable(&pkg_nv);
+          }
+          Some(hasher.finish())
+        }
+      }
+    }
+
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }

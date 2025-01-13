@@ -27,9 +27,6 @@ use tokio_util::sync::CancellationToken;
 use crate::node::CliNodeResolver;
 use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolver;
-use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
