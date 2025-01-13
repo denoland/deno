@@ -92,8 +92,6 @@ use crate::node::CliPackageJsonResolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;

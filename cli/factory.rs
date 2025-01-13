@@ -36,7 +36,6 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use log::warn;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::InNpmPackageChecker;
 use once_cell::sync::OnceCell;
 
 use crate::args::check_warn_tsconfig;
@@ -74,14 +73,10 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
-use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
-use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmRegistryReadPermissionChecker;
@@ -207,7 +202,7 @@ struct CliFactoryServices {
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
-  in_npm_pkg_checker: Deferred<Arc<DenoInNpmPackageChecker>>,
+  in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -1036,7 +1031,7 @@ impl CliFactory {
       self.emitter()?,
       self.file_fetcher()?,
       self.http_client_provider(),
-      self.npm_resolver().await?.as_ref(),
+      self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
     ))

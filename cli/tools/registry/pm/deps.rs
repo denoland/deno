@@ -43,7 +43,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::installer::NpmInstaller;
-use crate::npm::CliNpmResolver;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
 
@@ -451,7 +451,7 @@ pub struct DepManager {
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   npm_installer: Arc<NpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -463,7 +463,7 @@ pub struct DepManagerArgs {
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
   pub npm_installer: Arc<NpmInstaller>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
+  pub npm_resolver: CliByonmOrManagedNpmResolver,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,
@@ -551,9 +551,10 @@ impl DepManager {
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
     if self.deps.iter().all(|dep| match dep.kind {
-      DepKind::Npm => {
-        npm_resolver.resolve_pkg_id_from_pkg_req(&dep.req).is_ok()
-      }
+      DepKind::Npm => npm_resolver
+        .resolution()
+        .resolve_pkg_id_from_pkg_req(&dep.req)
+        .is_ok(),
       DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
     }) {
       self.dependencies_resolved.raise();
@@ -630,7 +631,12 @@ impl DepManager {
     let graph = self.main_module_graph_container.graph();
 
     let mut resolved = Vec::with_capacity(self.deps.len());
-    let snapshot = self.npm_resolver.as_managed().unwrap().snapshot();
+    let snapshot = self
+      .npm_resolver
+      .as_managed()
+      .unwrap()
+      .resolution()
+      .snapshot();
     let resolved_npm = snapshot.package_reqs();
     let resolved_jsr = graph.packages.mappings();
     for dep in &self.deps {

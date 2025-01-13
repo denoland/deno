@@ -70,7 +70,6 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -238,7 +237,7 @@ struct SharedCliModuleLoaderState {
   cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
-  in_npm_pkg_checker: Arc<DenoInNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -246,7 +245,7 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: NpmModuleLoader,
   npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: Arc<CliByonmOrManagedNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
@@ -299,7 +298,7 @@ impl CliModuleLoaderFactory {
     cjs_tracker: Arc<CliCjsTracker>,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
-    in_npm_pkg_checker: Arc<DenoInNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
@@ -307,7 +306,7 @@ impl CliModuleLoaderFactory {
     npm_module_loader: NpmModuleLoader,
     npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
-    npm_resolver: Arc<CliByonmOrManagedNpmResolver>,
+    npm_resolver: CliByonmOrManagedNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
@@ -1145,7 +1144,7 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   emitter: Arc<Emitter>,
   sys: CliSys,
   graph_container: TGraphContainer,
-  in_npm_pkg_checker: Arc<DenoInNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
 }
 

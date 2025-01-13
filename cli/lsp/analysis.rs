@@ -19,6 +19,7 @@ use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_path_util::url_to_file_path;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -31,6 +32,7 @@ use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
@@ -365,7 +367,9 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
-          let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
+          let pkg_reqs = npm_resolver
+            .resolution()
+            .resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = npm_resolver
@@ -1295,6 +1299,19 @@ impl CodeActionCollection {
       range: &lsp::Range,
       language_server: &language_server::Inner,
     ) -> Option<lsp::CodeAction> {
+      fn top_package_req_for_name(
+        resolution: &NpmResolutionCell,
+        name: &str,
+      ) -> Option<PackageReq> {
+        let package_reqs = resolution.package_reqs();
+        let mut entries = package_reqs
+          .iter()
+          .filter(|(_, nv)| nv.name == name)
+          .collect::<Vec<_>>();
+        entries.sort_by_key(|(_, nv)| &nv.version);
+        Some(entries.last()?.0.clone())
+      }
+
       let (dep_key, dependency, _) =
         document.get_maybe_dependency(&range.end)?;
       if dependency.maybe_deno_types_specifier.is_some() {
@@ -1382,9 +1399,10 @@ impl CodeActionCollection {
         .and_then(|versions| versions.first().cloned())?;
       let types_specifier_text =
         if let Some(npm_resolver) = managed_npm_resolver {
-          let mut specifier_text = if let Some(req) =
-            npm_resolver.top_package_req_for_name(&types_package_name)
-          {
+          let mut specifier_text = if let Some(req) = top_package_req_for_name(
+            npm_resolver.resolution(),
+            &types_package_name,
+          ) {
             format!("npm:{req}")
           } else {
             format!("npm:{}@^{}", &types_package_name, types_package_version)

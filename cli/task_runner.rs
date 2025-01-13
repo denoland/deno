@@ -524,7 +524,7 @@ fn resolve_managed_npm_commands(
   node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
-  for id in npm_resolver.top_level_packages() {
+  for id in npm_resolver.resolution().top_level_packages() {
     let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
     let bin_commands =
       node_resolver.resolve_binary_commands(&package_folder)?;

@@ -93,8 +93,6 @@ use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliByonmOrManagedNpmResolver;
-use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
 use crate::resolver::CliCjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
@@ -603,8 +601,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut vfs = VfsBuilder::new();
     let npm_snapshot = match &self.npm_resolver {
       CliByonmOrManagedNpmResolver::Managed(managed) => {
-        let snapshot =
-          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+        let snapshot = managed
+          .resolution()
+          .serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
           self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
           Some(snapshot)
@@ -892,8 +891,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Ok(())
         } else {
           // we'll flatten to remove any custom registries later
-          let mut packages =
-            npm_resolver.all_system_packages(&self.npm_system_info);
+          let mut packages = npm_resolver
+            .resolution()
+            .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           for package in packages {
             let folder =

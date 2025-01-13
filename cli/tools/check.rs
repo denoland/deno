@@ -200,7 +200,7 @@ impl TypeChecker {
         }
         ByonmOrManagedNpmResolver::Managed(resolver) => {
           // we should probably go further and check all the individual npm packages
-          let mut package_reqs = resolver.package_reqs();
+          let mut package_reqs = resolver.resolution().package_reqs();
           package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
           let mut hasher = FastInsecureHasher::new_without_deno_version();
           // ensure the cache gets busted when turning nodeModulesDir on or off
@@ -266,7 +266,7 @@ impl TypeChecker {
       &self.sys,
       &graph,
       check_js,
-      self.npm_resolver.check_state_hash(),
+      check_state_hash(&self.npm_resolver),
       type_check_mode,
       &ts_config,
     );

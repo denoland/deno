@@ -11,10 +11,8 @@ use std::path::PathBuf;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
-use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_semver::package::PackageNv;
@@ -30,8 +28,6 @@ use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 use crate::NpmCacheDirRc;
 use crate::ResolvedNpmRcRc;
 
@@ -149,6 +145,21 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
     self.npm_cache_dir.root_dir()
   }
 
+  pub fn resolution(&self) -> &NpmResolutionCell {
+    self.resolution.as_ref()
+  }
+
+  /// Checks if the provided package req's folder is cached.
+  pub fn is_pkg_req_folder_cached(&self, req: &PackageReq) -> bool {
+    self
+      .resolution
+      .resolve_pkg_id_from_pkg_req(req)
+      .ok()
+      .and_then(|id| self.resolve_pkg_folder_from_pkg_id(&id).ok())
+      .map(|folder| self.sys.fs_exists_no_err(folder))
+      .unwrap_or(false)
+  }
+
   pub fn resolve_pkg_folder_from_pkg_id(
     &self,
     package_id: &NpmPackageId,
@@ -218,36 +229,6 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
         .resolution
         .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
     ))
-  }
-
-  pub fn package_reqs(&self) -> Vec<(PackageReq, PackageNv)> {
-    self.resolution.package_reqs()
-  }
-
-  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
-    self.resolution.top_level_packages()
-  }
-
-  pub fn all_system_packages(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> Vec<NpmResolutionPackage> {
-    self.resolution.all_system_packages(system_info)
-  }
-
-  pub fn serialized_valid_snapshot(
-    &self,
-  ) -> ValidSerializedNpmResolutionSnapshot {
-    self.resolution.serialized_valid_snapshot()
-  }
-
-  pub fn serialized_valid_snapshot_for_system(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> ValidSerializedNpmResolutionSnapshot {
-    self
-      .resolution
-      .serialized_valid_snapshot_for_system(system_info)
   }
 }
 

@@ -234,7 +234,7 @@ pub struct CliManagedNpmProcessStateProvider(pub ManagedNpmResolverRc<CliSys>);
 impl NpmProcessStateProvider for CliManagedNpmProcessStateProvider {
   fn get_npm_process_state(&self) -> String {
     npm_process_state(
-      self.0.serialized_valid_snapshot(),
+      self.0.resolution().serialized_valid_snapshot(),
       self.0.root_node_modules_path(),
     )
   }
