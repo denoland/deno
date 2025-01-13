@@ -32,6 +32,7 @@ use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::npm::ManagedCliNpmResolver;
 use crate::util::checksum;
@@ -148,11 +149,11 @@ pub async fn info(
         );
       }
 
-      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref(), npmrc);
+      add_npm_packages_to_json(&mut json_graph, npm_resolver, npmrc);
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, npm_resolver.as_ref(), &mut output)?;
+      GraphDisplayContext::write(&graph, npm_resolver, &mut output)?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
@@ -251,7 +252,7 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &dyn CliNpmResolver,
+  npm_resolver: &CliByonmOrManagedNpmResolver,
   npmrc: &ResolvedNpmRc,
 ) {
   let Some(npm_resolver) = npm_resolver.as_managed() else {
@@ -419,7 +420,7 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a dyn CliNpmResolver,
+    npm_resolver: &'a CliByonmOrManagedNpmResolver,
     writer: &mut TWrite,
   ) -> Result<(), AnyError> {
     let npm_info = match npm_resolver.as_managed() {

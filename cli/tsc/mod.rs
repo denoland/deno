@@ -45,8 +45,9 @@ use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -300,13 +301,13 @@ pub fn into_specifier_and_media_type(
 
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   module_info_cache: Arc<ModuleInfoCache>,
 }
 
 impl TypeCheckingCjsTracker {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
@@ -358,7 +359,7 @@ impl TypeCheckingCjsTracker {
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
+  pub npm_resolver: CliByonmOrManagedNpmResolver,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.

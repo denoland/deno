@@ -25,7 +25,6 @@ use deno_resolver::npm::managed::ResolvePkgFolderFromPkgIdError;
 use deno_resolver::npm::managed::ResolvePkgIdFromSpecifierError;
 use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::ManagedNpmResolver;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -381,7 +380,7 @@ impl ManagedCliNpmResolver {
   }
 
   pub fn maybe_node_modules_path(&self) -> Option<&Path> {
-    self.managed_npm_resolver.node_modules_path()
+    self.managed_npm_resolver.root_node_modules_path()
   }
 
   pub fn global_cache_root_path(&self) -> &Path {
@@ -409,7 +408,7 @@ impl NpmProcessStateProvider for ManagedCliNpmResolver {
   fn get_npm_process_state(&self) -> String {
     npm_process_state(
       self.resolution.serialized_valid_snapshot(),
-      self.managed_npm_resolver.node_modules_path(),
+      self.managed_npm_resolver.root_node_modules_path(),
     )
   }
 }
@@ -444,7 +443,7 @@ impl CliNpmResolver for ManagedCliNpmResolver {
         &self.npm_rc,
         npm_resolution.clone(),
         self.sys.clone(),
-        self.root_node_modules_path().map(ToOwned::to_owned),
+        self.maybe_node_modules_path().map(ToOwned::to_owned),
       )),
       self.npm_cache_dir.clone(),
       self.npm_rc.clone(),
@@ -456,10 +455,6 @@ impl CliNpmResolver for ManagedCliNpmResolver {
 
   fn as_inner(&self) -> InnerCliNpmResolverRef {
     InnerCliNpmResolverRef::Managed(self)
-  }
-
-  fn root_node_modules_path(&self) -> Option<&Path> {
-    self.managed_npm_resolver.node_modules_path()
   }
 
   fn check_state_hash(&self) -> Option<u64> {
@@ -474,23 +469,13 @@ impl CliNpmResolver for ManagedCliNpmResolver {
     let mut hasher = FastInsecureHasher::new_without_deno_version();
     // ensure the cache gets busted when turning nodeModulesDir on or off
     // as this could cause changes in resolution
-    hasher
-      .write_hashable(self.managed_npm_resolver.node_modules_path().is_some());
+    hasher.write_hashable(
+      self.managed_npm_resolver.root_node_modules_path().is_some(),
+    );
     for (pkg_req, pkg_nv) in package_reqs {
       hasher.write_hashable(&pkg_req);
       hasher.write_hashable(&pkg_nv);
     }
     Some(hasher.finish())
-  }
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    self
-      .managed_npm_resolver
-      .resolve_pkg_folder_from_deno_module_req(req, referrer)
-      .map_err(ResolvePkgFolderFromDenoReqError::Managed)
   }
 }

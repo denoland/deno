@@ -34,7 +34,7 @@ impl NpmProcessStateProvider for CliByonmWrapper {
       kind: NpmProcessStateKind::Byonm,
       local_node_modules_path: self
         .0
-        .root_node_modules_dir()
+        .root_node_modules_path()
         .map(|p| p.to_string_lossy().to_string()),
     })
     .unwrap()
@@ -68,23 +68,9 @@ impl CliNpmResolver for CliByonmNpmResolver {
     InnerCliNpmResolverRef::Byonm(self)
   }
 
-  fn root_node_modules_path(&self) -> Option<&Path> {
-    self.root_node_modules_dir()
-  }
-
   fn check_state_hash(&self) -> Option<u64> {
     // it is very difficult to determine the check state hash for byonm
     // so we just return None to signify check caching is not supported
     None
-  }
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    self
-      .resolve_pkg_folder_from_deno_module_req(req, referrer)
-      .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
   }
 }

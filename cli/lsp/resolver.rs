@@ -26,6 +26,7 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -60,6 +61,7 @@ use crate::npm::create_cli_npm_resolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
@@ -70,11 +72,11 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
+use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
-use crate::resolver::IsCjsResolver;
 use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -83,8 +85,8 @@ use crate::util::progress_bar::ProgressBarStyle;
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
   resolver: Arc<CliResolver>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  is_cjs_resolver: Arc<IsCjsResolver>,
+  in_npm_pkg_checker: Arc<DenoInNpmPackageChecker>,
+  is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
@@ -366,7 +368,7 @@ impl LspResolver {
   pub fn as_is_cjs_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> &IsCjsResolver {
+  ) -> &CliIsCjsResolver {
     let resolver = self.get_scope_resolver(file_referrer);
     resolver.is_cjs_resolver.as_ref()
   }
@@ -382,7 +384,7 @@ impl LspResolver {
   pub fn in_npm_pkg_checker(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> &Arc<dyn InNpmPackageChecker> {
+  ) -> &Arc<DenoInNpmPackageChecker> {
     let resolver = self.get_scope_resolver(file_referrer);
     &resolver.in_npm_pkg_checker
   }
@@ -605,13 +607,13 @@ pub struct ScopeDepInfo {
 struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
   found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-  in_npm_pkg_checker: Deferred<Arc<dyn InNpmPackageChecker>>,
-  is_cjs_resolver: Deferred<Arc<IsCjsResolver>>,
+  in_npm_pkg_checker: Deferred<Arc<DenoInNpmPackageChecker>>,
+  is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
   npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
+  npm_resolver: Option<CliByonmOrManagedNpmResolver>,
 }
 
 struct ResolverFactory<'a> {
@@ -825,29 +827,27 @@ impl<'a> ResolverFactory<'a> {
     &self.pkg_json_resolver
   }
 
-  pub fn in_npm_pkg_checker(&self) -> &Arc<dyn InNpmPackageChecker> {
+  pub fn in_npm_pkg_checker(&self) -> &Arc<DenoInNpmPackageChecker> {
     self.services.in_npm_pkg_checker.get_or_init(|| {
-      deno_resolver::npm::create_in_npm_pkg_checker(
-        match self.services.npm_resolver.as_ref().map(|r| r.as_inner()) {
-          Some(crate::npm::InnerCliNpmResolverRef::Byonm(_)) | None => {
-            CreateInNpmPkgCheckerOptions::Byonm
-          }
-          Some(crate::npm::InnerCliNpmResolverRef::Managed(m)) => {
-            CreateInNpmPkgCheckerOptions::Managed(
-              ManagedInNpmPkgCheckerCreateOptions {
-                root_cache_dir_url: m.global_cache_root_url(),
-                maybe_node_modules_path: m.maybe_node_modules_path(),
-              },
-            )
-          }
-        },
-      )
+      DenoInNpmPackageChecker::new(match &self.services.npm_resolver {
+        Some(CliByonmOrManagedNpmResolver::Byonm(_)) | None => {
+          CreateInNpmPkgCheckerOptions::Byonm
+        }
+        Some(CliByonmOrManagedNpmResolver::Managed(m)) => {
+          CreateInNpmPkgCheckerOptions::Managed(
+            ManagedInNpmPkgCheckerCreateOptions {
+              root_cache_dir_url: m.global_cache_root_url(),
+              maybe_node_modules_path: m.maybe_node_modules_path(),
+            },
+          )
+        }
+      })
     })
   }
 
-  pub fn is_cjs_resolver(&self) -> &Arc<IsCjsResolver> {
+  pub fn is_cjs_resolver(&self) -> &Arc<CliIsCjsResolver> {
     self.services.is_cjs_resolver.get_or_init(|| {
-      Arc::new(IsCjsResolver::new(
+      Arc::new(CliIsCjsResolver::new(
         self.in_npm_pkg_checker().clone(),
         self.pkg_json_resolver().clone(),
         if self

@@ -89,7 +89,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     }
   }
 
-  pub fn root_node_modules_dir(&self) -> Option<&Path> {
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir.as_deref()
   }
 
@@ -377,15 +377,8 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
   }
 }
 
-impl<
-    TSys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug,
-  > NpmPackageFolderResolver for ByonmNpmResolver<TSys>
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -438,7 +431,7 @@ impl<
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {

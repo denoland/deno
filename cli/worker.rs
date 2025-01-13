@@ -19,6 +19,8 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_error::JsErrorBox;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -56,6 +58,7 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
@@ -151,7 +154,7 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
@@ -168,11 +171,14 @@ impl SharedWorkerState {
   pub fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices<CliSys> {
+  ) -> NodeExtInitServices<
+    DenoInNpmPackageChecker,
+    CliByonmOrManagedNpmResolver,
+    CliSys,
+  > {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
-      npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       sys: self.sys.clone(),
     }
@@ -427,7 +433,7 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliByonmOrManagedNpmResolver,
     pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
@@ -886,7 +892,11 @@ mod tests {
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options::<CliSys>(
+    MainWorker::bootstrap_from_options::<
+      DenoInNpmPackageChecker,
+      CliByonmOrManagedNpmResolver,
+      CliSys,
+    >(
       main_module,
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),

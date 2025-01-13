@@ -13,6 +13,7 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -35,6 +36,7 @@ use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -112,7 +114,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   sys: CliSys,
 }
 
@@ -146,7 +148,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliByonmOrManagedNpmResolver,
     sys: CliSys,
   ) -> Self {
     Self {

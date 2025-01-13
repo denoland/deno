@@ -30,6 +30,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node;
@@ -37,7 +38,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
-use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
@@ -54,8 +54,9 @@ use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
+use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
@@ -493,17 +494,17 @@ pub enum BuildGraphWithNpmResolutionError {
 
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliByonmOrManagedNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
@@ -514,17 +515,17 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<cache::Caches>,
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     cli_options: Arc<CliOptions>,
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliByonmOrManagedNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
@@ -712,8 +713,7 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
-    if roots.iter().any(|r| r.scheme() == "npm")
-      && self.npm_resolver.as_byonm().is_some()
+    if roots.iter().any(|r| r.scheme() == "npm") && self.npm_resolver.is_byonm()
     {
       return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
     }
@@ -1226,7 +1226,7 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
 
 #[derive(Debug)]
 struct CliGraphResolver<'a> {
-  cjs_tracker: &'a CjsTracker,
+  cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
   jsx_import_source_config: Option<JsxImportSourceConfig>,
 }

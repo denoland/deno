@@ -128,6 +128,15 @@ impl NpmResolutionCell {
     self.snapshot.read().package_reqs().clone()
   }
 
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .snapshot
+      .read()
+      .top_level_packages()
+      .cloned()
+      .collect::<Vec<_>>()
+  }
+
   pub fn all_system_packages(
     &self,
     system_info: &NpmSystemInfo,

@@ -2241,6 +2241,7 @@ dependencies = [
  "deno_node",
  "deno_path_util",
  "deno_permissions",
+ "deno_resolver",
  "deno_telemetry",
  "deno_terminal 0.2.0",
  "deno_tls",

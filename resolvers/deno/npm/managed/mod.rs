@@ -11,8 +11,11 @@ use std::path::PathBuf;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
 use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
+use deno_npm::NpmResolutionPackage;
+use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -23,12 +26,10 @@ use sys_traits::FsMetadata;
 use url::Url;
 
 use self::common::NpmPackageFsResolver;
-use self::common::NpmPackageFsResolverRc;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
-use crate::sync::new_rc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 use crate::NpmCacheDirRc;
@@ -89,56 +90,63 @@ pub enum ResolvePkgIdFromSpecifierError {
   NotFound(#[from] PackageCacheFolderIdNotFoundError),
 }
 
+pub struct ManagedNpmResolverCreateOptions<
+  TSys: FsCanonicalize + FsMetadata + Clone,
+> {
+  pub npm_cache_dir: NpmCacheDirRc,
+  pub sys: TSys,
+  pub maybe_node_modules_path: Option<PathBuf>,
+  pub npm_system_info: NpmSystemInfo,
+  pub npmrc: ResolvedNpmRcRc,
+  pub npm_resolution: NpmResolutionCellRc,
+}
+
 #[allow(clippy::disallowed_types)]
 pub type ManagedNpmResolverRc<TSys> =
   crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
 
 #[derive(Debug)]
-pub struct ManagedNpmResolver<TSys: FsCanonicalize> {
-  fs_resolver: NpmPackageFsResolverRc,
+pub struct ManagedNpmResolver<TSys: FsCanonicalize + FsMetadata> {
+  fs_resolver: NpmPackageFsResolver<TSys>,
+  npm_cache_dir: NpmCacheDirRc,
   resolution: NpmResolutionCellRc,
   sys: TSys,
 }
 
-impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
-  pub fn new<
-    TCreateSys: FsCanonicalize
-      + FsMetadata
-      + std::fmt::Debug
-      + MaybeSend
-      + MaybeSync
-      + Clone
-      + 'static,
-  >(
-    npm_cache_dir: &NpmCacheDirRc,
-    npm_rc: &ResolvedNpmRcRc,
-    resolution: NpmResolutionCellRc,
-    sys: TCreateSys,
-    maybe_node_modules_path: Option<PathBuf>,
+impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
+  pub fn new<TCreateSys: FsCanonicalize + FsMetadata + Clone>(
+    options: ManagedNpmResolverCreateOptions<TCreateSys>,
   ) -> ManagedNpmResolver<TCreateSys> {
-    let fs_resolver: NpmPackageFsResolverRc = match maybe_node_modules_path {
-      Some(node_modules_folder) => new_rc(LocalNpmPackageResolver::new(
-        resolution.clone(),
-        sys.clone(),
-        node_modules_folder,
-      )),
-      None => new_rc(GlobalNpmPackageResolver::new(
-        npm_cache_dir.clone(),
-        npm_rc.clone(),
-        resolution.clone(),
+    let fs_resolver = match options.maybe_node_modules_path {
+      Some(node_modules_folder) => {
+        NpmPackageFsResolver::Local(LocalNpmPackageResolver::new(
+          options.npm_resolution.clone(),
+          options.sys.clone(),
+          node_modules_folder,
+        ))
+      }
+      None => NpmPackageFsResolver::Global(GlobalNpmPackageResolver::new(
+        options.npm_cache_dir.clone(),
+        options.npmrc.clone(),
+        options.npm_resolution.clone(),
       )),
     };
 
     ManagedNpmResolver {
       fs_resolver,
-      sys,
-      resolution,
+      npm_cache_dir: options.npm_cache_dir,
+      sys: options.sys,
+      resolution: options.npm_resolution,
     }
   }
 
   #[inline]
-  pub fn node_modules_path(&self) -> Option<&Path> {
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.fs_resolver.node_modules_path()
+  }
+
+  pub fn global_cache_root_path(&self) -> &Path {
+    self.npm_cache_dir.root_dir()
   }
 
   pub fn resolve_pkg_folder_from_pkg_id(
@@ -211,10 +219,30 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
         .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
     ))
   }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self.resolution.top_level_packages()
+  }
+
+  pub fn all_system_packages(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> Vec<NpmResolutionPackage> {
+    self.resolution.all_system_packages(system_info)
+  }
+
+  pub fn serialized_valid_snapshot_for_system(
+    &self,
+    system_info: &NpmSystemInfo,
+  ) -> ValidSerializedNpmResolutionSnapshot {
+    self
+      .resolution
+      .serialized_valid_snapshot_for_system(system_info)
+  }
 }
 
-impl<TSys: FsCanonicalize + std::fmt::Debug + MaybeSend + MaybeSync>
-  NpmPackageFolderResolver for ManagedNpmResolver<TSys>
+impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
+  for ManagedNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -234,7 +262,7 @@ impl<TSys: FsCanonicalize + std::fmt::Debug + MaybeSend + MaybeSync>
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ManagedInNpmPackageChecker {
   root_dir: Url,
 }

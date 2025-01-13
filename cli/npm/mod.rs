@@ -44,6 +44,8 @@ pub type CliNpmTarballCache =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
+pub type CliByonmOrManagedNpmResolver = ByonmOrManagedNpmResolver<CliSys>;
+pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -127,20 +129,14 @@ pub enum InnerCliNpmResolverRef<'a> {
 
 // todo(dsherret): replace with an enum
 pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
+  // done
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_process_state_provider(
-    self: Arc<Self>,
-  ) -> Arc<dyn NpmProcessStateProvider>;
   fn into_byonm_or_managed(
     self: Arc<Self>,
   ) -> ByonmOrManagedNpmResolver<CliSys>;
-
-  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
-
   fn as_inner(&self) -> InnerCliNpmResolverRef;
-
   fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {
     match self.as_inner() {
       InnerCliNpmResolverRef::Managed(inner) => Some(inner),
@@ -148,20 +144,11 @@ pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
     }
   }
 
-  fn as_byonm(&self) -> Option<&CliByonmNpmResolver> {
-    match self.as_inner() {
-      InnerCliNpmResolverRef::Managed(_) => None,
-      InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
-    }
-  }
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
-
-  fn root_node_modules_path(&self) -> Option<&Path>;
+  // todo...
+  fn into_process_state_provider(
+    self: Arc<Self>,
+  ) -> Arc<dyn NpmProcessStateProvider>;
+  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
   /// Returns a hash returning the state of the npm resolver
   /// or `None` if the state currently can't be determined.

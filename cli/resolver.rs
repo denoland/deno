@@ -19,6 +19,8 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
@@ -39,18 +41,26 @@ use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<CliSys>;
-pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<CliSys>;
+pub type CliCjsTracker =
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
+pub type CliIsCjsResolver =
+  deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
 pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
+  DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
+  ByonmOrManagedNpmResolver<CliSys>,
   CliSloppyImportsCachedFs,
   CliSys,
 >;
-pub type CliNpmReqResolver =
-  deno_resolver::npm::NpmReqResolver<RealIsBuiltInNodeModuleChecker, CliSys>;
+pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
+  DenoInNpmPackageChecker,
+  RealIsBuiltInNodeModuleChecker,
+  ByonmOrManagedNpmResolver<CliSys>,
+  CliSys,
+>;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
@@ -69,14 +79,14 @@ pub struct NotSupportedKindInNpmError {
 // todo(dsherret): move to module_loader.rs (it seems to be here due to use in standalone)
 #[derive(Clone)]
 pub struct NpmModuleLoader {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
 }
 
 impl NpmModuleLoader {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
   ) -> Self {
