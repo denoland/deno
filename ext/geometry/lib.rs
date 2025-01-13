@@ -10,6 +10,7 @@ use std::slice;
 
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::webidl;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use nalgebra::Matrix3;
@@ -43,14 +44,14 @@ pub enum GeometryError {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub struct DOMPointInit {
-  #[webidl(default = 0.0)]
-  x: f64,
-  #[webidl(default = 0.0)]
-  y: f64,
-  #[webidl(default = 0.0)]
-  z: f64,
-  #[webidl(default = 1.0)]
-  w: f64,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  x: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  y: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  z: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
+  w: webidl::UnrestrictedDouble,
 }
 
 pub struct DOMPointInner {
@@ -64,13 +65,13 @@ impl DOMPointInner {
   #[constructor]
   #[cppgc]
   pub fn constructor(
-    #[webidl] x: f64,
-    #[webidl] y: f64,
-    #[webidl] z: f64,
-    #[webidl] w: f64,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
+    #[webidl] z: webidl::UnrestrictedDouble,
+    #[webidl] w: webidl::UnrestrictedDouble,
   ) -> DOMPointInner {
     DOMPointInner {
-      inner: RefCell::new(Vector4::new(x, y, z, w)),
+      inner: RefCell::new(Vector4::new(*x, *y, *z, *w)),
     }
   }
 
@@ -78,7 +79,7 @@ impl DOMPointInner {
   #[cppgc]
   pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointInner {
     DOMPointInner {
-      inner: RefCell::new(Vector4::new(init.x, init.y, init.z, init.w)),
+      inner: RefCell::new(Vector4::new(*init.x, *init.y, *init.z, *init.w)),
     }
   }
 
@@ -89,8 +90,8 @@ impl DOMPointInner {
   }
 
   #[setter]
-  pub fn x(&self, #[webidl] value: f64) {
-    self.inner.borrow_mut().x = value
+  pub fn x(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.inner.borrow_mut().x = *value
   }
 
   #[fast]
@@ -100,8 +101,8 @@ impl DOMPointInner {
   }
 
   #[setter]
-  pub fn y(&self, #[webidl] value: f64) {
-    self.inner.borrow_mut().y = value
+  pub fn y(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.inner.borrow_mut().y = *value
   }
 
   #[fast]
@@ -111,8 +112,8 @@ impl DOMPointInner {
   }
 
   #[setter]
-  pub fn z(&self, #[webidl] value: f64) {
-    self.inner.borrow_mut().z = value
+  pub fn z(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.inner.borrow_mut().z = *value
   }
 
   #[fast]
@@ -122,8 +123,8 @@ impl DOMPointInner {
   }
 
   #[setter]
-  pub fn w(&self, #[webidl] value: f64) {
-    self.inner.borrow_mut().w = value
+  pub fn w(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.inner.borrow_mut().w = *value
   }
 
   #[cppgc]
@@ -145,14 +146,14 @@ impl DOMPointInner {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub struct DOMRectInit {
-  #[webidl(default = 0.0)]
-  x: f64,
-  #[webidl(default = 0.0)]
-  y: f64,
-  #[webidl(default = 0.0)]
-  width: f64,
-  #[webidl(default = 0.0)]
-  height: f64,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  x: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  y: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  width: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  height: webidl::UnrestrictedDouble,
 }
 
 pub struct DOMRectInner {
@@ -169,16 +170,16 @@ impl DOMRectInner {
   #[constructor]
   #[cppgc]
   pub fn constructor(
-    #[webidl] x: f64,
-    #[webidl] y: f64,
-    #[webidl] width: f64,
-    #[webidl] height: f64,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
+    #[webidl] width: webidl::UnrestrictedDouble,
+    #[webidl] height: webidl::UnrestrictedDouble,
   ) -> DOMRectInner {
     DOMRectInner {
-      x: Cell::new(x),
-      y: Cell::new(y),
-      width: Cell::new(width),
-      height: Cell::new(height),
+      x: Cell::new(*x),
+      y: Cell::new(*y),
+      width: Cell::new(*width),
+      height: Cell::new(*height),
     }
   }
 
@@ -186,10 +187,10 @@ impl DOMRectInner {
   #[cppgc]
   pub fn from_rect(#[webidl] init: DOMRectInit) -> DOMRectInner {
     DOMRectInner {
-      x: Cell::new(init.x),
-      y: Cell::new(init.y),
-      width: Cell::new(init.width),
-      height: Cell::new(init.height),
+      x: Cell::new(*init.x),
+      y: Cell::new(*init.y),
+      width: Cell::new(*init.width),
+      height: Cell::new(*init.height),
     }
   }
 
@@ -200,8 +201,8 @@ impl DOMRectInner {
   }
 
   #[setter]
-  pub fn x(&self, #[webidl] value: f64) {
-    self.x.set(value)
+  pub fn x(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.x.set(*value)
   }
 
   #[fast]
@@ -211,8 +212,8 @@ impl DOMRectInner {
   }
 
   #[setter]
-  pub fn y(&self, #[webidl] value: f64) {
-    self.y.set(value)
+  pub fn y(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.y.set(*value)
   }
 
   #[fast]
@@ -222,8 +223,8 @@ impl DOMRectInner {
   }
 
   #[setter]
-  pub fn width(&self, #[webidl] value: f64) {
-    self.width.set(value)
+  pub fn width(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.width.set(*value)
   }
 
   #[fast]
@@ -233,8 +234,8 @@ impl DOMRectInner {
   }
 
   #[setter]
-  pub fn height(&self, #[webidl] value: f64) {
-    self.height.set(value)
+  pub fn height(&self, #[webidl] value: webidl::UnrestrictedDouble) {
+    self.height.set(*value)
   }
 
   #[fast]
@@ -242,7 +243,7 @@ impl DOMRectInner {
   pub fn top(&self) -> f64 {
     let y = self.y.get();
     let height = self.height.get();
-    y.min(y + height)
+    minimum(y, y + height)
   }
 
   #[fast]
@@ -250,7 +251,7 @@ impl DOMRectInner {
   pub fn right(&self) -> f64 {
     let x = self.x.get();
     let width = self.width.get();
-    x.max(x + width)
+    maximum(x, x + width)
   }
 
   #[fast]
@@ -258,7 +259,7 @@ impl DOMRectInner {
   pub fn bottom(&self) -> f64 {
     let y = self.y.get();
     let height = self.height.get();
-    y.max(y + height)
+    maximum(y, y + height)
   }
 
   #[fast]
@@ -266,7 +267,7 @@ impl DOMRectInner {
   pub fn left(&self) -> f64 {
     let x = self.x.get();
     let width = self.width.get();
-    x.min(x + width)
+    minimum(x, x + width)
   }
 }
 
@@ -301,7 +302,9 @@ impl DOMQuadInner {
     #[inline]
     fn from_point(point: DOMPointInit) -> DOMPointInner {
       DOMPointInner {
-        inner: RefCell::new(Vector4::new(point.x, point.y, point.z, point.w)),
+        inner: RefCell::new(Vector4::new(
+          *point.x, *point.y, *point.z, *point.w,
+        )),
       }
     }
 
@@ -324,16 +327,16 @@ impl DOMQuadInner {
     } = rect;
     DOMQuadInner {
       p1: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(x, y, 0.0, 1.0)),
+        inner: RefCell::new(Vector4::new(*x, *y, 0.0, 1.0)),
       }),
       p2: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(x + width, y, 0.0, 1.0)),
+        inner: RefCell::new(Vector4::new(*x + *width, *y, 0.0, 1.0)),
       }),
       p3: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(x + width, y + height, 0.0, 1.0)),
+        inner: RefCell::new(Vector4::new(*x + *width, *y + *height, 0.0, 1.0)),
       }),
       p4: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(x, y + height, 0.0, 1.0)),
+        inner: RefCell::new(Vector4::new(*x, *y + *height, 0.0, 1.0)),
       }),
     }
   }
@@ -344,7 +347,9 @@ impl DOMQuadInner {
     #[inline]
     fn from_point(point: DOMPointInit) -> DOMPointInner {
       DOMPointInner {
-        inner: RefCell::new(Vector4::new(point.x, point.y, point.z, point.w)),
+        inner: RefCell::new(Vector4::new(
+          *point.x, *point.y, *point.z, *point.w,
+        )),
       }
     }
 
@@ -398,10 +403,10 @@ impl DOMQuadInner {
     let p2 = p2.inner.borrow();
     let p3 = p3.inner.borrow();
     let p4 = p4.inner.borrow();
-    let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
-    let top = p1.y.min(p2.y).min(p3.y).min(p4.y);
-    let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
-    let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
+    let left = minimum(minimum(p1.x, p2.x), minimum(p3.x, p4.x));
+    let top = minimum(minimum(p1.y, p2.y), minimum(p3.y, p4.y));
+    let right = maximum(maximum(p1.x, p2.x), maximum(p3.x, p4.x));
+    let bottom = maximum(maximum(p1.y, p2.y), maximum(p3.y, p4.y));
     DOMRectInner {
       x: Cell::new(left),
       y: Cell::new(top),
@@ -415,49 +420,49 @@ impl DOMQuadInner {
 #[webidl(dictionary)]
 pub struct DOMMatrixInit {
   #[webidl(default = None)]
-  a: Option<f64>,
+  a: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  b: Option<f64>,
+  b: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  c: Option<f64>,
+  c: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  d: Option<f64>,
+  d: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  e: Option<f64>,
+  e: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  f: Option<f64>,
+  f: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  m11: Option<f64>,
+  m11: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  m12: Option<f64>,
-  #[webidl(default = 0.0)]
-  m13: f64,
-  #[webidl(default = 0.0)]
-  m14: f64,
+  m12: Option<webidl::UnrestrictedDouble>,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m13: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m14: webidl::UnrestrictedDouble,
   #[webidl(default = None)]
-  m21: Option<f64>,
+  m21: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  m22: Option<f64>,
-  #[webidl(default = 0.0)]
-  m23: f64,
-  #[webidl(default = 0.0)]
-  m24: f64,
-  #[webidl(default = 0.0)]
-  m31: f64,
-  #[webidl(default = 0.0)]
-  m32: f64,
-  #[webidl(default = 1.0)]
-  m33: f64,
-  #[webidl(default = 0.0)]
-  m34: f64,
+  m22: Option<webidl::UnrestrictedDouble>,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m23: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m24: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m31: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m32: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
+  m33: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m34: webidl::UnrestrictedDouble,
   #[webidl(default = None)]
-  m41: Option<f64>,
+  m41: Option<webidl::UnrestrictedDouble>,
   #[webidl(default = None)]
-  m42: Option<f64>,
-  #[webidl(default = 0.0)]
-  m43: f64,
-  #[webidl(default = 1.0)]
-  m44: f64,
+  m42: Option<webidl::UnrestrictedDouble>,
+  #[webidl(default = webidl::UnrestrictedDouble(0.0))]
+  m43: webidl::UnrestrictedDouble,
+  #[webidl(default = webidl::UnrestrictedDouble(1.0))]
+  m44: webidl::UnrestrictedDouble,
   #[webidl(default = None)]
   is_2d: Option<bool>,
 }
@@ -532,7 +537,7 @@ impl DOMMatrixInner {
       ($value3d:expr, $value2d:expr, $default:expr) => {{
         if let Some(value3d) = $value3d {
           if let Some(value2d) = $value2d {
-            if !(value3d == value2d || value3d.is_nan() && value2d.is_nan()) {
+            if !(*value3d == *value2d || value3d.is_nan() && value2d.is_nan()) {
               return Err(GeometryError::Inconsistent2DMatrix);
             }
           }
@@ -540,7 +545,7 @@ impl DOMMatrixInner {
         } else if let Some(value2d) = $value2d {
           value2d
         } else {
-          $default
+          webidl::UnrestrictedDouble($default)
         }
       }};
     }
@@ -552,16 +557,16 @@ impl DOMMatrixInner {
     let m41 = fixup!(init.m41, init.e, 0.0);
     let m42 = fixup!(init.m42, init.f, 0.0);
     let is_2d = {
-      let is_2d_can_be_true = init.m13 == 0.0
-        && init.m14 == 0.0
-        && init.m23 == 0.0
-        && init.m24 == 0.0
-        && init.m31 == 0.0
-        && init.m32 == 0.0
-        && init.m33 == 1.0
-        && init.m34 == 0.0
-        && init.m43 == 0.0
-        && init.m44 == 1.0;
+      let is_2d_can_be_true = *init.m13 == 0.0
+        && *init.m14 == 0.0
+        && *init.m23 == 0.0
+        && *init.m24 == 0.0
+        && *init.m31 == 0.0
+        && *init.m32 == 0.0
+        && *init.m33 == 1.0
+        && *init.m34 == 0.0
+        && *init.m43 == 0.0
+        && *init.m44 == 1.0;
       if let Some(is_2d) = init.is_2d {
         if is_2d && !is_2d_can_be_true {
           return Err(GeometryError::Inconsistent2DMatrix);
@@ -577,10 +582,10 @@ impl DOMMatrixInner {
       Ok(DOMMatrixInner {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
-          m11, m21, 0.0, m41,
-          m12, m22, 0.0, m42,
-          0.0, 0.0, 1.0, 0.0,
-          0.0, 0.0, 0.0, 1.0,
+          *m11, *m21, 0.0, *m41,
+          *m12, *m22, 0.0, *m42,
+           0.0,  0.0, 1.0,  0.0,
+           0.0,  0.0, 0.0,  1.0,
         )),
         is_2d: Cell::new(true),
       })
@@ -601,10 +606,10 @@ impl DOMMatrixInner {
       Ok(DOMMatrixInner {
         #[rustfmt::skip]
         inner: RefCell::new(Matrix4::new(
-          m11, m21, m31, m41,
-          m12, m22, m32, m42,
-          m13, m23, m33, m43,
-          m14, m24, m34, m44,
+          *m11, *m21, *m31, *m41,
+          *m12, *m22, *m32, *m42,
+          *m13, *m23, *m33, *m43,
+          *m14, *m24, *m34, *m44,
         )),
         is_2d: Cell::new(false),
       })
@@ -633,10 +638,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn a(&self, #[webidl] value: f64) {
+  pub fn a(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_A) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_A) = *value;
     }
   }
 
@@ -648,10 +653,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn b(&self, #[webidl] value: f64) {
+  pub fn b(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_B) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_B) = *value;
     }
   }
 
@@ -663,10 +668,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn c(&self, #[webidl] value: f64) {
+  pub fn c(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_C) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_C) = *value;
     }
   }
 
@@ -678,10 +683,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn d(&self, #[webidl] value: f64) {
+  pub fn d(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_D) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_D) = *value;
     }
   }
 
@@ -693,10 +698,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn e(&self, #[webidl] value: f64) {
+  pub fn e(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_E) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_E) = *value;
     }
   }
 
@@ -708,10 +713,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn f(&self, #[webidl] value: f64) {
+  pub fn f(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_F) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_F) = *value;
     }
   }
 
@@ -723,10 +728,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m11(&self, #[webidl] value: f64) {
+  pub fn m11(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M11) = *value;
     }
   }
 
@@ -738,10 +743,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m12(&self, #[webidl] value: f64) {
+  pub fn m12(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M12) = *value;
     }
   }
 
@@ -753,12 +758,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m13(&self, #[webidl] value: f64) {
+  pub fn m13(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M13) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -771,12 +776,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m14(&self, #[webidl] value: f64) {
+  pub fn m14(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M14) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -789,10 +794,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m21(&self, #[webidl] value: f64) {
+  pub fn m21(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M21) = *value;
     }
   }
 
@@ -804,10 +809,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m22(&self, #[webidl] value: f64) {
+  pub fn m22(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M22) = *value;
     }
   }
 
@@ -819,12 +824,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m23(&self, #[webidl] value: f64) {
+  pub fn m23(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M23) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -837,12 +842,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m24(&self, #[webidl] value: f64) {
+  pub fn m24(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M24) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -855,12 +860,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m31(&self, #[webidl] value: f64) {
+  pub fn m31(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M31) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -873,12 +878,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m32(&self, #[webidl] value: f64) {
+  pub fn m32(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M32) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -891,12 +896,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m33(&self, #[webidl] value: f64) {
+  pub fn m33(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M33) = *value;
     }
-    if value != 1.0 {
+    if *value != 1.0 {
       self.is_2d.set(false);
     }
   }
@@ -909,12 +914,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m34(&self, #[webidl] value: f64) {
+  pub fn m34(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M34) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -927,10 +932,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m41(&self, #[webidl] value: f64) {
+  pub fn m41(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M41) = *value;
     }
   }
 
@@ -942,10 +947,10 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m42(&self, #[webidl] value: f64) {
+  pub fn m42(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M42) = *value;
     }
   }
 
@@ -957,12 +962,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m43(&self, #[webidl] value: f64) {
+  pub fn m43(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M43) = *value;
     }
-    if value != 0.0 {
+    if *value != 0.0 {
       self.is_2d.set(false);
     }
   }
@@ -975,12 +980,12 @@ impl DOMMatrixInner {
   }
 
   #[setter]
-  pub fn m44(&self, #[webidl] value: f64) {
+  pub fn m44(&self, #[webidl] value: webidl::UnrestrictedDouble) {
     // SAFETY: in-range access
     unsafe {
-      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = value;
+      *self.inner.borrow_mut().get_unchecked_mut(INDEX_M44) = *value;
     }
-    if value != 1.0 {
+    if *value != 1.0 {
       self.is_2d.set(false);
     }
   }
@@ -1041,151 +1046,165 @@ impl DOMMatrixInner {
   #[cppgc]
   pub fn translate(
     &self,
-    #[webidl] tx: f64,
-    #[webidl] ty: f64,
-    #[webidl] tz: f64,
+    #[webidl] tx: webidl::UnrestrictedDouble,
+    #[webidl] ty: webidl::UnrestrictedDouble,
+    #[webidl] tz: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_translate(&out, tx, ty, tz);
+    matrix_translate(&out, *tx, *ty, *tz);
     out
   }
 
   pub fn translate_self(
     &self,
-    #[webidl] tx: f64,
-    #[webidl] ty: f64,
-    #[webidl] tz: f64,
+    #[webidl] tx: webidl::UnrestrictedDouble,
+    #[webidl] ty: webidl::UnrestrictedDouble,
+    #[webidl] tz: webidl::UnrestrictedDouble,
   ) {
-    matrix_translate(self, tx, ty, tz);
+    matrix_translate(self, *tx, *ty, *tz);
   }
 
   #[cppgc]
   pub fn scale_without_origin(
     &self,
-    #[webidl] sx: f64,
-    #[webidl] sy: f64,
-    #[webidl] sz: f64,
+    #[webidl] sx: webidl::UnrestrictedDouble,
+    #[webidl] sy: webidl::UnrestrictedDouble,
+    #[webidl] sz: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_scale_without_origin(&out, sx, sy, sz);
+    matrix_scale_without_origin(&out, *sx, *sy, *sz);
     out
   }
 
   pub fn scale_without_origin_self(
     &self,
-    #[webidl] sx: f64,
-    #[webidl] sy: f64,
-    #[webidl] sz: f64,
+    #[webidl] sx: webidl::UnrestrictedDouble,
+    #[webidl] sy: webidl::UnrestrictedDouble,
+    #[webidl] sz: webidl::UnrestrictedDouble,
   ) {
-    matrix_scale_without_origin(self, sx, sy, sz);
+    matrix_scale_without_origin(self, *sx, *sy, *sz);
   }
 
   #[cppgc]
   pub fn scale_with_origin(
     &self,
-    #[webidl] sx: f64,
-    #[webidl] sy: f64,
-    #[webidl] sz: f64,
-    #[webidl] origin_x: f64,
-    #[webidl] origin_y: f64,
-    #[webidl] origin_z: f64,
+    #[webidl] sx: webidl::UnrestrictedDouble,
+    #[webidl] sy: webidl::UnrestrictedDouble,
+    #[webidl] sz: webidl::UnrestrictedDouble,
+    #[webidl] origin_x: webidl::UnrestrictedDouble,
+    #[webidl] origin_y: webidl::UnrestrictedDouble,
+    #[webidl] origin_z: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_scale_with_origin(&out, sx, sy, sz, origin_x, origin_y, origin_z);
+    matrix_scale_with_origin(
+      &out, *sx, *sy, *sz, *origin_x, *origin_y, *origin_z,
+    );
     out
   }
 
   pub fn scale_with_origin_self(
     &self,
-    #[webidl] sx: f64,
-    #[webidl] sy: f64,
-    #[webidl] sz: f64,
-    #[webidl] origin_x: f64,
-    #[webidl] origin_y: f64,
-    #[webidl] origin_z: f64,
+    #[webidl] sx: webidl::UnrestrictedDouble,
+    #[webidl] sy: webidl::UnrestrictedDouble,
+    #[webidl] sz: webidl::UnrestrictedDouble,
+    #[webidl] origin_x: webidl::UnrestrictedDouble,
+    #[webidl] origin_y: webidl::UnrestrictedDouble,
+    #[webidl] origin_z: webidl::UnrestrictedDouble,
   ) {
-    matrix_scale_with_origin(self, sx, sy, sz, origin_x, origin_y, origin_z);
+    matrix_scale_with_origin(
+      self, *sx, *sy, *sz, *origin_x, *origin_y, *origin_z,
+    );
   }
 
   #[cppgc]
   pub fn rotate(
     &self,
-    #[webidl] roll_deg: f64,
-    #[webidl] pitch_deg: f64,
-    #[webidl] yaw_deg: f64,
+    #[webidl] roll_deg: webidl::UnrestrictedDouble,
+    #[webidl] pitch_deg: webidl::UnrestrictedDouble,
+    #[webidl] yaw_deg: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_rotate(&out, roll_deg, pitch_deg, yaw_deg);
+    matrix_rotate(&out, *roll_deg, *pitch_deg, *yaw_deg);
     out
   }
 
   pub fn rotate_self(
     &self,
-    #[webidl] roll_deg: f64,
-    #[webidl] pitch_deg: f64,
-    #[webidl] yaw_deg: f64,
+    #[webidl] roll_deg: webidl::UnrestrictedDouble,
+    #[webidl] pitch_deg: webidl::UnrestrictedDouble,
+    #[webidl] yaw_deg: webidl::UnrestrictedDouble,
   ) {
-    matrix_rotate(self, roll_deg, pitch_deg, yaw_deg);
+    matrix_rotate(self, *roll_deg, *pitch_deg, *yaw_deg);
   }
 
   #[cppgc]
   pub fn rotate_from_vector(
     &self,
-    #[webidl] x: f64,
-    #[webidl] y: f64,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_rotate_from_vector(&out, x, y);
+    matrix_rotate_from_vector(&out, *x, *y);
     out
   }
 
-  pub fn rotate_from_vector_self(&self, #[webidl] x: f64, #[webidl] y: f64) {
-    matrix_rotate_from_vector(self, x, y);
+  pub fn rotate_from_vector_self(
+    &self,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
+  ) {
+    matrix_rotate_from_vector(self, *x, *y);
   }
 
   #[cppgc]
   pub fn rotate_axis_angle(
     &self,
-    #[webidl] x: f64,
-    #[webidl] y: f64,
-    #[webidl] z: f64,
-    #[webidl] angle_deg: f64,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
+    #[webidl] z: webidl::UnrestrictedDouble,
+    #[webidl] angle_deg: webidl::UnrestrictedDouble,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_rotate_axis_angle(&out, x, y, z, angle_deg);
+    matrix_rotate_axis_angle(&out, *x, *y, *z, *angle_deg);
     out
   }
 
   pub fn rotate_axis_angle_self(
     &self,
-    #[webidl] x: f64,
-    #[webidl] y: f64,
-    #[webidl] z: f64,
-    #[webidl] angle_deg: f64,
+    #[webidl] x: webidl::UnrestrictedDouble,
+    #[webidl] y: webidl::UnrestrictedDouble,
+    #[webidl] z: webidl::UnrestrictedDouble,
+    #[webidl] angle_deg: webidl::UnrestrictedDouble,
   ) {
-    matrix_rotate_axis_angle(self, x, y, z, angle_deg);
+    matrix_rotate_axis_angle(self, *x, *y, *z, *angle_deg);
   }
 
   #[cppgc]
-  pub fn skew_x(&self, #[webidl] x_deg: f64) -> DOMMatrixInner {
+  pub fn skew_x(
+    &self,
+    #[webidl] x_deg: webidl::UnrestrictedDouble,
+  ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_skew_x(&out, x_deg);
+    matrix_skew_x(&out, *x_deg);
     out
   }
 
-  pub fn skew_x_self(&self, #[webidl] x_deg: f64) {
-    matrix_skew_x(self, x_deg);
+  pub fn skew_x_self(&self, #[webidl] x_deg: webidl::UnrestrictedDouble) {
+    matrix_skew_x(self, *x_deg);
   }
 
   #[cppgc]
-  pub fn skew_y(&self, #[webidl] y_deg: f64) -> DOMMatrixInner {
+  pub fn skew_y(
+    &self,
+    #[webidl] y_deg: webidl::UnrestrictedDouble,
+  ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_skew_y(&out, y_deg);
+    matrix_skew_y(&out, *y_deg);
     out
   }
 
-  pub fn skew_y_self(&self, #[webidl] y_deg: f64) {
-    matrix_skew_y(self, y_deg);
+  pub fn skew_y_self(&self, #[webidl] y_deg: webidl::UnrestrictedDouble) {
+    matrix_skew_y(self, *y_deg);
   }
 
   #[cppgc]
@@ -1261,6 +1280,44 @@ impl DOMMatrixInner {
     };
     matrix_transform_point(self, &point, &out);
     out
+  }
+}
+
+// TODO(petamoriken) Use f64::maximum instead https://github.com/rust-lang/rust/issues/91079
+#[inline]
+fn maximum(a: f64, b: f64) -> f64 {
+  if a > b {
+    a
+  } else if b > a {
+    b
+  } else if a == b {
+    if a.is_sign_positive() && b.is_sign_negative() {
+      a
+    } else {
+      b
+    }
+  } else {
+    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
+    a + b
+  }
+}
+
+// TODO(petamoriken) Use f64::minimum instead https://github.com/rust-lang/rust/issues/91079
+#[inline]
+fn minimum(a: f64, b: f64) -> f64 {
+  if a < b {
+    a
+  } else if b < a {
+    b
+  } else if a == b {
+    if a.is_sign_negative() && b.is_sign_positive() {
+      a
+    } else {
+      b
+    }
+  } else {
+    // At least one input is NaN. Use `+` to perform NaN propagation and quieting.
+    a + b
   }
 }
 
