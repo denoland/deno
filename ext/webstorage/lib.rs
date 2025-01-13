@@ -12,14 +12,18 @@ use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebStorageError {
+  #[class("DOMExceptionNotSupportedError")]
   #[error("LocalStorage is not supported in this context.")]
   ContextNotSupported,
+  #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
+  #[class("DOMExceptionQuotaExceededError")]
   #[error("Exceeded maximum storage size")]
   StorageExceeded,
 }

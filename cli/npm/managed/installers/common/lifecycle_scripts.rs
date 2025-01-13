@@ -6,7 +6,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
@@ -29,7 +28,7 @@ pub trait LifecycleScriptsStrategy {
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, PathBuf)],
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), std::io::Error>;
 
   fn has_warned(&self, package: &NpmResolutionPackage) -> bool;
 
@@ -38,7 +37,7 @@ pub trait LifecycleScriptsStrategy {
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-  ) -> Result<(), AnyError>;
+  ) -> Result<(), std::io::Error>;
 }
 
 pub struct LifecycleScripts<'a> {
@@ -82,6 +81,27 @@ pub fn has_lifecycle_scripts(
 // (for example, `fsevents` hits this)
 fn is_broken_default_install_script(script: &str, package_path: &Path) -> bool {
   script == "node-gyp rebuild" && !package_path.join("binding.gyp").exists()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LifecycleScriptsError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  BinEntries(#[from] super::bin_entries::BinEntriesError),
+  #[class(inherit)]
+  #[error(
+    "failed to create npm process state tempfile for running lifecycle scripts"
+  )]
+  CreateNpmProcessState(#[source] std::io::Error),
+  #[class(generic)]
+  #[error(transparent)]
+  Task(AnyError),
+  #[class(generic)]
+  #[error("failed to run scripts for packages: {}", .0.join(", "))]
+  RunScripts(Vec<String>),
 }
 
 impl<'a> LifecycleScripts<'a> {
@@ -141,7 +161,7 @@ impl<'a> LifecycleScripts<'a> {
     }
   }
 
-  pub fn warn_not_run_scripts(&self) -> Result<(), AnyError> {
+  pub fn warn_not_run_scripts(&self) -> Result<(), std::io::Error> {
     if !self.packages_with_scripts_not_run.is_empty() {
       self
         .strategy
@@ -156,7 +176,7 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LifecycleScriptsError> {
     let kill_signal = KillSignal::default();
     let _drop_signal = kill_signal.clone().drop_guard();
     // we don't run with signals forwarded because once signals
@@ -179,7 +199,7 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
     kill_signal: KillSignal,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), LifecycleScriptsError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
       |p: &NpmResolutionPackage| self.strategy.package_path(p);
@@ -198,7 +218,7 @@ impl<'a> LifecycleScripts<'a> {
         snapshot,
         packages,
         get_package_path,
-      )?;
+      );
       let init_cwd = &self.config.initial_cwd;
       let process_state = crate::npm::managed::npm_process_state(
         snapshot.as_valid_serialized(),
@@ -222,7 +242,8 @@ impl<'a> LifecycleScripts<'a> {
       let temp_file_fd =
         deno_runtime::ops::process::npm_process_state_tempfile(
           process_state.as_bytes(),
-        ).context("failed to create npm process state tempfile for running lifecycle scripts")?;
+        )
+        .map_err(LifecycleScriptsError::CreateNpmProcessState)?;
       // SAFETY: fd/handle is valid
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
@@ -240,7 +261,7 @@ impl<'a> LifecycleScripts<'a> {
           package,
           snapshot,
           get_package_path,
-        )?;
+        );
         for script_name in ["preinstall", "install", "postinstall"] {
           if let Some(script) = package.scripts.get(script_name) {
             if script_name == "install"
@@ -273,7 +294,8 @@ impl<'a> LifecycleScripts<'a> {
                 kill_signal: kill_signal.clone(),
               },
             )
-            .await?;
+            .await
+            .map_err(LifecycleScriptsError::Task)?;
             let stdout = stdout.unwrap();
             let stderr = stderr.unwrap();
             if exit_code != 0 {
@@ -322,14 +344,12 @@ impl<'a> LifecycleScripts<'a> {
     if failed_packages.is_empty() {
       Ok(())
     } else {
-      Err(AnyError::msg(format!(
-        "failed to run scripts for packages: {}",
+      Err(LifecycleScriptsError::RunScripts(
         failed_packages
           .iter()
           .map(|p| p.to_string())
-          .collect::<Vec<_>>()
-          .join(", ")
-      )))
+          .collect::<Vec<_>>(),
+      ))
     }
   }
 }
@@ -349,7 +369,7 @@ fn resolve_baseline_custom_commands<'a>(
   snapshot: &'a NpmResolutionSnapshot,
   packages: &'a [NpmResolutionPackage],
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
   custom_commands
     .insert("npx".to_string(), Rc::new(crate::task_runner::NpxCommand));
@@ -390,7 +410,7 @@ fn resolve_custom_commands_from_packages<
   snapshot: &'a NpmResolutionSnapshot,
   packages: P,
   get_package_path: impl Fn(&'a NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   for package in packages {
     let package_path = get_package_path(package);
 
@@ -409,7 +429,7 @@ fn resolve_custom_commands_from_packages<
     );
   }
 
-  Ok(commands)
+  commands
 }
 
 // resolves the custom commands from the dependencies of a package
@@ -420,7 +440,7 @@ fn resolve_custom_commands_from_deps(
   package: &NpmResolutionPackage,
   snapshot: &NpmResolutionSnapshot,
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
-) -> Result<crate::task_runner::TaskCustomCommands, AnyError> {
+) -> crate::task_runner::TaskCustomCommands {
   let mut bin_entries = BinEntries::new();
   resolve_custom_commands_from_packages(
     &mut bin_entries,

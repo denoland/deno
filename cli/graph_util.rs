@@ -2,17 +2,18 @@
 
 use std::collections::HashSet;
 use std::error::Error;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_config::deno_json;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::workspace::JsrPackageConfig;
-use deno_core::anyhow::bail;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
+use deno_core::serde_json;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolutionKind;
@@ -28,13 +29,13 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
-use import_map::ImportMapError;
 use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
@@ -49,16 +50,14 @@ use crate::cache::GlobalHttpCache;
 use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
-use crate::errors::get_error_class_name;
-use crate::errors::get_module_graph_error_class;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::sys::CliSys;
 use crate::tools::check;
+use crate::tools::check::CheckError;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
@@ -85,7 +84,7 @@ pub fn graph_valid(
   sys: &CliSys,
   roots: &[ModuleSpecifier],
   options: GraphValidOptions,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if options.exit_integrity_errors {
     graph_exit_integrity_errors(graph);
   }
@@ -104,9 +103,9 @@ pub fn graph_valid(
   } else {
     // finally surface the npm resolution result
     if let Err(err) = &graph.npm_dep_graph_result {
-      return Err(custom_error(
-        get_error_class_name(err),
-        format_deno_graph_error(err.as_ref().deref()),
+      return Err(JsErrorBox::new(
+        err.get_class(),
+        format_deno_graph_error(err),
       ));
     }
     Ok(())
@@ -145,7 +144,7 @@ pub fn graph_walk_errors<'a>(
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
   options: GraphWalkErrorsOptions,
-) -> impl Iterator<Item = AnyError> + 'a {
+) -> impl Iterator<Item = JsErrorBox> + 'a {
   graph
     .walk(
       roots.iter(),
@@ -197,7 +196,7 @@ pub fn graph_walk_errors<'a>(
         return None;
       }
 
-      Some(custom_error(get_module_graph_error_class(&error), message))
+      Some(JsErrorBox::new(error.get_class(), message))
     })
 }
 
@@ -437,14 +436,14 @@ impl ModuleGraphCreator {
     }
   }
 
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_valid(graph)
   }
 
   async fn type_check_graph(
     &self,
     graph: ModuleGraph,
-  ) -> Result<Arc<ModuleGraph>, AnyError> {
+  ) -> Result<Arc<ModuleGraph>, CheckError> {
     self
       .type_checker
       .check(
@@ -465,6 +464,27 @@ pub struct BuildFastCheckGraphOptions<'a> {
   /// Whether to do fast check on workspace members. This
   /// is mostly only useful when publishing.
   pub workspace_fast_check: deno_graph::WorkspaceFastCheckOption<'a>,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum BuildGraphWithNpmResolutionError {
+  #[class(inherit)]
+  #[error(transparent)]
+  SerdeJson(#[from] serde_json::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  ToMaybeJsxImportSourceConfig(
+    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  NodeModulesDirParse(#[from] deno_json::NodeModulesDirParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+  #[class(generic)]
+  #[error("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead")]
+  UnsupportedNpmSpecifierEntrypointResolutionWay,
 }
 
 pub struct ModuleGraphBuilder {
@@ -524,7 +544,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: CreateGraphOptions<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
       Owned(cache::FetchCacher),
@@ -652,7 +672,7 @@ impl ModuleGraphBuilder {
     loader: &'a mut dyn deno_graph::source::Loader,
     options: deno_graph::BuildOptions<'a>,
     npm_caching: NpmCachingStrategy,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), BuildGraphWithNpmResolutionError> {
     // ensure an "npm install" is done if the user has explicitly
     // opted into using a node_modules directory
     if self
@@ -689,7 +709,7 @@ impl ModuleGraphBuilder {
     if roots.iter().any(|r| r.scheme() == "npm")
       && self.npm_resolver.as_byonm().is_some()
     {
-      bail!("Resolving npm specifier entrypoints this way is currently not supported with \"nodeModules\": \"manual\". In the meantime, try with --node-modules-dir=auto instead");
+      return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
     }
 
     graph.build(roots, loader, options).await;
@@ -740,7 +760,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: BuildFastCheckGraphOptions,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), deno_json::ToMaybeJsxImportSourceConfigError> {
     if !graph.graph_kind().include_types() {
       return Ok(());
     }
@@ -804,7 +824,7 @@ impl ModuleGraphBuilder {
   /// Check if `roots` and their deps are available. Returns `Ok(())` if
   /// so. Returns `Err(_)` if there is a known module graph or resolution
   /// error statically reachable from `roots` and not a dynamic import.
-  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), AnyError> {
+  pub fn graph_valid(&self, graph: &ModuleGraph) -> Result<(), JsErrorBox> {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
@@ -815,7 +835,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
       &self.sys,
@@ -832,7 +852,10 @@ impl ModuleGraphBuilder {
     )
   }
 
-  fn create_graph_resolver(&self) -> Result<CliGraphResolver, AnyError> {
+  fn create_graph_resolver(
+    &self,
+  ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
+  {
     let jsx_import_source_config = self
       .cli_options
       .workspace()
@@ -1000,9 +1023,11 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) =
-        error.downcast_ref::<ImportMapError>()
+    if let ResolveError::ImportMap(error) = (*error).as_ref() {
+      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
+        specifier,
+        _,
+      ) = error.as_kind()
       {
         Some(specifier.as_str())
       } else {
@@ -1039,11 +1064,12 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
         ResolveError::Other(other_error) => {
           if let Some(SpecifierError::ImportPrefixMissing {
             specifier, ..
-          }) = other_error.downcast_ref::<SpecifierError>()
+          }) = other_error.as_any().downcast_ref::<SpecifierError>()
           {
             maybe_specifier = Some(specifier);
           }
         }
+        ResolveError::ImportMap(_) => {}
       }
     }
   }
@@ -1294,7 +1320,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(err.into())),
+        error: Arc::new(ResolveError::ImportMap(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,

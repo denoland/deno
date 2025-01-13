@@ -2,7 +2,6 @@
 
 //! Code for local node_modules resolution.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -17,35 +16,23 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_ast::ModuleSpecifier;
-use deno_cache_dir::npm::mixed_case_package_name_decode;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageCacheFolderId;
-use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use deno_path_util::fs::canonicalize_path_maybe_not_exists;
-use deno_resolver::npm::normalize_pkg_name_for_node_modules_deno_folder;
+use deno_resolver::npm::get_package_folder_id_folder_name;
+use deno_resolver::npm::managed::NpmResolution;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
-use node_resolver::errors::PackageFolderResolveError;
-use node_resolver::errors::PackageFolderResolveIoError;
-use node_resolver::errors::PackageNotFoundError;
-use node_resolver::errors::ReferrerNotFoundError;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsMetadata;
 
-use super::super::resolution::NpmResolution;
 use super::common::bin_entries;
-use super::common::NpmPackageFsResolver;
+use super::common::NpmPackageFsInstaller;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
@@ -63,7 +50,7 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
-pub struct LocalNpmPackageResolver {
+pub struct LocalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
@@ -71,12 +58,11 @@ pub struct LocalNpmPackageResolver {
   sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
   root_node_modules_path: PathBuf,
-  root_node_modules_url: Url,
   system_info: NpmSystemInfo,
   lifecycle_scripts: LifecycleScriptsConfig,
 }
 
-impl LocalNpmPackageResolver {
+impl LocalNpmPackageInstaller {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     cache: Arc<CliNpmCache>,
@@ -96,162 +82,19 @@ impl LocalNpmPackageResolver {
       resolution,
       tarball_cache,
       sys,
-      root_node_modules_url: Url::from_directory_path(&node_modules_folder)
-        .unwrap(),
       root_node_modules_path: node_modules_folder,
       system_info,
       lifecycle_scripts,
     }
   }
-
-  fn resolve_package_root(&self, path: &Path) -> PathBuf {
-    let mut last_found = path;
-    loop {
-      let parent = last_found.parent().unwrap();
-      if parent.file_name().unwrap() == "node_modules" {
-        return last_found.to_path_buf();
-      } else {
-        last_found = parent;
-      }
-    }
-  }
-
-  fn resolve_folder_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, std::io::Error> {
-    let Some(relative_url) =
-      self.root_node_modules_url.make_relative(specifier)
-    else {
-      return Ok(None);
-    };
-    if relative_url.starts_with("../") {
-      return Ok(None);
-    }
-    // it's within the directory, so use it
-    let Some(path) = specifier.to_file_path().ok() else {
-      return Ok(None);
-    };
-    // Canonicalize the path so it's not pointing to the symlinked directory
-    // in `node_modules` directory of the referrer.
-    canonicalize_path_maybe_not_exists(&self.sys, &path).map(Some)
-  }
-
-  fn resolve_package_folder_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<PathBuf>, AnyError> {
-    let Some(local_path) = self.resolve_folder_for_specifier(specifier)? else {
-      return Ok(None);
-    };
-    let package_root_path = self.resolve_package_root(&local_path);
-    Ok(Some(package_root_path))
-  }
 }
 
 #[async_trait(?Send)]
-impl NpmPackageFsResolver for LocalNpmPackageResolver {
-  fn node_modules_path(&self) -> Option<&Path> {
-    Some(self.root_node_modules_path.as_ref())
-  }
-
-  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let cache_folder_id = self
-      .resolution
-      .resolve_pkg_cache_folder_id_from_pkg_id(id)?;
-    // package is stored at:
-    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-    Some(
-      self
-        .root_node_modules_path
-        .join(".deno")
-        .join(get_package_folder_id_folder_name(&cache_folder_id))
-        .join("node_modules")
-        .join(&cache_folder_id.nv.name),
-    )
-  }
-
-  fn resolve_package_folder_from_package(
-    &self,
-    name: &str,
-    referrer: &ModuleSpecifier,
-  ) -> Result<PathBuf, PackageFolderResolveError> {
-    let maybe_local_path = self
-      .resolve_folder_for_specifier(referrer)
-      .map_err(|err| PackageFolderResolveIoError {
-        package_name: name.to_string(),
-        referrer: referrer.clone(),
-        source: err,
-      })?;
-    let Some(local_path) = maybe_local_path else {
-      return Err(
-        ReferrerNotFoundError {
-          referrer: referrer.clone(),
-          referrer_extra: None,
-        }
-        .into(),
-      );
-    };
-    let package_root_path = self.resolve_package_root(&local_path);
-    let mut current_folder = package_root_path.as_path();
-    while let Some(parent_folder) = current_folder.parent() {
-      current_folder = parent_folder;
-      let node_modules_folder = if current_folder.ends_with("node_modules") {
-        Cow::Borrowed(current_folder)
-      } else {
-        Cow::Owned(current_folder.join("node_modules"))
-      };
-
-      let sub_dir = join_package_name(&node_modules_folder, name);
-      if self.sys.fs_is_dir_no_err(&sub_dir) {
-        return Ok(sub_dir);
-      }
-
-      if current_folder == self.root_node_modules_path {
-        break;
-      }
-    }
-
-    Err(
-      PackageNotFoundError {
-        package_name: name.to_string(),
-        referrer: referrer.clone(),
-        referrer_extra: None,
-      }
-      .into(),
-    )
-  }
-
-  fn resolve_package_cache_folder_id_from_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Result<Option<NpmPackageCacheFolderId>, AnyError> {
-    let Some(folder_path) =
-      self.resolve_package_folder_from_specifier(specifier)?
-    else {
-      return Ok(None);
-    };
-    // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
-    let Some(node_modules_ancestor) = folder_path
-      .ancestors()
-      .find(|ancestor| ancestor.ends_with("node_modules"))
-    else {
-      return Ok(None);
-    };
-    let Some(folder_name) =
-      node_modules_ancestor.parent().and_then(|p| p.file_name())
-    else {
-      return Ok(None);
-    };
-    Ok(get_package_folder_id_from_folder_name(
-      &folder_name.to_string_lossy(),
-    ))
-  }
-
+impl NpmPackageFsInstaller for LocalNpmPackageInstaller {
   async fn cache_packages<'a>(
     &self,
     caching: PackageCaching<'a>,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     let snapshot = match caching {
       PackageCaching::All => self.resolution.snapshot(),
       PackageCaching::Only(reqs) => self.resolution.subset(&reqs),
@@ -263,10 +106,12 @@ impl NpmPackageFsResolver for LocalNpmPackageResolver {
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
+      &self.sys,
       &self.system_info,
       &self.lifecycle_scripts,
     )
     .await
+    .map_err(JsErrorBox::from_err)
   }
 }
 
@@ -285,6 +130,38 @@ fn local_node_modules_package_contents_path(
     .join(&package.id.nv.name)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SyncResolutionWithFsError {
+  #[class(inherit)]
+  #[error("Creating '{path}'")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  CopyDirRecursive(#[from] crate::util::fs::CopyDirRecursiveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  SymlinkPackageDir(#[from] SymlinkPackageDirError),
+  #[class(inherit)]
+  #[error(transparent)]
+  BinEntries(#[from] bin_entries::BinEntriesError),
+  #[class(inherit)]
+  #[error(transparent)]
+  LifecycleScripts(
+    #[from] super::common::lifecycle_scripts::LifecycleScriptsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 /// Creates a pnpm style folder structure.
 #[allow(clippy::too_many_arguments)]
 async fn sync_resolution_with_fs(
@@ -294,9 +171,10 @@ async fn sync_resolution_with_fs(
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<CliNpmTarballCache>,
   root_node_modules_dir_path: &Path,
+  sys: &CliSys,
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
-) -> Result<(), AnyError> {
+) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty()
     && npm_install_deps_provider.workspace_pkgs().is_empty()
   {
@@ -311,12 +189,18 @@ async fn sync_resolution_with_fs(
 
   let deno_local_registry_dir = root_node_modules_dir_path.join(".deno");
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
-  fs::create_dir_all(&deno_node_modules_dir).with_context(|| {
-    format!("Creating '{}'", deno_local_registry_dir.display())
+  fs::create_dir_all(&deno_node_modules_dir).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: deno_local_registry_dir.to_path_buf(),
+      source,
+    }
   })?;
   let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
-  fs::create_dir_all(&bin_node_modules_dir_path).with_context(|| {
-    format!("Creating '{}'", bin_node_modules_dir_path.display())
+  fs::create_dir_all(&bin_node_modules_dir_path).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: deno_local_registry_dir.to_path_buf(),
+      source,
+    }
   })?;
 
   let single_process_lock = LaxSingleProcessFsFlag::lock(
@@ -420,7 +304,8 @@ async fn sync_resolution_with_fs(
       cache_futures.push(async move {
         tarball_cache
           .ensure_package(&package.id.nv, &package.dist)
-          .await?;
+          .await
+          .map_err(JsErrorBox::from_err)?;
         let pb_guard = progress_bar.update_with_prompt(
           ProgressMessagePrompt::Initialize,
           &package.id.nv.to_string(),
@@ -432,19 +317,18 @@ async fn sync_resolution_with_fs(
 
         deno_core::unsync::spawn_blocking({
           let package_path = package_path.clone();
+          let sys = sys.clone();
           move || {
-            clone_dir_recursive(
-              &crate::sys::CliSys::default(),
-              &cache_folder,
-              &package_path,
-            )?;
+            clone_dir_recursive(&sys, &cache_folder, &package_path)?;
             // write out a file that indicates this folder has been initialized
             fs::write(initialized_file, tags)?;
 
-            Ok::<_, AnyError>(())
+            Ok::<_, SyncResolutionWithFsError>(())
           }
         })
-        .await??;
+        .await
+        .map_err(JsErrorBox::from_err)?
+        .map_err(JsErrorBox::from_err)?;
 
         if package.bin.is_some() {
           bin_entries_to_setup.borrow_mut().add(package, package_path);
@@ -458,7 +342,7 @@ async fn sync_resolution_with_fs(
 
         // finally stop showing the progress bar
         drop(pb_guard); // explicit for clarity
-        Ok::<_, AnyError>(())
+        Ok::<_, JsErrorBox>(())
       });
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;
@@ -494,11 +378,7 @@ async fn sync_resolution_with_fs(
         &package.id.nv.name,
       );
 
-      clone_dir_recursive(
-        &crate::sys::CliSys::default(),
-        &source_path,
-        &package_path,
-      )?;
+      clone_dir_recursive(sys, &source_path, &package_path)?;
       // write out a file that indicates this folder has been initialized
       fs::write(initialized_file, "")?;
     }
@@ -597,8 +477,11 @@ async fn sync_resolution_with_fs(
         // symlink the dep into the package's child node_modules folder
         let dest_node_modules = remote.base_dir.join("node_modules");
         if !existing_child_node_modules_dirs.contains(&dest_node_modules) {
-          fs::create_dir_all(&dest_node_modules).with_context(|| {
-            format!("Creating '{}'", dest_node_modules.display())
+          fs::create_dir_all(&dest_node_modules).map_err(|source| {
+            SyncResolutionWithFsError::Creating {
+              path: dest_node_modules.clone(),
+              source,
+            }
           })?;
           existing_child_node_modules_dirs.insert(dest_node_modules.clone());
         }
@@ -813,7 +696,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn did_run_scripts(
     &self,
     package: &NpmResolutionPackage,
-  ) -> std::result::Result<(), deno_core::anyhow::Error> {
+  ) -> std::result::Result<(), std::io::Error> {
     std::fs::write(self.ran_scripts_file(package), "")?;
     Ok(())
   }
@@ -821,7 +704,7 @@ impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
   fn warn_on_scripts_not_run(
     &self,
     packages: &[(&NpmResolutionPackage, std::path::PathBuf)],
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), std::io::Error> {
     if !packages.is_empty() {
       log::warn!("{} The following packages contained npm lifecycle scripts ({}) that were not executed:", colors::yellow("Warning"), colors::gray("preinstall/install/postinstall"));
 
@@ -1004,52 +887,42 @@ impl SetupCache {
   }
 }
 
-fn get_package_folder_id_folder_name(
-  folder_id: &NpmPackageCacheFolderId,
-) -> String {
-  let copy_str = if folder_id.copy_index == 0 {
-    Cow::Borrowed("")
-  } else {
-    Cow::Owned(format!("_{}", folder_id.copy_index))
-  };
-  let nv = &folder_id.nv;
-  let name = normalize_pkg_name_for_node_modules_deno_folder(&nv.name);
-  format!("{}@{}{}", name, nv.version, copy_str)
-}
-
-fn get_package_folder_id_from_folder_name(
-  folder_name: &str,
-) -> Option<NpmPackageCacheFolderId> {
-  let folder_name = folder_name.replace('+', "/");
-  let (name, ending) = folder_name.rsplit_once('@')?;
-  let name: StackString = if let Some(encoded_name) = name.strip_prefix('_') {
-    StackString::from_string(mixed_case_package_name_decode(encoded_name)?)
-  } else {
-    name.into()
-  };
-  let (raw_version, copy_index) = match ending.split_once('_') {
-    Some((raw_version, copy_index)) => {
-      let copy_index = copy_index.parse::<u8>().ok()?;
-      (raw_version, copy_index)
-    }
-    None => (ending, 0),
-  };
-  let version = deno_semver::Version::parse_from_npm(raw_version).ok()?;
-  Some(NpmPackageCacheFolderId {
-    nv: PackageNv { name, version },
-    copy_index,
-  })
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum SymlinkPackageDirError {
+  #[class(inherit)]
+  #[error("Creating '{parent}'")]
+  Creating {
+    parent: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] std::io::Error),
+  #[cfg(windows)]
+  #[class(inherit)]
+  #[error("Creating junction in node_modules folder")]
+  FailedCreatingJunction {
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
 }
 
 fn symlink_package_dir(
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), SymlinkPackageDirError> {
   let new_parent = new_path.parent().unwrap();
   if new_parent.file_name().unwrap() != "node_modules" {
     // create the parent folder that will contain the symlink
-    fs::create_dir_all(new_parent)
-      .with_context(|| format!("Creating '{}'", new_parent.display()))?;
+    fs::create_dir_all(new_parent).map_err(|source| {
+      SymlinkPackageDirError::Creating {
+        parent: new_parent.to_path_buf(),
+        source,
+      }
+    })?;
   }
 
   // need to delete the previous symlink before creating a new one
@@ -1075,7 +948,7 @@ fn junction_or_symlink_dir(
   old_path_relative: &Path,
   old_path: &Path,
   new_path: &Path,
-) -> Result<(), AnyError> {
+) -> Result<(), SymlinkPackageDirError> {
   static USE_JUNCTIONS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 
@@ -1084,8 +957,9 @@ fn junction_or_symlink_dir(
     // needing to elevate privileges on Windows.
     // Note: junctions don't support relative paths, so we need to use the
     // absolute path here.
-    return junction::create(old_path, new_path)
-      .context("Failed creating junction in node_modules folder");
+    return junction::create(old_path, new_path).map_err(|source| {
+      SymlinkPackageDirError::FailedCreatingJunction { source }
+    });
   }
 
   match symlink_dir(&crate::sys::CliSys::default(), old_path_relative, new_path)
@@ -1095,8 +969,9 @@ fn junction_or_symlink_dir(
       if symlink_err.kind() == std::io::ErrorKind::PermissionDenied =>
     {
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
     Err(symlink_err) => {
       log::warn!(
@@ -1104,8 +979,9 @@ fn junction_or_symlink_dir(
         colors::yellow("Warning")
       );
       USE_JUNCTIONS.store(true, std::sync::atomic::Ordering::Relaxed);
-      junction::create(old_path, new_path)
-        .context("Failed creating junction in node_modules folder")
+      junction::create(old_path, new_path).map_err(|source| {
+        SymlinkPackageDirError::FailedCreatingJunction { source }
+      })
     }
   }
 }
@@ -1121,36 +997,9 @@ fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
 
 #[cfg(test)]
 mod test {
-  use deno_npm::NpmPackageCacheFolderId;
-  use deno_semver::package::PackageNv;
   use test_util::TempDir;
 
   use super::*;
-
-  #[test]
-  fn test_get_package_folder_id_folder_name() {
-    let cases = vec![
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("@types/foo@1.2.3").unwrap(),
-          copy_index: 1,
-        },
-        "@types+foo@1.2.3_1".to_string(),
-      ),
-      (
-        NpmPackageCacheFolderId {
-          nv: PackageNv::from_str("JSON@3.2.1").unwrap(),
-          copy_index: 0,
-        },
-        "_jjju6tq@3.2.1".to_string(),
-      ),
-    ];
-    for (input, output) in cases {
-      assert_eq!(get_package_folder_id_folder_name(&input), output);
-      let folder_id = get_package_folder_id_from_folder_name(&output).unwrap();
-      assert_eq!(folder_id, input);
-    }
-  }
 
   #[test]
   fn test_setup_cache() {

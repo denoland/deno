@@ -23,6 +23,8 @@ use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -53,12 +55,10 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver_for_lsp;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::ManagedCliNpmResolver;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmReqResolver;
@@ -736,14 +736,14 @@ impl<'a> ResolverFactory<'a> {
 
   pub fn in_npm_pkg_checker(&self) -> &Arc<dyn InNpmPackageChecker> {
     self.services.in_npm_pkg_checker.get_or_init(|| {
-      crate::npm::create_in_npm_pkg_checker(
+      deno_resolver::npm::create_in_npm_pkg_checker(
         match self.services.npm_resolver.as_ref().map(|r| r.as_inner()) {
           Some(crate::npm::InnerCliNpmResolverRef::Byonm(_)) | None => {
             CreateInNpmPkgCheckerOptions::Byonm
           }
           Some(crate::npm::InnerCliNpmResolverRef::Managed(m)) => {
             CreateInNpmPkgCheckerOptions::Managed(
-              CliManagedInNpmPkgCheckerCreateOptions {
+              ManagedInNpmPkgCheckerCreateOptions {
                 root_cache_dir_url: m.global_cache_root_url(),
                 maybe_node_modules_path: m.maybe_node_modules_path(),
               },
@@ -783,6 +783,7 @@ impl<'a> ResolverFactory<'a> {
           npm_resolver.clone().into_npm_pkg_folder_resolver(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),
+          node_resolver::ConditionsFromResolutionMode::default(),
         )))
       })
       .as_ref()
@@ -796,10 +797,9 @@ impl<'a> ResolverFactory<'a> {
         let node_resolver = self.node_resolver()?;
         let npm_resolver = self.npm_resolver()?;
         Some(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-          byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
           node_resolver: node_resolver.clone(),
-          npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
           sys: self.sys.clone(),
         })))
       })

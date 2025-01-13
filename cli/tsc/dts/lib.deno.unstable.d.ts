@@ -1268,16 +1268,15 @@ declare namespace Deno {
    * OpenTelemetry API. This is done using the official OpenTelemetry package
    * for JavaScript:
    * [`npm:@opentelemetry/api`](https://opentelemetry.io/docs/languages/js/).
-   * Deno integrates with this package to provide trace context propagation
-   * between native Deno APIs (like `Deno.serve` or `fetch`) and custom user
-   * code. Deno also provides APIs that allow exporting custom telemetry data
-   * via the same OTLP channel used by the Deno runtime. This is done using the
-   * [`jsr:@deno/otel`](https://jsr.io/@deno/otel) package.
+   * Deno integrates with this package to provide tracing, metrics, and trace
+   * context propagation between native Deno APIs (like `Deno.serve` or `fetch`)
+   * and custom user code. Deno automatically registers the providers with the
+   * OpenTelemetry API, so users can start creating custom traces, metrics, and
+   * logs without any additional setup.
    *
    * @example Using OpenTelemetry API to create custom traces
    * ```ts,ignore
    * import { trace } from "npm:@opentelemetry/api@1";
-   * import "jsr:@deno/otel@0.0.2/register";
    *
    * const tracer = trace.getTracer("example-tracer");
    *

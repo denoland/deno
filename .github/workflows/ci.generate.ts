@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 32;
+const cacheVersion = 33;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -360,7 +360,7 @@ const ci = {
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": "${{ matrix.runner }}",
-      "timeout-minutes": 180,
+      "timeout-minutes": 240,
       defaults: {
         run: {
           // GH actions does not fail fast by default on
@@ -728,19 +728,6 @@ const ci = {
           ].join("\n"),
         },
         {
-          name: "Build denort release",
-          if: [
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' &&",
-            "github.repository == 'denoland/deno'",
-          ].join("\n"),
-          run: [
-            "df -h",
-            "cargo build --profile=release-slim --locked --bin denort",
-            "df -h",
-          ].join("\n"),
-        },
-        {
           // Run a minimal check to ensure that binary is not corrupted, regardless
           // of our build mode
           name: "Check deno binary",
@@ -786,11 +773,10 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-            "./deno types > lib.deno.d.ts",
-            "cd ../release-slim",
-            "zip -r ../release/denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
-            "cd ../release",
+            "strip denort",
+            "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+            "./deno types > lib.deno.d.ts",
           ].join("\n"),
         },
         {
@@ -815,9 +801,8 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "cd ../release-slim",
-            "zip -r ../release/denort-${{ matrix.arch }}-apple-darwin.zip denort",
-            "cd ../release",
+            "strip denort",
+            "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
             .join("\n"),
@@ -834,8 +819,7 @@ const ci = {
           run: [
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
-
-            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release-slim/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
           ].join("\n"),
         },

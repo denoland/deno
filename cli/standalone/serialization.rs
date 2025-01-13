@@ -27,6 +27,7 @@ use indexmap::IndexMap;
 
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
+use super::virtual_fs::FileSystemCaseSensitivity;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VirtualDirectoryEntries;
 use crate::standalone::virtual_fs::VirtualDirectory;

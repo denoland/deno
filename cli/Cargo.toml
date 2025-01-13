@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.1.4"
+version = "2.1.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -62,6 +62,7 @@ serde_json.workspace = true
 zstd.workspace = true
 glibc_version = "0.1.2"
 flate2 = { workspace = true, features = ["default"] }
+deno_error.workspace = true
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -72,9 +73,9 @@ deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposa
 deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.161.3", features = ["rust", "comrak"] }
+deno_doc = { version = "=0.164.0", features = ["rust", "comrak"] }
 deno_error.workspace = true
-deno_graph = { version = "=0.86.7" }
+deno_graph = { version = "=0.87.0" }
 deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
@@ -124,7 +125,7 @@ http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 hyper-util.workspace = true
-import_map = { version = "=0.20.1", features = ["ext"] }
+import_map = { version = "=0.21.0", features = ["ext"] }
 indexmap.workspace = true
 jsonc-parser = { workspace = true, features = ["cst", "serde"] }
 jupyter_runtime = { package = "runtimelib", version = "=0.19.0", features = ["tokio-runtime"] }
