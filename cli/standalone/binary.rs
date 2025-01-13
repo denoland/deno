@@ -1007,8 +1007,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // this is not as optimized as it could be
         let mut last_name =
           Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
-        for ancestor in parent.ancestors() {
-          let dir = vfs.get_dir_mut(ancestor).unwrap();
+        for ancestor in
+          parent.ancestors().map(Some).chain(std::iter::once(None))
+        {
+          let dir = if let Some(ancestor) = ancestor {
+            vfs.get_dir_mut(ancestor).unwrap()
+          } else if cfg!(windows) {
+            vfs.get_system_root_dir_mut()
+          } else {
+            break;
+          };
           if let Ok(index) =
             dir.entries.binary_search(&last_name, case_sensitivity)
           {
