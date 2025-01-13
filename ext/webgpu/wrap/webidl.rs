@@ -504,7 +504,7 @@ pub fn feature_names_to_features(
 }
 
 pub fn features_to_feature_names(
-  features: &wgpu_types::Features,
+  features: wgpu_types::Features,
 ) -> HashSet<GPUFeatureName> {
   use GPUFeatureName::*;
   let mut return_features = HashSet::new();

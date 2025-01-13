@@ -23,6 +23,7 @@ use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
 use crate::wrap::adapter::GPUAdapterInfo;
+use crate::wrap::adapter::GPUSupportedLimits;
 use crate::wrap::command_encoder::GPUCommandEncoder;
 use crate::wrap::query_set::GPUQuerySet;
 use crate::wrap::render_bundle::GPURenderBundleEncoder;
@@ -37,10 +38,11 @@ pub struct GPUDevice {
 
   pub label: String,
 
-  //TODO: pub features: SameObject<()>,
-  //TODO: pub limits: SameObject<()>,
+  pub features: SameObject<GPUDevice>,
+  pub limits: SameObject<GPUSupportedLimits>,
+  pub adapter_info: Arc<SameObject<GPUAdapterInfo>>,
+
   pub queue_obj: SameObject<GPUQueue>,
-  pub info: Arc<SameObject<GPUAdapterInfo>>,
 
   pub error_handler: super::error::ErrorHandler,
   pub lost_receiver: tokio::sync::oneshot::Receiver<()>,
@@ -60,8 +62,12 @@ impl GPUDevice {
   }
 
   #[getter]
-  fn limits(&self) {
-    todo!()
+  #[global]
+  fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.limits.get(scope, || {
+      let adapter_limits = self.instance.device_limits(self.id);
+      GPUSupportedLimits(adapter_limits)
+    })
   }
 
   #[getter]
@@ -70,7 +76,7 @@ impl GPUDevice {
     &self,
     scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    self.info.get(scope, || {
+    self.adapter_info.get(scope, || {
       let info = self.instance.adapter_get_info(self.adapter);
       GPUAdapterInfo(info)
     })

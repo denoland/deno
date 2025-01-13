@@ -37,6 +37,9 @@ pub enum BufferError {
   #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   Access(#[from] wgpu_core::resource::BufferAccessError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
 }
 
 pub struct GPUBuffer {
@@ -178,7 +181,13 @@ impl GPUBuffer {
 
       if err.is_some() {
         self.error_handler.push_error(err);
-        // TODO: throw new DOMException("validation error occurred", "OperationError");
+        return Err(
+          JsErrorBox::new(
+            "DOMExceptionOperationError",
+            "validation error occurred",
+          )
+          .into(),
+        );
       }
     }
 
@@ -231,7 +240,7 @@ impl GPUBuffer {
     let ab = v8::ArrayBuffer::new(scope, slice.len());
     v8::Uint8Array::new(scope, ab, 0, slice.len());
 
-    // TODO: sure buf
+    // TODO: store buf
     self
       .mapped_js_buffers
       .borrow_mut()

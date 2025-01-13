@@ -10,6 +10,7 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
 use super::device::GPUDevice;
+use crate::wrap::webidl::features_to_feature_names;
 use crate::Instance;
 
 #[derive(WebIDL)]
@@ -67,6 +68,7 @@ impl GPUAdapter {
   fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
     self.features.get(scope, || {
       let features = self.instance.adapter_features(self.id);
+      let features = features_to_feature_names(features);
 
       /*
       function createGPUSupportedFeatures(features) {
@@ -106,8 +108,7 @@ impl GPUAdapter {
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<GPUDevice, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
-    let supported_features =
-      crate::wrap::webidl::features_to_feature_names(&features);
+    let supported_features = features_to_feature_names(features);
     let required_features = descriptor
       .required_features
       .iter()
@@ -150,10 +151,11 @@ impl GPUAdapter {
       queue,
       label: descriptor.label,
       queue_obj: SameObject::new(),
-      info: self.info.clone(),
+      adapter_info: self.info.clone(),
       error_handler: Arc::new(super::error::DeviceErrorHandler::new(sender)),
       adapter: self.id,
       lost_receiver: receiver,
+      limits: SameObject::new(),
     })
   }
 }
@@ -171,7 +173,7 @@ pub enum CreateDeviceError {
   Device(#[from] wgpu_core::instance::RequestDeviceError),
 }
 
-pub struct GPUSupportedLimits(wgpu_types::Limits);
+pub struct GPUSupportedLimits(pub wgpu_types::Limits);
 
 impl GarbageCollected for GPUSupportedLimits {}
 

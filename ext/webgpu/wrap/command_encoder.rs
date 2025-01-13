@@ -7,6 +7,7 @@ use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use deno_error::JsErrorBox;
 use wgpu_core::command::ImageCopyBuffer;
 use wgpu_core::command::PassChannel;
 
@@ -39,7 +40,7 @@ impl GPUCommandEncoder {
   fn begin_render_pass(
     &self,
     #[webidl] descriptor: crate::wrap::render_pass::GPURenderPassDescriptor,
-  ) -> GPURenderPassEncoder {
+  ) -> Result<GPURenderPassEncoder, JsErrorBox> {
     let color_attachments = Cow::Owned(
       descriptor
         .color_attachments
@@ -66,9 +67,11 @@ impl GPUCommandEncoder {
 
     let depth_stencil_attachment =
       descriptor.depth_stencil_attachment.map(|attachment| {
-        // TODO: `depthLoadOp` is cheked to ensure its value is not "clear"
-        //   when `depthClearValue` is undefined, so the default 0.0 doesn't matter.
-        wgpu_core::command::RenderPassDepthStencilAttachment {
+        if attachment.depth_load_op.as_ref().is_some_and(|op| matches!(op, GPULoadOp::Clear)) && attachment.depth_clear_value.is_none() {
+          return Err(JsErrorBox::type_error(r#"'depthClearValue' must be specified when 'depthLoadOp' is "clear""#));
+        }
+
+        Ok(wgpu_core::command::RenderPassDepthStencilAttachment {
           view: attachment.view.id,
           depth: PassChannel {
             load_op: attachment.depth_load_op.unwrap_or(GPULoadOp::Load).into(),
@@ -91,8 +94,8 @@ impl GPUCommandEncoder {
             clear_value: attachment.stencil_clear_value,
             read_only: false,
           },
-        }
-      });
+        })
+      }).transpose()?;
 
     let timestamp_writes =
       descriptor.timestamp_writes.map(|timestamp_writes| {
@@ -120,12 +123,12 @@ impl GPUCommandEncoder {
 
     self.error_handler.push_error(err);
 
-    GPURenderPassEncoder {
+    Ok(GPURenderPassEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
       render_pass: RefCell::new(render_pass),
       label: descriptor.label,
-    }
+    })
   }
 
   #[cppgc]

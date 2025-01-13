@@ -10,6 +10,7 @@ use deno_core::v8;
 use deno_core::webidl::IntOptions;
 use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlConverter;
+use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
@@ -195,7 +196,7 @@ impl GPURenderPassEncoder {
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
-  ) {
+  ) -> Result<(), WebIdlError> {
     const PREFIX: &str =
       "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
     let offsets =
@@ -209,8 +210,7 @@ impl GPURenderPassEncoder {
             clamp: false,
             enforce_range: true,
           },
-        )
-        .unwrap(); // TODO: dont unwrap err
+        )?;
         let len = u32::convert(
           scope,
           dynamic_offsets,
@@ -220,8 +220,7 @@ impl GPURenderPassEncoder {
             clamp: false,
             enforce_range: true,
           },
-        )
-        .unwrap(); // TODO: dont unwrap err
+        )?;
 
         // TODO
 
@@ -236,8 +235,7 @@ impl GPURenderPassEncoder {
             clamp: false,
             enforce_range: true,
           },
-        )
-        .unwrap() // TODO: dont unwrap err
+        )?
         .unwrap_or_default()
       };
 
@@ -251,6 +249,8 @@ impl GPURenderPassEncoder {
       )
       .err();
     self.error_handler.push_error(err);
+
+    Ok(())
   }
 
   fn set_pipeline(
