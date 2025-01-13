@@ -11691,6 +11691,46 @@ fn lsp_format_exclude_default_config() {
 }
 
 #[test]
+fn lsp_format_untitled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "untitled:Untitled-1",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "  console.log();\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "untitled:Untitled-1",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17220,4 +17260,39 @@ fn lsp_wasm_module() {
     ])
   );
   client.shutdown();
+}
+
+#[test]
+fn wildcard_augment() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import styles from "./hello_world.scss";
+
+      function bar(v: string): string {
+        return v;
+      }
+
+      bar(styles);
+    "#,
+  );
+  temp_dir.join("index.d.ts").write(
+    r#"
+      declare module '*.scss' {
+        const content: string;
+        export default content;
+      }
+    "#,
+  );
+  temp_dir
+    .join("hello_world.scss")
+    .write("body { color: red; }");
+
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 0);
 }
