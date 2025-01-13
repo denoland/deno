@@ -40,7 +40,7 @@ pub enum GeometryError {
   Inconsistent2DMatrix,
 }
 
-#[derive(WebIDL)]
+#[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMPointInit {
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
@@ -141,7 +141,7 @@ impl DOMPointInner {
   }
 }
 
-#[derive(WebIDL)]
+#[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMRectInit {
   #[webidl(default = webidl::UnrestrictedDouble(0.0))]
@@ -271,7 +271,7 @@ impl DOMRectInner {
   }
 }
 
-#[derive(WebIDL)]
+#[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMQuadInit {
   p1: DOMPointInit,
@@ -420,7 +420,7 @@ impl DOMQuadInner {
   }
 }
 
-#[derive(WebIDL)]
+#[derive(WebIDL, Debug)]
 #[webidl(dictionary)]
 pub struct DOMMatrixInit {
   #[webidl(default = None)]
