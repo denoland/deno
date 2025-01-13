@@ -25,6 +25,8 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
@@ -37,7 +39,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
@@ -83,7 +84,7 @@ use crate::util::progress_bar::ProgressBarStyle;
 #[derive(Debug, Clone)]
 struct LspScopeResolver {
   resolver: Arc<CliResolver>,
-  in_npm_pkg_checker: Arc<DenoInNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
@@ -238,16 +239,56 @@ impl LspScopeResolver {
   }
 
   fn snapshot(&self) -> Arc<Self> {
+    // create a copy of the resolution and then re-initialize the npm resolver from that
+    // todo(dsherret): this is pretty terrible... we should improve this. It should
+    // be possible to just change the npm_resolution on the new factory then access
+    // another method to create a new npm resolver
     let mut factory = ResolverFactory::new(self.config_data.as_ref());
     factory
       .services
       .npm_resolution
       .set_snapshot(self.npm_resolution.snapshot());
-    let npm_resolver =
-      self.npm_resolver.as_ref().map(|r| r.clone_snapshotted());
+    let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(npm_resolver.clone());
+      factory.set_npm_resolver(ByonmOrManagedNpmResolver::<CliSys>::new::<
+        CliSys,
+      >(match npm_resolver {
+        ByonmOrManagedNpmResolver::Byonm(byonm_npm_resolver) => {
+          NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
+            root_node_modules_dir: byonm_npm_resolver
+              .root_node_modules_path()
+              .map(|p| p.to_path_buf()),
+            sys: CliSys::default(),
+            pkg_json_resolver: self.pkg_json_resolver.clone(),
+          })
+        }
+        ByonmOrManagedNpmResolver::Managed(managed_npm_resolver) => {
+          NpmResolverCreateOptions::Managed({
+            let npmrc = self
+              .config_data
+              .as_ref()
+              .and_then(|d| d.npmrc.clone())
+              .unwrap_or_else(create_default_npmrc);
+            let npm_cache_dir = Arc::new(NpmCacheDir::new(
+              &CliSys::default(),
+              managed_npm_resolver.global_cache_root_path().to_path_buf(),
+              npmrc.get_all_known_registries_urls(),
+            ));
+            CliManagedNpmResolverCreateOptions {
+              sys: CliSys::default(),
+              npm_cache_dir,
+              maybe_node_modules_path: managed_npm_resolver
+                .root_node_modules_path()
+                .map(|p| p.to_path_buf()),
+              npmrc,
+              npm_resolution: factory.services.npm_resolution.clone(),
+              npm_system_info: NpmSystemInfo::default(),
+            }
+          })
+        }
+      }));
     }
+
     Arc::new(Self {
       resolver: factory.cli_resolver().clone(),
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
@@ -257,6 +298,7 @@ impl LspScopeResolver {
       // npm installer isn't necessary for a snapshot
       npm_installer: None,
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
+      npm_resolution: factory.services.npm_resolution.clone(),
       npm_resolver: factory.npm_resolver().cloned(),
       node_resolver: factory.node_resolver().cloned(),
       redirect_resolver: self.redirect_resolver.clone(),
@@ -389,7 +431,7 @@ impl LspResolver {
   pub fn in_npm_pkg_checker(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> &Arc<DenoInNpmPackageChecker> {
+  ) -> &DenoInNpmPackageChecker {
     let resolver = self.get_scope_resolver(file_referrer);
     &resolver.in_npm_pkg_checker
   }
@@ -612,7 +654,7 @@ pub struct ScopeDepInfo {
 struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
   found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
-  in_npm_pkg_checker: Deferred<Arc<DenoInNpmPackageChecker>>,
+  in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   is_cjs_resolver: Deferred<Arc<CliIsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
   npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
@@ -835,7 +877,7 @@ impl<'a> ResolverFactory<'a> {
     &self.pkg_json_resolver
   }
 
-  pub fn in_npm_pkg_checker(&self) -> &Arc<DenoInNpmPackageChecker> {
+  pub fn in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
     self.services.in_npm_pkg_checker.get_or_init(|| {
       DenoInNpmPackageChecker::new(match &self.services.npm_resolver {
         Some(CliByonmOrManagedNpmResolver::Byonm(_)) | None => {
@@ -845,7 +887,7 @@ impl<'a> ResolverFactory<'a> {
           CreateInNpmPkgCheckerOptions::Managed(
             ManagedInNpmPkgCheckerCreateOptions {
               root_cache_dir_url: m.global_cache_root_url(),
-              maybe_node_modules_path: m.maybe_node_modules_path(),
+              maybe_node_modules_path: m.root_node_modules_path(),
             },
           )
         }
@@ -879,7 +921,7 @@ impl<'a> ResolverFactory<'a> {
         Some(Arc::new(CliNodeResolver::new(
           self.in_npm_pkg_checker().clone(),
           RealIsBuiltInNodeModuleChecker,
-          npm_resolver.clone().into_npm_pkg_folder_resolver(),
+          npm_resolver.clone(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),
           node_resolver::ConditionsFromResolutionMode::default(),
@@ -898,7 +940,7 @@ impl<'a> ResolverFactory<'a> {
         Some(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
           node_resolver: node_resolver.clone(),
-          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
+          npm_resolver: npm_resolver.clone(),
           sys: self.sys.clone(),
         })))
       })

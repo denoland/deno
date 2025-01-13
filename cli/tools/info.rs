@@ -32,7 +32,6 @@ use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
-use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolver;
 use crate::util::checksum;
 use crate::util::display::DisplayTreeNode;
@@ -440,7 +439,7 @@ impl<'a> GraphDisplayContext<'a> {
   ) -> Result<(), AnyError> {
     let npm_info = match managed_npm_info {
       Some((npm_resolver, npm_snapshot)) => {
-        NpmInfo::build(graph, npm_resolver, &npm_snapshot)
+        NpmInfo::build(graph, npm_resolver, npm_snapshot)
       }
       None => NpmInfo::default(),
     };

@@ -145,6 +145,10 @@ impl<TSys: FsCanonicalize + FsMetadata> ManagedNpmResolver<TSys> {
     self.npm_cache_dir.root_dir()
   }
 
+  pub fn global_cache_root_url(&self) -> &Url {
+    self.npm_cache_dir.root_dir_url()
+  }
+
   pub fn resolution(&self) -> &NpmResolutionCell {
     self.resolution.as_ref()
   }

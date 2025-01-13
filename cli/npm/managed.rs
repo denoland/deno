@@ -4,16 +4,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_cache_dir::npm::NpmCacheDir;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_runtime::ops::process::NpmProcessStateProvider;
@@ -24,6 +22,9 @@ use crate::args::CliLockfile;
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
 use crate::sys::CliSys;
+
+pub type CliManagedNpmResolverCreateOptions =
+  ManagedNpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug, Clone)]
 pub enum CliNpmResolverManagedSnapshotOption {
@@ -120,15 +121,6 @@ impl NpmResolutionInitializer {
       }
     }
   }
-}
-
-pub struct CliManagedNpmResolverCreateOptions {
-  pub npm_cache_dir: Arc<NpmCacheDir>,
-  pub sys: CliSys,
-  pub maybe_node_modules_path: Option<PathBuf>,
-  pub npm_system_info: NpmSystemInfo,
-  pub npmrc: Arc<ResolvedNpmRc>,
-  pub npm_resolution: Arc<NpmResolutionCell>,
 }
 
 #[derive(Debug, Error, Clone, JsError)]

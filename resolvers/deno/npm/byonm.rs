@@ -27,8 +27,6 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
