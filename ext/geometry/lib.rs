@@ -9,7 +9,6 @@ use std::ptr;
 use std::slice;
 
 use deno_core::op2;
-use deno_core::v8;
 use deno_core::webidl;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -54,6 +53,7 @@ pub struct DOMPointInit {
   w: webidl::UnrestrictedDouble,
 }
 
+#[derive(Debug)]
 pub struct DOMPointInner {
   inner: RefCell<Vector4<f64>>,
 }
@@ -130,15 +130,12 @@ impl DOMPointInner {
   #[cppgc]
   pub fn matrix_transform(
     &self,
-    matrix: v8::Local<v8::Object>,
+    #[cppgc] matrix: &DOMMatrixInner,
   ) -> DOMPointInner {
-    // SAFETY: cast v8::Local
-    let matrix: v8::Local<'_, DOMMatrixInner> =
-      unsafe { mem::transmute(matrix) };
     let out = DOMPointInner {
       inner: RefCell::new(Vector4::zeros()),
     };
-    matrix_transform_point(&matrix, self, &out);
+    matrix_transform_point(matrix, self, &out);
     out
   }
 }
@@ -156,6 +153,7 @@ pub struct DOMRectInit {
   height: webidl::UnrestrictedDouble,
 }
 
+#[derive(Debug)]
 pub struct DOMRectInner {
   x: Cell<f64>,
   y: Cell<f64>,
@@ -280,6 +278,7 @@ pub struct DOMQuadInit {
   p4: DOMPointInit,
 }
 
+#[derive(Debug)]
 pub struct DOMQuadInner {
   p1: UnsafeCell<DOMPointInner>,
   p2: UnsafeCell<DOMPointInner>,
@@ -467,7 +466,7 @@ pub struct DOMMatrixInit {
   is_2d: Option<bool>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DOMMatrixInner {
   inner: RefCell<Matrix4<f64>>,
   is_2d: Cell<bool>,
@@ -1208,39 +1207,33 @@ impl DOMMatrixInner {
   }
 
   #[cppgc]
-  pub fn multiply(&self, other: v8::Local<v8::Object>) -> DOMMatrixInner {
-    // SAFETY: cast v8::Local
-    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
+  pub fn multiply(&self, #[cppgc] other: &DOMMatrixInner) -> DOMMatrixInner {
     let out = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
-    matrix_multiply(&out, self, &other);
+    matrix_multiply(&out, self, other);
     out
   }
 
   #[fast]
-  pub fn multiply_self(&self, other: v8::Local<v8::Object>) {
-    // SAFETY: cast v8::Local
-    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
+  pub fn multiply_self(&self, #[cppgc] other: &DOMMatrixInner) {
     let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
-    matrix_multiply(&result, self, &other);
+    matrix_multiply(&result, self, other);
     self.inner.borrow_mut().copy_from(&result.inner.borrow());
     self.is_2d.set(result.is_2d.get());
   }
 
   #[fast]
-  pub fn pre_multiply_self(&self, other: v8::Local<v8::Object>) {
-    // SAFETY: cast v8::Local
-    let other: v8::Local<'_, DOMMatrixInner> = unsafe { mem::transmute(other) };
+  pub fn pre_multiply_self(&self, #[cppgc] other: &DOMMatrixInner) {
     let result = DOMMatrixInner {
       inner: RefCell::new(Matrix4::zeros()),
       is_2d: Cell::new(true),
     };
-    matrix_multiply(&result, &other, self);
+    matrix_multiply(&result, other, self);
     self.inner.borrow_mut().copy_from(&result.inner.borrow());
     self.is_2d.set(result.is_2d.get());
   }
@@ -1272,13 +1265,14 @@ impl DOMMatrixInner {
   }
 
   #[cppgc]
-  pub fn transform_point(&self, point: v8::Local<v8::Object>) -> DOMPointInner {
-    // SAFETY: cast v8::Local
-    let point: v8::Local<'_, DOMPointInner> = unsafe { mem::transmute(point) };
+  pub fn transform_point(
+    &self,
+    #[cppgc] point: &DOMPointInner,
+  ) -> DOMPointInner {
     let out = DOMPointInner {
       inner: RefCell::new(Vector4::zeros()),
     };
-    matrix_transform_point(self, &point, &out);
+    matrix_transform_point(self, point, &out);
     out
   }
 }
@@ -1461,9 +1455,7 @@ fn matrix_multiply(
   let rhs_inner = rhs.inner.borrow();
   let rhs_is_2d = rhs.is_2d.get();
   let mut out_inner = out.inner.borrow_mut();
-  let mut result = Matrix4::zeros();
-  lhs_inner.mul_to(&rhs_inner, &mut result);
-  out_inner.copy_from(&result);
+  lhs_inner.mul_to(&rhs_inner, &mut out_inner);
   out.is_2d.set(lhs_is_2d && rhs_is_2d);
 }
 
