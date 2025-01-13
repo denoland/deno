@@ -114,8 +114,6 @@ const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
 
 class DOMPoint extends DOMPointReadOnly {
   [_writable] = true;
-  /** @type {DOMPointInner} */
-  [_inner];
 
   static fromPoint(other = { __proto__: null }) {
     const point = webidl.createBranded(DOMPoint);
@@ -273,8 +271,6 @@ const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
 
 class DOMRect extends DOMRectReadOnly {
   [_writable] = true;
-  /** @type {DOMRectInner} */
-  [_inner];
 
   static fromRect(other = { __proto__: null }) {
     const rect = webidl.createBranded(DOMRect);
@@ -482,6 +478,7 @@ const DOMQuadPrototype = DOMQuad.prototype;
 
 class DOMMatrixReadOnly {
   [_writable] = false;
+  /** @type {DOMMatrixInner} */
   [_inner];
 
   constructor(init = undefined) {
