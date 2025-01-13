@@ -2280,7 +2280,6 @@ dependencies = [
  "hyper-util",
  "libc",
  "log",
- "netif",
  "nix",
  "node_resolver",
  "notify",

@@ -115,7 +115,6 @@ hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
-netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
 percent-encoding.workspace = true
