@@ -12,69 +12,34 @@ use wgpu_types::PowerPreference;
 
 use crate::Instance;
 
-mod adapter;
-mod bind_group;
-mod bind_group_layout;
-mod buffer;
-mod command_buffer;
-mod command_encoder;
-mod compute_pass;
-mod compute_pipeline;
-mod device;
-mod error;
-mod pipeline_layout;
-mod query_set;
-mod queue;
-mod render_bundle;
-mod render_pass;
-mod render_pipeline;
-mod sampler;
-mod shader;
-mod texture;
-mod webidl;
-
-deno_core::extension!(
-  deno_webgpu,
-  deps = [deno_webidl, deno_web],
-  ops = [create_gpu],
-  objects = [
-    GPU,
-    adapter::GPUAdapter,
-    adapter::GPUAdapterInfo,
-    bind_group::GPUBindGroup,
-    bind_group_layout::GPUBindGroupLayout,
-    buffer::GPUBuffer,
-    command_buffer::GPUCommandBuffer,
-    command_encoder::GPUCommandEncoder,
-    compute_pass::GPUComputePassEncoder,
-    compute_pipeline::GPUComputePipeline,
-    device::GPUDevice,
-    device::GPUDeviceLostInfo,
-    pipeline_layout::GPUPipelineLayout,
-    query_set::GPUQuerySet,
-    queue::GPUQueue,
-    render_bundle::GPURenderBundle,
-    render_bundle::GPURenderBundleEncoder,
-    render_pass::GPURenderPassEncoder,
-    render_pipeline::GPURenderPipeline,
-    sampler::GPUSampler,
-    shader::GPUShaderModule,
-    //adapter::GPUSupportedFeatures,
-    adapter::GPUSupportedLimits,
-    texture::GPUTexture,
-    texture::GPUTextureView,
-  ],
-  esm = ["00_init.js", "02_surface.js"],
-  lazy_loaded_esm = ["01_webgpu.js"],
-);
+pub mod adapter;
+pub mod bind_group;
+pub mod bind_group_layout;
+pub mod buffer;
+pub mod command_buffer;
+pub mod command_encoder;
+pub mod compute_pass;
+pub mod compute_pipeline;
+pub mod device;
+pub mod error;
+pub mod pipeline_layout;
+pub mod query_set;
+pub mod queue;
+pub mod render_bundle;
+pub mod render_pass;
+pub mod render_pipeline;
+pub mod sampler;
+pub mod shader;
+pub mod texture;
+pub mod webidl;
 
 #[op2]
 #[cppgc]
-fn create_gpu() -> GPU {
+pub fn create_gpu() -> GPU {
   GPU
 }
 
-struct GPU;
+pub struct GPU;
 
 impl GarbageCollected for GPU {}
 
@@ -127,7 +92,7 @@ impl GPU {
       instance: instance.clone(),
       features: SameObject::new(),
       limits: SameObject::new(),
-      info: Arc::new(SameObject::new()),
+      info: Rc::new(SameObject::new()),
       id,
     })
   }
@@ -158,5 +123,3 @@ macro_rules! with_label {
     }
   };
 }
-
-pub use with_label;

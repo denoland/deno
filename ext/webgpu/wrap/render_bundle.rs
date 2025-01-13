@@ -116,62 +116,77 @@ impl GPURenderBundleEncoder {
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
   ) -> Result<(), SetBindGroupError> {
-    const PREFIX: &str =
-      "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
-    let offsets =
-      if let Ok(uint_32) = dynamic_offsets.try_cast::<v8::Uint32Array>() {
-        let start = u64::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 4")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
-        let len = u32::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 5")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
-
-        // TODO
-
-        vec![]
-      } else {
-        <Option<Vec<u32>>>::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 3")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?
-        .unwrap_or_default()
-      };
-
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
       JsErrorBox::generic("Encoder has already been finished")
     })?;
 
-    unsafe {
-      wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
-        encoder,
-        index,
-        bind_group.into_option().map(|bind_group| bind_group.id),
-        offsets.as_ptr(),
-        offsets.len(),
-      );
+    const PREFIX: &str =
+      "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
+    if let Ok(uint_32) = dynamic_offsets.try_cast::<v8::Uint32Array>() {
+      let start = u64::convert(
+        scope,
+        dynamic_offsets_data_start,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 4")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
+      let len = u32::convert(
+        scope,
+        dynamic_offsets_data_length,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 5")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
+
+      let ab = uint_32.buffer(scope).unwrap();
+      let ptr = ab.data().unwrap();
+      let ab_len = ab.byte_length() / 4;
+
+      let data =
+        unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
+
+      let offsets = &data[start..(start + len)];
+
+      unsafe {
+        wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
+          encoder,
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          offsets.as_ptr(),
+          offsets.len(),
+        );
+      }
+    } else {
+      let offsets = <Option<Vec<u32>>>::convert(
+        scope,
+        dynamic_offsets,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 3")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )?
+      .unwrap_or_default();
+
+      unsafe {
+        wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
+          encoder,
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          offsets.as_ptr(),
+          offsets.len(),
+        );
+      }
     }
+
     Ok(())
   }
 

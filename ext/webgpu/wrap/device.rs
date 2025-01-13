@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::num::NonZeroU64;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
@@ -40,7 +40,7 @@ pub struct GPUDevice {
 
   pub features: SameObject<GPUDevice>,
   pub limits: SameObject<GPUSupportedLimits>,
-  pub adapter_info: Arc<SameObject<GPUAdapterInfo>>,
+  pub adapter_info: Rc<SameObject<GPUAdapterInfo>>,
 
   pub queue_obj: SameObject<GPUQueue>,
 
@@ -132,6 +132,7 @@ impl GPUDevice {
       } else {
         "unmapped"
       }),
+      map_mode: RefCell::new(None),
       mapped_js_buffers: RefCell::new(vec![]),
     })
   }
@@ -517,7 +518,7 @@ impl GPUDevice {
     GPURenderBundleEncoder {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
-      encoder: RefCell::new(encoder),
+      encoder: RefCell::new(Some(encoder)),
       label: descriptor.label,
     }
   }
@@ -549,13 +550,14 @@ impl GPUDevice {
     }
   }
 
+  // TODO: return same promise
   #[async_method]
   #[getter]
   #[cppgc]
   async fn lost(&self) -> GPUDeviceLostInfo {
-    self.lost_receiver.await.unwrap();
+    // TODO: self.lost_receiver.await.unwrap();
 
-    GPUDeviceLostInfo {}
+    GPUDeviceLostInfo
   }
 
   #[required(1)]
@@ -570,9 +572,9 @@ impl GPUDevice {
   #[async_method]
   async fn pop_error_scope<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
+    //scope: &mut v8::HandleScope<'a>,
   ) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
-    if self.error_handler.is_lost.get().is_some() {
+    /* if self.error_handler.is_lost.get().is_some() {
       return Ok(v8::null(scope).into());
     }
 
@@ -587,7 +589,12 @@ impl GPUDevice {
       Ok(deno_core::error::to_v8_error(scope, &err))
     } else {
       Ok(v8::null(scope).into())
-    }
+    }*/
+
+    Err(JsErrorBox::new(
+      "DOMExceptionOperationError",
+      "There are no error scopes on the error scope stack",
+    ))
   }
 }
 
@@ -808,7 +815,7 @@ impl GPUDevice {
   }
 }
 
-pub struct GPUDeviceLostInfo {}
+pub struct GPUDeviceLostInfo;
 
 impl GarbageCollected for GPUDeviceLostInfo {}
 

@@ -105,7 +105,7 @@ pub enum GPUErrorFilter {
 }
 
 #[derive(Debug, deno_error::JsError)]
-enum GPUError {
+pub enum GPUError {
   #[class("UNREACHABLE")] // TODO
   Lost,
   #[class("GPUValidationError")]

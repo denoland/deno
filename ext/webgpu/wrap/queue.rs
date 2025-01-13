@@ -54,13 +54,15 @@ impl GPUQueue {
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
     #[webidl/*(options(enforce_range = true))*/] buffer_offset: u64,
-    #[serde] data: (), // TODO: AllowSharedBufferSource
+    #[anybuffer] buf: &[u8], // TODO: AllowSharedBufferSource
     #[webidl/*(default = 0, options(enforce_range = true))*/] data_offset: u64,
     #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
   ) {
     let data = match size {
-      Some(size) => &buf[data_offset..(data_offset + size)],
-      None => &buf[data_offset..],
+      Some(size) => {
+        &buf[(data_offset as usize)..((data_offset + size) as usize)]
+      }
+      None => &buf[(data_offset as usize)..],
     };
 
     let err = self
@@ -75,7 +77,7 @@ impl GPUQueue {
   fn write_texture(
     &self,
     #[webidl] destination: GPUTexelCopyTextureInfo,
-    #[serde] data: (), // TODO: AllowSharedBufferSource
+    #[anybuffer] buf: &[u8], // TODO: AllowSharedBufferSource
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {

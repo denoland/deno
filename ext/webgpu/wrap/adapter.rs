@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::cppgc::SameObject;
@@ -47,7 +48,7 @@ pub struct GPUAdapter {
 
   pub features: SameObject<GPUAdapter>,
   pub limits: SameObject<GPUSupportedLimits>,
-  pub info: Arc<SameObject<GPUAdapterInfo>>,
+  pub info: Rc<SameObject<GPUAdapterInfo>>,
 }
 
 impl GarbageCollected for GPUAdapter {}
@@ -71,18 +72,19 @@ impl GPUAdapter {
       let features = features_to_feature_names(features);
 
       /*
-      function createGPUSupportedFeatures(features) {
-        /** @type {GPUSupportedFeatures} */
-        const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
-        supportedFeatures[webidl.setlikeInner] = new SafeSet(features);
-        webidl.setlike(
-          supportedFeatures,
-          GPUSupportedFeaturesPrototype,
-          true,
-        );
-        return supportedFeatures;
-      }
-       */
+      #[symbol("[[set]]")]
+          function createGPUSupportedFeatures(features) {
+            /** @type {GPUSupportedFeatures} */
+            const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
+            supportedFeatures[webidl.setlikeInner] = new SafeSet(features);
+            webidl.setlike(
+              supportedFeatures,
+              GPUSupportedFeaturesPrototype,
+              true,
+            );
+            return supportedFeatures;
+          }
+           */
 
       todo!()
     })
@@ -156,6 +158,7 @@ impl GPUAdapter {
       adapter: self.id,
       lost_receiver: receiver,
       limits: SameObject::new(),
+      features: SameObject::new(),
     })
   }
 }

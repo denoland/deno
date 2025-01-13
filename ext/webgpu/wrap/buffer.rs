@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
-use std::ptr::NonNull;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -12,6 +11,7 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
+use wgpu_core::device::HostMap as MapMode;
 use wgpu_core::resource::BufferMapCallback;
 
 use crate::Instance;
@@ -55,9 +55,9 @@ pub struct GPUBuffer {
   pub usage: u32,
 
   pub map_state: RefCell<&'static str>,
+  pub map_mode: RefCell<Option<MapMode>>,
 
-  pub mapped_js_buffers:
-    RefCell<Vec<(NonNull<u8>, usize, Option<v8::Global<v8::Uint8Array>>)>>,
+  pub mapped_js_buffers: RefCell<Vec<v8::Global<v8::ArrayBuffer>>>,
 }
 
 impl WebIdlInterfaceConverter for GPUBuffer {
@@ -152,6 +152,13 @@ impl GPUBuffer {
       *self.map_state.borrow_mut() = "pending";
     }
 
+    let mode = if read_mode {
+      MapMode::Read
+    } else {
+      assert!(write_mode);
+      MapMode::Write
+    };
+
     let (sender, receiver) =
       oneshot::channel::<wgpu_core::resource::BufferAccessResult>();
 
@@ -168,12 +175,7 @@ impl GPUBuffer {
           offset,
           Some(range_size),
           wgpu_core::resource::BufferMapOperation {
-            host: if read_mode {
-              wgpu_core::device::HostMap::Read
-            } else {
-              assert!(write_mode);
-              wgpu_core::device::HostMap::Write
-            },
+            host: mode,
             callback: Some(BufferMapCallback::from_rust(callback)),
           },
         )
@@ -216,17 +218,17 @@ impl GPUBuffer {
     tokio::try_join!(device_poll_fut, receiver_fut)?;
 
     *self.map_state.borrow_mut() = "mapped";
+    *self.map_mode.borrow_mut() = Some(mode);
 
     Ok(())
   }
 
-  #[buffer]
-  fn get_mapped_range(
+  fn get_mapped_range<'s>(
     &self,
-    scope: &mut v8::HandleScope,
+    scope: &mut v8::HandleScope<'s>,
     #[webidl/*(default = 0)*/] offset: u64,
     #[webidl] size: Option<u64>,
-  ) -> Result<Vec<u8>, BufferError> {
+  ) -> Result<v8::Local<'s, v8::Uint8Array>, BufferError> {
     let size = size.unwrap_or_else(|| self.size.saturating_sub(offset));
 
     let (slice_pointer, range_size) = self
@@ -234,34 +236,50 @@ impl GPUBuffer {
       .buffer_get_mapped_range(self.id, offset, Some(size))
       .map_err(BufferError::Access)?;
 
-    let slice = unsafe {
-      std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
+    let mode = self.map_mode.borrow();
+    let mode = mode.as_ref().unwrap();
+
+    let bs = if mode == &MapMode::Write {
+      unsafe extern "C" fn noop_deleter_callback(
+        _data: *mut std::ffi::c_void,
+        _byte_length: usize,
+        _deleter_data: *mut std::ffi::c_void,
+      ) {
+      }
+
+      unsafe {
+        v8::ArrayBuffer::new_backing_store_from_ptr(
+          slice_pointer.as_ptr() as _,
+          range_size as usize,
+          noop_deleter_callback,
+          std::ptr::null_mut(),
+        )
+      }
+    } else {
+      let slice = unsafe {
+        std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
+      };
+      v8::ArrayBuffer::new_backing_store_from_vec(slice.to_vec())
     };
-    let ab = v8::ArrayBuffer::new(scope, slice.len());
-    v8::Uint8Array::new(scope, ab, 0, slice.len());
 
-    // TODO: store buf
-    self
-      .mapped_js_buffers
-      .borrow_mut()
-      .push((slice_pointer, range_size as usize));
+    let shared_bs = bs.make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &shared_bs);
 
-    Ok(slice.to_vec())
+    if mode == &MapMode::Write {
+      self
+        .mapped_js_buffers
+        .borrow_mut()
+        .push(v8::Global::new(scope, ab));
+    }
+
+    Ok(v8::Uint8Array::new(scope, ab, 0, range_size as usize).unwrap())
   }
 
   #[nofast]
   fn unmap(&self, scope: &mut v8::HandleScope) -> Result<(), BufferError> {
-    for (slice_pointer, range_size, buf) in
-      self.mapped_js_buffers.replace(vec![])
-    {
-      if let Some(buf) = buf {
-        let buf = buf.open(scope);
-
-        let slice = unsafe {
-          std::slice::from_raw_parts_mut(slice_pointer.as_ptr(), range_size)
-        };
-        buf.copy_contents(slice);
-      }
+    for ab in self.mapped_js_buffers.replace(vec![]) {
+      let ab = ab.open(scope);
+      ab.detach(None);
     }
 
     self

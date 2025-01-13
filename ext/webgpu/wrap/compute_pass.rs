@@ -132,55 +132,70 @@ impl GPUComputePassEncoder {
   ) -> Result<(), WebIdlError> {
     const PREFIX: &str =
       "Failed to execute 'setBindGroup' on 'GPUComputePassEncoder'";
-    let offsets =
-      if let Ok(uint_32) = dynamic_offsets.try_cast::<v8::Uint32Array>() {
-        let start = u64::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 4")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
-        let len = u32::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 5")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?;
+    let err = if let Ok(uint_32) = dynamic_offsets.try_cast::<v8::Uint32Array>()
+    {
+      let start = u64::convert(
+        scope,
+        dynamic_offsets_data_start,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 4")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
+      let len = u32::convert(
+        scope,
+        dynamic_offsets_data_length,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 5")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )? as usize;
 
-        // TODO
+      let ab = uint_32.buffer(scope).unwrap();
+      let ptr = ab.data().unwrap();
+      let ab_len = ab.byte_length() / 4;
 
-        vec![]
-      } else {
-        <Option<Vec<u32>>>::convert(
-          scope,
-          dynamic_offsets,
-          Cow::Borrowed(PREFIX),
-          (|| Cow::Borrowed("Argument 3")).into(),
-          &IntOptions {
-            clamp: false,
-            enforce_range: true,
-          },
-        )?
-        .unwrap_or_default()
-      };
+      let data =
+        unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
 
-    let err = self
-      .instance
-      .compute_pass_set_bind_group(
-        &mut self.compute_pass.borrow_mut(),
-        index,
-        bind_group.into_option().map(|bind_group| bind_group.id),
-        &offsets,
-      )
-      .err();
+      let offsets = &data[start..(start + len)];
+
+      self
+        .instance
+        .compute_pass_set_bind_group(
+          &mut self.compute_pass.borrow_mut(),
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          offsets,
+        )
+        .err()
+    } else {
+      let offsets = <Option<Vec<u32>>>::convert(
+        scope,
+        dynamic_offsets,
+        Cow::Borrowed(PREFIX),
+        (|| Cow::Borrowed("Argument 3")).into(),
+        &IntOptions {
+          clamp: false,
+          enforce_range: true,
+        },
+      )?
+      .unwrap_or_default();
+
+      self
+        .instance
+        .compute_pass_set_bind_group(
+          &mut self.compute_pass.borrow_mut(),
+          index,
+          bind_group.into_option().map(|bind_group| bind_group.id),
+          &offsets,
+        )
+        .err()
+    };
 
     self.error_handler.push_error(err);
 

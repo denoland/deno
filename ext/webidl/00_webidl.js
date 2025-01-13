@@ -38,6 +38,7 @@ const {
   MathRound,
   MathTrunc,
   Number,
+  SymbolFor,
   NumberIsFinite,
   NumberIsNaN,
   NumberMAX_SAFE_INTEGER,
@@ -1311,7 +1312,7 @@ function configureProperties(obj) {
   }
 }
 
-const setlikeInner = Symbol("[[set]]");
+const setlikeInner = SymbolFor("[[set]]");
 
 // Ref: https://webidl.spec.whatwg.org/#es-setlike
 function setlike(obj, objPrototype, readonly) {
