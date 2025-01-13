@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
@@ -74,6 +75,7 @@ impl WindowsSystemRootablePath {
 #[derive(Debug)]
 pub struct BuiltVfs {
   pub root_path: WindowsSystemRootablePath,
+  pub case_sensitivity: FileSystemCaseSensitivity,
   pub entries: VirtualDirectoryEntries,
   pub files: Vec<Vec<u8>>,
 }
@@ -95,6 +97,7 @@ pub struct VfsBuilder {
   file_offsets: HashMap<String, u64>,
   /// The minimum root directory that should be included in the VFS.
   min_root_dir: Option<WindowsSystemRootablePath>,
+  case_sensitivity: FileSystemCaseSensitivity,
 }
 
 impl VfsBuilder {
@@ -108,7 +111,21 @@ impl VfsBuilder {
       current_offset: 0,
       file_offsets: Default::default(),
       min_root_dir: Default::default(),
+      // This is not exactly correct because file systems on these OSes
+      // may be case-sensitive or not based on the directory, but this
+      // is a good enough approximation and limitation. In the future,
+      // we may want to store this information per directory instead
+      // depending on the feedback we get.
+      case_sensitivity: if cfg!(windows) || cfg!(target_os = "macos") {
+        FileSystemCaseSensitivity::Insensitive
+      } else {
+        FileSystemCaseSensitivity::Sensitive
+      },
     }
+  }
+
+  pub fn case_sensitivity(&self) -> FileSystemCaseSensitivity {
+    self.case_sensitivity
   }
 
   /// Add a directory that might be the minimum root directory
@@ -215,7 +232,10 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let index = match current_dir.entries.binary_search(&name) {
+      let index = match current_dir
+        .entries
+        .binary_search(&name, self.case_sensitivity)
+      {
         Ok(index) => index,
         Err(insert_index) => {
           current_dir.entries.0.insert(
@@ -252,7 +272,9 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let entry = current_dir.entries.get_mut_by_name(&name)?;
+      let entry = current_dir
+        .entries
+        .get_mut_by_name(&name, self.case_sensitivity)?;
       match entry {
         VfsEntry::Dir(dir) => {
           current_dir = dir;
@@ -304,6 +326,7 @@ impl VfsBuilder {
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
     let checksum = util::checksum::gen(&[&data]);
+    let case_sensitivity = self.case_sensitivity;
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
       // duplicate file, reuse an old offset
       *offset
@@ -318,7 +341,7 @@ impl VfsBuilder {
       offset,
       len: data.len() as u64,
     };
-    match dir.entries.binary_search(&name) {
+    match dir.entries.binary_search(&name, case_sensitivity) {
       Ok(index) => {
         let entry = &mut dir.entries.0[index];
         match entry {
@@ -379,10 +402,11 @@ impl VfsBuilder {
       std::fs::read_link(path)
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
+    let case_sensitivity = self.case_sensitivity;
     let target = normalize_path(path.parent().unwrap().join(&target));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
-    match dir.entries.binary_search(&name) {
+    match dir.entries.binary_search(&name, case_sensitivity) {
       Ok(_) => {} // previously inserted
       Err(insert_index) => {
         dir.entries.0.insert(
@@ -478,6 +502,7 @@ impl VfsBuilder {
     }
     BuiltVfs {
       root_path: current_path,
+      case_sensitivity: self.case_sensitivity,
       entries: current_dir.entries,
       files: self.files,
     }
@@ -906,6 +931,14 @@ impl VfsEntry {
   }
 }
 
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub enum FileSystemCaseSensitivity {
+  #[serde(rename = "s")]
+  Sensitive,
+  #[serde(rename = "i")]
+  Insensitive,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
 
@@ -928,23 +961,54 @@ impl VirtualDirectoryEntries {
     self.0.len()
   }
 
-  pub fn get_by_name(&self, name: &str) -> Option<&VfsEntry> {
-    self.binary_search(name).ok().map(|index| &self.0[index])
+  pub fn get_by_name(
+    &self,
+    name: &str,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Option<&VfsEntry> {
+    self
+      .binary_search(name, case_sensitivity)
+      .ok()
+      .map(|index| &self.0[index])
   }
 
-  pub fn get_mut_by_name(&mut self, name: &str) -> Option<&mut VfsEntry> {
+  pub fn get_mut_by_name(
+    &mut self,
+    name: &str,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Option<&mut VfsEntry> {
     self
-      .binary_search(name)
+      .binary_search(name, case_sensitivity)
       .ok()
       .map(|index| &mut self.0[index])
   }
 
-  pub fn binary_search(&self, name: &str) -> Result<usize, usize> {
-    self.0.binary_search_by(|e| e.name().cmp(name))
+  pub fn binary_search(
+    &self,
+    name: &str,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Result<usize, usize> {
+    match case_sensitivity {
+      FileSystemCaseSensitivity::Sensitive => {
+        self.0.binary_search_by(|e| e.name().cmp(name))
+      }
+      FileSystemCaseSensitivity::Insensitive => self.0.binary_search_by(|e| {
+        e.name()
+          .chars()
+          .zip(name.chars())
+          .map(|(a, b)| a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()))
+          .find(|&ord| ord != Ordering::Equal)
+          .unwrap_or_else(|| e.name().len().cmp(&name.len()))
+      }),
+    }
   }
 
-  pub fn insert(&mut self, entry: VfsEntry) {
-    match self.binary_search(entry.name()) {
+  pub fn insert(
+    &mut self,
+    entry: VfsEntry,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) {
+    match self.binary_search(entry.name(), case_sensitivity) {
       Ok(index) => {
         self.0[index] = entry;
       }
@@ -1039,19 +1103,21 @@ impl VfsRoot {
   fn find_entry<'a>(
     &'a self,
     path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
-    self.find_entry_inner(path, &mut HashSet::new())
+    self.find_entry_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
   fn find_entry_inner<'a>(
     &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let mut path = Cow::Borrowed(path);
     loop {
       let (resolved_path, entry) =
-        self.find_entry_no_follow_inner(&path, seen)?;
+        self.find_entry_no_follow_inner(&path, seen, case_sensitivity)?;
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
@@ -1072,14 +1138,16 @@ impl VfsRoot {
   fn find_entry_no_follow(
     &self,
     path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
-    self.find_entry_no_follow_inner(path, &mut HashSet::new())
+    self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
   fn find_entry_no_follow_inner<'a>(
     &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
@@ -1101,7 +1169,8 @@ impl VfsRoot {
         }
         VfsEntryRef::Symlink(symlink) => {
           let dest = symlink.resolve_dest_from_root(&self.root_path);
-          let (resolved_path, entry) = self.find_entry_inner(&dest, seen)?;
+          let (resolved_path, entry) =
+            self.find_entry_inner(&dest, seen, case_sensitivity)?;
           final_path = resolved_path; // overwrite with the new resolved path
           match entry {
             VfsEntryRef::Dir(dir) => {
@@ -1126,7 +1195,7 @@ impl VfsRoot {
       let component = component.to_string_lossy();
       current_entry = current_dir
         .entries
-        .get_by_name(&component)
+        .get_by_name(&component, case_sensitivity)
         .ok_or_else(|| {
           std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
         })?
@@ -1392,13 +1461,19 @@ impl FileBackedVfsMetadata {
 pub struct FileBackedVfs {
   vfs_data: Cow<'static, [u8]>,
   fs_root: VfsRoot,
+  case_sensitivity: FileSystemCaseSensitivity,
 }
 
 impl FileBackedVfs {
-  pub fn new(data: Cow<'static, [u8]>, fs_root: VfsRoot) -> Self {
+  pub fn new(
+    data: Cow<'static, [u8]>,
+    fs_root: VfsRoot,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Self {
     Self {
       vfs_data: data,
       fs_root,
+      case_sensitivity,
     }
   }
 
@@ -1451,7 +1526,9 @@ impl FileBackedVfs {
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
-    let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
@@ -1464,17 +1541,19 @@ impl FileBackedVfs {
   }
 
   pub fn lstat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
-    let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
     Ok(entry.as_metadata())
   }
 
   pub fn stat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     Ok(entry.as_metadata())
   }
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    let (path, _) = self.fs_root.find_entry(path)?;
+    let (path, _) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     Ok(path)
   }
 
@@ -1536,7 +1615,7 @@ impl FileBackedVfs {
   }
 
   pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
@@ -1548,7 +1627,7 @@ impl FileBackedVfs {
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Dir(_) => Err(std::io::Error::new(
         std::io::ErrorKind::Other,
@@ -1754,6 +1833,7 @@ mod test {
           root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
+        FileSystemCaseSensitivity::Sensitive,
       ),
     )
   }
