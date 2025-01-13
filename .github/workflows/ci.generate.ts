@@ -14,7 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "self-hosted";
+const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
   linuxX86: {
