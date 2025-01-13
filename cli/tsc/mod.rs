@@ -28,6 +28,7 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
@@ -709,9 +710,7 @@ pub enum ResolveError {
   PackageSubpathResolve(PackageSubpathResolveError),
   #[class(inherit)]
   #[error("{0}")]
-  ResolvePkgFolderFromDenoModule(
-    #[from] crate::npm::ResolvePkgFolderFromDenoModuleError,
-  ),
+  ResolvePkgFolderFromDenoModule(#[from] ResolvePkgFolderFromDenoModuleError),
   #[class(inherit)]
   #[error("{0}")]
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),

@@ -300,8 +300,8 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      if let Some(npm_installer) = factory.npm_installer_if_managed()? {
+        npm_installer.ensure_no_pkg_json_dep_errors()?;
       }
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 

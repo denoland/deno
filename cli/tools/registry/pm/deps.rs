@@ -42,6 +42,7 @@ use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
@@ -451,6 +452,7 @@ pub struct DepManager {
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_installer: Arc<NpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -460,6 +462,7 @@ pub struct DepManagerArgs {
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
+  pub npm_installer: Arc<NpmInstaller>,
   pub npm_resolver: Arc<dyn CliNpmResolver>,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -477,6 +480,7 @@ impl DepManager {
       module_load_preparer,
       jsr_fetch_resolver,
       npm_fetch_resolver,
+      npm_installer,
       npm_resolver,
       permissions_container,
       main_module_graph_container,
@@ -490,6 +494,7 @@ impl DepManager {
       dependencies_resolved: AtomicFlag::lowered(),
       module_load_preparer,
       npm_fetch_resolver,
+      npm_installer,
       npm_resolver,
       permissions_container,
       main_module_graph_container,
@@ -556,7 +561,10 @@ impl DepManager {
       return Ok(());
     }
 
-    npm_resolver.ensure_top_level_package_json_install().await?;
+    self
+      .npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
     let mut roots = Vec::new();
     let mut info_futures = FuturesUnordered::new();
     for dep in &self.deps {
