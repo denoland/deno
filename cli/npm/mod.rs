@@ -13,7 +13,6 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::NpmResolver;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -37,8 +36,10 @@ pub type CliNpmTarballCache =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
-pub type CliNpmResolver = NpmResolver<CliSys>;
+pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
+pub type CliNpmResolverCreateOptions =
+  deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -62,10 +63,10 @@ pub fn create_npm_process_state_provider(
   npm_resolver: &CliNpmResolver,
 ) -> NpmProcessStateProviderRc {
   match npm_resolver {
-    NpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
+    CliNpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
       byonm::CliByonmNpmProcessStateProvider(byonm_npm_resolver.clone()),
     ),
-    NpmResolver::Managed(managed_npm_resolver) => Arc::new(
+    CliNpmResolver::Managed(managed_npm_resolver) => Arc::new(
       managed::CliManagedNpmProcessStateProvider(managed_npm_resolver.clone()),
     ),
   }

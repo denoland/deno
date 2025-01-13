@@ -1305,11 +1305,11 @@ impl CodeActionCollection {
       ) -> Option<PackageReq> {
         let package_reqs = resolution.package_reqs();
         let mut entries = package_reqs
-          .iter()
+          .into_iter()
           .filter(|(_, nv)| nv.name == name)
           .collect::<Vec<_>>();
-        entries.sort_by_key(|(_, nv)| &nv.version);
-        Some(entries.last()?.0.clone())
+        entries.sort_by(|a, b| a.1.version.cmp(&b.1.version));
+        Some(entries.pop()?.0)
       }
 
       let (dep_key, dependency, _) =

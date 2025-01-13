@@ -8,7 +8,6 @@ use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_graph::ParsedSourceStore;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::npm::NpmResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -21,6 +20,7 @@ use serde::Serialize;
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 
@@ -28,12 +28,12 @@ pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
-  NpmResolver<CliSys>,
+  CliNpmResolver,
   CliSys,
 >;
 pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
   DenoInNpmPackageChecker,
-  NpmResolver<CliSys>,
+  CliNpmResolver,
   CliSys,
 >;
 pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;

@@ -13,7 +13,6 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
-use deno_resolver::npm::NpmResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -192,11 +191,11 @@ impl TypeChecker {
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
-        NpmResolver::Byonm(_) => {
+        CliNpmResolver::Byonm(_) => {
           // not feasible and probably slower to compute
           None
         }
-        NpmResolver::Managed(resolver) => {
+        CliNpmResolver::Managed(resolver) => {
           // we should probably go further and check all the individual npm packages
           let mut package_reqs = resolver.resolution().package_reqs();
           package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism

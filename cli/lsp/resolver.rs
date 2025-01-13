@@ -25,12 +25,9 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
-use deno_resolver::npm::NpmResolver;
-use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
@@ -68,6 +65,7 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
+use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
@@ -250,19 +248,21 @@ impl LspScopeResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(NpmResolver::<CliSys>::new::<CliSys>(
+      factory.set_npm_resolver(CliNpmResolver::new::<CliSys>(
         match npm_resolver {
-          NpmResolver::Byonm(byonm_npm_resolver) => {
-            NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-              root_node_modules_dir: byonm_npm_resolver
-                .root_node_modules_path()
-                .map(|p| p.to_path_buf()),
-              sys: CliSys::default(),
-              pkg_json_resolver: self.pkg_json_resolver.clone(),
-            })
+          CliNpmResolver::Byonm(byonm_npm_resolver) => {
+            CliNpmResolverCreateOptions::Byonm(
+              CliByonmNpmResolverCreateOptions {
+                root_node_modules_dir: byonm_npm_resolver
+                  .root_node_modules_path()
+                  .map(|p| p.to_path_buf()),
+                sys: CliSys::default(),
+                pkg_json_resolver: self.pkg_json_resolver.clone(),
+              },
+            )
           }
-          NpmResolver::Managed(managed_npm_resolver) => {
-            NpmResolverCreateOptions::Managed({
+          CliNpmResolver::Managed(managed_npm_resolver) => {
+            CliNpmResolverCreateOptions::Managed({
               let npmrc = self
                 .config_data
                 .as_ref()
@@ -695,7 +695,7 @@ impl<'a> ResolverFactory<'a> {
     let enable_byonm = self.config_data.map(|d| d.byonm).unwrap_or(false);
     let sys = CliSys::default();
     let options = if enable_byonm {
-      NpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
+      CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
         sys,
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
@@ -789,7 +789,7 @@ impl<'a> ResolverFactory<'a> {
       .await
       .unwrap();
 
-      NpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
+      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
         maybe_node_modules_path,

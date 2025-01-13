@@ -46,7 +46,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use deno_resolver::npm::NpmResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;

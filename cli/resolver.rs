@@ -20,7 +20,6 @@ use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::npm::NpmResolver;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
@@ -37,6 +36,7 @@ use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
@@ -51,14 +51,14 @@ pub type CliSloppyImportsResolver =
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
-  NpmResolver<CliSys>,
+  CliNpmResolver,
   CliSloppyImportsCachedFs,
   CliSys,
 >;
 pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
-  NpmResolver<CliSys>,
+  CliNpmResolver,
   CliSys,
 >;
 
