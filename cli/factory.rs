@@ -803,6 +803,7 @@ impl CliFactory {
               .into_npm_pkg_folder_resolver(),
             self.pkg_json_resolver().clone(),
             self.sys(),
+            node_resolver::ConditionsFromResolutionMode::default(),
           )))
         }
         .boxed_local(),
