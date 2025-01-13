@@ -16,7 +16,7 @@ use node_resolver::errors::ReferrerNotFoundError;
 use node_resolver::NpmPackageFolderResolver;
 use url::Url;
 
-use super::resolution::NpmResolutionRc;
+use super::resolution::NpmResolutionCellRc;
 use super::NpmCacheDirRc;
 use super::NpmPackageFsResolver;
 use crate::ResolvedNpmRcRc;
@@ -26,14 +26,14 @@ use crate::ResolvedNpmRcRc;
 pub struct GlobalNpmPackageResolver {
   cache: NpmCacheDirRc,
   npm_rc: ResolvedNpmRcRc,
-  resolution: NpmResolutionRc,
+  resolution: NpmResolutionCellRc,
 }
 
 impl GlobalNpmPackageResolver {
   pub fn new(
     cache: NpmCacheDirRc,
     npm_rc: ResolvedNpmRcRc,
-    resolution: NpmResolutionRc,
+    resolution: NpmResolutionCellRc,
   ) -> Self {
     Self {
       cache,

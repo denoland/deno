@@ -25,7 +25,7 @@ use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
-use deno_resolver::npm::managed::NpmResolution;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use serde::Deserialize;
@@ -33,11 +33,11 @@ use serde::Serialize;
 
 use super::common::bin_entries;
 use super::common::NpmPackageFsInstaller;
+use super::PackageCaching;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::colors;
-use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
@@ -54,12 +54,12 @@ pub struct LocalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
   progress_bar: ProgressBar,
-  resolution: Arc<NpmResolution>,
+  resolution: Arc<NpmResolutionCell>,
   sys: CliSys,
   tarball_cache: Arc<CliNpmTarballCache>,
+  lifecycle_scripts: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
-  lifecycle_scripts: LifecycleScriptsConfig,
 }
 
 impl LocalNpmPackageInstaller {
@@ -68,12 +68,12 @@ impl LocalNpmPackageInstaller {
     cache: Arc<CliNpmCache>,
     npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
     progress_bar: ProgressBar,
-    resolution: Arc<NpmResolution>,
+    resolution: Arc<NpmResolutionCell>,
     sys: CliSys,
     tarball_cache: Arc<CliNpmTarballCache>,
     node_modules_folder: PathBuf,
-    system_info: NpmSystemInfo,
     lifecycle_scripts: LifecycleScriptsConfig,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       cache,
@@ -82,9 +82,9 @@ impl LocalNpmPackageInstaller {
       resolution,
       tarball_cache,
       sys,
+      lifecycle_scripts,
       root_node_modules_path: node_modules_folder,
       system_info,
-      lifecycle_scripts,
     }
   }
 }

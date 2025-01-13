@@ -8,8 +8,7 @@ use std::path::PathBuf;
 
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
-
-use crate::npm::managed::NpmResolutionPackage;
+use deno_npm::NpmResolutionPackage;
 
 #[derive(Default)]
 pub struct BinEntries<'a> {

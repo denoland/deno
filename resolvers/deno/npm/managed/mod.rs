@@ -8,10 +8,13 @@ mod resolution;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
+use deno_npm::resolution::PackageNvNotFoundError;
 use deno_npm::resolution::PackageReqNotFoundError;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
+use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -23,13 +26,23 @@ use self::common::NpmPackageFsResolver;
 use self::common::NpmPackageFsResolverRc;
 use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
-pub use self::resolution::NpmResolution;
-pub use self::resolution::NpmResolutionRc;
+pub use self::resolution::NpmResolutionCell;
+pub use self::resolution::NpmResolutionCellRc;
 use crate::sync::new_rc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 use crate::NpmCacheDirRc;
 use crate::ResolvedNpmRcRc;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolvePkgFolderFromDenoModuleError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PackageNvNotFound(#[from] PackageNvNotFoundError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[error(transparent)]
@@ -66,6 +79,16 @@ pub enum ManagedResolvePkgFolderFromDenoReqError {
   ResolvePkgFolderFromPkgId(#[from] ResolvePkgFolderFromPkgIdError),
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolvePkgIdFromSpecifierError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  NotFound(#[from] PackageCacheFolderIdNotFoundError),
+}
+
 #[allow(clippy::disallowed_types)]
 pub type ManagedNpmResolverRc<TSys> =
   crate::sync::MaybeArc<ManagedNpmResolver<TSys>>;
@@ -73,7 +96,7 @@ pub type ManagedNpmResolverRc<TSys> =
 #[derive(Debug)]
 pub struct ManagedNpmResolver<TSys: FsCanonicalize> {
   fs_resolver: NpmPackageFsResolverRc,
-  resolution: NpmResolutionRc,
+  resolution: NpmResolutionCellRc,
   sys: TSys,
 }
 
@@ -89,7 +112,7 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
   >(
     npm_cache_dir: &NpmCacheDirRc,
     npm_rc: &ResolvedNpmRcRc,
-    resolution: NpmResolutionRc,
+    resolution: NpmResolutionCellRc,
     sys: TCreateSys,
     maybe_node_modules_path: Option<PathBuf>,
   ) -> ManagedNpmResolver<TCreateSys> {
@@ -144,6 +167,14 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     Ok(path)
   }
 
+  pub fn resolve_pkg_folder_from_deno_module(
+    &self,
+    nv: &PackageNv,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoModuleError> {
+    let pkg_id = self.resolution.resolve_pkg_id_from_deno_module(nv)?;
+    Ok(self.resolve_pkg_folder_from_pkg_id(&pkg_id)?)
+  }
+
   pub fn resolve_pkg_folder_from_deno_module_req(
     &self,
     req: &PackageReq,
@@ -161,6 +192,24 @@ impl<TSys: FsCanonicalize> ManagedNpmResolver<TSys> {
     self
       .fs_resolver
       .resolve_package_cache_folder_id_from_specifier(specifier)
+  }
+
+  /// Resolves the package id from the provided specifier.
+  pub fn resolve_pkg_id_from_specifier(
+    &self,
+    specifier: &Url,
+  ) -> Result<Option<NpmPackageId>, ResolvePkgIdFromSpecifierError> {
+    let Some(cache_folder_id) = self
+      .fs_resolver
+      .resolve_package_cache_folder_id_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
+    Ok(Some(
+      self
+        .resolution
+        .resolve_pkg_id_from_pkg_cache_folder_id(&cache_folder_id)?,
+    ))
   }
 }
 
