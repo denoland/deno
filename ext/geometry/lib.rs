@@ -54,10 +54,7 @@ pub struct DOMPointInit {
 }
 
 pub struct DOMPointInner {
-  x: Cell<f64>,
-  y: Cell<f64>,
-  z: Cell<f64>,
-  w: Cell<f64>,
+  inner: RefCell<Vector4<f64>>,
 }
 
 impl GarbageCollected for DOMPointInner {}
@@ -73,10 +70,7 @@ impl DOMPointInner {
     #[webidl] w: f64,
   ) -> DOMPointInner {
     DOMPointInner {
-      x: Cell::new(x),
-      y: Cell::new(y),
-      z: Cell::new(z),
-      w: Cell::new(w),
+      inner: RefCell::new(Vector4::new(x, y, z, w)),
     }
   }
 
@@ -84,55 +78,52 @@ impl DOMPointInner {
   #[cppgc]
   pub fn from_point(#[webidl] init: DOMPointInit) -> DOMPointInner {
     DOMPointInner {
-      x: Cell::new(init.x),
-      y: Cell::new(init.y),
-      z: Cell::new(init.z),
-      w: Cell::new(init.w),
+      inner: RefCell::new(Vector4::new(init.x, init.y, init.z, init.w)),
     }
   }
 
   #[fast]
   #[getter]
   pub fn x(&self) -> f64 {
-    self.x.get()
+    self.inner.borrow().x
   }
 
   #[setter]
   pub fn x(&self, #[webidl] value: f64) {
-    self.x.set(value)
+    self.inner.borrow_mut().x = value
   }
 
   #[fast]
   #[getter]
   pub fn y(&self) -> f64 {
-    self.y.get()
+    self.inner.borrow().y
   }
 
   #[setter]
   pub fn y(&self, #[webidl] value: f64) {
-    self.y.set(value)
+    self.inner.borrow_mut().y = value
   }
 
   #[fast]
   #[getter]
   pub fn z(&self) -> f64 {
-    self.z.get()
+    self.inner.borrow().z
   }
 
   #[setter]
   pub fn z(&self, #[webidl] value: f64) {
-    self.z.set(value)
+    self.inner.borrow_mut().z = value
   }
 
   #[fast]
   #[getter]
   pub fn w(&self) -> f64 {
-    self.w.get()
+    self.inner.borrow().w
   }
 
   #[setter]
   pub fn w(&self, #[webidl] value: f64) {
-    self.w.set(value)
+    self.inner.borrow_mut().w = value
   }
 
   #[cppgc]
@@ -144,10 +135,7 @@ impl DOMPointInner {
     let matrix: v8::Local<'_, DOMMatrixInner> =
       unsafe { mem::transmute(matrix) };
     let out = DOMPointInner {
-      x: Cell::new(0.0),
-      y: Cell::new(0.0),
-      z: Cell::new(0.0),
-      w: Cell::new(0.0),
+      inner: RefCell::new(Vector4::zeros()),
     };
     matrix_transform_point(&matrix, self, &out);
     out
@@ -313,10 +301,7 @@ impl DOMQuadInner {
     #[inline]
     fn from_point(point: DOMPointInit) -> DOMPointInner {
       DOMPointInner {
-        x: Cell::new(point.x),
-        y: Cell::new(point.y),
-        z: Cell::new(point.z),
-        w: Cell::new(point.w),
+        inner: RefCell::new(Vector4::new(point.x, point.y, point.z, point.w)),
       }
     }
 
@@ -339,28 +324,16 @@ impl DOMQuadInner {
     } = rect;
     DOMQuadInner {
       p1: UnsafeCell::new(DOMPointInner {
-        x: Cell::new(x),
-        y: Cell::new(y),
-        z: Cell::new(0.0),
-        w: Cell::new(1.0),
+        inner: RefCell::new(Vector4::new(x, y, 0.0, 1.0)),
       }),
       p2: UnsafeCell::new(DOMPointInner {
-        x: Cell::new(x + width),
-        y: Cell::new(y),
-        z: Cell::new(0.0),
-        w: Cell::new(1.0),
+        inner: RefCell::new(Vector4::new(x + width, y, 0.0, 1.0)),
       }),
       p3: UnsafeCell::new(DOMPointInner {
-        x: Cell::new(x + width),
-        y: Cell::new(y + height),
-        z: Cell::new(0.0),
-        w: Cell::new(1.0),
+        inner: RefCell::new(Vector4::new(x + width, y + height, 0.0, 1.0)),
       }),
       p4: UnsafeCell::new(DOMPointInner {
-        x: Cell::new(x),
-        y: Cell::new(y + height),
-        z: Cell::new(0.0),
-        w: Cell::new(1.0),
+        inner: RefCell::new(Vector4::new(x, y + height, 0.0, 1.0)),
       }),
     }
   }
@@ -371,10 +344,7 @@ impl DOMQuadInner {
     #[inline]
     fn from_point(point: DOMPointInit) -> DOMPointInner {
       DOMPointInner {
-        x: Cell::new(point.x),
-        y: Cell::new(point.y),
-        z: Cell::new(point.z),
-        w: Cell::new(point.w),
+        inner: RefCell::new(Vector4::new(point.x, point.y, point.z, point.w)),
       }
     }
 
@@ -424,10 +394,14 @@ impl DOMQuadInner {
     let p3 = unsafe { ptr::read(self.p3.get()) };
     // SAFETY: ptr is alive
     let p4 = unsafe { ptr::read(self.p4.get()) };
-    let left = p1.x.get().min(p2.x.get()).min(p3.x.get()).min(p4.x.get());
-    let top = p1.y.get().min(p2.y.get()).min(p3.y.get()).min(p4.y.get());
-    let right = p1.x.get().max(p2.x.get()).max(p3.x.get()).max(p4.x.get());
-    let bottom = p1.y.get().max(p2.y.get()).max(p3.y.get()).max(p4.y.get());
+    let p1 = p1.inner.borrow();
+    let p2 = p2.inner.borrow();
+    let p3 = p3.inner.borrow();
+    let p4 = p4.inner.borrow();
+    let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
+    let top = p1.y.min(p2.y).min(p3.y).min(p4.y);
+    let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
+    let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
     DOMRectInner {
       x: Cell::new(left),
       y: Cell::new(top),
@@ -577,7 +551,6 @@ impl DOMMatrixInner {
     let m22 = fixup!(init.m22, init.d, 1.0);
     let m41 = fixup!(init.m41, init.e, 0.0);
     let m42 = fixup!(init.m42, init.f, 0.0);
-
     let is_2d = {
       let is_2d_can_be_true = init.m13 == 0.0
         && init.m14 == 0.0
@@ -1059,7 +1032,7 @@ impl DOMMatrixInner {
     unsafe {
       slice::from_raw_parts(
         self.inner.borrow().as_slice().as_ptr() as *mut u8,
-        128,
+        mem::size_of::<f64>() * 16,
       )
     }
     .to_vec()
@@ -1094,7 +1067,7 @@ impl DOMMatrixInner {
     #[webidl] sz: f64,
   ) -> DOMMatrixInner {
     let out = self.clone();
-    matrix_scale(&out, sx, sy, sz);
+    matrix_scale_without_origin(&out, sx, sy, sz);
     out
   }
 
@@ -1104,7 +1077,7 @@ impl DOMMatrixInner {
     #[webidl] sy: f64,
     #[webidl] sz: f64,
   ) {
-    matrix_scale(self, sx, sy, sz);
+    matrix_scale_without_origin(self, sx, sy, sz);
   }
 
   #[cppgc]
@@ -1284,10 +1257,7 @@ impl DOMMatrixInner {
     // SAFETY: cast v8::Local
     let point: v8::Local<'_, DOMPointInner> = unsafe { mem::transmute(point) };
     let out = DOMPointInner {
-      x: Cell::new(0.0),
-      y: Cell::new(0.0),
-      z: Cell::new(0.0),
-      w: Cell::new(0.0),
+      inner: RefCell::new(Vector4::zeros()),
     };
     matrix_transform_point(self, &point, &out);
     out
@@ -1304,7 +1274,12 @@ fn matrix_translate(matrix: &DOMMatrixInner, tx: f64, ty: f64, tz: f64) {
 }
 
 #[inline]
-fn matrix_scale(matrix: &DOMMatrixInner, sx: f64, sy: f64, sz: f64) {
+fn matrix_scale_without_origin(
+  matrix: &DOMMatrixInner,
+  sx: f64,
+  sy: f64,
+  sz: f64,
+) {
   let mut inner = matrix.inner.borrow_mut();
   let is_2d = matrix.is_2d.get();
   let scaling = Vector3::new(sx, sy, sz);
@@ -1460,12 +1435,12 @@ fn matrix_inverse(matrix: &DOMMatrixInner) {
     // SAFETY: in-range access
     let mut matrix3 = unsafe {
       Matrix3::new(
-        *inner.get_unchecked(0),
-        *inner.get_unchecked(4),
-        *inner.get_unchecked(12),
-        *inner.get_unchecked(1),
-        *inner.get_unchecked(5),
-        *inner.get_unchecked(13),
+        *inner.get_unchecked(INDEX_A),
+        *inner.get_unchecked(INDEX_C),
+        *inner.get_unchecked(INDEX_E),
+        *inner.get_unchecked(INDEX_B),
+        *inner.get_unchecked(INDEX_D),
+        *inner.get_unchecked(INDEX_F),
         0.0,
         0.0,
         1.0,
@@ -1478,12 +1453,12 @@ fn matrix_inverse(matrix: &DOMMatrixInner) {
     }
     // SAFETY: in-range access
     unsafe {
-      *inner.get_unchecked_mut(0) = *matrix3.get_unchecked(0);
-      *inner.get_unchecked_mut(1) = *matrix3.get_unchecked(1);
-      *inner.get_unchecked_mut(4) = *matrix3.get_unchecked(3);
-      *inner.get_unchecked_mut(5) = *matrix3.get_unchecked(4);
-      *inner.get_unchecked_mut(12) = *matrix3.get_unchecked(6);
-      *inner.get_unchecked_mut(13) = *matrix3.get_unchecked(7);
+      *inner.get_unchecked_mut(INDEX_A) = *matrix3.get_unchecked(0);
+      *inner.get_unchecked_mut(INDEX_B) = *matrix3.get_unchecked(1);
+      *inner.get_unchecked_mut(INDEX_C) = *matrix3.get_unchecked(3);
+      *inner.get_unchecked_mut(INDEX_D) = *matrix3.get_unchecked(4);
+      *inner.get_unchecked_mut(INDEX_E) = *matrix3.get_unchecked(6);
+      *inner.get_unchecked_mut(INDEX_F) = *matrix3.get_unchecked(7);
     }
   } else if !inner.try_inverse_mut() {
     inner.fill(f64::NAN);
@@ -1496,12 +1471,7 @@ fn matrix_transform_point(
   out: &DOMPointInner,
 ) {
   let inner = matrix.inner.borrow();
-  let point =
-    Vector4::new(point.x.get(), point.y.get(), point.z.get(), point.w.get());
-  let mut result = Vector4::zeros();
+  let point = point.inner.borrow();
+  let mut result = out.inner.borrow_mut();
   inner.mul_to(&point, &mut result);
-  out.x.set(result.x);
-  out.y.set(result.y);
-  out.z.set(result.z);
-  out.w.set(result.w);
 }

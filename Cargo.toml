@@ -230,6 +230,7 @@ hkdf = "0.12.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
 
 # geometry
+# TODO(petamoriken): Prefer to use glam as well as wgpu, but glam is not sufficient for mutable operations
 nalgebra = { version = "0.33.2", default-features = false, features = ["std"] }
 
 # webgpu
