@@ -1,0 +1,26 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_os"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "OS specific APIs for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_path_util.workspace = true
+deno_permissions.workspace = true
+deno_telemetry.workspace = true
+libc.workspace = true
+netif = "0.1.6"
+once_cell.workspace = true
+serde.workspace = true
+thiserror.workspace = true

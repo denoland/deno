@@ -3,8 +3,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -40,6 +38,7 @@ use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
+use deno_os::ExitCode;
 use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
@@ -92,19 +91,6 @@ pub fn validate_import_attributes_callback(
     let exception = v8::Exception::type_error(scope, message);
     scope.throw_exception(exception);
     return;
-  }
-}
-
-#[derive(Clone, Default)]
-pub struct ExitCode(Arc<AtomicI32>);
-
-impl ExitCode {
-  pub fn get(&self) -> i32 {
-    self.0.load(Relaxed)
-  }
-
-  pub fn set(&mut self, code: i32) {
-    self.0.store(code, Relaxed);
   }
 }
 
@@ -335,7 +321,7 @@ impl MainWorker {
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let exit_code = ExitCode::default();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
@@ -413,6 +399,7 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
+      deno_os::deno_os::init_ops_and_esm(exit_code.clone()),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
         services.node_services,
         services.fs,
@@ -424,7 +411,6 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,

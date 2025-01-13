@@ -21,7 +21,7 @@ import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
 import * as process from "ext:runtime/40_process.js";
 import * as signals from "ext:runtime/40_signals.js";

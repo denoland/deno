@@ -500,6 +500,7 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
+      deno_os::deno_os_worker::init_ops_and_esm(),
       deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
         services.node_services,
         services.fs,
@@ -511,7 +512,6 @@ impl WebWorker {
         options.format_js_error_fn,
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os_worker::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,

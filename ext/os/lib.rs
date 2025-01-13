@@ -1,19 +1,50 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
+use std::sync::atomic::AtomicI32;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::OpState;
-use deno_node::NODE_ENV_VAR_ALLOWLIST;
 use deno_path_util::normalize_path;
 use deno_permissions::PermissionCheckError;
 use deno_permissions::PermissionsContainer;
+use once_cell::sync::Lazy;
 use serde::Serialize;
 
-use crate::sys_info;
-use crate::worker::ExitCode;
+pub mod sys_info;
+
+pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
+  // The full list of environment variables supported by Node.js is available
+  // at https://nodejs.org/api/cli.html#environment-variables
+  let mut set = HashSet::new();
+  set.insert("NODE_DEBUG".to_string());
+  set.insert("NODE_OPTIONS".to_string());
+  set
+});
+
+#[derive(Clone, Default)]
+pub struct ExitCode(Arc<AtomicI32>);
+
+impl ExitCode {
+  pub fn get(&self) -> i32 {
+    self.0.load(Ordering::Relaxed)
+  }
+
+  pub fn set(&mut self, code: i32) {
+    self.0.store(code, Ordering::Relaxed);
+  }
+}
+
+pub fn exit(code: i32) -> ! {
+  deno_telemetry::flush();
+  #[allow(clippy::disallowed_methods)]
+  std::process::exit(code);
+}
 
 deno_core::extension!(
   deno_os,
@@ -36,12 +67,13 @@ deno_core::extension!(
     op_uid,
     op_runtime_memory_usage,
   ],
+  esm = ["30_os.js"],
   options = {
     exit_code: ExitCode,
   },
   state = |state, options| {
     state.put::<ExitCode>(options.exit_code);
-  },
+  }
 );
 
 deno_core::extension!(
@@ -65,11 +97,12 @@ deno_core::extension!(
     op_uid,
     op_runtime_memory_usage,
   ],
+  esm = ["30_os.js"],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
-  },
+  }
 );
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -196,7 +229,7 @@ fn op_get_exit_code(state: &mut OpState) -> i32 {
 #[op2(fast)]
 fn op_exit(state: &mut OpState) {
   let code = state.borrow::<ExitCode>().get();
-  crate::exit(code)
+  exit(code)
 }
 
 #[op2(stack_trace)]
@@ -239,7 +272,7 @@ fn op_network_interfaces(
   Ok(netif::up()?.map(NetworkInterface::from).collect())
 }
 
-#[derive(serde::Serialize)]
+#[derive(Serialize)]
 struct NetworkInterface {
   family: &'static str,
   name: String,

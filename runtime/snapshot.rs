@@ -308,6 +308,7 @@ pub fn create_runtime_snapshot(
     ),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
+    deno_os::deno_os::init_ops_and_esm(Default::default()),
     deno_node::deno_node::init_ops_and_esm::<
       Permissions,
       sys_traits::impls::RealSys,
@@ -319,7 +320,6 @@ pub fn create_runtime_snapshot(
       None,
     ),
     ops::fs_events::deno_fs_events::init_ops(),
-    ops::os::deno_os::init_ops(Default::default()),
     ops::permissions::deno_permissions::init_ops(),
     ops::process::deno_process::init_ops(None),
     ops::signal::deno_signal::init_ops(),

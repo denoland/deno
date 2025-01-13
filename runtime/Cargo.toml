@@ -49,6 +49,7 @@ deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
+deno_os.workspace = true
 deno_ffi.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
@@ -89,6 +90,7 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_telemetry.workspace = true
