@@ -13,6 +13,9 @@ description = "OS specific APIs for Deno"
 [lib]
 path = "lib.rs"
 
+[target.'cfg(windows)'.build-dependencies]
+winapi.workspace = true
+
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
@@ -24,3 +27,8 @@ netif = "0.1.6"
 once_cell.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+ntapi = "0.4.0"
+windows-sys.workspace = true

@@ -2150,9 +2150,12 @@ dependencies = [
  "deno_telemetry",
  "libc",
  "netif",
+ "ntapi",
  "once_cell",
  "serde",
  "thiserror 2.0.3",
+ "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
