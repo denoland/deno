@@ -8,6 +8,7 @@ use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use serde::Deserialize;
 use wgpu_types::SurfaceStatus;
 
@@ -72,7 +73,8 @@ pub fn op_webgpu_surface_configure(
   let surface = surface_resource.1;
 
   let conf = wgpu_types::SurfaceConfiguration::<Vec<wgpu_types::TextureFormat>> {
-    usage: wgpu_types::TextureUsages::from_bits_truncate(args.usage),
+    usage: wgpu_types::TextureUsages::from_bits(args.usage)
+      .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?,
     format: args.format,
     width: args.width,
     height: args.height,
