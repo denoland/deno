@@ -54,7 +54,7 @@ use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
@@ -503,7 +503,7 @@ pub struct ModuleGraphBuilder {
   module_info_cache: Arc<ModuleInfoCache>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
@@ -524,7 +524,7 @@ impl ModuleGraphBuilder {
     module_info_cache: Arc<ModuleInfoCache>,
     npm_graph_resolver: Arc<CliNpmGraphResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: CliByonmOrManagedNpmResolver,
+    npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,

@@ -26,10 +26,10 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
@@ -62,12 +62,12 @@ use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
+use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
@@ -90,7 +90,7 @@ struct LspScopeResolver {
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolution: Arc<NpmResolutionCell>,
-  npm_resolver: Option<CliByonmOrManagedNpmResolver>,
+  npm_resolver: Option<CliNpmResolver>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
@@ -250,43 +250,43 @@ impl LspScopeResolver {
       .set_snapshot(self.npm_resolution.snapshot());
     let npm_resolver = self.npm_resolver.as_ref();
     if let Some(npm_resolver) = &npm_resolver {
-      factory.set_npm_resolver(ByonmOrManagedNpmResolver::<CliSys>::new::<
-        CliSys,
-      >(match npm_resolver {
-        ByonmOrManagedNpmResolver::Byonm(byonm_npm_resolver) => {
-          NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-            root_node_modules_dir: byonm_npm_resolver
-              .root_node_modules_path()
-              .map(|p| p.to_path_buf()),
-            sys: CliSys::default(),
-            pkg_json_resolver: self.pkg_json_resolver.clone(),
-          })
-        }
-        ByonmOrManagedNpmResolver::Managed(managed_npm_resolver) => {
-          NpmResolverCreateOptions::Managed({
-            let npmrc = self
-              .config_data
-              .as_ref()
-              .and_then(|d| d.npmrc.clone())
-              .unwrap_or_else(create_default_npmrc);
-            let npm_cache_dir = Arc::new(NpmCacheDir::new(
-              &CliSys::default(),
-              managed_npm_resolver.global_cache_root_path().to_path_buf(),
-              npmrc.get_all_known_registries_urls(),
-            ));
-            CliManagedNpmResolverCreateOptions {
-              sys: CliSys::default(),
-              npm_cache_dir,
-              maybe_node_modules_path: managed_npm_resolver
+      factory.set_npm_resolver(NpmResolver::<CliSys>::new::<CliSys>(
+        match npm_resolver {
+          NpmResolver::Byonm(byonm_npm_resolver) => {
+            NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
+              root_node_modules_dir: byonm_npm_resolver
                 .root_node_modules_path()
                 .map(|p| p.to_path_buf()),
-              npmrc,
-              npm_resolution: factory.services.npm_resolution.clone(),
-              npm_system_info: NpmSystemInfo::default(),
-            }
-          })
-        }
-      }));
+              sys: CliSys::default(),
+              pkg_json_resolver: self.pkg_json_resolver.clone(),
+            })
+          }
+          NpmResolver::Managed(managed_npm_resolver) => {
+            NpmResolverCreateOptions::Managed({
+              let npmrc = self
+                .config_data
+                .as_ref()
+                .and_then(|d| d.npmrc.clone())
+                .unwrap_or_else(create_default_npmrc);
+              let npm_cache_dir = Arc::new(NpmCacheDir::new(
+                &CliSys::default(),
+                managed_npm_resolver.global_cache_root_path().to_path_buf(),
+                npmrc.get_all_known_registries_urls(),
+              ));
+              CliManagedNpmResolverCreateOptions {
+                sys: CliSys::default(),
+                npm_cache_dir,
+                maybe_node_modules_path: managed_npm_resolver
+                  .root_node_modules_path()
+                  .map(|p| p.to_path_buf()),
+                npmrc,
+                npm_resolution: factory.services.npm_resolution.clone(),
+                npm_system_info: NpmSystemInfo::default(),
+              }
+            })
+          }
+        },
+      ));
     }
 
     Arc::new(Self {
@@ -660,7 +660,7 @@ struct ResolverFactoryServices {
   npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
-  npm_resolver: Option<CliByonmOrManagedNpmResolver>,
+  npm_resolver: Option<CliNpmResolver>,
   npm_resolution: Arc<NpmResolutionCell>,
 }
 
@@ -798,21 +798,18 @@ impl<'a> ResolverFactory<'a> {
         npm_system_info: NpmSystemInfo::default(),
       })
     };
-    self.set_npm_resolver(CliByonmOrManagedNpmResolver::new(options));
+    self.set_npm_resolver(CliNpmResolver::new(options));
   }
 
   pub fn set_npm_installer(&mut self, npm_installer: Arc<NpmInstaller>) {
     self.services.npm_installer = Some(npm_installer);
   }
 
-  pub fn set_npm_resolver(
-    &mut self,
-    npm_resolver: CliByonmOrManagedNpmResolver,
-  ) {
+  pub fn set_npm_resolver(&mut self, npm_resolver: CliNpmResolver) {
     self.services.npm_resolver = Some(npm_resolver);
   }
 
-  pub fn npm_resolver(&self) -> Option<&CliByonmOrManagedNpmResolver> {
+  pub fn npm_resolver(&self) -> Option<&CliNpmResolver> {
     self.services.npm_resolver.as_ref()
   }
 
@@ -880,10 +877,10 @@ impl<'a> ResolverFactory<'a> {
   pub fn in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
     self.services.in_npm_pkg_checker.get_or_init(|| {
       DenoInNpmPackageChecker::new(match &self.services.npm_resolver {
-        Some(CliByonmOrManagedNpmResolver::Byonm(_)) | None => {
+        Some(CliNpmResolver::Byonm(_)) | None => {
           CreateInNpmPkgCheckerOptions::Byonm
         }
-        Some(CliByonmOrManagedNpmResolver::Managed(m)) => {
+        Some(CliNpmResolver::Managed(m)) => {
           CreateInNpmPkgCheckerOptions::Managed(
             ManagedInNpmPkgCheckerCreateOptions {
               root_cache_dir_url: m.global_cache_root_url(),

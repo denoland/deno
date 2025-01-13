@@ -73,10 +73,10 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
-use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
+use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmRegistryReadPermissionChecker;
@@ -222,7 +222,7 @@ struct CliFactoryServices {
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolution_initializer: Deferred<Arc<NpmResolutionInitializer>>,
   npm_resolution_installer: Deferred<Arc<NpmResolutionInstaller>>,
-  npm_resolver: Deferred<CliByonmOrManagedNpmResolver>,
+  npm_resolver: Deferred<CliNpmResolver>,
   npm_tarball_cache: Deferred<Arc<CliNpmTarballCache>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
@@ -558,51 +558,45 @@ impl CliFactory {
     })
   }
 
-  pub async fn npm_resolver(
-    &self,
-  ) -> Result<&CliByonmOrManagedNpmResolver, AnyError> {
+  pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
     self
       .services
       .npm_resolver
       .get_or_try_init_async(
         async {
           let cli_options = self.cli_options()?;
-          Ok(CliByonmOrManagedNpmResolver::new(
-            if cli_options.use_byonm() {
-              NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-                sys: self.sys(),
-                pkg_json_resolver: self.pkg_json_resolver().clone(),
-                root_node_modules_dir: Some(
-                  match cli_options.node_modules_dir_path() {
-                    Some(node_modules_path) => node_modules_path.to_path_buf(),
-                    // path needs to be canonicalized for node resolution
-                    // (node_modules_dir_path above is already canonicalized)
-                    None => canonicalize_path_maybe_not_exists(
-                      cli_options.initial_cwd(),
-                    )?
-                    .join("node_modules"),
-                  },
-                ),
-              })
-            } else {
-              self
-                .npm_resolution_initializer()?
-                .ensure_initialized()
-                .await?;
-              NpmResolverCreateOptions::Managed(
-                ManagedNpmResolverCreateOptions {
-                  sys: self.sys(),
-                  npm_resolution: self.npm_resolution().clone(),
-                  npm_cache_dir: self.npm_cache_dir()?.clone(),
-                  maybe_node_modules_path: cli_options
-                    .node_modules_dir_path()
-                    .cloned(),
-                  npm_system_info: cli_options.npm_system_info(),
-                  npmrc: cli_options.npmrc().clone(),
+          Ok(CliNpmResolver::new(if cli_options.use_byonm() {
+            NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
+              sys: self.sys(),
+              pkg_json_resolver: self.pkg_json_resolver().clone(),
+              root_node_modules_dir: Some(
+                match cli_options.node_modules_dir_path() {
+                  Some(node_modules_path) => node_modules_path.to_path_buf(),
+                  // path needs to be canonicalized for node resolution
+                  // (node_modules_dir_path above is already canonicalized)
+                  None => canonicalize_path_maybe_not_exists(
+                    cli_options.initial_cwd(),
+                  )?
+                  .join("node_modules"),
                 },
-              )
-            },
-          ))
+              ),
+            })
+          } else {
+            self
+              .npm_resolution_initializer()?
+              .ensure_initialized()
+              .await?;
+            NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
+              sys: self.sys(),
+              npm_resolution: self.npm_resolution().clone(),
+              npm_cache_dir: self.npm_cache_dir()?.clone(),
+              maybe_node_modules_path: cli_options
+                .node_modules_dir_path()
+                .cloned(),
+              npm_system_info: cli_options.npm_system_info(),
+              npmrc: cli_options.npmrc().clone(),
+            })
+          }))
         }
         .boxed_local(),
       )

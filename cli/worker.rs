@@ -57,7 +57,7 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
 use crate::util::file_watcher::WatcherCommunicator;
@@ -152,7 +152,7 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
@@ -169,11 +169,7 @@ impl SharedWorkerState {
   pub fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices<
-    DenoInNpmPackageChecker,
-    CliByonmOrManagedNpmResolver,
-    CliSys,
-  > {
+  ) -> NodeExtInitServices<DenoInNpmPackageChecker, CliNpmResolver, CliSys> {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
@@ -431,7 +427,7 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: CliByonmOrManagedNpmResolver,
+    npm_resolver: CliNpmResolver,
     pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
@@ -892,7 +888,7 @@ mod tests {
 
     MainWorker::bootstrap_from_options::<
       DenoInNpmPackageChecker,
-      CliByonmOrManagedNpmResolver,
+      CliNpmResolver,
       CliSys,
     >(
       main_module,

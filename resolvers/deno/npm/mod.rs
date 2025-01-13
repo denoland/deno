@@ -155,9 +155,7 @@ pub enum NpmResolverCreateOptions<
 }
 
 #[derive(Debug, Clone)]
-pub enum ByonmOrManagedNpmResolver<
-  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
-> {
+pub enum NpmResolver<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> {
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
@@ -165,9 +163,7 @@ pub enum ByonmOrManagedNpmResolver<
   Managed(ManagedNpmResolverRc<TSys>),
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
-  ByonmOrManagedNpmResolver<TSys>
-{
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> NpmResolver<TSys> {
   pub fn new<
     TCreateSys: FsCanonicalize
       + FsMetadata
@@ -180,44 +176,38 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
       + 'static,
   >(
     options: NpmResolverCreateOptions<TCreateSys>,
-  ) -> ByonmOrManagedNpmResolver<TCreateSys> {
+  ) -> NpmResolver<TCreateSys> {
     match options {
       NpmResolverCreateOptions::Managed(options) => {
-        ByonmOrManagedNpmResolver::Managed(new_rc(ManagedNpmResolver::<
+        NpmResolver::Managed(new_rc(ManagedNpmResolver::<TCreateSys>::new::<
           TCreateSys,
-        >::new::<TCreateSys>(
-          options
-        )))
+        >(options)))
       }
       NpmResolverCreateOptions::Byonm(options) => {
-        ByonmOrManagedNpmResolver::Byonm(new_rc(ByonmNpmResolver::new(options)))
+        NpmResolver::Byonm(new_rc(ByonmNpmResolver::new(options)))
       }
     }
   }
 
   pub fn is_byonm(&self) -> bool {
-    matches!(self, ByonmOrManagedNpmResolver::Byonm(_))
+    matches!(self, NpmResolver::Byonm(_))
   }
 
   pub fn is_managed(&self) -> bool {
-    matches!(self, ByonmOrManagedNpmResolver::Managed(_))
+    matches!(self, NpmResolver::Managed(_))
   }
 
   pub fn as_managed(&self) -> Option<&ManagedNpmResolver<TSys>> {
     match self {
-      ByonmOrManagedNpmResolver::Managed(resolver) => Some(resolver),
-      ByonmOrManagedNpmResolver::Byonm(_) => None,
+      NpmResolver::Managed(resolver) => Some(resolver),
+      NpmResolver::Byonm(_) => None,
     }
   }
 
   pub fn root_node_modules_path(&self) -> Option<&Path> {
     match self {
-      ByonmOrManagedNpmResolver::Byonm(resolver) => {
-        resolver.root_node_modules_path()
-      }
-      ByonmOrManagedNpmResolver::Managed(resolver) => {
-        resolver.root_node_modules_path()
-      }
+      NpmResolver::Byonm(resolver) => resolver.root_node_modules_path(),
+      NpmResolver::Managed(resolver) => resolver.root_node_modules_path(),
     }
   }
 
@@ -227,10 +217,10 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     referrer: &Url,
   ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
     match self {
-      ByonmOrManagedNpmResolver::Byonm(byonm_resolver) => byonm_resolver
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
-      ByonmOrManagedNpmResolver::Managed(managed_resolver) => managed_resolver
+      NpmResolver::Managed(managed_resolver) => managed_resolver
         .resolve_pkg_folder_from_deno_module_req(req, referrer)
         .map_err(ResolvePkgFolderFromDenoReqError::Managed),
     }
@@ -238,7 +228,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
 }
 
 impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
-  NpmPackageFolderResolver for ByonmOrManagedNpmResolver<TSys>
+  NpmPackageFolderResolver for NpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -246,10 +236,10 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     referrer: &Url,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
     match self {
-      ByonmOrManagedNpmResolver::Byonm(byonm_resolver) => {
+      NpmResolver::Byonm(byonm_resolver) => {
         byonm_resolver.resolve_package_folder_from_package(specifier, referrer)
       }
-      ByonmOrManagedNpmResolver::Managed(managed_resolver) => managed_resolver
+      NpmResolver::Managed(managed_resolver) => managed_resolver
         .resolve_package_folder_from_package(specifier, referrer),
     }
   }
@@ -268,7 +258,7 @@ pub struct NpmReqResolverOptions<
     TNpmPackageFolderResolver,
     TSys,
   >,
-  pub npm_resolver: ByonmOrManagedNpmResolver<TSys>,
+  pub npm_resolver: NpmResolver<TSys>,
   pub sys: TSys,
 }
 
@@ -302,7 +292,7 @@ pub struct NpmReqResolver<
     TNpmPackageFolderResolver,
     TSys,
   >,
-  npm_resolver: ByonmOrManagedNpmResolver<TSys>,
+  npm_resolver: NpmResolver<TSys>,
 }
 
 impl<
@@ -372,7 +362,7 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if matches!(self.npm_resolver, ByonmOrManagedNpmResolver::Byonm(_)) {
+        if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
           if !self.sys.fs_exists_no_err(&package_json_path) {
             return Err(
@@ -440,9 +430,8 @@ impl<
                         .into_box(),
                       );
                     }
-                    if let ByonmOrManagedNpmResolver::Byonm(
-                      byonm_npm_resolver,
-                    ) = &self.npm_resolver
+                    if let NpmResolver::Byonm(byonm_npm_resolver) =
+                      &self.npm_resolver
                     {
                       if byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(

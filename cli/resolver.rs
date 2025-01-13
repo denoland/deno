@@ -19,8 +19,8 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::NpmResolver;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
@@ -51,14 +51,14 @@ pub type CliSloppyImportsResolver =
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
-  ByonmOrManagedNpmResolver<CliSys>,
+  NpmResolver<CliSys>,
   CliSloppyImportsCachedFs,
   CliSys,
 >;
 pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
-  ByonmOrManagedNpmResolver<CliSys>,
+  NpmResolver<CliSys>,
   CliSys,
 >;
 

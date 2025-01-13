@@ -69,7 +69,7 @@ use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -245,7 +245,7 @@ struct SharedCliModuleLoaderState {
   npm_module_loader: NpmModuleLoader,
   npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
@@ -306,7 +306,7 @@ impl CliModuleLoaderFactory {
     npm_module_loader: NpmModuleLoader,
     npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
     npm_req_resolver: Arc<CliNpmReqResolver>,
-    npm_resolver: CliByonmOrManagedNpmResolver,
+    npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,

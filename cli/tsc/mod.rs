@@ -45,7 +45,7 @@ use crate::args::TypeCheckMode;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 use crate::util::checksum;
@@ -358,7 +358,7 @@ impl TypeCheckingCjsTracker {
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: CliByonmOrManagedNpmResolver,
+  pub npm_resolver: CliNpmResolver,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.

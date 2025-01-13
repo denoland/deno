@@ -14,8 +14,8 @@ use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
@@ -313,7 +313,7 @@ pub fn create_runtime_snapshot(
     deno_node::deno_node::init_ops_and_esm::<
       Permissions,
       DenoInNpmPackageChecker,
-      ByonmOrManagedNpmResolver<sys_traits::impls::RealSys>,
+      NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     >(None, fs.clone()),
     runtime::init_ops_and_esm(),

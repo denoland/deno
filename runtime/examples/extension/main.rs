@@ -12,8 +12,8 @@ use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_fs::RealFs;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::NpmResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::worker::MainWorker;
@@ -46,7 +46,7 @@ async fn main() -> Result<(), AnyError> {
     main_module.clone(),
     WorkerServiceOptions::<
       DenoInNpmPackageChecker,
-      ByonmOrManagedNpmResolver<sys_traits::impls::RealSys>,
+      NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     > {
       module_loader: Rc::new(FsModuleLoader),

@@ -13,7 +13,7 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
+use deno_resolver::npm::NpmResolver;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -36,7 +36,7 @@ use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
@@ -113,7 +113,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   sys: CliSys,
 }
 
@@ -147,7 +147,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: CliByonmOrManagedNpmResolver,
+    npm_resolver: CliNpmResolver,
     sys: CliSys,
   ) -> Self {
     Self {
@@ -190,15 +190,13 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
-    fn check_state_hash(
-      resolver: &CliByonmOrManagedNpmResolver,
-    ) -> Option<u64> {
+    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
-        ByonmOrManagedNpmResolver::Byonm(_) => {
+        NpmResolver::Byonm(_) => {
           // not feasible and probably slower to compute
           None
         }
-        ByonmOrManagedNpmResolver::Managed(resolver) => {
+        NpmResolver::Managed(resolver) => {
           // we should probably go further and check all the individual npm packages
           let mut package_reqs = resolver.resolution().package_reqs();
           package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism

@@ -38,7 +38,7 @@ use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
@@ -271,7 +271,7 @@ struct RunSingleOptions<'a> {
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
   npm_installer: Option<&'a NpmInstaller>,
-  npm_resolver: &'a CliByonmOrManagedNpmResolver,
+  npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,

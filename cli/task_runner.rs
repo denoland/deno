@@ -25,8 +25,8 @@ use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::node::CliNodeResolver;
-use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
@@ -413,15 +413,15 @@ impl ShellCommand for NodeModulesFileRunCommand {
 }
 
 pub fn resolve_custom_commands(
-  npm_resolver: &CliByonmOrManagedNpmResolver,
+  npm_resolver: &CliNpmResolver,
   node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut commands = match npm_resolver {
-    CliByonmOrManagedNpmResolver::Byonm(npm_resolver) => {
+    CliNpmResolver::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
       resolve_npm_commands_from_bin_dir(node_modules_dir)
     }
-    CliByonmOrManagedNpmResolver::Managed(npm_resolver) => {
+    CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(npm_resolver, node_resolver)?
     }
   };

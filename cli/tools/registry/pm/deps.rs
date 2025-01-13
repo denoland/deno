@@ -43,7 +43,7 @@ use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::npm::installer::NpmInstaller;
-use crate::npm::CliByonmOrManagedNpmResolver;
+use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
 
@@ -451,7 +451,7 @@ pub struct DepManager {
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   npm_installer: Arc<NpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
@@ -463,7 +463,7 @@ pub struct DepManagerArgs {
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
   pub npm_installer: Arc<NpmInstaller>,
-  pub npm_resolver: CliByonmOrManagedNpmResolver,
+  pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,

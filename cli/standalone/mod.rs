@@ -44,10 +44,10 @@ use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
@@ -90,8 +90,8 @@ use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliByonmOrManagedNpmResolver;
 use crate::npm::CliManagedNpmResolverCreateOptions;
+use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
@@ -133,7 +133,7 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: CliByonmOrManagedNpmResolver,
+  npm_resolver: CliNpmResolver,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
@@ -744,7 +744,7 @@ pub async fn run(
         ));
       let npm_resolution =
         Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
-      let npm_resolver = CliByonmOrManagedNpmResolver::new(
+      let npm_resolver = CliNpmResolver::new(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
           npm_cache_dir,
@@ -763,13 +763,13 @@ pub async fn run(
         root_node_modules_dir.map(|p| vfs.root().join(p));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
-      let npm_resolver = CliByonmOrManagedNpmResolver::new(
-        NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
+      let npm_resolver = CliNpmResolver::new(NpmResolverCreateOptions::Byonm(
+        ByonmNpmResolverCreateOptions {
           sys: sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
-        }),
-      );
+        },
+      ));
       (in_npm_pkg_checker, npm_resolver)
     }
     None => {
@@ -789,7 +789,7 @@ pub async fn run(
           },
         ));
       let npm_resolution = Arc::new(NpmResolutionCell::default());
-      let npm_resolver = CliByonmOrManagedNpmResolver::new(
+      let npm_resolver = CliNpmResolver::new(
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           npm_resolution,
           sys: sys.clone(),
