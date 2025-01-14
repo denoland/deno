@@ -173,13 +173,13 @@ impl SerializeCtx {
     let kind_size = kind_len as usize;
     let prop_size = prop_len as usize;
     let mut ctx = Self {
-      spans: vec![],
+      spans: Vec::with_capacity(512),
       root_idx: 0,
-      nodes: vec![],
+      nodes: Vec::with_capacity(512),
       prop_stack: vec![vec![]],
       prev_sibling_stack: vec![0],
       field_count: vec![0],
-      field_buf: vec![],
+      field_buf: Vec::with_capacity(1024),
       str_table: StringTable::new(),
       kind_name_map: vec![0; kind_size],
       prop_name_map: vec![0; prop_size],
