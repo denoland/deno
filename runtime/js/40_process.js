@@ -354,7 +354,12 @@ class ChildProcess {
     if (this.#waitComplete) {
       throw new TypeError("Child process has already terminated");
     }
-    op_spawn_kill(this.#rid, signo);
+    try {
+      op_spawn_kill(this.#rid, signo);
+    } catch (e) {
+      // issue #27124
+      void e;
+    }
   }
 
   async [SymbolAsyncDispose]() {
