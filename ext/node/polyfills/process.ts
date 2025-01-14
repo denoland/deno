@@ -58,7 +58,7 @@ import {
 } from "ext:deno_node/_next_tick.ts";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import * as io from "ext:deno_io/12_io.js";
-import * as denoOs from "ext:runtime/30_os.js";
+import * as denoOs from "ext:deno_os/30_os.js";
 
 export let argv0 = "";
 
