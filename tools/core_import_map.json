@@ -38,7 +38,7 @@
     "ext:deno_node/_fs/_fs_stat.ts": "../ext/node/polyfills/_fs/_fs_stat.ts",
     "ext:deno_node/_fs/_fs_watch.ts": "../ext/node/polyfills/_fs/_fs_watch.ts",
     "ext:deno_node/_fs/_fs_write.mjs": "../ext/node/polyfills/_fs/_fs_write.mjs",
-    "ext:deno_node/_fs/_fs_writev.mjs": "../ext/node/polyfills/_fs/_fs_writev.mjs",
+    "ext:deno_node/_fs/_fs_writev.ts": "../ext/node/polyfills/_fs/_fs_writev.ts",
     "ext:deno_node/_global.d.ts": "../ext/node/polyfills/_global.d.ts",
     "node:_http_agent": "../ext/node/polyfills/_http_agent.mjs",
     "node:_http_common": "../ext/node/polyfills/_http_common.ts",

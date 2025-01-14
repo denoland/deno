@@ -119,6 +119,45 @@ Deno.test("[node/fs filehandle.writeFile] Write to file", async function () {
 });
 
 Deno.test(
+  "[node/fs filehandle.writev] Write array of buffers to file",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w");
+
+    const buffer1 = Buffer.from("hello ");
+    const buffer2 = Buffer.from("world");
+    const res = await fileHandle.writev([buffer1, buffer2]);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(res.bytesWritten, 11);
+    assertEquals(decoder.decode(data), "hello world");
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.writev] Write array of buffers to file with position",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w");
+
+    const buffer1 = Buffer.from("hello ");
+    const buffer2 = Buffer.from("world");
+    await fileHandle.writev([buffer1, buffer2], 0);
+    const buffer3 = Buffer.from("lorem ipsum");
+    await fileHandle.writev([buffer3], 6);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(decoder.decode(data), "hello lorem ipsum");
+  },
+);
+
+Deno.test(
   "[node/fs filehandle.truncate] Truncate file with length",
   async function () {
     const tempFile: string = await Deno.makeTempFile();
