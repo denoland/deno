@@ -19,7 +19,9 @@ use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
@@ -30,7 +32,6 @@ use crate::ExtNodeSys;
 use crate::NodePermissions;
 use crate::NodeRequireLoaderRc;
 use crate::NodeResolverRc;
-use crate::NpmPackageFolderResolverRc;
 use crate::PackageJsonResolverRc;
 
 #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
@@ -256,12 +257,20 @@ pub fn op_require_is_request_relative(#[string] request: String) -> bool {
 
 #[op2]
 #[string]
-pub fn op_require_resolve_deno_dir(
+pub fn op_require_resolve_deno_dir<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] request: String,
   #[string] parent_filename: String,
 ) -> Result<Option<String>, deno_path_util::PathToUrlError> {
-  let resolver = state.borrow::<NpmPackageFolderResolverRc>();
+  let resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
 
   Ok(
     resolver
@@ -275,11 +284,19 @@ pub fn op_require_resolve_deno_dir(
 }
 
 #[op2(fast)]
-pub fn op_require_is_deno_dir_package<TSys: ExtNodeSys + 'static>(
+pub fn op_require_is_deno_dir_package<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TSys: ExtNodeSys + 'static,
+>(
   state: &mut OpState,
   #[string] path: String,
 ) -> bool {
-  let resolver = state.borrow::<NodeResolverRc<TSys>>();
+  let resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
   match deno_path_util::url_from_file_path(&PathBuf::from(path)) {
     Ok(specifier) => resolver.in_npm_package(&specifier),
     Err(_) => false,
@@ -451,6 +468,8 @@ pub fn op_require_try_self_parent_path<
 #[string]
 pub fn op_require_try_self<
   P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
@@ -493,7 +512,11 @@ pub fn op_require_try_self<
 
   let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
-    let node_resolver = state.borrow::<NodeResolverRc<TSys>>();
+    let node_resolver = state.borrow::<NodeResolverRc<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>();
     let r = node_resolver.package_exports_resolve(
       &pkg.path,
       &expansion,
@@ -552,6 +575,8 @@ pub fn op_require_as_file_path(#[string] file_or_url: String) -> String {
 #[string]
 pub fn op_require_resolve_exports<
   P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
@@ -563,7 +588,11 @@ pub fn op_require_resolve_exports<
   #[string] parent_path: String,
 ) -> Result<Option<String>, RequireError> {
   let sys = state.borrow::<TSys>();
-  let node_resolver = state.borrow::<NodeResolverRc<TSys>>();
+  let node_resolver = state.borrow::<NodeResolverRc<
+    TInNpmPackageChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >>();
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
 
   let modules_path = PathBuf::from(&modules_path_str);
@@ -655,6 +684,8 @@ pub fn op_require_read_package_scope<
 #[string]
 pub fn op_require_package_imports_resolve<
   P: NodePermissions + 'static,
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
   TSys: ExtNodeSys + 'static,
 >(
   state: &mut OpState,
@@ -672,7 +703,11 @@ pub fn op_require_package_imports_resolve<
   };
 
   if pkg.imports.is_some() {
-    let node_resolver = state.borrow::<NodeResolverRc<TSys>>();
+    let node_resolver = state.borrow::<NodeResolverRc<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >>();
     let referrer_url = Url::from_file_path(&referrer_filename).unwrap();
     let url = node_resolver.package_imports_resolve(
       &request,
