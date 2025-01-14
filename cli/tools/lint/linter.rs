@@ -392,6 +392,6 @@ impl ExternalLinterContainer {
   }
 
   pub fn take_error(&self) -> Option<AnyError> {
-    self.error.as_ref().map(|e| e.lock().take()).flatten()
+    self.error.as_ref().and_then(|e| e.lock().take())
   }
 }

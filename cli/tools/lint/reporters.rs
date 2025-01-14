@@ -57,7 +57,7 @@ impl LintReporter for PrettyLintReporter {
     log::error!("Error linting: {file_path}");
     if let Some(core_err) = err.downcast_ref::<CoreError>() {
       if let CoreError::Js(js_error) = core_err {
-        log::error!("   {}", format_js_error(&js_error));
+        log::error!("   {}", format_js_error(js_error));
         return;
       }
     }
