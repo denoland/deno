@@ -56,7 +56,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_graph::GraphKind;
 pub use deno_json::check_warn_tsconfig;
 use deno_lint::linter::LintConfig as DenoLintConfig;
@@ -842,8 +841,6 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options =
-        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
@@ -854,7 +851,6 @@ impl CliOptions {
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
-        config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
         maybe_vendor_override,
@@ -1103,11 +1099,11 @@ impl CliOptions {
       }
     };
     Ok(self.workspace().create_resolver(
+      &CliSys::default(),
       CreateResolverOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
     )?)
   }
 

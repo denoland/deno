@@ -41,7 +41,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_error::JsErrorBox;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
@@ -1247,7 +1246,6 @@ impl ConfigData {
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
-            config_parse_options: Default::default(),
             maybe_vendor_override: None,
           },
         )
@@ -1572,11 +1570,11 @@ impl ConfigData {
     let resolver = member_dir
       .workspace
       .create_resolver(
+        &CliSys::default(),
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
       )
       .inspect_err(|err| {
         lsp_warn!(
