@@ -6,7 +6,7 @@
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
 import { Mode, promises, read, write } from "node:fs";
-export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { core } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
@@ -14,7 +14,8 @@ import {
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
-import { core } from "ext:core/mod.js";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
 
 interface WriteResult {
   bytesWritten: number;
@@ -64,7 +65,7 @@ export class FileHandle extends EventEmitter {
           position,
           (err, bytesRead, buffer) => {
             if (err) reject(err);
-            else resolve({ buffer: buffer, bytesRead: bytesRead });
+            else resolve({ buffer, bytesRead });
           },
         );
       });
@@ -72,7 +73,7 @@ export class FileHandle extends EventEmitter {
       return new Promise((resolve, reject) => {
         read(this.fd, bufferOrOpt, (err, bytesRead, buffer) => {
           if (err) reject(err);
-          else resolve({ buffer: buffer, bytesRead: bytesRead });
+          else resolve({ buffer, bytesRead });
         });
       });
     }
@@ -135,6 +136,10 @@ export class FileHandle extends EventEmitter {
 
   writeFile(data, options): Promise<void> {
     return fsCall(promises.writeFile, this, data, options);
+  }
+
+  writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
+    return fsCall(writevPromise, this, buffers, position);
   }
 
   close(): Promise<void> {
