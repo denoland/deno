@@ -22,6 +22,7 @@ use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
 use text_lines::TextLines;
@@ -464,7 +465,7 @@ fn filter_coverages(
   coverages: Vec<cdp::ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
-  in_npm_pkg_checker: &dyn InNpmPackageChecker,
+  in_npm_pkg_checker: &DenoInNpmPackageChecker,
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -532,7 +533,7 @@ pub fn cover_files(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
-    in_npm_pkg_checker.as_ref(),
+    in_npm_pkg_checker,
   );
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
