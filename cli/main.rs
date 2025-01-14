@@ -340,6 +340,24 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   handle.await?
 }
 
+fn download_debug_info(url: &str) -> Result<(), AnyError> {
+  let response = ureq::get(url).call()?;
+  let mut reader = response.into_reader();
+
+  let dest = std::env::current_exe()?;
+  let dest = dest.parent().unwrap();
+
+  if dest.join("deno.dSYM").exists() {
+    return Ok(());
+  }
+
+  let mut data = Vec::new();
+  reader.read_to_end(&mut data)?;
+
+  crate::util::archive::unpack_dir_into_dir("deno.dSYM", dest, &data)?;
+  Ok(())
+}
+
 #[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
   // This function does two things inside of the panic hook:
@@ -360,6 +378,15 @@ fn setup_panic_hook() {
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
+
+    match download_debug_info("http://localhost:8008") {
+      Ok(_) => {
+        eprintln!("Debug info: downloaded");
+      }
+      Err(e) => {
+        eprintln!("Failed to download debug info: {}", e);
+      }
+    }
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));

@@ -90,6 +90,7 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = dest_path.join(exe_name).with_extension("zip");
   let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
+  dbg!(&exe_path);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
@@ -115,4 +116,25 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
 
   assert!(exe_path.exists());
   Ok(exe_path)
+}
+
+pub fn unpack_dir_into_dir(
+  out_name: &str,
+  dest_path: &Path,
+  archive_data: &[u8],
+) -> Result<(), AnyError> {
+  let ext = out_name.rsplit_once('.').map(|(_, ext)| ext);
+  let archive_path = dest_path.join(out_name).with_extension(
+    ext
+      .map(|s| format!("{s}.zip"))
+      .unwrap_or_else(|| "zip".to_string()),
+  );
+
+  unzip(
+    archive_path.file_name().unwrap().to_str().unwrap(),
+    archive_data,
+    dest_path,
+  )?;
+
+  Ok(())
 }
