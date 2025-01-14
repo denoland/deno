@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
@@ -54,9 +54,7 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(generic_error(format!(
-      "Invalid executable name: {exec_name}"
-    )))
+    Err(anyhow!("Invalid executable name: {exec_name}"))
   }
 }
 
@@ -223,7 +221,7 @@ pub async fn uninstall(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   }
 
@@ -247,10 +245,10 @@ pub async fn uninstall(
   }
 
   if !removed {
-    return Err(generic_error(format!(
+    return Err(anyhow!(
       "No installation found for {}",
       uninstall_flags.name
-    )));
+    ));
   }
 
   // There might be some extra files to delete
@@ -302,8 +300,8 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-        npm_resolver.ensure_no_pkg_json_dep_errors()?;
+      if let Some(npm_installer) = factory.npm_installer_if_managed()? {
+        npm_installer.ensure_no_pkg_json_dep_errors()?;
       }
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
@@ -423,14 +421,14 @@ async fn create_install_shim(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   } else {
     fs::create_dir_all(&shim_data.installation_dir)?;
   };
 
   if shim_data.file_path.exists() && !install_flags_global.force {
-    return Err(generic_error(
+    return Err(anyhow!(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
   };
@@ -492,7 +490,7 @@ async fn resolve_shim_data(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(generic_error(
+    None => return Err(anyhow!(
       "An executable name was not provided. One could not be inferred from the URL. Aborting.",
     )),
   };
@@ -524,9 +522,7 @@ async fn resolve_shim_data(
       let log_level = match log_level {
         Level::Debug => "debug",
         Level::Info => "info",
-        _ => {
-          return Err(generic_error(format!("invalid log level {log_level}")))
-        }
+        _ => return Err(anyhow!(format!("invalid log level {log_level}"))),
       };
       executable_args.push(log_level.to_string());
     }

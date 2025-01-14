@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::located_script_name;
@@ -67,7 +67,7 @@ pub async fn kernel(
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
-  let npm_resolver = factory.npm_resolver().await?.clone();
+  let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -115,7 +115,7 @@ pub async fn kernel(
   let worker = worker.into_main_worker();
   let mut repl_session = repl::ReplSession::initialize(
     cli_options,
-    npm_resolver,
+    npm_installer,
     resolver,
     worker,
     main_module,
@@ -137,10 +137,10 @@ pub async fn kernel(
   }
   let cwd_url =
     Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-      generic_error(format!(
+      anyhow!(
         "Unable to construct URL from the path of cwd: {}",
         cli_options.initial_cwd().to_string_lossy(),
-      ))
+      )
     })?;
   repl_session.set_test_reporter_factory(Box::new(move || {
     Box::new(

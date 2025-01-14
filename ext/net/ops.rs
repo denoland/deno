@@ -67,60 +67,87 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetError {
+  #[class("BadResource")]
   #[error("Listener has been closed")]
   ListenerClosed,
+  #[class("Busy")]
   #[error("Listener already in use")]
   ListenerBusy,
+  #[class("BadResource")]
   #[error("Socket has been closed")]
   SocketClosed,
+  #[class("NotConnected")]
   #[error("Socket has been closed")]
   SocketClosedNotConnected,
+  #[class("Busy")]
   #[error("Socket already in use")]
   SocketBusy,
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class("Busy")]
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
   #[error("No resolved address found")]
   NoResolvedAddress,
+  #[class(generic)]
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
+  #[class(inherit)]
   #[error("{0}")]
   Map(crate::io::MapError),
+  #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
+  #[class("NotFound")]
   #[error("{0}")]
   DnsNotFound(ResolveError),
+  #[class("NotConnected")]
   #[error("{0}")]
   DnsNotConnected(ResolveError),
+  #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
+  #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
+  #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(generic)]
   #[error("unexpected key type")]
   UnexpectedKeyType,
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
-  InvalidHostname(String), // TypeError
+  InvalidHostname(String),
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
   #[error("{0}")]
   Tls(#[from] deno_tls::TlsError),
+  #[class("InvalidData")]
   #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
-  ListenTlsRequiresKey, // InvalidData
+  ListenTlsRequiresKey,
+  #[class(inherit)]
   #[error("{0}")]
-  RootCertStore(deno_core::anyhow::Error),
+  RootCertStore(deno_error::JsErrorBox),
+  #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
 }
@@ -713,10 +740,8 @@ pub fn op_set_nodelay_inner(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay).map_err(NetError::Map)
 }
 
@@ -735,10 +760,8 @@ pub fn op_set_keepalive_inner(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive).map_err(NetError::Map)
 }
 

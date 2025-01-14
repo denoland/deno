@@ -73,6 +73,7 @@ use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::FileBackedVfs;
+use super::virtual_fs::FileSystemCaseSensitivity;
 use super::virtual_fs::VfsBuilder;
 use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
@@ -202,6 +203,7 @@ pub struct Metadata {
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
+  pub vfs_case_sensitivity: FileSystemCaseSensitivity,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -379,7 +381,11 @@ pub fn extract_standalone(
       root_path: root_path.clone(),
       start_file_offset: 0,
     };
-    Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
+    Arc::new(FileBackedVfs::new(
+      Cow::Borrowed(vfs_files_data),
+      fs_root,
+      metadata.vfs_case_sensitivity,
+    ))
   };
   Ok(Some(StandaloneData {
     metadata,
@@ -851,6 +857,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
+      vfs_case_sensitivity: vfs.case_sensitivity,
     };
 
     write_binary_bytes(
@@ -984,11 +991,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
         // it's better to not expose the user's cache directory, so take it out
         // of there
+        let case_sensitivity = vfs.case_sensitivity();
         let parent = global_cache_root_path.parent().unwrap();
         let parent_dir = vfs.get_dir_mut(parent).unwrap();
         let index = parent_dir
           .entries
-          .binary_search(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME)
+          .binary_search(
+            DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME,
+            case_sensitivity,
+          )
           .unwrap();
         let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
 
@@ -998,7 +1009,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
         for ancestor in parent.ancestors() {
           let dir = vfs.get_dir_mut(ancestor).unwrap();
-          if let Ok(index) = dir.entries.binary_search(&last_name) {
+          if let Ok(index) =
+            dir.entries.binary_search(&last_name, case_sensitivity)
+          {
             dir.entries.remove(index);
           }
           last_name = Cow::Owned(dir.name.clone());
@@ -1009,7 +1022,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
         // now build the vfs and add the global cache dir entry there
         let mut built_vfs = vfs.build();
-        built_vfs.entries.insert(npm_global_cache_dir_entry);
+        built_vfs
+          .entries
+          .insert(npm_global_cache_dir_entry, case_sensitivity);
         built_vfs
       }
       InnerCliNpmResolverRef::Byonm(_) => vfs.build(),

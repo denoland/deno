@@ -6,11 +6,14 @@
 use std::path::PathBuf;
 
 use boxed_error::Boxed;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
+use deno_error::JsError;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -46,6 +49,12 @@ mod sync;
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
 
+#[allow(clippy::disallowed_types)]
+pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+
+#[allow(clippy::disallowed_types)]
+pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
+
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
   pub url: Url,
@@ -53,29 +62,39 @@ pub struct DenoResolution {
   pub found_package_json_dep: bool,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum DenoResolveErrorKind {
+  #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
+  #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
+  #[class(inherit)]
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
   #[error(transparent)]
   Node(#[from] NodeResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJsonDepValueParse(#[from] PackageJsonDepValueParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJsonDepValueUrlParse(url::ParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
 }

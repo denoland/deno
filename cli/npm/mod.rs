@@ -1,38 +1,37 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod byonm;
+pub mod installer;
 mod managed;
 mod permission_checker;
 
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::ByonmInNpmPackageChecker;
 use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::CliNpmReqResolver;
+use deno_resolver::npm::ByonmOrManagedNpmResolver;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::ops::process::NpmProcessStateProvider;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
-use managed::create_managed_in_npm_pkg_checker;
-use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 
 pub use self::byonm::CliByonmNpmResolver;
 pub use self::byonm::CliByonmNpmResolverCreateOptions;
-pub use self::managed::CliManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
-pub use self::managed::PackageCaching;
+pub use self::managed::NpmResolutionInitializer;
+pub use self::managed::ResolveSnapshotError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
 pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
@@ -90,14 +89,16 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
           | Json { .. }
           | ToStr { .. }
           | RedirectHeaderParse { .. }
-          | TooManyRedirects => None,
+          | TooManyRedirects
+          | NotFound
+          | Other(_) => None,
           BadResponse(bad_response_error) => {
             Some(bad_response_error.status_code)
           }
         };
         deno_npm_cache::DownloadError {
           status_code,
-          error: err.into(),
+          error: JsErrorBox::from_err(err),
         }
       })
   }
@@ -108,41 +109,13 @@ pub enum CliNpmResolverCreateOptions {
   Byonm(CliByonmNpmResolverCreateOptions),
 }
 
-pub async fn create_cli_npm_resolver_for_lsp(
+pub fn create_cli_npm_resolver(
   options: CliNpmResolverCreateOptions,
 ) -> Arc<dyn CliNpmResolver> {
   use CliNpmResolverCreateOptions::*;
   match options {
-    Managed(options) => {
-      managed::create_managed_npm_resolver_for_lsp(options).await
-    }
+    Managed(options) => managed::create_managed_npm_resolver(options),
     Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
-  }
-}
-
-pub async fn create_cli_npm_resolver(
-  options: CliNpmResolverCreateOptions,
-) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
-  use CliNpmResolverCreateOptions::*;
-  match options {
-    Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
-  }
-}
-
-pub enum CreateInNpmPkgCheckerOptions<'a> {
-  Managed(CliManagedInNpmPkgCheckerCreateOptions<'a>),
-  Byonm,
-}
-
-pub fn create_in_npm_pkg_checker(
-  options: CreateInNpmPkgCheckerOptions,
-) -> Arc<dyn InNpmPackageChecker> {
-  match options {
-    CreateInNpmPkgCheckerOptions::Managed(options) => {
-      create_managed_in_npm_pkg_checker(options)
-    }
-    CreateInNpmPkgCheckerOptions::Byonm => Arc::new(ByonmInNpmPackageChecker),
   }
 }
 
@@ -152,17 +125,17 @@ pub enum InnerCliNpmResolverRef<'a> {
   Byonm(&'a CliByonmNpmResolver),
 }
 
-pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
+// todo(dsherret): replace with an enum
+pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
   fn into_npm_pkg_folder_resolver(
     self: Arc<Self>,
   ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_npm_req_resolver(self: Arc<Self>) -> Arc<dyn CliNpmReqResolver>;
   fn into_process_state_provider(
     self: Arc<Self>,
   ) -> Arc<dyn NpmProcessStateProvider>;
-  fn into_maybe_byonm(self: Arc<Self>) -> Option<Arc<CliByonmNpmResolver>> {
-    None
-  }
+  fn into_byonm_or_managed(
+    self: Arc<Self>,
+  ) -> ByonmOrManagedNpmResolver<CliSys>;
 
   fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
 
@@ -181,6 +154,12 @@ pub trait CliNpmResolver: NpmPackageFolderResolver + CliNpmReqResolver {
       InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
     }
   }
+
+  fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
 
   fn root_node_modules_path(&self) -> Option<&Path>;
 

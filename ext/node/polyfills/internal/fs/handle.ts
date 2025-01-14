@@ -5,7 +5,7 @@
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { promises, read, write } from "node:fs";
+import { Mode, promises, read, write } from "node:fs";
 import { core } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
@@ -27,11 +27,15 @@ interface ReadResult {
   buffer: Buffer;
 }
 
+type Path = string | Buffer | URL;
 export class FileHandle extends EventEmitter {
   #rid: number;
-  constructor(rid: number) {
+  #path: Path;
+
+  constructor(rid: number, path: Path) {
     super();
     this.#rid = rid;
+    this.#path = path;
   }
 
   get fd() {
@@ -149,17 +153,24 @@ export class FileHandle extends EventEmitter {
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
   }
+  chmod(mode: Mode): Promise<void> {
+    assertNotClosed(this, promises.chmod.name);
+    return promises.chmod(this.#path, mode);
+  }
 }
 
-function fsCall(fn, handle, ...args) {
+function assertNotClosed(handle: FileHandle, syscall: string) {
   if (handle.fd === -1) {
     const err = new Error("file closed");
     throw Object.assign(err, {
       code: "EBADF",
-      syscall: fn.name,
+      syscall,
     });
   }
+}
 
+function fsCall(fn, handle, ...args) {
+  assertNotClosed(handle, fn.name);
   return fn(handle.fd, ...args);
 }
 

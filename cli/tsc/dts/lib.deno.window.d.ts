@@ -83,8 +83,30 @@ declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
 /** @category Platform */
 declare var closed: boolean;
-/** @category Platform */
+
+/**
+ * Exits the current Deno process.
+ *
+ * This function terminates the process by signaling the runtime to exit.
+ * Similar to exit(0) in posix. Its behavior is similar to the `window.close()`
+ * method in the browser, but specific to the Deno runtime.
+ *
+ * Note: Use this function cautiously, as it will stop the execution of the
+ * entire Deno program immediately.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/close
+ *
+ * @example
+ * ```ts
+ * console.log("About to close the Deno process.");
+ * close(); // The process will terminate here.
+ * console.log("This will not be logged."); // This line will never execute.
+ * ```
+ *
+ * @category Platform
+ */
 declare function close(): void;
+
 /** @category Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 /** @category Events */

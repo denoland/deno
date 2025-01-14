@@ -368,9 +368,11 @@
       "test-dgram-send-callback-multi-buffer.js",
       "test-dgram-send-callback-recursive.js",
       "test-dgram-send-default-host.js",
-      "test-dgram-send-empty-array.js",
-      "test-dgram-send-empty-buffer.js",
-      "test-dgram-send-empty-packet.js",
+      // TODO(kt3k): These tests are flaky on macOS CI.
+      // https://github.com/denoland/deno/issues/27316
+      // "test-dgram-send-empty-array.js",
+      // "test-dgram-send-empty-buffer.js",
+      // "test-dgram-send-empty-packet.js",
       "test-dgram-send-error.js",
       "test-dgram-send-invalid-msg-type.js",
       "test-dgram-send-multi-buffer-copy.js",

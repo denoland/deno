@@ -25,6 +25,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
@@ -107,8 +108,9 @@ impl StdioOrRid {
     match &self {
       StdioOrRid::Stdio(val) => Ok(val.as_stdio()),
       StdioOrRid::Rid(rid) => {
-        FileResource::with_file(state, *rid, |file| Ok(file.as_stdio()?))
-          .map_err(ProcessError::Resource)
+        Ok(FileResource::with_file(state, *rid, |file| {
+          file.as_stdio().map_err(deno_error::JsErrorBox::from_err)
+        })?)
       }
     }
   }
@@ -138,7 +140,9 @@ pub trait NpmProcessStateProvider:
 
 #[derive(Debug)]
 pub struct EmptyNpmProcessStateProvider;
+
 impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
+
 deno_core::extension!(
   deno_process,
   ops = [
@@ -190,37 +194,73 @@ pub struct SpawnArgs {
   needs_npm_process_state: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[cfg(unix)]
+deno_error::js_error_wrapper!(nix::Error, JsNixError, |err| {
+  match err {
+    nix::Error::ECHILD => "NotFound",
+    nix::Error::EINVAL => "TypeError",
+    nix::Error::ENOENT => "NotFound",
+    nix::Error::ENOTTY => "BadResource",
+    nix::Error::EPERM => "PermissionDenied",
+    nix::Error::ESRCH => "NotFound",
+    nix::Error::ELOOP => "FilesystemLoop",
+    nix::Error::ENOTDIR => "NotADirectory",
+    nix::Error::ENETUNREACH => "NetworkUnreachable",
+    nix::Error::EISDIR => "IsADirectory",
+    nix::Error::UnknownErrno => "Error",
+    &nix::Error::ENOTSUP => unreachable!(),
+    _ => "Error",
+  }
+});
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ProcessError {
+  #[class(inherit)]
   #[error("Failed to spawn '{command}': {error}")]
   SpawnFailed {
     command: String,
     #[source]
+    #[inherit]
     error: Box<ProcessError>,
   },
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
   #[cfg(unix)]
+  #[class(inherit)]
   #[error(transparent)]
-  Nix(nix::Error),
+  Nix(JsNixError),
+  #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
   FailedResolvingCwd(#[source] std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
   RunPermission(#[from] CheckRunPermissionError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(deno_core::error::ResourceError),
+  #[class(generic)]
   #[error(transparent)]
   BorrowMut(std::cell::BorrowMutError),
+  #[class(generic)]
   #[error(transparent)]
   Which(which::Error),
+  #[class(type)]
   #[error("Child process has already terminated.")]
   ChildProcessAlreadyTerminated,
+  #[class(type)]
   #[error("Invalid pid")]
   InvalidPid,
+  #[class(inherit)]
   #[error(transparent)]
   Signal(#[from] SignalError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+  #[class(type)]
   #[error("Missing cmd")]
   MissingCmd, // only for Deno.run
 }
@@ -733,12 +773,14 @@ fn resolve_path(path: &str, cwd: &Path) -> PathBuf {
   deno_path_util::normalize_path(cwd.join(path))
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CheckRunPermissionError {
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 fn check_run_permission(
@@ -755,7 +797,7 @@ fn check_run_permission(
       // we don't allow users to launch subprocesses with any LD_ or DYLD_*
       // env vars set because this allows executing code (ex. LD_PRELOAD)
       return Err(CheckRunPermissionError::Other(
-        deno_core::error::custom_error(
+        JsErrorBox::new(
           "NotCapable",
           format!(
             "Requires --allow-run permissions to spawn subprocess with {0} environment variable{1}. Alternatively, spawn with {2} environment variable{1} unset.",
@@ -1079,8 +1121,10 @@ mod deprecated {
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
     use nix::unistd::Pid;
-    let sig = Signal::try_from(signo).map_err(ProcessError::Nix)?;
-    unix_kill(Pid::from_raw(pid), Some(sig)).map_err(ProcessError::Nix)
+    let sig =
+      Signal::try_from(signo).map_err(|e| ProcessError::Nix(JsNixError(e)))?;
+    unix_kill(Pid::from_raw(pid), Some(sig))
+      .map_err(|e| ProcessError::Nix(JsNixError(e)))
   }
 
   #[cfg(not(unix))]

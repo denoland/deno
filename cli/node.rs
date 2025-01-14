@@ -68,7 +68,7 @@ impl CliCjsCodeAnalyzer {
     specifier: &ModuleSpecifier,
     source: &str,
   ) -> Result<CliCjsAnalysis, AnyError> {
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     if let Some(analysis) =
       self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
     {

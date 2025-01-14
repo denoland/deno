@@ -6,6 +6,8 @@ pub use inner::*;
 mod inner {
   #![allow(clippy::disallowed_types)]
 
+  pub use core::marker::Send as MaybeSend;
+  pub use core::marker::Sync as MaybeSync;
   pub use std::sync::Arc as MaybeArc;
 
   pub use dashmap::DashMap as MaybeDashMap;
@@ -20,6 +22,11 @@ mod inner {
   use std::hash::Hash;
   use std::hash::RandomState;
   pub use std::rc::Rc as MaybeArc;
+
+  pub trait MaybeSync {}
+  impl<T> MaybeSync for T where T: ?Sized {}
+  pub trait MaybeSend {}
+  impl<T> MaybeSend for T where T: ?Sized {}
 
   // Wrapper struct that exposes a subset of `DashMap` API.
   #[derive(Debug)]
@@ -36,7 +43,13 @@ mod inner {
   }
 
   impl<K: Eq + Hash, V, S: BuildHasher> MaybeDashMap<K, V, S> {
-    pub fn get<'a>(&'a self, key: &K) -> Option<Ref<'a, V>> {
+    pub fn get<'a, Q: Eq + Hash + ?Sized>(
+      &'a self,
+      key: &Q,
+    ) -> Option<Ref<'a, V>>
+    where
+      K: std::borrow::Borrow<Q>,
+    {
       Ref::filter_map(self.0.borrow(), |map| map.get(key)).ok()
     }
 
@@ -45,4 +58,10 @@ mod inner {
       inner.insert(key, value)
     }
   }
+}
+
+#[allow(clippy::disallowed_types)]
+#[inline]
+pub fn new_rc<T>(value: T) -> MaybeArc<T> {
+  MaybeArc::new(value)
 }
