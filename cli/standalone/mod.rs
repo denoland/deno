@@ -823,7 +823,7 @@ pub async fn run(
       IsCjsResolutionMode::ExplicitTypeCommonJs
     },
   ));
-  let cache_db = Caches::new(deno_dir_provider.clone());
+  let cache_db = Caches::new(deno_dir_provider.clone(), false);
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let npm_req_resolver =
     Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {

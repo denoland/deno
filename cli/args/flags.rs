@@ -611,6 +611,8 @@ pub struct Flags {
   pub argv: Vec<String>,
   pub subcommand: DenoSubcommand,
 
+  /// Flag
+  pub in_memory_cache: Option<bool>,
   pub frozen_lockfile: Option<bool>,
   pub ca_stores: Option<Vec<String>>,
   pub ca_data: Option<CaData>,
@@ -2889,6 +2891,7 @@ fn run_args(command: Command, top_level: bool) -> Command {
     })
     .arg(env_file_arg())
     .arg(no_code_cache_arg())
+    .arg(in_memory_cache_arg())
 }
 
 fn run_subcommand() -> Command {
@@ -4054,6 +4057,13 @@ fn no_clear_screen_arg() -> Arg {
     .action(ArgAction::SetTrue)
     .help("Do not clear terminal screen when under watch mode")
     .help_heading(FILE_WATCHING_HEADING)
+}
+
+fn in_memory_cache_arg() -> Arg {
+  Arg::new("in_memory_cache")
+    .long("in-memory-cache")
+    .help("Disable all filesystem caches and use in-memory cache only")
+    .action(ArgAction::SetTrue)
 }
 
 fn no_code_cache_arg() -> Arg {

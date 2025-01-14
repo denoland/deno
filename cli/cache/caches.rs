@@ -16,6 +16,7 @@ use super::module_info::MODULE_INFO_CACHE_DB;
 use super::node::NODE_ANALYSIS_CACHE_DB;
 
 pub struct Caches {
+  in_memory: bool,
   dir_provider: Arc<DenoDirProvider>,
   fmt_incremental_cache_db: OnceCell<CacheDB>,
   lint_incremental_cache_db: OnceCell<CacheDB>,
@@ -27,8 +28,9 @@ pub struct Caches {
 }
 
 impl Caches {
-  pub fn new(dir: Arc<DenoDirProvider>) -> Self {
+  pub fn new(dir: Arc<DenoDirProvider>, in_memory: bool) -> Self {
     Self {
+      in_memory,
       dir_provider: dir,
       fmt_incremental_cache_db: Default::default(),
       lint_incremental_cache_db: Default::default(),
@@ -41,13 +43,17 @@ impl Caches {
   }
 
   fn make_db(
+    &self,
     cell: &OnceCell<CacheDB>,
     config: &'static CacheDBConfiguration,
     path: Option<PathBuf>,
   ) -> CacheDB {
     cell
       .get_or_init(|| {
-        if let Some(path) = path {
+        // Return in memory cache if in_memory is true
+        if self.in_memory {
+          CacheDB::in_memory(config, crate::version::DENO_VERSION_INFO.deno)
+        } else if let Some(path) = path {
           CacheDB::from_path(
             config,
             path,
@@ -62,6 +68,7 @@ impl Caches {
 
   pub fn fmt_incremental_cache_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.fmt_incremental_cache_db,
       &INCREMENTAL_CACHE_DB,
       self
@@ -74,6 +81,7 @@ impl Caches {
 
   pub fn lint_incremental_cache_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.lint_incremental_cache_db,
       &INCREMENTAL_CACHE_DB,
       self
@@ -86,6 +94,7 @@ impl Caches {
 
   pub fn dep_analysis_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.dep_analysis_db,
       &MODULE_INFO_CACHE_DB,
       self
@@ -98,6 +107,7 @@ impl Caches {
 
   pub fn fast_check_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.fast_check_db,
       &FAST_CHECK_CACHE_DB,
       self
@@ -110,6 +120,7 @@ impl Caches {
 
   pub fn node_analysis_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.node_analysis_db,
       &NODE_ANALYSIS_CACHE_DB,
       self
@@ -122,6 +133,7 @@ impl Caches {
 
   pub fn type_checking_cache_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.type_checking_cache_db,
       &TYPE_CHECK_CACHE_DB,
       self
@@ -134,6 +146,7 @@ impl Caches {
 
   pub fn code_cache_db(&self) -> CacheDB {
     Self::make_db(
+      self,
       &self.code_cache_db,
       &CODE_CACHE_DB,
       self
