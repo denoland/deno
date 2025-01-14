@@ -19,8 +19,6 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_error::JsErrorBox;
-use deno_lib::util::file_watcher::WatcherCommunicator;
-use deno_lib::util::file_watcher::WatcherRestartMode;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -61,6 +59,8 @@ use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
 pub struct CreateModuleLoaderResult {

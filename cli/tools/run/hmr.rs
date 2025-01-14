@@ -11,13 +11,13 @@ use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_error::JsErrorBox;
-use deno_lib::util::file_watcher::WatcherCommunicator;
-use deno_lib::util::file_watcher::WatcherRestartMode;
 use deno_terminal::colors;
 use tokio::select;
 
 use crate::cdp;
 use crate::emit::Emitter;
+use crate::util::file_watcher::WatcherCommunicator;
+use crate::util::file_watcher::WatcherRestartMode;
 
 fn explain(status: &cdp::Status) -> &'static str {
   match status {

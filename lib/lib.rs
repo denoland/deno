@@ -4,4 +4,3 @@ pub mod cache;
 pub mod npm;
 pub mod standalone;
 pub mod sys;
-pub mod util;
