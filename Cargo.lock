@@ -2156,6 +2156,7 @@ dependencies = [
  "signal-hook",
  "signal-hook-registry",
  "thiserror 2.0.3",
+ "tokio",
  "winapi",
 ]
 

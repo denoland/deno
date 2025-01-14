@@ -322,7 +322,6 @@ pub fn create_runtime_snapshot(
     ops::fs_events::deno_fs_events::init_ops(),
     ops::permissions::deno_permissions::init_ops(),
     ops::process::deno_process::init_ops(None),
-    ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),

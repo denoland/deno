@@ -20,6 +20,8 @@ mod ops;
 pub mod signal;
 pub mod sys_info;
 
+pub use ops::signal::SignalError;
+
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
   // The full list of environment variables supported by Node.js is available
   // at https://nodejs.org/api/cli.html#environment-variables
@@ -72,7 +74,7 @@ deno_core::extension!(
     ops::signal::op_signal_unbind,
     ops::signal::op_signal_poll,
   ],
-  esm = ["30_os.js"],
+  esm = ["30_os.js", "40_signals.js"],
   options = {
     exit_code: ExitCode,
   },
@@ -106,7 +108,7 @@ deno_core::extension!(
     op_uid,
     op_runtime_memory_usage,
   ],
-  esm = ["30_os.js"],
+  esm = ["30_os.js", "40_signals.js"],
   middleware = |op| match op.name {
     "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync()),
