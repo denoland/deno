@@ -12,6 +12,8 @@ export interface AstContext {
   strTableOffset: number;
   rootOffset: number;
   nodes: Map<number, NodeFacade>;
+  spansOffset: number;
+  propsOffset: number;
   strByType: number[];
   strByProp: number[];
   typeByStr: Map<string, number>;
@@ -154,7 +156,6 @@ export interface MatchContext {
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;
-  hasAttrPath(id: number, propIds: number[], idx: number): boolean;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 

@@ -18,6 +18,22 @@ const {
 
 let doReport = op_lint_report;
 
+// Keep these in sync with Rust
+const AST_IDX_INVALID = 0;
+const AST_GROUP_TYPE = 1;
+/// <type u8>
+/// <prop offset u32>
+/// <child idx u32>
+/// <next idx u32>
+/// <parent idx u32>
+const NODE_SIZE = 1 + 4 + 4 + 4 + 4;
+const PROP_OFFSET = 1;
+const CHILD_OFFSET = 1 + 4;
+const NEXT_OFFSET = 1 + 4 + 4;
+const PARENT_OFFSET = 1 + 4 + 4 + 4;
+// Span size in buffer: u32 + u32
+const SPAN_SIZE = 4 + 4;
+
 // Keep in sync with Rust
 // These types are expected to be present on every node. Note that this
 // isn't set in stone. We could revise this at a future point.
@@ -40,12 +56,21 @@ const PropFlags = {
    * the string table that was included in the message.
    */
   String: 2,
+  /**
+   * A numnber field. Numbers are represented as strings internally.
+   */
+  Number: 3,
   /** This value is either 0 = false, or 1 = true */
-  Bool: 3,
+  Bool: 4,
   /** No value, it's null */
-  Null: 4,
+  Null: 5,
   /** No value, it's undefined */
-  Undefined: 5,
+  Undefined: 6,
+  /** An object */
+  Obj: 7,
+  Regex: 8,
+  BigInt: 9,
+  Array: 10,
 };
 
 /** @typedef {import("./40_lint_types.d.ts").AstContext} AstContext */
@@ -57,8 +82,6 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
-/** @typedef {import("./40_lint_types.d.ts").ReportData} ReportData */
-/** @typedef {import("./40_lint_types.d.ts").Fixer} Fixer */
 /** @typedef {import("./40_lint_types.d.ts").Node} Node */
 
 /** @type {LintState} */
@@ -277,17 +300,17 @@ function installPlugin(plugin) {
 
 /**
  * @param {AstContext} ctx
- * @param {number} offset
- * @returns
+ * @param {number} idx
+ * @returns {FacadeNode | null}
  */
-function getNode(ctx, offset) {
-  if (offset === 0) return null;
-  const cached = ctx.nodes.get(offset);
-  if (cached !== undefined) return cached;
+function getNode(ctx, idx) {
+  if (idx === AST_IDX_INVALID) return null;
+  const cached = ctx.nodes.get(idx);
+  if (cached !== undefined) return /** @type {*} */ (cached);
 
-  const node = new FacadeNode(ctx, offset);
-  ctx.nodes.set(offset, /** @type {*} */ (cached));
-  return node;
+  const node = new FacadeNode(ctx, idx);
+  ctx.nodes.set(idx, /** @type {*} */ (node));
+  return /** @type {*} */ (node);
 }
 
 /**
@@ -299,31 +322,22 @@ function getNode(ctx, offset) {
  * @returns {number}
  */
 function findPropOffset(buf, offset, search) {
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
-
-  const propCount = buf[offset];
+  const count = buf[offset];
   offset += 1;
 
-  for (let i = 0; i < propCount; i++) {
+  for (let i = 0; i < count; i++) {
     const maybe = offset;
     const prop = buf[offset++];
     const kind = buf[offset++];
     if (prop === search) return maybe;
 
-    if (kind === PropFlags.Ref) {
-      offset += 4;
-    } else if (kind === PropFlags.RefArr) {
+    if (kind === PropFlags.Obj) {
       const len = readU32(buf, offset);
-      offset += 4 + (len * 4);
-    } else if (kind === PropFlags.String) {
       offset += 4;
-    } else if (kind === PropFlags.Bool) {
-      offset++;
-    } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
-      // No value
+      // prop + kind + value
+      offset += len * (1 + 1 + 4);
     } else {
-      offset++;
+      offset += 4;
     }
   }
 
@@ -331,7 +345,7 @@ function findPropOffset(buf, offset, search) {
 }
 
 const INTERNAL_CTX = Symbol("ctx");
-const INTERNAL_OFFSET = Symbol("offset");
+const INTERNAL_IDX = Symbol("offset");
 
 // This class is a facade for all materialized nodes. Instead of creating a
 // unique class per AST node, we have one class with getters for every
@@ -339,15 +353,15 @@ const INTERNAL_OFFSET = Symbol("offset");
 // only when they are needed.
 class FacadeNode {
   [INTERNAL_CTX];
-  [INTERNAL_OFFSET];
+  [INTERNAL_IDX];
 
   /**
    * @param {AstContext} ctx
-   * @param {number} offset
+   * @param {number} idx
    */
-  constructor(ctx, offset) {
+  constructor(ctx, idx) {
     this[INTERNAL_CTX] = ctx;
-    this[INTERNAL_OFFSET] = offset;
+    this[INTERNAL_IDX] = idx;
   }
 
   /**
@@ -363,12 +377,12 @@ class FacadeNode {
    * @returns {string}
    */
   [Symbol.for("Deno.customInspect")](_, options) {
-    const json = toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
+    const json = nodeToJson(this[INTERNAL_CTX], this[INTERNAL_IDX]);
     return Deno.inspect(json, options);
   }
 
   [Symbol.for("Deno.lint.toJsValue")]() {
-    return toJsValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET]);
+    return nodeToJson(this[INTERNAL_CTX], this[INTERNAL_IDX]);
   }
 }
 
@@ -391,121 +405,239 @@ function setNodeGetters(ctx) {
 
     Object.defineProperty(FacadeNode.prototype, name, {
       get() {
-        return readValue(this[INTERNAL_CTX], this[INTERNAL_OFFSET], i);
+        return readValue(
+          this[INTERNAL_CTX],
+          this[INTERNAL_IDX],
+          i,
+          getNode,
+        );
       },
     });
   }
 }
 
 /**
- * Serialize a node recursively to plain JSON
  * @param {AstContext} ctx
- * @param {number} offset
- * @returns {*}
+ * @param {number} idx
  */
-function toJsValue(ctx, offset) {
-  const { buf } = ctx;
-
+function nodeToJson(ctx, idx) {
   /** @type {Record<string, any>} */
   const node = {
-    type: readValue(ctx, offset, AST_PROP_TYPE),
-    range: readValue(ctx, offset, AST_PROP_RANGE),
+    type: readValue(ctx, idx, AST_PROP_TYPE, nodeToJson),
+    range: readValue(ctx, idx, AST_PROP_RANGE, nodeToJson),
   };
 
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
+  const { buf } = ctx;
+  let offset = readPropOffset(ctx, idx);
 
   const count = buf[offset++];
-  for (let i = 0; i < count; i++) {
-    const prop = buf[offset++];
-    const kind = buf[offset++];
-    const name = getString(ctx.strTable, ctx.strByProp[prop]);
 
-    if (kind === PropFlags.Ref) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      node[name] = v === 0 ? null : toJsValue(ctx, v);
-    } else if (kind === PropFlags.RefArr) {
-      const len = readU32(buf, offset);
-      offset += 4;
-      const nodes = new Array(len);
-      for (let i = 0; i < len; i++) {
-        const v = readU32(buf, offset);
-        if (v === 0) continue;
-        nodes[i] = toJsValue(ctx, v);
-        offset += 4;
-      }
-      node[name] = nodes;
-    } else if (kind === PropFlags.Bool) {
-      const v = buf[offset++];
-      node[name] = v === 1;
-    } else if (kind === PropFlags.String) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      node[name] = getString(ctx.strTable, v);
-    } else if (kind === PropFlags.Null) {
-      node[name] = null;
-    } else if (kind === PropFlags.Undefined) {
-      node[name] = undefined;
-    }
+  for (let i = 0; i < count; i++) {
+    const prop = buf[offset];
+    const _kind = buf[offset + 1];
+
+    const name = getString(ctx.strTable, ctx.strByProp[prop]);
+    node[name] = readProperty(ctx, offset, nodeToJson);
+
+    // prop + type + value
+    offset += 1 + 1 + 4;
   }
 
   return node;
 }
 
 /**
- * Read a specific property from a node
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readType(buf, idx) {
+  return buf[idx * NODE_SIZE];
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} idx
+ * @returns {Node["range"]}
+ */
+function readSpan(ctx, idx) {
+  let offset = ctx.spansOffset + (idx * SPAN_SIZE);
+  const start = readU32(ctx.buf, offset);
+  offset += 4;
+  const end = readU32(ctx.buf, offset);
+
+  return [start, end];
+}
+
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readRawPropOffset(buf, idx) {
+  const offset = (idx * NODE_SIZE) + PROP_OFFSET;
+  return readU32(buf, offset);
+}
+
+/**
+ * @param {AstContext} ctx
+ * @param {number} idx
+ * @returns {number}
+ */
+function readPropOffset(ctx, idx) {
+  return readRawPropOffset(ctx.buf, idx) + ctx.propsOffset;
+}
+
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readChild(buf, idx) {
+  const offset = (idx * NODE_SIZE) + CHILD_OFFSET;
+  return readU32(buf, offset);
+}
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readNext(buf, idx) {
+  const offset = (idx * NODE_SIZE) + NEXT_OFFSET;
+  return readU32(buf, offset);
+}
+
+/**
+ * @param {AstContext["buf"]} buf
+ * @param {number} idx
+ * @returns {number}
+ */
+function readParent(buf, idx) {
+  const offset = (idx * NODE_SIZE) + PARENT_OFFSET;
+  return readU32(buf, offset);
+}
+
+/**
+ * @param {AstContext["strTable"]} strTable
+ * @param {number} strId
+ * @returns  {RegExp}
+ */
+function readRegex(strTable, strId) {
+  const raw = getString(strTable, strId);
+  const idx = raw.lastIndexOf("/");
+  const pattern = raw.slice(1, idx);
+  const flags = idx < raw.length - 1 ? raw.slice(idx + 1) : undefined;
+
+  return new RegExp(pattern, flags);
+}
+
+/**
  * @param {AstContext} ctx
  * @param {number} offset
- * @param {number} search
- * @returns {*}
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
+ * @returns {Record<string, any>}
  */
-function readValue(ctx, offset, search) {
-  const { buf } = ctx;
-  const type = buf[offset];
+function readObject(ctx, offset, parseNode) {
+  const { buf, strTable, strByProp } = ctx;
 
-  if (search === AST_PROP_TYPE) {
-    return getString(ctx.strTable, ctx.strByType[type]);
-  } else if (search === AST_PROP_RANGE) {
-    const start = readU32(buf, offset + 1 + 4);
-    const end = readU32(buf, offset + 1 + 4 + 4);
-    return [start, end];
-  } else if (search === AST_PROP_PARENT) {
-    const pos = readU32(buf, offset + 1);
-    return getNode(ctx, pos);
+  /** @type {Record<string, any>} */
+  const obj = {};
+
+  const count = readU32(buf, offset);
+  offset += 4;
+
+  for (let i = 0; i < count; i++) {
+    const prop = buf[offset];
+    const name = getString(strTable, strByProp[prop]);
+    obj[name] = readProperty(ctx, offset, parseNode);
+    // name + kind + value
+    offset += 1 + 1 + 4;
   }
 
-  offset = findPropOffset(ctx.buf, offset, search);
-  if (offset === -1) return undefined;
+  return obj;
+}
 
-  const kind = buf[offset + 1];
-  offset += 2;
+/**
+ * @param {AstContext} ctx
+ * @param {number} offset
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
+ * @returns {any}
+ */
+function readProperty(ctx, offset, parseNode) {
+  const { buf } = ctx;
+
+  // skip over name
+  const _name = buf[offset++];
+  const kind = buf[offset++];
 
   if (kind === PropFlags.Ref) {
     const value = readU32(buf, offset);
-    return getNode(ctx, value);
+    return parseNode(ctx, value);
   } else if (kind === PropFlags.RefArr) {
-    const len = readU32(buf, offset);
-    offset += 4;
+    const groupId = readU32(buf, offset);
 
-    const nodes = new Array(len);
-    for (let i = 0; i < len; i++) {
-      nodes[i] = getNode(ctx, readU32(buf, offset));
-      offset += 4;
+    const nodes = [];
+    let next = readChild(buf, groupId);
+    while (next > AST_IDX_INVALID) {
+      nodes.push(parseNode(ctx, next));
+      next = readNext(buf, next);
     }
+
     return nodes;
   } else if (kind === PropFlags.Bool) {
-    return buf[offset] === 1;
+    const v = readU32(buf, offset);
+    return v === 1;
   } else if (kind === PropFlags.String) {
     const v = readU32(buf, offset);
     return getString(ctx.strTable, v);
+  } else if (kind === PropFlags.Number) {
+    const v = readU32(buf, offset);
+    return Number(getString(ctx.strTable, v));
+  } else if (kind === PropFlags.BigInt) {
+    const v = readU32(buf, offset);
+    return BigInt(getString(ctx.strTable, v));
+  } else if (kind === PropFlags.Regex) {
+    const v = readU32(buf, offset);
+    return readRegex(ctx.strTable, v);
   } else if (kind === PropFlags.Null) {
     return null;
   } else if (kind === PropFlags.Undefined) {
     return undefined;
+  } else if (kind === PropFlags.Obj) {
+    const objOffset = readU32(buf, offset) + ctx.propsOffset;
+    return readObject(ctx, objOffset, parseNode);
   }
 
   throw new Error(`Unknown prop kind: ${kind}`);
+}
+
+/**
+ * Read a specific property from a node
+ * @param {AstContext} ctx
+ * @param {number} idx
+ * @param {number} search
+ * @param {(ctx: AstContext, idx: number) => any} parseNode
+ * @returns {*}
+ */
+function readValue(ctx, idx, search, parseNode) {
+  const { buf } = ctx;
+
+  if (search === AST_PROP_TYPE) {
+    const type = readType(buf, idx);
+    return getString(ctx.strTable, ctx.strByType[type]);
+  } else if (search === AST_PROP_RANGE) {
+    return readSpan(ctx, idx);
+  } else if (search === AST_PROP_PARENT) {
+    const parent = readParent(buf, idx);
+    return getNode(ctx, parent);
+  }
+
+  const propOffset = readPropOffset(ctx, idx);
+
+  const offset = findPropOffset(ctx.buf, propOffset, search);
+  if (offset === -1) return undefined;
+
+  return readProperty(ctx, offset, parseNode);
 }
 
 const DECODER = new TextDecoder();
@@ -536,322 +668,149 @@ function getString(strTable, id) {
   return name;
 }
 
-/**
- * @param {AstContext["buf"]} buf
- * @param {number} child
- * @returns {null | [number, number]}
- */
-function findChildOffset(buf, child) {
-  let offset = readU32(buf, child + 1);
-
-  // type + parentId + SpanLo + SpanHi
-  offset += 1 + 4 + 4 + 4;
-
-  const propCount = buf[offset++];
-  for (let i = 0; i < propCount; i++) {
-    const _prop = buf[offset++];
-    const kind = buf[offset++];
-
-    switch (kind) {
-      case PropFlags.Ref: {
-        const start = offset;
-        const value = readU32(buf, offset);
-        offset += 4;
-        if (value === child) {
-          return [start, -1];
-        }
-        break;
-      }
-      case PropFlags.RefArr: {
-        const start = offset;
-
-        const len = readU32(buf, offset);
-        offset += 4;
-
-        for (let j = 0; j < len; j++) {
-          const value = readU32(buf, offset);
-          offset += 4;
-          if (value === child) {
-            return [start, j];
-          }
-        }
-
-        break;
-      }
-      case PropFlags.String:
-        offset += 4;
-        break;
-      case PropFlags.Bool:
-        offset++;
-        break;
-      case PropFlags.Null:
-      case PropFlags.Undefined:
-        break;
-    }
-  }
-
-  return null;
-}
-
 /** @implements {MatchContext} */
 class MatchCtx {
   /**
-   * @param {AstContext["buf"]} buf
-   * @param {AstContext["strTable"]} strTable
-   * @param {AstContext["strByType"]} strByType
+   * @param {AstContext} ctx
    */
-  constructor(buf, strTable, strByType) {
-    this.buf = buf;
-    this.strTable = strTable;
-    this.strByType = strByType;
+  constructor(ctx) {
+    this.ctx = ctx;
   }
 
   /**
-   * @param {number} offset
-   * @returns {number}
-   */
-  getParent(offset) {
-    return readU32(this.buf, offset + 1);
-  }
-
-  /**
-   * @param {number} offset
-   * @returns {number}
-   */
-  getType(offset) {
-    return this.buf[offset];
-  }
-
-  /**
-   * @param {number} offset
-   * @param {number[]} propIds
    * @param {number} idx
+   * @returns {number}
+   */
+  getParent(idx) {
+    return readParent(this.ctx.buf, idx);
+  }
+
+  /**
+   * @param {number} idx
+   * @returns {number}
+   */
+  getType(idx) {
+    return readType(this.ctx.buf, idx);
+  }
+
+  /**
+   * @param {number} idx - Node idx
+   * @param {number[]} propIds
+   * @param {number} propIdx
    * @returns {unknown}
    */
-  getAttrPathValue(offset, propIds, idx) {
-    const { buf } = this;
+  getAttrPathValue(idx, propIds, propIdx) {
+    if (idx === 0) throw -1;
 
-    const propId = propIds[idx];
+    const { buf, strTable, strByType } = this.ctx;
+
+    const propId = propIds[propIdx];
 
     switch (propId) {
       case AST_PROP_TYPE: {
-        const type = this.getType(offset);
-        return getString(this.strTable, this.strByType[type]);
+        const type = readType(buf, idx);
+        return getString(strTable, strByType[type]);
       }
       case AST_PROP_PARENT:
       case AST_PROP_RANGE:
-        throw new Error(`Not supported`);
+        throw -1;
     }
 
+    let offset = readPropOffset(this.ctx, idx);
+
     offset = findPropOffset(buf, offset, propId);
-    if (offset === -1) return undefined;
+    if (offset === -1) throw -1;
     const _prop = buf[offset++];
     const kind = buf[offset++];
 
     if (kind === PropFlags.Ref) {
       const value = readU32(buf, offset);
       // Checks need to end with a value, not a node
-      if (idx === propIds.length - 1) return undefined;
-      return this.getAttrPathValue(value, propIds, idx + 1);
+      if (propIdx === propIds.length - 1) throw -1;
+      return this.getAttrPathValue(value, propIds, propIdx + 1);
     } else if (kind === PropFlags.RefArr) {
-      const count = readU32(buf, offset);
+      const arrIdx = readU32(buf, offset);
       offset += 4;
 
-      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
+      let count = 0;
+      let child = readChild(buf, arrIdx);
+      while (child > AST_IDX_INVALID) {
+        count++;
+        child = readNext(buf, child);
+      }
+
+      if (
+        propIdx < propIds.length - 1 && propIds[propIdx + 1] === AST_PROP_LENGTH
+      ) {
         return count;
       }
 
       // TODO(@marvinhagemeister): Allow traversing into array children?
+      throw -1;
+    } else if (kind === PropFlags.Obj) {
+      // TODO(@marvinhagemeister)
     }
 
     // Cannot traverse into primitives further
-    if (idx < propIds.length - 1) return undefined;
+    if (propIdx < propIds.length - 1) throw -1;
 
     if (kind === PropFlags.String) {
       const s = readU32(buf, offset);
-      return getString(this.strTable, s);
+      return getString(strTable, s);
+    } else if (kind === PropFlags.Number) {
+      const s = readU32(buf, offset);
+      return Number(getString(strTable, s));
+    } else if (kind === PropFlags.Regex) {
+      const v = readU32(buf, offset);
+      return readRegex(strTable, v);
     } else if (kind === PropFlags.Bool) {
-      return buf[offset] === 1;
+      return readU32(buf, offset) === 1;
     } else if (kind === PropFlags.Null) {
       return null;
     } else if (kind === PropFlags.Undefined) {
       return undefined;
     }
 
-    return undefined;
+    throw -1;
   }
 
   /**
-   * @param {number} offset
-   * @param {number[]} propIds
    * @param {number} idx
-   * @returns {boolean}
-   */
-  hasAttrPath(offset, propIds, idx) {
-    const { buf } = this;
-
-    const propId = propIds[idx];
-    // If propId is 0 then the property doesn't exist in the AST
-    if (propId === 0) return false;
-
-    switch (propId) {
-      case AST_PROP_TYPE:
-      case AST_PROP_PARENT:
-      case AST_PROP_RANGE:
-        return true;
-    }
-
-    offset = findPropOffset(buf, offset, propId);
-    if (offset === -1) return false;
-    if (idx === propIds.length - 1) return true;
-
-    const _prop = buf[offset++];
-    const kind = buf[offset++];
-    if (kind === PropFlags.Ref) {
-      const value = readU32(buf, offset);
-      return this.hasAttrPath(value, propIds, idx + 1);
-    } else if (kind === PropFlags.RefArr) {
-      const _count = readU32(buf, offset);
-      offset += 4;
-
-      if (idx < propIds.length - 1 && propIds[idx + 1] === AST_PROP_LENGTH) {
-        return true;
-      }
-
-      // TODO(@marvinhagemeister): Allow traversing into array children?
-    }
-
-    // Primitives cannot be traversed further. This means we
-    // didn't found the attribute.
-    if (idx < propIds.length - 1) return false;
-
-    return true;
-  }
-
-  /**
-   * @param {number} offset
    * @returns {number}
    */
-  getFirstChild(offset) {
-    const { buf } = this;
-
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
-
-    const count = buf[offset++];
-    for (let i = 0; i < count; i++) {
-      const _prop = buf[offset++];
-      const kind = buf[offset++];
-
-      switch (kind) {
-        case PropFlags.Ref: {
-          const v = readU32(buf, offset);
-          offset += 4;
-          return v;
-        }
-        case PropFlags.RefArr: {
-          const len = readU32(buf, offset);
-          offset += 4;
-          for (let j = 0; j < len; j++) {
-            const v = readU32(buf, offset);
-            offset += 4;
-            return v;
-          }
-
-          return len;
-        }
-
-        case PropFlags.String:
-          offset += 4;
-          break;
-        case PropFlags.Bool:
-          offset++;
-          break;
-        case PropFlags.Null:
-        case PropFlags.Undefined:
-          break;
-      }
-    }
-
-    return -1;
+  getFirstChild(idx) {
+    const siblings = this.getSiblings(idx);
+    return siblings[0] ?? -1;
   }
 
   /**
-   * @param {number} offset
+   * @param {number} idx
    * @returns {number}
    */
-  getLastChild(offset) {
-    const { buf } = this;
-
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
-
-    let last = -1;
-
-    const count = buf[offset++];
-    for (let i = 0; i < count; i++) {
-      const _prop = buf[offset++];
-      const kind = buf[offset++];
-
-      switch (kind) {
-        case PropFlags.Ref: {
-          const v = readU32(buf, offset);
-          offset += 4;
-          last = v;
-          break;
-        }
-        case PropFlags.RefArr: {
-          const len = readU32(buf, offset);
-          offset += 4;
-          for (let j = 0; j < len; j++) {
-            const v = readU32(buf, offset);
-            last = v;
-            offset += 4;
-          }
-
-          break;
-        }
-
-        case PropFlags.String:
-          offset += 4;
-          break;
-        case PropFlags.Bool:
-          offset++;
-          break;
-        case PropFlags.Null:
-        case PropFlags.Undefined:
-          break;
-      }
-    }
-
-    return last;
+  getLastChild(idx) {
+    const siblings = this.getSiblings(idx);
+    return siblings.at(-1) ?? -1;
   }
 
   /**
-   * @param {number} id
+   * @param {number} idx
    * @returns {number[]}
    */
-  getSiblings(id) {
-    const { buf } = this;
+  getSiblings(idx) {
+    const { buf } = this.ctx;
+    const parent = readParent(buf, idx);
 
-    const result = findChildOffset(buf, id);
-    // Happens for program nodes
-    if (result === null) return [];
-
-    if (result[1] === -1) {
-      return [id];
+    // Only RefArrays have siblings
+    const parentType = readType(buf, parent);
+    if (parentType !== AST_GROUP_TYPE) {
+      return [];
     }
 
-    let offset = result[0];
-    const count = readU32(buf, offset);
-    offset += 4;
-
-    /** @type {number[]} */
     const out = [];
-    for (let i = 0; i < count; i++) {
-      const v = readU32(buf, offset);
-      offset += 4;
-      out.push(v);
+    let child = readChild(buf, parent);
+    while (child > AST_IDX_INVALID) {
+      out.push(child);
+      child = readNext(buf, child);
     }
 
     return out;
@@ -860,7 +819,7 @@ class MatchCtx {
 
 /**
  * @param {Uint8Array} buf
- * @param {AstContext} buf
+ * @returns {AstContext}
  */
 function createAstContext(buf) {
   /** @type {Map<number, string>} */
@@ -868,6 +827,8 @@ function createAstContext(buf) {
 
   // The buffer has a few offsets at the end which allows us to easily
   // jump to the relevant sections of the message.
+  const propsOffset = readU32(buf, buf.length - 24);
+  const spansOffset = readU32(buf, buf.length - 20);
   const typeMapOffset = readU32(buf, buf.length - 16);
   const propMapOffset = readU32(buf, buf.length - 12);
   const strTableOffset = readU32(buf, buf.length - 8);
@@ -879,9 +840,7 @@ function createAstContext(buf) {
   const stringCount = readU32(buf, offset);
   offset += 4;
 
-  // TODO(@marvinhagemeister): We could lazily decode the strings on an as needed basis.
-  // Not sure if this matters much in practice though.
-  let id = 0;
+  let strId = 0;
   for (let i = 0; i < stringCount; i++) {
     const len = readU32(buf, offset);
     offset += 4;
@@ -889,8 +848,8 @@ function createAstContext(buf) {
     const strBytes = buf.slice(offset, offset + len);
     offset += len;
     const s = DECODER.decode(strBytes);
-    strTable.set(id, s);
-    id++;
+    strTable.set(strId, s);
+    strId++;
   }
 
   if (strTable.size !== stringCount) {
@@ -932,14 +891,17 @@ function createAstContext(buf) {
     buf,
     strTable,
     rootOffset,
+    spansOffset,
+    propsOffset,
     nodes: new Map(),
     strTableOffset,
     strByProp,
     strByType,
     typeByStr,
     propByStr,
-    matcher: new MatchCtx(buf, strTable, strByType),
+    matcher: /** @type {*} */ (null),
   };
+  ctx.matcher = new MatchCtx(ctx);
 
   setNodeGetters(ctx);
 
@@ -1087,78 +1049,55 @@ export function runPluginsForFile(fileName, serializedAst) {
 /**
  * @param {AstContext} ctx
  * @param {CompiledVisitor[]} visitors
- * @param {number} offset
+ * @param {number} idx
  * @param {CancellationToken} cancellationToken
  */
-function traverse(ctx, visitors, offset, cancellationToken) {
-  // The 0 offset is used to denote an empty/placeholder node
-  if (offset === 0) return;
+function traverse(ctx, visitors, idx, cancellationToken) {
+  if (idx === AST_IDX_INVALID) return;
   if (cancellationToken.isCancellationRequested()) return;
 
-  const originalOffset = offset;
-
   const { buf } = ctx;
+  const nodeType = readType(ctx.buf, idx);
 
   /** @type {VisitorFn[] | null} */
   let exits = null;
 
-  for (let i = 0; i < visitors.length; i++) {
-    const v = visitors[i];
-    if (v.matcher(ctx.matcher, offset)) {
-      if (cancellationToken.isCancellationRequested()) return;
-      if (v.info.exit !== NOOP) {
-        if (exits === null) {
-          exits = [v.info.exit];
-        } else {
-          exits.push(v.info.exit);
+  // Only visit if it's an actual node
+  if (nodeType !== AST_GROUP_TYPE) {
+    // Loop over visitors and check if any selector matches
+    for (let i = 0; i < visitors.length; i++) {
+      const v = visitors[i];
+      if (v.matcher(ctx.matcher, idx)) {
+        if (v.info.exit !== NOOP) {
+          if (exits === null) {
+            exits = [v.info.exit];
+          } else {
+            exits.push(v.info.exit);
+          }
         }
-      }
 
-      if (v.info.enter !== NOOP) {
-        const node = /** @type {*} */ (getNode(ctx, offset));
-        v.info.enter(node);
+        if (v.info.enter !== NOOP) {
+          const node = /** @type {*} */ (getNode(ctx, idx));
+          v.info.enter(node);
+        }
       }
     }
   }
 
-  // Search for node references in the properties of the current node. All
-  // other properties can be ignored.
   try {
-    // type + parentId + SpanLo + SpanHi
-    offset += 1 + 4 + 4 + 4;
+    const childIdx = readChild(buf, idx);
+    if (childIdx > AST_IDX_INVALID) {
+      traverse(ctx, visitors, childIdx, cancellationToken);
+    }
 
-    const propCount = buf[offset];
-    offset += 1;
-
-    for (let i = 0; i < propCount; i++) {
-      const kind = buf[offset + 1];
-      offset += 2; // propId + propFlags
-
-      if (kind === PropFlags.Ref) {
-        const next = readU32(buf, offset);
-        offset += 4;
-        traverse(ctx, visitors, next, cancellationToken);
-      } else if (kind === PropFlags.RefArr) {
-        const len = readU32(buf, offset);
-        offset += 4;
-
-        for (let j = 0; j < len; j++) {
-          const child = readU32(buf, offset);
-          offset += 4;
-          traverse(ctx, visitors, child, cancellationToken);
-        }
-      } else if (kind === PropFlags.String) {
-        offset += 4;
-      } else if (kind === PropFlags.Bool) {
-        offset += 1;
-      } else if (kind === PropFlags.Null || kind === PropFlags.Undefined) {
-        // No value
-      }
+    const nextIdx = readNext(buf, idx);
+    if (nextIdx > AST_IDX_INVALID) {
+      traverse(ctx, visitors, nextIdx, cancellationToken);
     }
   } finally {
     if (exits !== null) {
       for (let i = 0; i < exits.length; i++) {
-        const node = /** @type {*} */ (getNode(ctx, originalOffset));
+        const node = /** @type {*} */ (getNode(ctx, idx));
         exits[i](node);
       }
     }
@@ -1195,38 +1134,46 @@ function _dump(ctx) {
   // deno-lint-ignore no-console
   console.log();
 
-  let offset = 0;
+  // @ts-ignore dump fn
+  // deno-lint-ignore no-console
+  console.log();
 
-  while (offset < strTableOffset) {
-    const type = buf[offset];
-    const name = getString(ctx.strTable, ctx.strByType[type]);
+  let idx = 0;
+  while (idx < (strTableOffset / NODE_SIZE)) {
+    const type = readType(buf, idx);
+    const child = readChild(buf, idx);
+    const next = readNext(buf, idx);
+    const parent = readParent(buf, idx);
+    const range = readSpan(ctx, idx);
+
+    const name = type === AST_IDX_INVALID
+      ? "<invalid>"
+      : type === AST_GROUP_TYPE
+      ? "<group>"
+      : getString(ctx.strTable, ctx.strByType[type]);
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`${name}, offset: ${offset}, type: ${type}`);
-    offset += 1;
+    console.log(`${name}, idx: ${idx}, type: ${type}`);
 
-    const parent = readU32(buf, offset);
-    offset += 4;
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`  parent: ${parent}`);
-
-    const start = readU32(buf, offset);
-    offset += 4;
-    const end = readU32(buf, offset);
-    offset += 4;
+    console.log(`  child: ${child}, next: ${next}, parent: ${parent}`);
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`  range: ${start} -> ${end}`);
+    console.log(`  range: ${range[0]}, ${range[1]}`);
 
-    const count = buf[offset++];
+    const rawOffset = readRawPropOffset(ctx.buf, idx);
+    let propOffset = readPropOffset(ctx, idx);
+    const count = buf[propOffset++];
     // @ts-ignore dump fn
     // deno-lint-ignore no-console
-    console.log(`  prop count: ${count}`);
+    console.log(
+      `  prop count: ${count}, prop offset: ${propOffset} raw offset: ${rawOffset}`,
+    );
 
     for (let i = 0; i < count; i++) {
-      const prop = buf[offset++];
-      const kind = buf[offset++];
+      const prop = buf[propOffset++];
+      const kind = buf[propOffset++];
       const name = getString(ctx.strTable, ctx.strByProp[prop]);
 
       let kindName = "unknown";
@@ -1237,40 +1184,36 @@ function _dump(ctx) {
         }
       }
 
+      const v = readU32(buf, propOffset);
+      propOffset += 4;
+
       if (kind === PropFlags.Ref) {
-        const v = readU32(buf, offset);
-        offset += 4;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
         console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.RefArr) {
-        const len = readU32(buf, offset);
-        offset += 4;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.log(`    ${name}: Array(${len}) (${kindName}, ${prop})`);
-
-        for (let j = 0; j < len; j++) {
-          const v = readU32(buf, offset);
-          offset += 4;
-          // @ts-ignore dump fn
-          // deno-lint-ignore no-console
-          console.log(`      - ${v} (${prop})`);
-        }
+        console.log(`    ${name}: RefArray: ${v}, (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Bool) {
-        const v = buf[offset];
-        offset += 1;
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
         console.log(`    ${name}: ${v} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.String) {
-        const v = readU32(buf, offset);
-        offset += 4;
+        const raw = getString(ctx.strTable, v);
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
-        console.log(
-          `    ${name}: ${getString(ctx.strTable, v)} (${kindName}, ${prop})`,
-        );
+        console.log(`    ${name}: ${raw} (${kindName}, ${prop})`);
+      } else if (kind === PropFlags.Number) {
+        const raw = getString(ctx.strTable, v);
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(`    ${name}: ${raw} (${kindName}, ${prop})`);
+      } else if (kind === PropFlags.Regex) {
+        const raw = getString(ctx.strTable, v);
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(`    ${name}: ${raw} (${kindName}, ${prop})`);
       } else if (kind === PropFlags.Null) {
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
@@ -1279,8 +1222,27 @@ function _dump(ctx) {
         // @ts-ignore dump fn
         // deno-lint-ignore no-console
         console.log(`    ${name}: undefined (${kindName}, ${prop})`);
+      } else if (kind === PropFlags.BigInt) {
+        const raw = getString(ctx.strTable, v);
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(`    ${name}: ${raw} (${kindName}, ${prop})`);
+      } else if (kind === PropFlags.Obj) {
+        let offset = v + ctx.propsOffset;
+        const count = readU32(ctx.buf, offset);
+        offset += 4;
+
+        // @ts-ignore dump fn
+        // deno-lint-ignore no-console
+        console.log(
+          `    ${name}: Object (${count}) (${kindName}, ${prop}), raw offset ${v}`,
+        );
+
+        // TODO(@marvinhagemeister): Show object
       }
     }
+
+    idx++;
   }
 }
 
@@ -1297,7 +1259,6 @@ internals.resetState = resetState;
  */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
-  const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
   const diagnostics = [];
   doReport = (id, message, hint, start, end, fix) => {
@@ -1310,6 +1271,8 @@ function runLintPlugin(plugin, fileName, sourceText) {
     });
   };
   try {
+    const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
+
     runPluginsForFile(fileName, serializedAst);
   } finally {
     resetState();

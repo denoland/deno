@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
@@ -21,9 +20,11 @@ use deno_graph::GraphImport;
 use deno_graph::ModuleSpecifier;
 use deno_graph::Range;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::TarballCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
@@ -42,6 +43,8 @@ use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
 use crate::args::create_default_npmrc;
 use crate::args::CliLockfile;
+use crate::args::LifecycleScriptsConfig;
+use crate::args::NpmCachingStrategy;
 use crate::args::NpmInstallDepsProvider;
 use crate::factory::Deferred;
 use crate::graph_util::to_node_resolution_kind;
@@ -53,19 +56,25 @@ use crate::lsp::config::ConfigData;
 use crate::lsp::logging::lsp_warn;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver_for_lsp;
+use crate::npm::create_cli_npm_resolver;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
+use crate::npm::CliNpmCache;
+use crate::npm::CliNpmCacheHttpClient;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::ManagedCliNpmResolver;
+use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliDenoResolver;
+use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliResolverOptions;
+use crate::resolver::FoundPackageJsonDepFlag;
 use crate::resolver::IsCjsResolver;
-use crate::resolver::WorkerCliNpmGraphResolver;
 use crate::sys::CliSys;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
@@ -77,6 +86,8 @@ struct LspScopeResolver {
   in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
   is_cjs_resolver: Arc<IsCjsResolver>,
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
+  npm_graph_resolver: Arc<CliNpmGraphResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
   node_resolver: Option<Arc<CliNodeResolver>>,
   npm_pkg_req_resolver: Option<Arc<CliNpmReqResolver>>,
@@ -96,6 +107,8 @@ impl Default for LspScopeResolver {
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: None,
+      npm_graph_resolver: factory.npm_graph_resolver().clone(),
+      npm_installer: None,
       npm_resolver: None,
       node_resolver: None,
       npm_pkg_req_resolver: None,
@@ -121,6 +134,7 @@ impl LspScopeResolver {
     }
     let in_npm_pkg_checker = factory.in_npm_pkg_checker().clone();
     let npm_resolver = factory.npm_resolver().cloned();
+    let npm_installer = factory.npm_installer().cloned();
     let node_resolver = factory.node_resolver().cloned();
     let npm_pkg_req_resolver = factory.npm_pkg_req_resolver().cloned();
     let cli_resolver = factory.cli_resolver().clone();
@@ -133,8 +147,7 @@ impl LspScopeResolver {
       cache.for_specifier(config_data.map(|d| d.scope.as_ref())),
       config_data.and_then(|d| d.lockfile.clone()),
     )));
-    let npm_graph_resolver = cli_resolver
-      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager);
+    let npm_graph_resolver = factory.npm_graph_resolver();
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
@@ -156,7 +169,7 @@ impl LspScopeResolver {
                 imports,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(&npm_graph_resolver),
+                Some(npm_graph_resolver.as_ref()),
               );
               (referrer, graph_import)
             })
@@ -207,8 +220,10 @@ impl LspScopeResolver {
       in_npm_pkg_checker,
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver,
+      npm_graph_resolver: factory.npm_graph_resolver().clone(),
       npm_pkg_req_resolver,
       npm_resolver,
+      npm_installer,
       node_resolver,
       pkg_json_resolver,
       redirect_resolver,
@@ -231,6 +246,9 @@ impl LspScopeResolver {
       in_npm_pkg_checker: factory.in_npm_pkg_checker().clone(),
       is_cjs_resolver: factory.is_cjs_resolver().clone(),
       jsr_resolver: self.jsr_resolver.clone(),
+      npm_graph_resolver: factory.npm_graph_resolver().clone(),
+      // npm installer isn't necessary for a snapshot
+      npm_installer: None,
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
       npm_resolver: factory.npm_resolver().cloned(),
       node_resolver: factory.node_resolver().cloned(),
@@ -318,14 +336,12 @@ impl LspResolver {
       if let Some(dep_info) = dep_info {
         *resolver.dep_info.lock() = dep_info.clone();
       }
-      if let Some(npm_resolver) = resolver.npm_resolver.as_ref() {
-        if let Some(npm_resolver) = npm_resolver.as_managed() {
-          let reqs = dep_info
-            .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-          if let Err(err) = npm_resolver.set_package_reqs(&reqs).await {
-            lsp_warn!("Could not set npm package requirements: {:#}", err);
-          }
+      if let Some(npm_installer) = resolver.npm_installer.as_ref() {
+        let reqs = dep_info
+          .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
+          .unwrap_or_default();
+        if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
+          lsp_warn!("Could not set npm package requirements: {:#}", err);
         }
       }
     }
@@ -339,14 +355,12 @@ impl LspResolver {
     resolver.resolver.as_ref()
   }
 
-  pub fn create_graph_npm_resolver(
+  pub fn as_graph_npm_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
-  ) -> WorkerCliNpmGraphResolver {
+  ) -> &Arc<CliNpmGraphResolver> {
     let resolver = self.get_scope_resolver(file_referrer);
-    resolver
-      .resolver
-      .create_graph_npm_resolver(crate::graph_util::NpmCachingStrategy::Eager)
+    &resolver.npm_graph_resolver
   }
 
   pub fn as_is_cjs_resolver(
@@ -590,9 +604,12 @@ pub struct ScopeDepInfo {
 #[derive(Default)]
 struct ResolverFactoryServices {
   cli_resolver: Deferred<Arc<CliResolver>>,
+  found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   in_npm_pkg_checker: Deferred<Arc<dyn InNpmPackageChecker>>,
   is_cjs_resolver: Deferred<Arc<IsCjsResolver>>,
   node_resolver: Deferred<Option<Arc<CliNodeResolver>>>,
+  npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_pkg_req_resolver: Deferred<Option<Arc<CliNpmReqResolver>>>,
   npm_resolver: Option<Arc<dyn CliNpmResolver>>,
 }
@@ -616,6 +633,10 @@ impl<'a> ResolverFactory<'a> {
     }
   }
 
+  // todo(dsherret): probably this method could be removed in the future
+  // and instead just `npm_resolution_initializer.ensure_initialized()` could
+  // be called. The reason this exists is because creating the npm resolvers
+  // used to be async.
   async fn init_npm_resolver(
     &mut self,
     http_client_provider: &Arc<HttpClientProvider>,
@@ -645,11 +666,31 @@ impl<'a> ResolverFactory<'a> {
         cache.deno_dir().npm_folder_path(),
         npmrc.get_all_known_registries_urls(),
       ));
-      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
-        http_client_provider: http_client_provider.clone(),
-        // only used for top level install, so we can ignore this
-        npm_install_deps_provider: Arc::new(NpmInstallDepsProvider::empty()),
-        snapshot: match self.config_data.and_then(|d| d.lockfile.as_ref()) {
+      let npm_cache = Arc::new(CliNpmCache::new(
+        npm_cache_dir.clone(),
+        sys.clone(),
+        // Use an "only" cache setting in order to make the
+        // user do an explicit "cache" command and prevent
+        // the cache from being filled with lots of packages while
+        // the user is typing.
+        deno_npm_cache::NpmCacheSetting::Only,
+        npmrc.clone(),
+      ));
+      let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+      let npm_client = Arc::new(CliNpmCacheHttpClient::new(
+        http_client_provider.clone(),
+        pb.clone(),
+      ));
+      let registry_info_provider = Arc::new(CliNpmRegistryInfoProvider::new(
+        npm_cache.clone(),
+        npm_client.clone(),
+        npmrc.clone(),
+      ));
+      let npm_resolution = Arc::new(NpmResolutionCell::default());
+      let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
+        registry_info_provider.clone(),
+        npm_resolution.clone(),
+        match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
               lockfile.clone(),
@@ -657,26 +698,62 @@ impl<'a> ResolverFactory<'a> {
           }
           None => CliNpmResolverManagedSnapshotOption::Specified(None),
         },
+      ));
+      // Don't provide the lockfile. We don't want these resolvers
+      // updating it. Only the cache request should update the lockfile.
+      let maybe_lockfile: Option<Arc<CliLockfile>> = None;
+      let maybe_node_modules_path =
+        self.config_data.and_then(|d| d.node_modules_dir.clone());
+      let tarball_cache = Arc::new(TarballCache::new(
+        npm_cache.clone(),
+        npm_client.clone(),
+        sys.clone(),
+        npmrc.clone(),
+      ));
+      let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
+        registry_info_provider,
+        npm_resolution.clone(),
+        maybe_lockfile.clone(),
+      ));
+      let npm_installer = Arc::new(NpmInstaller::new(
+        npm_cache.clone(),
+        Arc::new(NpmInstallDepsProvider::empty()),
+        npm_resolution.clone(),
+        npm_resolution_initializer.clone(),
+        npm_resolution_installer,
+        &pb,
+        sys.clone(),
+        tarball_cache.clone(),
+        maybe_lockfile,
+        maybe_node_modules_path.clone(),
+        LifecycleScriptsConfig::default(),
+        NpmSystemInfo::default(),
+      ));
+      self.set_npm_installer(npm_installer);
+      // spawn due to the lsp's `Send` requirement
+      deno_core::unsync::spawn(async move {
+        if let Err(err) = npm_resolution_initializer.ensure_initialized().await
+        {
+          log::warn!("failed to initialize npm resolution: {}", err);
+        }
+      })
+      .await
+      .unwrap();
+
+      CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),
         npm_cache_dir,
-        // Use an "only" cache setting in order to make the
-        // user do an explicit "cache" command and prevent
-        // the cache from being filled with lots of packages while
-        // the user is typing.
-        cache_setting: CacheSetting::Only,
-        text_only_progress_bar: ProgressBar::new(ProgressBarStyle::TextOnly),
-        // Don't provide the lockfile. We don't want these resolvers
-        // updating it. Only the cache request should update the lockfile.
-        maybe_lockfile: None,
-        maybe_node_modules_path: self
-          .config_data
-          .and_then(|d| d.node_modules_dir.clone()),
+        maybe_node_modules_path,
         npmrc,
+        npm_resolution,
         npm_system_info: NpmSystemInfo::default(),
-        lifecycle_scripts: Default::default(),
       })
     };
-    self.set_npm_resolver(create_cli_npm_resolver_for_lsp(options).await);
+    self.set_npm_resolver(create_cli_npm_resolver(options));
+  }
+
+  pub fn set_npm_installer(&mut self, npm_installer: Arc<NpmInstaller>) {
+    self.services.npm_installer = Some(npm_installer);
   }
 
   pub fn set_npm_resolver(&mut self, npm_resolver: Arc<dyn CliNpmResolver>) {
@@ -720,13 +797,27 @@ impl<'a> ResolverFactory<'a> {
         is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
         maybe_vendor_dir: self.config_data.and_then(|d| d.vendor_dir.as_ref()),
       }));
-      Arc::new(CliResolver::new(CliResolverOptions {
+      Arc::new(CliResolver::new(
         deno_resolver,
-        npm_resolver: self.npm_resolver().cloned(),
-        bare_node_builtins_enabled: self
+        self.services.found_pkg_json_dep_flag.clone(),
+      ))
+    })
+  }
+
+  pub fn npm_installer(&self) -> Option<&Arc<NpmInstaller>> {
+    self.services.npm_installer.as_ref()
+  }
+
+  pub fn npm_graph_resolver(&self) -> &Arc<CliNpmGraphResolver> {
+    self.services.npm_graph_resolver.get_or_init(|| {
+      Arc::new(CliNpmGraphResolver::new(
+        None,
+        self.services.found_pkg_json_dep_flag.clone(),
+        self
           .config_data
           .is_some_and(|d| d.unstable.contains("bare-node-builtins")),
-      }))
+        NpmCachingStrategy::Eager,
+      ))
     })
   }
 
@@ -783,6 +874,7 @@ impl<'a> ResolverFactory<'a> {
           npm_resolver.clone().into_npm_pkg_folder_resolver(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),
+          node_resolver::ConditionsFromResolutionMode::default(),
         )))
       })
       .as_ref()
@@ -796,10 +888,9 @@ impl<'a> ResolverFactory<'a> {
         let node_resolver = self.node_resolver()?;
         let npm_resolver = self.npm_resolver()?;
         Some(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-          byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
           in_npm_pkg_checker: self.in_npm_pkg_checker().clone(),
           node_resolver: node_resolver.clone(),
-          npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
           sys: self.sys.clone(),
         })))
       })

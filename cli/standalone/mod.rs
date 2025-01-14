@@ -37,10 +37,12 @@ use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::create_in_npm_pkg_checker;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
@@ -91,6 +93,7 @@ use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
+use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
@@ -687,18 +690,12 @@ pub async fn run(
     ca_data: metadata.ca_data.map(CaData::Bytes),
     cell: Default::default(),
   });
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client_provider = Arc::new(HttpClientProvider::new(
-    Some(root_cert_store_provider.clone()),
-    metadata.unsafely_ignore_certificate_errors.clone(),
-  ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let cache_setting = CacheSetting::Only;
   let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {
@@ -743,29 +740,19 @@ pub async fn run(
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
           },
         ));
+      let npm_resolution =
+        Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
       let npm_resolver =
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-              snapshot,
-            )),
-            maybe_lockfile: None,
-            http_client_provider: http_client_provider.clone(),
+            npm_resolution,
             npm_cache_dir,
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
             sys: sys.clone(),
-            text_only_progress_bar: progress_bar,
-            cache_setting,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
             npmrc,
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
     Some(binary::NodeModules::Byonm {
@@ -781,8 +768,7 @@ pub async fn run(
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
-      )
-      .await?;
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
     None => {
@@ -801,27 +787,18 @@ pub async fn run(
             maybe_node_modules_path: None,
           },
         ));
+      let npm_resolution = Arc::new(NpmResolutionCell::default());
       let npm_resolver =
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-            http_client_provider: http_client_provider.clone(),
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
+            npm_resolution,
             sys: sys.clone(),
-            cache_setting,
-            text_only_progress_bar: progress_bar,
             npm_cache_dir,
-            maybe_lockfile: None,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
             npmrc: create_default_npmrc(),
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
   };
@@ -833,6 +810,7 @@ pub async fn run(
     npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
     sys.clone(),
+    node_resolver::ConditionsFromResolutionMode::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
@@ -849,11 +827,10 @@ pub async fn run(
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let npm_req_resolver =
     Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-      byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
       sys: sys.clone(),
       in_npm_pkg_checker: in_npm_pkg_checker.clone(),
       node_resolver: node_resolver.clone(),
-      npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+      npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
     }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
@@ -995,6 +972,7 @@ pub async fn run(
     None,
     Box::new(module_loader_factory),
     node_resolver,
+    None,
     npm_resolver,
     pkg_json_resolver,
     root_cert_store_provider,

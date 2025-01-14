@@ -11,14 +11,14 @@ use deno_core::futures::StreamExt;
 use deno_error::JsErrorBox;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
-use deno_resolver::npm::managed::NpmResolution;
+use deno_resolver::npm::managed::NpmResolutionCell;
 
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsInstaller;
+use super::PackageCaching;
 use crate::args::LifecycleScriptsConfig;
 use crate::cache::FastInsecureHasher;
 use crate::colors;
-use crate::npm::managed::PackageCaching;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 
@@ -27,25 +27,25 @@ use crate::npm::CliNpmTarballCache;
 pub struct GlobalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   tarball_cache: Arc<CliNpmTarballCache>,
-  resolution: Arc<NpmResolution>,
-  system_info: NpmSystemInfo,
+  resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
+  system_info: NpmSystemInfo,
 }
 
 impl GlobalNpmPackageInstaller {
   pub fn new(
     cache: Arc<CliNpmCache>,
     tarball_cache: Arc<CliNpmTarballCache>,
-    resolution: Arc<NpmResolution>,
-    system_info: NpmSystemInfo,
+    resolution: Arc<NpmResolutionCell>,
     lifecycle_scripts: LifecycleScriptsConfig,
+    system_info: NpmSystemInfo,
   ) -> Self {
     Self {
       cache,
       tarball_cache,
       resolution,
-      system_info,
       lifecycle_scripts,
+      system_info,
     }
   }
 }

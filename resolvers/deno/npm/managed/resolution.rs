@@ -18,16 +18,17 @@ use deno_semver::package::PackageReq;
 use parking_lot::RwLock;
 
 #[allow(clippy::disallowed_types)]
-pub(super) type NpmResolutionRc = crate::sync::MaybeArc<NpmResolution>;
+pub type NpmResolutionCellRc = crate::sync::MaybeArc<NpmResolutionCell>;
 
 /// Handles updating and storing npm resolution in memory.
 ///
 /// This does not interact with the file system.
-pub struct NpmResolution {
+#[derive(Default)]
+pub struct NpmResolutionCell {
   snapshot: RwLock<NpmResolutionSnapshot>,
 }
 
-impl std::fmt::Debug for NpmResolution {
+impl std::fmt::Debug for NpmResolutionCell {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     let snapshot = self.snapshot.read();
     f.debug_struct("NpmResolution")
@@ -36,7 +37,7 @@ impl std::fmt::Debug for NpmResolution {
   }
 }
 
-impl NpmResolution {
+impl NpmResolutionCell {
   pub fn from_serialized(
     initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   ) -> Self {
