@@ -2,7 +2,7 @@
 import * as path from "@std/path";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -286,14 +286,11 @@ Deno.test({
     const nobodyUid = 65534;
     const nobodyGid = 65534;
 
-    try {
-      await fileHandle.chown(nobodyUid, nobodyGid);
-    } catch (e) {
-      assert(
-        e instanceof Deno.errors.PermissionDenied,
-        "Expected permissionDenied error",
-      );
-    }
+    assertRejects(
+      async () => await fileHandle.chown(nobodyUid, nobodyGid),
+      Deno.errors.PermissionDenied,
+      "Operation not permitted",
+    );
 
     const realUid = Deno.uid() || 1000;
     const realGid = Deno.gid() || 1000;
