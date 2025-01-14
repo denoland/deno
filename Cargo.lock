@@ -2153,6 +2153,8 @@ dependencies = [
  "ntapi",
  "once_cell",
  "serde",
+ "signal-hook",
+ "signal-hook-registry",
  "thiserror 2.0.3",
  "winapi",
 ]
@@ -2290,8 +2292,6 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
- "signal-hook",
- "signal-hook-registry",
  "sys_traits",
  "tempfile",
  "test_server",

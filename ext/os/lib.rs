@@ -16,6 +16,8 @@ use deno_permissions::PermissionsContainer;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 
+mod ops;
+pub mod signal;
 pub mod sys_info;
 
 pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
@@ -66,6 +68,9 @@ deno_core::extension!(
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
+    ops::signal::op_signal_bind,
+    ops::signal::op_signal_unbind,
+    ops::signal::op_signal_poll,
   ],
   esm = ["30_os.js"],
   options = {
@@ -73,6 +78,10 @@ deno_core::extension!(
   },
   state = |state, options| {
     state.put::<ExitCode>(options.exit_code);
+    #[cfg(unix)]
+    {
+      state.put(ops::signal::SignalState::default());
+    }
   }
 );
 
