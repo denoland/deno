@@ -486,7 +486,7 @@ const ci = {
         },
         {
           name: "Cache Cargo home",
-          uses: "actions/cache@v4",
+          uses: "cirruslabs/cache@v4",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
