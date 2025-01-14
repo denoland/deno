@@ -107,6 +107,9 @@ deno_core::extension!(
     op_system_memory_info,
     op_uid,
     op_runtime_memory_usage,
+    ops::signal::op_signal_bind,
+    ops::signal::op_signal_unbind,
+    ops::signal::op_signal_poll,
   ],
   esm = ["30_os.js", "40_signals.js"],
   middleware = |op| match op.name {
