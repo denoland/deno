@@ -46,8 +46,8 @@ use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
-use crate::npm::InNpmPackageCheckerRc;
-use crate::NpmPackageFolderResolverRc;
+use crate::InNpmPackageChecker;
+use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
@@ -137,31 +137,52 @@ pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
-  crate::sync::MaybeArc<NodeResolver<TIsBuiltInNodeModuleChecker, TSys>>;
+pub type NodeResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  NodeResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
 
 #[derive(Debug)]
 pub struct NodeResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
-  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+  npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: TSys,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
 
 impl<
+    TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: FsCanonicalize + FsMetadata + FsRead,
-  > NodeResolver<TIsBuiltInNodeModuleChecker, TSys>
+  >
+  NodeResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
 {
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
-    npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+    npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: TSys,
     conditions_from_resolution_mode: ConditionsFromResolutionMode,
@@ -442,6 +463,17 @@ impl<
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(url)
+  }
+
+  /// Resolves an npm package folder path from the specified referrer.
+  pub fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+  ) -> Result<PathBuf, errors::PackageFolderResolveError> {
+    self
+      .npm_pkg_folder_resolver
+      .resolve_package_folder_from_package(specifier, referrer)
   }
 
   /// Checks if the resolved file has a corresponding declaration file.

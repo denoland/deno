@@ -91,6 +91,7 @@ deno_net.workspace = true
 deno_node.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_resolver.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true

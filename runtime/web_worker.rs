@@ -54,6 +54,8 @@ use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
 use log::debug;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
@@ -334,7 +336,11 @@ fn create_handles(
   (internal_handle, external_handle)
 }
 
-pub struct WebWorkerServiceOptions<TExtNodeSys: ExtNodeSys + 'static> {
+pub struct WebWorkerServiceOptions<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TExtNodeSys: ExtNodeSys + 'static,
+> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -342,7 +348,13 @@ pub struct WebWorkerServiceOptions<TExtNodeSys: ExtNodeSys + 'static> {
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
+  pub node_services: Option<
+    NodeExtInitServices<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
+  >,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -398,8 +410,16 @@ impl Drop for WebWorker {
 }
 
 impl WebWorker {
-  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    services: WebWorkerServiceOptions<TExtNodeSys>,
+  pub fn bootstrap_from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    services: WebWorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     let (mut worker, handle, bootstrap_options) =
@@ -408,8 +428,16 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    services: WebWorkerServiceOptions<TExtNodeSys>,
+  fn from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    services: WebWorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
     deno_core::extension!(deno_permissions_web_worker,
@@ -500,10 +528,12 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
-        services.node_services,
-        services.fs,
-      ),
+      deno_node::deno_node::init_ops_and_esm::<
+        PermissionsContainer,
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TExtNodeSys,
+      >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
       ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(

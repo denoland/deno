@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
-
 use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
@@ -124,8 +122,23 @@ impl NpmResolutionCell {
       .map(|pkg| pkg.id.clone())
   }
 
-  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
-    self.snapshot.read().package_reqs().clone()
+  pub fn package_reqs(&self) -> Vec<(PackageReq, PackageNv)> {
+    self
+      .snapshot
+      .read()
+      .package_reqs()
+      .iter()
+      .map(|(k, v)| (k.clone(), v.clone()))
+      .collect()
+  }
+
+  pub fn top_level_packages(&self) -> Vec<NpmPackageId> {
+    self
+      .snapshot
+      .read()
+      .top_level_packages()
+      .cloned()
+      .collect::<Vec<_>>()
   }
 
   pub fn all_system_packages(

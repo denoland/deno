@@ -27,8 +27,6 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
@@ -89,7 +87,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     }
   }
 
-  pub fn root_node_modules_dir(&self) -> Option<&Path> {
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir.as_deref()
   }
 
@@ -377,15 +375,8 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
   }
 }
 
-impl<
-    TSys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + MaybeSend
-      + MaybeSync
-      + std::fmt::Debug,
-  > NpmPackageFolderResolver for ByonmNpmResolver<TSys>
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -438,7 +429,7 @@ impl<
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {
