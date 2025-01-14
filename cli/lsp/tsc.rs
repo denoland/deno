@@ -5589,7 +5589,6 @@ mod tests {
           })
           .to_string(),
           temp_dir.url().join("deno.json").unwrap(),
-          &Default::default(),
         )
         .unwrap(),
       )
