@@ -15,6 +15,7 @@ use deno_lib::cache::DenoDir;
 use deno_lib::cache::DenoDirProvider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::util::file_watcher::WatcherCommunicator;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
@@ -97,7 +98,6 @@ use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -1131,7 +1131,6 @@ impl CliFactory {
       self.root_permissions_container()?.clone(),
       StorageKeyResolver::from_options(cli_options),
       self.sys(),
-      cli_options.sub_command().clone(),
       self.create_cli_main_worker_options()?,
       self.cli_options()?.otel_config(),
       self.cli_options()?.default_npm_caching_strategy(),
@@ -1190,6 +1189,7 @@ impl CliFactory {
         .take_binary_npm_command_name()
         .or(std::env::args().next()),
       node_debug: std::env::var("NODE_DEBUG").ok(),
+      needs_test_modules: cli_options.sub_command().needs_test(),
       origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
       seed: cli_options.seed(),
       unsafely_ignore_certificate_errors: cli_options

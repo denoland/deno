@@ -18,10 +18,12 @@ deno_cache_dir.workspace = true
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_runtime.workspace = true
+log.workspace = true
 parking_lot.workspace = true
 serde = { workspace = true, features = ["derive"] }
 sys_traits.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 url.workspace = true
 
 [dev-dependencies]

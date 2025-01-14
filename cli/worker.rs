@@ -19,6 +19,8 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_error::JsErrorBox;
+use deno_lib::util::file_watcher::WatcherCommunicator;
+use deno_lib::util::file_watcher::WatcherRestartMode;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
@@ -50,7 +52,6 @@ use node_resolver::ResolutionMode;
 use tokio::select;
 
 use crate::args::CliLockfile;
-use crate::args::DenoSubcommand;
 use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::node::CliNodeResolver;
@@ -60,8 +61,6 @@ use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
-use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::file_watcher::WatcherRestartMode;
 use crate::version;
 
 pub struct CreateModuleLoaderResult {
@@ -127,6 +126,7 @@ pub struct CliMainWorkerOptions {
   pub is_inspecting: bool,
   pub location: Option<Url>,
   pub argv0: Option<String>,
+  pub needs_test_modules: bool,
   pub node_debug: Option<String>,
   pub origin_data_folder_path: Option<PathBuf>,
   pub seed: Option<u64>,
@@ -160,7 +160,6 @@ struct SharedWorkerState {
   storage_key_resolver: StorageKeyResolver,
   sys: CliSys,
   options: CliMainWorkerOptions,
-  subcommand: DenoSubcommand,
   otel_config: OtelConfig,
   default_npm_caching_strategy: NpmCachingStrategy,
 }
@@ -433,7 +432,6 @@ impl CliMainWorkerFactory {
     root_permissions: PermissionsContainer,
     storage_key_resolver: StorageKeyResolver,
     sys: CliSys,
-    subcommand: DenoSubcommand,
     options: CliMainWorkerOptions,
     otel_config: OtelConfig,
     default_npm_caching_strategy: NpmCachingStrategy,
@@ -460,7 +458,6 @@ impl CliMainWorkerFactory {
         storage_key_resolver,
         sys,
         options,
-        subcommand,
         otel_config,
         default_npm_caching_strategy,
       }),
@@ -652,7 +649,7 @@ impl CliMainWorkerFactory {
       options,
     );
 
-    if self.shared.subcommand.needs_test() {
+    if self.shared.options.needs_test_modules {
       macro_rules! test_file {
         ($($file:literal),*) => {
           $(worker.js_runtime.lazy_load_es_module_with_code(

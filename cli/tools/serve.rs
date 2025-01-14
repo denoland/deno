@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_core::error::AnyError;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
+use deno_lib::util::file_watcher::WatcherRestartMode;
 
 use super::run::check_permission_before_script;
 use super::run::maybe_npm_install;
@@ -12,7 +13,6 @@ use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
-use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;
 
 pub async fn serve(

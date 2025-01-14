@@ -29,6 +29,7 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
+use deno_lib::util::file_watcher::WatcherCommunicator;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
@@ -63,7 +64,6 @@ use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::CheckError;
 use crate::tools::check::TypeChecker;
-use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone)]

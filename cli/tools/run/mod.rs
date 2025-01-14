@@ -6,6 +6,7 @@ use std::sync::Arc;
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
+use deno_lib::util::file_watcher::WatcherRestartMode;
 use deno_runtime::WorkerExecutionMode;
 
 use crate::args::EvalFlags;
@@ -14,7 +15,6 @@ use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::npm::installer::PackageCaching;
 use crate::util;
-use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
 

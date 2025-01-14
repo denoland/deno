@@ -1900,11 +1900,13 @@ dependencies = [
  "deno_error",
  "deno_path_util",
  "deno_runtime",
+ "log",
  "parking_lot",
  "serde",
  "sys_traits",
  "test_server",
  "thiserror 2.0.3",
+ "tokio",
  "url",
 ]
 

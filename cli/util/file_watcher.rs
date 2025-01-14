@@ -14,6 +14,9 @@ use deno_core::error::CoreError;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_lib::util::file_watcher::WatcherCommunicator;
+use deno_lib::util::file_watcher::WatcherCommunicatorOptions;
+use deno_lib::util::file_watcher::WatcherRestartMode;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -141,64 +144,6 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-/// An interface to interact with Deno's CLI file watcher.
-#[derive(Debug)]
-pub struct WatcherCommunicator {
-  /// Send a list of paths that should be watched for changes.
-  paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-
-  /// Listen for a list of paths that were changed.
-  changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
-
-  /// Send a message to force a restart.
-  restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
-
-  restart_mode: Mutex<WatcherRestartMode>,
-
-  banner: String,
-}
-
-impl WatcherCommunicator {
-  pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
-    if paths.is_empty() {
-      return Ok(());
-    }
-    self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
-  }
-
-  pub fn force_restart(&self) -> Result<(), AnyError> {
-    // Change back to automatic mode, so that HMR can set up watching
-    // from scratch.
-    *self.restart_mode.lock() = WatcherRestartMode::Automatic;
-    self.restart_tx.send(()).map_err(AnyError::from)
-  }
-
-  pub async fn watch_for_changed_paths(
-    &self,
-  ) -> Result<Option<Vec<PathBuf>>, RecvError> {
-    let mut rx = self.changed_paths_rx.resubscribe();
-    rx.recv().await
-  }
-
-  pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
-    *self.restart_mode.lock() = restart_mode;
-  }
-
-  pub fn print(&self, msg: String) {
-    log::info!("{} {}", self.banner, colors::gray(msg));
-  }
-
-  pub fn show_path_changed(&self, changed_paths: Option<Vec<PathBuf>>) {
-    if let Some(paths) = changed_paths {
-      if !paths.is_empty() {
-        self.print(format!("Restarting! File change detected: {:?}", paths[0]))
-      } else {
-        self.print("Restarting! File change detected.".to_string())
-      }
-    }
-  }
-}
-
 /// Creates a file watcher.
 ///
 /// - `operation` is the actual operation we want to run every time the watcher detects file
@@ -226,16 +171,6 @@ where
   .boxed_local();
 
   fut.await
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum WatcherRestartMode {
-  /// When a file path changes the process is restarted.
-  Automatic,
-
-  /// When a file path changes the caller will trigger a restart, using
-  /// `WatcherInterface.restart_tx`.
-  Manual,
 }
 
 /// Creates a file watcher.
@@ -272,13 +207,15 @@ where
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
-  let watcher_communicator = Arc::new(WatcherCommunicator {
-    paths_to_watch_tx: paths_to_watch_tx.clone(),
-    changed_paths_rx: changed_paths_rx.resubscribe(),
-    restart_tx: restart_tx.clone(),
-    restart_mode: Mutex::new(restart_mode),
-    banner: colors::intense_blue(banner).to_string(),
-  });
+  let watcher_communicator =
+    Arc::new(WatcherCommunicator::new(WatcherCommunicatorOptions {
+      paths_to_watch_tx: paths_to_watch_tx.clone(),
+      changed_paths_rx: changed_paths_rx.resubscribe(),
+      changed_paths_tx,
+      restart_tx: restart_tx.clone(),
+      restart_mode,
+      banner: colors::intense_blue(banner).to_string(),
+    }));
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
   let changed_paths = Rc::new(RefCell::new(None));
@@ -292,15 +229,8 @@ where
         .borrow_mut()
         .clone_from(&received_changed_paths);
 
-      match *watcher_.restart_mode.lock() {
-        WatcherRestartMode::Automatic => {
-          let _ = restart_tx.send(());
-        }
-        WatcherRestartMode::Manual => {
-          // TODO(bartlomieju): should we fail on sending changed paths?
-          let _ = changed_paths_tx.send(received_changed_paths);
-        }
-      }
+      // TODO(bartlomieju): should we fail on sending changed paths?
+      let _ = watcher_.send(received_changed_paths);
     }
   });
 
