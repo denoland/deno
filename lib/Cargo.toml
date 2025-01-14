@@ -1,0 +1,28 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_lib"
+version = "0.1.1"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Shared code between the Deno CLI and denort"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_cache_dir.workspace = true
+deno_error.workspace = true
+deno_path_util.workspace = true
+deno_runtime.workspace = true
+parking_lot.workspace = true
+serde = { workspace = true, features = ["derive"] }
+sys_traits.workspace = true
+thiserror.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+test_util.workspace = true

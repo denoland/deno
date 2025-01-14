@@ -39,6 +39,7 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -70,7 +71,6 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
@@ -243,7 +243,8 @@ struct SharedCliModuleLoaderState {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
-  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+  npm_registry_permission_checker:
+    Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -304,7 +305,9 @@ impl CliModuleLoaderFactory {
     node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
-    npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+    npm_registry_permission_checker: Arc<
+      NpmRegistryReadPermissionChecker<CliSys>,
+    >,
     npm_req_resolver: Arc<CliNpmReqResolver>,
     npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
@@ -1145,7 +1148,8 @@ struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   sys: CliSys,
   graph_container: TGraphContainer,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
-  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+  npm_registry_permission_checker:
+    Arc<NpmRegistryReadPermissionChecker<CliSys>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader

@@ -58,6 +58,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 pub use deno_json::check_warn_tsconfig;
+use deno_lib::cache::DenoDirProvider;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -89,7 +90,6 @@ use serde::Serialize;
 use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -768,7 +768,7 @@ pub struct CliOptions {
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub deno_dir_provider: Arc<DenoDirProvider>,
+  pub deno_dir_provider: Arc<DenoDirProvider<CliSys>>,
 }
 
 impl CliOptions {
@@ -1871,7 +1871,7 @@ fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
   workspace: &Workspace,
-  deno_dir_provider: &Arc<DenoDirProvider>,
+  deno_dir_provider: &Arc<DenoDirProvider<CliSys>>,
 ) -> Result<Option<PathBuf>, AnyError> {
   fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
     root_folder

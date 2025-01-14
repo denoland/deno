@@ -36,6 +36,10 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
+use deno_lib::cache::DenoDirProvider;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
+use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
@@ -69,7 +73,6 @@ use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
 use serialization::SourceMapStore;
 use virtual_fs::FileBackedVfs;
-use virtual_fs::VfsFileSubDataKind;
 
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
@@ -78,7 +81,6 @@ use crate::args::CaData;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
-use crate::cache::DenoDirProvider;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::http_util::HttpClientProvider;
@@ -91,8 +93,6 @@ use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::NpmRegistryReadPermissionChecker;
-use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
@@ -129,7 +129,7 @@ struct SharedModuleLoaderState {
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
-  npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
+  npm_registry_permission_checker: NpmRegistryReadPermissionChecker<CliSys>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
   npm_resolver: CliNpmResolver,
   source_maps: SourceMapStore,

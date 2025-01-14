@@ -11,6 +11,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 use deno_error::JsErrorBox;
+use deno_lib::cache::DenoDir;
+use deno_lib::cache::DenoDirProvider;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
+use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
@@ -46,8 +50,6 @@ use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
-use crate::cache::DenoDir;
-use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
@@ -79,8 +81,6 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
-use crate::npm::NpmRegistryReadPermissionChecker;
-use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
@@ -281,11 +281,13 @@ impl CliFactory {
     })
   }
 
-  pub fn deno_dir_provider(&self) -> Result<&Arc<DenoDirProvider>, AnyError> {
+  pub fn deno_dir_provider(
+    &self,
+  ) -> Result<&Arc<DenoDirProvider<CliSys>>, AnyError> {
     Ok(&self.cli_options()?.deno_dir_provider)
   }
 
-  pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {
+  pub fn deno_dir(&self) -> Result<&DenoDir<CliSys>, AnyError> {
     Ok(self.deno_dir_provider()?.get_or_create()?)
   }
 

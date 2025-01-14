@@ -1,11 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// todo(dsherret): this should instead use conditional compilation and directly
-// surface the underlying implementation.
-//
-// The problem atm is that there's no way to have conditional compilation for
-// denort or the deno binary. We should extract out denort to a separate binary.
-
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
@@ -28,6 +22,8 @@ pub enum CliSys {
   #[allow(dead_code)] // will be dead code for deno
   DenoCompile(DenoCompileFileSystem),
 }
+
+impl deno_lib::sys::DenoLibSys for CliSys {}
 
 impl Default for CliSys {
   fn default() -> Self {
