@@ -2,14 +2,14 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::error::Error;
-use std::fmt;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_config::deno_json;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
+use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
@@ -37,6 +37,7 @@ use crate::graph_util::maybe_additional_sloppy_imports_message;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
+use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::tsc;
@@ -106,46 +107,47 @@ pub struct CheckOptions {
   pub type_check_mode: TypeCheckMode,
 }
 
-#[derive(Debug)]
-pub enum MaybeDiagnostics {
-  Diagnostics(Diagnostics),
-  Other(AnyError),
-}
-
-impl fmt::Display for MaybeDiagnostics {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    match self {
-      MaybeDiagnostics::Diagnostics(d) => d.fmt(f),
-      MaybeDiagnostics::Other(err) => err.fmt(f),
-    }
-  }
-}
-
-impl Error for MaybeDiagnostics {}
-
-impl From<AnyError> for MaybeDiagnostics {
-  fn from(err: AnyError) -> Self {
-    MaybeDiagnostics::Other(err)
-  }
-}
-
 pub struct TypeChecker {
   caches: Arc<Caches>,
   cjs_tracker: Arc<TypeCheckingCjsTracker>,
   cli_options: Arc<CliOptions>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   sys: CliSys,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CheckError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Diagnostics(#[from] Diagnostics),
+  #[class(inherit)]
+  #[error(transparent)]
+  ConfigFile(#[from] deno_json::ConfigFileError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ToMaybeJsxImportSourceConfig(
+    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  TscExec(#[from] tsc::ExecError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 impl TypeChecker {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<Caches>,
     cjs_tracker: Arc<TypeCheckingCjsTracker>,
     cli_options: Arc<CliOptions>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     sys: CliSys,
   ) -> Self {
@@ -155,6 +157,7 @@ impl TypeChecker {
       cli_options,
       module_graph_builder,
       node_resolver,
+      npm_installer,
       npm_resolver,
       sys,
     }
@@ -168,14 +171,14 @@ impl TypeChecker {
     &self,
     graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<Arc<ModuleGraph>, MaybeDiagnostics> {
+  ) -> Result<Arc<ModuleGraph>, CheckError> {
     let (graph, mut diagnostics) =
       self.check_diagnostics(graph, options).await?;
     diagnostics.emit_warnings();
     if diagnostics.is_empty() {
       Ok(graph)
     } else {
-      Err(MaybeDiagnostics::Diagnostics(diagnostics))
+      Err(diagnostics.into())
     }
   }
 
@@ -187,7 +190,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(Arc<ModuleGraph>, Diagnostics), AnyError> {
+  ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }
@@ -195,9 +198,9 @@ impl TypeChecker {
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_installer) = &self.npm_installer {
       if graph.has_node_specifier {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
 

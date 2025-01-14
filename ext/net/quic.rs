@@ -17,6 +17,7 @@ use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
 
+use deno_core::error::ResourceError;
 use deno_core::futures::task::noop_waker_ref;
 use deno_core::op2;
 use deno_core::AsyncRefCell;
@@ -30,6 +31,8 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::WriteOutcome;
+use deno_error::JsError;
+use deno_error::JsErrorBox;
 use deno_permissions::PermissionCheckError;
 use deno_tls::create_client_config;
 use deno_tls::SocketUse;
@@ -49,40 +52,59 @@ use crate::DefaultTlsOptions;
 use crate::NetPermissions;
 use crate::UnsafelyIgnoreCertificateErrors;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, JsError)]
 pub enum QuicError {
+  #[class(generic)]
   #[error("Endpoint created by 'connectQuic' cannot be used for listening")]
   CannotListen,
+  #[class(type)]
   #[error("key and cert are required")]
   MissingTlsKey,
+  #[class(type)]
   #[error("Duration is invalid")]
   InvalidDuration,
+  #[class(generic)]
   #[error("Unable to resolve hostname")]
   UnableToResolve,
+  #[class(inherit)]
   #[error("{0}")]
   StdIo(#[from] std::io::Error),
+  #[class(inherit)]
   #[error("{0}")]
   PermissionCheck(#[from] PermissionCheckError),
+  #[class(range)]
   #[error("{0}")]
   VarIntBoundsExceeded(#[from] quinn::VarIntBoundsExceeded),
+  #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] quinn::rustls::Error),
+  #[class(inherit)]
   #[error("{0}")]
   Tls(#[from] TlsError),
+  #[class(generic)]
   #[error("{0}")]
   ConnectionError(#[from] quinn::ConnectionError),
+  #[class(generic)]
   #[error("{0}")]
   ConnectError(#[from] quinn::ConnectError),
+  #[class(generic)]
   #[error("{0}")]
   SendDatagramError(#[from] quinn::SendDatagramError),
+  #[class("BadResource")]
   #[error("{0}")]
   ClosedStream(#[from] quinn::ClosedStream),
+  #[class("BadResource")]
   #[error("Invalid {0} resource")]
   BadResource(&'static str),
+  #[class(range)]
   #[error("Connection has reached the maximum number of concurrent outgoing {0} streams")]
   MaxStreams(&'static str),
+  #[class(generic)]
   #[error("{0}")]
   Core(#[from] deno_core::error::AnyError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -658,8 +680,13 @@ impl Resource for SendStreamResource {
     Box::pin(async move {
       let mut stream =
         RcRef::map(self.clone(), |r| &r.stream).borrow_mut().await;
-      stream.set_priority(self.priority.load(Ordering::Relaxed))?;
-      let nwritten = stream.write(&view).await?;
+      stream
+        .set_priority(self.priority.load(Ordering::Relaxed))
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?;
+      let nwritten = stream
+        .write(&view)
+        .await
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?;
       Ok(WriteOutcome::Partial { nwritten, view })
     })
   }
@@ -690,7 +717,11 @@ impl Resource for RecvStreamResource {
     Box::pin(async move {
       let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
       let mut data = vec![0; limit];
-      let nread = r.read(&mut data).await?.unwrap_or(0);
+      let nread = r
+        .read(&mut data)
+        .await
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?
+        .unwrap_or(0);
       data.truncate(nread);
       Ok(BufView::from(data))
     })
@@ -702,7 +733,11 @@ impl Resource for RecvStreamResource {
   ) -> AsyncResult<(usize, BufMutView)> {
     Box::pin(async move {
       let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
-      let nread = r.read(&mut buf).await?.unwrap_or(0);
+      let nread = r
+        .read(&mut buf)
+        .await
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?
+        .unwrap_or(0);
       Ok((nread, buf))
     })
   }
@@ -710,7 +745,8 @@ impl Resource for RecvStreamResource {
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
     Box::pin(async move {
       let mut r = RcRef::map(self, |r| &r.stream).borrow_mut().await;
-      r.stop(quinn::VarInt::from(0u32))?;
+      r.stop(quinn::VarInt::from(0u32))
+        .map_err(|e| JsErrorBox::from_err(std::io::Error::from(e)))?;
       Ok(())
     })
   }
@@ -835,15 +871,15 @@ pub(crate) async fn op_quic_connection_read_datagram(
 #[op2(fast)]
 pub(crate) fn op_quic_connection_get_max_datagram_size(
   #[cppgc] connection: &ConnectionResource,
-) -> Result<u32, QuicError> {
-  Ok(connection.0.max_datagram_size().unwrap_or(0) as _)
+) -> u32 {
+  connection.0.max_datagram_size().unwrap_or(0) as _
 }
 
 #[op2(fast)]
 pub(crate) fn op_quic_send_stream_get_priority(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<i32, QuicError> {
+) -> Result<i32, ResourceError> {
   let resource = state
     .borrow()
     .resource_table
@@ -856,7 +892,7 @@ pub(crate) fn op_quic_send_stream_set_priority(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
   priority: i32,
-) -> Result<(), QuicError> {
+) -> Result<(), ResourceError> {
   let resource = state
     .borrow()
     .resource_table
@@ -870,7 +906,7 @@ pub(crate) fn op_quic_send_stream_set_priority(
 pub(crate) fn op_quic_send_stream_get_id(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<u64, QuicError> {
+) -> Result<u64, ResourceError> {
   let resource = state
     .borrow()
     .resource_table
@@ -884,7 +920,7 @@ pub(crate) fn op_quic_send_stream_get_id(
 pub(crate) fn op_quic_recv_stream_get_id(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<u64, QuicError> {
+) -> Result<u64, ResourceError> {
   let resource = state
     .borrow()
     .resource_table

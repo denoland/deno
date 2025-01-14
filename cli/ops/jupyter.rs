@@ -94,10 +94,12 @@ pub fn op_jupyter_input(
   None
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum JupyterBroadcastError {
+  #[class(inherit)]
   #[error(transparent)]
   SerdeJson(serde_json::Error),
+  #[class(generic)]
   #[error(transparent)]
   ZeroMq(AnyError),
 }

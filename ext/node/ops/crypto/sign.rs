@@ -39,7 +39,8 @@ where
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   #[error("invalid DSA signature encoding")]
   InvalidDsaSignatureEncoding,
@@ -47,10 +48,12 @@ pub enum KeyObjectHandlePrehashedSignAndVerifyError {
   KeyIsNotPrivate,
   #[error("digest not allowed for RSA signature: {0}")]
   DigestNotAllowedForRsaSignature(String),
+  #[class(generic)]
   #[error("failed to sign digest with RSA")]
   FailedToSignDigestWithRsa,
   #[error("digest not allowed for RSA-PSS signature: {0}")]
   DigestNotAllowedForRsaPssSignature(String),
+  #[class(generic)]
   #[error("failed to sign digest with RSA-PSS")]
   FailedToSignDigestWithRsaPss,
   #[error("failed to sign digest with DSA")]

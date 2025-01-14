@@ -122,7 +122,7 @@ use crate::util::sync::AsyncFlag;
 struct LspRootCertStoreProvider(RootCertStore);
 
 impl RootCertStoreProvider for LspRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, deno_error::JsErrorBox> {
     Ok(&self.0)
   }
 }
@@ -1419,18 +1419,16 @@ impl Inner {
             // the file path is only used to determine what formatter should
             // be used to format the file, so give the filepath an extension
             // that matches what the user selected as the language
-            let file_path = document
+            let ext = document
               .maybe_language_id()
-              .and_then(|id| id.as_extension())
-              .map(|ext| file_path.with_extension(ext))
-              .unwrap_or(file_path);
+              .and_then(|id| id.as_extension().map(|s| s.to_string()));
             // it's not a js/ts file, so attempt to format its contents
             format_file(
               &file_path,
               document.content(),
               &fmt_options,
               &unstable_options,
-              None,
+              ext,
             )
           }
         };
@@ -3623,8 +3621,6 @@ impl Inner {
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options:
-            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {
@@ -4006,12 +4002,14 @@ mod tests {
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/folder2/inner_folder");
     temp_dir.create_dir_all("root2/sub_folder");
     temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
     temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/folder2/inner_folder/main.ts", ""); // yes, enabled (regression test for https://github.com/denoland/vscode_deno/issues/1239)
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
@@ -4052,6 +4050,7 @@ mod tests {
             enable_paths: Some(vec![
               "file1.ts".to_string(),
               "folder".to_string(),
+              "folder2/inner_folder".to_string(),
             ]),
             disable_paths: vec!["folder/other.ts".to_string()],
             ..Default::default()
@@ -4102,6 +4101,10 @@ mod tests {
         temp_dir.url().join("root1/folder/mod.ts").unwrap(),
         temp_dir.url().join("root2/folder/main.ts").unwrap(),
         temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir
+          .url()
+          .join("root2/folder2/inner_folder/main.ts")
+          .unwrap(),
       ])
     );
   }

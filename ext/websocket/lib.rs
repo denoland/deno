@@ -24,6 +24,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_permissions::PermissionCheckError;
 use deno_tls::create_client_config;
@@ -72,22 +73,30 @@ static USE_WRITEV: Lazy<bool> = Lazy::new(|| {
   false
 });
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebsocketError {
+  #[class(inherit)]
   #[error(transparent)]
   Url(url::ParseError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
   #[error(transparent)]
   Uri(#[from] http::uri::InvalidUri),
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class(type)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class("DOMExceptionNetworkError")]
   #[error("failed to connect to WebSocket: {0}")]
   ConnectionFailed(#[from] HandshakeError),
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
 }
@@ -96,9 +105,7 @@ pub enum WebsocketError {
 pub struct WsRootStoreProvider(Option<Arc<dyn RootCertStoreProvider>>);
 
 impl WsRootStoreProvider {
-  pub fn get_or_try_init(
-    &self,
-  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
+  pub fn get_or_try_init(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.0 {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -183,32 +190,45 @@ pub struct CreateResponse {
   extensions: String,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HandshakeError {
+  #[class(type)]
   #[error("Missing path in url")]
   MissingPath,
+  #[class(generic)]
   #[error("Invalid status code {0}")]
   InvalidStatusCode(StatusCode),
+  #[class(generic)]
   #[error(transparent)]
   Http(#[from] http::Error),
+  #[class(type)]
   #[error(transparent)]
   WebSocket(#[from] fastwebsockets::WebSocketError),
+  #[class(generic)]
   #[error("Didn't receive h2 alpn, aborting connection")]
   NoH2Alpn,
+  #[class(generic)]
   #[error(transparent)]
   Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class(generic)]
   #[error(transparent)]
   H2(#[from] h2::Error),
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
   InvalidHostname(String),
+  #[class(inherit)]
   #[error(transparent)]
-  RootStoreError(deno_core::error::AnyError),
+  RootStoreError(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
   Tls(deno_tls::TlsError),
+  #[class(type)]
   #[error(transparent)]
   HeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
   #[error(transparent)]
   HeaderValue(#[from] http::header::InvalidHeaderValue),
 }
@@ -473,8 +493,7 @@ where
     let r = state
       .borrow_mut()
       .resource_table
-      .get::<WsCancelResource>(cancel_rid)
-      .map_err(WebsocketError::Resource)?;
+      .get::<WsCancelResource>(cancel_rid)?;
     Some(r.0.clone())
   } else {
     None
@@ -678,8 +697,7 @@ pub async fn op_ws_send_binary_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let data = data.to_vec();
   let lock = resource.reserve_lock();
   resource
@@ -697,8 +715,7 @@ pub async fn op_ws_send_text_async(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
   resource
     .write_frame(
@@ -732,8 +749,7 @@ pub async fn op_ws_send_ping(
   let resource = state
     .borrow_mut()
     .resource_table
-    .get::<ServerWebSocket>(rid)
-    .map_err(WebsocketError::Resource)?;
+    .get::<ServerWebSocket>(rid)?;
   let lock = resource.reserve_lock();
   resource
     .write_frame(
@@ -758,9 +774,14 @@ pub async fn op_ws_close(
     return Ok(());
   };
 
+  const EMPTY_PAYLOAD: &[u8] = &[];
+
   let frame = reason
     .map(|reason| Frame::close(code.unwrap_or(1005), reason.as_bytes()))
-    .unwrap_or_else(|| Frame::close_raw(vec![].into()));
+    .unwrap_or_else(|| match code {
+      Some(code) => Frame::close(code, EMPTY_PAYLOAD),
+      _ => Frame::close_raw(EMPTY_PAYLOAD.into()),
+    });
 
   resource.closed.set(true);
   let lock = resource.reserve_lock();

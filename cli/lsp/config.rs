@@ -45,6 +45,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -64,7 +65,6 @@ use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
@@ -853,7 +853,8 @@ impl Settings {
       Some(false)
     } else if let Some(enable_paths) = &enable_paths {
       for enable_path in enable_paths {
-        if path.starts_with(enable_path) {
+        // Also enable if the checked path is a dir containing an enabled path.
+        if path.starts_with(enable_path) || enable_path.starts_with(&path) {
           return Some(true);
         }
       }
@@ -1245,7 +1246,6 @@ impl ConfigData {
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
-            config_parse_options: Default::default(),
             maybe_vendor_override: None,
           },
         )
@@ -1572,11 +1572,11 @@ impl ConfigData {
     let resolver = member_dir
       .workspace
       .create_resolver(
+        &CliSys::default(),
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| Ok(std::fs::read_to_string(path)?),
       )
       .inspect_err(|err| {
         lsp_warn!(
@@ -2077,7 +2077,6 @@ impl deno_config::workspace::WorkspaceCache for WorkspaceMemCache {
 
 #[cfg(test)]
 mod tests {
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::resolve_url;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
@@ -2351,12 +2350,7 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        ConfigFile::new(
-          "{}",
-          root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
-        )
-        .unwrap(),
+        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2412,7 +2406,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2438,7 +2431,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2456,7 +2448,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )

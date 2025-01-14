@@ -26,6 +26,7 @@ use deno_ast::SourceMapOption;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::ConfigFileError;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
@@ -553,7 +554,8 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-#[derive(Error, Debug, Clone)]
+#[derive(Error, Debug, Clone, deno_error::JsError)]
+#[class(generic)]
 pub enum RootCertStoreLoadError {
   #[error(
     "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"
@@ -817,8 +819,6 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options =
-        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
@@ -829,7 +829,6 @@ impl CliOptions {
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
-        config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
         maybe_vendor_override,
@@ -1095,11 +1094,11 @@ impl CliOptions {
       }
     };
     Ok(self.workspace().create_resolver(
+      &CliSys::default(),
       CreateResolverOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| Ok(std::fs::read_to_string(path)?),
     )?)
   }
 
@@ -1241,11 +1240,14 @@ impl CliOptions {
 
   pub fn node_modules_dir(
     &self,
-  ) -> Result<Option<NodeModulesDirMode>, AnyError> {
+  ) -> Result<
+    Option<NodeModulesDirMode>,
+    deno_config::deno_json::NodeModulesDirParseError,
+  > {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }
-    self.workspace().node_modules_dir().map_err(Into::into)
+    self.workspace().node_modules_dir()
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1255,7 +1257,7 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigForEmit, AnyError> {
+  ) -> Result<TsConfigForEmit, ConfigFileError> {
     self.start_dir.to_ts_config_for_emit(config_type)
   }
 
@@ -1284,7 +1286,7 @@ impl CliOptions {
 
   pub fn to_compiler_option_types(
     &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
+  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
     self
       .start_dir
       .to_compiler_option_types()
@@ -2158,12 +2160,7 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(
-      config_text,
-      config_specifier,
-      &deno_config::deno_json::ConfigParseOptions::default(),
-    )
-    .unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -2182,12 +2179,7 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(
-      config_text,
-      config_specifier,
-      &deno_config::deno_json::ConfigParseOptions::default(),
-    )
-    .unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),

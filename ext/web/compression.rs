@@ -12,14 +12,18 @@ use flate2::write::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CompressionError {
+  #[class(type)]
   #[error("Unsupported format")]
   UnsupportedFormat,
+  #[class(type)]
   #[error("resource is closed")]
   ResourceClosed,
+  #[class(type)]
   #[error(transparent)]
   IoTypeError(std::io::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
 }

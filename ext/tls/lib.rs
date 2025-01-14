@@ -5,6 +5,7 @@ use std::io::Cursor;
 use std::net::IpAddr;
 use std::sync::Arc;
 
+use deno_error::JsErrorBox;
 pub use deno_native_certs;
 pub use rustls;
 use rustls::client::danger::HandshakeSignatureValid;
@@ -30,18 +31,24 @@ pub use webpki_roots;
 mod tls_key;
 pub use tls_key::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TlsError {
+  #[class(generic)]
   #[error(transparent)]
   Rustls(#[from] rustls::Error),
+  #[class(inherit)]
   #[error("Unable to add pem file to certificate store: {0}")]
   UnableAddPemFileToCert(std::io::Error),
+  #[class("InvalidData")]
   #[error("Unable to decode certificate")]
   CertInvalid,
+  #[class("InvalidData")]
   #[error("No certificates found in certificate data")]
   CertsNotFound,
+  #[class("InvalidData")]
   #[error("No keys found in key data")]
   KeysNotFound,
+  #[class("InvalidData")]
   #[error("Unable to decode key")]
   KeyDecode,
 }
@@ -51,9 +58,7 @@ pub enum TlsError {
 /// This was done because the root cert store is not needed in all cases
 /// and takes a bit of time to initialize.
 pub trait RootCertStoreProvider: Send + Sync {
-  fn get_or_try_init(
-    &self,
-  ) -> Result<&RootCertStore, deno_core::error::AnyError>;
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox>;
 }
 
 // This extension has no runtime apis, it only exports some shared native functions.

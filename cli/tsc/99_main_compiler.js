@@ -723,7 +723,7 @@ delete Object.prototype.__proto__;
           }
           : arg;
         if (fileReference.fileName.startsWith("npm:")) {
-          /** @type {[string, ts.Extension] | undefined} */
+          /** @type {[string, ts.Extension | null] | undefined} */
           const resolved = ops.op_resolve(
             containingFilePath,
             [
@@ -735,7 +735,7 @@ delete Object.prototype.__proto__;
               ],
             ],
           )?.[0];
-          if (resolved) {
+          if (resolved && resolved[1]) {
             return {
               resolvedTypeReferenceDirective: {
                 primary: true,
@@ -785,7 +785,7 @@ delete Object.prototype.__proto__;
         debug(`  base: ${base}`);
         debug(`  specifiers: ${specifiers.map((s) => s[1]).join(", ")}`);
       }
-      /** @type {Array<[string, ts.Extension] | undefined>} */
+      /** @type {Array<[string, ts.Extension | null] | undefined>} */
       const resolved = ops.op_resolve(
         base,
         specifiers,
@@ -793,7 +793,7 @@ delete Object.prototype.__proto__;
       if (resolved) {
         /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
         const result = resolved.map((item) => {
-          if (item) {
+          if (item && item[1]) {
             const [resolvedFileName, extension] = item;
             return {
               resolvedModule: {

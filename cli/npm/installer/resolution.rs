@@ -1,27 +1,21 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
 use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
-use deno_npm::resolution::NpmPackagesPartitioned;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::resolution::PackageCacheFolderIdNotFoundError;
-use deno_npm::resolution::PackageNotFoundFromReferrerError;
-use deno_npm::resolution::PackageNvNotFoundError;
-use deno_npm::resolution::PackageReqNotFoundError;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageCacheFolderId;
-use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
-use deno_npm::NpmSystemInfo;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -30,7 +24,7 @@ use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
 use crate::npm::CliNpmRegistryInfoProvider;
-use crate::util::sync::SyncReadAsyncWriteLock;
+use crate::util::sync::TaskQueue;
 
 pub struct AddPkgReqsResult {
   /// Results from adding the individual packages.
@@ -39,50 +33,38 @@ pub struct AddPkgReqsResult {
   /// package requirements.
   pub results: Vec<Result<PackageNv, NpmResolutionError>>,
   /// The final result of resolving and caching all the package requirements.
-  pub dependencies_result: Result<(), AnyError>,
+  pub dependencies_result: Result<(), JsErrorBox>,
 }
 
-/// Handles updating and storing npm resolution in memory where the underlying
-/// snapshot can be updated concurrently. Additionally handles updating the lockfile
-/// based on changes to the resolution.
-///
-/// This does not interact with the file system.
-pub struct NpmResolution {
+/// Updates the npm resolution with the provided package requirements.
+#[derive(Debug)]
+pub struct NpmResolutionInstaller {
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-  snapshot: SyncReadAsyncWriteLock<NpmResolutionSnapshot>,
+  resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
+  update_queue: TaskQueue,
 }
 
-impl std::fmt::Debug for NpmResolution {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    let snapshot = self.snapshot.read();
-    f.debug_struct("NpmResolution")
-      .field("snapshot", &snapshot.as_valid_serialized().as_serialized())
-      .finish()
-  }
-}
-
-impl NpmResolution {
-  pub fn from_serialized(
-    registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-    initial_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-    maybe_lockfile: Option<Arc<CliLockfile>>,
-  ) -> Self {
-    let snapshot =
-      NpmResolutionSnapshot::new(initial_snapshot.unwrap_or_default());
-    Self::new(registry_info_provider, snapshot, maybe_lockfile)
-  }
-
+impl NpmResolutionInstaller {
   pub fn new(
     registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-    initial_snapshot: NpmResolutionSnapshot,
+    resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     Self {
       registry_info_provider,
-      snapshot: SyncReadAsyncWriteLock::new(initial_snapshot),
+      resolution,
       maybe_lockfile,
+      update_queue: Default::default(),
     }
+  }
+
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    // this will internally cache the package information
+    self.registry_info_provider.package_info(package_name).await
   }
 
   pub async fn add_package_reqs(
@@ -90,12 +72,12 @@ impl NpmResolution {
     package_reqs: &[PackageReq],
   ) -> AddPkgReqsResult {
     // only allow one thread in here at a time
-    let snapshot_lock = self.snapshot.acquire().await;
+    let _snapshot_lock = self.update_queue.acquire().await;
     let result = add_package_reqs_to_snapshot(
       &self.registry_info_provider,
       package_reqs,
       self.maybe_lockfile.clone(),
-      || snapshot_lock.read().clone(),
+      || self.resolution.snapshot(),
     )
     .await;
 
@@ -103,10 +85,10 @@ impl NpmResolution {
       results: result.results,
       dependencies_result: match result.dep_graph_result {
         Ok(snapshot) => {
-          *snapshot_lock.write() = snapshot;
+          self.resolution.set_snapshot(snapshot);
           Ok(())
         }
-        Err(err) => Err(err.into()),
+        Err(err) => Err(JsErrorBox::from_err(err)),
       },
     }
   }
@@ -116,7 +98,7 @@ impl NpmResolution {
     package_reqs: &[PackageReq],
   ) -> Result<(), AnyError> {
     // only allow one thread in here at a time
-    let snapshot_lock = self.snapshot.acquire().await;
+    let _snapshot_lock = self.update_queue.acquire().await;
 
     let reqs_set = package_reqs.iter().collect::<HashSet<_>>();
     let snapshot = add_package_reqs_to_snapshot(
@@ -124,7 +106,7 @@ impl NpmResolution {
       package_reqs,
       self.maybe_lockfile.clone(),
       || {
-        let snapshot = snapshot_lock.read().clone();
+        let snapshot = self.resolution.snapshot();
         let has_removed_package = !snapshot
           .package_reqs()
           .keys()
@@ -140,126 +122,9 @@ impl NpmResolution {
     .await
     .into_result()?;
 
-    *snapshot_lock.write() = snapshot;
+    self.resolution.set_snapshot(snapshot);
 
     Ok(())
-  }
-
-  pub fn resolve_pkg_cache_folder_id_from_pkg_id(
-    &self,
-    id: &NpmPackageId,
-  ) -> Option<NpmPackageCacheFolderId> {
-    self
-      .snapshot
-      .read()
-      .package_from_id(id)
-      .map(|p| p.get_package_cache_folder_id())
-  }
-
-  pub fn resolve_pkg_id_from_pkg_cache_folder_id(
-    &self,
-    id: &NpmPackageCacheFolderId,
-  ) -> Result<NpmPackageId, PackageCacheFolderIdNotFoundError> {
-    self
-      .snapshot
-      .read()
-      .resolve_pkg_from_pkg_cache_folder_id(id)
-      .map(|pkg| pkg.id.clone())
-  }
-
-  pub fn resolve_package_from_package(
-    &self,
-    name: &str,
-    referrer: &NpmPackageCacheFolderId,
-  ) -> Result<NpmResolutionPackage, Box<PackageNotFoundFromReferrerError>> {
-    self
-      .snapshot
-      .read()
-      .resolve_package_from_package(name, referrer)
-      .cloned()
-  }
-
-  /// Resolve a node package from a deno module.
-  pub fn resolve_pkg_id_from_pkg_req(
-    &self,
-    req: &PackageReq,
-  ) -> Result<NpmPackageId, PackageReqNotFoundError> {
-    self
-      .snapshot
-      .read()
-      .resolve_pkg_from_pkg_req(req)
-      .map(|pkg| pkg.id.clone())
-  }
-
-  pub fn resolve_pkg_reqs_from_pkg_id(
-    &self,
-    id: &NpmPackageId,
-  ) -> Vec<PackageReq> {
-    let snapshot = self.snapshot.read();
-    let mut pkg_reqs = snapshot
-      .package_reqs()
-      .iter()
-      .filter(|(_, nv)| *nv == &id.nv)
-      .map(|(req, _)| req.clone())
-      .collect::<Vec<_>>();
-    pkg_reqs.sort(); // be deterministic
-    pkg_reqs
-  }
-
-  pub fn resolve_pkg_id_from_deno_module(
-    &self,
-    id: &PackageNv,
-  ) -> Result<NpmPackageId, PackageNvNotFoundError> {
-    self
-      .snapshot
-      .read()
-      .resolve_package_from_deno_module(id)
-      .map(|pkg| pkg.id.clone())
-  }
-
-  pub fn package_reqs(&self) -> HashMap<PackageReq, PackageNv> {
-    self.snapshot.read().package_reqs().clone()
-  }
-
-  pub fn all_system_packages(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> Vec<NpmResolutionPackage> {
-    self.snapshot.read().all_system_packages(system_info)
-  }
-
-  pub fn all_system_packages_partitioned(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> NpmPackagesPartitioned {
-    self
-      .snapshot
-      .read()
-      .all_system_packages_partitioned(system_info)
-  }
-
-  pub fn snapshot(&self) -> NpmResolutionSnapshot {
-    self.snapshot.read().clone()
-  }
-
-  pub fn serialized_valid_snapshot(
-    &self,
-  ) -> ValidSerializedNpmResolutionSnapshot {
-    self.snapshot.read().as_valid_serialized()
-  }
-
-  pub fn serialized_valid_snapshot_for_system(
-    &self,
-    system_info: &NpmSystemInfo,
-  ) -> ValidSerializedNpmResolutionSnapshot {
-    self
-      .snapshot
-      .read()
-      .as_valid_serialized_for_system(system_info)
-  }
-
-  pub fn subset(&self, package_reqs: &[PackageReq]) -> NpmResolutionSnapshot {
-    self.snapshot.read().subset(package_reqs)
   }
 }
 
@@ -333,6 +198,25 @@ fn populate_lockfile_from_snapshot(
   lockfile: &CliLockfile,
   snapshot: &NpmResolutionSnapshot,
 ) {
+  fn npm_package_to_lockfile_info(
+    pkg: &NpmResolutionPackage,
+  ) -> NpmPackageLockfileInfo {
+    let dependencies = pkg
+      .dependencies
+      .iter()
+      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
+        name: name.clone(),
+        id: id.as_serialized(),
+      })
+      .collect();
+
+    NpmPackageLockfileInfo {
+      serialized_id: pkg.id.as_serialized(),
+      integrity: pkg.dist.integrity().for_lockfile(),
+      dependencies,
+    }
+  }
+
   let mut lockfile = lockfile.lock();
   for (package_req, nv) in snapshot.package_reqs() {
     let id = &snapshot.resolve_package_from_deno_module(nv).unwrap().id;
@@ -349,24 +233,5 @@ fn populate_lockfile_from_snapshot(
   }
   for package in snapshot.all_packages_for_every_system() {
     lockfile.insert_npm_package(npm_package_to_lockfile_info(package));
-  }
-}
-
-fn npm_package_to_lockfile_info(
-  pkg: &NpmResolutionPackage,
-) -> NpmPackageLockfileInfo {
-  let dependencies = pkg
-    .dependencies
-    .iter()
-    .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-      name: name.clone(),
-      id: id.as_serialized(),
-    })
-    .collect();
-
-  NpmPackageLockfileInfo {
-    serialized_id: pkg.id.as_serialized(),
-    integrity: pkg.dist.integrity().for_lockfile(),
-    dependencies,
   }
 }

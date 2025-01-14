@@ -4,7 +4,6 @@ mod args;
 mod cache;
 mod cdp;
 mod emit;
-mod errors;
 mod factory;
 mod file_fetcher;
 mod graph_container;
@@ -38,10 +37,9 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
-use deno_npm::resolution::SnapshotFromLockfileError;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
@@ -53,6 +51,7 @@ use factory::CliFactory;
 use standalone::MODULE_NOT_FOUND;
 use standalone::UNSUPPORTED_SCHEME;
 
+use self::npm::ResolveSnapshotError;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -202,7 +201,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = util::result::any_and_jserrorbox_downcast_ref::<ResolvePkgFolderFromDenoReqError>(&script_err) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -373,13 +372,19 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
-  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-    error.downcast_ref::<SnapshotFromLockfileError>()
+  if let Some(CoreError::Js(e)) =
+    util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
-    error_string = e.to_string();
-    error_code = 10;
+    error_string = format_js_error(e);
+  } else if let Some(e @ ResolveSnapshotError { .. }) =
+    util::result::any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(
+      &error,
+    )
+  {
+    if let Some(e) = e.maybe_integrity_check_error() {
+      error_string = e.to_string();
+      error_code = 10;
+    }
   }
 
   exit_with_message(&error_string, error_code);

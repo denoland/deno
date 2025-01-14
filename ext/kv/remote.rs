@@ -8,10 +8,9 @@ use std::sync::Arc;
 use anyhow::Context;
 use async_trait::async_trait;
 use bytes::Bytes;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::futures::Stream;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use deno_fetch::create_http_client;
 use deno_fetch::CreateHttpClientOptions;
 use deno_permissions::PermissionCheckError;
@@ -38,7 +37,7 @@ pub struct HttpOptions {
 }
 
 impl HttpOptions {
-  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -102,12 +101,12 @@ impl<P: RemoteDbHandlerPermissions> Clone for PermissionChecker<P> {
 impl<P: RemoteDbHandlerPermissions + 'static> denokv_remote::RemotePermissions
   for PermissionChecker<P>
 {
-  fn check_net_url(&self, url: &Url) -> Result<(), anyhow::Error> {
+  fn check_net_url(&self, url: &Url) -> Result<(), JsErrorBox> {
     let mut state = self.state.borrow_mut();
     let permissions = state.borrow_mut::<P>();
     permissions
       .check_net_url(url, "Deno.openKv")
-      .map_err(Into::into)
+      .map_err(JsErrorBox::from_err)
   }
 }
 
@@ -122,31 +121,43 @@ impl RemoteTransport for FetchClient {
     url: Url,
     headers: http::HeaderMap,
     body: Bytes,
-  ) -> Result<(Url, http::StatusCode, Self::Response), anyhow::Error> {
+  ) -> Result<(Url, http::StatusCode, Self::Response), JsErrorBox> {
     let body = deno_fetch::ReqBody::full(body);
     let mut req = http::Request::new(body);
     *req.method_mut() = http::Method::POST;
-    *req.uri_mut() = url.as_str().parse()?;
+    *req.uri_mut() =
+      url.as_str().parse().map_err(|e: http::uri::InvalidUri| {
+        JsErrorBox::type_error(e.to_string())
+      })?;
     *req.headers_mut() = headers;
 
-    let res = self.0.clone().send(req).await?;
+    let res = self
+      .0
+      .clone()
+      .send(req)
+      .await
+      .map_err(JsErrorBox::from_err)?;
     let status = res.status();
     Ok((url, status, FetchResponse(res)))
   }
 }
 
 impl RemoteResponse for FetchResponse {
-  async fn bytes(self) -> Result<Bytes, anyhow::Error> {
+  async fn bytes(self) -> Result<Bytes, JsErrorBox> {
     Ok(self.0.collect().await?.to_bytes())
   }
   fn stream(
     self,
-  ) -> impl Stream<Item = Result<Bytes, anyhow::Error>> + Send + Sync {
+  ) -> impl Stream<Item = Result<Bytes, JsErrorBox>> + Send + Sync {
     self.0.into_body().into_data_stream()
   }
-  async fn text(self) -> Result<String, anyhow::Error> {
+  async fn text(self) -> Result<String, JsErrorBox> {
     let bytes = self.bytes().await?;
-    Ok(std::str::from_utf8(&bytes)?.into())
+    Ok(
+      std::str::from_utf8(&bytes)
+        .map_err(JsErrorBox::from_err)?
+        .into(),
+    )
   }
 }
 
@@ -160,29 +171,36 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsErrorBox> {
     const ENV_VAR_NAME: &str = "DENO_KV_ACCESS_TOKEN";
 
     let Some(url) = path else {
-      return Err(type_error("Missing database url"));
+      return Err(JsErrorBox::type_error("Missing database url"));
     };
 
     let Ok(parsed_url) = Url::parse(&url) else {
-      return Err(type_error(format!("Invalid database url: {}", url)));
+      return Err(JsErrorBox::type_error(format!(
+        "Invalid database url: {}",
+        url
+      )));
     };
 
     {
       let mut state = state.borrow_mut();
       let permissions = state.borrow_mut::<P>();
-      permissions.check_env(ENV_VAR_NAME)?;
-      permissions.check_net_url(&parsed_url, "Deno.openKv")?;
+      permissions
+        .check_env(ENV_VAR_NAME)
+        .map_err(JsErrorBox::from_err)?;
+      permissions
+        .check_net_url(&parsed_url, "Deno.openKv")
+        .map_err(JsErrorBox::from_err)?;
     }
 
     let access_token = std::env::var(ENV_VAR_NAME)
       .map_err(anyhow::Error::from)
       .with_context(|| {
         "Missing DENO_KV_ACCESS_TOKEN environment variable. Please set it to your access token from https://dash.deno.com/account."
-      })?;
+      }).map_err(|e| JsErrorBox::generic(e.to_string()))?;
 
     let metadata_endpoint = MetadataEndpoint {
       url: parsed_url.clone(),
@@ -211,7 +229,8 @@ impl<P: RemoteDbHandlerPermissions + 'static> DatabaseHandler
         http2: true,
         client_builder_hook: None,
       },
-    )?;
+    )
+    .map_err(JsErrorBox::from_err)?;
     let fetch_client = FetchClient(client);
 
     let permissions = PermissionChecker {

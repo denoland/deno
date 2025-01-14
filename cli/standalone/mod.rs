@@ -21,9 +21,8 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
 use deno_core::error::AnyError;
+use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
 use deno_core::v8_set_flags;
@@ -36,9 +35,15 @@ use deno_core::ModuleType;
 use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::create_in_npm_pkg_checker;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
@@ -81,16 +86,14 @@ use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::create_cli_npm_resolver;
-use crate::npm::create_in_npm_pkg_checker;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
+use crate::npm::NpmResolutionInitializer;
 use crate::resolver::CjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
@@ -182,25 +185,32 @@ impl ModuleLoader for EmbeddedModuleLoader {
     raw_specifier: &str,
     referrer: &str,
     kind: ResolutionKind,
-  ) -> Result<ModuleSpecifier, AnyError> {
+  ) -> Result<ModuleSpecifier, ModuleLoaderError> {
     let referrer = if referrer == "." {
       if kind != ResolutionKind::MainModule {
-        return Err(generic_error(format!(
-          "Expected to resolve main module, got {:?} instead.",
-          kind
-        )));
+        return Err(
+          JsErrorBox::generic(format!(
+            "Expected to resolve main module, got {:?} instead.",
+            kind
+          ))
+          .into(),
+        );
       }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)?
     } else {
       ModuleSpecifier::parse(referrer).map_err(|err| {
-        type_error(format!("Referrer uses invalid specifier: {}", err))
+        JsErrorBox::type_error(format!(
+          "Referrer uses invalid specifier: {}",
+          err
+        ))
       })?
     };
     let referrer_kind = if self
       .shared
       .cjs_tracker
-      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))?
+      .is_maybe_cjs(&referrer, MediaType::from_specifier(&referrer))
+      .map_err(JsErrorBox::from_err)?
     {
       ResolutionMode::Require
     } else {
@@ -217,7 +227,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             &referrer,
             referrer_kind,
             NodeResolutionKind::Execution,
-          )?
+          )
+          .map_err(JsErrorBox::from_err)?
           .into_url(),
       );
     }
@@ -245,14 +256,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
             Some(&referrer),
             referrer_kind,
             NodeResolutionKind::Execution,
-          )?,
+          )
+          .map_err(JsErrorBox::from_err)?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
         sub_path,
         alias,
         ..
-      }) => match dep_result.as_ref().map_err(|e| AnyError::from(e.clone()))? {
+      }) => match dep_result
+        .as_ref()
+        .map_err(|e| JsErrorBox::from_err(e.clone()))?
+      {
         PackageJsonDepValue::Req(req) => self
           .shared
           .npm_req_resolver
@@ -263,7 +278,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(AnyError::from),
+          .map_err(|e| JsErrorBox::from_err(e).into()),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -271,7 +286,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             .resolve_workspace_pkg_json_folder_for_pkg_json_dep(
               alias,
               version_req,
-            )?;
+            )
+            .map_err(JsErrorBox::from_err)?;
           Ok(
             self
               .shared
@@ -282,7 +298,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 Some(&referrer),
                 referrer_kind,
                 NodeResolutionKind::Execution,
-              )?,
+              )
+              .map_err(JsErrorBox::from_err)?,
           )
         }
       },
@@ -291,12 +308,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
-          return Ok(self.shared.npm_req_resolver.resolve_req_reference(
-            &reference,
-            &referrer,
-            referrer_kind,
-            NodeResolutionKind::Execution,
-          )?);
+          return Ok(
+            self
+              .shared
+              .npm_req_resolver
+              .resolve_req_reference(
+                &reference,
+                &referrer,
+                referrer_kind,
+                NodeResolutionKind::Execution,
+              )
+              .map_err(JsErrorBox::from_err)?,
+          );
         }
 
         if specifier.scheme() == "jsr" {
@@ -318,18 +341,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
       Err(err)
         if err.is_unmapped_bare_specifier() && referrer.scheme() == "file" =>
       {
-        let maybe_res = self.shared.npm_req_resolver.resolve_if_for_npm_pkg(
-          raw_specifier,
-          &referrer,
-          referrer_kind,
-          NodeResolutionKind::Execution,
-        )?;
+        let maybe_res = self
+          .shared
+          .npm_req_resolver
+          .resolve_if_for_npm_pkg(
+            raw_specifier,
+            &referrer,
+            referrer_kind,
+            NodeResolutionKind::Execution,
+          )
+          .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
           return Ok(res.into_url());
         }
-        Err(err.into())
+        Err(JsErrorBox::from_err(err).into())
       }
-      Err(err) => Err(err.into()),
+      Err(err) => Err(JsErrorBox::from_err(err).into()),
     }
   }
 
@@ -360,9 +387,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(response) => response,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
-              format!("{:#}", err),
-            )));
+            return deno_core::ModuleLoadResponse::Sync(Err(
+              JsErrorBox::type_error(format!("{:#}", err)).into(),
+            ));
           }
         };
       return deno_core::ModuleLoadResponse::Sync(Ok(
@@ -420,9 +447,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
         {
           Ok(is_maybe_cjs) => is_maybe_cjs,
           Err(err) => {
-            return deno_core::ModuleLoadResponse::Sync(Err(type_error(
-              format!("{:?}", err),
-            )));
+            return deno_core::ModuleLoadResponse::Sync(Err(
+              JsErrorBox::type_error(format!("{:?}", err)).into(),
+            ));
           }
         };
         if is_maybe_cjs {
@@ -482,12 +509,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
           ))
         }
       }
-      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
-        format!("{MODULE_NOT_FOUND}: {}", original_specifier),
-      ))),
-      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(type_error(
-        format!("{:?}", err),
-      ))),
+      Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(
+        JsErrorBox::type_error(format!(
+          "{MODULE_NOT_FOUND}: {}",
+          original_specifier
+        ))
+        .into(),
+      )),
+      Err(err) => deno_core::ModuleLoadResponse::Sync(Err(
+        JsErrorBox::type_error(format!("{:?}", err)).into(),
+      )),
     }
   }
 
@@ -553,7 +584,7 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
     &self,
     permissions: &mut dyn deno_runtime::deno_node::NodePermissions,
     path: &'a std::path::Path,
-  ) -> Result<Cow<'a, std::path::Path>, AnyError> {
+  ) -> Result<Cow<'a, std::path::Path>, JsErrorBox> {
     if self.shared.modules.has_file(path) {
       // allow reading if the file is in the snapshot
       return Ok(Cow::Borrowed(path));
@@ -563,17 +594,23 @@ impl NodeRequireLoader for EmbeddedModuleLoader {
       .shared
       .npm_registry_permission_checker
       .ensure_read_permission(permissions, path)
+      .map_err(JsErrorBox::from_err)
   }
 
   fn load_text_file_lossy(
     &self,
     path: &std::path::Path,
-  ) -> Result<Cow<'static, str>, AnyError> {
-    let file_entry = self.shared.vfs.file_entry(path)?;
+  ) -> Result<Cow<'static, str>, JsErrorBox> {
+    let file_entry = self
+      .shared
+      .vfs
+      .file_entry(path)
+      .map_err(JsErrorBox::from_err)?;
     let file_bytes = self
       .shared
       .vfs
-      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)?;
+      .read_file_all(file_entry, VfsFileSubDataKind::ModuleGraph)
+      .map_err(JsErrorBox::from_err)?;
     Ok(from_utf8_lossy_cow(file_bytes))
   }
 
@@ -626,10 +663,10 @@ struct StandaloneRootCertStoreProvider {
 }
 
 impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
     self.cell.get_or_try_init(|| {
       get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
-        .map_err(|err| err.into())
+        .map_err(JsErrorBox::from_err)
     })
   }
 }
@@ -653,18 +690,12 @@ pub async fn run(
     ca_data: metadata.ca_data.map(CaData::Bytes),
     cell: Default::default(),
   });
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client_provider = Arc::new(HttpClientProvider::new(
-    Some(root_cert_store_provider.clone()),
-    metadata.unsafely_ignore_certificate_errors.clone(),
-  ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let cache_setting = CacheSetting::Only;
   let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {
@@ -704,34 +735,24 @@ pub async fn run(
         .map(|node_modules_dir| root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
         create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
           },
         ));
+      let npm_resolution =
+        Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
       let npm_resolver =
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-              snapshot,
-            )),
-            maybe_lockfile: None,
-            http_client_provider: http_client_provider.clone(),
+            npm_resolution,
             npm_cache_dir,
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
             sys: sys.clone(),
-            text_only_progress_bar: progress_bar,
-            cache_setting,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
             npmrc,
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
     Some(binary::NodeModules::Byonm {
@@ -747,8 +768,7 @@ pub async fn run(
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
-      )
-      .await?;
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
     None => {
@@ -762,32 +782,23 @@ pub async fn run(
       ));
       let in_npm_pkg_checker =
         create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
           },
         ));
+      let npm_resolution = Arc::new(NpmResolutionCell::default());
       let npm_resolver =
         create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-            http_client_provider: http_client_provider.clone(),
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
+            npm_resolution,
             sys: sys.clone(),
-            cache_setting,
-            text_only_progress_bar: progress_bar,
             npm_cache_dir,
-            maybe_lockfile: None,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
             npmrc: create_default_npmrc(),
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
   };
@@ -799,6 +810,7 @@ pub async fn run(
     npm_resolver.clone().into_npm_pkg_folder_resolver(),
     pkg_json_resolver.clone(),
     sys.clone(),
+    node_resolver::ConditionsFromResolutionMode::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
@@ -815,11 +827,10 @@ pub async fn run(
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let npm_req_resolver =
     Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-      byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
       sys: sys.clone(),
       in_npm_pkg_checker: in_npm_pkg_checker.clone(),
       node_resolver: node_resolver.clone(),
-      npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+      npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
     }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
@@ -961,6 +972,7 @@ pub async fn run(
     None,
     Box::new(module_loader_factory),
     node_resolver,
+    None,
     npm_resolver,
     pkg_json_resolver,
     root_cert_store_provider,
