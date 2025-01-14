@@ -29,11 +29,26 @@ pub struct GPUCommandEncoder {
   pub label: String,
 }
 
+impl Drop for GPUCommandEncoder {
+  fn drop(&mut self) {
+    self.instance.command_encoder_drop(self.id);
+  }
+}
+
 impl GarbageCollected for GPUCommandEncoder {}
 
 #[op2]
 impl GPUCommandEncoder {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[required(1)]
   #[cppgc]
@@ -80,7 +95,7 @@ impl GPUCommandEncoder {
               .unwrap_or(GPUStoreOp::Store)
               .into(),
             clear_value: attachment.depth_clear_value.unwrap_or_default(),
-            read_only: false,
+            read_only: attachment.depth_read_only,
           },
           stencil: PassChannel {
             load_op: attachment
@@ -92,7 +107,7 @@ impl GPUCommandEncoder {
               .unwrap_or(GPUStoreOp::Store)
               .into(),
             clear_value: attachment.stencil_clear_value,
-            read_only: false,
+            read_only: attachment.stencil_read_only,
           },
         })
       }).transpose()?;
@@ -169,10 +184,10 @@ impl GPUCommandEncoder {
   fn copy_buffer_to_buffer(
     &self,
     #[webidl] source: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] source_offset: u64,
+    #[webidl(options(enforce_range = true))] source_offset: u64,
     #[webidl] destination: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] destination_offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: u64,
+    #[webidl(options(enforce_range = true))] destination_offset: u64,
+    #[webidl(options(enforce_range = true))] size: u64,
   ) {
     let err = self
       .instance
@@ -296,8 +311,8 @@ impl GPUCommandEncoder {
   fn clear_buffer(
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(default = 0, options(enforce_range = true))] offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
     let err = self
       .instance
@@ -310,10 +325,10 @@ impl GPUCommandEncoder {
   fn resolve_query_set(
     &self,
     #[webidl] query_set: Ptr<super::query_set::GPUQuerySet>,
-    #[webidl/*(options(enforce_range = true))*/] first_query: u32,
-    #[webidl/*(options(enforce_range = true))*/] query_count: u32,
+    #[webidl(options(enforce_range = true))] first_query: u32,
+    #[webidl(options(enforce_range = true))] query_count: u32,
     #[webidl] destination: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] destination_offset: u64,
+    #[webidl(options(enforce_range = true))] destination_offset: u64,
   ) {
     let err = self
       .instance
@@ -347,6 +362,7 @@ impl GPUCommandEncoder {
     self.error_handler.push_error(err);
 
     GPUCommandBuffer {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     }

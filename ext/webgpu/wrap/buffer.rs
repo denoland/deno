@@ -37,6 +37,9 @@ pub enum BufferError {
   #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   Access(#[from] wgpu_core::resource::BufferAccessError),
+  #[class("DOMExceptionOperationError")]
+  #[error("{0}")]
+  Operation(&'static str),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -60,6 +63,12 @@ pub struct GPUBuffer {
   pub mapped_js_buffers: RefCell<Vec<v8::Global<v8::ArrayBuffer>>>,
 }
 
+impl Drop for GPUBuffer {
+  fn drop(&mut self) {
+    self.instance.buffer_drop(self.id);
+  }
+}
+
 impl WebIdlInterfaceConverter for GPUBuffer {
   const NAME: &'static str = "GPUBuffer";
 }
@@ -68,7 +77,16 @@ impl GarbageCollected for GPUBuffer {}
 
 #[op2]
 impl GPUBuffer {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[getter]
   #[number]
@@ -89,67 +107,16 @@ impl GPUBuffer {
   #[async_method]
   async fn map_async(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] mode: u32,
-    #[webidl/*(default = 0)*/] offset: u64,
+    #[webidl(options(enforce_range = true))] mode: u32,
+    #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
   ) -> Result<(), BufferError> {
-    let range_size = size.unwrap_or_else(|| self.size.saturating_sub(offset));
-    if (offset % 8) != 0 {
-      /*
-       throw new DOMException(
-         `${prefix}: offset must be a multiple of 8, received ${offset}`,
-         "OperationError",
-       );
-      */
-    }
-    if (range_size % 4) != 0 {
-      /*
-       throw new DOMException(
-         `${prefix}: rangeSize must be a multiple of 4, received ${rangeSize}`,
-         "OperationError",
-       );
-      */
-    }
-    if (offset + range_size) > self.size {
-      /*
-      throw new DOMException(
-        `${prefix}: offset + rangeSize must be less than or equal to buffer size`,
-        "OperationError",
-      );
-       */
-    }
-
     let read_mode = (mode & 0x0001) == 0x0001;
     let write_mode = (mode & 0x0002) == 0x0002;
     if (read_mode && write_mode) || (!read_mode && !write_mode) {
-      /*
-       throw new DOMException(
-         `${prefix}: exactly one of READ or WRITE map mode must be set`,
-         "OperationError",
-       );
-      */
-    }
-
-    if read_mode && !(self.usage & 0x0001) == 0x0001 {
-      /*
-       throw new DOMException(
-         `${prefix}: READ map mode not valid because buffer does not have MAP_READ usage`,
-         "OperationError",
-       );
-      */
-    }
-
-    if write_mode && !(self.usage & 0x0002) == 0x0002 {
-      /*
-       throw new DOMException(
-         `${prefix}: WRITE map mode not valid because buffer does not have MAP_WRITE usage`,
-         "OperationError",
-       );
-      */
-    }
-
-    {
-      *self.map_state.borrow_mut() = "pending";
+      return Err(BufferError::Operation(
+        "exactly one of READ or WRITE map mode must be set",
+      ));
     }
 
     let mode = if read_mode {
@@ -159,6 +126,10 @@ impl GPUBuffer {
       MapMode::Write
     };
 
+    {
+      *self.map_state.borrow_mut() = "pending";
+    }
+
     let (sender, receiver) =
       oneshot::channel::<wgpu_core::resource::BufferAccessResult>();
 
@@ -167,13 +138,12 @@ impl GPUBuffer {
         sender.send(status).unwrap();
       });
 
-      // TODO(lucacasonato): error handling
       let err = self
         .instance
         .buffer_map_async(
           self.id,
           offset,
-          Some(range_size),
+          size,
           wgpu_core::resource::BufferMapOperation {
             host: mode,
             callback: Some(BufferMapCallback::from_rust(callback)),
@@ -183,13 +153,7 @@ impl GPUBuffer {
 
       if err.is_some() {
         self.error_handler.push_error(err);
-        return Err(
-          JsErrorBox::new(
-            "DOMExceptionOperationError",
-            "validation error occurred",
-          )
-          .into(),
-        );
+        return Err(BufferError::Operation("validation error occurred"));
       }
     }
 
@@ -226,7 +190,7 @@ impl GPUBuffer {
   fn get_mapped_range<'s>(
     &self,
     scope: &mut v8::HandleScope<'s>,
-    #[webidl/*(default = 0)*/] offset: u64,
+    #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
   ) -> Result<v8::Local<'s, v8::Uint8Array>, BufferError> {
     let size = size.unwrap_or_else(|| self.size.saturating_sub(offset));
@@ -247,6 +211,7 @@ impl GPUBuffer {
       ) {
       }
 
+      // SAFETY: creating a backing store from the pointer and length provided by wgpu
       unsafe {
         v8::ArrayBuffer::new_backing_store_from_ptr(
           slice_pointer.as_ptr() as _,
@@ -256,6 +221,7 @@ impl GPUBuffer {
         )
       }
     } else {
+      // SAFETY: creating a vector from the pointer and length provided by wgpu
       let slice = unsafe {
         std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
       };

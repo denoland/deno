@@ -20,6 +20,12 @@ pub struct GPUComputePipeline {
   pub label: String,
 }
 
+impl Drop for GPUComputePipeline {
+  fn drop(&mut self) {
+    self.instance.compute_pipeline_drop(self.id);
+  }
+}
+
 impl WebIdlInterfaceConverter for GPUComputePipeline {
   const NAME: &'static str = "GPUComputePipeline";
 }
@@ -28,7 +34,16 @@ impl GarbageCollected for GPUComputePipeline {}
 
 #[op2]
 impl GPUComputePipeline {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[cppgc]
   fn get_bind_group_layout(&self, #[webidl] index: u32) -> GPUBindGroupLayout {
@@ -40,6 +55,7 @@ impl GPUComputePipeline {
 
     // TODO: wgpu needs to support retrieving the label
     GPUBindGroupLayout {
+      instance: self.instance.clone(),
       id,
       label: "".to_string(),
     }

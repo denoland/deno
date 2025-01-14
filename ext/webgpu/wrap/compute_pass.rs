@@ -27,7 +27,16 @@ impl GarbageCollected for GPUComputePassEncoder {}
 
 #[op2]
 impl GPUComputePassEncoder {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   fn set_pipeline(
     &self,
@@ -45,10 +54,10 @@ impl GPUComputePassEncoder {
 
   fn dispatch_workgroups(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] work_group_count_x: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
+    #[webidl(options(enforce_range = true))] work_group_count_x: u32,
+    #[webidl(default = 1, options(enforce_range = true))]
     work_group_count_y: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
+    #[webidl(default = 1, options(enforce_range = true))]
     work_group_count_z: u32,
   ) {
     let err = self
@@ -66,7 +75,7 @@ impl GPUComputePassEncoder {
   fn dispatch_workgroups_indirect(
     &self,
     #[webidl] indirect_buffer: Ptr<crate::wrap::buffer::GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] indirect_offset: u64,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance
@@ -124,7 +133,7 @@ impl GPUComputePassEncoder {
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    #[webidl/*(options(enforce_range = true))*/] index: u32,
+    #[webidl(options(enforce_range = true))] index: u32,
     #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
@@ -159,6 +168,7 @@ impl GPUComputePassEncoder {
       let ptr = ab.data().unwrap();
       let ab_len = ab.byte_length() / 4;
 
+      // SAFETY: compute_pass_set_bind_group internally calls extend_from_slice with this slice
       let data =
         unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
 

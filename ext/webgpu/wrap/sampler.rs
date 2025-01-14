@@ -13,6 +13,12 @@ pub struct GPUSampler {
   pub label: String,
 }
 
+impl Drop for GPUSampler {
+  fn drop(&mut self) {
+    self.instance.sampler_drop(self.id);
+  }
+}
+
 impl WebIdlInterfaceConverter for GPUSampler {
   const NAME: &'static str = "GPUSampler";
 }
@@ -21,7 +27,16 @@ impl GarbageCollected for GPUSampler {}
 
 #[op2]
 impl GPUSampler {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL)]

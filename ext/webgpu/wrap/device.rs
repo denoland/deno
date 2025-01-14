@@ -23,11 +23,13 @@ use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
 use crate::wrap::adapter::GPUAdapterInfo;
+use crate::wrap::adapter::GPUSupportedFeatures;
 use crate::wrap::adapter::GPUSupportedLimits;
 use crate::wrap::command_encoder::GPUCommandEncoder;
 use crate::wrap::query_set::GPUQuerySet;
 use crate::wrap::render_bundle::GPURenderBundleEncoder;
 use crate::wrap::render_pipeline::GPURenderPipeline;
+use crate::wrap::webidl::features_to_feature_names;
 use crate::Instance;
 
 pub struct GPUDevice {
@@ -38,14 +40,21 @@ pub struct GPUDevice {
 
   pub label: String,
 
-  pub features: SameObject<GPUDevice>,
+  pub features: SameObject<GPUSupportedFeatures>,
   pub limits: SameObject<GPUSupportedLimits>,
   pub adapter_info: Rc<SameObject<GPUAdapterInfo>>,
 
   pub queue_obj: SameObject<GPUQueue>,
 
   pub error_handler: super::error::ErrorHandler,
-  pub lost_receiver: tokio::sync::oneshot::Receiver<()>,
+  pub lost_receiver:
+    tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+}
+
+impl Drop for GPUDevice {
+  fn drop(&mut self) {
+    self.instance.device_drop(self.id);
+  }
 }
 
 impl GarbageCollected for GPUDevice {}
@@ -54,19 +63,33 @@ impl GarbageCollected for GPUDevice {}
 // TODO: setEventTargetData on instance
 #[op2]
 impl GPUDevice {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[getter]
-  fn features(&self) {
-    todo!()
+  #[global]
+  fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.features.get(scope, |scope| {
+      let features = self.instance.device_features(self.id);
+      let features = features_to_feature_names(features);
+      GPUSupportedFeatures::new(scope, features)
+    })
   }
 
   #[getter]
   #[global]
   fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.limits.get(scope, || {
-      let adapter_limits = self.instance.device_limits(self.id);
-      GPUSupportedLimits(adapter_limits)
+    self.limits.get(scope, |_| {
+      let limits = self.instance.device_limits(self.id);
+      GPUSupportedLimits(limits)
     })
   }
 
@@ -76,7 +99,7 @@ impl GPUDevice {
     &self,
     scope: &mut v8::HandleScope,
   ) -> v8::Global<v8::Object> {
-    self.adapter_info.get(scope, || {
+    self.adapter_info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.adapter);
       GPUAdapterInfo(info)
     })
@@ -85,7 +108,7 @@ impl GPUDevice {
   #[getter]
   #[global]
   fn queue(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.queue_obj.get(scope, || GPUQueue {
+    self.queue_obj.get(scope, |_| GPUQueue {
       id: self.queue,
       error_handler: self.error_handler.clone(),
       instance: self.instance.clone(),
@@ -287,6 +310,7 @@ impl GPUDevice {
     self.error_handler.push_error(err);
 
     Ok(GPUBindGroupLayout {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     })
@@ -328,6 +352,7 @@ impl GPUDevice {
     self.error_handler.push_error(err);
 
     Ok(GPUPipelineLayout {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     })
@@ -376,6 +401,7 @@ impl GPUDevice {
     self.error_handler.push_error(err);
 
     GPUBindGroup {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     }
@@ -404,6 +430,7 @@ impl GPUDevice {
     self.error_handler.push_error(err);
 
     GPUShaderModule {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     }
@@ -543,6 +570,7 @@ impl GPUDevice {
     self.error_handler.push_error(err);
 
     GPUQuerySet {
+      instance: self.instance.clone(),
       id,
       r#type: descriptor.r#type,
       count: descriptor.count,
@@ -550,12 +578,14 @@ impl GPUDevice {
     }
   }
 
-  // TODO: return same promise
+  // TODO: support returning same promise
   #[async_method]
   #[getter]
   #[cppgc]
   async fn lost(&self) -> GPUDeviceLostInfo {
-    // TODO: self.lost_receiver.await.unwrap();
+    if let Some(lost_receiver) = self.lost_receiver.lock().await.take() {
+      let _ = lost_receiver.await;
+    }
 
     GPUDeviceLostInfo
   }
@@ -565,7 +595,8 @@ impl GPUDevice {
     self
       .error_handler
       .scopes
-      .borrow_mut()
+      .lock()
+      .unwrap()
       .push((filter, vec![]));
   }
 
@@ -591,10 +622,7 @@ impl GPUDevice {
       Ok(v8::null(scope).into())
     }*/
 
-    Err(JsErrorBox::new(
-      "DOMExceptionOperationError",
-      "There are no error scopes on the error scope stack",
-    ))
+    todo!()
   }
 }
 

@@ -9,9 +9,11 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
+use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
 use crate::wrap::webidl::features_to_feature_names;
+use crate::wrap::webidl::GPUFeatureName;
 use crate::Instance;
 
 #[derive(WebIDL)]
@@ -36,7 +38,7 @@ struct GPUDeviceDescriptor {
   label: String,
 
   #[webidl(default = vec![])]
-  required_features: Vec<super::webidl::GPUFeatureName>,
+  required_features: Vec<GPUFeatureName>,
   #[webidl(default = Default::default())]
   #[options(enforce_range = true)]
   required_limits: indexmap::IndexMap<String, u64>,
@@ -46,9 +48,15 @@ pub struct GPUAdapter {
   pub instance: Instance,
   pub id: wgpu_core::id::AdapterId,
 
-  pub features: SameObject<GPUAdapter>,
+  pub features: SameObject<GPUSupportedFeatures>,
   pub limits: SameObject<GPUSupportedLimits>,
   pub info: Rc<SameObject<GPUAdapterInfo>>,
+}
+
+impl Drop for GPUAdapter {
+  fn drop(&mut self) {
+    self.instance.adapter_drop(self.id);
+  }
 }
 
 impl GarbageCollected for GPUAdapter {}
@@ -58,7 +66,7 @@ impl GPUAdapter {
   #[getter]
   #[global]
   fn info(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.info.get(scope, || {
+    self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
       GPUAdapterInfo(info)
     })
@@ -67,32 +75,16 @@ impl GPUAdapter {
   #[getter]
   #[global]
   fn features(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.features.get(scope, || {
+    self.features.get(scope, |scope| {
       let features = self.instance.adapter_features(self.id);
       let features = features_to_feature_names(features);
-
-      /*
-      #[symbol("[[set]]")]
-          function createGPUSupportedFeatures(features) {
-            /** @type {GPUSupportedFeatures} */
-            const supportedFeatures = webidl.createBranded(GPUSupportedFeatures);
-            supportedFeatures[webidl.setlikeInner] = new SafeSet(features);
-            webidl.setlike(
-              supportedFeatures,
-              GPUSupportedFeaturesPrototype,
-              true,
-            );
-            return supportedFeatures;
-          }
-           */
-
-      todo!()
+      GPUSupportedFeatures::new(scope, features)
     })
   }
   #[getter]
   #[global]
   fn limits(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
-    self.limits.get(scope, || {
+    self.limits.get(scope, |_| {
       let adapter_limits = self.instance.adapter_limits(self.id);
       GPUSupportedLimits(adapter_limits)
     })
@@ -156,7 +148,7 @@ impl GPUAdapter {
       adapter_info: self.info.clone(),
       error_handler: Arc::new(super::error::DeviceErrorHandler::new(sender)),
       adapter: self.id,
-      lost_receiver: receiver,
+      lost_receiver: Mutex::new(Some(receiver)),
       limits: SameObject::new(),
       features: SameObject::new(),
     })
@@ -330,6 +322,35 @@ impl GPUSupportedLimits {
   #[getter]
   fn maxComputeWorkgroupsPerDimension(&self) -> u32 {
     self.0.max_compute_workgroups_per_dimension
+  }
+}
+
+pub struct GPUSupportedFeatures(v8::Global<v8::Value>);
+
+impl GarbageCollected for GPUSupportedFeatures {}
+
+impl GPUSupportedFeatures {
+  pub fn new(
+    scope: &mut v8::HandleScope,
+    features: HashSet<GPUFeatureName>,
+  ) -> Self {
+    let set = v8::Set::new(scope);
+
+    for feature in features {
+      let key = v8::String::new(scope, feature.as_str()).unwrap();
+      set.add(scope, key.into());
+    }
+
+    Self(v8::Global::new(scope, <v8::Local<v8::Value>>::from(set)))
+  }
+}
+
+#[op2]
+impl GPUSupportedFeatures {
+  #[global]
+  #[symbol("setlike_set")]
+  fn set(&self) -> v8::Global<v8::Value> {
+    self.0.clone()
   }
 }
 

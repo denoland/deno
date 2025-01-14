@@ -4,9 +4,18 @@ use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
+use crate::Instance;
+
 pub struct GPUCommandBuffer {
+  pub instance: Instance,
   pub id: wgpu_core::id::CommandBufferId,
   pub label: String,
+}
+
+impl Drop for GPUCommandBuffer {
+  fn drop(&mut self) {
+    self.instance.command_buffer_drop(self.id);
+  }
 }
 
 impl deno_core::webidl::WebIdlInterfaceConverter for GPUCommandBuffer {
@@ -17,7 +26,16 @@ impl GarbageCollected for GPUCommandBuffer {}
 
 #[op2]
 impl GPUCommandBuffer {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL)]

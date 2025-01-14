@@ -213,6 +213,7 @@ ObjectDefineProperty(GPUSupportedFeatures, customInspect, {
   },
 });
 const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
+webidl.setlike(GPUSupportedFeatures, GPUSupportedFeaturesPrototype, true);
 
 ObjectDefineProperty(GPUDeviceLostInfo, customInspect, {
   value(inspect, inspectOptions) {
@@ -689,6 +690,7 @@ ObjectDefineProperty(GPUQuerySet, customInspect, {
 const GPUQuerySetPrototype = GPUQuerySet.prototype;
 
 // Converters
+/*
 
 // DICTIONARY: GPUPipelineErrorInit
 webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
@@ -712,7 +714,7 @@ webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
 );
 
 // TYPEDEF: GPUError
-webidl.converters["GPUError"] = webidl.converters.any /** put union here! **/;
+webidl.converters["GPUError"] = webidl.converters.any /!** put union here! **!/;
 
 // // INTERFACE: GPUUncapturedErrorEvent
 // webidl.converters.GPUUncapturedErrorEvent = webidl.createInterfaceConverter(
@@ -794,6 +796,7 @@ webidl.converters["GPUCanvasConfiguration"] = webidl
     "GPUCanvasConfiguration",
     dictMembersGPUCanvasConfiguration,
   );
+*/
 
 let gpu;
 function initGPU() {

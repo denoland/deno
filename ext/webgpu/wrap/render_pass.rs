@@ -32,7 +32,16 @@ impl GarbageCollected for GPURenderPassEncoder {}
 
 #[op2]
 impl GPURenderPassEncoder {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[required(6)]
   fn set_viewport(
@@ -62,10 +71,10 @@ impl GPURenderPassEncoder {
   #[required(4)]
   fn set_scissor_rect(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] x: u32,
-    #[webidl/*(options(enforce_range = true))*/] y: u32,
-    #[webidl/*(options(enforce_range = true))*/] width: u32,
-    #[webidl/*(options(enforce_range = true))*/] height: u32,
+    #[webidl(options(enforce_range = true))] x: u32,
+    #[webidl(options(enforce_range = true))] y: u32,
+    #[webidl(options(enforce_range = true))] width: u32,
+    #[webidl(options(enforce_range = true))] height: u32,
   ) {
     let err = self
       .instance
@@ -95,7 +104,7 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn set_stencil_reference(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] reference: u32,
+    #[webidl(options(enforce_range = true))] reference: u32,
   ) {
     let err = self
       .instance
@@ -110,7 +119,7 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn begin_occlusion_query(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] query_index: u32,
+    #[webidl(options(enforce_range = true))] query_index: u32,
   ) {
     let err = self
       .instance
@@ -191,7 +200,7 @@ impl GPURenderPassEncoder {
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    #[webidl/*(options(enforce_range = true))*/] index: u32,
+    #[webidl(options(enforce_range = true))] index: u32,
     #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
@@ -286,8 +295,8 @@ impl GPURenderPassEncoder {
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
     #[webidl] index_format: crate::wrap::render_pipeline::GPUIndexFormat,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(default = 0, options(enforce_range = true))] offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
     let err = self
       .instance
@@ -305,10 +314,10 @@ impl GPURenderPassEncoder {
   #[required(2)]
   fn set_vertex_buffer(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] slot: u32,
+    #[webidl(options(enforce_range = true))] slot: u32,
     #[webidl] buffer: Ptr<GPUBuffer>, // TODO: support nullable buffer
-    #[webidl/*(default = 0, options(enforce_range = true))*/] offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(default = 0, options(enforce_range = true))] offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
     let err = self
       .instance
@@ -326,12 +335,10 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn draw(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] vertex_count: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
-    instance_count: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] first_vertex: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/]
-    first_instance: u32,
+    #[webidl(options(enforce_range = true))] vertex_count: u32,
+    #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_vertex: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) {
     let err = self
       .instance
@@ -349,13 +356,11 @@ impl GPURenderPassEncoder {
   #[required(1)]
   fn draw_indexed(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] index_count: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
-    instance_count: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] first_index: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] base_vertex: i32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/]
-    first_instance: u32,
+    #[webidl(options(enforce_range = true))] index_count: u32,
+    #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_index: u32,
+    #[webidl(default = 0, options(enforce_range = true))] base_vertex: i32,
+    #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) {
     let err = self
       .instance
@@ -375,7 +380,7 @@ impl GPURenderPassEncoder {
   fn draw_indirect(
     &self,
     #[webidl] indirect_buffer: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] indirect_offset: u64,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance
@@ -392,7 +397,7 @@ impl GPURenderPassEncoder {
   fn draw_indexed_indirect(
     &self,
     #[webidl] indirect_buffer: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] indirect_offset: u64,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
       .instance

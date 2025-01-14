@@ -55,6 +55,12 @@ pub struct GPUTexture {
   pub usage: u32,
 }
 
+impl Drop for GPUTexture {
+  fn drop(&mut self) {
+    self.instance.texture_drop(self.id);
+  }
+}
+
 impl WebIdlInterfaceConverter for GPUTexture {
   const NAME: &'static str = "GPUTexture";
 }
@@ -63,7 +69,16 @@ impl GarbageCollected for GPUTexture {}
 
 #[op2]
 impl GPUTexture {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[getter]
   fn width(&self) -> u32 {
@@ -133,6 +148,7 @@ impl GPUTexture {
     self.error_handler.push_error(err);
 
     Ok(GPUTextureView {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label,
     })
@@ -209,9 +225,16 @@ impl From<GPUTextureAspect> for TextureAspect {
   }
 }
 
-pub(crate) struct GPUTextureView {
+pub struct GPUTextureView {
+  pub instance: Instance,
   pub id: wgpu_core::id::TextureViewId,
   pub label: String,
+}
+
+impl Drop for GPUTextureView {
+  fn drop(&mut self) {
+    let _ = self.instance.texture_view_drop(self.id);
+  }
 }
 
 impl WebIdlInterfaceConverter for GPUTextureView {
@@ -223,7 +246,16 @@ impl GarbageCollected for GPUTextureView {}
 
 #[op2]
 impl GPUTextureView {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL, Clone)]

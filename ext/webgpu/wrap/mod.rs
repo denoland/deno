@@ -107,19 +107,3 @@ impl GPU {
     }
   }
 }
-
-#[macro_export]
-macro_rules! with_label {
-  () => {
-    #[getter]
-    #[string]
-    fn label(&self) -> String {
-      self.label.clone()
-    }
-    #[setter]
-    #[string]
-    fn label(&self, #[webidl] _label: String) {
-      // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
-    }
-  };
-}

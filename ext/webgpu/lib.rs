@@ -2,7 +2,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
 
-use deno_core::GarbageCollected;
 pub use wgpu_core;
 pub use wgpu_types;
 
@@ -40,7 +39,7 @@ deno_core::extension!(
     wrap::render_pipeline::GPURenderPipeline,
     wrap::sampler::GPUSampler,
     wrap::shader::GPUShaderModule,
-    GPUSupportedFeatures,
+    wrap::adapter::GPUSupportedFeatures,
     wrap::adapter::GPUSupportedLimits,
     wrap::texture::GPUTexture,
     wrap::texture::GPUTextureView,
@@ -48,10 +47,3 @@ deno_core::extension!(
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
 );
-
-struct GPUSupportedFeatures {}
-
-impl GarbageCollected for GPUSupportedFeatures {}
-
-#[deno_core::op2]
-impl GPUSupportedFeatures {}

@@ -22,11 +22,27 @@ pub struct GPUQueue {
 
   pub id: wgpu_core::id::QueueId,
 }
+
+impl Drop for GPUQueue {
+  fn drop(&mut self) {
+    self.instance.queue_drop(self.id);
+  }
+}
+
 impl GarbageCollected for GPUQueue {}
 
 #[op2]
 impl GPUQueue {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[required(1)]
   fn submit(&self, #[webidl] command_buffers: Vec<Ptr<GPUCommandBuffer>>) {
@@ -53,10 +69,10 @@ impl GPUQueue {
   fn write_buffer(
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] buffer_offset: u64,
-    #[anybuffer] buf: &[u8], // TODO: AllowSharedBufferSource
-    #[webidl/*(default = 0, options(enforce_range = true))*/] data_offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(options(enforce_range = true))] buffer_offset: u64,
+    #[anybuffer] buf: &[u8],
+    #[webidl(default = 0, options(enforce_range = true))] data_offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
     let data = match size {
       Some(size) => {
@@ -77,7 +93,7 @@ impl GPUQueue {
   fn write_texture(
     &self,
     #[webidl] destination: GPUTexelCopyTextureInfo,
-    #[anybuffer] buf: &[u8], // TODO: AllowSharedBufferSource
+    #[anybuffer] buf: &[u8],
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {

@@ -5,9 +5,18 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
+use crate::Instance;
+
 pub struct GPUShaderModule {
+  pub instance: Instance,
   pub id: wgpu_core::id::ShaderModuleId,
   pub label: String,
+}
+
+impl Drop for GPUShaderModule {
+  fn drop(&mut self) {
+    self.instance.shader_module_drop(self.id);
+  }
 }
 
 impl WebIdlInterfaceConverter for GPUShaderModule {
@@ -18,7 +27,16 @@ impl GarbageCollected for GPUShaderModule {}
 
 #[op2]
 impl GPUShaderModule {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL)]

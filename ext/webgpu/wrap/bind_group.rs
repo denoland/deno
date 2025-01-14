@@ -17,10 +17,18 @@ use deno_core::WebIDL;
 use crate::wrap::buffer::GPUBuffer;
 use crate::wrap::sampler::GPUSampler;
 use crate::wrap::texture::GPUTextureView;
+use crate::Instance;
 
 pub struct GPUBindGroup {
+  pub instance: Instance,
   pub id: wgpu_core::id::BindGroupId,
   pub label: String,
+}
+
+impl Drop for GPUBindGroup {
+  fn drop(&mut self) {
+    self.instance.bind_group_drop(self.id);
+  }
 }
 
 impl WebIdlInterfaceConverter for GPUBindGroup {
@@ -31,7 +39,16 @@ impl GarbageCollected for GPUBindGroup {}
 
 #[op2]
 impl GPUBindGroup {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL)]

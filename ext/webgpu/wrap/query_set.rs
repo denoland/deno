@@ -6,11 +6,20 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
+use crate::Instance;
+
 pub struct GPUQuerySet {
+  pub instance: Instance,
   pub id: wgpu_core::id::QuerySetId,
   pub r#type: GPUQueryType,
   pub count: u32,
   pub label: String,
+}
+
+impl Drop for GPUQuerySet {
+  fn drop(&mut self) {
+    self.instance.query_set_drop(self.id);
+  }
 }
 
 impl WebIdlInterfaceConverter for GPUQuerySet {
@@ -21,7 +30,16 @@ impl GarbageCollected for GPUQuerySet {}
 
 #[op2]
 impl GPUQuerySet {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[fast]
   fn destroy(&self) -> Result<(), JsErrorBox> {

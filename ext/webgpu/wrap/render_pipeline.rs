@@ -23,6 +23,12 @@ pub struct GPURenderPipeline {
   pub label: String,
 }
 
+impl Drop for GPURenderPipeline {
+  fn drop(&mut self) {
+    self.instance.render_pipeline_drop(self.id);
+  }
+}
+
 impl WebIdlInterfaceConverter for GPURenderPipeline {
   const NAME: &'static str = "GPURenderPipeline";
 }
@@ -31,7 +37,16 @@ impl GarbageCollected for GPURenderPipeline {}
 
 #[op2]
 impl GPURenderPipeline {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[cppgc]
   fn get_bind_group_layout(&self, #[webidl] index: u32) -> GPUBindGroupLayout {
@@ -43,6 +58,7 @@ impl GPURenderPipeline {
 
     // TODO: wgpu needs to add a way to retrieve the label
     GPUBindGroupLayout {
+      instance: self.instance.clone(),
       id,
       label: "".to_string(),
     }

@@ -32,7 +32,16 @@ impl GarbageCollected for GPURenderBundleEncoder {}
 
 #[op2]
 impl GPURenderBundleEncoder {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 
   #[cppgc]
   fn finish(
@@ -52,6 +61,7 @@ impl GPURenderBundleEncoder {
     self.error_handler.push_error(err);
 
     GPURenderBundle {
+      instance: self.instance.clone(),
       id,
       label: descriptor.label.clone(),
     }
@@ -110,7 +120,7 @@ impl GPURenderBundleEncoder {
   fn set_bind_group<'a>(
     &self,
     scope: &mut v8::HandleScope<'a>,
-    #[webidl/*(options(enforce_range = true))*/] index: u32,
+    #[webidl(options(enforce_range = true))] index: u32,
     #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
@@ -211,8 +221,8 @@ impl GPURenderBundleEncoder {
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
     #[webidl] index_format: crate::wrap::render_pipeline::GPUIndexFormat,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(default = 0, options(enforce_range = true))] offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -231,10 +241,10 @@ impl GPURenderBundleEncoder {
   #[required(2)]
   fn set_vertex_buffer(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] slot: u32,
+    #[webidl(options(enforce_range = true))] slot: u32,
     #[webidl] buffer: Ptr<GPUBuffer>, // TODO: support nullable buffer
-    #[webidl/*(default = 0, options(enforce_range = true))*/] offset: u64,
-    #[webidl/*(options(enforce_range = true))*/] size: Option<u64>,
+    #[webidl(default = 0, options(enforce_range = true))] offset: u64,
+    #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -254,12 +264,10 @@ impl GPURenderBundleEncoder {
   #[required(1)]
   fn draw(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] vertex_count: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
-    instance_count: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] first_vertex: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/]
-    first_instance: u32,
+    #[webidl(options(enforce_range = true))] vertex_count: u32,
+    #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_vertex: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -279,13 +287,11 @@ impl GPURenderBundleEncoder {
   #[required(1)]
   fn draw_indexed(
     &self,
-    #[webidl/*(options(enforce_range = true))*/] index_count: u32,
-    #[webidl/*(default = 1, options(enforce_range = true))*/]
-    instance_count: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] first_index: u32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/] base_vertex: i32,
-    #[webidl/*(default = 0, options(enforce_range = true))*/]
-    first_instance: u32,
+    #[webidl(options(enforce_range = true))] index_count: u32,
+    #[webidl(default = 1, options(enforce_range = true))] instance_count: u32,
+    #[webidl(default = 0, options(enforce_range = true))] first_index: u32,
+    #[webidl(default = 0, options(enforce_range = true))] base_vertex: i32,
+    #[webidl(default = 0, options(enforce_range = true))] first_instance: u32,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -307,7 +313,7 @@ impl GPURenderBundleEncoder {
   fn draw_indirect(
     &self,
     #[webidl] indirect_buffer: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] indirect_offset: u64,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -326,7 +332,7 @@ impl GPURenderBundleEncoder {
   fn draw_indexed_indirect(
     &self,
     #[webidl] indirect_buffer: Ptr<GPUBuffer>,
-    #[webidl/*(options(enforce_range = true))*/] indirect_offset: u64,
+    #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -371,8 +377,15 @@ enum SetBindGroupError {
 }
 
 pub struct GPURenderBundle {
+  pub instance: Instance,
   pub id: wgpu_core::id::RenderBundleId,
   pub label: String,
+}
+
+impl Drop for GPURenderBundle {
+  fn drop(&mut self) {
+    self.instance.render_bundle_drop(self.id);
+  }
 }
 
 impl WebIdlInterfaceConverter for GPURenderBundle {
@@ -383,7 +396,16 @@ impl GarbageCollected for GPURenderBundle {}
 
 #[op2]
 impl GPURenderBundle {
-  crate::with_label!();
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
 }
 
 #[derive(WebIDL)]

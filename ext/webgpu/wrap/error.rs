@@ -1,10 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::cell::OnceCell;
-use std::cell::RefCell;
 use std::fmt::Display;
 use std::fmt::Formatter;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 
 use wgpu_core::binding_model::CreateBindGroupError;
 use wgpu_core::binding_model::CreateBindGroupLayoutError;
@@ -35,10 +34,10 @@ use wgpu_core::resource::CreateTextureViewError;
 pub type ErrorHandler = std::sync::Arc<DeviceErrorHandler>;
 
 pub struct DeviceErrorHandler {
-  pub is_lost: OnceCell<()>,
+  pub is_lost: OnceLock<()>,
   lost_sender: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 
-  pub scopes: RefCell<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
+  pub scopes: Mutex<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
 }
 
 impl DeviceErrorHandler {
@@ -46,7 +45,7 @@ impl DeviceErrorHandler {
     Self {
       is_lost: Default::default(),
       lost_sender: Mutex::new(Some(sender)),
-      scopes: RefCell::new(vec![]),
+      scopes: Mutex::new(vec![]),
     }
   }
 
@@ -77,7 +76,7 @@ impl DeviceErrorHandler {
       GPUError::Internal => GPUErrorFilter::Internal,
     };
 
-    let mut scopes = self.scopes.borrow_mut();
+    let mut scopes = self.scopes.lock().unwrap();
     let scope = scopes
       .iter_mut()
       .rfind(|(filter, _)| filter == &error_filter);
@@ -106,7 +105,8 @@ pub enum GPUErrorFilter {
 
 #[derive(Debug, deno_error::JsError)]
 pub enum GPUError {
-  #[class("UNREACHABLE")] // TODO
+  // TODO(@crowlKats): consider adding an unreachable value that uses unreachable!()
+  #[class("UNREACHABLE")]
   Lost,
   #[class("GPUValidationError")]
   Validation(String),
