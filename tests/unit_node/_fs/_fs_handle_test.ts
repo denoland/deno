@@ -300,7 +300,7 @@ Deno.test(
     });
 
     await new Promise((resolve) => {
-      stream.close(resolve);
+      stream.on("close", resolve);
     });
     await fileHandle.close();
   }
