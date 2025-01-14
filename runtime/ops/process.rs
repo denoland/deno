@@ -1143,7 +1143,7 @@ mod deprecated {
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
       Err(
-        SignalError::InvalidSignalStr(crate::signal::InvalidSignalStrError(
+        SignalError::InvalidSignalStr(deno_os::signal::InvalidSignalStrError(
           signal.to_string(),
         ))
         .into(),
