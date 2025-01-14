@@ -157,7 +157,8 @@ export class FileHandle extends EventEmitter {
     atime: number | string | Date,
     mtime: number | string | Date,
   ): Promise<void> {
-    return fsCall(promises.utimes, this, atime, mtime);
+    assertNotClosed(this, promises.utimes.name);
+    return promises.utimes(this.#path, atime, mtime);
   }
 }
 
