@@ -221,7 +221,6 @@ Deno.test({
 Deno.test({
   name:
     "[node/fs filehandle.utimes] Change the file system timestamps of the file",
-  ignore: Deno.build.os === "windows",
   async fn() {
     const fileHandle = await fs.open(testData);
 
