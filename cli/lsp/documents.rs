@@ -1767,7 +1767,6 @@ fn bytes_to_content(
 #[cfg(test)]
 mod tests {
   use deno_config::deno_json::ConfigFile;
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1924,7 +1923,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1968,7 +1966,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
