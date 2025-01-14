@@ -67,7 +67,7 @@ pub async fn kernel(
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
-  let npm_resolver = factory.npm_resolver().await?.clone();
+  let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();
@@ -115,7 +115,7 @@ pub async fn kernel(
   let worker = worker.into_main_worker();
   let mut repl_session = repl::ReplSession::initialize(
     cli_options,
-    npm_resolver,
+    npm_installer,
     resolver,
     worker,
     main_module,

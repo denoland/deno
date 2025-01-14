@@ -54,6 +54,8 @@ use crate::args::NpmCachingStrategy;
 use crate::args::StorageKeyResolver;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::checksum;
@@ -148,6 +150,7 @@ struct SharedWorkerState {
   maybe_lockfile: Option<Arc<CliLockfile>>,
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver: Arc<CliNodeResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: Arc<dyn CliNpmResolver>,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
@@ -423,6 +426,7 @@ impl CliMainWorkerFactory {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<CliNodeResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: Arc<dyn CliNpmResolver>,
     pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
@@ -447,6 +451,7 @@ impl CliMainWorkerFactory {
         maybe_lockfile,
         module_loader_factory,
         node_resolver,
+        npm_installer,
         npm_resolver,
         pkg_json_resolver,
         root_cert_store_provider,
@@ -496,18 +501,18 @@ impl CliMainWorkerFactory {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
-      if let Some(npm_resolver) = shared.npm_resolver.as_managed() {
+      if let Some(npm_installer) = &shared.npm_installer {
         let reqs = &[package_ref.req().clone()];
-        npm_resolver
+        npm_installer
           .add_package_reqs(
             reqs,
             if matches!(
               shared.default_npm_caching_strategy,
               NpmCachingStrategy::Lazy
             ) {
-              crate::npm::PackageCaching::Only(reqs.into())
+              PackageCaching::Only(reqs.into())
             } else {
-              crate::npm::PackageCaching::All
+              PackageCaching::All
             },
           )
           .await?;

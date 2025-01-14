@@ -140,7 +140,9 @@ pub trait NpmProcessStateProvider:
 
 #[derive(Debug)]
 pub struct EmptyNpmProcessStateProvider;
+
 impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
+
 deno_core::extension!(
   deno_process,
   ops = [
