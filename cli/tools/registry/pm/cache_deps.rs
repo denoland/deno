@@ -1,26 +1,30 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
+
+use deno_core::error::AnyError;
+use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::StreamExt;
+use deno_semver::jsr::JsrPackageReqReference;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
-use deno_core::error::AnyError;
-use deno_core::futures::stream::FuturesUnordered;
-use deno_core::futures::StreamExt;
-use deno_semver::jsr::JsrPackageReqReference;
+use crate::npm::installer::PackageCaching;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_resolver = factory.npm_resolver().await?;
+  let npm_installer = factory.npm_installer_if_managed()?;
   let cli_options = factory.cli_options()?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
+  if let Some(npm_installer) = &npm_installer {
+    npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
     if let Some(lockfile) = cli_options.maybe_lockfile() {
       lockfile.error_if_changed()?;
     }
@@ -137,10 +141,8 @@ pub async fn cache_top_level_deps(
     maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots);
   }
 
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver
-      .cache_packages(crate::npm::PackageCaching::All)
-      .await?;
+  if let Some(npm_installer) = &npm_installer {
+    npm_installer.cache_packages(PackageCaching::All).await?;
   }
 
   maybe_graph_error?;

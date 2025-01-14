@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // compose, destroy and isDisturbed are experimental APIs without
 // typings. They can be exposed once they are released as stable in Node
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 const data = {
   spans: [],
@@ -21,8 +21,13 @@ const server = Deno.serve(
         stdout: "null",
       });
       const child = command.spawn();
-      child.output()
-        .then(() => server.shutdown())
+      child.status
+        .then((status) => {
+          if (status.signal) {
+            throw new Error("child process failed: " + JSON.stringify(status));
+          }
+          return server.shutdown();
+        })
         .then(() => {
           data.logs.sort((a, b) =>
             Number(

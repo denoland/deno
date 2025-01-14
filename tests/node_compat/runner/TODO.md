@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1155 tests out of 3681 have been ported from Node 20.11.1 (31.38% ported, 69.14% remaining).
+1152 tests out of 3681 have been ported from Node 20.11.1 (31.30% ported, 69.22% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -499,6 +499,9 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-dgram-multicast-set-interface.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-multicast-set-interface.js)
 - [parallel/test-dgram-multicast-setTTL.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-multicast-setTTL.js)
 - [parallel/test-dgram-send-address-types.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-send-address-types.js)
+- [parallel/test-dgram-send-empty-array.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-send-empty-array.js)
+- [parallel/test-dgram-send-empty-buffer.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-send-empty-buffer.js)
+- [parallel/test-dgram-send-empty-packet.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-send-empty-packet.js)
 - [parallel/test-dgram-send-queue-info.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-send-queue-info.js)
 - [parallel/test-dgram-sendto.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-sendto.js)
 - [parallel/test-dgram-setBroadcast.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-dgram-setBroadcast.js)

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -449,6 +449,407 @@ declare namespace Deno {
     conn: TcpConn,
     options?: StartTlsOptions,
   ): Promise<TlsConn>;
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicEndpointOptions {
+    /**
+     * A literal IP address or host name that can be resolved to an IP address.
+     * @default {"::"}
+     */
+    hostname?: string;
+    /**
+     * The port to bind to.
+     * @default {0}
+     */
+    port?: number;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicTransportOptions {
+    /** Period of inactivity before sending a keep-alive packet. Keep-alive
+     * packets prevent an inactive but otherwise healthy connection from timing
+     * out. Only one side of any given connection needs keep-alive enabled for
+     * the connection to be preserved.
+     * @default {undefined}
+     */
+    keepAliveInterval?: number;
+    /** Maximum duration of inactivity to accept before timing out the
+     * connection. The true idle timeout is the minimum of this and the peer’s
+     * own max idle timeout.
+     * @default {undefined}
+     */
+    maxIdleTimeout?: number;
+    /** Maximum number of incoming bidirectional streams that may be open
+     * concurrently.
+     * @default {100}
+     */
+    maxConcurrentBidirectionalStreams?: number;
+    /** Maximum number of incoming unidirectional streams that may be open
+     * concurrently.
+     * @default {100}
+     */
+    maxConcurrentUnidirectionalStreams?: number;
+    /**
+     * The congestion control algorithm used when sending data over this connection.
+     * @default {"default"}
+     */
+    congestionControl?: "throughput" | "low-latency" | "default";
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface ConnectQuicOptions<ZRTT extends boolean>
+    extends QuicTransportOptions {
+    /** The port to connect to. */
+    port: number;
+    /** A literal IP address or host name that can be resolved to an IP address. */
+    hostname: string;
+    /** The name used for validating the certificate provided by the server. If
+     * not provided, defaults to `hostname`. */
+    serverName?: string | undefined;
+    /** Application-Layer Protocol Negotiation (ALPN) protocols supported by
+     * the client. QUIC requires the use of ALPN.
+     */
+    alpnProtocols: string[];
+    /** A list of root certificates that will be used in addition to the
+     * default root certificates to verify the peer's certificate.
+     *
+     * Must be in PEM format. */
+    caCerts?: string[];
+    /**
+     * If no endpoint is provided, a new one is bound on an ephemeral port.
+     */
+    endpoint?: QuicEndpoint;
+    /**
+     * Attempt to convert the connection into 0-RTT. Any data sent before
+     * the TLS handshake completes is vulnerable to replay attacks.
+     * @default {false}
+     */
+    zeroRtt?: ZRTT;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicServerTransportOptions extends QuicTransportOptions {
+    /**
+     * Preferred IPv4 address to be communicated to the client during
+     * handshaking. If the client is able to reach this address it will switch
+     * to it.
+     * @default {undefined}
+     */
+    preferredAddressV4?: string;
+    /**
+     * Preferred IPv6 address to be communicated to the client during
+     * handshaking. If the client is able to reach this address it will switch
+     * to it.
+     * @default {undefined}
+     */
+    preferredAddressV6?: string;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicListenOptions extends QuicServerTransportOptions {
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. QUIC requires the use of ALPN.
+     */
+    alpnProtocols: string[];
+    /** Server private key in PEM format */
+    key: string;
+    /** Cert chain in PEM format */
+    cert: string;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicAcceptOptions<ZRTT extends boolean>
+    extends QuicServerTransportOptions {
+    /** Application-Layer Protocol Negotiation (ALPN) protocols to announce to
+     * the client. QUIC requires the use of ALPN.
+     */
+    alpnProtocols?: string[];
+    /**
+     * Convert this connection into 0.5-RTT at the cost of weakened security, as
+     * 0.5-RTT data may be sent before TLS client authentication has occurred.
+     * @default {false}
+     */
+    zeroRtt?: ZRTT;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export interface QuicCloseInfo {
+    /** A number representing the error code for the error. */
+    closeCode: number;
+    /** A string representing the reason for closing the connection. */
+    reason: string;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicSendStreamOptions {
+    /** Indicates the send priority of this stream relative to other streams for
+     * which the value has been set.
+     * @default {0}
+     */
+    sendOrder?: number;
+    /** Wait until there is sufficient flow credit to create the stream.
+     * @default {false}
+     */
+    waitUntilAvailable?: boolean;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * @experimental
+   * @category Network
+   */
+  export class QuicEndpoint {
+    /**
+     * Create a QUIC endpoint which may be used for client or server connections.
+     *
+     * Requires `allow-net` permission.
+     *
+     * @experimental
+     * @tags allow-net
+     * @category Network
+     */
+    constructor(options?: QuicEndpointOptions);
+
+    /** Return the address of the `QuicListener`. */
+    readonly addr: NetAddr;
+
+    /**
+     * **UNSTABLE**: New API, yet to be vetted.
+     * Listen announces on the local transport address over QUIC.
+     *
+     * @experimental
+     * @category Network
+     */
+    listen(options: QuicListenOptions): QuicListener;
+
+    /**
+     * Closes the endpoint. All associated connections will be closed and incoming
+     * connections will be rejected.
+     */
+    close(info?: QuicCloseInfo): void;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * Specialized listener that accepts QUIC connections.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicListener extends AsyncIterable<QuicConn> {
+    /** Waits for and resolves to the next incoming connection. */
+    incoming(): Promise<QuicIncoming>;
+
+    /** Wait for the next incoming connection and accepts it. */
+    accept(): Promise<QuicConn>;
+
+    /** Stops the listener. This does not close the endpoint. */
+    stop(): void;
+
+    [Symbol.asyncIterator](): AsyncIterableIterator<QuicConn>;
+
+    /** The endpoint for this listener. */
+    readonly endpoint: QuicEndpoint;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * An incoming connection for which the server has not yet begun its part of
+   * the handshake.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicIncoming {
+    /**
+     * The local IP address which was used when the peer established the
+     * connection.
+     */
+    readonly localIp: string;
+
+    /**
+     * The peer’s UDP address.
+     */
+    readonly remoteAddr: NetAddr;
+
+    /**
+     * Whether the socket address that is initiating this connection has proven
+     * that they can receive traffic.
+     */
+    readonly remoteAddressValidated: boolean;
+
+    /**
+     * Accept this incoming connection.
+     */
+    accept<ZRTT extends boolean>(
+      options?: QuicAcceptOptions<ZRTT>,
+    ): ZRTT extends true ? QuicConn : Promise<QuicConn>;
+
+    /**
+     * Refuse this incoming connection.
+     */
+    refuse(): void;
+
+    /**
+     * Ignore this incoming connection attempt, not sending any packet in response.
+     */
+    ignore(): void;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicConn {
+    /** Close closes the listener. Any pending accept promises will be rejected
+     * with errors. */
+    close(info?: QuicCloseInfo): void;
+    /** Opens and returns a bidirectional stream. */
+    createBidirectionalStream(
+      options?: QuicSendStreamOptions,
+    ): Promise<QuicBidirectionalStream>;
+    /** Opens and returns a unidirectional stream. */
+    createUnidirectionalStream(
+      options?: QuicSendStreamOptions,
+    ): Promise<QuicSendStream>;
+    /** Send a datagram. The provided data cannot be larger than
+     * `maxDatagramSize`. */
+    sendDatagram(data: Uint8Array): Promise<void>;
+    /** Receive a datagram. */
+    readDatagram(): Promise<Uint8Array>;
+
+    /** The endpoint for this connection. */
+    readonly endpoint: QuicEndpoint;
+    /** Returns a promise that resolves when the TLS handshake is complete. */
+    readonly handshake: Promise<void>;
+    /** Return the remote address for the connection. Clients may change
+     * addresses at will, for example when switching to a cellular internet
+     * connection.
+     */
+    readonly remoteAddr: NetAddr;
+    /**
+     * The negotiated ALPN protocol, if provided. Only available after the
+     * handshake is complete. */
+    readonly protocol: string | undefined;
+    /** The negotiated server name. Only available on the server after the
+     * handshake is complete. */
+    readonly serverName: string | undefined;
+    /** Returns a promise that resolves when the connection is closed. */
+    readonly closed: Promise<QuicCloseInfo>;
+    /** A stream of bidirectional streams opened by the peer. */
+    readonly incomingBidirectionalStreams: ReadableStream<
+      QuicBidirectionalStream
+    >;
+    /** A stream of unidirectional streams opened by the peer. */
+    readonly incomingUnidirectionalStreams: ReadableStream<QuicReceiveStream>;
+    /** Returns the datagram stream for sending and receiving datagrams. */
+    readonly maxDatagramSize: number;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicBidirectionalStream {
+    /** Returns a QuicReceiveStream instance that can be used to read incoming data. */
+    readonly readable: QuicReceiveStream;
+    /** Returns a QuicSendStream instance that can be used to write outgoing data. */
+    readonly writable: QuicSendStream;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicSendStream extends WritableStream<Uint8Array> {
+    /** Indicates the send priority of this stream relative to other streams for
+     * which the value has been set. */
+    sendOrder: number;
+
+    /**
+     * 62-bit stream ID, unique within this connection.
+     */
+    readonly id: bigint;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * @experimental
+   * @category Network
+   */
+  export interface QuicReceiveStream extends ReadableStream<Uint8Array> {
+    /**
+     * 62-bit stream ID, unique within this connection.
+     */
+    readonly id: bigint;
+  }
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   * Establishes a secure connection over QUIC using a hostname and port.  The
+   * cert file is optional and if not included Mozilla's root certificates will
+   * be used. See also https://github.com/ctz/webpki-roots for specifics.
+   *
+   * ```ts
+   * const caCert = await Deno.readTextFile("./certs/my_custom_root_CA.pem");
+   * const conn1 = await Deno.connectQuic({ hostname: "example.com", port: 443, alpnProtocols: ["h3"] });
+   * const conn2 = await Deno.connectQuic({ caCerts: [caCert], hostname: "example.com", port: 443, alpnProtocols: ["h3"] });
+   * ```
+   *
+   * If an endpoint is shared among many connections, 0-RTT can be enabled.
+   * When 0-RTT is successful, a QuicConn will be synchronously returned
+   * and data can be sent immediately with it. **Any data sent before the
+   * TLS handshake completes is vulnerable to replay attacks.**
+   *
+   * Requires `allow-net` permission.
+   *
+   * @experimental
+   * @tags allow-net
+   * @category Network
+   */
+  export function connectQuic<ZRTT extends boolean>(
+    options: ConnectQuicOptions<ZRTT>,
+  ): ZRTT extends true ? (QuicConn | Promise<QuicConn>) : Promise<QuicConn>;
 
   export {}; // only export exports
 }

@@ -1,9 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -28,22 +27,25 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::package::PackageReqReference;
+use deno_semver::StackString;
+use deno_semver::Version;
 use deno_semver::VersionReq;
 use import_map::ImportMap;
 use import_map::ImportMapWithDiagnostics;
 use import_map::SpecifierMapEntry;
 use tokio::sync::Semaphore;
 
+use super::ConfigUpdater;
 use crate::args::CliLockfile;
 use crate::graph_container::MainModuleGraphContainer;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::jsr::JsrFetchResolver;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::npm::installer::NpmInstaller;
 use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
-
-use super::ConfigUpdater;
+use crate::util::sync::AtomicFlag;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImportMapKind {
@@ -138,13 +140,7 @@ pub enum KeyPart {
   Scopes,
   Dependencies,
   DevDependencies,
-  String(String),
-}
-
-impl From<String> for KeyPart {
-  fn from(value: String) -> Self {
-    KeyPart::String(value)
-  }
+  String(StackString),
 }
 
 impl From<PackageJsonDepKind> for KeyPart {
@@ -163,7 +159,7 @@ impl KeyPart {
       KeyPart::Scopes => "scopes",
       KeyPart::Dependencies => "dependencies",
       KeyPart::DevDependencies => "devDependencies",
-      KeyPart::String(s) => s,
+      KeyPart::String(s) => s.as_str(),
     }
   }
 }
@@ -216,12 +212,12 @@ fn import_map_entries(
     .chain(import_map.scopes().flat_map(|scope| {
       let path = KeyPath::from_parts([
         KeyPart::Scopes,
-        scope.raw_key.to_string().into(),
+        KeyPart::String(scope.raw_key.into()),
       ]);
 
       scope.imports.entries().map(move |entry| {
         let mut full_path = path.clone();
-        full_path.push(KeyPart::String(entry.raw_key.to_string()));
+        full_path.push(KeyPart::String(entry.raw_key.into()));
         (full_path, entry)
       })
     }))
@@ -337,7 +333,7 @@ fn add_deps_from_package_json(
     package_json: &PackageJsonRc,
     mut filter: impl DepFilter,
     package_dep_kind: PackageJsonDepKind,
-    package_json_deps: PackageJsonDepsMap,
+    package_json_deps: &PackageJsonDepsMap,
     deps: &mut Vec<Dep>,
   ) {
     for (k, v) in package_json_deps {
@@ -352,7 +348,7 @@ fn add_deps_from_package_json(
         deno_package_json::PackageJsonDepValue::Req(req) => {
           let alias = k.as_str();
           let alias = (alias != req.name).then(|| alias.to_string());
-          if !filter.should_include(alias.as_deref(), &req, DepKind::Npm) {
+          if !filter.should_include(alias.as_deref(), req, DepKind::Npm) {
             continue;
           }
           let id = DepId(deps.len());
@@ -361,9 +357,12 @@ fn add_deps_from_package_json(
             kind: DepKind::Npm,
             location: DepLocation::PackageJson(
               package_json.clone(),
-              KeyPath::from_parts([package_dep_kind.into(), k.into()]),
+              KeyPath::from_parts([
+                package_dep_kind.into(),
+                KeyPart::String(k.clone()),
+              ]),
             ),
-            req,
+            req: req.clone(),
             alias,
           })
         }
@@ -376,14 +375,14 @@ fn add_deps_from_package_json(
     package_json,
     filter,
     PackageJsonDepKind::Normal,
-    package_json_deps.dependencies,
+    &package_json_deps.dependencies,
     deps,
   );
   iterate(
     package_json,
     filter,
     PackageJsonDepKind::Dev,
-    package_json_deps.dev_dependencies,
+    &package_json_deps.dev_dependencies,
     deps,
   );
 }
@@ -447,12 +446,13 @@ pub struct DepManager {
 
   pending_changes: Vec<Change>,
 
-  dependencies_resolved: AtomicBool,
+  dependencies_resolved: AtomicFlag,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   // TODO(nathanwhit): probably shouldn't be pub
   pub(crate) jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub(crate) npm_fetch_resolver: Arc<NpmFetchResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
+  npm_installer: Arc<NpmInstaller>,
   permissions_container: PermissionsContainer,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   lockfile: Option<Arc<CliLockfile>>,
@@ -462,7 +462,8 @@ pub struct DepManagerArgs {
   pub module_load_preparer: Arc<ModuleLoadPreparer>,
   pub jsr_fetch_resolver: Arc<JsrFetchResolver>,
   pub npm_fetch_resolver: Arc<NpmFetchResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
+  pub npm_installer: Arc<NpmInstaller>,
+  pub npm_resolver: CliNpmResolver,
   pub permissions_container: PermissionsContainer,
   pub main_module_graph_container: Arc<MainModuleGraphContainer>,
   pub lockfile: Option<Arc<CliLockfile>>,
@@ -479,6 +480,7 @@ impl DepManager {
       module_load_preparer,
       jsr_fetch_resolver,
       npm_fetch_resolver,
+      npm_installer,
       npm_resolver,
       permissions_container,
       main_module_graph_container,
@@ -489,9 +491,10 @@ impl DepManager {
       resolved_versions: Vec::new(),
       latest_versions: Vec::new(),
       jsr_fetch_resolver,
-      dependencies_resolved: AtomicBool::new(false),
+      dependencies_resolved: AtomicFlag::lowered(),
       module_load_preparer,
       npm_fetch_resolver,
+      npm_installer,
       npm_resolver,
       permissions_container,
       main_module_graph_container,
@@ -530,10 +533,7 @@ impl DepManager {
   }
 
   async fn run_dependency_resolution(&self) -> Result<(), AnyError> {
-    if self
-      .dependencies_resolved
-      .load(std::sync::atomic::Ordering::Relaxed)
-    {
+    if self.dependencies_resolved.is_raised() {
       return Ok(());
     }
 
@@ -551,19 +551,21 @@ impl DepManager {
 
     let npm_resolver = self.npm_resolver.as_managed().unwrap();
     if self.deps.iter().all(|dep| match dep.kind {
-      DepKind::Npm => {
-        npm_resolver.resolve_pkg_id_from_pkg_req(&dep.req).is_ok()
-      }
+      DepKind::Npm => npm_resolver
+        .resolution()
+        .resolve_pkg_id_from_pkg_req(&dep.req)
+        .is_ok(),
       DepKind::Jsr => graph.packages.mappings().contains_key(&dep.req),
     }) {
-      self
-        .dependencies_resolved
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+      self.dependencies_resolved.raise();
       graph_permit.commit();
       return Ok(());
     }
 
-    npm_resolver.ensure_top_level_package_json_install().await?;
+    self
+      .npm_installer
+      .ensure_top_level_package_json_install()
+      .await?;
     let mut roots = Vec::new();
     let mut info_futures = FuturesUnordered::new();
     for dep in &self.deps {
@@ -613,6 +615,7 @@ impl DepManager {
       )
       .await?;
 
+    self.dependencies_resolved.raise();
     graph_permit.commit();
 
     Ok(())
@@ -628,7 +631,12 @@ impl DepManager {
     let graph = self.main_module_graph_container.graph();
 
     let mut resolved = Vec::with_capacity(self.deps.len());
-    let snapshot = self.npm_resolver.as_managed().unwrap().snapshot();
+    let snapshot = self
+      .npm_resolver
+      .as_managed()
+      .unwrap()
+      .resolution()
+      .snapshot();
     let resolved_npm = snapshot.package_reqs();
     let resolved_jsr = graph.packages.mappings();
     for dep in &self.deps {
@@ -655,10 +663,6 @@ impl DepManager {
     if self.latest_versions.len() == self.deps.len() {
       return Ok(self.latest_versions.clone());
     }
-    let latest_tag_req = deno_semver::VersionReq::from_raw_text_and_inner(
-      "latest".into(),
-      deno_semver::RangeSetOrTag::Tag("latest".into()),
-    );
     let mut latest_versions = Vec::with_capacity(self.deps.len());
 
     let npm_sema = Semaphore::new(32);
@@ -670,14 +674,25 @@ impl DepManager {
         DepKind::Npm => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: latest_tag_req.clone(),
-            };
             let _permit = npm_sema.acquire().await;
             let semver_compatible =
               self.npm_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.npm_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.npm_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let latest_tag = info.dist_tags.get("latest")?;
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                if latest_tag > lower_bound {
+                  Some(latest_tag.clone())
+                } else {
+                  latest_version(Some(latest_tag), info.versions.keys())
+                }
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -688,14 +703,29 @@ impl DepManager {
         DepKind::Jsr => futs.push_back(
           async {
             let semver_req = &dep.req;
-            let latest_req = PackageReq {
-              name: dep.req.name.clone(),
-              version_req: deno_semver::WILDCARD_VERSION_REQ.clone(),
-            };
             let _permit = jsr_sema.acquire().await;
             let semver_compatible =
               self.jsr_fetch_resolver.req_to_nv(semver_req).await;
-            let latest = self.jsr_fetch_resolver.req_to_nv(&latest_req).await;
+            let info =
+              self.jsr_fetch_resolver.package_info(&semver_req.name).await;
+            let latest = info
+              .and_then(|info| {
+                let lower_bound = &semver_compatible.as_ref()?.version;
+                latest_version(
+                  Some(lower_bound),
+                  info.versions.iter().filter_map(|(version, version_info)| {
+                    if !version_info.yanked {
+                      Some(version)
+                    } else {
+                      None
+                    }
+                  }),
+                )
+              })
+              .map(|version| PackageNv {
+                name: semver_req.name.clone(),
+                version,
+              });
             PackageLatestVersion {
               latest,
               semver_compatible,
@@ -892,4 +922,19 @@ fn parse_req_reference(
     DepKind::Npm => NpmPackageReqReference::from_str(input)?.into_inner(),
     DepKind::Jsr => JsrPackageReqReference::from_str(input)?.into_inner(),
   })
+}
+
+fn latest_version<'a>(
+  start: Option<&Version>,
+  versions: impl IntoIterator<Item = &'a Version>,
+) -> Option<Version> {
+  let mut best = start;
+  for version in versions {
+    match best {
+      Some(best_version) if version > best_version => best = Some(version),
+      None => best = Some(version),
+      _ => {}
+    }
+  }
+  best.cloned()
 }

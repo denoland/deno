@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import {

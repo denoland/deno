@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
@@ -16,16 +16,24 @@ export function ftruncate(
     : undefined;
   const callback: CallbackWithError = typeof lenOrCallback === "function"
     ? lenOrCallback
-    : maybeCallback as CallbackWithError;
+    : (maybeCallback as CallbackWithError);
 
   if (!callback) throw new Error("No callback function supplied");
 
-  new FsFile(fd, Symbol.for("Deno.internal.FsFile")).truncate(len).then(
-    () => callback(null),
-    callback,
-  );
+  new FsFile(fd, Symbol.for("Deno.internal.FsFile"))
+    .truncate(len)
+    .then(() => callback(null), callback);
 }
 
 export function ftruncateSync(fd: number, len?: number) {
   new FsFile(fd, Symbol.for("Deno.internal.FsFile")).truncateSync(len);
+}
+
+export function ftruncatePromise(fd: number, len?: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    ftruncate(fd, len, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
 }

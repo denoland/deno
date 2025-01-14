@@ -1,45 +1,60 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![deny(clippy::print_stderr)]
 #![deny(clippy::print_stdout)]
 
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
+use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
+use deno_error::JsError;
+use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
-use fs::DenoResolverFs;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageChecker;
+use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
-use node_resolver::NodeResolver;
+use node_resolver::NodeResolverRc;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use npm::MissingPackageNodeModulesFolderError;
 use npm::NodeModulesOutOfDateError;
-use npm::NpmReqResolver;
+use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
 use sloppy_imports::SloppyImportResolverFs;
 use sloppy_imports::SloppyImportsResolutionKind;
-use sloppy_imports::SloppyImportsResolver;
+use sloppy_imports::SloppyImportsResolverRc;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
 pub mod cjs;
-pub mod fs;
 pub mod npm;
 pub mod sloppy_imports;
+mod sync;
+
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
+
+#[allow(clippy::disallowed_types)]
+pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+
+#[allow(clippy::disallowed_types)]
+pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
 
 #[derive(Debug, Clone)]
 pub struct DenoResolution {
@@ -48,54 +63,84 @@ pub struct DenoResolution {
   pub found_package_json_dep: bool,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum DenoResolveErrorKind {
+  #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
+  #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
+  #[class(inherit)]
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
   #[error(transparent)]
   Node(#[from] NodeResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJsonDepValueParse(#[from] PackageJsonDepValueParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJsonDepValueUrlParse(url::ParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
 }
 
 #[derive(Debug)]
 pub struct NodeAndNpmReqResolver<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  pub node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  pub npm_req_resolver: Arc<NpmReqResolver<Fs, TNodeResolverEnv>>,
+  pub node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  pub npm_req_resolver: NpmReqResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
 }
 
 pub struct DenoResolverOptions<
   'a,
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSloppyImportResolverFs: SloppyImportResolverFs,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  pub in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pub node_and_req_resolver:
-    Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+  pub in_npm_pkg_checker: TInNpmPackageChecker,
+  pub node_and_req_resolver: Option<
+    NodeAndNpmReqResolver<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  >,
   pub sloppy_imports_resolver:
-    Option<Arc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
-  pub workspace_resolver: Arc<WorkspaceResolver>,
+    Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
+  pub workspace_resolver: WorkspaceResolverRc,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
@@ -107,27 +152,51 @@ pub struct DenoResolverOptions<
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct DenoResolver<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSloppyImportResolverFs: SloppyImportResolverFs,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  node_and_npm_resolver: Option<NodeAndNpmReqResolver<Fs, TNodeResolverEnv>>,
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  node_and_npm_resolver: Option<
+    NodeAndNpmReqResolver<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  >,
   sloppy_imports_resolver:
-    Option<Arc<SloppyImportsResolver<TSloppyImportResolverFs>>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
+    Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
+  workspace_resolver: WorkspaceResolverRc,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
 
 impl<
-    Fs: DenoResolverFs,
-    TNodeResolverEnv: NodeResolverEnv,
+    TInNpmPackageChecker: InNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSloppyImportResolverFs: SloppyImportResolverFs,
-  > DenoResolver<Fs, TNodeResolverEnv, TSloppyImportResolverFs>
+    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  >
+  DenoResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSloppyImportResolverFs,
+    TSys,
+  >
 {
   pub fn new(
-    options: DenoResolverOptions<Fs, TNodeResolverEnv, TSloppyImportResolverFs>,
+    options: DenoResolverOptions<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSloppyImportResolverFs,
+      TSys,
+    >,
   ) -> Self {
     Self {
       in_npm_pkg_checker: options.in_npm_pkg_checker,

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockEncryptMut;
@@ -71,20 +71,31 @@ pub enum EncryptAlgorithm {
   },
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EncryptError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
+  #[class(type)]
   #[error("invalid length")]
   InvalidLength,
+  #[class("DOMExceptionOperationError")]
   #[error("invalid key or iv")]
   InvalidKeyOrIv,
+  #[class(type)]
   #[error("iv length not equal to 12 or 16")]
   InvalidIvLength,
+  #[class(type)]
   #[error("invalid counter length. Currently supported 32/64/128 bits")]
   InvalidCounterLength,
+  #[class("DOMExceptionOperationError")]
   #[error("tried to encrypt too much data")]
   TooMuchData,
+  #[class("DOMExceptionOperationError")]
   #[error("Encryption failed")]
   Failed,
 }

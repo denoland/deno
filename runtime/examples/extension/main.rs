@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
@@ -12,6 +12,8 @@ use deno_core::op2;
 use deno_core::FsModuleLoader;
 use deno_core::ModuleSpecifier;
 use deno_fs::RealFs;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::NpmResolver;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::worker::MainWorker;
@@ -37,11 +39,16 @@ async fn main() -> Result<(), AnyError> {
   let main_module = ModuleSpecifier::from_file_path(js_path).unwrap();
   eprintln!("Running {main_module}...");
   let fs = Arc::new(RealFs);
-  let permission_desc_parser =
-    Arc::new(RuntimePermissionDescriptorParser::new(fs.clone()));
+  let permission_desc_parser = Arc::new(
+    RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys),
+  );
   let mut worker = MainWorker::bootstrap_from_options(
     main_module.clone(),
-    WorkerServiceOptions {
+    WorkerServiceOptions::<
+      DenoInNpmPackageChecker,
+      NpmResolver<sys_traits::impls::RealSys>,
+      sys_traits::impls::RealSys,
+    > {
       module_loader: Rc::new(FsModuleLoader),
       permissions: PermissionsContainer::allow_all(permission_desc_parser),
       blob_store: Default::default(),

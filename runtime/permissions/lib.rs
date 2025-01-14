@@ -1,4 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::ffi::OsStr;
+use std::fmt;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::net::IpAddr;
+use std::net::Ipv6Addr;
+use std::path::Path;
+use std::path::PathBuf;
+use std::string::ToString;
+use std::sync::Arc;
 
 use capacity_builder::StringBuilder;
 use deno_core::parking_lot::Mutex;
@@ -15,34 +28,22 @@ use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use fqdn::FQDN;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::ffi::OsStr;
-use std::fmt;
-use std::fmt::Debug;
-use std::hash::Hash;
-use std::net::IpAddr;
-use std::net::Ipv6Addr;
-use std::path::Path;
-use std::path::PathBuf;
-use std::string::ToString;
-use std::sync::Arc;
 
 pub mod prompter;
 use prompter::permission_prompt;
-use prompter::PERMISSION_EMOJI;
-
 pub use prompter::set_prompt_callbacks;
 pub use prompter::set_prompter;
 pub use prompter::PermissionPrompter;
 pub use prompter::PromptCallback;
 pub use prompter::PromptResponse;
+use prompter::PERMISSION_EMOJI;
 
 #[derive(Debug, thiserror::Error)]
-#[error("Requires {access}, {}", format_permission_error(.name))]
-pub struct PermissionDeniedError {
-  pub access: String,
-  pub name: &'static str,
+pub enum PermissionDeniedError {
+  #[error("Requires {access}, {}", format_permission_error(.name))]
+  Retryable { access: String, name: &'static str },
+  #[error("Requires {access}, which cannot be granted in this environment")]
+  Fatal { access: String },
 }
 
 fn format_permission_error(name: &'static str) -> String {
@@ -144,11 +145,11 @@ impl PermissionState {
     )
   }
 
-  fn error(
+  fn retryable_error(
     name: &'static str,
     info: impl FnOnce() -> Option<String>,
   ) -> PermissionDeniedError {
-    PermissionDeniedError {
+    PermissionDeniedError::Retryable {
       access: Self::fmt_access(name, info),
       name,
     }
@@ -182,7 +183,7 @@ impl PermissionState {
       PermissionState::Prompt if prompt => {
         let msg = {
           let info = info();
-          StringBuilder::build(|builder| {
+          StringBuilder::<String>::build(|builder| {
             builder.append(name);
             builder.append(" access");
             if let Some(info) = &info {
@@ -201,10 +202,12 @@ impl PermissionState {
             Self::log_perm_access(name, info);
             (Ok(()), true, true)
           }
-          PromptResponse::Deny => (Err(Self::error(name, info)), true, false),
+          PromptResponse::Deny => {
+            (Err(Self::retryable_error(name, info)), true, false)
+          }
         }
       }
-      _ => (Err(Self::error(name, info)), false, false),
+      _ => (Err(Self::retryable_error(name, info)), false, false),
     }
   }
 }
@@ -495,7 +498,7 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
     }
     let maybe_formatted_display_name =
       desc.map(|d| format_display_name(d.display_name()));
-    let message = StringBuilder::build(|builder| {
+    let message = StringBuilder::<String>::build(|builder| {
       builder.append(TQuery::flag_name());
       builder.append(" access");
       if let Some(display_name) = &maybe_formatted_display_name {
@@ -816,7 +819,8 @@ pub enum Host {
   Ip(IpAddr),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(uri)]
 pub enum HostParseError {
   #[error("invalid IPv6 address: '{0}'")]
   InvalidIpv6(String),
@@ -951,10 +955,12 @@ pub enum NetDescriptorParseError {
   Host(#[from] HostParseError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetDescriptorFromUrlParseError {
+  #[class(type)]
   #[error("Missing host in url: '{0}'")]
   MissingHost(Url),
+  #[class(inherit)]
   #[error("{0}")]
   Host(#[from] HostParseError),
 }
@@ -1321,10 +1327,12 @@ pub enum RunQueryDescriptor {
   Name(String),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PathResolveError {
+  #[class(inherit)]
   #[error("failed resolving cwd: {0}")]
   CwdResolve(#[source] std::io::Error),
+  #[class(generic)]
   #[error("Empty path is not allowed")]
   EmptyPath,
 }
@@ -1481,12 +1489,15 @@ pub enum AllowRunDescriptorParseResult {
   Descriptor(AllowRunDescriptor),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RunDescriptorParseError {
+  #[class(generic)]
   #[error("{0}")]
   Which(#[from] which::Error),
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] PathResolveError),
+  #[class(generic)]
   #[error("Empty run query is not allowed")]
   EmptyRunQuery,
 }
@@ -1507,11 +1518,10 @@ impl AllowRunDescriptor {
       match which::which_in(text, std::env::var_os("PATH"), cwd) {
         Ok(path) => path,
         Err(err) => match err {
-          which::Error::BadAbsolutePath | which::Error::BadRelativePath => {
+          which::Error::CannotGetCurrentDirAndPathListEmpty => {
             return Err(err);
           }
           which::Error::CannotFindBinaryPath
-          | which::Error::CannotGetCurrentDir
           | which::Error::CannotCanonicalize => {
             return Ok(AllowRunDescriptorParseResult::Unresolved(Box::new(err)))
           }
@@ -1571,10 +1581,12 @@ fn denies_run_name(name: &str, cmd_path: &Path) -> bool {
   suffix.is_empty() || suffix.starts_with('.')
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SysDescriptorParseError {
+  #[class(type)]
   #[error("unknown system info kind \"{0}\"")]
-  InvalidKind(String), // TypeError
+  InvalidKind(String),
+  #[class(generic)]
   #[error("Empty sys not allowed")]
   Empty, // Error
 }
@@ -2299,34 +2311,46 @@ pub enum CheckSpecifierKind {
   Dynamic,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ChildPermissionError {
+  #[class("NotCapable")]
   #[error("Can't escalate parent thread permissions")]
   Escalation,
+  #[class(inherit)]
   #[error("{0}")]
   PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error("{0}")]
   NetDescriptorParse(#[from] NetDescriptorParseError),
+  #[class(generic)]
   #[error("{0}")]
   EnvDescriptorParse(#[from] EnvDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   SysDescriptorParse(#[from] SysDescriptorParseError),
+  #[class(inherit)]
   #[error("{0}")]
   RunDescriptorParse(#[from] RunDescriptorParseError),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PermissionCheckError {
+  #[class("NotCapable")]
   #[error(transparent)]
   PermissionDenied(#[from] PermissionDeniedError),
+  #[class(uri)]
   #[error("Invalid file path.\n  Specifier: {0}")]
   InvalidFilePath(Url),
+  #[class(inherit)]
   #[error(transparent)]
   NetDescriptorForUrlParse(#[from] NetDescriptorFromUrlParseError),
+  #[class(inherit)]
   #[error(transparent)]
   SysDescriptorParse(#[from] SysDescriptorParseError),
+  #[class(inherit)]
   #[error(transparent)]
   PathResolve(#[from] PathResolveError),
+  #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
 }
@@ -3688,11 +3712,13 @@ pub fn is_standalone() -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+
   use deno_core::serde_json::json;
   use fqdn::fqdn;
   use prompter::tests::*;
-  use std::net::Ipv4Addr;
+
+  use super::*;
 
   // Creates vector of strings, Vec<String>
   macro_rules! svec {

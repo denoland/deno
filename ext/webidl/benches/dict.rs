@@ -1,10 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_bench_util::bench_js_sync;
 use deno_bench_util::bench_or_profile;
 use deno_bench_util::bencher::benchmark_group;
 use deno_bench_util::bencher::Bencher;
-
 use deno_core::Extension;
 
 fn setup() -> Vec<Extension> {

@@ -1,8 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::Read;
 use std::sync::Arc;
 
+use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::error::AnyError;
 use deno_runtime::WorkerExecutionMode;
@@ -11,7 +12,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
-use crate::file_fetcher::File;
+use crate::npm::installer::PackageCaching;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
@@ -97,7 +98,7 @@ pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler
   file_fetcher.insert_memory_files(File {
-    specifier: main_module.clone(),
+    url: main_module.clone(),
     maybe_headers: None,
     source: source.into(),
   });
@@ -184,7 +185,7 @@ pub async fn eval_command(
   // Save a fake file into file fetcher cache
   // to allow module access by TS compiler.
   file_fetcher.insert_memory_files(File {
-    specifier: main_module.clone(),
+    url: main_module.clone(),
     maybe_headers: None,
     source: source_code.into_bytes().into(),
   });
@@ -202,18 +203,17 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if cli_options.node_modules_dir()? == Some(NodeModulesDirMode::Auto) {
-    if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-      let already_done =
-        npm_resolver.ensure_top_level_package_json_install().await?;
+    if let Some(npm_installer) = factory.npm_installer_if_managed()? {
+      let already_done = npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
       if !already_done
         && matches!(
           cli_options.default_npm_caching_strategy(),
           crate::graph_util::NpmCachingStrategy::Eager
         )
       {
-        npm_resolver
-          .cache_packages(crate::npm::PackageCaching::All)
-          .await?;
+        npm_installer.cache_packages(PackageCaching::All).await?;
       }
     }
   }

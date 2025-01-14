@@ -1,57 +1,66 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use dashmap::DashMap;
 use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
-use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::DenoFsNodeResolverEnv;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use std::borrow::Cow;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
 use crate::node::CliNodeCodeTranslator;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
+use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<DenoFsNodeResolverEnv>;
-pub type IsCjsResolver =
-  deno_resolver::cjs::IsCjsResolver<DenoFsNodeResolverEnv>;
+pub type CliCjsTracker =
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
+pub type CliIsCjsResolver =
+  deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
+pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
 pub type CliSloppyImportsResolver =
-  SloppyImportsResolver<SloppyImportsCachedFs>;
+  SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
-  CliDenoResolverFs,
-  DenoFsNodeResolverEnv,
-  SloppyImportsCachedFs,
+  DenoInNpmPackageChecker,
+  RealIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSloppyImportsCachedFs,
+  CliSys,
 >;
-pub type CliNpmReqResolver =
-  deno_resolver::npm::NpmReqResolver<CliDenoResolverFs, DenoFsNodeResolverEnv>;
+pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
+  DenoInNpmPackageChecker,
+  RealIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 
 pub struct ModuleCodeStringSource {
   pub code: ModuleSourceCode,
@@ -59,54 +68,8 @@ pub struct ModuleCodeStringSource {
   pub media_type: MediaType,
 }
 
-#[derive(Debug, Clone)]
-pub struct CliDenoResolverFs(pub Arc<dyn FileSystem>);
-
-impl deno_resolver::fs::DenoResolverFs for CliDenoResolverFs {
-  fn read_to_string_lossy(
-    &self,
-    path: &Path,
-  ) -> std::io::Result<Cow<'static, str>> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|e| e.into_io_error())
-  }
-
-  fn realpath_sync(&self, path: &Path) -> std::io::Result<PathBuf> {
-    self.0.realpath_sync(path).map_err(|e| e.into_io_error())
-  }
-
-  fn exists_sync(&self, path: &Path) -> bool {
-    self.0.exists_sync(path)
-  }
-
-  fn is_dir_sync(&self, path: &Path) -> bool {
-    self.0.is_dir_sync(path)
-  }
-
-  fn read_dir_sync(
-    &self,
-    dir_path: &Path,
-  ) -> std::io::Result<Vec<deno_resolver::fs::DirEntry>> {
-    self
-      .0
-      .read_dir_sync(dir_path)
-      .map(|entries| {
-        entries
-          .into_iter()
-          .map(|e| deno_resolver::fs::DirEntry {
-            name: e.name,
-            is_file: e.is_file,
-            is_directory: e.is_directory,
-          })
-          .collect::<Vec<_>>()
-      })
-      .map_err(|err| err.into_io_error())
-  }
-}
-
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
+#[class(type)]
 #[error("{media_type} files are not supported in npm packages: {specifier}")]
 pub struct NotSupportedKindInNpmError {
   pub media_type: MediaType,
@@ -116,14 +79,14 @@ pub struct NotSupportedKindInNpmError {
 // todo(dsherret): move to module_loader.rs (it seems to be here due to use in standalone)
 #[derive(Clone)]
 pub struct NpmModuleLoader {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   fs: Arc<dyn deno_fs::FileSystem>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
 }
 
 impl NpmModuleLoader {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     fs: Arc<dyn deno_fs::FileSystem>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
   ) -> Self {
@@ -211,45 +174,27 @@ impl NpmModuleLoader {
   }
 }
 
-pub struct CliResolverOptions {
-  pub deno_resolver: Arc<CliDenoResolver>,
-  pub npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  pub bare_node_builtins_enabled: bool,
-}
+#[derive(Debug, Default)]
+pub struct FoundPackageJsonDepFlag(AtomicFlag);
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
 #[derive(Debug)]
 pub struct CliResolver {
   deno_resolver: Arc<CliDenoResolver>,
-  npm_resolver: Option<Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: AtomicFlag,
-  bare_node_builtins_enabled: bool,
+  found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   warned_pkgs: DashSet<PackageReq>,
 }
 
 impl CliResolver {
-  pub fn new(options: CliResolverOptions) -> Self {
+  pub fn new(
+    deno_resolver: Arc<CliDenoResolver>,
+    found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
+  ) -> Self {
     Self {
-      deno_resolver: options.deno_resolver,
-      npm_resolver: options.npm_resolver,
-      found_package_json_dep_flag: Default::default(),
-      bare_node_builtins_enabled: options.bare_node_builtins_enabled,
+      deno_resolver,
+      found_package_json_dep_flag,
       warned_pkgs: Default::default(),
-    }
-  }
-
-  // todo(dsherret): move this off CliResolver as CliResolver is acting
-  // like a factory by doing this (it's beyond its responsibility)
-  pub fn create_graph_npm_resolver(
-    &self,
-    npm_caching: NpmCachingStrategy,
-  ) -> WorkerCliNpmGraphResolver {
-    WorkerCliNpmGraphResolver {
-      npm_resolver: self.npm_resolver.as_ref(),
-      found_package_json_dep_flag: &self.found_package_json_dep_flag,
-      bare_node_builtins_enabled: self.bare_node_builtins_enabled,
-      npm_caching,
     }
   }
 
@@ -270,15 +215,17 @@ impl CliResolver {
         ) => match mapped_resolution_error {
           MappedResolutionError::Specifier(e) => ResolveError::Specifier(e),
           // deno_graph checks specifically for an ImportMapError
-          MappedResolutionError::ImportMap(e) => ResolveError::Other(e.into()),
-          err => ResolveError::Other(err.into()),
+          MappedResolutionError::ImportMap(e) => ResolveError::ImportMap(e),
+          MappedResolutionError::Workspace(e) => {
+            ResolveError::Other(JsErrorBox::from_err(e))
+          }
         },
-        err => ResolveError::Other(err.into()),
+        err => ResolveError::Other(JsErrorBox::from_err(err)),
       })?;
 
     if resolution.found_package_json_dep {
       // mark that we need to do an "npm install" later
-      self.found_package_json_dep_flag.raise();
+      self.found_package_json_dep_flag.0.raise();
     }
 
     if let Some(diagnostic) = resolution.maybe_diagnostic {
@@ -305,15 +252,31 @@ impl CliResolver {
 }
 
 #[derive(Debug)]
-pub struct WorkerCliNpmGraphResolver<'a> {
-  npm_resolver: Option<&'a Arc<dyn CliNpmResolver>>,
-  found_package_json_dep_flag: &'a AtomicFlag,
+pub struct CliNpmGraphResolver {
+  npm_installer: Option<Arc<NpmInstaller>>,
+  found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
 }
 
+impl CliNpmGraphResolver {
+  pub fn new(
+    npm_installer: Option<Arc<NpmInstaller>>,
+    found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
+    bare_node_builtins_enabled: bool,
+    npm_caching: NpmCachingStrategy,
+  ) -> Self {
+    Self {
+      npm_installer,
+      found_package_json_dep_flag,
+      bare_node_builtins_enabled,
+      npm_caching,
+    }
+  }
+}
+
 #[async_trait(?Send)]
-impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
+impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
   fn resolve_builtin_node_module(
     &self,
     specifier: &ModuleSpecifier,
@@ -343,17 +306,12 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
   }
 
   fn load_and_cache_npm_package_info(&self, package_name: &str) {
-    match self.npm_resolver {
-      Some(npm_resolver) if npm_resolver.as_managed().is_some() => {
-        let npm_resolver = npm_resolver.clone();
-        let package_name = package_name.to_string();
-        deno_core::unsync::spawn(async move {
-          if let Some(managed) = npm_resolver.as_managed() {
-            let _ignore = managed.cache_package_info(&package_name).await;
-          }
-        });
-      }
-      _ => {}
+    if let Some(npm_installer) = &self.npm_installer {
+      let npm_installer = npm_installer.clone();
+      let package_name = package_name.to_string();
+      deno_core::unsync::spawn(async move {
+        let _ignore = npm_installer.cache_package_info(&package_name).await;
+      });
     }
   }
 
@@ -361,17 +319,11 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
     &self,
     package_reqs: &[PackageReq],
   ) -> NpmResolvePkgReqsResult {
-    match &self.npm_resolver {
-      Some(npm_resolver) => {
-        let npm_resolver = match npm_resolver.as_inner() {
-          InnerCliNpmResolverRef::Managed(npm_resolver) => npm_resolver,
-          // if we are using byonm, then this should never be called because
-          // we don't use deno_graph's npm resolution in this case
-          InnerCliNpmResolverRef::Byonm(_) => unreachable!(),
-        };
-
-        let top_level_result = if self.found_package_json_dep_flag.is_raised() {
-          npm_resolver
+    match &self.npm_installer {
+      Some(npm_installer) => {
+        let top_level_result = if self.found_package_json_dep_flag.0.is_raised()
+        {
+          npm_installer
             .ensure_top_level_package_json_install()
             .await
             .map(|_| ())
@@ -379,15 +331,13 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
           Ok(())
         };
 
-        let result = npm_resolver
+        let result = npm_installer
           .add_package_reqs_raw(
             package_reqs,
             match self.npm_caching {
-              NpmCachingStrategy::Eager => {
-                Some(crate::npm::PackageCaching::All)
-              }
+              NpmCachingStrategy::Eager => Some(PackageCaching::All),
               NpmCachingStrategy::Lazy => {
-                Some(crate::npm::PackageCaching::Only(package_reqs.into()))
+                Some(PackageCaching::Only(package_reqs.into()))
               }
               NpmCachingStrategy::Manual => None,
             },
@@ -401,26 +351,28 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
             .map(|r| {
               r.map_err(|err| match err {
                 NpmResolutionError::Registry(e) => {
-                  NpmLoadError::RegistryInfo(Arc::new(e.into()))
+                  NpmLoadError::RegistryInfo(Arc::new(e))
                 }
                 NpmResolutionError::Resolution(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(e))
                 }
                 NpmResolutionError::DependencyEntry(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e.into()))
+                  NpmLoadError::PackageReqResolution(Arc::new(e))
                 }
               })
             })
             .collect(),
           dep_graph_result: match top_level_result {
-            Ok(()) => result.dependencies_result.map_err(Arc::new),
+            Ok(()) => result
+              .dependencies_result
+              .map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
             Err(err) => Err(Arc::new(err)),
           },
         }
       }
       None => {
-        let err = Arc::new(anyhow!(
-          "npm specifiers were requested; but --no-npm is specified"
+        let err = Arc::new(JsErrorBox::generic(
+          "npm specifiers were requested; but --no-npm is specified",
         ));
         NpmResolvePkgReqsResult {
           results: package_reqs
@@ -435,59 +387,5 @@ impl<'a> deno_graph::source::NpmResolver for WorkerCliNpmGraphResolver<'a> {
 
   fn enables_bare_builtin_node_module(&self) -> bool {
     self.bare_node_builtins_enabled
-  }
-}
-
-#[derive(Debug)]
-pub struct SloppyImportsCachedFs {
-  fs: Arc<dyn deno_fs::FileSystem>,
-  cache: Option<
-    DashMap<
-      PathBuf,
-      Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry>,
-    >,
-  >,
-}
-
-impl SloppyImportsCachedFs {
-  pub fn new(fs: Arc<dyn FileSystem>) -> Self {
-    Self {
-      fs,
-      cache: Some(Default::default()),
-    }
-  }
-
-  pub fn new_without_stat_cache(fs: Arc<dyn FileSystem>) -> Self {
-    Self { fs, cache: None }
-  }
-}
-
-impl deno_resolver::sloppy_imports::SloppyImportResolverFs
-  for SloppyImportsCachedFs
-{
-  fn stat_sync(
-    &self,
-    path: &Path,
-  ) -> Option<deno_resolver::sloppy_imports::SloppyImportsFsEntry> {
-    if let Some(cache) = &self.cache {
-      if let Some(entry) = cache.get(path) {
-        return *entry;
-      }
-    }
-
-    let entry = self.fs.stat_sync(path).ok().and_then(|stat| {
-      if stat.is_file {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::File)
-      } else if stat.is_directory {
-        Some(deno_resolver::sloppy_imports::SloppyImportsFsEntry::Dir)
-      } else {
-        None
-      }
-    });
-
-    if let Some(cache) = &self.cache {
-      cache.insert(path.to_owned(), entry);
-    }
-    entry
   }
 }

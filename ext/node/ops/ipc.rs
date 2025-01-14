@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use impl_::*;
 
@@ -30,16 +30,16 @@ mod impl_ {
   use deno_core::RcRef;
   use deno_core::ResourceId;
   use deno_core::ToV8;
+  use deno_error::JsErrorBox;
+  use deno_io::BiPipe;
+  use deno_io::BiPipeRead;
+  use deno_io::BiPipeWrite;
   use memchr::memchr;
   use pin_project_lite::pin_project;
   use serde::Serialize;
   use tokio::io::AsyncRead;
   use tokio::io::AsyncWriteExt;
   use tokio::io::ReadBuf;
-
-  use deno_io::BiPipe;
-  use deno_io::BiPipeRead;
-  use deno_io::BiPipeWrite;
 
   /// Wrapper around v8 value that implements Serialize.
   struct SerializeWrapper<'a, 'b>(
@@ -80,7 +80,7 @@ mod impl_ {
     } else if value.is_string_object() {
       let str = deno_core::serde_v8::to_utf8(
         value.to_string(scope).ok_or_else(|| {
-          S::Error::custom(deno_core::error::generic_error(
+          S::Error::custom(deno_error::JsErrorBox::generic(
             "toString on string object failed",
           ))
         })?,
@@ -153,7 +153,7 @@ mod impl_ {
       map.end()
     } else {
       // TODO(nathanwhit): better error message
-      Err(S::Error::custom(deno_core::error::type_error(format!(
+      Err(S::Error::custom(JsErrorBox::type_error(format!(
         "Unsupported type: {}",
         value.type_repr()
       ))))
@@ -178,14 +178,18 @@ mod impl_ {
     ))
   }
 
-  #[derive(Debug, thiserror::Error)]
+  #[derive(Debug, thiserror::Error, deno_error::JsError)]
   pub enum IpcError {
+    #[class(inherit)]
     #[error(transparent)]
-    Resource(deno_core::error::AnyError),
+    Resource(#[from] deno_core::error::ResourceError),
+    #[class(inherit)]
     #[error(transparent)]
     IpcJsonStream(#[from] IpcJsonStreamError),
+    #[class(inherit)]
     #[error(transparent)]
     Canceled(#[from] deno_core::Canceled),
+    #[class(inherit)]
     #[error("failed to serialize json value: {0}")]
     SerdeJson(serde_json::Error),
   }
@@ -211,8 +215,7 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      .map_err(IpcError::Resource)?;
+      .get::<IpcJsonStreamResource>(rid)?;
     let old = stream
       .queued_bytes
       .fetch_add(serialized.len(), std::sync::atomic::Ordering::Relaxed);
@@ -256,8 +259,7 @@ mod impl_ {
     let stream = state
       .borrow()
       .resource_table
-      .get::<IpcJsonStreamResource>(rid)
-      .map_err(IpcError::Resource)?;
+      .get::<IpcJsonStreamResource>(rid)?;
 
     let cancel = stream.cancel.clone();
     let mut stream = RcRef::map(stream, |r| &r.read_half).borrow_mut().await;
@@ -468,10 +470,12 @@ mod impl_ {
     }
   }
 
-  #[derive(Debug, thiserror::Error)]
+  #[derive(Debug, thiserror::Error, deno_error::JsError)]
   pub enum IpcJsonStreamError {
+    #[class(inherit)]
     #[error("{0}")]
     Io(#[source] std::io::Error),
+    #[class(generic)]
     #[error("{0}")]
     SimdJson(#[source] simd_json::Error),
   }
@@ -624,13 +628,15 @@ mod impl_ {
 
   #[cfg(test)]
   mod tests {
-    use super::IpcJsonStreamResource;
+    use std::rc::Rc;
+
     use deno_core::serde_json::json;
     use deno_core::v8;
     use deno_core::JsRuntime;
     use deno_core::RcRef;
     use deno_core::RuntimeOptions;
-    use std::rc::Rc;
+
+    use super::IpcJsonStreamResource;
 
     #[allow(clippy::unused_async)]
     #[cfg(unix)]
