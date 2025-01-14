@@ -12,8 +12,8 @@ use deno_core::WebIDL;
 use tokio::sync::Mutex;
 
 use super::device::GPUDevice;
-use crate::wrap::webidl::features_to_feature_names;
-use crate::wrap::webidl::GPUFeatureName;
+use crate::webidl::features_to_feature_names;
+use crate::webidl::GPUFeatureName;
 use crate::Instance;
 
 #[derive(WebIDL)]

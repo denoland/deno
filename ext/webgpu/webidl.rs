@@ -302,7 +302,7 @@ pub(crate) enum GPUAutoLayoutMode {
 }
 
 pub(crate) enum GPUPipelineLayoutOrGPUAutoLayoutMode {
-  PipelineLayout(Ptr<crate::wrap::pipeline_layout::GPUPipelineLayout>),
+  PipelineLayout(Ptr<crate::pipeline_layout::GPUPipelineLayout>),
   AutoLayoutMode(GPUAutoLayoutMode),
 }
 

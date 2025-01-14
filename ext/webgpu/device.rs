@@ -22,14 +22,14 @@ use super::queue::GPUQueue;
 use super::sampler::GPUSampler;
 use super::shader::GPUShaderModule;
 use super::texture::GPUTexture;
-use crate::wrap::adapter::GPUAdapterInfo;
-use crate::wrap::adapter::GPUSupportedFeatures;
-use crate::wrap::adapter::GPUSupportedLimits;
-use crate::wrap::command_encoder::GPUCommandEncoder;
-use crate::wrap::query_set::GPUQuerySet;
-use crate::wrap::render_bundle::GPURenderBundleEncoder;
-use crate::wrap::render_pipeline::GPURenderPipeline;
-use crate::wrap::webidl::features_to_feature_names;
+use crate::adapter::GPUAdapterInfo;
+use crate::adapter::GPUSupportedFeatures;
+use crate::adapter::GPUSupportedLimits;
+use crate::command_encoder::GPUCommandEncoder;
+use crate::query_set::GPUQuerySet;
+use crate::render_bundle::GPURenderBundleEncoder;
+use crate::render_pipeline::GPURenderPipeline;
+use crate::webidl::features_to_feature_names;
 use crate::Instance;
 
 pub struct GPUDevice {
@@ -554,7 +554,7 @@ impl GPUDevice {
   #[cppgc]
   fn create_query_set(
     &self,
-    #[webidl] descriptor: crate::wrap::query_set::GPUQuerySetDescriptor,
+    #[webidl] descriptor: crate::query_set::GPUQuerySetDescriptor,
   ) -> GPUQuerySet {
     let wgpu_descriptor = wgpu_core::resource::QuerySetDescriptor {
       label: Some(Cow::Owned(descriptor.label.clone())),

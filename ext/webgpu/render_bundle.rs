@@ -16,8 +16,8 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
-use crate::wrap::buffer::GPUBuffer;
-use crate::wrap::texture::GPUTextureFormat;
+use crate::buffer::GPUBuffer;
+use crate::texture::GPUTextureFormat;
 use crate::Instance;
 
 pub struct GPURenderBundleEncoder {
@@ -121,7 +121,7 @@ impl GPURenderBundleEncoder {
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl(options(enforce_range = true))] index: u32,
-    #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
+    #[webidl] bind_group: Nullable<Ptr<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
@@ -202,7 +202,7 @@ impl GPURenderBundleEncoder {
 
   fn set_pipeline(
     &self,
-    #[webidl] pipeline: Ptr<crate::wrap::render_pipeline::GPURenderPipeline>,
+    #[webidl] pipeline: Ptr<crate::render_pipeline::GPURenderPipeline>,
   ) -> Result<(), JsErrorBox> {
     let mut encoder = self.encoder.borrow_mut();
     let encoder = encoder.as_mut().ok_or_else(|| {
@@ -220,7 +220,7 @@ impl GPURenderBundleEncoder {
   fn set_index_buffer(
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
-    #[webidl] index_format: crate::wrap::render_pipeline::GPUIndexFormat,
+    #[webidl] index_format: crate::render_pipeline::GPUIndexFormat,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {

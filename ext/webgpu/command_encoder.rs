@@ -11,14 +11,14 @@ use deno_error::JsErrorBox;
 use wgpu_core::command::ImageCopyBuffer;
 use wgpu_core::command::PassChannel;
 
-use crate::wrap::buffer::GPUBuffer;
-use crate::wrap::command_buffer::GPUCommandBuffer;
-use crate::wrap::compute_pass::GPUComputePassEncoder;
-use crate::wrap::queue::GPUTexelCopyTextureInfo;
-use crate::wrap::render_pass::GPULoadOp;
-use crate::wrap::render_pass::GPURenderPassEncoder;
-use crate::wrap::render_pass::GPUStoreOp;
-use crate::wrap::webidl::GPUExtent3D;
+use crate::buffer::GPUBuffer;
+use crate::command_buffer::GPUCommandBuffer;
+use crate::compute_pass::GPUComputePassEncoder;
+use crate::queue::GPUTexelCopyTextureInfo;
+use crate::render_pass::GPULoadOp;
+use crate::render_pass::GPURenderPassEncoder;
+use crate::render_pass::GPUStoreOp;
+use crate::webidl::GPUExtent3D;
 use crate::Instance;
 
 pub struct GPUCommandEncoder {
@@ -54,7 +54,7 @@ impl GPUCommandEncoder {
   #[cppgc]
   fn begin_render_pass(
     &self,
-    #[webidl] descriptor: crate::wrap::render_pass::GPURenderPassDescriptor,
+    #[webidl] descriptor: crate::render_pass::GPURenderPassDescriptor,
   ) -> Result<GPURenderPassEncoder, JsErrorBox> {
     let color_attachments = Cow::Owned(
       descriptor
@@ -149,7 +149,7 @@ impl GPUCommandEncoder {
   #[cppgc]
   fn begin_compute_pass(
     &self,
-    #[webidl] descriptor: crate::wrap::compute_pass::GPUComputePassDescriptor,
+    #[webidl] descriptor: crate::compute_pass::GPUComputePassDescriptor,
   ) -> GPUComputePassEncoder {
     let timestamp_writes =
       descriptor.timestamp_writes.map(|timestamp_writes| {
@@ -348,8 +348,7 @@ impl GPUCommandEncoder {
   #[cppgc]
   fn finish(
     &self,
-    #[webidl]
-    descriptor: crate::wrap::command_buffer::GPUCommandBufferDescriptor,
+    #[webidl] descriptor: crate::command_buffer::GPUCommandBufferDescriptor,
   ) -> GPUCommandBuffer {
     let wgpu_descriptor = wgpu_types::CommandBufferDescriptor {
       label: Some(Cow::Owned(descriptor.label.clone())),

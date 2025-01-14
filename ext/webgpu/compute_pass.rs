@@ -40,7 +40,7 @@ impl GPUComputePassEncoder {
 
   fn set_pipeline(
     &self,
-    #[webidl] pipeline: Ptr<crate::wrap::compute_pipeline::GPUComputePipeline>,
+    #[webidl] pipeline: Ptr<crate::compute_pipeline::GPUComputePipeline>,
   ) {
     let err = self
       .instance
@@ -74,7 +74,7 @@ impl GPUComputePassEncoder {
 
   fn dispatch_workgroups_indirect(
     &self,
-    #[webidl] indirect_buffer: Ptr<crate::wrap::buffer::GPUBuffer>,
+    #[webidl] indirect_buffer: Ptr<crate::buffer::GPUBuffer>,
     #[webidl(options(enforce_range = true))] indirect_offset: u64,
   ) {
     let err = self
@@ -134,7 +134,7 @@ impl GPUComputePassEncoder {
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl(options(enforce_range = true))] index: u32,
-    #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
+    #[webidl] bind_group: Nullable<Ptr<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
@@ -225,7 +225,7 @@ pub(crate) struct GPUComputePassDescriptor {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPUComputePassTimestampWrites {
-  pub query_set: Ptr<crate::wrap::query_set::GPUQuerySet>,
+  pub query_set: Ptr<crate::query_set::GPUQuerySet>,
   #[options(enforce_range = true)]
   pub beginning_of_pass_write_index: Option<u32>,
   #[options(enforce_range = true)]

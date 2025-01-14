@@ -4,7 +4,7 @@ use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
-use crate::wrap::texture::GPUTextureViewDimension;
+use crate::texture::GPUTextureViewDimension;
 use crate::Instance;
 
 pub struct GPUBindGroupLayout {

@@ -7,9 +7,9 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use indexmap::IndexMap;
 
-use crate::wrap::bind_group_layout::GPUBindGroupLayout;
-use crate::wrap::shader::GPUShaderModule;
-use crate::wrap::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
+use crate::bind_group_layout::GPUBindGroupLayout;
+use crate::shader::GPUShaderModule;
+use crate::webidl::GPUPipelineLayoutOrGPUAutoLayoutMode;
 use crate::Instance;
 
 pub struct GPUComputePipeline {

@@ -6,12 +6,12 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 
-use crate::wrap::buffer::GPUBuffer;
-use crate::wrap::command_buffer::GPUCommandBuffer;
-use crate::wrap::texture::GPUTexture;
-use crate::wrap::texture::GPUTextureAspect;
-use crate::wrap::webidl::GPUExtent3D;
-use crate::wrap::webidl::GPUOrigin3D;
+use crate::buffer::GPUBuffer;
+use crate::command_buffer::GPUCommandBuffer;
+use crate::texture::GPUTexture;
+use crate::texture::GPUTextureAspect;
+use crate::webidl::GPUExtent3D;
+use crate::webidl::GPUOrigin3D;
 use crate::Instance;
 
 pub struct GPUQueue {

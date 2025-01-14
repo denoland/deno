@@ -14,10 +14,10 @@ use deno_core::webidl::WebIdlError;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
-use crate::wrap::buffer::GPUBuffer;
-use crate::wrap::render_bundle::GPURenderBundle;
-use crate::wrap::texture::GPUTextureView;
-use crate::wrap::webidl::GPUColor;
+use crate::buffer::GPUBuffer;
+use crate::render_bundle::GPURenderBundle;
+use crate::texture::GPUTextureView;
+use crate::webidl::GPUColor;
 use crate::Instance;
 
 pub struct GPURenderPassEncoder {
@@ -201,7 +201,7 @@ impl GPURenderPassEncoder {
     &self,
     scope: &mut v8::HandleScope<'a>,
     #[webidl(options(enforce_range = true))] index: u32,
-    #[webidl] bind_group: Nullable<Ptr<crate::wrap::bind_group::GPUBindGroup>>,
+    #[webidl] bind_group: Nullable<Ptr<crate::bind_group::GPUBindGroup>>,
     dynamic_offsets: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_start: v8::Local<'a, v8::Value>,
     dynamic_offsets_data_length: v8::Local<'a, v8::Value>,
@@ -281,7 +281,7 @@ impl GPURenderPassEncoder {
 
   fn set_pipeline(
     &self,
-    #[webidl] pipeline: Ptr<crate::wrap::render_pipeline::GPURenderPipeline>,
+    #[webidl] pipeline: Ptr<crate::render_pipeline::GPURenderPipeline>,
   ) {
     let err = self
       .instance
@@ -294,7 +294,7 @@ impl GPURenderPassEncoder {
   fn set_index_buffer(
     &self,
     #[webidl] buffer: Ptr<GPUBuffer>,
-    #[webidl] index_format: crate::wrap::render_pipeline::GPUIndexFormat,
+    #[webidl] index_format: crate::render_pipeline::GPUIndexFormat,
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
@@ -419,7 +419,7 @@ pub(crate) struct GPURenderPassDescriptor {
 
   pub color_attachments: Vec<Nullable<GPURenderPassColorAttachment>>,
   pub depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
-  pub occlusion_query_set: Option<Ptr<crate::wrap::query_set::GPUQuerySet>>,
+  pub occlusion_query_set: Option<Ptr<crate::query_set::GPUQuerySet>>,
   pub timestamp_writes: Option<GPURenderPassTimestampWrites>,
   #[webidl(default = 50000000)]
   #[options(enforce_range = true)]
@@ -489,7 +489,7 @@ pub(crate) struct GPURenderPassDepthStencilAttachment {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPURenderPassTimestampWrites {
-  pub query_set: Ptr<crate::wrap::query_set::GPUQuerySet>,
+  pub query_set: Ptr<crate::query_set::GPUQuerySet>,
   #[options(enforce_range = true)]
   pub beginning_of_pass_write_index: Option<u32>,
   #[options(enforce_range = true)]

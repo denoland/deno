@@ -14,9 +14,9 @@ use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
-use crate::wrap::buffer::GPUBuffer;
-use crate::wrap::sampler::GPUSampler;
-use crate::wrap::texture::GPUTextureView;
+use crate::buffer::GPUBuffer;
+use crate::sampler::GPUSampler;
+use crate::texture::GPUTextureView;
 use crate::Instance;
 
 pub struct GPUBindGroup {
