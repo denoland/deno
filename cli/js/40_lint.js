@@ -236,7 +236,7 @@ function setNodeGetters(ctx) {
           this[INTERNAL_CTX],
           this[INTERNAL_IDX],
           i,
-          nodeToFacade,
+          getNode,
         );
       },
     });
@@ -271,14 +271,6 @@ function nodeToJson(ctx, idx) {
   }
 
   return node;
-}
-
-/**
- * @param {AstContext} ctx
- * @param {number} idx
- */
-function nodeToFacade(ctx, idx) {
-  return getNode(ctx, idx);
 }
 
 /**
