@@ -19,7 +19,7 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
-use super::resolution::NpmResolutionRc;
+use super::resolution::NpmResolutionCellRc;
 use super::NpmPackageFsResolver;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
@@ -32,7 +32,7 @@ use crate::sync::MaybeSync;
 pub struct LocalNpmPackageResolver<
   TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync,
 > {
-  resolution: NpmResolutionRc,
+  resolution: NpmResolutionCellRc,
   sys: TSys,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
@@ -43,7 +43,7 @@ impl<TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync>
 {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    resolution: NpmResolutionRc,
+    resolution: NpmResolutionCellRc,
     sys: TSys,
     node_modules_folder: PathBuf,
   ) -> Self {

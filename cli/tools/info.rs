@@ -386,8 +386,11 @@ impl NpmInfo {
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self.packages.insert(package.id.clone(), package.clone());
-    if let Ok(size) = npm_resolver.package_size(&package.id) {
-      self.package_sizes.insert(package.id.clone(), size);
+    if let Ok(folder) = npm_resolver.resolve_pkg_folder_from_pkg_id(&package.id)
+    {
+      if let Ok(size) = crate::util::fs::dir_size(&folder) {
+        self.package_sizes.insert(package.id.clone(), size);
+      }
     }
     for id in package.dependencies.values() {
       if !self.packages.contains_key(id) {

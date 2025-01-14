@@ -8,12 +8,14 @@ use deno_core::error::AnyError;
 use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
+use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
+use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
-use deno_resolver::npm::managed::NpmResolution;
+use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -35,9 +37,10 @@ pub struct AddPkgReqsResult {
 }
 
 /// Updates the npm resolution with the provided package requirements.
+#[derive(Debug)]
 pub struct NpmResolutionInstaller {
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-  resolution: Arc<NpmResolution>,
+  resolution: Arc<NpmResolutionCell>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   update_queue: TaskQueue,
 }
@@ -45,7 +48,7 @@ pub struct NpmResolutionInstaller {
 impl NpmResolutionInstaller {
   pub fn new(
     registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
-    resolution: Arc<NpmResolution>,
+    resolution: Arc<NpmResolutionCell>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
   ) -> Self {
     Self {
@@ -54,6 +57,14 @@ impl NpmResolutionInstaller {
       maybe_lockfile,
       update_queue: Default::default(),
     }
+  }
+
+  pub async fn cache_package_info(
+    &self,
+    package_name: &str,
+  ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+    // this will internally cache the package information
+    self.registry_info_provider.package_info(package_name).await
   }
 
   pub async fn add_package_reqs(

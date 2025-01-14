@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod byonm;
+pub mod installer;
 mod managed;
 mod permission_checker;
 
@@ -9,7 +10,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -30,8 +30,8 @@ pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::ManagedCliNpmResolver;
-pub use self::managed::PackageCaching;
-pub use self::managed::ResolvePkgFolderFromDenoModuleError;
+pub use self::managed::NpmResolutionInitializer;
+pub use self::managed::ResolveSnapshotError;
 pub use self::permission_checker::NpmRegistryReadPermissionChecker;
 pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
@@ -109,25 +109,13 @@ pub enum CliNpmResolverCreateOptions {
   Byonm(CliByonmNpmResolverCreateOptions),
 }
 
-pub async fn create_cli_npm_resolver_for_lsp(
+pub fn create_cli_npm_resolver(
   options: CliNpmResolverCreateOptions,
 ) -> Arc<dyn CliNpmResolver> {
   use CliNpmResolverCreateOptions::*;
   match options {
-    Managed(options) => {
-      managed::create_managed_npm_resolver_for_lsp(options).await
-    }
+    Managed(options) => managed::create_managed_npm_resolver(options),
     Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
-  }
-}
-
-pub async fn create_cli_npm_resolver(
-  options: CliNpmResolverCreateOptions,
-) -> Result<Arc<dyn CliNpmResolver>, AnyError> {
-  use CliNpmResolverCreateOptions::*;
-  match options {
-    Managed(options) => managed::create_managed_npm_resolver(options).await,
-    Byonm(options) => Ok(Arc::new(ByonmNpmResolver::new(options))),
   }
 }
 
