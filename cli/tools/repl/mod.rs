@@ -164,7 +164,7 @@ pub async fn run(
   let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
   let permissions = factory.root_permissions_container()?;
-  let npm_resolver = factory.npm_resolver().await?.clone();
+  let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
@@ -187,7 +187,7 @@ pub async fn run(
   let worker = worker.into_main_worker();
   let session = ReplSession::initialize(
     cli_options,
-    npm_resolver,
+    npm_installer,
     resolver,
     worker,
     main_module.clone(),
