@@ -855,7 +855,7 @@ fn create_web_worker_callback(
 /// Instead probe for the total memory on the system and use it instead
 /// as a default.
 pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
-  let maybe_mem_info = deno_runtime::sys_info::mem_info();
+  let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
   maybe_mem_info.map(|mem_info| {
     v8::CreateParams::default()
       .heap_limits_from_system_memory(mem_info.total, 0)

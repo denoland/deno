@@ -596,7 +596,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
   use deno_core::futures::FutureExt;
-  use deno_runtime::signal::SIGNAL_NUMS;
+  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
 
   // listen and forward every signal we support
   let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());

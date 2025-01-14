@@ -1,4 +1,6 @@
-## `os` ops
+# deno_os
+
+This crate implements OS specific APIs for Deno
 
 `loadavg`
 
