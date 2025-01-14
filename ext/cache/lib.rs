@@ -40,6 +40,9 @@ pub enum CacheError {
   #[class(type)]
   #[error("Cache deletion is not supported")]
   DeletionNotSupported,
+  #[class(type)]
+  #[error("Content-Encoding is not allowed in response headers")]
+  ContentEncodingNotAllowed,
   #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
@@ -68,6 +71,15 @@ pub enum CacheError {
     #[source]
     source: std::io::Error,
   },
+  #[class(generic)]
+  #[error("cache {method} request failed: {status}")]
+  RequestFailed {
+    method: &'static str,
+    status: hyper::StatusCode,
+  },
+  #[class(generic)]
+  #[error("{0}")]
+  Reqwest(#[from] reqwest::Error),
 }
 
 #[derive(Clone)]

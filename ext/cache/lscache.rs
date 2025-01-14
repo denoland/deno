@@ -39,20 +39,13 @@ use crate::CachePutRequest;
 
 const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct LscBackend {
   shard: Rc<RefCell<Option<Rc<CacheShard>>>>,
   id2name: Rc<RefCell<Slab<String>>>,
 }
 
 impl LscBackend {
-  pub fn new() -> Self {
-    Self {
-      shard: Rc::new(RefCell::new(None)),
-      id2name: Rc::new(RefCell::new(Slab::new())),
-    }
-  }
-
   pub fn set_shard(&self, shard: Rc<CacheShard>) {
     *self.shard.borrow_mut() = Some(shard);
   }
@@ -121,9 +114,7 @@ impl Cache for LscBackend {
         continue;
       }
       if hdr.0[..] == b"content-encoding"[..] {
-        return Err(type_error(
-          "Content-Encoding is not allowed in response headers",
-        ));
+        return Err(CacheError::ContentEncodingNotAllowed);
       }
       headers.insert(
         HeaderName::from_bytes(&hdr.0[..])?,

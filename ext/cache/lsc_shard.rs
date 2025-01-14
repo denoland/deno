@@ -1,9 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use anyhow::Context;
 use hyper::header::AUTHORIZATION;
 use hyper::HeaderMap;
 use hyper::StatusCode;
+
+use crate::CacheError;
 
 pub struct CacheShard {
   client: reqwest::Client,
@@ -26,7 +27,7 @@ impl CacheShard {
   pub async fn get_object(
     &self,
     object_key: &str,
-  ) -> anyhow::Result<Option<reqwest::Response>> {
+  ) -> Result<Option<reqwest::Response>, CacheError> {
     let res = self
       .client
       .get(format!("{}/objects/{}", self.endpoint, object_key))
@@ -34,18 +35,17 @@ impl CacheShard {
       .header("x-ryw", "1")
       .send()
       .await
-      .map_err(|e| e.without_url())
-      .with_context(|| "failed to start cache GET request")?;
+      .map_err(|e| e.without_url())?;
 
     if res.status().is_success() {
       Ok(Some(res))
     } else if res.status() == StatusCode::NOT_FOUND {
       Ok(None)
     } else {
-      Err(anyhow::anyhow!(
-        "cache GET request failed: {}",
-        res.status()
-      ))
+      Err(CacheError::RequestFailed {
+        method: "GET",
+        status: res.status(),
+      })
     }
   }
 
@@ -54,7 +54,7 @@ impl CacheShard {
     object_key: &str,
     headers: HeaderMap,
     body: reqwest::Body,
-  ) -> anyhow::Result<()> {
+  ) -> Result<(), CacheError> {
     let res = self
       .client
       .put(format!("{}/objects/{}", self.endpoint, object_key))
@@ -63,16 +63,15 @@ impl CacheShard {
       .body(body)
       .send()
       .await
-      .map_err(|e| e.without_url())
-      .with_context(|| "failed to start cache PUT request")?;
+      .map_err(|e| e.without_url())?;
 
     if res.status().is_success() {
       Ok(())
     } else {
-      Err(anyhow::anyhow!(
-        "cache PUT request failed: {}",
-        res.status()
-      ))
+      Err(CacheError::RequestFailed {
+        method: "GET",
+        status: res.status(),
+      })
     }
   }
 }
