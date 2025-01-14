@@ -2076,7 +2076,6 @@ impl deno_config::workspace::WorkspaceCache for WorkspaceMemCache {
 
 #[cfg(test)]
 mod tests {
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::resolve_url;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
@@ -2350,12 +2349,7 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        ConfigFile::new(
-          "{}",
-          root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
-        )
-        .unwrap(),
+        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2411,7 +2405,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2437,7 +2430,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2455,7 +2447,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
