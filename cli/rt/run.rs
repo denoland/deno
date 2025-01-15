@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
@@ -25,7 +26,7 @@ use deno_error::JsErrorBox;
 use deno_lib::args::get_root_cert_store;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::CaData;
-use deno_lib::cache::DenoDirProvider;
+use deno_lib::args::RootCertStoreLoadError;
 use deno_lib::loader::NpmModuleLoader;
 use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
@@ -59,7 +60,6 @@ use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_runtime::code_cache::CodeCache;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
@@ -96,7 +96,6 @@ use crate::node::DenoRtNpmReqResolver;
 struct SharedModuleLoaderState {
   cjs_tracker: Arc<DenoRtCjsTracker>,
   code_cache: Option<Arc<DenoCompileCodeCache>>,
-  fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<DenoRtNodeCodeTranslator>,
   node_resolver: Arc<DenoRtNodeResolver>,
@@ -104,7 +103,6 @@ struct SharedModuleLoaderState {
   npm_registry_permission_checker:
     NpmRegistryReadPermissionChecker<DenoCompileFileSystem>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
-  npm_resolver: NpmResolver<DenoCompileFileSystem>,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
@@ -148,9 +146,6 @@ impl std::fmt::Debug for EmbeddedModuleLoader {
     f.debug_struct("EmbeddedModuleLoader").finish()
   }
 }
-
-pub const MODULE_NOT_FOUND: &str = "Module not found";
-pub const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 impl ModuleLoader for EmbeddedModuleLoader {
   fn resolve(
@@ -484,7 +479,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       Ok(None) => deno_core::ModuleLoadResponse::Sync(Err(
         JsErrorBox::type_error(format!(
-          "{MODULE_NOT_FOUND}: {}",
+          "Module not found: {}",
           original_specifier
         ))
         .into(),
@@ -629,15 +624,19 @@ impl ModuleLoaderFactory for StandaloneModuleLoaderFactory {
 struct StandaloneRootCertStoreProvider {
   ca_stores: Option<Vec<String>>,
   ca_data: Option<CaData>,
-  cell: once_cell::sync::OnceCell<RootCertStore>,
+  cell: OnceLock<Result<RootCertStore, RootCertStoreLoadError>>,
 }
 
 impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
   fn get_or_try_init(&self) -> Result<&RootCertStore, JsErrorBox> {
-    self.cell.get_or_try_init(|| {
-      get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
-        .map_err(JsErrorBox::from_err)
-    })
+    self
+      .cell
+      // get_or_try_init was not stable yet when this was written
+      .get_or_init(|| {
+        get_root_cert_store(None, self.ca_stores.clone(), self.ca_data.clone())
+      })
+      .as_ref()
+      .map_err(|err| JsErrorBox::from_err(err.clone()))
   }
 }
 
@@ -654,8 +653,6 @@ pub async fn run(
     source_maps,
     vfs,
   } = data;
-  // todo(dsherret): remove use of DENO_DIR in `deno compile`
-  let deno_dir_provider = Arc::new(DenoDirProvider::new(sys.clone(), None));
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -876,7 +873,6 @@ pub async fn run(
     shared: Arc::new(SharedModuleLoaderState {
       cjs_tracker: cjs_tracker.clone(),
       code_cache: code_cache.clone(),
-      fs: fs.clone(),
       modules,
       node_code_translator: node_code_translator.clone(),
       node_resolver: node_resolver.clone(),
@@ -886,7 +882,6 @@ pub async fn run(
         sys.clone(),
       )),
       npm_registry_permission_checker,
-      npm_resolver: npm_resolver.clone(),
       npm_req_resolver,
       source_maps,
       vfs,

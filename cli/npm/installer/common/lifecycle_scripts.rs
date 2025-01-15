@@ -220,7 +220,7 @@ impl<'a> LifecycleScripts<'a> {
         get_package_path,
       );
       let init_cwd = &self.config.initial_cwd;
-      let process_state = crate::npm::managed::npm_process_state(
+      let process_state = deno_lib::npm::npm_process_state(
         snapshot.as_valid_serialized(),
         Some(root_node_modules_dir_path),
       );

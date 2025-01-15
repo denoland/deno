@@ -8,6 +8,8 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
+use deno_lib::args::NpmProcessState;
+use deno_lib::args::NpmProcessStateKind;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -19,8 +21,6 @@ use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
 use crate::args::CliLockfile;
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
 use crate::sys::CliSys;
 
 pub type CliManagedNpmResolverCreateOptions =

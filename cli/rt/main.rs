@@ -1,21 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::env;
-use std::env::current_exe;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::error::JsError;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_lib::version::otel_runtime_config;
-use deno_media_type::MediaType;
+use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 
@@ -78,7 +73,7 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        deno_telemetry::init(
+        deno_runtime::deno_telemetry::init(
           otel_runtime_config(),
           &data.metadata.otel_config,
         )?;

@@ -19,12 +19,16 @@ mod ops;
 mod resolver;
 mod shared;
 mod standalone;
-mod sys;
 mod task_runner;
 mod tools;
 mod tsc;
 mod util;
 mod worker;
+
+pub mod sys {
+  #[allow(clippy::disallowed_types)] // ok, definition
+  pub type CliSys = sys_traits::impls::RealSys;
+}
 
 use std::env;
 use std::future::Future;
@@ -48,8 +52,9 @@ use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use factory::CliFactory;
-use standalone::MODULE_NOT_FOUND;
-use standalone::UNSUPPORTED_SCHEME;
+
+const MODULE_NOT_FOUND: &str = "Module not found";
+const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::npm::ResolveSnapshotError;
 use crate::args::flags_from_vec;
@@ -351,7 +356,7 @@ fn setup_panic_hook() {
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", version::DENO_VERSION_INFO.deno);
+    eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);

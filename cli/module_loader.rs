@@ -39,6 +39,8 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
+use deno_lib::loader::ModuleCodeStringSource;
+use deno_lib::loader::NpmModuleLoader;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -47,6 +49,7 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
+use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -70,15 +73,13 @@ use crate::graph_util::enhance_graph_error;
 use crate::graph_util::CreateGraphOptions;
 use crate::graph_util::EnhanceGraphErrorMode;
 use crate::graph_util::ModuleGraphBuilder;
+use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::ModuleCodeStringSource;
-use crate::resolver::NotSupportedKindInNpmError;
-use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::CheckError;
@@ -86,6 +87,14 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
+
+pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
+  CliCjsCodeAnalyzer,
+  DenoInNpmPackageChecker,
+  RealIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {
@@ -242,7 +251,7 @@ struct SharedCliModuleLoaderState {
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_module_loader: NpmModuleLoader,
+  npm_module_loader: CliNpmModuleLoader,
   npm_registry_permission_checker:
     Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
@@ -304,7 +313,7 @@ impl CliModuleLoaderFactory {
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
-    npm_module_loader: NpmModuleLoader,
+    npm_module_loader: CliNpmModuleLoader,
     npm_registry_permission_checker: Arc<
       NpmRegistryReadPermissionChecker<CliSys>,
     >,

@@ -63,7 +63,7 @@ use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::CaData;
 use deno_lib::args::NpmProcessStateKind;
 use deno_lib::args::NPM_PROCESS_STATE;
-use deno_lib::cache::DenoDirProvider;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
@@ -72,16 +72,10 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
-use deno_telemetry::OtelRuntimeConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
@@ -96,10 +90,10 @@ use serde::Serialize;
 use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
+use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::version;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -633,7 +627,7 @@ pub struct CliOptions {
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub deno_dir_provider: Arc<DenoDirProvider<CliSys>>,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
@@ -1156,7 +1150,7 @@ impl CliOptions {
 
     Ok(Some(InspectorServer::new(
       host,
-      version::DENO_VERSION_INFO.user_agent,
+      DENO_VERSION_INFO.user_agent,
     )?))
   }
 
@@ -1746,7 +1740,7 @@ fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
   workspace: &Workspace,
-  deno_dir_provider: &Arc<DenoDirProvider<CliSys>>,
+  deno_dir_provider: &Arc<DenoDirProvider>,
 ) -> Result<Option<PathBuf>, AnyError> {
   fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
     root_folder

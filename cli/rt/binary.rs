@@ -1,17 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::cell::Cell;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io::ErrorKind;
-use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use capacity_builder::BytesAppendable;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -36,7 +32,6 @@ use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_semver::package::PackageReq;
 use deno_semver::StackString;
-use indexmap::IndexMap;
 
 use crate::file_system::FileBackedVfs;
 use crate::file_system::VfsRoot;

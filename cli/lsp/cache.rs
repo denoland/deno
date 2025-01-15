@@ -8,9 +8,9 @@ use std::time::SystemTime;
 
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_lib::cache::DenoDir;
 use deno_path_util::url_to_file_path;
 
+use crate::cache::DenoDir;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
@@ -70,7 +70,7 @@ fn calculate_fs_version_in_cache(
 
 #[derive(Debug, Clone)]
 pub struct LspCache {
-  deno_dir: DenoDir<CliSys>,
+  deno_dir: DenoDir,
   global: Arc<GlobalHttpCache>,
   vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
 }
@@ -121,7 +121,7 @@ impl LspCache {
       .collect();
   }
 
-  pub fn deno_dir(&self) -> &DenoDir<CliSys> {
+  pub fn deno_dir(&self) -> &DenoDir {
     &self.deno_dir
   }
 

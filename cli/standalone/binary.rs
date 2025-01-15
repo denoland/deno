@@ -39,7 +39,7 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_lib::args::CaData;
-use deno_lib::cache::DenoDir;
+use deno_lib::args::UnstableConfig;
 use deno_lib::shared::ReleaseChannel;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::NodeModules;
@@ -47,7 +47,6 @@ use deno_lib::standalone::binary::SerializedResolverWorkspaceJsrPackage;
 use deno_lib::standalone::binary::SerializedWorkspaceResolver;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::standalone::binary::SourceMapStore;
-use deno_lib::standalone::binary::UnstableConfig;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
@@ -89,6 +88,7 @@ use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
+use crate::cache::DenoDir;
 use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
@@ -213,7 +213,7 @@ pub struct WriteBinOptions<'a> {
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
-  deno_dir: &'a DenoDir<CliSys>,
+  deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
@@ -227,7 +227,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub fn new(
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
-    deno_dir: &'a DenoDir<CliSys>,
+    deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,

@@ -10,15 +10,15 @@ use std::str;
 
 use deno_cache_dir::url_to_filename;
 use deno_cache_dir::CACHE_PERM;
+use deno_core::url::Host;
+use deno_core::url::Url;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use url::Host;
-use url::Url;
 
-use crate::sys::DenoLibSys;
+use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
-pub struct DiskCache<TSys: DenoLibSys> {
-  sys: TSys,
+pub struct DiskCache {
+  sys: CliSys,
   pub location: PathBuf,
 }
 

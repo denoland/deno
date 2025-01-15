@@ -9,7 +9,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -18,6 +17,7 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_path_util::get_atomic_path;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::code_cache::CodeCacheType;
+use url::Url;
 
 enum CodeCacheStrategy {
   FirstRun(FirstRunCodeCacheStrategy),
@@ -93,7 +93,7 @@ impl DenoCompileCodeCache {
 impl CodeCache for DenoCompileCodeCache {
   fn get_sync(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
@@ -118,7 +118,7 @@ impl CodeCache for DenoCompileCodeCache {
 
   fn set_sync(
     &self,
-    specifier: ModuleSpecifier,
+    specifier: Url,
     code_cache_type: CodeCacheType,
     source_hash: u64,
     bytes: &[u8],
@@ -211,7 +211,7 @@ struct SubsequentRunCodeCacheStrategy {
 impl SubsequentRunCodeCacheStrategy {
   fn take_from_cache(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
     code_cache_type: CodeCacheType,
     source_hash: u64,
   ) -> Option<Vec<u8>> {
@@ -458,8 +458,8 @@ mod test {
   fn code_cache() {
     let temp_dir = TempDir::new();
     let file_path = temp_dir.path().join("cache.bin").to_path_buf();
-    let url1 = ModuleSpecifier::parse("https://deno.land/example1.js").unwrap();
-    let url2 = ModuleSpecifier::parse("https://deno.land/example2.js").unwrap();
+    let url1 = Url::parse("https://deno.land/example1.js").unwrap();
+    let url2 = Url::parse("https://deno.land/example2.js").unwrap();
     // first run
     {
       let code_cache = DenoCompileCodeCache::new(file_path.clone(), 1234);

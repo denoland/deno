@@ -15,7 +15,6 @@ path = "lib.rs"
 
 [dependencies]
 capacity_builder.workspace = true
-deno_cache_dir.workspace = true
 deno_config.workspace = true
 deno_error.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }

@@ -6,9 +6,9 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
-use deno_lib::cache::DiskCache;
 use deno_lib::version::DENO_VERSION_INFO;
 
+use self::DiskCache;
 use crate::sys::CliSys;
 
 /// The cache that stores previously emitted files.

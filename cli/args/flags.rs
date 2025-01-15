@@ -32,7 +32,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 use deno_lib::args::CaData;
-use deno_lib::standalone::binary::UnstableConfig;
+use deno_lib::args::UnstableConfig;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;

@@ -13,19 +13,9 @@ use serde::Serialize;
 use url::Url;
 
 use super::virtual_fs::FileSystemCaseSensitivity;
+use crate::args::UnstableConfig;
 
 pub const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
-
-#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct UnstableConfig {
-  // TODO(bartlomieju): remove in Deno 2.5
-  pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
-  pub sloppy_imports: bool,
-  pub npm_lazy_caching: bool,
-  pub features: Vec<String>, // --unstabe-kv --unstable-cron
-}
 
 #[derive(Deserialize, Serialize)]
 pub enum NodeModules {
