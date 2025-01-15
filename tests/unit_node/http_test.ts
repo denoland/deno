@@ -1881,3 +1881,14 @@ Deno.test("[node/http] decompress brotli response", {
     "localhost:3000",
   ], ["user-agent", "Deno/2.1.1"]]);
 });
+
+Deno.test("[node/http] an error with DNS propagates to reqeust object", async () => {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  const req = http.request("http://invalid-hostname.test", () => {});
+  req.on("error", (err) => {
+    assertEquals(err.name, "Error");
+    assertEquals(err.message, "getaddrinfo ENOTFOUND invalid-hostname.test");
+    resolve();
+  });
+  await promise;
+});
