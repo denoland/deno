@@ -303,7 +303,7 @@ impl MainWorker {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    main_module: ModuleSpecifier,
+    main_module: &ModuleSpecifier,
     services: WorkerServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
@@ -322,7 +322,7 @@ impl MainWorker {
     TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
     TExtNodeSys: ExtNodeSys + 'static,
   >(
-    main_module: ModuleSpecifier,
+    main_module: &ModuleSpecifier,
     services: WorkerServiceOptions<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,

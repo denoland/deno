@@ -31,8 +31,6 @@ mod caches;
 mod check;
 mod code_cache;
 mod common;
-mod deno_dir;
-mod disk_cache;
 mod emit;
 mod fast_check;
 mod incremental;
@@ -47,9 +45,6 @@ pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
-pub use deno_dir::DenoDir;
-pub use deno_dir::DenoDirProvider;
-pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
