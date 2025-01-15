@@ -130,6 +130,8 @@ impl<TSys: DenoLibSys> DiskCache<TSys> {
 
 #[cfg(test)]
 mod tests {
+  // ok, testing
+  #[allow(clippy::disallowed_types)]
   use sys_traits::impls::RealSys;
   use test_util::TempDir;
 

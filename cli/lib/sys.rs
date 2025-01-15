@@ -32,4 +32,6 @@ pub trait DenoLibSys:
 {
 }
 
+// ok, implementation
+#[allow(clippy::disallowed_types)]
 impl DenoLibSys for sys_traits::impls::RealSys {}
