@@ -33,3 +33,6 @@ which.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix = { workspace = true, features = ["signal", "process"] }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { workspace = true, features = [] }

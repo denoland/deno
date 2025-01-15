@@ -2232,6 +2232,7 @@ dependencies = [
  "thiserror 2.0.3",
  "tokio",
  "which",
+ "winapi",
 ]
 
 [[package]]
