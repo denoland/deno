@@ -28,6 +28,8 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_lib::util::checksum;
+use deno_lib::worker::create_isolate_create_params;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -48,9 +50,7 @@ use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
-use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_isolate_create_params;
 
 mod diagnostics;
 

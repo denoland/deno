@@ -15,6 +15,8 @@ use deno_lib::cache::DenoDir;
 use deno_lib::cache::DenoDirProvider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::worker::LibMainWorkerFactory;
+use deno_lib::worker::LibMainWorkerOptions;
 use deno_npm_cache::NpmCacheSetting;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
@@ -46,7 +48,6 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::NpmInstallDepsProvider;
-use crate::args::StorageKeyResolver;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
@@ -70,6 +71,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
+use crate::npm::create_npm_process_state_provider;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -1085,7 +1087,34 @@ impl CliFactory {
       Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
     };
 
-    Ok(CliMainWorkerFactory::new(
+    let module_loader_factory = CliModuleLoaderFactory::new(
+      cli_options,
+      cjs_tracker,
+      if cli_options.code_cache_enabled() {
+        Some(self.code_cache()?.clone())
+      } else {
+        None
+      },
+      self.emitter()?.clone(),
+      in_npm_pkg_checker.clone(),
+      self.main_module_graph_container().await?.clone(),
+      self.module_load_preparer().await?.clone(),
+      node_code_translator.clone(),
+      node_resolver.clone(),
+      NpmModuleLoader::new(
+        self.cjs_tracker()?.clone(),
+        fs.clone(),
+        node_code_translator.clone(),
+      ),
+      npm_registry_permission_checker,
+      npm_req_resolver.clone(),
+      cli_npm_resolver.clone(),
+      self.parsed_source_cache().clone(),
+      self.resolver().await?.clone(),
+      self.sys(),
+    );
+
+    let lib_main_worker_factory = LibMainWorkerFactory::new(
       self.blob_store().clone(),
       if cli_options.code_cache_enabled() {
         Some(self.code_cache()?.clone())
@@ -1094,47 +1123,68 @@ impl CliFactory {
       },
       self.feature_checker()?.clone(),
       fs.clone(),
-      maybe_file_watcher_communicator,
       self.maybe_inspector_server()?.clone(),
+      Box::new(module_loader_factory),
+      node_resolver.clone(),
+      create_npm_process_state_provider(&npm_resolver),
+      pkg_json_resolver,
+      self.root_cert_store_provider().clone(),
+      cli_options.resolve_storage_key_resolver(),
+      self.sys(),
+      self.create_lib_main_worker_options()?,
+    );
+
+    Ok(CliMainWorkerFactory::new(
+      lib_main_worker_factory,
+      maybe_file_watcher_communicator,
       cli_options.maybe_lockfile().cloned(),
-      Box::new(CliModuleLoaderFactory::new(
-        cli_options,
-        cjs_tracker,
-        if cli_options.code_cache_enabled() {
-          Some(self.code_cache()?.clone())
-        } else {
-          None
-        },
-        self.emitter()?.clone(),
-        in_npm_pkg_checker.clone(),
-        self.main_module_graph_container().await?.clone(),
-        self.module_load_preparer().await?.clone(),
-        node_code_translator.clone(),
-        node_resolver.clone(),
-        NpmModuleLoader::new(
-          self.cjs_tracker()?.clone(),
-          fs.clone(),
-          node_code_translator.clone(),
-        ),
-        npm_registry_permission_checker,
-        npm_req_resolver.clone(),
-        cli_npm_resolver.clone(),
-        self.parsed_source_cache().clone(),
-        self.resolver().await?.clone(),
-        self.sys(),
-      )),
       node_resolver.clone(),
       self.npm_installer_if_managed()?.cloned(),
       npm_resolver.clone(),
-      pkg_json_resolver,
-      self.root_cert_store_provider().clone(),
-      self.root_permissions_container()?.clone(),
-      StorageKeyResolver::from_options(cli_options),
       self.sys(),
       self.create_cli_main_worker_options()?,
-      self.cli_options()?.otel_config(),
-      self.cli_options()?.default_npm_caching_strategy(),
+      self.root_permissions_container()?.clone(),
     ))
+  }
+
+  fn create_lib_main_worker_options(
+    &self,
+  ) -> Result<LibMainWorkerOptions, AnyError> {
+    let cli_options = self.cli_options()?;
+    Ok(LibMainWorkerOptions {
+      argv: cli_options.argv().clone(),
+      // This optimization is only available for "run" subcommand
+      // because we need to register new ops for testing and jupyter
+      // integration.
+      skip_op_registration: cli_options.sub_command().is_run(),
+      log_level: cli_options.log_level().unwrap_or(log::Level::Info).into(),
+      enable_op_summary_metrics: cli_options.enable_op_summary_metrics(),
+      enable_testing_features: cli_options.enable_testing_features(),
+      has_node_modules_dir: cli_options.has_node_modules_dir(),
+      inspect_brk: cli_options.inspect_brk().is_some(),
+      inspect_wait: cli_options.inspect_wait().is_some(),
+      strace_ops: cli_options.strace_ops().clone(),
+      is_inspecting: cli_options.is_inspecting(),
+      location: cli_options.location_flag().clone(),
+      // if the user ran a binary command, we'll need to set process.argv[0]
+      // to be the name of the binary command instead of deno
+      argv0: cli_options
+        .take_binary_npm_command_name()
+        .or(std::env::args().next()),
+      node_debug: std::env::var("NODE_DEBUG").ok(),
+      origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
+      seed: cli_options.seed(),
+      unsafely_ignore_certificate_errors: cli_options
+        .unsafely_ignore_certificate_errors()
+        .clone(),
+      node_ipc: cli_options.node_ipc_fd(),
+      serve_port: cli_options.serve_port(),
+      serve_host: cli_options.serve_host(),
+      deno_version: crate::version::DENO_VERSION_INFO.deno,
+      deno_user_agent: crate::version::DENO_VERSION_INFO.user_agent,
+      otel_config: self.cli_options()?.otel_config(),
+      startup_snapshot: crate::js::deno_isolate_init(),
+    })
   }
 
   fn create_cli_main_worker_options(
@@ -1144,7 +1194,7 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
+      let fn_: crate::worker::CreateHmrRunnerCb = Arc::new(move |session| {
         Box::new(HmrRunner::new(
           emitter.clone(),
           session,
@@ -1168,38 +1218,10 @@ impl CliFactory {
       };
 
     Ok(CliMainWorkerOptions {
-      argv: cli_options.argv().clone(),
-      // This optimization is only available for "run" subcommand
-      // because we need to register new ops for testing and jupyter
-      // integration.
-      skip_op_registration: cli_options.sub_command().is_run(),
-      log_level: cli_options.log_level().unwrap_or(log::Level::Info).into(),
-      enable_op_summary_metrics: cli_options.enable_op_summary_metrics(),
-      enable_testing_features: cli_options.enable_testing_features(),
-      has_node_modules_dir: cli_options.has_node_modules_dir(),
-      hmr: cli_options.has_hmr(),
-      inspect_brk: cli_options.inspect_brk().is_some(),
-      inspect_wait: cli_options.inspect_wait().is_some(),
-      strace_ops: cli_options.strace_ops().clone(),
-      is_inspecting: cli_options.is_inspecting(),
-      location: cli_options.location_flag().clone(),
-      // if the user ran a binary command, we'll need to set process.argv[0]
-      // to be the name of the binary command instead of deno
-      argv0: cli_options
-        .take_binary_npm_command_name()
-        .or(std::env::args().next()),
-      node_debug: std::env::var("NODE_DEBUG").ok(),
       needs_test_modules: cli_options.sub_command().needs_test(),
-      origin_data_folder_path: Some(self.deno_dir()?.origin_data_folder_path()),
-      seed: cli_options.seed(),
-      unsafely_ignore_certificate_errors: cli_options
-        .unsafely_ignore_certificate_errors()
-        .clone(),
       create_hmr_runner,
       create_coverage_collector,
-      node_ipc: cli_options.node_ipc_fd(),
-      serve_port: cli_options.serve_port(),
-      serve_host: cli_options.serve_host(),
+      default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
     })
   }
 }

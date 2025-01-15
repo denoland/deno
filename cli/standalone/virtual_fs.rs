@@ -293,7 +293,7 @@ impl VfsBuilder {
     sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
-    let checksum = util::checksum::gen(&[&data]);
+    let checksum = deno_lib::util::checksum::gen(&[&data]);
     let case_sensitivity = self.case_sensitivity;
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
       // duplicate file, reuse an old offset

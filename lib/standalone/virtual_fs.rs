@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::cmp::Ordering;
 use std::path::Path;
 use std::path::PathBuf;

@@ -16,10 +16,17 @@ path = "lib.rs"
 [dependencies]
 deno_cache_dir.workspace = true
 deno_error.workspace = true
+deno_fs = { workspace = true, features = ["sync_fs"] }
+deno_node = { workspace = true, features = ["sync_fs"] }
 deno_path_util.workspace = true
+deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime.workspace = true
+deno_terminal.workspace = true
+faster-hex.workspace = true
 log.workspace = true
+node_resolver = { workspace = true, features = ["sync"] }
 parking_lot.workspace = true
+ring.workspace = true
 serde = { workspace = true, features = ["derive"] }
 sys_traits.workspace = true
 thiserror.workspace = true

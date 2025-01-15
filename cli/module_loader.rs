@@ -40,6 +40,8 @@ use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
+use deno_lib::worker::CreateModuleLoaderResult;
+use deno_lib::worker::ModuleLoaderFactory;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -84,8 +86,6 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::worker::CreateModuleLoaderResult;
-use crate::worker::ModuleLoaderFactory;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {

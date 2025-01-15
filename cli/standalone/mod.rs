@@ -40,6 +40,11 @@ use deno_lib::cache::DenoDirProvider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::worker::CreateModuleLoaderResult;
+use deno_lib::worker::LibMainWorkerFactory;
+use deno_lib::worker::LibMainWorkerOptions;
+use deno_lib::worker::ModuleLoaderFactory;
+use deno_lib::worker::StorageKeyResolver;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
@@ -79,7 +84,6 @@ use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::NpmInstallDepsProvider;
-use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
@@ -88,6 +92,7 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
+use crate::npm::create_npm_process_state_provider;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
@@ -105,8 +110,6 @@ use crate::util::v8::construct_v8_flags;
 use crate::worker::CliCodeCache;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::CreateModuleLoaderResult;
-use crate::worker::ModuleLoaderFactory;
 
 pub mod binary;
 mod code_cache;
@@ -962,54 +965,67 @@ pub async fn run(
     }
     checker
   });
-  let worker_factory = CliMainWorkerFactory::new(
+  let lib_main_worker_options = LibMainWorkerOptions {
+    argv: metadata.argv,
+    log_level: WorkerLogLevel::Info,
+    enable_op_summary_metrics: false,
+    enable_testing_features: false,
+    has_node_modules_dir,
+    inspect_brk: false,
+    inspect_wait: false,
+    strace_ops: None,
+    is_inspecting: false,
+    skip_op_registration: true,
+    location: metadata.location,
+    argv0: NpmPackageReqReference::from_specifier(&main_module)
+      .ok()
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .or(std::env::args().next()),
+    node_debug: std::env::var("NODE_DEBUG").ok(),
+    origin_data_folder_path: None,
+    seed: metadata.seed,
+    unsafely_ignore_certificate_errors: metadata
+      .unsafely_ignore_certificate_errors,
+    node_ipc: None,
+    serve_port: None,
+    serve_host: None,
+    deno_version: crate::version::DENO_VERSION_INFO.deno,
+    deno_user_agent: crate::version::DENO_VERSION_INFO.user_agent,
+    otel_config: metadata.otel_config,
+    startup_snapshot: crate::js::deno_isolate_init(),
+  };
+  let lib_main_worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
-    code_cache,
+    code_cache.map(|c| c.as_code_cache()),
     feature_checker,
     fs,
     None,
-    None,
-    None,
     Box::new(module_loader_factory),
+    node_resolver.clone(),
+    create_npm_process_state_provider(&npm_resolver),
+    pkg_json_resolver,
+    root_cert_store_provider,
+    StorageKeyResolver::empty(),
+    sys.clone(),
+    lib_main_worker_options,
+  );
+  // todo(dsherret): use LibMainWorker directly here and don't use CliMainWorkerFactory
+  let cli_main_worker_options = CliMainWorkerOptions {
+    create_hmr_runner: None,
+    create_coverage_collector: None,
+    needs_test_modules: false,
+    default_npm_caching_strategy: crate::args::NpmCachingStrategy::Lazy,
+  };
+  let worker_factory = CliMainWorkerFactory::new(
+    lib_main_worker_factory,
+    None,
+    None,
     node_resolver,
     None,
     npm_resolver,
-    pkg_json_resolver,
-    root_cert_store_provider,
-    permissions,
-    StorageKeyResolver::empty(),
     sys,
-    CliMainWorkerOptions {
-      argv: metadata.argv,
-      log_level: WorkerLogLevel::Info,
-      enable_op_summary_metrics: false,
-      enable_testing_features: false,
-      has_node_modules_dir,
-      hmr: false,
-      inspect_brk: false,
-      inspect_wait: false,
-      strace_ops: None,
-      is_inspecting: false,
-      skip_op_registration: true,
-      location: metadata.location,
-      argv0: NpmPackageReqReference::from_specifier(&main_module)
-        .ok()
-        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
-        .or(std::env::args().next()),
-      needs_test_modules: false,
-      node_debug: std::env::var("NODE_DEBUG").ok(),
-      origin_data_folder_path: None,
-      seed: metadata.seed,
-      unsafely_ignore_certificate_errors: metadata
-        .unsafely_ignore_certificate_errors,
-      create_hmr_runner: None,
-      create_coverage_collector: None,
-      node_ipc: None,
-      serve_port: None,
-      serve_host: None,
-    },
-    metadata.otel_config,
-    crate::args::NpmCachingStrategy::Lazy,
+    cli_main_worker_options,
+    permissions,
   );
 
   // Initialize v8 once from the main thread.
