@@ -278,10 +278,7 @@ Deno.test({
   name: "[node/fs filehandle.chown] Change owner of the file",
   ignore: Deno.build.os === "windows",
   async fn() {
-    const tempFile: string = await Deno.makeTempFile();
-    const fileHandle = await fs.open(tempFile);
-
-    await fileHandle.chmod(0o700);
+    const fileHandle = await fs.open(testData);
 
     const nobodyUid = 65534;
     const nobodyGid = 65534;
@@ -297,8 +294,8 @@ Deno.test({
 
     await fileHandle.chown(realUid, realGid);
 
-    assertEquals(Deno.statSync(tempFile).uid, realUid);
-    assertEquals(Deno.statSync(tempFile).gid, realGid);
+    assertEquals(Deno.statSync(testData).uid, realUid);
+    assertEquals(Deno.statSync(testData).gid, realGid);
 
     await fileHandle.close();
   },
