@@ -341,28 +341,6 @@ fn create_cli_snapshot(snapshot_path: PathBuf) {
   );
 }
 
-fn git_commit_hash() -> String {
-  if let Ok(output) = std::process::Command::new("git")
-    .arg("rev-list")
-    .arg("-1")
-    .arg("HEAD")
-    .output()
-  {
-    if output.status.success() {
-      std::str::from_utf8(&output.stdout[..40])
-        .unwrap()
-        .to_string()
-    } else {
-      // When not in git repository
-      // (e.g. when the user install by `cargo install deno`)
-      "UNKNOWN".to_string()
-    }
-  } else {
-    // When there is no git command for some reason
-    "UNKNOWN".to_string()
-  }
-}
-
 fn main() {
   // Skip building from docs.rs.
   if env::var_os("DOCS_RS").is_some() {
@@ -389,17 +367,8 @@ fn main() {
   }
   println!("cargo:rerun-if-env-changed=DENO_CANARY");
 
-  println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
-  println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
-  println!(
-    "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
-    &git_commit_hash()[..7]
-  );
-
   let ts_version = ts::version();
   debug_assert_eq!(ts_version, "5.6.2"); // bump this assertion when it changes
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version);
-  println!("cargo:rerun-if-env-changed=TS_VERSION");
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());

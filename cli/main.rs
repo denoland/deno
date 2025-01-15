@@ -24,7 +24,6 @@ mod task_runner;
 mod tools;
 mod tsc;
 mod util;
-mod version;
 mod worker;
 
 use std::env;
@@ -40,6 +39,7 @@ use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
@@ -201,7 +201,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = util::result::any_and_jserrorbox_downcast_ref::<ResolvePkgFolderFromDenoReqError>(&script_err) {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = any_and_jserrorbox_downcast_ref::<ResolvePkgFolderFromDenoReqError>(&script_err) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -373,13 +373,11 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_code = 1;
 
   if let Some(CoreError::Js(e)) =
-    util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&error)
+    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
     error_string = format_js_error(e);
   } else if let Some(e @ ResolveSnapshotError { .. }) =
-    util::result::any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(
-      &error,
-    )
+    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
   {
     if let Some(e) = e.maybe_integrity_check_error() {
       error_string = e.to_string();
@@ -442,19 +440,19 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
-      util::logger::init(None, None);
+      init_logging(None, None);
       let _ = err.print();
       deno_runtime::exit(0);
     }
     Err(err) => {
-      util::logger::init(None, None);
+      init_logging(None, None);
       exit_for_error(AnyError::from(err))
     }
   };
 
   let otel_config = flags.otel_config();
   deno_telemetry::init(crate::args::otel_runtime_config(), &otel_config)?;
-  util::logger::init(flags.log_level, Some(otel_config));
+  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -486,4 +484,20 @@ fn resolve_flags_and_init(
   );
 
   Ok(flags)
+}
+
+fn init_logging(
+  maybe_level: Option<log::Level>,
+  otel_config: Option<OtelConfig>,
+) {
+  deno_lib::util::logger::init(deno_lib::util::logger::InitLoggingOptions {
+    maybe_level,
+    otel_config,
+    // it was considered to hold the draw thread's internal lock
+    // across logging, but if outputting to stderr blocks then that
+    // could potentially block other threads that access the draw
+    // thread's state
+    on_log_start: DrawThread::hide,
+    on_log_end: DrawThread::show,
+  })
 }

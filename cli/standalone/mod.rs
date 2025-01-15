@@ -40,6 +40,9 @@ use deno_lib::cache::DenoDirProvider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::util::text_encoding::from_utf8_lossy_cow;
+use deno_lib::util::text_encoding::from_utf8_lossy_owned;
+use deno_lib::util::v8::construct_v8_flags;
 use deno_lib::worker::CreateModuleLoaderResult;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
@@ -105,8 +108,6 @@ use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-use crate::util::text_encoding::from_utf8_lossy_cow;
-use crate::util::v8::construct_v8_flags;
 use crate::worker::CliCodeCache;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
@@ -467,9 +468,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 }
                 DenoCompileModuleSource::Bytes(module_code_bytes) => {
                   match module_code_bytes {
-                    Cow::Owned(bytes) => Cow::Owned(
-                      crate::util::text_encoding::from_utf8_lossy_owned(bytes),
-                    ),
+                    Cow::Owned(bytes) => {
+                      Cow::Owned(from_utf8_lossy_owned(bytes))
+                    }
                     Cow::Borrowed(bytes) => String::from_utf8_lossy(bytes),
                   }
                 }

@@ -18,6 +18,7 @@ use deno_graph::source::ResolveError;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
+use deno_lib::util::text_encoding::from_utf8_lossy_cow;
 use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
@@ -39,7 +40,6 @@ use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
-use crate::util::text_encoding::from_utf8_lossy_cow;
 
 pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;

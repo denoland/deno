@@ -3,7 +3,9 @@
 pub mod cache;
 pub mod env;
 pub mod npm;
+pub mod shared;
 pub mod standalone;
 pub mod sys;
 pub mod util;
+pub mod version;
 pub mod worker;

@@ -1,0 +1,1473 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::ops::Range;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::SystemTime;
+
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::BufMutView;
+use deno_core::BufView;
+use deno_core::ResourceHandleFd;
+use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::OffsetWithLength;
+use deno_lib::standalone::virtual_fs::VfsEntry;
+use deno_lib::standalone::virtual_fs::VfsEntryRef;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::standalone::virtual_fs::VirtualDirectory;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
+use deno_lib::standalone::virtual_fs::VirtualFile;
+use deno_lib::standalone::virtual_fs::VirtualSymlink;
+use deno_lib::standalone::virtual_fs::VirtualSymlinkParts;
+use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
+use deno_path_util::normalize_path;
+use deno_path_util::strip_unc_prefix;
+use deno_runtime::deno_fs::AccessCheckCb;
+use deno_runtime::deno_fs::FileSystem;
+use deno_runtime::deno_fs::FsDirEntry;
+use deno_runtime::deno_fs::FsFileType;
+use deno_runtime::deno_fs::OpenOptions;
+use deno_runtime::deno_fs::RealFs;
+use deno_runtime::deno_io;
+use deno_runtime::deno_io::fs::File as DenoFile;
+use deno_runtime::deno_io::fs::FsError;
+use deno_runtime::deno_io::fs::FsResult;
+use deno_runtime::deno_io::fs::FsStat;
+use indexmap::IndexSet;
+use serde::Deserialize;
+use serde::Serialize;
+use sys_traits::boxed::BoxedFsDirEntry;
+use sys_traits::boxed::BoxedFsMetadataValue;
+use sys_traits::boxed::FsMetadataBoxed;
+use sys_traits::boxed::FsReadDirBoxed;
+use sys_traits::FsCopy;
+use thiserror::Error;
+
+#[derive(Debug, Clone)]
+pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
+
+impl DenoCompileFileSystem {
+  pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
+    Self(vfs)
+  }
+
+  fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {
+    if self.0.is_path_within(path) {
+      Err(FsError::NotSupported)
+    } else {
+      Ok(())
+    }
+  }
+
+  fn copy_to_real_path(
+    &self,
+    oldpath: &Path,
+    newpath: &Path,
+  ) -> std::io::Result<u64> {
+    let old_file = self.0.file_entry(oldpath)?;
+    let old_file_bytes =
+      self.0.read_file_all(old_file, VfsFileSubDataKind::Raw)?;
+    let len = old_file_bytes.len() as u64;
+    RealFs
+      .write_file_sync(
+        newpath,
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: true,
+          append: false,
+          create_new: false,
+          mode: None,
+        },
+        None,
+        &old_file_bytes,
+      )
+      .map_err(|err| err.into_io_error())?;
+    Ok(len)
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl FileSystem for DenoCompileFileSystem {
+  fn cwd(&self) -> FsResult<PathBuf> {
+    RealFs.cwd()
+  }
+
+  fn tmp_dir(&self) -> FsResult<PathBuf> {
+    RealFs.tmp_dir()
+  }
+
+  fn chdir(&self, path: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chdir(path)
+  }
+
+  fn umask(&self, mask: Option<u32>) -> FsResult<u32> {
+    RealFs.umask(mask)
+  }
+
+  fn open_sync(
+    &self,
+    path: &Path,
+    options: OpenOptions,
+    access_check: Option<AccessCheckCb>,
+  ) -> FsResult<Rc<dyn DenoFile>> {
+    if self.0.is_path_within(path) {
+      Ok(Rc::new(self.0.open_file(path)?))
+    } else {
+      RealFs.open_sync(path, options, access_check)
+    }
+  }
+  async fn open_async<'a>(
+    &'a self,
+    path: PathBuf,
+    options: OpenOptions,
+    access_check: Option<AccessCheckCb<'a>>,
+  ) -> FsResult<Rc<dyn DenoFile>> {
+    if self.0.is_path_within(&path) {
+      Ok(Rc::new(self.0.open_file(&path)?))
+    } else {
+      RealFs.open_async(path, options, access_check).await
+    }
+  }
+
+  fn mkdir_sync(
+    &self,
+    path: &Path,
+    recursive: bool,
+    mode: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.mkdir_sync(path, recursive, mode)
+  }
+  async fn mkdir_async(
+    &self,
+    path: PathBuf,
+    recursive: bool,
+    mode: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.mkdir_async(path, recursive, mode).await
+  }
+
+  fn chmod_sync(&self, path: &Path, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chmod_sync(path, mode)
+  }
+  async fn chmod_async(&self, path: PathBuf, mode: u32) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.chmod_async(path, mode).await
+  }
+
+  fn chown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.chown_sync(path, uid, gid)
+  }
+  async fn chown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.chown_async(path, uid, gid).await
+  }
+
+  fn lchown_sync(
+    &self,
+    path: &Path,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lchown_sync(path, uid, gid)
+  }
+
+  async fn lchown_async(
+    &self,
+    path: PathBuf,
+    uid: Option<u32>,
+    gid: Option<u32>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.lchown_async(path, uid, gid).await
+  }
+
+  fn remove_sync(&self, path: &Path, recursive: bool) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.remove_sync(path, recursive)
+  }
+  async fn remove_async(&self, path: PathBuf, recursive: bool) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.remove_async(path, recursive).await
+  }
+
+  fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(newpath)?;
+    if self.0.is_path_within(oldpath) {
+      self
+        .copy_to_real_path(oldpath, newpath)
+        .map(|_| ())
+        .map_err(FsError::Io)
+    } else {
+      RealFs.copy_file_sync(oldpath, newpath)
+    }
+  }
+  async fn copy_file_async(
+    &self,
+    oldpath: PathBuf,
+    newpath: PathBuf,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&newpath)?;
+    if self.0.is_path_within(&oldpath) {
+      let fs = self.clone();
+      tokio::task::spawn_blocking(move || {
+        fs.copy_to_real_path(&oldpath, &newpath)
+          .map(|_| ())
+          .map_err(FsError::Io)
+      })
+      .await?
+    } else {
+      RealFs.copy_file_async(oldpath, newpath).await
+    }
+  }
+
+  fn cp_sync(&self, from: &Path, to: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(to)?;
+
+    RealFs.cp_sync(from, to)
+  }
+  async fn cp_async(&self, from: PathBuf, to: PathBuf) -> FsResult<()> {
+    self.error_if_in_vfs(&to)?;
+
+    RealFs.cp_async(from, to).await
+  }
+
+  fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.stat(path)?.as_fs_stat())
+    } else {
+      RealFs.stat_sync(path)
+    }
+  }
+  async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.stat(&path)?.as_fs_stat())
+    } else {
+      RealFs.stat_async(path).await
+    }
+  }
+
+  fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.lstat(path)?.as_fs_stat())
+    } else {
+      RealFs.lstat_sync(path)
+    }
+  }
+  async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.lstat(&path)?.as_fs_stat())
+    } else {
+      RealFs.lstat_async(path).await
+    }
+  }
+
+  fn realpath_sync(&self, path: &Path) -> FsResult<PathBuf> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.canonicalize(path)?)
+    } else {
+      RealFs.realpath_sync(path)
+    }
+  }
+  async fn realpath_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.canonicalize(&path)?)
+    } else {
+      RealFs.realpath_async(path).await
+    }
+  }
+
+  fn read_dir_sync(&self, path: &Path) -> FsResult<Vec<FsDirEntry>> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.read_dir(path)?)
+    } else {
+      RealFs.read_dir_sync(path)
+    }
+  }
+  async fn read_dir_async(&self, path: PathBuf) -> FsResult<Vec<FsDirEntry>> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.read_dir(&path)?)
+    } else {
+      RealFs.read_dir_async(path).await
+    }
+  }
+
+  fn rename_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(oldpath)?;
+    self.error_if_in_vfs(newpath)?;
+    RealFs.rename_sync(oldpath, newpath)
+  }
+  async fn rename_async(
+    &self,
+    oldpath: PathBuf,
+    newpath: PathBuf,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&oldpath)?;
+    self.error_if_in_vfs(&newpath)?;
+    RealFs.rename_async(oldpath, newpath).await
+  }
+
+  fn link_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+    self.error_if_in_vfs(oldpath)?;
+    self.error_if_in_vfs(newpath)?;
+    RealFs.link_sync(oldpath, newpath)
+  }
+  async fn link_async(
+    &self,
+    oldpath: PathBuf,
+    newpath: PathBuf,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&oldpath)?;
+    self.error_if_in_vfs(&newpath)?;
+    RealFs.link_async(oldpath, newpath).await
+  }
+
+  fn symlink_sync(
+    &self,
+    oldpath: &Path,
+    newpath: &Path,
+    file_type: Option<FsFileType>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(oldpath)?;
+    self.error_if_in_vfs(newpath)?;
+    RealFs.symlink_sync(oldpath, newpath, file_type)
+  }
+  async fn symlink_async(
+    &self,
+    oldpath: PathBuf,
+    newpath: PathBuf,
+    file_type: Option<FsFileType>,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&oldpath)?;
+    self.error_if_in_vfs(&newpath)?;
+    RealFs.symlink_async(oldpath, newpath, file_type).await
+  }
+
+  fn read_link_sync(&self, path: &Path) -> FsResult<PathBuf> {
+    if self.0.is_path_within(path) {
+      Ok(self.0.read_link(path)?)
+    } else {
+      RealFs.read_link_sync(path)
+    }
+  }
+  async fn read_link_async(&self, path: PathBuf) -> FsResult<PathBuf> {
+    if self.0.is_path_within(&path) {
+      Ok(self.0.read_link(&path)?)
+    } else {
+      RealFs.read_link_async(path).await
+    }
+  }
+
+  fn truncate_sync(&self, path: &Path, len: u64) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.truncate_sync(path, len)
+  }
+  async fn truncate_async(&self, path: PathBuf, len: u64) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs.truncate_async(path, len).await
+  }
+
+  fn utime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.utime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+  async fn utime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs
+      .utime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await
+  }
+
+  fn lutime_sync(
+    &self,
+    path: &Path,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(path)?;
+    RealFs.lutime_sync(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+  }
+  async fn lutime_async(
+    &self,
+    path: PathBuf,
+    atime_secs: i64,
+    atime_nanos: u32,
+    mtime_secs: i64,
+    mtime_nanos: u32,
+  ) -> FsResult<()> {
+    self.error_if_in_vfs(&path)?;
+    RealFs
+      .lutime_async(path, atime_secs, atime_nanos, mtime_secs, mtime_nanos)
+      .await
+  }
+}
+
+impl sys_traits::BaseFsHardLink for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    self.link_sync(src, dst).map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::BaseFsRead for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_read(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
+    self
+      .read_file_sync(path, None)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::FsMetadataValue for FileBackedVfsMetadata {
+  fn file_type(&self) -> sys_traits::FileType {
+    self.file_type
+  }
+
+  fn len(&self) -> u64 {
+    self.len
+  }
+
+  fn accessed(&self) -> std::io::Result<SystemTime> {
+    Err(not_supported("accessed time"))
+  }
+
+  fn created(&self) -> std::io::Result<SystemTime> {
+    Err(not_supported("created time"))
+  }
+
+  fn changed(&self) -> std::io::Result<SystemTime> {
+    Err(not_supported("changed time"))
+  }
+
+  fn modified(&self) -> std::io::Result<SystemTime> {
+    Err(not_supported("modified time"))
+  }
+
+  fn dev(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn ino(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn mode(&self) -> std::io::Result<u32> {
+    Ok(0)
+  }
+
+  fn nlink(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn uid(&self) -> std::io::Result<u32> {
+    Ok(0)
+  }
+
+  fn gid(&self) -> std::io::Result<u32> {
+    Ok(0)
+  }
+
+  fn rdev(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn blksize(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn blocks(&self) -> std::io::Result<u64> {
+    Ok(0)
+  }
+
+  fn is_block_device(&self) -> std::io::Result<bool> {
+    Ok(false)
+  }
+
+  fn is_char_device(&self) -> std::io::Result<bool> {
+    Ok(false)
+  }
+
+  fn is_fifo(&self) -> std::io::Result<bool> {
+    Ok(false)
+  }
+
+  fn is_socket(&self) -> std::io::Result<bool> {
+    Ok(false)
+  }
+
+  fn file_attributes(&self) -> std::io::Result<u32> {
+    Ok(0)
+  }
+}
+
+fn not_supported(name: &str) -> std::io::Error {
+  std::io::Error::new(
+    ErrorKind::Unsupported,
+    format!(
+      "{} is not supported for an embedded deno compile file",
+      name
+    ),
+  )
+}
+
+impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
+  type Metadata = BoxedFsMetadataValue;
+
+  fn file_name(&self) -> Cow<std::ffi::OsStr> {
+    Cow::Borrowed(self.metadata.name.as_ref())
+  }
+
+  fn file_type(&self) -> std::io::Result<sys_traits::FileType> {
+    Ok(self.metadata.file_type)
+  }
+
+  fn metadata(&self) -> std::io::Result<Self::Metadata> {
+    Ok(BoxedFsMetadataValue(Box::new(self.metadata.clone())))
+  }
+
+  fn path(&self) -> Cow<Path> {
+    Cow::Owned(self.parent_path.join(&self.metadata.name))
+  }
+}
+
+impl sys_traits::BaseFsReadDir for DenoCompileFileSystem {
+  type ReadDirEntry = BoxedFsDirEntry;
+
+  fn base_fs_read_dir(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<
+    Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
+  > {
+    if self.0.is_path_within(path) {
+      let entries = self.0.read_dir_with_metadata(path)?;
+      Ok(Box::new(
+        entries.map(|entry| Ok(BoxedFsDirEntry::new(entry))),
+      ))
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_read_dir_boxed(path)
+    }
+  }
+}
+
+impl sys_traits::BaseFsCanonicalize for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+    self.realpath_sync(path).map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
+  type Metadata = BoxedFsMetadataValue;
+
+  #[inline]
+  fn base_fs_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
+    if self.0.is_path_within(path) {
+      Ok(BoxedFsMetadataValue::new(self.0.stat(path)?))
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_metadata_boxed(path)
+    }
+  }
+
+  #[inline]
+  fn base_fs_symlink_metadata(
+    &self,
+    path: &Path,
+  ) -> std::io::Result<Self::Metadata> {
+    if self.0.is_path_within(path) {
+      Ok(BoxedFsMetadataValue::new(self.0.lstat(path)?))
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_symlink_metadata_boxed(path)
+    }
+  }
+}
+
+impl sys_traits::BaseFsCopy for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_copy(&self, from: &Path, to: &Path) -> std::io::Result<u64> {
+    self
+      .error_if_in_vfs(to)
+      .map_err(|err| err.into_io_error())?;
+    if self.0.is_path_within(from) {
+      self.copy_to_real_path(from, to)
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_copy(from, to)
+    }
+  }
+}
+
+impl sys_traits::BaseFsCloneFile for DenoCompileFileSystem {
+  fn base_fs_clone_file(
+    &self,
+    _from: &Path,
+    _to: &Path,
+  ) -> std::io::Result<()> {
+    // will cause a fallback in the code that uses this
+    Err(not_supported("cloning files"))
+  }
+}
+
+impl sys_traits::BaseFsCreateDir for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_create_dir(
+    &self,
+    path: &Path,
+    options: &sys_traits::CreateDirOptions,
+  ) -> std::io::Result<()> {
+    self
+      .mkdir_sync(path, options.recursive, options.mode)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::BaseFsRemoveFile for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_remove_file(&self, path: &Path) -> std::io::Result<()> {
+    self
+      .remove_sync(path, false)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::BaseFsRename for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+    self
+      .rename_sync(from, to)
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+pub enum FsFileAdapter {
+  Real(sys_traits::impls::RealFsFile),
+  Vfs(FileBackedVfsFile),
+}
+
+impl sys_traits::FsFile for FsFileAdapter {}
+
+impl sys_traits::FsFileAsRaw for FsFileAdapter {
+  #[cfg(windows)]
+  fn fs_file_as_raw_handle(&self) -> Option<std::os::windows::io::RawHandle> {
+    match self {
+      Self::Real(file) => file.fs_file_as_raw_handle(),
+      Self::Vfs(_) => None,
+    }
+  }
+
+  #[cfg(unix)]
+  fn fs_file_as_raw_fd(&self) -> Option<std::os::fd::RawFd> {
+    match self {
+      Self::Real(file) => file.fs_file_as_raw_fd(),
+      Self::Vfs(_) => None,
+    }
+  }
+}
+
+impl sys_traits::FsFileSyncData for FsFileAdapter {
+  fn fs_file_sync_data(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_sync_data(),
+      Self::Vfs(_) => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileSyncAll for FsFileAdapter {
+  fn fs_file_sync_all(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_sync_all(),
+      Self::Vfs(_) => Ok(()),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetPermissions for FsFileAdapter {
+  #[inline]
+  fn fs_file_set_permissions(&mut self, mode: u32) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_set_permissions(mode),
+      Self::Vfs(_) => Ok(()),
+    }
+  }
+}
+
+impl std::io::Read for FsFileAdapter {
+  #[inline]
+  fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    match self {
+      Self::Real(file) => file.read(buf),
+      Self::Vfs(file) => file.read_to_buf(buf),
+    }
+  }
+}
+
+impl std::io::Seek for FsFileAdapter {
+  fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+    match self {
+      Self::Real(file) => file.seek(pos),
+      Self::Vfs(file) => file.seek(pos),
+    }
+  }
+}
+
+impl std::io::Write for FsFileAdapter {
+  #[inline]
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    match self {
+      Self::Real(file) => file.write(buf),
+      Self::Vfs(_) => Err(not_supported("writing files")),
+    }
+  }
+
+  #[inline]
+  fn flush(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.flush(),
+      Self::Vfs(_) => Err(not_supported("writing files")),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetLen for FsFileAdapter {
+  #[inline]
+  fn fs_file_set_len(&mut self, len: u64) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_set_len(len),
+      Self::Vfs(_) => Err(not_supported("setting file length")),
+    }
+  }
+}
+
+impl sys_traits::FsFileSetTimes for FsFileAdapter {
+  fn fs_file_set_times(
+    &mut self,
+    times: sys_traits::FsFileTimes,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_set_times(times),
+      Self::Vfs(_) => Err(not_supported("setting file times")),
+    }
+  }
+}
+
+impl sys_traits::FsFileLock for FsFileAdapter {
+  fn fs_file_lock(
+    &mut self,
+    mode: sys_traits::FsFileLockMode,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_lock(mode),
+      Self::Vfs(_) => Err(not_supported("locking files")),
+    }
+  }
+
+  fn fs_file_try_lock(
+    &mut self,
+    mode: sys_traits::FsFileLockMode,
+  ) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_try_lock(mode),
+      Self::Vfs(_) => Err(not_supported("locking files")),
+    }
+  }
+
+  fn fs_file_unlock(&mut self) -> std::io::Result<()> {
+    match self {
+      Self::Real(file) => file.fs_file_unlock(),
+      Self::Vfs(_) => Err(not_supported("unlocking files")),
+    }
+  }
+}
+
+impl sys_traits::FsFileIsTerminal for FsFileAdapter {
+  #[inline]
+  fn fs_file_is_terminal(&self) -> bool {
+    match self {
+      Self::Real(file) => file.fs_file_is_terminal(),
+      Self::Vfs(_) => false,
+    }
+  }
+}
+
+impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
+  type File = FsFileAdapter;
+
+  fn base_fs_open(
+    &self,
+    path: &Path,
+    options: &sys_traits::OpenOptions,
+  ) -> std::io::Result<Self::File> {
+    if self.0.is_path_within(path) {
+      Ok(FsFileAdapter::Vfs(self.0.open_file(path)?))
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      Ok(FsFileAdapter::Real(
+        sys_traits::impls::RealSys.base_fs_open(path, options)?,
+      ))
+    }
+  }
+}
+
+impl sys_traits::BaseFsSymlinkDir for DenoCompileFileSystem {
+  fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    self
+      .symlink_sync(src, dst, Some(FsFileType::Directory))
+      .map_err(|err| err.into_io_error())
+  }
+}
+
+impl sys_traits::SystemRandom for DenoCompileFileSystem {
+  #[inline]
+  fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.sys_random(buf)
+  }
+}
+
+impl sys_traits::SystemTimeNow for DenoCompileFileSystem {
+  #[inline]
+  fn sys_time_now(&self) -> SystemTime {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.sys_time_now()
+  }
+}
+
+impl sys_traits::ThreadSleep for DenoCompileFileSystem {
+  #[inline]
+  fn thread_sleep(&self, dur: Duration) {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.thread_sleep(dur)
+  }
+}
+
+impl sys_traits::EnvCurrentDir for DenoCompileFileSystem {
+  fn env_current_dir(&self) -> std::io::Result<PathBuf> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.env_current_dir()
+  }
+}
+
+impl sys_traits::BaseEnvVar for DenoCompileFileSystem {
+  fn base_env_var_os(
+    &self,
+    key: &std::ffi::OsStr,
+  ) -> Option<std::ffi::OsString> {
+    #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+    sys_traits::impls::RealSys.base_env_var_os(key)
+  }
+}
+
+#[derive(Debug)]
+pub struct VfsRoot {
+  pub dir: VirtualDirectory,
+  pub root_path: PathBuf,
+  pub start_file_offset: u64,
+}
+
+impl VfsRoot {
+  fn find_entry<'a>(
+    &'a self,
+    path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
+    self.find_entry_inner(path, &mut HashSet::new(), case_sensitivity)
+  }
+
+  fn find_entry_inner<'a>(
+    &'a self,
+    path: &Path,
+    seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
+    let mut path = Cow::Borrowed(path);
+    loop {
+      let (resolved_path, entry) =
+        self.find_entry_no_follow_inner(&path, seen, case_sensitivity)?;
+      match entry {
+        VfsEntryRef::Symlink(symlink) => {
+          if !seen.insert(path.to_path_buf()) {
+            return Err(std::io::Error::new(
+              std::io::ErrorKind::Other,
+              "circular symlinks",
+            ));
+          }
+          path = Cow::Owned(symlink.resolve_dest_from_root(&self.root_path));
+        }
+        _ => {
+          return Ok((resolved_path, entry));
+        }
+      }
+    }
+  }
+
+  fn find_entry_no_follow(
+    &self,
+    path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
+    self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
+  }
+
+  fn find_entry_no_follow_inner<'a>(
+    &'a self,
+    path: &Path,
+    seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
+    let relative_path = match path.strip_prefix(&self.root_path) {
+      Ok(p) => p,
+      Err(_) => {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::NotFound,
+          "path not found",
+        ));
+      }
+    };
+    let mut final_path = self.root_path.clone();
+    let mut current_entry = VfsEntryRef::Dir(&self.dir);
+    for component in relative_path.components() {
+      let component = component.as_os_str();
+      let current_dir = match current_entry {
+        VfsEntryRef::Dir(dir) => {
+          final_path.push(component);
+          dir
+        }
+        VfsEntryRef::Symlink(symlink) => {
+          let dest = symlink.resolve_dest_from_root(&self.root_path);
+          let (resolved_path, entry) =
+            self.find_entry_inner(&dest, seen, case_sensitivity)?;
+          final_path = resolved_path; // overwrite with the new resolved path
+          match entry {
+            VfsEntryRef::Dir(dir) => {
+              final_path.push(component);
+              dir
+            }
+            _ => {
+              return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "path not found",
+              ));
+            }
+          }
+        }
+        _ => {
+          return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "path not found",
+          ));
+        }
+      };
+      let component = component.to_string_lossy();
+      current_entry = current_dir
+        .entries
+        .get_by_name(&component, case_sensitivity)
+        .ok_or_else(|| {
+          std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
+        })?
+        .as_ref();
+    }
+
+    Ok((final_path, current_entry))
+  }
+}
+
+pub struct FileBackedVfsFile {
+  file: VirtualFile,
+  pos: RefCell<u64>,
+  vfs: Arc<FileBackedVfs>,
+}
+
+impl FileBackedVfsFile {
+  pub fn seek(&self, pos: SeekFrom) -> std::io::Result<u64> {
+    match pos {
+      SeekFrom::Start(pos) => {
+        *self.pos.borrow_mut() = pos;
+        Ok(pos)
+      }
+      SeekFrom::End(offset) => {
+        if offset < 0 && -offset as u64 > self.file.offset.len {
+          let msg = "An attempt was made to move the file pointer before the beginning of the file.";
+          Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            msg,
+          ))
+        } else {
+          let mut current_pos = self.pos.borrow_mut();
+          *current_pos = if offset >= 0 {
+            self.file.offset.len - (offset as u64)
+          } else {
+            self.file.offset.len + (-offset as u64)
+          };
+          Ok(*current_pos)
+        }
+      }
+      SeekFrom::Current(offset) => {
+        let mut current_pos = self.pos.borrow_mut();
+        if offset >= 0 {
+          *current_pos += offset as u64;
+        } else if -offset as u64 > *current_pos {
+          return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "An attempt was made to move the file pointer before the beginning of the file."));
+        } else {
+          *current_pos -= -offset as u64;
+        }
+        Ok(*current_pos)
+      }
+    }
+  }
+
+  pub fn read_to_buf(&self, buf: &mut [u8]) -> std::io::Result<usize> {
+    let read_pos = {
+      let mut pos = self.pos.borrow_mut();
+      let read_pos = *pos;
+      // advance the position due to the read
+      *pos = std::cmp::min(self.file.offset.len, *pos + buf.len() as u64);
+      read_pos
+    };
+    self.vfs.read_file(&self.file, read_pos, buf)
+  }
+
+  fn read_to_end(&self) -> FsResult<Cow<'static, [u8]>> {
+    let read_pos = {
+      let mut pos = self.pos.borrow_mut();
+      let read_pos = *pos;
+      // todo(dsherret): should this always set it to the end of the file?
+      if *pos < self.file.offset.len {
+        // advance the position due to the read
+        *pos = self.file.offset.len;
+      }
+      read_pos
+    };
+    if read_pos > self.file.offset.len {
+      return Ok(Cow::Borrowed(&[]));
+    }
+    if read_pos == 0 {
+      Ok(
+        self
+          .vfs
+          .read_file_all(&self.file, VfsFileSubDataKind::Raw)?,
+      )
+    } else {
+      let size = (self.file.offset.len - read_pos) as usize;
+      let mut buf = vec![0; size];
+      self.vfs.read_file(&self.file, read_pos, &mut buf)?;
+      Ok(Cow::Owned(buf))
+    }
+  }
+}
+
+#[async_trait::async_trait(?Send)]
+impl deno_io::fs::File for FileBackedVfsFile {
+  fn read_sync(self: Rc<Self>, buf: &mut [u8]) -> FsResult<usize> {
+    self.read_to_buf(buf).map_err(Into::into)
+  }
+  async fn read_byob(
+    self: Rc<Self>,
+    mut buf: BufMutView,
+  ) -> FsResult<(usize, BufMutView)> {
+    // this is fast, no need to spawn a task
+    let nread = self.read_to_buf(&mut buf)?;
+    Ok((nread, buf))
+  }
+
+  fn write_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<usize> {
+    Err(FsError::NotSupported)
+  }
+  async fn write(
+    self: Rc<Self>,
+    _buf: BufView,
+  ) -> FsResult<deno_core::WriteOutcome> {
+    Err(FsError::NotSupported)
+  }
+
+  fn write_all_sync(self: Rc<Self>, _buf: &[u8]) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn write_all(self: Rc<Self>, _buf: BufView) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn read_all_sync(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
+    self.read_to_end()
+  }
+  async fn read_all_async(self: Rc<Self>) -> FsResult<Cow<'static, [u8]>> {
+    // this is fast, no need to spawn a task
+    self.read_to_end()
+  }
+
+  fn chmod_sync(self: Rc<Self>, _pathmode: u32) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn chmod_async(self: Rc<Self>, _mode: u32) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn seek_sync(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
+    self.seek(pos).map_err(|err| err.into())
+  }
+  async fn seek_async(self: Rc<Self>, pos: SeekFrom) -> FsResult<u64> {
+    self.seek(pos).map_err(|err| err.into())
+  }
+
+  fn datasync_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn datasync_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn sync_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn sync_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn stat_sync(self: Rc<Self>) -> FsResult<FsStat> {
+    Err(FsError::NotSupported)
+  }
+  async fn stat_async(self: Rc<Self>) -> FsResult<FsStat> {
+    Err(FsError::NotSupported)
+  }
+
+  fn lock_sync(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn lock_async(self: Rc<Self>, _exclusive: bool) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn truncate_sync(self: Rc<Self>, _len: u64) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn truncate_async(self: Rc<Self>, _len: u64) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  fn utime_sync(
+    self: Rc<Self>,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+  async fn utime_async(
+    self: Rc<Self>,
+    _atime_secs: i64,
+    _atime_nanos: u32,
+    _mtime_secs: i64,
+    _mtime_nanos: u32,
+  ) -> FsResult<()> {
+    Err(FsError::NotSupported)
+  }
+
+  // lower level functionality
+  fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio> {
+    Err(FsError::NotSupported)
+  }
+  fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
+    None
+  }
+  fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn deno_io::fs::File>> {
+    Ok(self)
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct FileBackedVfsDirEntry {
+  pub parent_path: PathBuf,
+  pub metadata: FileBackedVfsMetadata,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileBackedVfsMetadata {
+  pub name: String,
+  pub file_type: sys_traits::FileType,
+  pub len: u64,
+}
+
+impl FileBackedVfsMetadata {
+  pub fn from_vfs_entry_ref(vfs_entry: VfsEntryRef) -> Self {
+    FileBackedVfsMetadata {
+      file_type: match vfs_entry {
+        VfsEntryRef::Dir(_) => sys_traits::FileType::Dir,
+        VfsEntryRef::File(_) => sys_traits::FileType::File,
+        VfsEntryRef::Symlink(_) => sys_traits::FileType::Symlink,
+      },
+      name: vfs_entry.name().to_string(),
+      len: match vfs_entry {
+        VfsEntryRef::Dir(_) => 0,
+        VfsEntryRef::File(file) => file.offset.len,
+        VfsEntryRef::Symlink(_) => 0,
+      },
+    }
+  }
+  pub fn as_fs_stat(&self) -> FsStat {
+    FsStat {
+      is_directory: self.file_type == sys_traits::FileType::Dir,
+      is_file: self.file_type == sys_traits::FileType::File,
+      is_symlink: self.file_type == sys_traits::FileType::Symlink,
+      atime: None,
+      birthtime: None,
+      mtime: None,
+      ctime: None,
+      blksize: 0,
+      size: self.len,
+      dev: 0,
+      ino: 0,
+      mode: 0,
+      nlink: 0,
+      uid: 0,
+      gid: 0,
+      rdev: 0,
+      blocks: 0,
+      is_block_device: false,
+      is_char_device: false,
+      is_fifo: false,
+      is_socket: false,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub struct FileBackedVfs {
+  vfs_data: Cow<'static, [u8]>,
+  fs_root: VfsRoot,
+  case_sensitivity: FileSystemCaseSensitivity,
+}
+
+impl FileBackedVfs {
+  pub fn new(
+    data: Cow<'static, [u8]>,
+    fs_root: VfsRoot,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Self {
+    Self {
+      vfs_data: data,
+      fs_root,
+      case_sensitivity,
+    }
+  }
+
+  pub fn root(&self) -> &Path {
+    &self.fs_root.root_path
+  }
+
+  pub fn is_path_within(&self, path: &Path) -> bool {
+    path.starts_with(&self.fs_root.root_path)
+  }
+
+  pub fn open_file(
+    self: &Arc<Self>,
+    path: &Path,
+  ) -> std::io::Result<FileBackedVfsFile> {
+    let file = self.file_entry(path)?;
+    Ok(FileBackedVfsFile {
+      file: file.clone(),
+      vfs: self.clone(),
+      pos: Default::default(),
+    })
+  }
+
+  pub fn read_dir(&self, path: &Path) -> std::io::Result<Vec<FsDirEntry>> {
+    let dir = self.dir_entry(path)?;
+    Ok(
+      dir
+        .entries
+        .iter()
+        .map(|entry| FsDirEntry {
+          name: entry.name().to_string(),
+          is_file: matches!(entry, VfsEntry::File(_)),
+          is_directory: matches!(entry, VfsEntry::Dir(_)),
+          is_symlink: matches!(entry, VfsEntry::Symlink(_)),
+        })
+        .collect(),
+    )
+  }
+
+  pub fn read_dir_with_metadata<'a>(
+    &'a self,
+    path: &Path,
+  ) -> std::io::Result<impl Iterator<Item = FileBackedVfsDirEntry> + 'a> {
+    let dir = self.dir_entry(path)?;
+    let path = path.to_path_buf();
+    Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
+      parent_path: path.to_path_buf(),
+      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
+    }))
+  }
+
+  pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
+    match entry {
+      VfsEntryRef::Symlink(symlink) => {
+        Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
+      }
+      VfsEntryRef::Dir(_) | VfsEntryRef::File(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "not a symlink",
+      )),
+    }
+  }
+
+  pub fn lstat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
+    Ok(FileBackedVfsMetadata::from_vfs_entry_ref(entry))
+  }
+
+  pub fn stat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
+    Ok(FileBackedVfsMetadata::from_vfs_entry_ref(entry))
+  }
+
+  pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
+    let (path, _) = self.fs_root.find_entry(path, self.case_sensitivity)?;
+    Ok(path)
+  }
+
+  pub fn read_file_all(
+    &self,
+    file: &VirtualFile,
+    sub_data_kind: VfsFileSubDataKind,
+  ) -> std::io::Result<Cow<'static, [u8]>> {
+    let read_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset.len,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset.len,
+    };
+    let read_range = self.get_read_range(file, sub_data_kind, 0, read_len)?;
+    match &self.vfs_data {
+      Cow::Borrowed(data) => Ok(Cow::Borrowed(&data[read_range])),
+      Cow::Owned(data) => Ok(Cow::Owned(data[read_range].to_vec())),
+    }
+  }
+
+  pub fn read_file(
+    &self,
+    file: &VirtualFile,
+    pos: u64,
+    buf: &mut [u8],
+  ) -> std::io::Result<usize> {
+    let read_range = self.get_read_range(
+      file,
+      VfsFileSubDataKind::Raw,
+      pos,
+      buf.len() as u64,
+    )?;
+    let read_len = read_range.len();
+    buf[..read_len].copy_from_slice(&self.vfs_data[read_range]);
+    Ok(read_len)
+  }
+
+  fn get_read_range(
+    &self,
+    file: &VirtualFile,
+    sub_data_kind: VfsFileSubDataKind,
+    pos: u64,
+    len: u64,
+  ) -> std::io::Result<Range<usize>> {
+    let file_offset_and_len = match sub_data_kind {
+      VfsFileSubDataKind::Raw => file.offset,
+      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset,
+    };
+    if pos > file_offset_and_len.len {
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "unexpected EOF",
+      ));
+    }
+    let file_offset =
+      self.fs_root.start_file_offset + file_offset_and_len.offset;
+    let start = file_offset + pos;
+    let end = file_offset + std::cmp::min(pos + len, file_offset_and_len.len);
+    Ok(start as usize..end as usize)
+  }
+
+  pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
+    match entry {
+      VfsEntryRef::Dir(dir) => Ok(dir),
+      VfsEntryRef::Symlink(_) => unreachable!(),
+      VfsEntryRef::File(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "path is a file",
+      )),
+    }
+  }
+
+  pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
+    match entry {
+      VfsEntryRef::Dir(_) => Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "path is a directory",
+      )),
+      VfsEntryRef::Symlink(_) => unreachable!(),
+      VfsEntryRef::File(file) => Ok(file),
+    }
+  }
+}

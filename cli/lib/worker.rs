@@ -113,8 +113,6 @@ impl StorageKeyResolver {
   }
 }
 
-// TODO(bartlomieju): this should be moved to some other place, added to avoid string
-// duplication between worker setups and `deno info` output.
 pub fn get_cache_storage_dir() -> PathBuf {
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
