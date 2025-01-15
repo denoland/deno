@@ -227,7 +227,7 @@ interface Console {
   warn(...data: any[]): void;
 
   /**
-   * Adds a marker to the browser's Timeline or DevTools Performance panel
+   * Adds a marker to the DevTools Performance panel
    * @param label Label for the timestamp
    * @example
    * ```ts
