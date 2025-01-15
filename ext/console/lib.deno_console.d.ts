@@ -70,7 +70,7 @@ interface Console {
    * Displays an interactive list of the properties of a specified object
    * @param item Object to display
    * @param options Formatting options
-   * @example
+   * @examplegit
    * ```ts
    * console.dir({ name: 'object', value: 42 }, { depth: 1 });
    * ```
@@ -78,18 +78,14 @@ interface Console {
   dir(item?: any, options?: any): void;
 
   /**
-   * Displays an XML/HTML Element representation of the specified object if possible
-   * @param data Elements to display
-   * @example
-   * ```ts
-   * const element = document.createElement('div');
-   * console.dirxml(element);
-   * ```
+   * @ignore
    */
   dirxml(...data: any[]): void;
 
   /**
-   * Outputs an error message to the console
+   * Outputs an error message to the console. 
+   * This method routes the output to stderr,
+   * unlike other console methods that route to stdout.
    * @param data Values to be printed to the console
    * @example
    * ```ts
