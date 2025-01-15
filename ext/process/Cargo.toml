@@ -36,3 +36,4 @@ nix = { workspace = true, features = ["signal", "process"] }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = [] }
+windows-sys.workspace = true

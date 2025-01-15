@@ -2233,6 +2233,7 @@ dependencies = [
  "tokio",
  "which",
  "winapi",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
