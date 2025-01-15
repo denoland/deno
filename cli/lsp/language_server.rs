@@ -27,7 +27,10 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_lib::args::get_root_cert_store;
 use deno_lib::args::has_flag_env_var;
+use deno_lib::args::CaData;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -95,8 +98,6 @@ use super::urls;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::create_default_npmrc;
-use crate::args::get_root_cert_store;
-use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
@@ -703,7 +704,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::DENO_VERSION_INFO.deno,
+      DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );

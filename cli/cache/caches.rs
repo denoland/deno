@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_lib::cache::DenoDirProvider;
+use deno_lib::version::DENO_VERSION_INFO;
 use once_cell::sync::OnceCell;
 
 use super::cache_db::CacheDB;
@@ -49,13 +50,9 @@ impl Caches {
     cell
       .get_or_init(|| {
         if let Some(path) = path {
-          CacheDB::from_path(
-            config,
-            path,
-            crate::version::DENO_VERSION_INFO.deno,
-          )
+          CacheDB::from_path(config, path, DENO_VERSION_INFO.deno)
         } else {
-          CacheDB::in_memory(config, crate::version::DENO_VERSION_INFO.deno)
+          CacheDB::in_memory(config, DENO_VERSION_INFO.deno)
         }
       })
       .clone()

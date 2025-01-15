@@ -42,7 +42,6 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-use tokio::select;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;

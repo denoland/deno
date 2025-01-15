@@ -38,7 +38,16 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_lib::args::CaData;
 use deno_lib::cache::DenoDir;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::standalone::binary::Metadata;
+use deno_lib::standalone::binary::NodeModules;
+use deno_lib::standalone::binary::SerializedResolverWorkspaceJsrPackage;
+use deno_lib::standalone::binary::SerializedWorkspaceResolver;
+use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
+use deno_lib::standalone::binary::SourceMapStore;
+use deno_lib::standalone::binary::UnstableConfig;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
@@ -46,6 +55,7 @@ use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -70,34 +80,22 @@ use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::file_system::DenoCompileFileSystem;
-use super::serialization::deserialize_binary_data_section;
 use super::serialization::serialize_binary_data_section;
-use super::serialization::DeserializedDataSection;
-use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
-use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
-use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VfsRoot;
-use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
-use crate::args::UnstableConfig;
 use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::shared::ReleaseChannel;
 use crate::sys::CliSys;
 use crate::util::archive;
-use crate::util::fs::canonicalize_path;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
@@ -298,19 +296,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix =
-      match crate::version::DENO_VERSION_INFO.release_channel {
-        ReleaseChannel::Canary => {
-          format!(
-            "canary/{}/{}",
-            crate::version::DENO_VERSION_INFO.git_hash,
-            binary_name
-          )
-        }
-        _ => {
-          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-        }
-      };
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+      }
+    };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);

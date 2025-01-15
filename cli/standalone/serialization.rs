@@ -1,35 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::io::Write;
 
-use capacity_builder::BytesAppendable;
-use deno_ast::swc::common::source_map;
 use deno_ast::MediaType;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_core::FastString;
-use deno_core::ModuleSourceCode;
-use deno_core::ModuleType;
+use deno_lib::standalone::binary::Metadata;
+use deno_lib::standalone::binary::SourceMapStore;
 use deno_lib::standalone::binary::MAGIC_BYTES;
-use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
-use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
-use deno_semver::package::PackageReq;
-use deno_semver::StackString;
-use indexmap::IndexMap;
 
-use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
-use super::virtual_fs::VfsBuilder;
 
 /// Binary format:
 /// * d3n0l4nd
@@ -80,12 +63,12 @@ pub fn serialize_binary_data_section(
     }
     // 5. Source maps
     {
-      builder.append_le(source_map_store.data.len() as u32);
-      for (specifier, source_map) in &source_map_store.data {
+      builder.append_le(source_map_store.len() as u32);
+      for (specifier, source_map) in source_map_store.iter() {
         builder.append_le(specifier.len() as u32);
         builder.append(specifier);
         builder.append_le(source_map.len() as u32);
-        builder.append(source_map.as_ref());
+        builder.append(source_map);
       }
     }
 

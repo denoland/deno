@@ -94,6 +94,14 @@ impl SourceMapStore {
     }
   }
 
+  pub fn iter(&self) -> impl Iterator<Item = (&str, &[u8])> {
+    self.data.iter().map(|(k, v)| (k.as_ref(), v.as_ref()))
+  }
+
+  pub fn len(&self) -> usize {
+    self.data.len()
+  }
+
   pub fn add(
     &mut self,
     specifier: Cow<'static, str>,

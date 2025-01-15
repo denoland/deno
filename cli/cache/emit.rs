@@ -7,6 +7,7 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_lib::cache::DiskCache;
+use deno_lib::version::DENO_VERSION_INFO;
 
 use crate::sys::CliSys;
 
@@ -24,7 +25,7 @@ impl EmitCache {
       disk_cache,
       emit_failed_flag: Default::default(),
       file_serializer: EmitFileSerializer {
-        cli_version: crate::version::DENO_VERSION_INFO.deno,
+        cli_version: DENO_VERSION_INFO.deno,
       },
     }
   }

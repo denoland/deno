@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::ops::Range;
 use std::sync::Arc;
 
 #[inline(always)]

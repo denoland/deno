@@ -31,6 +31,9 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::CaData;
+use deno_lib::standalone::binary::UnstableConfig;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -1464,12 +1467,12 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 pub fn clap_root() -> Command {
   let long_version = format!(
     "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO_VERSION_INFO.deno,
-    crate::version::DENO_VERSION_INFO.release_channel.name(),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
     deno_core::v8::VERSION_STRING,
-    crate::version::DENO_VERSION_INFO.typescript
+    DENO_VERSION_INFO.typescript
   );
 
   run_args(Command::new("deno"), true)
@@ -1485,7 +1488,7 @@ pub fn clap_root() -> Command {
     )
     .color(ColorChoice::Auto)
     .term_width(800)
-    .version(crate::version::DENO_VERSION_INFO.deno)
+    .version(DENO_VERSION_INFO.deno)
     .long_version(long_version)
     .disable_version_flag(true)
     .disable_help_flag(true)
