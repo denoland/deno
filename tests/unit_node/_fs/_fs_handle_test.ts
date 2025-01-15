@@ -283,7 +283,7 @@ Deno.test({
     const nobodyUid = 65534;
     const nobodyGid = 65534;
 
-    assertRejects(
+    await assertRejects(
       async () => await fileHandle.chown(nobodyUid, nobodyGid),
       Deno.errors.PermissionDenied,
       "Operation not permitted",
