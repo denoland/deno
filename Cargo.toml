@@ -5,6 +5,7 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/lib",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -28,7 +29,6 @@ members = [
   "ext/webidl",
   "ext/websocket",
   "ext/webstorage",
-  "lib",
   "resolvers/deno",
   "resolvers/node",
   "resolvers/npm_cache",
@@ -96,7 +96,7 @@ deno_websocket = { version = "0.190.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.180.0", path = "./ext/webstorage" }
 
 # workspace libraries
-deno_lib = { version = "=0.1.1", path = "./lib" }
+deno_lib = { version = "=0.1.1", path = "./cli/lib" }
 deno_npm_cache = { version = "0.4.0", path = "./resolvers/npm_cache" }
 deno_resolver = { version = "0.16.0", path = "./resolvers/deno" }
 node_resolver = { version = "0.23.0", path = "./resolvers/node" }
