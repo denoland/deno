@@ -1,14 +1,14 @@
 # Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
-name = "deno_napi"
-version = "0.116.0"
 authors.workspace = true
+description = "NAPI implementation for Deno"
 edition.workspace = true
 license.workspace = true
+name = "deno_napi"
 readme = "README.md"
 repository.workspace = true
-description = "NAPI implementation for Deno"
+version = "0.116.0"
 
 [lib]
 path = "lib.rs"
@@ -27,4 +27,4 @@ thiserror.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = "=1.48.3"
