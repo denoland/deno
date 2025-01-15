@@ -68,7 +68,7 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: aarch64
-            runner: '${{ github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+            runner: macos-14
             job: test
             profile: debug
           - os: macos

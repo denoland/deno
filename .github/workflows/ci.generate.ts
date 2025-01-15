@@ -41,6 +41,12 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
+    runner: macosArmRunner,
+  },
+  macosArmSelfHosted: {
+    os: "macos",
+    arch: "aarch64",
+    // Actually use self-hosted runner only in denoland/deno on `main` branch.
     runner:
       `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
@@ -384,7 +390,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArm,
+            ...Runners.macosArmSelfHosted,
             job: "test",
             profile: "release",
             skip_pr: true,
