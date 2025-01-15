@@ -89,7 +89,9 @@ interface Console {
   dirxml(...data: any[]): void;
 
   /**
-   * Outputs an error message to the console
+   * Outputs an error message to the console. 
+   * This method routes the output to stderr,
+   * unlike other console methods that route to stdout.
    * @param data Values to be printed to the console
    * @example
    * ```ts
