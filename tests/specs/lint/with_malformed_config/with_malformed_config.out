@@ -1,4 +1,4 @@
 error: Failed to parse "lint" configuration
 
 Caused by:
-    unknown field `dont_know_this_field`, expected one of `rules`, `include`, `exclude`, `files`, `report`
+    unknown field `dont_know_this_field`, expected one of `rules`, `include`, `exclude`, `files`, `report`, `plugins`
