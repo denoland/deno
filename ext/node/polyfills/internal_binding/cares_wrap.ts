@@ -186,20 +186,22 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
     this.#tries = tries;
   }
 
-  async #query(query: string, recordType: Deno.RecordType) {
-    // TODO(@bartlomieju): TTL logic.
-
+  async #query(query: string, recordType: Deno.RecordType, ttl?: boolean) {
     let code: number;
     let ret: Awaited<ReturnType<typeof Deno.resolveDns>>;
 
+    const resolveOptions: Deno.ResolveDnsOptions = {
+      ...ttl !== undefined ? { ttl } : {},
+    };
+
     if (this.#servers.length) {
       for (const [ipAddr, port] of this.#servers) {
-        const resolveOptions = {
+        Object.assign(resolveOptions, {
           nameServer: {
             ipAddr,
             port,
           },
-        };
+        });
 
         ({ code, ret } = await this.#resolve(
           query,
@@ -212,7 +214,7 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
         }
       }
     } else {
-      ({ code, ret } = await this.#resolve(query, recordType));
+      ({ code, ret } = await this.#resolve(query, recordType, resolveOptions));
     }
 
     return { code: code!, ret: ret! };
@@ -351,18 +353,34 @@ export class ChannelWrap extends AsyncWrap implements ChannelWrapQuery {
   }
 
   queryA(req: QueryReqWrap, name: string): number {
-    this.#query(name, "A").then(({ code, ret }) => {
-      req.oncomplete(code, ret);
+    this.#query(name, "A", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: val?.data,
+          ttl: val?.ttl,
+        }));
+      }
+
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
   }
 
   queryAaaa(req: QueryReqWrap, name: string): number {
-    this.#query(name, "AAAA").then(({ code, ret }) => {
-      const records = (ret as string[]).map((record) => compressIPv6(record));
+    this.#query(name, "AAAA", req.ttl).then(({ code, ret }) => {
+      let recordsWithTtl;
+      if (req.ttl) {
+        recordsWithTtl = (ret as Deno.RecordWithTtl[]).map((val) => ({
+          address: compressIPv6(val?.data as string),
+          ttl: val?.ttl,
+        }));
+      } else {
+        ret = (ret as string[]).map((record) => compressIPv6(record));
+      }
 
-      req.oncomplete(code, records);
+      req.oncomplete(code, recordsWithTtl ?? ret);
     });
 
     return 0;
