@@ -16,6 +16,8 @@ import {
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
 
 interface WriteResult {
   bytesWritten: number;
@@ -159,11 +161,11 @@ export class FileHandle extends EventEmitter {
   }
 
   datasync(): Promise<void> {
-    return fsCall(promises.fdatasync, this);
+    return fsCall(fdatasyncPromise, this);
   }
 
   sync(): Promise<void> {
-    return fsCall(promises.fsync, this);
+    return fsCall(fsyncPromise, this);
   }
 
   utimes(
