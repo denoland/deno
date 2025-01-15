@@ -3,7 +3,6 @@
 mod byonm;
 pub mod installer;
 mod managed;
-mod permission_checker;
 
 use std::sync::Arc;
 
@@ -24,8 +23,6 @@ pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolveSnapshotError;
-pub use self::permission_checker::NpmRegistryReadPermissionChecker;
-pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;

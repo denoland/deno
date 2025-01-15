@@ -18,6 +18,7 @@ pub use deno_net;
 pub use deno_node;
 pub use deno_os;
 pub use deno_permissions;
+pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
 pub use deno_url;

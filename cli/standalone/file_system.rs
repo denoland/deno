@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -30,7 +31,6 @@ use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::FileBackedVfsDirEntry;
 use super::virtual_fs::FileBackedVfsFile;
 use super::virtual_fs::FileBackedVfsMetadata;
-use super::virtual_fs::VfsFileSubDataKind;
 
 #[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
