@@ -8,19 +8,18 @@ use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
 use deno_lib::version::DENO_VERSION_INFO;
 
-use self::DiskCache;
-use crate::sys::CliSys;
+use super::DiskCache;
 
 /// The cache that stores previously emitted files.
 #[derive(Debug)]
 pub struct EmitCache {
-  disk_cache: DiskCache<CliSys>,
+  disk_cache: DiskCache,
   emit_failed_flag: AtomicFlag,
   file_serializer: EmitFileSerializer,
 }
 
 impl EmitCache {
-  pub fn new(disk_cache: DiskCache<CliSys>) -> Self {
+  pub fn new(disk_cache: DiskCache) -> Self {
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),

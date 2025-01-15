@@ -17,7 +17,6 @@ mod node;
 mod npm;
 mod ops;
 mod resolver;
-mod shared;
 mod standalone;
 mod task_runner;
 mod tools;
@@ -50,6 +49,7 @@ use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
 
@@ -57,6 +57,7 @@ const MODULE_NOT_FOUND: &str = "Module not found";
 const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
 
 use self::npm::ResolveSnapshotError;
+use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -456,7 +457,7 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
-  deno_telemetry::init(crate::args::otel_runtime_config(), &otel_config)?;
+  deno_telemetry::init(deno_lib::version::otel_runtime_config(), &otel_config)?;
   init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.

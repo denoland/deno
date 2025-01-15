@@ -14,7 +14,6 @@ use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
-use deno_runtime::code_cache;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;

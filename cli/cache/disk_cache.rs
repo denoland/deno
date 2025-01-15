@@ -24,7 +24,7 @@ pub struct DiskCache {
 
 impl DiskCache {
   /// `location` must be an absolute path.
-  pub fn new(sys: TSys, location: &Path) -> Self {
+  pub fn new(sys: CliSys, location: &Path) -> Self {
     assert!(location.is_absolute());
     Self {
       sys,

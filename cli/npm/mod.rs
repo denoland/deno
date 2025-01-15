@@ -11,9 +11,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
-use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
@@ -39,7 +37,6 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
-pub type CliByonmNpmResolver = ByonmNpmResolver<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

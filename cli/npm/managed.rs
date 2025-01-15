@@ -1,22 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
-use deno_lib::args::NpmProcessState;
-use deno_lib::args::NpmProcessStateKind;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::npm::ManagedNpmResolverRc;
-use deno_runtime::ops::process::NpmProcessStateProvider;
 use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;

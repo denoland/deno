@@ -22,7 +22,6 @@ mod code_cache;
 mod file_system;
 mod node;
 mod run;
-mod sys;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(

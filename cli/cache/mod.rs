@@ -45,6 +45,7 @@ pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
+pub use deno_dir::DenoDir;
 pub use deno_dir::DenoDirProvider;
 pub use disk_cache::DiskCache;
 pub use emit::EmitCache;

@@ -1,40 +1,22 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env;
-use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
-use std::future::Future;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
-use std::ops::Range;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::io::AllowStdIo;
-use deno_core::futures::AsyncReadExt;
-use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
@@ -47,60 +29,35 @@ use deno_lib::standalone::binary::SerializedResolverWorkspaceJsrPackage;
 use deno_lib::standalone::binary::SerializedWorkspaceResolver;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_lib::standalone::binary::SourceMapStore;
-use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::BuiltVfs;
+use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
+use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
-use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
-use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_io::fs::FsError;
-use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_semver::npm::NpmVersionReqParseError;
-use deno_semver::package::PackageReq;
-use deno_semver::Version;
-use deno_semver::VersionReqSpecifierParseError;
-use deno_telemetry::OtelConfig;
 use indexmap::IndexMap;
-use log::Level;
-use serde::Deserialize;
-use serde::Serialize;
 
 use super::serialization::serialize_binary_data_section;
 use super::serialization::RemoteModulesStoreBuilder;
 use super::virtual_fs::output_vfs;
-use super::virtual_fs::BuiltVfs;
-use super::virtual_fs::VfsBuilder;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::NpmInstallDepsProvider;
-use crate::args::PermissionFlags;
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
-use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-
-pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
-  ".deno_compile_node_modules";
 
 /// A URL that can be designated as the base for relative URLs.
 ///
@@ -215,7 +172,6 @@ pub struct DenoCompileBinaryWriter<'a> {
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
-  file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver,
@@ -229,7 +185,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
-    file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver,
@@ -240,7 +195,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       cli_options,
       deno_dir,
       emitter,
-      file_fetcher,
       http_client_provider,
       npm_resolver,
       workspace_resolver,

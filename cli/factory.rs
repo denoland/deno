@@ -1029,7 +1029,6 @@ impl CliFactory {
       self.cli_options()?,
       self.deno_dir()?,
       self.emitter()?,
-      self.file_fetcher()?,
       self.http_client_provider(),
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),

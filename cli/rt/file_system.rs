@@ -1456,3 +1456,278 @@ impl FileBackedVfs {
     }
   }
 }
+
+#[cfg(test)]
+mod test {
+  use std::io::Write;
+
+  use deno_lib::standalone::virtual_fs::VfsBuilder;
+  use test_util::assert_contains;
+  use test_util::TempDir;
+
+  use super::*;
+
+  #[track_caller]
+  fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
+    let file = vfs.file_entry(path).unwrap();
+    String::from_utf8(
+      vfs
+        .read_file_all(file, VfsFileSubDataKind::Raw)
+        .unwrap()
+        .into_owned(),
+    )
+    .unwrap()
+  }
+
+  #[test]
+  fn builds_and_uses_virtual_fs() {
+    let temp_dir = TempDir::new();
+    // we canonicalize the temp directory because the vfs builder
+    // will canonicalize the root path
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    src_path.join("sub_dir").create_dir_all();
+    src_path.join("e.txt").write("e");
+    src_path.symlink_file("e.txt", "sub_dir/e.txt");
+    let src_path = src_path.to_path_buf();
+    let mut builder = VfsBuilder::new();
+    builder
+      .add_file_with_data_raw(
+        &src_path.join("a.txt"),
+        "data".into(),
+        VfsFileSubDataKind::Raw,
+      )
+      .unwrap();
+    builder
+      .add_file_with_data_raw(
+        &src_path.join("b.txt"),
+        "data".into(),
+        VfsFileSubDataKind::Raw,
+      )
+      .unwrap();
+    assert_eq!(builder.files_len(), 1); // because duplicate data
+    builder
+      .add_file_with_data_raw(
+        &src_path.join("c.txt"),
+        "c".into(),
+        VfsFileSubDataKind::Raw,
+      )
+      .unwrap();
+    builder
+      .add_file_with_data_raw(
+        &src_path.join("sub_dir").join("d.txt"),
+        "d".into(),
+        VfsFileSubDataKind::Raw,
+      )
+      .unwrap();
+    builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
+    builder
+      .add_symlink(&src_path.join("sub_dir").join("e.txt"))
+      .unwrap();
+
+    // get the virtual fs
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("a.txt")), "data");
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("b.txt")), "data");
+
+    // attempt reading a symlink
+    assert_eq!(
+      read_file(&virtual_fs, &dest_path.join("sub_dir").join("e.txt")),
+      "e",
+    );
+
+    // canonicalize symlink
+    assert_eq!(
+      virtual_fs
+        .canonicalize(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap(),
+      dest_path.join("e.txt"),
+    );
+
+    // metadata
+    assert_eq!(
+      virtual_fs
+        .lstat(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap()
+        .file_type,
+      sys_traits::FileType::Symlink,
+    );
+    assert_eq!(
+      virtual_fs
+        .stat(&dest_path.join("sub_dir").join("e.txt"))
+        .unwrap()
+        .file_type,
+      sys_traits::FileType::File,
+    );
+    assert_eq!(
+      virtual_fs
+        .stat(&dest_path.join("sub_dir"))
+        .unwrap()
+        .file_type,
+      sys_traits::FileType::Dir,
+    );
+    assert_eq!(
+      virtual_fs.stat(&dest_path.join("e.txt")).unwrap().file_type,
+      sys_traits::FileType::File
+    );
+  }
+
+  #[test]
+  fn test_include_dir_recursive() {
+    let temp_dir = TempDir::new();
+    let temp_dir_path = temp_dir.path().canonicalize();
+    temp_dir.create_dir_all("src/nested/sub_dir");
+    temp_dir.write("src/a.txt", "data");
+    temp_dir.write("src/b.txt", "data");
+    temp_dir
+      .path()
+      .symlink_dir("src/nested/sub_dir", "src/sub_dir_link");
+    temp_dir.write("src/nested/sub_dir/c.txt", "c");
+
+    // build and create the virtual fs
+    let src_path = temp_dir_path.join("src").to_path_buf();
+    let mut builder = VfsBuilder::new();
+    builder.add_dir_recursive(&src_path).unwrap();
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("a.txt")), "data",);
+    assert_eq!(read_file(&virtual_fs, &dest_path.join("b.txt")), "data",);
+
+    assert_eq!(
+      read_file(
+        &virtual_fs,
+        &dest_path.join("nested").join("sub_dir").join("c.txt")
+      ),
+      "c",
+    );
+    assert_eq!(
+      read_file(&virtual_fs, &dest_path.join("sub_dir_link").join("c.txt")),
+      "c",
+    );
+    assert_eq!(
+      virtual_fs
+        .lstat(&dest_path.join("sub_dir_link"))
+        .unwrap()
+        .file_type,
+      sys_traits::FileType::Symlink,
+    );
+
+    assert_eq!(
+      virtual_fs
+        .canonicalize(&dest_path.join("sub_dir_link").join("c.txt"))
+        .unwrap(),
+      dest_path.join("nested").join("sub_dir").join("c.txt"),
+    );
+  }
+
+  fn into_virtual_fs(
+    builder: VfsBuilder,
+    temp_dir: &TempDir,
+  ) -> (PathBuf, FileBackedVfs) {
+    let virtual_fs_file = temp_dir.path().join("virtual_fs");
+    let vfs = builder.build();
+    {
+      let mut file = std::fs::File::create(&virtual_fs_file).unwrap();
+      for file_data in &vfs.files {
+        file.write_all(file_data).unwrap();
+      }
+    }
+    let dest_path = temp_dir.path().join("dest");
+    let data = std::fs::read(&virtual_fs_file).unwrap();
+    (
+      dest_path.to_path_buf(),
+      FileBackedVfs::new(
+        Cow::Owned(data),
+        VfsRoot {
+          dir: VirtualDirectory {
+            name: "".to_string(),
+            entries: vfs.entries,
+          },
+          root_path: dest_path.to_path_buf(),
+          start_file_offset: 0,
+        },
+        FileSystemCaseSensitivity::Sensitive,
+      ),
+    )
+  }
+
+  #[test]
+  fn circular_symlink() {
+    let temp_dir = TempDir::new();
+    let src_path = temp_dir.path().canonicalize().join("src");
+    src_path.create_dir_all();
+    src_path.symlink_file("a.txt", "b.txt");
+    src_path.symlink_file("b.txt", "c.txt");
+    src_path.symlink_file("c.txt", "a.txt");
+    let src_path = src_path.to_path_buf();
+    let mut builder = VfsBuilder::new();
+    let err = builder
+      .add_symlink(src_path.join("a.txt").as_path())
+      .unwrap_err();
+    assert_contains!(err.to_string(), "Circular symlink detected",);
+  }
+
+  #[tokio::test]
+  async fn test_open_file() {
+    let temp_dir = TempDir::new();
+    let temp_path = temp_dir.path().canonicalize();
+    let mut builder = VfsBuilder::new();
+    builder
+      .add_file_with_data_raw(
+        temp_path.join("a.txt").as_path(),
+        "0123456789".to_string().into_bytes(),
+        VfsFileSubDataKind::Raw,
+      )
+      .unwrap();
+    let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);
+    let virtual_fs = Arc::new(virtual_fs);
+    let file = virtual_fs.open_file(&dest_path.join("a.txt")).unwrap();
+    file.seek(SeekFrom::Current(2)).unwrap();
+    let mut buf = vec![0; 2];
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"45");
+    file.seek(SeekFrom::Current(-4)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.seek(SeekFrom::Start(2)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    file.seek(SeekFrom::End(2)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"89");
+    file.seek(SeekFrom::Current(-8)).unwrap();
+    file.read_to_buf(&mut buf).unwrap();
+    assert_eq!(buf, b"23");
+    assert_eq!(
+      file
+        .seek(SeekFrom::Current(-5))
+        .unwrap_err()
+        .to_string(),
+      "An attempt was made to move the file pointer before the beginning of the file."
+    );
+    // go beyond the file length, then back
+    file.seek(SeekFrom::Current(40)).unwrap();
+    file.seek(SeekFrom::Current(-38)).unwrap();
+    let file = Rc::new(file);
+    let read_buf = file.clone().read(2).await.unwrap();
+    assert_eq!(read_buf.to_vec(), b"67");
+    file.clone().seek_sync(SeekFrom::Current(-2)).unwrap();
+
+    // read to the end of the file
+    let all_buf = file.clone().read_all_sync().unwrap();
+    assert_eq!(all_buf.to_vec(), b"6789");
+    file.clone().seek_sync(SeekFrom::Current(-9)).unwrap();
+
+    // try try_clone_inner and read_all_async
+    let all_buf = file
+      .try_clone_inner()
+      .unwrap()
+      .read_all_async()
+      .await
+      .unwrap();
+    assert_eq!(all_buf.to_vec(), b"123456789");
+  }
+}

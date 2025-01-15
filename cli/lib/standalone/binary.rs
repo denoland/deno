@@ -88,6 +88,7 @@ impl SourceMapStore {
     self.data.iter().map(|(k, v)| (k.as_ref(), v.as_ref()))
   }
 
+  #[allow(clippy::len_without_is_empty)]
   pub fn len(&self) -> usize {
     self.data.len()
   }

@@ -40,7 +40,7 @@ use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NpmModuleLoader;
+use deno_lib::loader::NotSupportedKindInNpmError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;

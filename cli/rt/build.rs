@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 fn main() {
   // Skip building from docs.rs.
   if std::env::var_os("DOCS_RS").is_some() {

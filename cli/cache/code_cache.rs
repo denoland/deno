@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
-
 use deno_ast::ModuleSpecifier;
 use deno_core::error::AnyError;
 use deno_runtime::code_cache;

@@ -10,9 +10,8 @@ use deno_core::url::Url;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::SourceMapStore;
 use deno_lib::standalone::binary::MAGIC_BYTES;
+use deno_lib::standalone::virtual_fs::BuiltVfs;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
-
-use super::virtual_fs::BuiltVfs;
 
 /// Binary format:
 /// * d3n0l4nd

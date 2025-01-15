@@ -1,40 +1,30 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashSet;
-use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
-use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
 use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
-use deno_lib::util::text_encoding::from_utf8_lossy_cow;
 use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
-use crate::node::CliNodeCodeTranslator;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;

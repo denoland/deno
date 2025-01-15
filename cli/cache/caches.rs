@@ -15,7 +15,6 @@ use super::incremental::INCREMENTAL_CACHE_DB;
 use super::module_info::MODULE_INFO_CACHE_DB;
 use super::node::NODE_ANALYSIS_CACHE_DB;
 use crate::cache::DenoDirProvider;
-use crate::sys::CliSys;
 
 pub struct Caches {
   dir_provider: Arc<DenoDirProvider>,
