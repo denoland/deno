@@ -4697,7 +4697,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     {
       for specifier in specifiers {
         if let Ok(req_ref) =
-          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
+          deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
         {
           let Some((resolved, _)) =
             state.state_snapshot.resolver.npm_to_file_url(
