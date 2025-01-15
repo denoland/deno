@@ -6,12 +6,11 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_runtime::deno_node::NodePermissions;
-use sys_traits::FsCanonicalize;
+use parking_lot::Mutex;
 
-use crate::sys::CliSys;
+use crate::sys::DenoLibSys;
 
 #[derive(Debug)]
 pub enum NpmRegistryReadPermissionCheckerMode {
@@ -21,8 +20,8 @@ pub enum NpmRegistryReadPermissionCheckerMode {
 }
 
 #[derive(Debug)]
-pub struct NpmRegistryReadPermissionChecker {
-  sys: CliSys,
+pub struct NpmRegistryReadPermissionChecker<TSys: DenoLibSys> {
+  sys: TSys,
   cache: Mutex<HashMap<PathBuf, PathBuf>>,
   mode: NpmRegistryReadPermissionCheckerMode,
 }
@@ -37,8 +36,8 @@ struct EnsureRegistryReadPermissionError {
   source: std::io::Error,
 }
 
-impl NpmRegistryReadPermissionChecker {
-  pub fn new(sys: CliSys, mode: NpmRegistryReadPermissionCheckerMode) -> Self {
+impl<TSys: DenoLibSys> NpmRegistryReadPermissionChecker<TSys> {
+  pub fn new(sys: TSys, mode: NpmRegistryReadPermissionCheckerMode) -> Self {
     Self {
       sys,
       cache: Default::default(),

@@ -38,6 +38,13 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_lib::cache::DenoDir;
+use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::VfsEntry;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::standalone::virtual_fs::VirtualDirectory;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
+use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -73,20 +80,14 @@ use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::FileBackedVfs;
-use super::virtual_fs::FileSystemCaseSensitivity;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
-use super::virtual_fs::VirtualDirectory;
-use super::virtual_fs::VirtualDirectoryEntries;
-use super::virtual_fs::WindowsSystemRootablePath;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
 use crate::args::NpmInstallDepsProvider;
 use crate::args::PermissionFlags;
 use crate::args::UnstableConfig;
-use crate::cache::DenoDir;
 use crate::cache::FastInsecureHasher;
 use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
@@ -94,7 +95,7 @@ use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::shared::ReleaseChannel;
-use crate::standalone::virtual_fs::VfsEntry;
+use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -411,7 +412,7 @@ pub struct WriteBinOptions<'a> {
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
-  deno_dir: &'a DenoDir,
+  deno_dir: &'a DenoDir<CliSys>,
   emitter: &'a Emitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
@@ -425,7 +426,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub fn new(
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
-    deno_dir: &'a DenoDir,
+    deno_dir: &'a DenoDir<CliSys>,
     emitter: &'a Emitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,

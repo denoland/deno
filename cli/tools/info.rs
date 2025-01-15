@@ -18,6 +18,7 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_lib::util::checksum;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
@@ -33,7 +34,6 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
 use crate::npm::CliManagedNpmResolver;
-use crate::util::checksum;
 use crate::util::display::DisplayTreeNode;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -191,7 +191,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
-  let web_cache_dir = crate::worker::get_cache_storage_dir();
+  let web_cache_dir = deno_lib::worker::get_cache_storage_dir();
 
   if let Some(location) = &location {
     origin_dir =

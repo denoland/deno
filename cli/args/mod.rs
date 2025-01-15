@@ -58,6 +58,9 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
 pub use deno_json::check_warn_tsconfig;
+use deno_lib::cache::DenoDirProvider;
+use deno_lib::env::has_flag_env_var;
+use deno_lib::worker::StorageKeyResolver;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
@@ -89,7 +92,6 @@ use serde::Serialize;
 use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
@@ -742,7 +744,7 @@ pub struct CliOptions {
   sys: CliSys,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub deno_dir_provider: Arc<DenoDirProvider>,
+  pub deno_dir_provider: Arc<DenoDirProvider<CliSys>>,
   pub scope_options: Option<Arc<ScopeOptions>>,
 }
 
@@ -1219,6 +1221,16 @@ impl CliOptions {
       Ok(Some(snapshot.clone().into_valid()?))
     } else {
       Ok(None)
+    }
+  }
+
+  pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
+    if let Some(location) = &self.flags.location {
+      StorageKeyResolver::from_flag(location)
+    } else if let Some(deno_json) = self.start_dir.maybe_deno_json() {
+      StorageKeyResolver::from_config_file_url(&deno_json.specifier)
+    } else {
+      StorageKeyResolver::new_use_main_module()
     }
   }
 
@@ -1909,7 +1921,7 @@ fn resolve_node_modules_folder(
   cwd: &Path,
   flags: &Flags,
   workspace: &Workspace,
-  deno_dir_provider: &Arc<DenoDirProvider>,
+  deno_dir_provider: &Arc<DenoDirProvider<CliSys>>,
 ) -> Result<Option<PathBuf>, AnyError> {
   fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
     root_folder
@@ -2013,61 +2025,9 @@ fn resolve_import_map_specifier(
   }
 }
 
-pub struct StorageKeyResolver(Option<Option<String>>);
-
-impl StorageKeyResolver {
-  pub fn from_options(options: &CliOptions) -> Self {
-    Self(if let Some(location) = &options.flags.location {
-      // if a location is set, then the ascii serialization of the location is
-      // used, unless the origin is opaque, and then no storage origin is set, as
-      // we can't expect the origin to be reproducible
-      let storage_origin = location.origin();
-      if storage_origin.is_tuple() {
-        Some(Some(storage_origin.ascii_serialization()))
-      } else {
-        Some(None)
-      }
-    } else {
-      // otherwise we will use the path to the config file or None to
-      // fall back to using the main module's path
-      options
-        .start_dir
-        .maybe_deno_json()
-        .map(|config_file| Some(config_file.specifier.to_string()))
-    })
-  }
-
-  /// Creates a storage key resolver that will always resolve to being empty.
-  pub fn empty() -> Self {
-    Self(Some(None))
-  }
-
-  /// Resolves the storage key to use based on the current flags, config, or main module.
-  pub fn resolve_storage_key(
-    &self,
-    main_module: &ModuleSpecifier,
-  ) -> Option<String> {
-    // use the stored value or fall back to using the path of the main module.
-    if let Some(maybe_value) = &self.0 {
-      maybe_value.clone()
-    } else {
-      Some(main_module.to_string())
-    }
-  }
-}
-
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
-}
-
-pub fn has_trace_permissions_enabled() -> bool {
-  has_flag_env_var("DENO_TRACE_PERMISSIONS")
-}
-
-pub fn has_flag_env_var(name: &str) -> bool {
-  let value = env::var(name);
-  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
 }
 
 pub fn npm_pkg_req_ref_to_binary_command(
@@ -2196,27 +2156,6 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
-  }
-
-  #[test]
-  fn storage_key_resolver_test() {
-    let resolver = StorageKeyResolver(None);
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    assert_eq!(
-      resolver.resolve_storage_key(&specifier),
-      Some(specifier.to_string())
-    );
-    let resolver = StorageKeyResolver(Some(None));
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
-    let resolver = StorageKeyResolver(Some(Some("value".to_string())));
-    assert_eq!(
-      resolver.resolve_storage_key(&specifier),
-      Some("value".to_string())
-    );
-
-    // test empty
-    let resolver = StorageKeyResolver::empty();
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
   }
 
   #[test]

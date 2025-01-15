@@ -1270,6 +1270,7 @@ dependencies = [
  "deno_doc",
  "deno_error",
  "deno_graph",
+ "deno_lib",
  "deno_lint",
  "deno_lockfile",
  "deno_npm",
@@ -1887,6 +1888,31 @@ dependencies = [
  "rusqlite",
  "serde",
  "thiserror 2.0.3",
+ "url",
+]
+
+[[package]]
+name = "deno_lib"
+version = "0.1.1"
+dependencies = [
+ "deno_cache_dir",
+ "deno_error",
+ "deno_fs",
+ "deno_node",
+ "deno_path_util",
+ "deno_resolver",
+ "deno_runtime",
+ "deno_terminal 0.2.0",
+ "faster-hex",
+ "log",
+ "node_resolver",
+ "parking_lot",
+ "ring",
+ "serde",
+ "sys_traits",
+ "test_server",
+ "thiserror 2.0.3",
+ "tokio",
  "url",
 ]
 
