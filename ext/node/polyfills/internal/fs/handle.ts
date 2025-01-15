@@ -158,6 +158,14 @@ export class FileHandle extends EventEmitter {
     return promises.chmod(this.#path, mode);
   }
 
+  datasync(): Promise<void> {
+    return fsCall(promises.fdatasync, this);
+  }
+
+  sync(): Promise<void> {
+    return fsCall(promises.fsync, this);
+  }
+
   utimes(
     atime: number | string | Date,
     mtime: number | string | Date,
