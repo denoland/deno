@@ -42,6 +42,7 @@ use crate::lsp::urls::url_to_uri;
 use crate::tools::test;
 use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
 
 /// Logic to convert a test request into a set of test modules to be tested and
@@ -120,6 +121,44 @@ fn as_test_messages<S: AsRef<str>>(
     actual_output: None,
     location: None,
   }]
+}
+
+fn failure_to_test_message(
+  test_uri: lsp::Uri,
+  failure: &TestFailure,
+) -> lsp_custom::TestMessage {
+  let message = lsp::MarkupContent {
+    kind: lsp::MarkupKind::PlainText,
+    value: failure
+      .format(&TestFailureFormatOptions::default())
+      .to_string(),
+  };
+  let (expected_output, actual_output) =
+    if let TestFailure::Expected {
+      expected, actual, ..
+    } = failure
+    {
+      (Some(expected.to_string()), Some(actual.to_string()))
+    } else {
+      (None, None)
+    };
+  let location = failure.error_location().map(|v| {
+    let pos = lsp::Position {
+      line: v.line_number,
+      // TODO: The column number might be wrong if Unicode is involved
+      character: v.column_number,
+    };
+    lsp::Location {
+      uri: test_uri,
+      range: lsp::Range::new(pos, pos),
+    }
+  });
+  lsp_custom::TestMessage {
+    message,
+    expected_output,
+    actual_output,
+    location,
+  }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -667,12 +706,11 @@ impl LspTestReporter {
       }
       test::TestResult::Failed(failure) => {
         let desc = self.tests.get(&desc.id).unwrap();
+        let test = desc.as_test_identifier(&self.tests);
+        let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
-          test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          test,
+          messages: vec![failure_to_test_message(uri, &failure)],
           duration: Some(elapsed as u32),
         })
       }
@@ -767,12 +805,11 @@ impl LspTestReporter {
         })
       }
       test::TestStepResult::Failed(failure) => {
+        let test = desc.as_test_identifier(&self.tests);
+        let uri = test.text_document.uri.clone();
         self.progress(lsp_custom::TestRunProgressMessage::Failed {
-          test: desc.as_test_identifier(&self.tests),
-          messages: as_test_messages(
-            failure.format(&TestFailureFormatOptions::default()),
-            false,
-          ),
+          test,
+          messages: vec![failure_to_test_message(uri, &failure)],
           duration: Some(elapsed as u32),
         })
       }

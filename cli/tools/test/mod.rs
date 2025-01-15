@@ -314,6 +314,12 @@ pub struct TestFailureFormatOptions {
 #[serde(rename_all = "camelCase")]
 pub enum TestFailure {
   JsError(Box<JsError>),
+  #[serde(rename_all = "camelCase")]
+  Expected {
+    js_error: Box<JsError>,
+    expected: String,
+    actual: String,
+  },
   FailedSteps(usize),
   IncompleteSteps,
   Leaked(Vec<String>, Vec<String>), // Details, trailer notes
@@ -330,6 +336,9 @@ impl TestFailure {
   ) -> Cow<'static, str> {
     match self {
       TestFailure::JsError(js_error) => {
+        Cow::Owned(format_test_error(js_error, options))
+      }
+      TestFailure::Expected { js_error, .. } => {
         Cow::Owned(format_test_error(js_error, options))
       }
       TestFailure::FailedSteps(1) => Cow::Borrowed("1 test step failed."),
@@ -375,6 +384,9 @@ impl TestFailure {
   pub fn overview(&self) -> String {
     match self {
       TestFailure::JsError(js_error) => js_error.exception_message.clone(),
+      TestFailure::Expected { js_error, .. } => {
+        js_error.exception_message.clone()
+      }
       TestFailure::FailedSteps(1) => "1 test step failed".to_string(),
       TestFailure::FailedSteps(n) => format!("{n} test steps failed"),
       TestFailure::IncompleteSteps => {
@@ -390,6 +402,34 @@ impl TestFailure {
         "Started test step with sanitizers while another test step was running"
           .to_string()
       }
+    }
+  }
+
+  pub fn error_location(&self) -> Option<TestLocation> {
+    match self {
+      // TODO: What happens if not enough call stack frames were recorded?
+      // TODO: Could anything else trigger the ext:cli/40_test.js file? Maybe we should also test for the method name
+      TestFailure::JsError(js_error)
+      | TestFailure::Expected { js_error, .. } => js_error
+        .frames
+        .iter()
+        .position(|v| v.file_name.as_deref() == Some("ext:cli/40_test.js"))
+        // Go one up in the stack frame, this is where the user code was
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| {
+          let user_frame = &js_error.frames[index];
+          let file_name = user_frame.file_name.as_ref()?.to_string();
+          // Turn into zero based indices
+          let line_number = user_frame.line_number.map(|v| v - 1)? as u32;
+          let column_number =
+            user_frame.column_number.map(|v| v - 1).unwrap_or(0) as u32;
+          Some(TestLocation {
+            file_name,
+            line_number,
+            column_number,
+          })
+        }),
+      _ => None,
     }
   }
 

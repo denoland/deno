@@ -125,14 +125,39 @@ function assertExit(fn, isTest) {
   };
 }
 
+// From @std/internal/1.0.5/format.ts
+function format(v) {
+  return Deno.inspect(v, {
+    depth: Infinity,
+    sorted: true,
+    trailingComma: true,
+    compact: true,
+    iterableLimit: Infinity,
+    // getters should be true in assertEquals.
+    getters: true,
+    strAbbreviateSize: Infinity,
+  });
+}
+
 function wrapOuter(fn, desc) {
   return async function outerWrapped() {
     try {
       if (desc.ignore) {
         return "ignored";
       }
-      return await fn(desc) ?? "ok";
+      return (await fn(desc)) ?? "ok";
     } catch (error) {
+      if ("expected" in error && "actual" in error) {
+        return {
+          failed: {
+            expected: {
+              jsError: core.destructureError(error),
+              expected: format(error.expected),
+              actual: format(error.actual),
+            },
+          },
+        };
+      }
       return { failed: { jsError: core.destructureError(error) } };
     } finally {
       const state = MapPrototypeGet(testStates, desc.id);
