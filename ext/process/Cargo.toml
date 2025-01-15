@@ -25,9 +25,11 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 libc.workspace = true
 log.workspace = true
-nix.workspace = true
 serde.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 which.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["signal", "process"] }
