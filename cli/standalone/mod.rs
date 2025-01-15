@@ -40,10 +40,11 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
-use deno_resolver::npm::create_in_npm_pkg_checker;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
@@ -85,7 +86,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
 use crate::npm::CliByonmNpmResolverCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
@@ -94,7 +94,7 @@ use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::npm::NpmResolutionInitializer;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
@@ -122,7 +122,7 @@ use self::binary::Metadata;
 pub use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<dyn CliCodeCache>>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
@@ -131,7 +131,7 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<NpmModuleLoader>,
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
@@ -734,7 +734,7 @@ pub async fn run(
       let maybe_node_modules_path = node_modules_dir
         .map(|node_modules_dir| root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
@@ -743,7 +743,7 @@ pub async fn run(
       let npm_resolution =
         Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
       let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolver::new(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
             npm_resolution,
             npm_cache_dir,
@@ -761,8 +761,8 @@ pub async fn run(
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Byonm);
-      let npm_resolver = create_cli_npm_resolver(
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
+      let npm_resolver = CliNpmResolver::new(
         CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
           sys: sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
@@ -781,7 +781,7 @@ pub async fn run(
         npmrc.get_all_known_registries_urls(),
       ));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
@@ -789,7 +789,7 @@ pub async fn run(
         ));
       let npm_resolution = Arc::new(NpmResolutionCell::default());
       let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolver::new(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
             npm_resolution,
             sys: sys.clone(),
@@ -807,12 +807,12 @@ pub async fn run(
   let node_resolver = Arc::new(NodeResolver::new(
     in_npm_pkg_checker.clone(),
     RealIsBuiltInNodeModuleChecker,
-    npm_resolver.clone().into_npm_pkg_folder_resolver(),
+    npm_resolver.clone(),
     pkg_json_resolver.clone(),
     sys.clone(),
     node_resolver::ConditionsFromResolutionMode::default(),
   ));
-  let cjs_tracker = Arc::new(CjsTracker::new(
+  let cjs_tracker = Arc::new(CliCjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
     if metadata.unstable_config.detect_cjs {
@@ -830,7 +830,7 @@ pub async fn run(
       sys: sys.clone(),
       in_npm_pkg_checker: in_npm_pkg_checker.clone(),
       node_resolver: node_resolver.clone(),
-      npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
+      npm_resolver: npm_resolver.clone(),
     }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
@@ -842,7 +842,7 @@ pub async fn run(
     cjs_esm_code_analyzer,
     in_npm_pkg_checker,
     node_resolver.clone(),
-    npm_resolver.clone().into_npm_pkg_folder_resolver(),
+    npm_resolver.clone(),
     pkg_json_resolver.clone(),
     sys.clone(),
   ));

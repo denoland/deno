@@ -19,6 +19,7 @@ use deno_core::ModuleLoader;
 use deno_core::PollEventLoopOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_error::JsErrorBox;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_fs;
@@ -151,7 +152,7 @@ struct SharedWorkerState {
   module_loader_factory: Box<dyn ModuleLoaderFactory>,
   node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   root_permissions: PermissionsContainer,
@@ -168,18 +169,17 @@ impl SharedWorkerState {
   pub fn create_node_init_services(
     &self,
     node_require_loader: NodeRequireLoaderRc,
-  ) -> NodeExtInitServices<CliSys> {
+  ) -> NodeExtInitServices<DenoInNpmPackageChecker, CliNpmResolver, CliSys> {
     NodeExtInitServices {
       node_require_loader,
       node_resolver: self.node_resolver.clone(),
-      npm_resolver: self.npm_resolver.clone().into_npm_pkg_folder_resolver(),
       pkg_json_resolver: self.pkg_json_resolver.clone(),
       sys: self.sys.clone(),
     }
   }
 
   pub fn npm_process_state_provider(&self) -> NpmProcessStateProviderRc {
-    self.npm_resolver.clone().into_process_state_provider()
+    crate::npm::create_npm_process_state_provider(&self.npm_resolver)
   }
 }
 
@@ -427,7 +427,7 @@ impl CliMainWorkerFactory {
     module_loader_factory: Box<dyn ModuleLoaderFactory>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliNpmResolver,
     pkg_json_resolver: Arc<CliPackageJsonResolver>,
     root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
     root_permissions: PermissionsContainer,
@@ -855,7 +855,7 @@ fn create_web_worker_callback(
 /// Instead probe for the total memory on the system and use it instead
 /// as a default.
 pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
-  let maybe_mem_info = deno_runtime::sys_info::mem_info();
+  let maybe_mem_info = deno_runtime::deno_os::sys_info::mem_info();
   maybe_mem_info.map(|mem_info| {
     v8::CreateParams::default()
       .heap_limits_from_system_memory(mem_info.total, 0)
@@ -886,7 +886,11 @@ mod tests {
       ..Default::default()
     };
 
-    MainWorker::bootstrap_from_options::<CliSys>(
+    MainWorker::bootstrap_from_options::<
+      DenoInNpmPackageChecker,
+      CliNpmResolver,
+      CliSys,
+    >(
       main_module,
       WorkerServiceOptions {
         module_loader: Rc::new(FsModuleLoader),

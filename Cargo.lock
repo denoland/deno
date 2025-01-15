@@ -1497,11 +1497,12 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.43.0"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c4c11bd51ef6738cabfc3c53f16c209a0b8615cb1e4e5bf3b14e3b5deebfe21"
+checksum = "47a47412627aa0d08414eca0e8329128013ab70bdb2cdfdc5456c2214cf24c8f"
 dependencies = [
  "boxed_error",
+ "capacity_builder 0.5.0",
  "deno_error",
  "deno_package_json",
  "deno_path_util",
@@ -2140,6 +2141,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_os"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "deno_path_util",
+ "deno_permissions",
+ "deno_telemetry",
+ "libc",
+ "netif",
+ "ntapi",
+ "once_cell",
+ "serde",
+ "signal-hook",
+ "signal-hook-registry",
+ "thiserror 2.0.3",
+ "tokio",
+ "winapi",
+]
+
+[[package]]
 name = "deno_package_json"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2239,8 +2261,10 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_resolver",
  "deno_telemetry",
  "deno_terminal 0.2.0",
  "deno_tls",
@@ -2261,7 +2285,6 @@ dependencies = [
  "hyper-util",
  "libc",
  "log",
- "netif",
  "nix",
  "node_resolver",
  "notify",
@@ -2272,8 +2295,6 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
- "signal-hook",
- "signal-hook-registry",
  "sys_traits",
  "tempfile",
  "test_server",

@@ -14,9 +14,7 @@ mod sync;
 
 pub use deno_package_json::PackageJson;
 pub use npm::InNpmPackageChecker;
-pub use npm::InNpmPackageCheckerRc;
 pub use npm::NpmPackageFolderResolver;
-pub use npm::NpmPackageFolderResolverRc;
 pub use package_json::PackageJsonResolver;
 pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;

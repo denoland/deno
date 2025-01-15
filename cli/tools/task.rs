@@ -220,7 +220,7 @@ pub async fn execute_script(
   let task_runner = TaskRunner {
     task_flags: &task_flags,
     npm_installer: npm_installer.map(|n| n.as_ref()),
-    npm_resolver: npm_resolver.as_ref(),
+    npm_resolver,
     node_resolver: node_resolver.as_ref(),
     env_vars,
     cli_options,
@@ -271,7 +271,7 @@ struct RunSingleOptions<'a> {
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
   npm_installer: Option<&'a NpmInstaller>,
-  npm_resolver: &'a dyn CliNpmResolver,
+  npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
