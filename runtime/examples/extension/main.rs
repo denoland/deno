@@ -43,7 +43,7 @@ async fn main() -> Result<(), AnyError> {
     RuntimePermissionDescriptorParser::new(sys_traits::impls::RealSys),
   );
   let mut worker = MainWorker::bootstrap_from_options(
-    main_module.clone(),
+    &main_module,
     WorkerServiceOptions::<
       DenoInNpmPackageChecker,
       NpmResolver<sys_traits::impls::RealSys>,
