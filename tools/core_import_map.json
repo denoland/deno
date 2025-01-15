@@ -17,6 +17,8 @@
     "ext:deno_fetch/26_fetch.js": "../ext/fetch/26_fetch.js",
     "ext:deno_ffi/00_ffi.js": "../ext/ffi/00_ffi.js",
     "ext:deno_fs/30_fs.js": "../ext/fs/30_fs.js",
+    "ext:deno_geometry/00_init.js": "../ext/geometry/00_init.js",
+    "ext:deno_geometry/01_geometry.js": "../ext/geometry/01_geometry.js",
     "ext:deno_http/00_serve.ts": "../ext/http/00_serve.ts",
     "ext:deno_http/01_http.js": "../ext/http/01_http.js",
     "ext:deno_io/12_io.js": "../ext/io/12_io.js",
