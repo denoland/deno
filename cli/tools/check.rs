@@ -13,6 +13,7 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -261,9 +262,9 @@ impl TypeChecker {
       maybe_check_hash,
     } = get_tsc_roots(
       &self.sys,
-      &graph,
-      &self.node_resolver,
       &self.npm_resolver,
+      &self.node_resolver,
+      &graph,
       check_js,
       check_state_hash(&self.npm_resolver),
       type_check_mode,
@@ -378,22 +379,18 @@ struct TscRoots {
 #[allow(clippy::too_many_arguments)]
 fn get_tsc_roots(
   sys: &CliSys,
-  graph: &ModuleGraph,
-  node_resolver: &CliNodeResolver,
   npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
+  graph: &ModuleGraph,
   check_js: bool,
   npm_cache_state_hash: Option<u64>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> TscRoots {
   fn maybe_get_check_entry(
-    sys: &CliSys,
-    node_resolver: &CliNodeResolver,
-    npm_resolver: &CliNpmResolver,
     module: &deno_graph::Module,
     check_js: bool,
     hasher: Option<&mut FastInsecureHasher>,
-    is_import_specifier: bool,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     match module {
       Module::Js(module) => {
@@ -442,33 +439,11 @@ fn get_tsc_roots(
         // snapshot so don't bother including it in the hash
         None
       }
-      Module::Npm(npm) => {
+      Module::Npm(_) => {
         // don't bother adding this specifier to the hash
         // because what matters is the resolved npm snapshot,
         // which is hashed below
-
-        // if it's a graph import specifier, we need to resolve it
-        // fully so TSC can handle it
-        if is_import_specifier {
-          let pkg_dir = npm_resolver
-            .as_managed()
-            .unwrap()
-            .resolve_pkg_folder_from_deno_module(npm.nv_reference.nv())
-            .ok()?;
-          let specifier = node_resolver
-            .resolve_package_subpath_from_deno_module(
-              &pkg_dir,
-              npm.nv_reference.sub_path(),
-              None,
-              node_resolver::ResolutionMode::Import,
-              node_resolver::NodeResolutionKind::Types,
-            )
-            .ok()?;
-          let mt = MediaType::from_specifier(&specifier);
-          Some((specifier, mt))
-        } else {
-          None
-        }
+        None
       }
       Module::Json(module) => {
         if let Some(hasher) = hasher {
@@ -489,18 +464,7 @@ fn get_tsc_roots(
           hasher.write_str(module.specifier.as_str());
         }
 
-        // if it's a graph import specifier, we need to resolve it
-        // and include it as a root
-        if is_import_specifier {
-          let resolved = node_resolver::resolve_specifier_into_node_modules(
-            sys,
-            &module.specifier,
-          );
-          let mt = MediaType::from_specifier(&resolved);
-          Some((resolved, mt))
-        } else {
-          None
-        }
+        None
       }
     }
   }
@@ -536,17 +500,33 @@ fn get_tsc_roots(
   let mut pending = VecDeque::new();
 
   // put in the global types first so that they're resolved before anything else
-  let get_import_specifiers = || {
-    graph
-      .imports
+  for (referrer, import) in graph.imports.iter() {
+    for specifier in import
+      .dependencies
       .values()
-      .flat_map(|i| i.dependencies.values())
       .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
-  };
-  for specifier in get_import_specifiers() {
-    let specifier = graph.resolve(specifier);
-    if seen.insert(specifier) {
-      pending.push_back((specifier, false, true));
+    {
+      let specifier = graph.resolve(specifier);
+      if seen.insert(specifier) {
+        if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
+          let Some(resolved) =
+            resolve_npm_nv_ref(npm_resolver, node_resolver, &nv_ref, referrer)
+          else {
+            result.missing_diagnostics.push(
+              tsc::Diagnostic::from_missing_error(
+                specifier,
+                None,
+                maybe_additional_sloppy_imports_message(sys, specifier),
+              ),
+            );
+            continue;
+          };
+          let mt = MediaType::from_specifier(&resolved);
+          result.roots.push((resolved, mt));
+        } else {
+          pending.push_back((specifier, false));
+        }
+      }
     }
   }
 
@@ -554,14 +534,12 @@ fn get_tsc_roots(
   for root in &graph.roots {
     let specifier = graph.resolve(root);
     if seen.insert(specifier) {
-      pending.push_back((specifier, false, false));
+      pending.push_back((specifier, false));
     }
   }
 
   // now walk the graph that only includes the fast check dependencies
-  while let Some((specifier, is_dynamic, is_import_specifier)) =
-    pending.pop_front()
-  {
+  while let Some((specifier, is_dynamic)) = pending.pop_front() {
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
       Ok(None) => {
@@ -601,15 +579,9 @@ fn get_tsc_roots(
     if is_dynamic && !seen.insert(specifier) {
       continue;
     }
-    if let Some(entry) = maybe_get_check_entry(
-      sys,
-      node_resolver,
-      npm_resolver,
-      module,
-      check_js,
-      maybe_hasher.as_mut(),
-      is_import_specifier,
-    ) {
+    if let Some(entry) =
+      maybe_get_check_entry(module, check_js, maybe_hasher.as_mut())
+    {
       result.roots.push(entry);
     }
 
@@ -628,18 +600,17 @@ fn get_tsc_roots(
     fn handle_specifier<'a>(
       graph: &'a ModuleGraph,
       seen: &mut HashSet<&'a ModuleSpecifier>,
-      pending: &mut VecDeque<(&'a ModuleSpecifier, bool, bool)>,
+      pending: &mut VecDeque<(&'a ModuleSpecifier, bool)>,
       specifier: &'a ModuleSpecifier,
       is_dynamic: bool,
-      is_import_specifier: bool,
     ) {
       let specifier = graph.resolve(specifier);
       if is_dynamic {
         if !seen.contains(specifier) {
-          pending.push_back((specifier, true, is_import_specifier));
+          pending.push_back((specifier, true));
         }
       } else if seen.insert(specifier) {
-        pending.push_back((specifier, false, is_import_specifier));
+        pending.push_back((specifier, false));
       }
     }
 
@@ -653,7 +624,6 @@ fn get_tsc_roots(
             &mut pending,
             specifier,
             dep.is_dynamic,
-            is_import_specifier,
           );
         }
         if let Some(specifier) = dep.get_type() {
@@ -663,21 +633,13 @@ fn get_tsc_roots(
             &mut pending,
             specifier,
             dep.is_dynamic,
-            is_import_specifier,
           );
         }
       }
     }
 
     if let Some(dep) = maybe_types_dependency {
-      handle_specifier(
-        graph,
-        &mut seen,
-        &mut pending,
-        &dep.specifier,
-        false,
-        true,
-      );
+      handle_specifier(graph, &mut seen, &mut pending, &dep.specifier, false);
     }
   }
 
@@ -685,6 +647,29 @@ fn get_tsc_roots(
     maybe_hasher.map(|hasher| CacheDBHash::new(hasher.finish()));
 
   result
+}
+
+fn resolve_npm_nv_ref(
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
+  nv_ref: &NpmPackageNvReference,
+  referrer: &ModuleSpecifier,
+) -> Option<ModuleSpecifier> {
+  let pkg_dir = npm_resolver
+    .as_managed()
+    .unwrap()
+    .resolve_pkg_folder_from_deno_module(nv_ref.nv())
+    .ok()?;
+  let resolved = node_resolver
+    .resolve_package_subpath_from_deno_module(
+      &pkg_dir,
+      nv_ref.sub_path(),
+      Some(referrer),
+      node_resolver::ResolutionMode::Import,
+      node_resolver::NodeResolutionKind::Types,
+    )
+    .ok()?;
+  Some(resolved)
 }
 
 /// Matches the `@ts-check` pragma.
