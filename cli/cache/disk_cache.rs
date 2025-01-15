@@ -22,7 +22,7 @@ pub struct DiskCache {
   pub location: PathBuf,
 }
 
-impl<TSys: DenoLibSys> DiskCache<TSys> {
+impl DiskCache {
   /// `location` must be an absolute path.
   pub fn new(sys: TSys, location: &Path) -> Self {
     assert!(location.is_absolute());
