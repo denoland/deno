@@ -21,6 +21,7 @@ mod impl_ {
   use deno_core::ResourceId;
   use deno_core::ToV8;
   use deno_error::JsErrorBox;
+  use deno_process::ipc::IpcJsonStreamError;
   pub use deno_process::ipc::IpcJsonStreamResource;
   pub use deno_process::ipc::IpcRefTracker;
   pub use deno_process::ipc::INITIAL_CAPACITY;
@@ -274,24 +275,10 @@ mod impl_ {
     stream.ref_tracker.unref();
   }
 
-  #[derive(Debug, thiserror::Error, deno_error::JsError)]
-  pub enum IpcJsonStreamError {
-    #[class(inherit)]
-    #[error("{0}")]
-    Io(#[source] std::io::Error),
-    #[class(generic)]
-    #[error("{0}")]
-    SimdJson(#[source] simd_json::Error),
-  }
-
   #[cfg(test)]
   mod tests {
-    use std::rc::Rc;
-
-    use deno_core::serde_json::json;
     use deno_core::v8;
     use deno_core::JsRuntime;
-    use deno_core::RcRef;
     use deno_core::RuntimeOptions;
 
     fn wrap_expr(s: &str) -> String {
