@@ -41,15 +41,6 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), CoreError>;
 }
 
-pub trait CliCodeCache: code_cache::CodeCache {
-  /// Gets if the code cache is still enabled.
-  fn enabled(&self) -> bool {
-    true
-  }
-
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
-}
-
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
   async fn start_collecting(&mut self) -> Result<(), AnyError>;

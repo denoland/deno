@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod byonm;
 pub mod installer;
 mod managed;
 
@@ -12,6 +11,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_resolver::npm::ByonmNpmResolver;
 use deno_runtime::ops::process::NpmProcessStateProviderRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -37,6 +37,9 @@ pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolverCreateOptions =
+  ByonmNpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolver = ByonmNpmResolver<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -53,19 +56,6 @@ impl CliNpmCacheHttpClient {
       http_client_provider,
       progress_bar,
     }
-  }
-}
-
-pub fn create_npm_process_state_provider(
-  npm_resolver: &CliNpmResolver,
-) -> NpmProcessStateProviderRc {
-  match npm_resolver {
-    CliNpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
-      byonm::CliByonmNpmProcessStateProvider(byonm_npm_resolver.clone()),
-    ),
-    CliNpmResolver::Managed(managed_npm_resolver) => Arc::new(
-      managed::CliManagedNpmProcessStateProvider(managed_npm_resolver.clone()),
-    ),
   }
 }
 

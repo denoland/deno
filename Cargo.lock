@@ -1902,6 +1902,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
+ "deno_npm",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -1921,6 +1922,7 @@ dependencies = [
  "test_server",
  "thiserror 2.0.3",
  "tokio",
+ "twox-hash",
  "url",
 ]
 

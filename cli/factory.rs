@@ -1180,8 +1180,6 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      deno_version: crate::version::DENO_VERSION_INFO.deno,
-      deno_user_agent: crate::version::DENO_VERSION_INFO.user_agent,
       otel_config: self.cli_options()?.otel_config(),
       startup_snapshot: crate::js::deno_isolate_init(),
     })

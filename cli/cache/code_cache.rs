@@ -85,12 +85,6 @@ impl CodeCache {
   }
 }
 
-impl CliCodeCache for CodeCache {
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache> {
-    self
-  }
-}
-
 impl code_cache::CodeCache for CodeCache {
   fn get_sync(
     &self,

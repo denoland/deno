@@ -546,15 +546,6 @@ impl Default for TypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CaData {
-  /// The string is a file path
-  File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
-  Bytes(Vec<u8>),
-}
-
 // Info needed to run NPM lifecycle scripts
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {

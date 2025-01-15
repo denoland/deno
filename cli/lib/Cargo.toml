@@ -21,6 +21,7 @@ deno_error.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_media_type.workspace = true
 deno_node = { workspace = true, features = ["sync_fs"] }
+deno_npm.workspace = true
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime.workspace = true
@@ -39,6 +40,7 @@ serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+twox-hash.workspace = true
 url.workspace = true
 
 [dev-dependencies]

@@ -19,10 +19,14 @@ use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use indexmap::IndexMap;
 
+use self::binary::extract_standalone;
 use self::file_system::DenoCompileFileSystem;
 
 mod binary;
+mod code_cache;
 mod file_system;
+mod node;
+mod run;
 mod sys;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
@@ -70,7 +74,7 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 fn main() {
   deno_runtime::deno_permissions::mark_standalone();
   let args: Vec<_> = env::args_os().collect();
-  let standalone = standalone::extract_standalone(Cow::Owned(args));
+  let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
@@ -84,7 +88,7 @@ fn main() {
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
         let sys = DenoCompileFileSystem::new(data.vfs.clone());
-        let exit_code = standalone::run(Arc::new(fs), sys, data).await?;
+        let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),

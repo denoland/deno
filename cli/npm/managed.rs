@@ -207,27 +207,3 @@ async fn snapshot_from_lockfile(
   .await?;
   Ok(snapshot)
 }
-
-pub fn npm_process_state(
-  snapshot: ValidSerializedNpmResolutionSnapshot,
-  node_modules_path: Option<&Path>,
-) -> String {
-  serde_json::to_string(&NpmProcessState {
-    kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
-    local_node_modules_path: node_modules_path
-      .map(|p| p.to_string_lossy().to_string()),
-  })
-  .unwrap()
-}
-
-#[derive(Debug)]
-pub struct CliManagedNpmProcessStateProvider(pub ManagedNpmResolverRc<CliSys>);
-
-impl NpmProcessStateProvider for CliManagedNpmProcessStateProvider {
-  fn get_npm_process_state(&self) -> String {
-    npm_process_state(
-      self.0.resolution().serialized_valid_snapshot(),
-      self.0.root_node_modules_path(),
-    )
-  }
-}

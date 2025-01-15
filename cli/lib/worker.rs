@@ -42,9 +42,10 @@ use deno_runtime::BootstrapOptions;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use tokio::select;
 use url::Url;
 
-use crate::env::has_trace_permissions_enabled;
+use crate::args::has_trace_permissions_enabled;
 use crate::sys::DenoLibSys;
 use crate::util::checksum;
 
@@ -131,8 +132,6 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 
 pub struct LibMainWorkerOptions {
   pub argv: Vec<String>,
-  pub deno_version: &'static str,
-  pub deno_user_agent: &'static str,
   pub log_level: WorkerLogLevel,
   pub enable_op_summary_metrics: bool,
   pub enable_testing_features: bool,
@@ -261,7 +260,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
         main_module: args.main_module.clone(),
         worker_id: args.worker_id,
         bootstrap: BootstrapOptions {
-          deno_version: shared.options.deno_version.to_string(),
+          deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
           args: shared.options.argv.clone(),
           cpu_count: std::thread::available_parallelism()
             .map(|p| p.get())
@@ -276,7 +275,7 @@ impl<TSys: DenoLibSys> LibWorkerFactorySharedState<TSys> {
           is_stdout_tty: deno_terminal::is_stdout_tty(),
           is_stderr_tty: deno_terminal::is_stderr_tty(),
           unstable_features,
-          user_agent: shared.options.deno_user_agent.to_string(),
+          user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
           inspect: shared.options.is_inspecting,
           has_node_modules_dir: shared.options.has_node_modules_dir,
           argv0: shared.options.argv0.clone(),
@@ -357,6 +356,21 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     }
   }
 
+  pub fn create_main_worker(
+    &self,
+    mode: WorkerExecutionMode,
+    permissions: PermissionsContainer,
+    main_module: Url,
+  ) -> Result<LibMainWorker, CoreError> {
+    self.create_custom_worker(
+      mode,
+      main_module,
+      permissions,
+      vec![],
+      Default::default(),
+    )
+  }
+
   pub fn create_custom_worker(
     &self,
     mode: WorkerExecutionMode,
@@ -418,7 +432,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
 
     let options = WorkerOptions {
       bootstrap: BootstrapOptions {
-        deno_version: shared.options.deno_version.to_string(),
+        deno_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
         args: shared.options.argv.clone(),
         cpu_count: std::thread::available_parallelism()
           .map(|p| p.get())
@@ -433,7 +447,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         is_stderr_tty: deno_terminal::is_stderr_tty(),
         color_level: colors::get_color_level(),
         unstable_features,
-        user_agent: shared.options.deno_user_agent.to_string(),
+        user_agent: crate::version::DENO_VERSION_INFO.user_agent.to_string(),
         inspect: shared.options.is_inspecting,
         has_node_modules_dir: shared.options.has_node_modules_dir,
         argv0: shared.options.argv0.clone(),
@@ -532,6 +546,34 @@ impl LibMainWorker {
   pub async fn execute_side_module(&mut self) -> Result<(), CoreError> {
     let id = self.worker.preload_side_module(&self.main_module).await?;
     self.worker.evaluate_module(id).await
+  }
+
+  // todo(THIS PR): get cli worker to use this
+  pub async fn run(&mut self) -> Result<i32, CoreError> {
+    log::debug!("main_module {}", self.main_module);
+
+    self.execute_main_module().await?;
+    self.worker.dispatch_load_event()?;
+
+    loop {
+      self
+        .worker
+        .run_event_loop(/* wait for inspector */ false)
+        .await?;
+
+      let web_continue = self.worker.dispatch_beforeunload_event()?;
+      if !web_continue {
+        let node_continue = self.worker.dispatch_process_beforeexit_event()?;
+        if !node_continue {
+          break;
+        }
+      }
+    }
+
+    self.worker.dispatch_unload_event()?;
+    self.worker.dispatch_process_exit_event()?;
+
+    Ok(self.worker.exit_code())
   }
 
   #[inline]

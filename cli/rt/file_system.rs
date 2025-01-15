@@ -2,12 +2,8 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::cmp::Ordering;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
 use std::io::SeekFrom;
 use std::ops::Range;
 use std::path::Path;
@@ -17,27 +13,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
-use deno_lib::standalone::virtual_fs::OffsetWithLength;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsEntryRef;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
-use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::VirtualFile;
-use deno_lib::standalone::virtual_fs::VirtualSymlink;
-use deno_lib::standalone::virtual_fs::VirtualSymlinkParts;
-use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
-use deno_path_util::normalize_path;
-use deno_path_util::strip_unc_prefix;
+use deno_lib::sys::DenoLibSys;
 use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -49,15 +34,12 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
-use indexmap::IndexSet;
-use serde::Deserialize;
-use serde::Serialize;
+use deno_runtime::deno_node::ExtNodeSys;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
-use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
@@ -450,6 +432,9 @@ impl FileSystem for DenoCompileFileSystem {
       .await
   }
 }
+
+impl ExtNodeSys for DenoCompileFileSystem {}
+impl DenoLibSys for DenoCompileFileSystem {}
 
 impl sys_traits::BaseFsHardLink for DenoCompileFileSystem {
   #[inline]

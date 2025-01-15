@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::io::BufReader;
 use std::io::BufWriter;
@@ -15,12 +14,10 @@ use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::sync::AtomicFlag;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_path_util::get_atomic_path;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::code_cache::CodeCacheType;
-
-use crate::cache::FastInsecureHasher;
-use crate::worker::CliCodeCache;
 
 enum CodeCacheStrategy {
   FirstRun(FirstRunCodeCacheStrategy),
@@ -73,6 +70,21 @@ impl DenoCompileCodeCache {
             }),
           }),
         }
+      }
+    }
+  }
+
+  pub fn for_deno_core(self: Arc<Self>) -> Arc<dyn CodeCache> {
+    self.clone()
+  }
+
+  pub fn enabled(&self) -> bool {
+    match &self.strategy {
+      CodeCacheStrategy::FirstRun(strategy) => {
+        !strategy.is_finished.is_raised()
+      }
+      CodeCacheStrategy::SubsequentRun(strategy) => {
+        !strategy.is_finished.is_raised()
       }
     }
   }
@@ -149,23 +161,6 @@ impl CodeCache for DenoCompileCodeCache {
         // do nothing
       }
     }
-  }
-}
-
-impl CliCodeCache for DenoCompileCodeCache {
-  fn enabled(&self) -> bool {
-    match &self.strategy {
-      CodeCacheStrategy::FirstRun(strategy) => {
-        !strategy.is_finished.is_raised()
-      }
-      CodeCacheStrategy::SubsequentRun(strategy) => {
-        !strategy.is_finished.is_raised()
-      }
-    }
-  }
-
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn CodeCache> {
-    self
   }
 }
 

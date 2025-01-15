@@ -30,7 +30,6 @@ mod cache_db;
 mod caches;
 mod check;
 mod code_cache;
-mod common;
 mod emit;
 mod fast_check;
 mod incremental;
@@ -42,7 +41,6 @@ pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
-pub use common::FastInsecureHasher;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
 pub use emit::EmitCache;

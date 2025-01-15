@@ -148,7 +148,7 @@ impl EmitFileSerializer {
     // it's ok to use an insecure hash here because
     // if someone can change the emit source then they
     // can also change the version hash
-    crate::cache::FastInsecureHasher::new_without_deno_version() // use cli_version property instead
+    deno_lib::util::hash::FastInsecureHasher::new_without_deno_version() // use cli_version property instead
       .write(bytes)
       // emit should not be re-used between cli versions
       .write_str(self.cli_version)
