@@ -67,7 +67,7 @@ interface Console {
   debug(...data: any[]): void;
 
   /**
-   * Displays an interactive list of the properties of a specified object
+   * Displays a list of the properties of a specified object
    * @param item Object to display
    * @param options Formatting options
    * @example
