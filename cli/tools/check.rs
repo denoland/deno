@@ -262,6 +262,8 @@ impl TypeChecker {
     } = get_tsc_roots(
       &self.sys,
       &graph,
+      &self.node_resolver,
+      &self.npm_resolver,
       check_js,
       check_state_hash(&self.npm_resolver),
       type_check_mode,
@@ -376,12 +378,17 @@ struct TscRoots {
 fn get_tsc_roots(
   sys: &CliSys,
   graph: &ModuleGraph,
+  node_resolver: &CliNodeResolver,
+  npm_resolver: &CliNpmResolver,
   check_js: bool,
   npm_cache_state_hash: Option<u64>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
 ) -> TscRoots {
   fn maybe_get_check_entry(
+    sys: &CliSys,
+    node_resolver: &CliNodeResolver,
+    npm_resolver: &CliNpmResolver,
     module: &deno_graph::Module,
     check_js: bool,
     hasher: Option<&mut FastInsecureHasher>,
@@ -433,11 +440,26 @@ fn get_tsc_roots(
         // snapshot so don't bother including it in the hash
         None
       }
-      Module::Npm(_) => {
+      Module::Npm(npm) => {
         // don't bother adding this specifier to the hash
         // because what matters is the resolved npm snapshot,
         // which is hashed below
-        None
+        let pkg_dir = npm_resolver
+          .as_managed()
+          .unwrap()
+          .resolve_pkg_folder_from_deno_module(npm.nv_reference.nv())
+          .ok()?;
+        let specifier = node_resolver
+          .resolve_package_subpath_from_deno_module(
+            &pkg_dir,
+            npm.nv_reference.sub_path(),
+            None,
+            node_resolver::ResolutionMode::Import,
+            node_resolver::NodeResolutionKind::Types,
+          )
+          .ok()?;
+        let mt = MediaType::from_specifier(&specifier);
+        Some((specifier, mt))
       }
       Module::Json(module) => {
         if let Some(hasher) = hasher {
@@ -457,7 +479,12 @@ fn get_tsc_roots(
         if let Some(hasher) = hasher {
           hasher.write_str(module.specifier.as_str());
         }
-        None
+        let resolved = node_resolver::resolve_specifier_into_node_modules(
+          sys,
+          &module.specifier,
+        );
+        let mt = MediaType::from_specifier(&resolved);
+        Some((resolved, mt))
       }
     }
   }
@@ -519,7 +546,9 @@ fn get_tsc_roots(
   while let Some((specifier, is_dynamic)) = pending.pop_front() {
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
-      Ok(None) => continue,
+      Ok(None) => {
+        continue;
+      }
       Err(ModuleError::Missing(specifier, maybe_range)) => {
         if !is_dynamic {
           result
@@ -554,9 +583,14 @@ fn get_tsc_roots(
     if is_dynamic && !seen.insert(specifier) {
       continue;
     }
-    if let Some(entry) =
-      maybe_get_check_entry(module, check_js, maybe_hasher.as_mut())
-    {
+    if let Some(entry) = maybe_get_check_entry(
+      sys,
+      node_resolver,
+      npm_resolver,
+      module,
+      check_js,
+      maybe_hasher.as_mut(),
+    ) {
       result.roots.push(entry);
     }
 
