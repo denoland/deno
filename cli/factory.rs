@@ -1126,7 +1126,7 @@ impl CliFactory {
       self.maybe_inspector_server()?.clone(),
       Box::new(module_loader_factory),
       node_resolver.clone(),
-      create_npm_process_state_provider(&npm_resolver),
+      create_npm_process_state_provider(npm_resolver),
       pkg_json_resolver,
       self.root_cert_store_provider().clone(),
       cli_options.resolve_storage_key_resolver(),
@@ -1194,7 +1194,7 @@ impl CliFactory {
     let create_hmr_runner = if cli_options.has_hmr() {
       let watcher_communicator = self.watcher_communicator.clone().unwrap();
       let emitter = self.emitter()?.clone();
-      let fn_: crate::worker::CreateHmrRunnerCb = Arc::new(move |session| {
+      let fn_: crate::worker::CreateHmrRunnerCb = Box::new(move |session| {
         Box::new(HmrRunner::new(
           emitter.clone(),
           session,
