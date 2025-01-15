@@ -114,7 +114,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   sys: CliSys,
 }
 
@@ -148,7 +148,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliNpmResolver,
     sys: CliSys,
   ) -> Self {
     Self {
@@ -191,6 +191,29 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
+    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
+      match resolver {
+        CliNpmResolver::Byonm(_) => {
+          // not feasible and probably slower to compute
+          None
+        }
+        CliNpmResolver::Managed(resolver) => {
+          // we should probably go further and check all the individual npm packages
+          let mut package_reqs = resolver.resolution().package_reqs();
+          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+          let mut hasher = FastInsecureHasher::new_without_deno_version();
+          // ensure the cache gets busted when turning nodeModulesDir on or off
+          // as this could cause changes in resolution
+          hasher.write_hashable(resolver.root_node_modules_path().is_some());
+          for (pkg_req, pkg_nv) in package_reqs {
+            hasher.write_hashable(&pkg_req);
+            hasher.write_hashable(&pkg_nv);
+          }
+          Some(hasher.finish())
+        }
+      }
+    }
+
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }
@@ -265,7 +288,7 @@ impl TypeChecker {
       &self.sys,
       &graph,
       check_js,
-      self.npm_resolver.check_state_hash(),
+      check_state_hash(&self.npm_resolver),
       type_check_mode,
       &ts_config,
     );

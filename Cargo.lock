@@ -2140,6 +2140,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_os"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "deno_path_util",
+ "deno_permissions",
+ "deno_telemetry",
+ "libc",
+ "netif",
+ "ntapi",
+ "once_cell",
+ "serde",
+ "signal-hook",
+ "signal-hook-registry",
+ "thiserror 2.0.3",
+ "tokio",
+ "winapi",
+]
+
+[[package]]
 name = "deno_package_json"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2239,8 +2260,10 @@ dependencies = [
  "deno_napi",
  "deno_net",
  "deno_node",
+ "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_resolver",
  "deno_telemetry",
  "deno_terminal 0.2.0",
  "deno_tls",
@@ -2261,7 +2284,6 @@ dependencies = [
  "hyper-util",
  "libc",
  "log",
- "netif",
  "nix",
  "node_resolver",
  "notify",
@@ -2272,8 +2294,6 @@ dependencies = [
  "rustyline",
  "same-file",
  "serde",
- "signal-hook",
- "signal-hook-registry",
  "sys_traits",
  "tempfile",
  "test_server",

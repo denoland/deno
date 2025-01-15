@@ -92,8 +92,7 @@ use crate::emit::Emitter;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::shared::ReleaseChannel;
 use crate::standalone::virtual_fs::VfsEntry;
 use crate::util::archive;
@@ -410,13 +409,13 @@ pub struct WriteBinOptions<'a> {
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
-  cjs_tracker: &'a CjsTracker,
+  cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
-  npm_resolver: &'a dyn CliNpmResolver,
+  npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver,
   npm_system_info: NpmSystemInfo,
 }
@@ -424,13 +423,13 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cjs_tracker: &'a CjsTracker,
+    cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
-    npm_resolver: &'a dyn CliNpmResolver,
+    npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
@@ -599,10 +598,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
-    let npm_snapshot = match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(managed) => {
-        let snapshot =
-          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+    let npm_snapshot = match &self.npm_resolver {
+      CliNpmResolver::Managed(managed) => {
+        let snapshot = managed
+          .resolution()
+          .serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
           self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
           Some(snapshot)
@@ -610,7 +610,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           None
         }
       }
-      InnerCliNpmResolverRef::Byonm(_) => {
+      CliNpmResolver::Byonm(_) => {
         self.fill_npm_vfs(&mut vfs)?;
         None
       }
@@ -751,8 +751,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    let node_modules = match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(_) => {
+    let node_modules = match &self.npm_resolver {
+      CliNpmResolver::Managed(_) => {
         npm_snapshot.as_ref().map(|_| NodeModules::Managed {
           node_modules_dir: self.npm_resolver.root_node_modules_path().map(
             |path| {
@@ -765,7 +765,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           ),
         })
       }
-      InnerCliNpmResolverRef::Byonm(resolver) => Some(NodeModules::Byonm {
+      CliNpmResolver::Byonm(resolver) => Some(NodeModules::Byonm {
         root_node_modules_dir: resolver.root_node_modules_path().map(
           |node_modules_dir| {
             root_dir_url
@@ -880,16 +880,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
 
-    match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    match &self.npm_resolver {
+      CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
           // we'll flatten to remove any custom registries later
-          let mut packages =
-            npm_resolver.all_system_packages(&self.npm_system_info);
+          let mut packages = npm_resolver
+            .resolution()
+            .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           for package in packages {
             let folder =
@@ -899,7 +900,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Ok(())
         }
       }
-      InnerCliNpmResolverRef::Byonm(_) => {
+      CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
@@ -942,8 +943,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     mut vfs: VfsBuilder,
   ) -> BuiltVfs {
-    match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    match &self.npm_resolver {
+      CliNpmResolver::Managed(npm_resolver) => {
         if npm_resolver.root_node_modules_path().is_some() {
           return vfs.build();
         }
@@ -1007,8 +1008,16 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // this is not as optimized as it could be
         let mut last_name =
           Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
-        for ancestor in parent.ancestors() {
-          let dir = vfs.get_dir_mut(ancestor).unwrap();
+        for ancestor in
+          parent.ancestors().map(Some).chain(std::iter::once(None))
+        {
+          let dir = if let Some(ancestor) = ancestor {
+            vfs.get_dir_mut(ancestor).unwrap()
+          } else if cfg!(windows) {
+            vfs.get_system_root_dir_mut()
+          } else {
+            break;
+          };
           if let Ok(index) =
             dir.entries.binary_search(&last_name, case_sensitivity)
           {
@@ -1027,7 +1036,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           .insert(npm_global_cache_dir_entry, case_sensitivity);
         built_vfs
       }
-      InnerCliNpmResolverRef::Byonm(_) => vfs.build(),
+      CliNpmResolver::Byonm(_) => vfs.build(),
     }
   }
 }

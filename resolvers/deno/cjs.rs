@@ -2,7 +2,7 @@
 
 use deno_media_type::MediaType;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use sys_traits::FsRead;
@@ -16,14 +16,16 @@ use crate::sync::MaybeDashMap;
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TSys: FsRead> {
-  is_cjs_resolver: IsCjsResolver<TSys>,
+pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
+  is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TSys: FsRead> CjsTracker<TSys> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  CjsTracker<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
@@ -125,15 +127,20 @@ pub enum IsCjsResolutionMode {
 
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
-pub struct IsCjsResolver<TSys: FsRead> {
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
+pub struct IsCjsResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: FsRead,
+> {
+  in_npm_pkg_checker: TInNpmPackageChecker,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TSys: FsRead> IsCjsResolver<TSys> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  IsCjsResolver<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
