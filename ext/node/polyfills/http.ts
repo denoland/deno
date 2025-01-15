@@ -637,6 +637,12 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
+        socket.on("error", (err) => {
+          // This callback loosely follow `socketErrorListener` in Node.js
+          // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
+          emitErrorEvent(this, err);
+          socket.destroy(err);
+        });
         if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
