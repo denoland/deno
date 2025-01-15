@@ -18,14 +18,15 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
-# TODO(bartlomieju): this crate shouldn't depend on `deno_node`.
-deno_node.workspace = true
 deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 libc.workspace = true
 log.workspace = true
+memchr = "2.7.4"
+pin-project-lite = "0.2.13"
 serde.workspace = true
+simd-json = "0.14.0"
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
