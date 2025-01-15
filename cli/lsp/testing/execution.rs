@@ -190,6 +190,7 @@ impl LspTestFilter {
 pub struct TestRun {
   id: u32,
   kind: lsp_custom::TestRunKind,
+  is_continuous: bool,
   filters: HashMap<ModuleSpecifier, LspTestFilter>,
   queue: HashSet<ModuleSpecifier>,
   tests: TestServerTests,
@@ -211,6 +212,7 @@ impl TestRun {
     Self {
       id: params.id,
       kind: params.kind.clone(),
+      is_continuous: params.is_continuous,
       filters,
       queue,
       tests,
@@ -529,6 +531,9 @@ impl TestRun {
     {
       args.push(Cow::Borrowed("--inspect"));
     }
+    if self.is_continuous && !args.contains(&Cow::Borrowed("--watch")) {
+      args.push(Cow::Borrowed("--watch"));
+    }
     args
   }
 }
@@ -845,6 +850,7 @@ mod tests {
     let params = lsp_custom::TestRunRequestParams {
       id: 1,
       kind: lsp_custom::TestRunKind::Run,
+      is_continuous: false,
       include: Some(vec![
         lsp_custom::TestIdentifier {
           text_document: lsp::TextDocumentIdentifier {

@@ -93,6 +93,8 @@ pub enum TestRunKind {
 pub struct TestRunRequestParams {
   pub id: u32,
   pub kind: TestRunKind,
+  /// Corresponds to --watch
+  pub is_continuous: bool,
   #[serde(skip_serializing_if = "Vec::is_empty")]
   #[serde(default)]
   pub exclude: Vec<TestIdentifier>,
