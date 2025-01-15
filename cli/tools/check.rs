@@ -375,6 +375,7 @@ struct TscRoots {
 /// redirects resolved. We need to include all the emittable files in
 /// the roots, so they get type checked and optionally emitted,
 /// otherwise they would be ignored if only imported into JavaScript.
+#[allow(clippy::too_many_arguments)]
 fn get_tsc_roots(
   sys: &CliSys,
   graph: &ModuleGraph,
