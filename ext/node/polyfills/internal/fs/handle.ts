@@ -165,6 +165,11 @@ export class FileHandle extends EventEmitter {
     assertNotClosed(this, promises.utimes.name);
     return promises.utimes(this.#path, atime, mtime);
   }
+
+  chown(uid: number, gid: number): Promise<void> {
+    assertNotClosed(this, promises.chown.name);
+    return promises.chown(this.#path, uid, gid);
+  }
 }
 
 function assertNotClosed(handle: FileHandle, syscall: string) {

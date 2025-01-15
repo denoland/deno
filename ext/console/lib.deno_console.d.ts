@@ -67,7 +67,7 @@ interface Console {
   debug(...data: any[]): void;
 
   /**
-   * Displays an interactive list of the properties of a specified object
+   * Displays a list of the properties of a specified object
    * @param item Object to display
    * @param options Formatting options
    * @examplegit
@@ -221,7 +221,7 @@ interface Console {
   warn(...data: any[]): void;
 
   /**
-   * Adds a marker to the browser's Timeline or DevTools Performance panel
+   * Adds a marker to the DevTools Performance panel
    * @param label Label for the timestamp
    * @example
    * ```ts

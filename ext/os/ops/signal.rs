@@ -33,17 +33,6 @@ use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlC;
 
-deno_core::extension!(
-  deno_signal,
-  ops = [op_signal_bind, op_signal_unbind, op_signal_poll],
-  state = |state| {
-    #[cfg(unix)]
-    {
-      state.put(SignalState::default());
-    }
-  }
-);
-
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SignalError {
   #[class(type)]
@@ -62,7 +51,7 @@ pub enum SignalError {
 
 #[cfg(unix)]
 #[derive(Default)]
-struct SignalState {
+pub struct SignalState {
   enable_default_handlers: BTreeMap<libc::c_int, Arc<AtomicBool>>,
 }
 
@@ -164,7 +153,7 @@ impl Resource for SignalStreamResource {
 #[cfg(unix)]
 #[op2(fast)]
 #[smi]
-fn op_signal_bind(
+pub fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
@@ -201,7 +190,7 @@ fn op_signal_bind(
 #[cfg(windows)]
 #[op2(fast)]
 #[smi]
-fn op_signal_bind(
+pub fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
@@ -225,7 +214,7 @@ fn op_signal_bind(
 }
 
 #[op2(async)]
-async fn op_signal_poll(
+pub async fn op_signal_poll(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<bool, ResourceError> {
