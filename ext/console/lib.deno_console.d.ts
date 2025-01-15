@@ -10,163 +10,251 @@
  * The Console interface provides methods for logging information to the console,
  * as well as other utility methods for debugging and inspecting code.
  * @see https://developer.mozilla.org/en-US/docs/Web/API/console
- * 
- * @interface Console
- * 
- * @method assert
- * @param {boolean} [condition] - The condition to assert.
- * @param {...any[]} data - Data to log if the assertion fails.
- * @example
- * console.assert(1 === 1, "This will not log");
- * console.assert(1 === 2, "This will log");
- * 
- * @method clear
- * Clears the console.
- * @example
- * console.clear();
- * 
- * @method count
- * @param {string} [label] - The label for the counter.
- * @example
- * console.count("myLabel");
- * console.count("myLabel");
- * 
- * @method countReset
- * @param {string} [label] - The label for the counter to reset.
- * @example
- * console.count("myLabel");
- * console.countReset("myLabel");
- * console.count("myLabel");
- * 
- * @method debug
- * @param {...any[]} data - Data to log at the debug level.
- * @example
- * console.debug("Debug message");
- * 
- * @method dir
- * @param {any} [item] - The item to log.
- * @param {any} [options] - Options for logging.
- * @example
- * console.dir({key: "value"});
- * 
- * @method dirxml
- * @param {...any[]} data - Data to log as XML.
- * @example
- * console.dirxml(document);
- * 
- * @method error
- * @param {...any[]} data - Data to log at the error level.
- * @example
- * console.error("Error message");
- * 
- * @method group
- * @param {...any[]} data - Data to log in a group.
- * @example
- * console.group("Group label");
- * console.log("Inside group");
- * console.groupEnd();
- * 
- * @method groupCollapsed
- * @param {...any[]} data - Data to log in a collapsed group.
- * @example
- * console.groupCollapsed("Collapsed group label");
- * console.log("Inside collapsed group");
- * console.groupEnd();
- * 
- * @method groupEnd
- * Ends the current group.
- * @example
- * console.group("Group label");
- * console.log("Inside group");
- * console.groupEnd();
- * 
- * @method info
- * @param {...any[]} data - Data to log at the info level.
- * @example
- * console.info("Info message");
- * 
- * @method log
- * @param {...any[]} data - Data to log.
- * @example
- * console.log("Log message");
- * 
- * @method table
- * @param {any} [tabularData] - Data to log as a table.
- * @param {string[]} [properties] - Properties to include in the table.
- * @example
- * console.table([{a: 1, b: 2}, {a: 3, b: 4}]);
- * 
- * @method time
- * @param {string} [label] - The label for the timer.
- * @example
- * console.time("myTimer");
- * 
- * @method timeEnd
- * @param {string} [label] - The label for the timer to end.
- * @example
- * console.time("myTimer");
- * console.timeEnd("myTimer");
- * 
- * @method timeLog
- * @param {string} [label] - The label for the timer.
- * @param {...any[]} data - Data to log with the timer.
- * @example
- * console.time("myTimer");
- * console.timeLog("myTimer", "Additional data");
- * 
- * @method trace
- * @param {...any[]} data - Data to log with a stack trace.
- * @example
- * console.trace("Trace message");
- * 
- * @method warn
- * @param {...any[]} data - Data to log at the warn level.
- * @example
- * console.warn("Warning message");
- * 
- * @method timeStamp
- * @param {string} [label] - The label for the timestamp.
- * @example
- * console.timeStamp("myTimestamp");
- * 
- * @method profile
- * @param {string} [label] - The label for the profile.
- * @example
- * console.profile("myProfile");
- * 
- * @method profileEnd
- * @param {string} [label] - The label for the profile to end.
- * @example
- * console.profile("myProfile");
- * console.profileEnd("myProfile");
  */
+/** Interface representing the console object that provides methods for logging, debugging, and timing */
 interface Console {
+  /** 
+   * Tests that an expression is true. If not, logs an error message
+   * @param condition The expression to test for truthiness
+   * @param data Additional arguments to be printed if the assertion fails
+   * @example
+   * ```ts
+   * console.assert(1 === 1, "This won't show");
+   * console.assert(1 === 2, "This will show an error");
+   * ```
+   */
   assert(condition?: boolean, ...data: any[]): void;
+
+  /** 
+   * Clears the console if the environment allows it
+   * @example
+   * ```ts
+   * console.clear();
+   * ```
+   */
   clear(): void;
+
+  /** 
+   * Maintains an internal counter for a given label, incrementing it each time the method is called
+   * @param label The label to count. Defaults to 'default'
+   * @example
+   * ```ts
+   * console.count('myCounter');
+   * console.count('myCounter'); // Will show: myCounter: 2
+   * ```
+   */
   count(label?: string): void;
+
+  /**
+   * Resets the counter for a given label
+   * @param label The label to reset. Defaults to 'default'
+   * @example
+   * ```ts
+   * console.count('myCounter');
+   * console.countReset('myCounter'); // Resets to 0
+   * ```
+   */
   countReset(label?: string): void;
+
+  /**
+   * Outputs a debugging message to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.debug('Debug message', { detail: 'some data' });
+   * ```
+   */
   debug(...data: any[]): void;
+
+  /**
+   * Displays an interactive list of the properties of a specified object
+   * @param item Object to display
+   * @param options Formatting options
+   * @example
+   * ```ts
+   * console.dir({ name: 'object', value: 42 }, { depth: 1 });
+   * ```
+   */
   dir(item?: any, options?: any): void;
+
+  /**
+   * Displays an XML/HTML Element representation of the specified object if possible
+   * @param data Elements to display
+   * @example
+   * ```ts
+   * const element = document.createElement('div');
+   * console.dirxml(element);
+   * ```
+   */
   dirxml(...data: any[]): void;
+
+  /**
+   * Outputs an error message to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.error('Error occurred:', new Error('Something went wrong'));
+   * ```
+   */
   error(...data: any[]): void;
+
+  /**
+   * Creates a new inline group in the console, indenting subsequent console messages
+   * @param data Labels for the group
+   * @example
+   * ```ts
+   * console.group('Group 1');
+   * console.log('Inside group 1');
+   * console.groupEnd();
+   * ```
+   */
   group(...data: any[]): void;
+
+  /**
+   * Creates a new inline group in the console that is initially collapsed
+   * @param data Labels for the group
+   * @example
+   * ```ts
+   * console.groupCollapsed('Details');
+   * console.log('Hidden until expanded');
+   * console.groupEnd();
+   * ```
+   */
   groupCollapsed(...data: any[]): void;
+
+  /** 
+   * Exits the current inline group in the console
+   * @example
+   * ```ts
+   * console.group('Group');
+   * console.log('Grouped message');
+   * console.groupEnd();
+   * ```
+   */
   groupEnd(): void;
+
+  /**
+   * Outputs an informational message to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.info('Application started', { version: '1.0.0' });
+   * ```
+   */
   info(...data: any[]): void;
+
+  /**
+   * Outputs a message to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.log('Hello', 'World', 123);
+   * ```
+   */
   log(...data: any[]): void;
+
+  /**
+   * Displays tabular data as a table
+   * @param tabularData Data to be displayed in table format
+   * @param properties Array of property names to be displayed
+   * @example
+   * ```ts
+   * console.table([
+   *   { name: 'John', age: 30 },
+   *   { name: 'Jane', age: 25 }
+   * ]);
+   * ```
+   */
   table(tabularData?: any, properties?: string[]): void;
+
+  /**
+   * Starts a timer you can use to track how long an operation takes
+   * @param label Timer label. Defaults to 'default'
+   * @example
+   * ```ts
+   * console.time('operation');
+   * // ... some code
+   * console.timeEnd('operation');
+   * ```
+   */
   time(label?: string): void;
+
+  /**
+   * Stops a timer that was previously started
+   * @param label Timer label to stop. Defaults to 'default'
+   * @example
+   * ```ts
+   * console.time('operation');
+   * // ... some code
+   * console.timeEnd('operation'); // Prints: operation: 1234ms
+   * ```
+   */
   timeEnd(label?: string): void;
+
+  /**
+   * Logs the current value of a timer that was previously started
+   * @param label Timer label
+   * @param data Additional data to log
+   * @example
+   * ```ts
+   * console.time('process');
+   * // ... some code
+   * console.timeLog('process', 'Checkpoint A');
+   * ```
+   */
   timeLog(label?: string, ...data: any[]): void;
+
+  /**
+   * Outputs a stack trace to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.trace('Trace message');
+   * ```
+   */
   trace(...data: any[]): void;
+
+  /**
+   * Outputs a warning message to the console
+   * @param data Values to be printed to the console
+   * @example
+   * ```ts
+   * console.warn('Deprecated feature used');
+   * ```
+   */
   warn(...data: any[]): void;
 
-  /** This method is a noop, unless used in inspector */
+  /**
+   * Adds a marker to the browser's Timeline or DevTools Performance panel
+   * @param label Label for the timestamp
+   * @example
+   * ```ts
+   * console.timeStamp('Navigation Start');
+   * ```
+   */
   timeStamp(label?: string): void;
 
-  /** This method is a noop, unless used in inspector */
+  /**
+   * Starts recording a performance profile
+   * @param label Profile label
+   * @example
+   * ```ts
+   * console.profile('Performance Profile');
+   * // ... code to profile
+   * console.profileEnd('Performance Profile');
+   * ```
+   */
   profile(label?: string): void;
 
-  /** This method is a noop, unless used in inspector */
+  /**
+   * Stops recording a performance profile
+   * @param label Profile label to stop
+   * @example
+   * ```ts
+   * console.profile('Performance Profile');
+   * // ... code to profile
+   * console.profileEnd('Performance Profile');
+   * ```
+   */
   profileEnd(label?: string): void;
 }
