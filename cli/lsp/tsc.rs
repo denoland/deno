@@ -4690,32 +4690,14 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
   // inject these next because they're global
   for (scope, script_names) in &mut result.by_scope {
-    for (referrer, specifiers) in state
+    for (_, specifiers) in state
       .state_snapshot
       .resolver
       .graph_imports_by_referrer(scope)
     {
       for specifier in specifiers {
-        let Ok(resolved) = state
-          .state_snapshot
-          .resolver
-          .as_cli_resolver(Some(referrer))
-          .resolve(
-            specifier.as_str(),
-            referrer,
-            deno_graph::Position::zeroed(),
-            ResolutionMode::Import,
-            node_resolver::NodeResolutionKind::Types,
-          )
-          .inspect_err(|e| {
-            lsp_log!("failed to resolve compilerOptions.types specifier {specifier}: {e}");
-          })
-        else {
-          continue;
-        };
-
         if let Ok(req_ref) =
-          deno_semver::npm::NpmPackageReqReference::from_specifier(&resolved)
+          deno_semver::npm::NpmPackageReqReference::from_specifier(&specifier)
         {
           let Some((resolved, _)) =
             state.state_snapshot.resolver.npm_to_file_url(
