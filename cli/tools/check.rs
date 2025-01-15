@@ -393,6 +393,7 @@ fn get_tsc_roots(
     module: &deno_graph::Module,
     check_js: bool,
     hasher: Option<&mut FastInsecureHasher>,
+    is_import_specifier: bool,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     match module {
       Module::Js(module) => {
@@ -445,22 +446,29 @@ fn get_tsc_roots(
         // don't bother adding this specifier to the hash
         // because what matters is the resolved npm snapshot,
         // which is hashed below
-        let pkg_dir = npm_resolver
-          .as_managed()
-          .unwrap()
-          .resolve_pkg_folder_from_deno_module(npm.nv_reference.nv())
-          .ok()?;
-        let specifier = node_resolver
-          .resolve_package_subpath_from_deno_module(
-            &pkg_dir,
-            npm.nv_reference.sub_path(),
-            None,
-            node_resolver::ResolutionMode::Import,
-            node_resolver::NodeResolutionKind::Types,
-          )
-          .ok()?;
-        let mt = MediaType::from_specifier(&specifier);
-        Some((specifier, mt))
+
+        // if it's a graph import specifier, we need to resolve it
+        // fully so TSC can handle it
+        if is_import_specifier {
+          let pkg_dir = npm_resolver
+            .as_managed()
+            .unwrap()
+            .resolve_pkg_folder_from_deno_module(npm.nv_reference.nv())
+            .ok()?;
+          let specifier = node_resolver
+            .resolve_package_subpath_from_deno_module(
+              &pkg_dir,
+              npm.nv_reference.sub_path(),
+              None,
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Types,
+            )
+            .ok()?;
+          let mt = MediaType::from_specifier(&specifier);
+          Some((specifier, mt))
+        } else {
+          None
+        }
       }
       Module::Json(module) => {
         if let Some(hasher) = hasher {
@@ -480,12 +488,19 @@ fn get_tsc_roots(
         if let Some(hasher) = hasher {
           hasher.write_str(module.specifier.as_str());
         }
-        let resolved = node_resolver::resolve_specifier_into_node_modules(
-          sys,
-          &module.specifier,
-        );
-        let mt = MediaType::from_specifier(&resolved);
-        Some((resolved, mt))
+
+        // if it's a graph import specifier, we need to resolve it
+        // and include it as a root
+        if is_import_specifier {
+          let resolved = node_resolver::resolve_specifier_into_node_modules(
+            sys,
+            &module.specifier,
+          );
+          let mt = MediaType::from_specifier(&resolved);
+          Some((resolved, mt))
+        } else {
+          None
+        }
       }
     }
   }
@@ -531,7 +546,7 @@ fn get_tsc_roots(
   for specifier in get_import_specifiers() {
     let specifier = graph.resolve(specifier);
     if seen.insert(specifier) {
-      pending.push_back((specifier, false));
+      pending.push_back((specifier, false, true));
     }
   }
 
@@ -539,12 +554,14 @@ fn get_tsc_roots(
   for root in &graph.roots {
     let specifier = graph.resolve(root);
     if seen.insert(specifier) {
-      pending.push_back((specifier, false));
+      pending.push_back((specifier, false, false));
     }
   }
 
   // now walk the graph that only includes the fast check dependencies
-  while let Some((specifier, is_dynamic)) = pending.pop_front() {
+  while let Some((specifier, is_dynamic, is_import_specifier)) =
+    pending.pop_front()
+  {
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
       Ok(None) => {
@@ -591,6 +608,7 @@ fn get_tsc_roots(
       module,
       check_js,
       maybe_hasher.as_mut(),
+      is_import_specifier,
     ) {
       result.roots.push(entry);
     }
@@ -610,17 +628,18 @@ fn get_tsc_roots(
     fn handle_specifier<'a>(
       graph: &'a ModuleGraph,
       seen: &mut HashSet<&'a ModuleSpecifier>,
-      pending: &mut VecDeque<(&'a ModuleSpecifier, bool)>,
+      pending: &mut VecDeque<(&'a ModuleSpecifier, bool, bool)>,
       specifier: &'a ModuleSpecifier,
       is_dynamic: bool,
+      is_import_specifier: bool,
     ) {
       let specifier = graph.resolve(specifier);
       if is_dynamic {
         if !seen.contains(specifier) {
-          pending.push_back((specifier, true));
+          pending.push_back((specifier, true, is_import_specifier));
         }
       } else if seen.insert(specifier) {
-        pending.push_back((specifier, false));
+        pending.push_back((specifier, false, is_import_specifier));
       }
     }
 
@@ -634,6 +653,7 @@ fn get_tsc_roots(
             &mut pending,
             specifier,
             dep.is_dynamic,
+            is_import_specifier,
           );
         }
         if let Some(specifier) = dep.get_type() {
@@ -643,13 +663,21 @@ fn get_tsc_roots(
             &mut pending,
             specifier,
             dep.is_dynamic,
+            is_import_specifier,
           );
         }
       }
     }
 
     if let Some(dep) = maybe_types_dependency {
-      handle_specifier(graph, &mut seen, &mut pending, &dep.specifier, false);
+      handle_specifier(
+        graph,
+        &mut seen,
+        &mut pending,
+        &dep.specifier,
+        false,
+        true,
+      );
     }
   }
 
