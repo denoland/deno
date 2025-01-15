@@ -154,7 +154,7 @@ export class TLSSocket extends net.Socket {
       const afterConnect = handle.afterConnect;
       handle.afterConnect = async (req: any, status: number) => {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
-        if (tlssock._isNpmAgent) {
+        if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
           // onSocket handler of ClientRequest object.
           tlssock.emit("secure");

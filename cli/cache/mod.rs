@@ -15,6 +15,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
 
@@ -76,7 +77,7 @@ pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   sys: CliSys,
@@ -88,7 +89,7 @@ impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     module_info_cache: Arc<ModuleInfoCache>,
     sys: CliSys,
     options: FetchCacherOptions,

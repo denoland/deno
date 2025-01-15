@@ -16,6 +16,7 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::DenoResolverOptions;
@@ -32,7 +33,6 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use log::warn;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::InNpmPackageChecker;
 use once_cell::sync::OnceCell;
 
 use crate::args::check_warn_tsconfig;
@@ -68,7 +68,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -83,7 +82,7 @@ use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmRegistryReadPermissionChecker;
 use crate::npm::NpmRegistryReadPermissionCheckerMode;
 use crate::npm::NpmResolutionInitializer;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
@@ -190,7 +189,7 @@ impl<T> Deferred<T> {
 struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
-  cjs_tracker: Deferred<Arc<CjsTracker>>,
+  cjs_tracker: Deferred<Arc<CliCjsTracker>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
   deno_resolver: Deferred<Arc<CliDenoResolver>>,
@@ -203,7 +202,7 @@ struct CliFactoryServices {
   global_http_cache: Deferred<Arc<GlobalHttpCache>>,
   http_cache: Deferred<Arc<dyn HttpCache>>,
   http_client_provider: Deferred<Arc<HttpClientProvider>>,
-  in_npm_pkg_checker: Deferred<Arc<dyn InNpmPackageChecker>>,
+  in_npm_pkg_checker: Deferred<DenoInNpmPackageChecker>,
   main_graph_container: Deferred<Arc<MainModuleGraphContainer>>,
   maybe_file_watcher_reporter: Deferred<Option<FileWatcherReporter>>,
   maybe_inspector_server: Deferred<Option<Arc<InspectorServer>>>,
@@ -223,7 +222,7 @@ struct CliFactoryServices {
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolution_initializer: Deferred<Arc<NpmResolutionInitializer>>,
   npm_resolution_installer: Deferred<Arc<NpmResolutionInstaller>>,
-  npm_resolver: Deferred<Arc<dyn CliNpmResolver>>,
+  npm_resolver: Deferred<CliNpmResolver>,
   npm_tarball_cache: Deferred<Arc<CliNpmTarballCache>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
@@ -399,7 +398,7 @@ impl CliFactory {
 
   pub fn in_npm_pkg_checker(
     &self,
-  ) -> Result<&Arc<dyn InNpmPackageChecker>, AnyError> {
+  ) -> Result<&DenoInNpmPackageChecker, AnyError> {
     self.services.in_npm_pkg_checker.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
       let options = if cli_options.use_byonm() {
@@ -414,7 +413,7 @@ impl CliFactory {
           },
         )
       };
-      Ok(deno_resolver::npm::create_in_npm_pkg_checker(options))
+      Ok(DenoInNpmPackageChecker::new(options))
     })
   }
 
@@ -559,16 +558,14 @@ impl CliFactory {
     })
   }
 
-  pub async fn npm_resolver(
-    &self,
-  ) -> Result<&Arc<dyn CliNpmResolver>, AnyError> {
+  pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
     self
       .services
       .npm_resolver
       .get_or_try_init_async(
         async {
           let cli_options = self.cli_options()?;
-          Ok(create_cli_npm_resolver(if cli_options.use_byonm() {
+          Ok(CliNpmResolver::new(if cli_options.use_byonm() {
             CliNpmResolverCreateOptions::Byonm(
               CliByonmNpmResolverCreateOptions {
                 sys: self.sys(),
@@ -796,11 +793,7 @@ impl CliFactory {
           Ok(Arc::new(CliNodeResolver::new(
             self.in_npm_pkg_checker()?.clone(),
             RealIsBuiltInNodeModuleChecker,
-            self
-              .npm_resolver()
-              .await?
-              .clone()
-              .into_npm_pkg_folder_resolver(),
+            self.npm_resolver().await?.clone(),
             self.pkg_json_resolver().clone(),
             self.sys(),
             node_resolver::ConditionsFromResolutionMode::default(),
@@ -833,11 +826,7 @@ impl CliFactory {
           cjs_esm_analyzer,
           self.in_npm_pkg_checker()?.clone(),
           node_resolver,
-          self
-            .npm_resolver()
-            .await?
-            .clone()
-            .into_npm_pkg_folder_resolver(),
+          self.npm_resolver().await?.clone(),
           self.pkg_json_resolver().clone(),
           self.sys(),
         )))
@@ -857,7 +846,7 @@ impl CliFactory {
           sys: self.sys(),
           in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
           node_resolver: self.node_resolver().await?.clone(),
-          npm_resolver: npm_resolver.clone().into_byonm_or_managed(),
+          npm_resolver: npm_resolver.clone(),
         })))
       })
       .await
@@ -988,10 +977,10 @@ impl CliFactory {
       .await
   }
 
-  pub fn cjs_tracker(&self) -> Result<&Arc<CjsTracker>, AnyError> {
+  pub fn cjs_tracker(&self) -> Result<&Arc<CliCjsTracker>, AnyError> {
     self.services.cjs_tracker.get_or_try_init(|| {
       let options = self.cli_options()?;
-      Ok(Arc::new(CjsTracker::new(
+      Ok(Arc::new(CliCjsTracker::new(
         self.in_npm_pkg_checker()?.clone(),
         self.pkg_json_resolver().clone(),
         if options.is_node_main() || options.unstable_detect_cjs() {
@@ -1040,7 +1029,7 @@ impl CliFactory {
       self.emitter()?,
       self.file_fetcher()?,
       self.http_client_provider(),
-      self.npm_resolver().await?.as_ref(),
+      self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
       cli_options.npm_system_info(),
     ))
