@@ -542,9 +542,7 @@ fn get_tsc_roots(
   while let Some((specifier, is_dynamic)) = pending.pop_front() {
     let module = match graph.try_get(specifier) {
       Ok(Some(module)) => module,
-      Ok(None) => {
-        continue;
-      }
+      Ok(None) => continue,
       Err(ModuleError::Missing(specifier, maybe_range)) => {
         if !is_dynamic {
           result
