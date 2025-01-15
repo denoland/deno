@@ -153,6 +153,7 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
+  esm = ["40_process.js"],
   options = { get_npm_process_state: Option<NpmProcessStateProviderRc>  },
   state = |state, options| {
     state.put::<NpmProcessStateProviderRc>(options.get_npm_process_state.unwrap_or(deno_fs::sync::MaybeArc::new(EmptyNpmProcessStateProvider)));

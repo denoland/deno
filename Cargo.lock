@@ -2213,6 +2213,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_process"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "deno_fs",
+ "deno_io",
+ "deno_node",
+ "deno_os",
+ "deno_path_util",
+ "deno_permissions",
+ "libc",
+ "log",
+ "nix",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.3",
+ "tokio",
+ "which",
+]
+
+[[package]]
 name = "deno_resolver"
 version = "0.16.0"
 dependencies = [
@@ -2264,6 +2286,7 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_process",
  "deno_resolver",
  "deno_telemetry",
  "deno_terminal 0.2.0",

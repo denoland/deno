@@ -1,0 +1,33 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_process"
+version = "0.1.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Subprocess APIs for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error.workspace = true
+deno_fs.workspace = true
+deno_io.workspace = true
+# TODO(bartlomieju): this crate shouldn't depend on `deno_node`.
+deno_node.workspace = true
+deno_os.workspace = true
+deno_path_util.workspace = true
+deno_permissions.workspace = true
+libc.workspace = true
+log.workspace = true
+nix.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+which.workspace = true

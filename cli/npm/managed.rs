@@ -14,7 +14,7 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::ManagedNpmResolverRc;
-use deno_runtime::ops::process::NpmProcessStateProvider;
+use deno_runtime::deno_process::NpmProcessStateProvider;
 use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
