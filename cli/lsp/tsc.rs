@@ -4690,7 +4690,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
   // inject these next because they're global
   for (scope, script_names) in &mut result.by_scope {
-    for (_, specifiers) in state
+    for (referrer, specifiers) in state
       .state_snapshot
       .resolver
       .graph_imports_by_referrer(scope)
@@ -4699,10 +4699,10 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         let Ok(resolved) = state
           .state_snapshot
           .resolver
-          .as_cli_resolver(Some(scope))
+          .as_cli_resolver(Some(referrer))
           .resolve(
             specifier.as_str(),
-            scope,
+            referrer,
             deno_graph::Position::zeroed(),
             ResolutionMode::Import,
             node_resolver::NodeResolutionKind::Types,
