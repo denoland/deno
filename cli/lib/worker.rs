@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,6 +12,8 @@ use deno_resolver::npm::NpmResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_runtime::deno_core;
+use deno_runtime::deno_core::anyhow::bail;
+use deno_runtime::deno_core::error::AnyError;
 use deno_runtime::deno_core::error::CoreError;
 use deno_runtime::deno_core::v8;
 use deno_runtime::deno_core::CompiledWasmModuleStore;
@@ -488,6 +491,68 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       main_module,
       worker,
     })
+  }
+
+  // todo(dsherret): move down to node_resolver and don't use anyhow
+  pub fn resolve_binary_entrypoint(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+  ) -> Result<Url, AnyError> {
+    match self
+      .shared
+      .node_resolver
+      .resolve_binary_export(package_folder, sub_path)
+    {
+      Ok(specifier) => Ok(specifier),
+      Err(original_err) => {
+        // if the binary entrypoint was not found, fallback to regular node resolution
+        let result =
+          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
+        match result {
+          Ok(Some(specifier)) => Ok(specifier),
+          Ok(None) => Err(original_err.into()),
+          Err(fallback_err) => {
+            bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
+          }
+        }
+      }
+    }
+  }
+
+  /// resolve the binary entrypoint using regular node resolution
+  fn resolve_binary_entrypoint_fallback(
+    &self,
+    package_folder: &Path,
+    sub_path: Option<&str>,
+  ) -> Result<Option<Url>, AnyError> {
+    // only fallback if the user specified a sub path
+    if sub_path.is_none() {
+      // it's confusing to users if the package doesn't have any binary
+      // entrypoint and we just execute the main script which will likely
+      // have blank output, so do not resolve the entrypoint in this case
+      return Ok(None);
+    }
+
+    let specifier = self
+      .shared
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        package_folder,
+        sub_path,
+        /* referrer */ None,
+        node_resolver::ResolutionMode::Import,
+        node_resolver::NodeResolutionKind::Execution,
+      )?;
+    if specifier
+      .to_file_path()
+      .map(|p| self.shared.sys.fs_exists_no_err(p))
+      .unwrap_or(false)
+    {
+      Ok(Some(specifier))
+    } else {
+      bail!("Cannot find module '{}'", specifier)
+    }
   }
 }
 

@@ -1,10 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
@@ -18,8 +16,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
 
@@ -291,7 +287,6 @@ impl CliMainWorker {
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: CliNpmResolver,
   root_permissions: PermissionsContainer,
@@ -307,7 +302,6 @@ impl CliMainWorkerFactory {
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
@@ -317,7 +311,6 @@ impl CliMainWorkerFactory {
     Self {
       lib_main_worker_factory,
       maybe_lockfile,
-      node_resolver,
       npm_installer,
       npm_resolver,
       root_permissions,
@@ -387,6 +380,7 @@ impl CliMainWorkerFactory {
         .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
         .map_err(JsErrorBox::from_err)?;
       let main_module = self
+        .lib_main_worker_factory
         .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
 
       if let Some(lockfile) = &self.maybe_lockfile {
@@ -433,65 +427,6 @@ impl CliMainWorkerFactory {
       worker,
       shared: self.shared.clone(),
     })
-  }
-
-  fn resolve_binary_entrypoint(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    match self
-      .node_resolver
-      .resolve_binary_export(package_folder, sub_path)
-    {
-      Ok(specifier) => Ok(specifier),
-      Err(original_err) => {
-        // if the binary entrypoint was not found, fallback to regular node resolution
-        let result =
-          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
-        match result {
-          Ok(Some(specifier)) => Ok(specifier),
-          Ok(None) => Err(original_err.into()),
-          Err(fallback_err) => {
-            bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
-          }
-        }
-      }
-    }
-  }
-
-  /// resolve the binary entrypoint using regular node resolution
-  fn resolve_binary_entrypoint_fallback(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    // only fallback if the user specified a sub path
-    if sub_path.is_none() {
-      // it's confusing to users if the package doesn't have any binary
-      // entrypoint and we just execute the main script which will likely
-      // have blank output, so do not resolve the entrypoint in this case
-      return Ok(None);
-    }
-
-    let specifier = self
-      .node_resolver
-      .resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        /* referrer */ None,
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )?;
-    if specifier
-      .to_file_path()
-      .map(|p| p.exists())
-      .unwrap_or(false)
-    {
-      Ok(Some(specifier))
-    } else {
-      bail!("Cannot find module '{}'", specifier)
-    }
   }
 }
 

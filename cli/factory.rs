@@ -1135,7 +1135,6 @@ impl CliFactory {
       lib_main_worker_factory,
       maybe_file_watcher_communicator,
       cli_options.maybe_lockfile().cloned(),
-      node_resolver.clone(),
       self.npm_installer_if_managed()?.cloned(),
       npm_resolver.clone(),
       self.sys(),

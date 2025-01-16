@@ -882,7 +882,7 @@ pub async fn run(
       npm_registry_permission_checker,
       npm_req_resolver,
       source_maps,
-      vfs,
+      vfs: vfs.clone(),
       workspace_resolver,
     }),
   };
@@ -966,6 +966,18 @@ pub async fn run(
   v8_set_flags(construct_v8_flags(&[], &metadata.v8_flags, vec![]));
   // TODO(bartlomieju): remove last argument once Deploy no longer needs it
   deno_core::JsRuntime::init_platform(None, true);
+
+  let main_module = match NpmPackageReqReference::from_specifier(&main_module) {
+    Ok(package_ref) => {
+      let pkg_folder = npm_resolver.resolve_pkg_folder_from_deno_module_req(
+        package_ref.req(),
+        &deno_path_util::url_from_file_path(&vfs.root().join("package.json"))?,
+      )?;
+      worker_factory
+        .resolve_binary_entrypoint(&pkg_folder, package_ref.sub_path())?
+    }
+    Err(_) => main_module,
+  };
 
   let mut worker = worker_factory.create_main_worker(
     WorkerExecutionMode::Run,
