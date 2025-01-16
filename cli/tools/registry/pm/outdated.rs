@@ -280,9 +280,15 @@ fn choose_new_version_req(
     if preferred.version <= resolved?.version {
       return None;
     }
+    let exact = if let Some(range) = dep.req.version_req.range() {
+      range.0[0].start == range.0[0].end
+    } else {  
+      false
+    };
     Some(
       VersionReq::parse_from_specifier(
-        format!("^{}", preferred.version).as_str(),
+        format!("{}{}", if exact { "" } else { "^" }, preferred.version)
+          .as_str(),
       )
       .unwrap(),
     )
