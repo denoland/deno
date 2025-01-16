@@ -70,7 +70,7 @@ interface Console {
    * Displays a list of the properties of a specified object
    * @param item Object to display
    * @param options Formatting options
-   * @examplegit
+   * @example
    * ```ts
    * console.dir({ name: 'object', value: 42 }, { depth: 1 });
    * ```
