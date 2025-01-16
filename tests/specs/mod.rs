@@ -7,8 +7,7 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
-use deno_core::anyhow::Context;
-use deno_core::serde_json;
+use anyhow::Context;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
@@ -20,6 +19,7 @@ use file_test_runner::collection::CollectedTestCategory;
 use file_test_runner::TestResult;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
+use serde_json;
 use test_util::tests_path;
 use test_util::PathRef;
 use test_util::TestContextBuilder;

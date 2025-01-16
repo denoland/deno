@@ -15,6 +15,11 @@ name = "denort"
 path = "main.rs"
 doc = false
 
+[[test]]
+name = "integration"
+path = "integration_tests_runner.rs"
+harness = false
+
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
