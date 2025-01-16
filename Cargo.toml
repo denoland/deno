@@ -7,6 +7,7 @@ members = [
   "cli",
   "cli/lib",
   "cli/rt",
+  "cli/snapshot",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -100,6 +101,7 @@ deno_webstorage = { version = "0.180.0", path = "./ext/webstorage" }
 deno_lib = { version = "=0.1.1", path = "./cli/lib" }
 deno_npm_cache = { version = "0.4.0", path = "./resolvers/npm_cache" }
 deno_resolver = { version = "0.16.0", path = "./resolvers/deno" }
+deno_snapshots = { version = "0.1.0", path = "./cli/snapshot" }
 node_resolver = { version = "0.23.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"

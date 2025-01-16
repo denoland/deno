@@ -948,8 +948,7 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
-    // todo(THIS PR): set the startup snapshot
-    startup_snapshot: None, //crate::js::deno_isolate_init(),
+    startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
   };
   let worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),

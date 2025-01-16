@@ -44,7 +44,7 @@ dhat-heap = ["dhat"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-hmr = ["deno_runtime/hmr"]
+hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
@@ -81,6 +81,7 @@ deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
+deno_snapshots = { workspace = true }
 deno_task_shell = "=0.20.2"
 deno_telemetry.workspace = true
 deno_terminal.workspace = true

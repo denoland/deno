@@ -1280,6 +1280,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
+ "deno_snapshots",
  "deno_task_shell",
  "deno_telemetry",
  "deno_terminal 0.2.0",
@@ -2360,6 +2361,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_snapshots"
+version = "0.1.0"
+dependencies = [
+ "deno_runtime",
+]
+
+[[package]]
 name = "deno_task_shell"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2659,6 +2667,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
+ "deno_snapshots",
  "deno_terminal 0.2.0",
  "import_map",
  "indexmap 2.3.0",
