@@ -455,8 +455,13 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        let baseConnRid =
-          this.socket._handle[kStreamBaseField][internalRidSymbol];
+        const handle = this.socket._handle;
+        if (!handle) {
+          // Using non-standard socket. There's no way to handle this type of socket.
+          // This should be only happening in artificial test cases
+          return;
+        }
+        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
@@ -637,7 +642,7 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
-        socket.on("error", (err) => {
+        socket.once("error", (err) => {
           // This callback loosely follow `socketErrorListener` in Node.js
           // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
           emitErrorEvent(this, err);
