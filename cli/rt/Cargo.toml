@@ -7,8 +7,8 @@ authors.workspace = true
 default-run = "denort"
 edition.workspace = true
 license.workspace = true
-repository.workspace = true
 publish = false
+repository.workspace = true
 description = "Provides the denort executable"
 
 [[bin]]
