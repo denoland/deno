@@ -119,9 +119,86 @@ declare var onunload: ((this: Window, ev: Event) => any) | null;
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Storage */
+/**
+ * Deno's `localStorage` API provides a way to store key-value pairs in a
+ * web-like environment, similar to the Web Storage API found in browsers.
+ * It allows developers to persist data across sessions in a Deno application.
+ * This API is particularly useful for applications that require a simple
+ * and effective way to store data locally.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Persistent: Data is retained even after the application is closed.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `localStorage` is similar to {@linkcode sessionStorage}, and shares the same
+ * API methods, visible in the {@linkcode Storage} type.
+ *
+ * When using the `--location` flag, the origin for the location is used to
+ * uniquely store the data. That means a location of http://example.com/a.ts
+ * and http://example.com/b.ts and http://example.com:80/ would all share the
+ * same storage, but https://example.com/ would be different.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ * and using
+ * [the `--location` flag](https://docs.deno.com/runtime/reference/web_platform_apis/#location-flag).
+ *
+ * @example
+ * ```ts
+ * // Set a value in localStorage
+ * localStorage.setItem("key", "value");
+ *
+ * // Get a value from localStorage
+ * const value = localStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from localStorage
+ * localStorage.removeItem("key");
+ *
+ * // Clear all values from localStorage
+ * localStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+ * @category Storage */
 declare var localStorage: Storage;
-/** @category Storage */
+
+/**
+ * Deno's `sessionStorage` API operates similarly to the {@linkcode localStorage} API,
+ * but it is intended for storing data temporarily for the duration of a session.
+ * Data stored in sessionStorage is cleared when the application session or
+ * process ends. This makes it suitable for temporary data that you do not need
+ * to persist across user sessions.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Session-Based: Data is only available for the duration of the page session.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `sessionStorage` is similar to {@linkcode localStorage}, and shares the same API
+ * methods, visible in the {@linkcode Storage} type.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ *
+ * @example
+ * ```ts
+ * // Set a value in sessionStorage
+ * sessionStorage.setItem("key", "value");
+ *
+ * // Get a value from sessionStorage
+ * const value = sessionStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from sessionStorage
+ * sessionStorage.removeItem("key");
+ *
+ * // Clear all the values from sessionStorage
+ * sessionStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage
+ * @category Storage
+ */
 declare var sessionStorage: Storage;
 /** @category Cache */
 declare var caches: CacheStorage;
