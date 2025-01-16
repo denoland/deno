@@ -226,6 +226,12 @@ declare var navigator: Navigator;
  *
  * If the stdin is not interactive, it does nothing.
  *
+ * @example
+ * ```ts
+ * // Displays the message "Acknowledge me! [Enter]" and waits for the enter key to be pressed before continuing.
+ * alert("Acknowledge me!");
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/alert
  * @category Platform
  *
  * @param message
