@@ -81,7 +81,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  crate::util::checksum::gen(&[file_name_str.as_bytes()])
+  deno_lib::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
 fn to_deno_uri(specifier: &Url) -> String {

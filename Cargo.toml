@@ -5,6 +5,7 @@ resolver = "2"
 members = [
   "bench_util",
   "cli",
+  "cli/lib",
   "ext/broadcast_channel",
   "ext/cache",
   "ext/canvas",
@@ -84,6 +85,7 @@ deno_kv = { version = "0.93.0", path = "./ext/kv" }
 deno_napi = { version = "0.116.0", path = "./ext/napi" }
 deno_net = { version = "0.177.0", path = "./ext/net" }
 deno_node = { version = "0.123.0", path = "./ext/node" }
+deno_os = { version = "0.1.0", path = "./ext/os" }
 deno_telemetry = { version = "0.7.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.172.0", path = "./ext/tls" }
 deno_url = { version = "0.185.0", path = "./ext/url" }
@@ -93,7 +95,8 @@ deno_webidl = { version = "0.185.0", path = "./ext/webidl" }
 deno_websocket = { version = "0.190.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.180.0", path = "./ext/webstorage" }
 
-# resolvers
+# workspace libraries
+deno_lib = { version = "=0.1.1", path = "./cli/lib" }
 deno_npm_cache = { version = "0.4.0", path = "./resolvers/npm_cache" }
 deno_resolver = { version = "0.16.0", path = "./resolvers/deno" }
 node_resolver = { version = "0.23.0", path = "./resolvers/node" }

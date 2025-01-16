@@ -3,20 +3,21 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_lib::cache::DenoDirProvider;
 use once_cell::sync::OnceCell;
 
 use super::cache_db::CacheDB;
 use super::cache_db::CacheDBConfiguration;
 use super::check::TYPE_CHECK_CACHE_DB;
 use super::code_cache::CODE_CACHE_DB;
-use super::deno_dir::DenoDirProvider;
 use super::fast_check::FAST_CHECK_CACHE_DB;
 use super::incremental::INCREMENTAL_CACHE_DB;
 use super::module_info::MODULE_INFO_CACHE_DB;
 use super::node::NODE_ANALYSIS_CACHE_DB;
+use crate::sys::CliSys;
 
 pub struct Caches {
-  dir_provider: Arc<DenoDirProvider>,
+  dir_provider: Arc<DenoDirProvider<CliSys>>,
   fmt_incremental_cache_db: OnceCell<CacheDB>,
   lint_incremental_cache_db: OnceCell<CacheDB>,
   dep_analysis_db: OnceCell<CacheDB>,
@@ -27,7 +28,7 @@ pub struct Caches {
 }
 
 impl Caches {
-  pub fn new(dir: Arc<DenoDirProvider>) -> Self {
+  pub fn new(dir: Arc<DenoDirProvider<CliSys>>) -> Self {
     Self {
       dir_provider: dir,
       fmt_incremental_cache_db: Default::default(),

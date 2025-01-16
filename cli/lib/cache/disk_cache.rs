@@ -9,22 +9,22 @@ use std::path::Prefix;
 use std::str;
 
 use deno_cache_dir::url_to_filename;
-use deno_core::url::Host;
-use deno_core::url::Url;
+use deno_cache_dir::CACHE_PERM;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use url::Host;
+use url::Url;
 
-use super::CACHE_PERM;
-use crate::sys::CliSys;
+use crate::sys::DenoLibSys;
 
 #[derive(Debug, Clone)]
-pub struct DiskCache {
-  sys: CliSys,
+pub struct DiskCache<TSys: DenoLibSys> {
+  sys: TSys,
   pub location: PathBuf,
 }
 
-impl DiskCache {
+impl<TSys: DenoLibSys> DiskCache<TSys> {
   /// `location` must be an absolute path.
-  pub fn new(sys: CliSys, location: &Path) -> Self {
+  pub fn new(sys: TSys, location: &Path) -> Self {
     assert!(location.is_absolute());
     Self {
       sys,
@@ -130,6 +130,9 @@ impl DiskCache {
 
 #[cfg(test)]
 mod tests {
+  // ok, testing
+  #[allow(clippy::disallowed_types)]
+  use sys_traits::impls::RealSys;
   use test_util::TempDir;
 
   use super::*;
@@ -138,7 +141,7 @@ mod tests {
   fn test_set_get_cache_file() {
     let temp_dir = TempDir::new();
     let sub_dir = temp_dir.path().join("sub_dir");
-    let cache = DiskCache::new(CliSys::default(), &sub_dir.to_path_buf());
+    let cache = DiskCache::new(RealSys, &sub_dir.to_path_buf());
     let path = PathBuf::from("foo/bar.txt");
     cache.set(&path, b"hello").unwrap();
     assert_eq!(cache.get(&path).unwrap(), b"hello");
@@ -152,7 +155,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(CliSys::default(), &cache_location);
+    let cache = DiskCache::new(RealSys, &cache_location);
 
     let mut test_cases = vec![
       (
@@ -208,7 +211,7 @@ mod tests {
     } else {
       "/foo"
     };
-    let cache = DiskCache::new(CliSys::default(), &PathBuf::from(p));
+    let cache = DiskCache::new(RealSys, &PathBuf::from(p));
 
     let mut test_cases = vec![
       (
@@ -256,7 +259,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(CliSys::default(), &cache_location);
+    let cache = DiskCache::new(RealSys, &cache_location);
 
     let mut test_cases = vec!["unknown://localhost/test.ts"];
 

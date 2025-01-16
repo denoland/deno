@@ -18,6 +18,7 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::Resolution;
+use deno_lib::util::checksum;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
@@ -32,9 +33,7 @@ use crate::args::InfoFlags;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_util::graph_exit_integrity_errors;
-use crate::npm::CliNpmResolver;
-use crate::npm::ManagedCliNpmResolver;
-use crate::util::checksum;
+use crate::npm::CliManagedNpmResolver;
 use crate::util::display::DisplayTreeNode;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -138,6 +137,10 @@ pub async fn info(
       lockfile.write_if_changed()?;
     }
 
+    let maybe_npm_info = npm_resolver
+      .as_managed()
+      .map(|r| (r, r.resolution().snapshot()));
+
     if info_flags.json {
       let mut json_graph = serde_json::json!(graph);
       if let Some(output) = json_graph.as_object_mut() {
@@ -148,11 +151,19 @@ pub async fn info(
         );
       }
 
-      add_npm_packages_to_json(&mut json_graph, npm_resolver.as_ref(), npmrc);
+      add_npm_packages_to_json(
+        &mut json_graph,
+        maybe_npm_info.as_ref().map(|(_, s)| s),
+        npmrc,
+      );
       display::write_json_to_stdout(&json_graph)?;
     } else {
       let mut output = String::new();
-      GraphDisplayContext::write(&graph, npm_resolver.as_ref(), &mut output)?;
+      GraphDisplayContext::write(
+        &graph,
+        maybe_npm_info.as_ref().map(|(r, s)| (*r, s)),
+        &mut output,
+      )?;
       display::write_to_stdout_ignore_sigpipe(output.as_bytes())?;
     }
   } else {
@@ -180,7 +191,7 @@ fn print_cache_info(
   let registry_cache = dir.registries_folder_path();
   let mut origin_dir = dir.origin_data_folder_path();
   let deno_dir = dir.root_path_for_display().to_string();
-  let web_cache_dir = crate::worker::get_cache_storage_dir();
+  let web_cache_dir = deno_lib::worker::get_cache_storage_dir();
 
   if let Some(location) = &location {
     origin_dir =
@@ -251,15 +262,14 @@ fn print_cache_info(
 
 fn add_npm_packages_to_json(
   json: &mut serde_json::Value,
-  npm_resolver: &dyn CliNpmResolver,
+  npm_snapshot: Option<&NpmResolutionSnapshot>,
   npmrc: &ResolvedNpmRc,
 ) {
-  let Some(npm_resolver) = npm_resolver.as_managed() else {
+  let Some(npm_snapshot) = npm_snapshot else {
     return; // does not include byonm to deno info's output
   };
 
   // ideally deno_graph could handle this, but for now we just modify the json here
-  let snapshot = npm_resolver.snapshot();
   let json = json.as_object_mut().unwrap();
   let modules = json.get_mut("modules").and_then(|m| m.as_array_mut());
   if let Some(modules) = modules {
@@ -273,7 +283,7 @@ fn add_npm_packages_to_json(
           .and_then(|k| k.as_str())
           .and_then(|specifier| NpmPackageNvReference::from_str(specifier).ok())
           .and_then(|package_ref| {
-            snapshot
+            npm_snapshot
               .resolve_package_from_deno_module(package_ref.nv())
               .ok()
           });
@@ -295,7 +305,8 @@ fn add_npm_packages_to_json(
           if let Some(specifier) = dep.get("specifier").and_then(|s| s.as_str())
           {
             if let Ok(npm_ref) = NpmPackageReqReference::from_str(specifier) {
-              if let Ok(pkg) = snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
+              if let Ok(pkg) =
+                npm_snapshot.resolve_pkg_from_pkg_req(npm_ref.req())
               {
                 dep.insert(
                   "npmPackage".to_string(),
@@ -321,8 +332,9 @@ fn add_npm_packages_to_json(
     }
   }
 
-  let mut sorted_packages =
-    snapshot.all_packages_for_every_system().collect::<Vec<_>>();
+  let mut sorted_packages = npm_snapshot
+    .all_packages_for_every_system()
+    .collect::<Vec<_>>();
   sorted_packages.sort_by(|a, b| a.id.cmp(&b.id));
   let mut json_packages = serde_json::Map::with_capacity(sorted_packages.len());
   for pkg in sorted_packages {
@@ -356,7 +368,7 @@ struct NpmInfo {
 impl NpmInfo {
   pub fn build<'a>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a ManagedCliNpmResolver,
+    npm_resolver: &'a CliManagedNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) -> Self {
     let mut info = NpmInfo::default();
@@ -382,7 +394,7 @@ impl NpmInfo {
   fn fill_package_info<'a>(
     &mut self,
     package: &NpmResolutionPackage,
-    npm_resolver: &'a ManagedCliNpmResolver,
+    npm_resolver: &'a CliManagedNpmResolver,
     npm_snapshot: &'a NpmResolutionSnapshot,
   ) {
     self.packages.insert(package.id.clone(), package.clone());
@@ -419,13 +431,15 @@ struct GraphDisplayContext<'a> {
 impl<'a> GraphDisplayContext<'a> {
   pub fn write<TWrite: Write>(
     graph: &'a ModuleGraph,
-    npm_resolver: &'a dyn CliNpmResolver,
+    managed_npm_info: Option<(
+      &'a CliManagedNpmResolver,
+      &'a NpmResolutionSnapshot,
+    )>,
     writer: &mut TWrite,
   ) -> Result<(), AnyError> {
-    let npm_info = match npm_resolver.as_managed() {
-      Some(npm_resolver) => {
-        let npm_snapshot = npm_resolver.snapshot();
-        NpmInfo::build(graph, npm_resolver, &npm_snapshot)
+    let npm_info = match managed_npm_info {
+      Some((npm_resolver, npm_snapshot)) => {
+        NpmInfo::build(graph, npm_resolver, npm_snapshot)
       }
       None => NpmInfo::default(),
     };

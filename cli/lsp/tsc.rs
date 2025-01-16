@@ -39,6 +39,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
@@ -96,7 +97,6 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
-use crate::worker::create_isolate_create_params;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);

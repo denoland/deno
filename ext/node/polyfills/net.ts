@@ -1157,6 +1157,13 @@ function _emitCloseNT(s: Socket | Server) {
   s.emit("close");
 }
 
+// The packages that need socket initialization workaround
+const pkgsNeedsSockInitWorkaround = [
+  "@npmcli/agent",
+  "npm-check-updates",
+  "playwright-core",
+];
+
 /**
  * This class is an abstraction of a TCP socket or a streaming `IPC` endpoint
  * (uses named pipes on Windows, and Unix domain sockets otherwise). It is also
@@ -1201,9 +1208,11 @@ export class Socket extends Duplex {
   _host: string | null = null;
   // deno-lint-ignore no-explicit-any
   _parent: any = null;
-  // The flag for detecting if it's called in @npmcli/agent
+  // Skip some initialization (initial read and tls handshake if it's tls socket).
+  // If this flag is true, it's used as connection for http(s) request, and
+  // the reading and TLS handshake is done by the http client.
   // See discussions in https://github.com/denoland/deno/pull/25470 for more details.
-  _isNpmAgent = false;
+  _needsSockInitWorkaround = false;
   autoSelectFamilyAttemptedAddresses: AddressInfo[] | undefined = undefined;
 
   constructor(options: SocketOptions | number) {
@@ -1224,21 +1233,20 @@ export class Socket extends Duplex {
 
     super(options);
 
-    // Note: If the socket is created from one of:
-    // - @npmcli/agent
-    // - npm-check-updates (bundles @npmcli/agent as a dependency)
+    // Note: If the socket is created from one of `pkgNeedsSockInitWorkaround`,
     // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
     // That swaps the sequence of op_node_http_request_with_conn() call and
     // initial socket read. That causes op_node_http_request_with_conn() not
     // working.
     // To avoid the above situation, we detect the socket created from
-    // @npmcli/agent and pause the socket (and also skips the startTls call
-    // if it's TLSSocket)
+    // one of those packages using stack trace and pause the socket
+    // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    this._isNpmAgent = errorStack?.includes("@npmcli/agent") ||
-      errorStack?.includes("npm-check-updates") || false;
-    if (this._isNpmAgent) {
+    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
+      errorStack?.includes(pkg)
+    );
+    if (this._needsSockInitWorkaround) {
       this.pause();
     }
 
