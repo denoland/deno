@@ -25,6 +25,7 @@ libc.workspace = true
 log.workspace = true
 memchr = "2.7.4"
 pin-project-lite = "0.2.13"
+rand.workspace = true
 serde.workspace = true
 simd-json = "0.14.0"
 tempfile.workspace = true
