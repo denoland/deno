@@ -13,6 +13,11 @@ repository.workspace = true
 name = "test_server"
 path = "src/test_server.rs"
 
+[[test]]
+name = "integration"
+path = "integration_tests_runner.rs"
+harness = false
+
 [dependencies]
 anyhow.workspace = true
 async-stream = "0.3.3"
