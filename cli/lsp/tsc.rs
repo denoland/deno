@@ -4341,7 +4341,9 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
-    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
+    let specifier_str = original
+      .replace(".d.ts.d.ts", ".d.ts")
+      .replace("$node_modules", "node_modules");
     let specifier = match ModuleSpecifier::parse(&specifier_str) {
       Ok(s) => s,
       Err(err) => return Err(err),
