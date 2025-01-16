@@ -900,6 +900,20 @@ impl LspClient {
     self.read_diagnostics()
   }
 
+  pub fn did_close_file(&mut self, file: &SourceFile) {
+    self.did_close(json!({
+        "textDocument": file.identifier(),
+    }))
+  }
+
+  pub fn did_close(&mut self, params: Value) {
+    self.did_close_raw(params);
+  }
+
+  pub fn did_close_raw(&mut self, params: Value) {
+    self.write_notification("textDocument/didClose", params);
+  }
+
   pub fn did_open_raw(&mut self, params: Value) {
     self.write_notification("textDocument/didOpen", params);
   }
