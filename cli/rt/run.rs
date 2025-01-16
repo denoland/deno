@@ -974,7 +974,7 @@ pub async fn run(
         &deno_path_util::url_from_file_path(&vfs.root().join("package.json"))?,
       )?;
       worker_factory
-        .resolve_binary_entrypoint(&pkg_folder, package_ref.sub_path())?
+        .resolve_npm_binary_entrypoint(&pkg_folder, package_ref.sub_path())?
     }
     Err(_) => main_module,
   };

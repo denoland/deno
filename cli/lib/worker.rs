@@ -493,7 +493,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
-  pub fn resolve_binary_entrypoint(
+  pub fn resolve_npm_binary_entrypoint(
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,

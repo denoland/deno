@@ -379,9 +379,11 @@ impl CliMainWorkerFactory {
         .npm_resolver
         .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
         .map_err(JsErrorBox::from_err)?;
-      let main_module = self
-        .lib_main_worker_factory
-        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
+      let main_module =
+        self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
+          &package_folder,
+          package_ref.sub_path(),
+        )?;
 
       if let Some(lockfile) = &self.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
