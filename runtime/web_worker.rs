@@ -376,6 +376,7 @@ pub struct WebWorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub worker_type: WebWorkerType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
+  pub use_lsc_cache: bool,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
@@ -453,10 +454,28 @@ impl WebWorker {
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let create_cache = options.cache_storage_dir.map(|storage_dir| {
+    let create_cache = if options.use_lsc_cache {
+      use deno_cache::CacheShard;
+      let Ok(endpoint) = std::env::var("LSC_ENDPOINT") else {
+        return None;
+      };
+      let Ok(token) = std::env::var("LSC_TOKEN") else {
+        return None;
+      };
+      let shard = Rc::new(CacheShard::new(endpoint, token));
+      let create_cache_fn = move || {
+        let x = deno_cache::LscBackend::default();
+        x.set_shard(shard.clone());
+
+        x
+      };
+      Some(CreateCache(Arc::new(create_cache_fn)))
+    } else if let Some(storage_dir) = options.cache_storage_dir {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(create_cache_fn))
-    });
+      Some(CreateCache(Arc::new(create_cache_fn)))
+    } else {
+      None
+    };
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/worker.rs` and `runtime/snapshot.rs`!
