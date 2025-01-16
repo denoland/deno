@@ -1123,7 +1123,8 @@ delete Object.prototype.__proto__;
     // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
     // the one in @types/node. the types of the filename and dirname properties are different,
     // which causes tsc to error.
-    const importMetaFilenameDirnameModifiersRe = /^All declarations of '(filename|dirname)'/;
+    const importMetaFilenameDirnameModifiersRe =
+      /^All declarations of '(filename|dirname)'/;
     const importMetaFilenameDirnameTypesRe =
       /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
     // Declarations of X must have identical modifiers.
