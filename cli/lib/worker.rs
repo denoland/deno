@@ -493,7 +493,6 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     })
   }
 
-  // todo(dsherret): move down to node_resolver and don't use anyhow
   pub fn resolve_binary_entrypoint(
     &self,
     package_folder: &Path,
