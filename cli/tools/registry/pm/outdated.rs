@@ -282,7 +282,7 @@ fn choose_new_version_req(
     }
     let exact = if let Some(range) = dep.req.version_req.range() {
       range.0[0].start == range.0[0].end
-    } else {  
+    } else {
       false
     };
     Some(
