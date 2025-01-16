@@ -1580,9 +1580,10 @@ mod test {
     temp_dir.create_dir_all("src/nested/sub_dir");
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
-    temp_dir
-      .path()
-      .symlink_dir("src/nested/sub_dir", "src/sub_dir_link");
+    temp_dir.path().symlink_dir(
+      temp_dir_path.join("src/nested/sub_dir"),
+      temp_dir_path.join("src/sub_dir_link"),
+    );
     temp_dir.write("src/nested/sub_dir/c.txt", "c");
 
     // build and create the virtual fs
