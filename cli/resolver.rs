@@ -95,7 +95,7 @@ pub enum NpmModuleLoadError {
   #[error(transparent)]
   TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
   #[class(inherit)]
-  #[error("{}", format_message(&file_path, &maybe_referrer))]
+  #[error("{}", format_message(file_path, maybe_referrer))]
   Fs {
     file_path: PathBuf,
     maybe_referrer: Option<ModuleSpecifier>,
@@ -106,7 +106,7 @@ pub enum NpmModuleLoadError {
 }
 
 fn format_message(
-  file_path: &PathBuf,
+  file_path: &std::path::Path,
   maybe_referrer: &Option<ModuleSpecifier>,
 ) -> String {
   if file_path.is_dir() {
