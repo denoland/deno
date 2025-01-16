@@ -36,9 +36,24 @@ use deno_core::RequestedModuleType;
 use deno_core::ResolutionKind;
 use deno_core::SourceCodeCacheInfo;
 use deno_error::JsErrorBox;
+use deno_lib::cache::DenoDirProvider;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
+use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::worker::CreateModuleLoaderResult;
+use deno_lib::worker::LibMainWorkerFactory;
+use deno_lib::worker::LibMainWorkerOptions;
+use deno_lib::worker::ModuleLoaderFactory;
+use deno_lib::worker::StorageKeyResolver;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_package_json::PackageJsonDepValue;
 use deno_resolver::cjs::IsCjsResolutionMode;
+use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
+use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::FileSystem;
@@ -63,16 +78,13 @@ use node_resolver::ResolutionMode;
 use serialization::DenoCompileModuleSource;
 use serialization::SourceMapStore;
 use virtual_fs::FileBackedVfs;
-use virtual_fs::VfsFileSubDataKind;
 
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
 use crate::args::npm_pkg_req_ref_to_binary_command;
 use crate::args::CaData;
 use crate::args::NpmInstallDepsProvider;
-use crate::args::StorageKeyResolver;
 use crate::cache::Caches;
-use crate::cache::DenoDirProvider;
 use crate::cache::FastInsecureHasher;
 use crate::cache::NodeAnalysisCache;
 use crate::http_util::HttpClientProvider;
@@ -80,18 +92,14 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_cli_npm_resolver;
-use crate::npm::create_in_npm_pkg_checker;
+use crate::npm::create_npm_process_state_provider;
 use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
-use crate::npm::CreateInNpmPkgCheckerOptions;
-use crate::npm::NpmRegistryReadPermissionChecker;
-use crate::npm::NpmRegistryReadPermissionCheckerMode;
-use crate::resolver::CjsTracker;
+use crate::npm::NpmResolutionInitializer;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::NpmModuleLoader;
 use crate::sys::CliSys;
@@ -102,8 +110,6 @@ use crate::util::v8::construct_v8_flags;
 use crate::worker::CliCodeCache;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CliMainWorkerOptions;
-use crate::worker::CreateModuleLoaderResult;
-use crate::worker::ModuleLoaderFactory;
 
 pub mod binary;
 mod code_cache;
@@ -119,16 +125,16 @@ use self::binary::Metadata;
 pub use self::file_system::DenoCompileFileSystem;
 
 struct SharedModuleLoaderState {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<dyn CliCodeCache>>,
   fs: Arc<dyn deno_fs::FileSystem>,
   modules: StandaloneModules,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: Arc<NpmModuleLoader>,
-  npm_registry_permission_checker: NpmRegistryReadPermissionChecker,
+  npm_registry_permission_checker: NpmRegistryReadPermissionChecker<CliSys>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
@@ -689,18 +695,12 @@ pub async fn run(
     ca_data: metadata.ca_data.map(CaData::Bytes),
     cell: Default::default(),
   });
-  let progress_bar = ProgressBar::new(ProgressBarStyle::TextOnly);
-  let http_client_provider = Arc::new(HttpClientProvider::new(
-    Some(root_cert_store_provider.clone()),
-    metadata.unsafely_ignore_certificate_errors.clone(),
-  ));
   // use a dummy npm registry url
   let npm_registry_url = ModuleSpecifier::parse("https://localhost/").unwrap();
   let root_dir_url =
     Arc::new(ModuleSpecifier::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let cache_setting = CacheSetting::Only;
   let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {
@@ -739,35 +739,25 @@ pub async fn run(
       let maybe_node_modules_path = node_modules_dir
         .map(|node_modules_dir| root_path.join(node_modules_dir));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
           },
         ));
+      let npm_resolution =
+        Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
       let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolver::new(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(Some(
-              snapshot,
-            )),
-            maybe_lockfile: None,
-            http_client_provider: http_client_provider.clone(),
+            npm_resolution,
             npm_cache_dir,
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
             sys: sys.clone(),
-            text_only_progress_bar: progress_bar,
-            cache_setting,
             maybe_node_modules_path,
             npm_system_info: Default::default(),
             npmrc,
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
     Some(binary::NodeModules::Byonm {
@@ -776,15 +766,14 @@ pub async fn run(
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Byonm);
-      let npm_resolver = create_cli_npm_resolver(
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
+      let npm_resolver = CliNpmResolver::new(
         CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
           sys: sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
-      )
-      .await?;
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
     None => {
@@ -797,33 +786,24 @@ pub async fn run(
         npmrc.get_all_known_registries_urls(),
       ));
       let in_npm_pkg_checker =
-        create_in_npm_pkg_checker(CreateInNpmPkgCheckerOptions::Managed(
-          CliManagedInNpmPkgCheckerCreateOptions {
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Managed(
+          ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
           },
         ));
+      let npm_resolution = Arc::new(NpmResolutionCell::default());
       let npm_resolver =
-        create_cli_npm_resolver(CliNpmResolverCreateOptions::Managed(
+        CliNpmResolver::new(CliNpmResolverCreateOptions::Managed(
           CliManagedNpmResolverCreateOptions {
-            snapshot: CliNpmResolverManagedSnapshotOption::Specified(None),
-            http_client_provider: http_client_provider.clone(),
-            npm_install_deps_provider: Arc::new(
-              // this is only used for installing packages, which isn't necessary with deno compile
-              NpmInstallDepsProvider::empty(),
-            ),
+            npm_resolution,
             sys: sys.clone(),
-            cache_setting,
-            text_only_progress_bar: progress_bar,
             npm_cache_dir,
-            maybe_lockfile: None,
             maybe_node_modules_path: None,
             npm_system_info: Default::default(),
             npmrc: create_default_npmrc(),
-            lifecycle_scripts: Default::default(),
           },
-        ))
-        .await?;
+        ));
       (in_npm_pkg_checker, npm_resolver)
     }
   };
@@ -832,11 +812,12 @@ pub async fn run(
   let node_resolver = Arc::new(NodeResolver::new(
     in_npm_pkg_checker.clone(),
     RealIsBuiltInNodeModuleChecker,
-    npm_resolver.clone().into_npm_pkg_folder_resolver(),
+    npm_resolver.clone(),
     pkg_json_resolver.clone(),
     sys.clone(),
+    node_resolver::ConditionsFromResolutionMode::default(),
   ));
-  let cjs_tracker = Arc::new(CjsTracker::new(
+  let cjs_tracker = Arc::new(CliCjsTracker::new(
     in_npm_pkg_checker.clone(),
     pkg_json_resolver.clone(),
     if metadata.unstable_config.detect_cjs {
@@ -851,11 +832,10 @@ pub async fn run(
   let node_analysis_cache = NodeAnalysisCache::new(cache_db.node_analysis_db());
   let npm_req_resolver =
     Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-      byonm_resolver: (npm_resolver.clone()).into_maybe_byonm(),
       sys: sys.clone(),
       in_npm_pkg_checker: in_npm_pkg_checker.clone(),
       node_resolver: node_resolver.clone(),
-      npm_req_resolver: npm_resolver.clone().into_npm_req_resolver(),
+      npm_resolver: npm_resolver.clone(),
     }));
   let cjs_esm_code_analyzer = CliCjsCodeAnalyzer::new(
     node_analysis_cache,
@@ -867,7 +847,7 @@ pub async fn run(
     cjs_esm_code_analyzer,
     in_npm_pkg_checker,
     node_resolver.clone(),
-    npm_resolver.clone().into_npm_pkg_folder_resolver(),
+    npm_resolver.clone(),
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
@@ -987,53 +967,67 @@ pub async fn run(
     }
     checker
   });
-  let worker_factory = CliMainWorkerFactory::new(
+  let lib_main_worker_options = LibMainWorkerOptions {
+    argv: metadata.argv,
+    log_level: WorkerLogLevel::Info,
+    enable_op_summary_metrics: false,
+    enable_testing_features: false,
+    has_node_modules_dir,
+    inspect_brk: false,
+    inspect_wait: false,
+    strace_ops: None,
+    is_inspecting: false,
+    skip_op_registration: true,
+    location: metadata.location,
+    argv0: NpmPackageReqReference::from_specifier(&main_module)
+      .ok()
+      .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
+      .or(std::env::args().next()),
+    node_debug: std::env::var("NODE_DEBUG").ok(),
+    origin_data_folder_path: None,
+    seed: metadata.seed,
+    unsafely_ignore_certificate_errors: metadata
+      .unsafely_ignore_certificate_errors,
+    node_ipc: None,
+    serve_port: None,
+    serve_host: None,
+    deno_version: crate::version::DENO_VERSION_INFO.deno,
+    deno_user_agent: crate::version::DENO_VERSION_INFO.user_agent,
+    otel_config: metadata.otel_config,
+    startup_snapshot: crate::js::deno_isolate_init(),
+  };
+  let lib_main_worker_factory = LibMainWorkerFactory::new(
     Arc::new(BlobStore::default()),
-    code_cache,
+    code_cache.map(|c| c.as_code_cache()),
     feature_checker,
     fs,
     None,
-    None,
-    None,
     Box::new(module_loader_factory),
-    node_resolver,
-    npm_resolver,
+    node_resolver.clone(),
+    create_npm_process_state_provider(&npm_resolver),
     pkg_json_resolver,
     root_cert_store_provider,
-    permissions,
     StorageKeyResolver::empty(),
+    sys.clone(),
+    lib_main_worker_options,
+  );
+  // todo(dsherret): use LibMainWorker directly here and don't use CliMainWorkerFactory
+  let cli_main_worker_options = CliMainWorkerOptions {
+    create_hmr_runner: None,
+    create_coverage_collector: None,
+    needs_test_modules: false,
+    default_npm_caching_strategy: crate::args::NpmCachingStrategy::Lazy,
+  };
+  let worker_factory = CliMainWorkerFactory::new(
+    lib_main_worker_factory,
+    None,
+    None,
+    node_resolver,
+    None,
+    npm_resolver,
     sys,
-    crate::args::DenoSubcommand::Run(Default::default()),
-    CliMainWorkerOptions {
-      argv: metadata.argv,
-      log_level: WorkerLogLevel::Info,
-      enable_op_summary_metrics: false,
-      enable_testing_features: false,
-      has_node_modules_dir,
-      hmr: false,
-      inspect_brk: false,
-      inspect_wait: false,
-      strace_ops: None,
-      is_inspecting: false,
-      skip_op_registration: true,
-      location: metadata.location,
-      argv0: NpmPackageReqReference::from_specifier(&main_module)
-        .ok()
-        .map(|req_ref| npm_pkg_req_ref_to_binary_command(&req_ref))
-        .or(std::env::args().next()),
-      node_debug: std::env::var("NODE_DEBUG").ok(),
-      origin_data_folder_path: None,
-      seed: metadata.seed,
-      unsafely_ignore_certificate_errors: metadata
-        .unsafely_ignore_certificate_errors,
-      create_hmr_runner: None,
-      create_coverage_collector: None,
-      node_ipc: None,
-      serve_port: None,
-      serve_host: None,
-    },
-    metadata.otel_config,
-    crate::args::NpmCachingStrategy::Lazy,
+    cli_main_worker_options,
+    permissions,
   );
 
   // Initialize v8 once from the main thread.

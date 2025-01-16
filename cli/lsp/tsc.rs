@@ -39,6 +39,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
@@ -72,6 +73,7 @@ use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::logging::lsp_log;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
 use super::refactor::RefactorCodeActionData;
@@ -96,7 +98,6 @@ use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
 use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
-use crate::worker::create_isolate_create_params;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
@@ -3972,6 +3973,11 @@ impl CompletionEntry {
         if let Some(mut new_specifier) = import_mapper
           .check_specifier(&import_data.normalized, specifier)
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
+          .or_else(|| {
+            ModuleSpecifier::parse(&import_data.raw.module_specifier)
+              .is_ok()
+              .then(|| import_data.normalized.to_string())
+          })
         {
           if new_specifier.contains("/node_modules/") {
             return None;
@@ -4504,11 +4510,12 @@ fn op_release(
 
 #[op2]
 #[serde]
+#[allow(clippy::type_complexity)]
 fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
+) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -4590,10 +4597,11 @@ async fn op_poll_requests(
 }
 
 #[inline]
+#[allow(clippy::type_complexity)]
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<Option<(String, String)>>, deno_core::url::ParseError> {
+) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
@@ -4606,7 +4614,11 @@ fn op_resolve_inner(
       o.map(|(s, mt)| {
         (
           state.specifier_map.denormalize(&s),
-          mt.as_ts_extension().to_string(),
+          if matches!(mt, MediaType::Unknown) {
+            None
+          } else {
+            Some(mt.as_ts_extension().to_string())
+          },
         )
       })
     })
@@ -4684,7 +4696,24 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .graph_imports_by_referrer(scope)
     {
       for specifier in specifiers {
-        script_names.insert(specifier.to_string());
+        if let Ok(req_ref) =
+          deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
+        {
+          let Some((resolved, _)) =
+            state.state_snapshot.resolver.npm_to_file_url(
+              &req_ref,
+              scope,
+              ResolutionMode::Import,
+              Some(scope),
+            )
+          else {
+            lsp_log!("failed to resolve {req_ref} to file URL");
+            continue;
+          };
+          script_names.insert(resolved.to_string());
+        } else {
+          script_names.insert(specifier.to_string());
+        }
       }
     }
   }
@@ -5578,7 +5607,6 @@ mod tests {
           })
           .to_string(),
           temp_dir.url().join("deno.json").unwrap(),
-          &Default::default(),
         )
         .unwrap(),
       )
@@ -6235,7 +6263,40 @@ mod tests {
             "kind": "keyword"
           }
         ],
-        "documentation": []
+        "documentation": [
+          {
+            "text": "Outputs a message to the console",
+            "kind": "text",
+          },
+        ],
+        "tags": [
+          {
+            "name": "param",
+            "text": [
+              {
+                "text": "data",
+                "kind": "parameterName",
+              },
+              {
+                "text": " ",
+                "kind": "space",
+              },
+              {
+                "text": "Values to be printed to the console",
+                "kind": "text",
+              },
+            ],
+          },
+          {
+            "name": "example",
+            "text": [
+              {
+                "text": "```ts\nconsole.log('Hello', 'World', 123);\n```",
+                "kind": "text",
+              },
+            ],
+          },
+        ]
       })
     );
   }
@@ -6456,7 +6517,7 @@ mod tests {
       resolved,
       vec![Some((
         temp_dir.url().join("b.ts").unwrap().to_string(),
-        MediaType::TypeScript.as_ts_extension().to_string()
+        Some(MediaType::TypeScript.as_ts_extension().to_string())
       ))]
     );
   }

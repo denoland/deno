@@ -24,11 +24,11 @@ use deno_graph::ModuleGraph;
 use crate::cache::EmitCache;
 use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 
 #[derive(Debug)]
 pub struct Emitter {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
@@ -39,7 +39,7 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,

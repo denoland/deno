@@ -3,8 +3,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicI32;
-use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
@@ -40,11 +38,14 @@ use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
+use deno_os::ExitCode;
 use deno_permissions::PermissionsContainer;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
 use deno_web::BlobStore;
 use log::debug;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
@@ -95,19 +96,6 @@ pub fn validate_import_attributes_callback(
   }
 }
 
-#[derive(Clone, Default)]
-pub struct ExitCode(Arc<AtomicI32>);
-
-impl ExitCode {
-  pub fn get(&self) -> i32 {
-    self.0.load(Relaxed)
-  }
-
-  pub fn set(&mut self, code: i32) {
-    self.0.store(code, Relaxed);
-  }
-}
-
 /// This worker is created and used by almost all
 /// subcommands in Deno executable.
 ///
@@ -128,7 +116,11 @@ pub struct MainWorker {
   dispatch_process_exit_event_fn_global: v8::Global<v8::Function>,
 }
 
-pub struct WorkerServiceOptions<TExtNodeSys: ExtNodeSys> {
+pub struct WorkerServiceOptions<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TExtNodeSys: ExtNodeSys,
+> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub feature_checker: Arc<FeatureChecker>,
@@ -139,7 +131,13 @@ pub struct WorkerServiceOptions<TExtNodeSys: ExtNodeSys> {
   /// If not provided runtime will error if code being
   /// executed tries to load modules.
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
+  pub node_services: Option<
+    NodeExtInitServices<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
+  >,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -300,9 +298,17 @@ pub fn create_op_metrics(
 }
 
 impl MainWorker {
-  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    main_module: ModuleSpecifier,
-    services: WorkerServiceOptions<TExtNodeSys>,
+  pub fn bootstrap_from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    main_module: &ModuleSpecifier,
+    services: WorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     options: WorkerOptions,
   ) -> Self {
     let (mut worker, bootstrap_options) =
@@ -311,9 +317,17 @@ impl MainWorker {
     worker
   }
 
-  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    main_module: ModuleSpecifier,
-    services: WorkerServiceOptions<TExtNodeSys>,
+  fn from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    main_module: &ModuleSpecifier,
+    services: WorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     mut options: WorkerOptions,
   ) -> (Self, BootstrapOptions) {
     deno_core::extension!(deno_permissions_worker,
@@ -335,7 +349,7 @@ impl MainWorker {
 
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
-    let exit_code = ExitCode(Arc::new(AtomicI32::new(0)));
+    let exit_code = ExitCode::default();
     let create_cache = options.cache_storage_dir.map(|storage_dir| {
       let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
       CreateCache(Arc::new(create_cache_fn))
@@ -413,10 +427,13 @@ impl MainWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
-        services.node_services,
-        services.fs,
-      ),
+      deno_os::deno_os::init_ops_and_esm(exit_code.clone()),
+      deno_node::deno_node::init_ops_and_esm::<
+        PermissionsContainer,
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TExtNodeSys,
+      >(services.node_services, services.fs),
       // Ops from this crate
       ops::runtime::deno_runtime::init_ops_and_esm(main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
@@ -424,12 +441,10 @@ impl MainWorker {
         options.format_js_error_fn.clone(),
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os::init_ops_and_esm(exit_code.clone()),
       ops::permissions::deno_permissions::init_ops_and_esm(),
       ops::process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
       ),
-      ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
       ops::bootstrap::deno_bootstrap::init_ops_and_esm(

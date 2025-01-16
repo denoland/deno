@@ -2,7 +2,7 @@
 import * as path from "@std/path";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -119,6 +119,45 @@ Deno.test("[node/fs filehandle.writeFile] Write to file", async function () {
 });
 
 Deno.test(
+  "[node/fs filehandle.writev] Write array of buffers to file",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w");
+
+    const buffer1 = Buffer.from("hello ");
+    const buffer2 = Buffer.from("world");
+    const res = await fileHandle.writev([buffer1, buffer2]);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(res.bytesWritten, 11);
+    assertEquals(decoder.decode(data), "hello world");
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.writev] Write array of buffers to file with position",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w");
+
+    const buffer1 = Buffer.from("hello ");
+    const buffer2 = Buffer.from("world");
+    await fileHandle.writev([buffer1, buffer2], 0);
+    const buffer3 = Buffer.from("lorem ipsum");
+    await fileHandle.writev([buffer3], 6);
+
+    const data = Deno.readFileSync(tempFile);
+    await Deno.remove(tempFile);
+    await fileHandle.close();
+
+    assertEquals(decoder.decode(data), "hello lorem ipsum");
+  },
+);
+
+Deno.test(
   "[node/fs filehandle.truncate] Truncate file with length",
   async function () {
     const tempFile: string = await Deno.makeTempFile();
@@ -213,6 +252,50 @@ Deno.test({
     const readWrite = 0o666;
     await fileHandle.chmod(readWrite.toString(8));
     assertEquals(Deno.statSync(testData).mode! & 0o777, readWrite);
+
+    await fileHandle.close();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs filehandle.utimes] Change the file system timestamps of the file",
+  async fn() {
+    const fileHandle = await fs.open(testData);
+
+    const atime = new Date();
+    const mtime = new Date(0);
+
+    await fileHandle.utimes(atime, mtime);
+    assertEquals(Deno.statSync(testData).atime!, atime);
+    assertEquals(Deno.statSync(testData).mtime!, mtime);
+
+    await fileHandle.close();
+  },
+});
+
+Deno.test({
+  name: "[node/fs filehandle.chown] Change owner of the file",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fileHandle = await fs.open(testData);
+
+    const nobodyUid = 65534;
+    const nobodyGid = 65534;
+
+    await assertRejects(
+      async () => await fileHandle.chown(nobodyUid, nobodyGid),
+      Deno.errors.PermissionDenied,
+      "Operation not permitted",
+    );
+
+    const realUid = Deno.uid() || 1000;
+    const realGid = Deno.gid() || 1000;
+
+    await fileHandle.chown(realUid, realGid);
+
+    assertEquals(Deno.statSync(testData).uid, realUid);
+    assertEquals(Deno.statSync(testData).gid, realGid);
 
     await fileHandle.close();
   },

@@ -17,6 +17,7 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
@@ -29,8 +30,6 @@ use indexmap::IndexMap;
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VirtualDirectoryEntries;
-use crate::standalone::virtual_fs::VirtualDirectory;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 

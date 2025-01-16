@@ -37,6 +37,10 @@ use deno_graph::ModuleGraph;
 use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
+use deno_lib::npm::NpmRegistryReadPermissionChecker;
+use deno_lib::worker::CreateModuleLoaderResult;
+use deno_lib::worker::ModuleLoaderFactory;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
@@ -68,8 +72,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
-use crate::npm::NpmRegistryReadPermissionChecker;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::ModuleCodeStringSource;
@@ -82,8 +85,6 @@ use crate::tools::check::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
-use crate::worker::CreateModuleLoaderResult;
-use crate::worker::ModuleLoaderFactory;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PrepareModuleLoadError {
@@ -237,18 +238,19 @@ struct SharedCliModuleLoaderState {
   initial_cwd: PathBuf,
   is_inspecting: bool,
   is_repl: bool,
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   code_cache: Option<Arc<CodeCache>>,
   emitter: Arc<Emitter>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   main_module_graph_container: Arc<MainModuleGraphContainer>,
   module_load_preparer: Arc<ModuleLoadPreparer>,
   node_code_translator: Arc<CliNodeCodeTranslator>,
   node_resolver: Arc<CliNodeResolver>,
   npm_module_loader: NpmModuleLoader,
-  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+  npm_registry_permission_checker:
+    Arc<NpmRegistryReadPermissionChecker<CliSys>>,
   npm_req_resolver: Arc<CliNpmReqResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   sys: CliSys,
@@ -298,18 +300,20 @@ impl CliModuleLoaderFactory {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     options: &CliOptions,
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     code_cache: Option<Arc<CodeCache>>,
     emitter: Arc<Emitter>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     main_module_graph_container: Arc<MainModuleGraphContainer>,
     module_load_preparer: Arc<ModuleLoadPreparer>,
     node_code_translator: Arc<CliNodeCodeTranslator>,
     node_resolver: Arc<CliNodeResolver>,
     npm_module_loader: NpmModuleLoader,
-    npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+    npm_registry_permission_checker: Arc<
+      NpmRegistryReadPermissionChecker<CliSys>,
+    >,
     npm_req_resolver: Arc<CliNpmReqResolver>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
@@ -1200,12 +1204,13 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
 
 #[derive(Debug)]
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<Emitter>,
   sys: CliSys,
   graph_container: TGraphContainer,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  npm_registry_permission_checker: Arc<NpmRegistryReadPermissionChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
+  npm_registry_permission_checker:
+    Arc<NpmRegistryReadPermissionChecker<CliSys>>,
 }
 
 impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader

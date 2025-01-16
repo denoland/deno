@@ -31,13 +31,12 @@ use deno_io::ChildStderrResource;
 use deno_io::ChildStdinResource;
 use deno_io::ChildStdoutResource;
 use deno_io::IntoRawIoHandle;
+use deno_os::SignalError;
 use deno_permissions::PermissionsContainer;
 use deno_permissions::RunQueryDescriptor;
 use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command;
-
-use crate::ops::signal::SignalError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
@@ -140,7 +139,9 @@ pub trait NpmProcessStateProvider:
 
 #[derive(Debug)]
 pub struct EmptyNpmProcessStateProvider;
+
 impl NpmProcessStateProvider for EmptyNpmProcessStateProvider {}
+
 deno_core::extension!(
   deno_process,
   ops = [
@@ -294,7 +295,7 @@ impl TryFrom<ExitStatus> for ChildStatus {
         success: false,
         code: 128 + signal,
         #[cfg(unix)]
-        signal: Some(crate::signal::signal_int_to_str(signal)?.to_string()),
+        signal: Some(deno_os::signal::signal_int_to_str(signal)?.to_string()),
         #[cfg(not(unix))]
         signal: None,
       }
@@ -1114,7 +1115,7 @@ mod deprecated {
 
   #[cfg(unix)]
   pub fn kill(pid: i32, signal: &str) -> Result<(), ProcessError> {
-    let signo = crate::signal::signal_str_to_int(signal)
+    let signo = deno_os::signal::signal_str_to_int(signal)
       .map_err(SignalError::InvalidSignalStr)?;
     use nix::sys::signal::kill as unix_kill;
     use nix::sys::signal::Signal;
@@ -1142,7 +1143,7 @@ mod deprecated {
 
     if !matches!(signal, "SIGKILL" | "SIGTERM") {
       Err(
-        SignalError::InvalidSignalStr(crate::signal::InvalidSignalStrError(
+        SignalError::InvalidSignalStr(deno_os::signal::InvalidSignalStrError(
           signal.to_string(),
         ))
         .into(),

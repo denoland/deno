@@ -7,6 +7,7 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::ParsedSourceStore;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
@@ -20,15 +21,22 @@ use serde::Serialize;
 use crate::cache::CacheDBHash;
 use crate::cache::NodeAnalysisCache;
 use crate::cache::ParsedSourceCache;
-use crate::resolver::CjsTracker;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
 
 pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
+  DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
   CliSys,
 >;
-pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<CliSys>;
+pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
+  DenoInNpmPackageChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -44,7 +52,7 @@ pub enum CliCjsAnalysis {
 
 pub struct CliCjsCodeAnalyzer {
   cache: NodeAnalysisCache,
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   fs: deno_fs::FileSystemRc,
   parsed_source_cache: Option<Arc<ParsedSourceCache>>,
 }
@@ -52,7 +60,7 @@ pub struct CliCjsCodeAnalyzer {
 impl CliCjsCodeAnalyzer {
   pub fn new(
     cache: NodeAnalysisCache,
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     fs: deno_fs::FileSystemRc,
     parsed_source_cache: Option<Arc<ParsedSourceCache>>,
   ) -> Self {

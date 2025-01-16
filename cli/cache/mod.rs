@@ -15,6 +15,7 @@ use deno_graph::source::CacheInfo;
 use deno_graph::source::LoadFuture;
 use deno_graph::source::LoadResponse;
 use deno_graph::source::Loader;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use node_resolver::InNpmPackageChecker;
 
@@ -30,8 +31,6 @@ mod caches;
 mod check;
 mod code_cache;
 mod common;
-mod deno_dir;
-mod disk_cache;
 mod emit;
 mod fast_check;
 mod incremental;
@@ -46,9 +45,6 @@ pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
-pub use deno_dir::DenoDir;
-pub use deno_dir::DenoDirProvider;
-pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
@@ -76,7 +72,7 @@ pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   sys: CliSys,
@@ -88,7 +84,7 @@ impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     module_info_cache: Arc<ModuleInfoCache>,
     sys: CliSys,
     options: FetchCacherOptions,
