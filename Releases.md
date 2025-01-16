@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.1.6 / 2025.01.16
 
-- feat(unstable): refactor js lint plugin AST (#27615)
 - fix(check/lsp): correctly resolve compilerOptions.types (#27686)
 - fix(check/lsp): fix bugs with tsc type resolution, allow npm packages to
   augment `ImportMeta` (#27690)
@@ -21,6 +20,7 @@ https://github.com/denoland/deno_install
 - fix(ext/node): apply `@npmcli/agent` workaround to `npm-check-updates`
   (#27639)
 - fix(ext/node): fix playwright http client (#27662)
+- fix(ext/node): show bare-node-builtin hint when using an import map (#27632)
 - fix(ext/node): use primordials in `ext/node/polyfills/_fs_common.ts` (#27589)
 - fix(lsp): handle pathless untitled URIs (#27637)
 - fix(lsp/check): don't resolve unknown media types to a `.js` extension
@@ -31,7 +31,6 @@ https://github.com/denoland/deno_install
 - fix(outdated): Use `latest` tag even when it's the same as the current version
   (#27699)
 - fix(outdated): retain strict semver specifier when updating (#27701)
-- fix(regression): show bare-node-builtin hint when using an import map (#27632)
 
 ### 2.1.5 / 2025.01.09
 
