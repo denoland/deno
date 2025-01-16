@@ -11129,7 +11129,7 @@ fn lsp_diagnostics_deno_types() {
       }
     }),
   );
-  assert_eq!(diagnostics.all().len(), 5);
+  assert_eq!(diagnostics.all().len(), 4);
   client.shutdown();
 }
 
