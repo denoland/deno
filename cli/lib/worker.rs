@@ -543,8 +543,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
         node_resolver::ResolutionMode::Import,
         node_resolver::NodeResolutionKind::Execution,
       )?;
-    if specifier
-      .to_file_path()
+    if deno_path_util::url_to_file_path(&specifier)
       .map(|p| self.shared.sys.fs_exists_no_err(p))
       .unwrap_or(false)
     {
