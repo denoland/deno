@@ -686,7 +686,18 @@ impl DepManager {
                 if latest_tag >= lower_bound {
                   Some(latest_tag.clone())
                 } else {
-                  latest_version(Some(latest_tag), info.versions.keys())
+                  latest_version(
+                    Some(latest_tag),
+                    info.versions.iter().filter_map(
+                      |(version, version_info)| {
+                        if version_info.deprecated.is_none() {
+                          Some(version)
+                        } else {
+                          None
+                        }
+                      },
+                    ),
+                  )
                 }
               })
               .map(|version| PackageNv {
