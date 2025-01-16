@@ -86,7 +86,7 @@ use crate::binary::DenoCompileModuleSource;
 use crate::binary::StandaloneData;
 use crate::binary::StandaloneModules;
 use crate::code_cache::DenoCompileCodeCache;
-use crate::file_system::DenoCompileFileSystem;
+use crate::file_system::DenoRtSys;
 use crate::file_system::FileBackedVfs;
 use crate::node::CjsCodeAnalyzer;
 use crate::node::DenoRtCjsTracker;
@@ -102,8 +102,7 @@ struct SharedModuleLoaderState {
   node_code_translator: Arc<DenoRtNodeCodeTranslator>,
   node_resolver: Arc<DenoRtNodeResolver>,
   npm_module_loader: Arc<DenoRtNpmModuleLoader>,
-  npm_registry_permission_checker:
-    NpmRegistryReadPermissionChecker<DenoCompileFileSystem>,
+  npm_registry_permission_checker: NpmRegistryReadPermissionChecker<DenoRtSys>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
   source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
@@ -644,7 +643,7 @@ impl RootCertStoreProvider for StandaloneRootCertStoreProvider {
 
 pub async fn run(
   fs: Arc<dyn FileSystem>,
-  sys: DenoCompileFileSystem,
+  sys: DenoRtSys,
   data: StandaloneData,
 ) -> Result<i32, AnyError> {
   let StandaloneData {
@@ -711,17 +710,16 @@ pub async fn run(
         ));
       let npm_resolution =
         Arc::new(NpmResolutionCell::new(NpmResolutionSnapshot::new(snapshot)));
-      let npm_resolver =
-        NpmResolver::<DenoCompileFileSystem>::new::<DenoCompileFileSystem>(
-          NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-            npm_resolution,
-            npm_cache_dir,
-            sys: sys.clone(),
-            maybe_node_modules_path,
-            npm_system_info: Default::default(),
-            npmrc,
-          }),
-        );
+      let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
+        NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
+          npm_resolution,
+          npm_cache_dir,
+          sys: sys.clone(),
+          maybe_node_modules_path,
+          npm_system_info: Default::default(),
+          npmrc,
+        }),
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
     Some(NodeModules::Byonm {
@@ -731,14 +729,13 @@ pub async fn run(
         root_node_modules_dir.map(|p| vfs.root().join(p));
       let in_npm_pkg_checker =
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
-      let npm_resolver =
-        NpmResolver::<DenoCompileFileSystem>::new::<DenoCompileFileSystem>(
-          NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-            sys: sys.clone(),
-            pkg_json_resolver: pkg_json_resolver.clone(),
-            root_node_modules_dir,
-          }),
-        );
+      let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
+        NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
+          sys: sys.clone(),
+          pkg_json_resolver: pkg_json_resolver.clone(),
+          root_node_modules_dir,
+        }),
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
     None => {
@@ -758,17 +755,16 @@ pub async fn run(
           },
         ));
       let npm_resolution = Arc::new(NpmResolutionCell::default());
-      let npm_resolver =
-        NpmResolver::<DenoCompileFileSystem>::new::<DenoCompileFileSystem>(
-          NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-            npm_resolution,
-            sys: sys.clone(),
-            npm_cache_dir,
-            maybe_node_modules_path: None,
-            npm_system_info: Default::default(),
-            npmrc: create_default_npmrc(),
-          }),
-        );
+      let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
+        NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
+          npm_resolution,
+          sys: sys.clone(),
+          npm_cache_dir,
+          maybe_node_modules_path: None,
+          npm_system_info: Default::default(),
+          npmrc: create_default_npmrc(),
+        }),
+      );
       (in_npm_pkg_checker, npm_resolver)
     }
   };

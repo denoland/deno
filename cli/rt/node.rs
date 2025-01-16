@@ -15,38 +15,35 @@ use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::NodeCodeTranslator;
 
-use crate::file_system::DenoCompileFileSystem;
+use crate::file_system::DenoRtSys;
 
-pub type DenoRtCjsTracker = deno_resolver::cjs::CjsTracker<
-  DenoInNpmPackageChecker,
-  DenoCompileFileSystem,
->;
-pub type DenoRtNpmResolver =
-  deno_resolver::npm::NpmResolver<DenoCompileFileSystem>;
+pub type DenoRtCjsTracker =
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, DenoRtSys>;
+pub type DenoRtNpmResolver = deno_resolver::npm::NpmResolver<DenoRtSys>;
 pub type DenoRtNpmModuleLoader = NpmModuleLoader<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
-  DenoCompileFileSystem,
+  DenoRtSys,
 >;
 pub type DenoRtNodeCodeTranslator = NodeCodeTranslator<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
-  DenoCompileFileSystem,
+  DenoRtSys,
 >;
 pub type DenoRtNodeResolver = deno_runtime::deno_node::NodeResolver<
   DenoInNpmPackageChecker,
   DenoRtNpmResolver,
-  DenoCompileFileSystem,
+  DenoRtSys,
 >;
 pub type DenoRtNpmReqResolver = NpmReqResolver<
   DenoInNpmPackageChecker,
   RealIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
-  DenoCompileFileSystem,
+  DenoRtSys,
 >;
 
 pub struct CjsCodeAnalyzer {

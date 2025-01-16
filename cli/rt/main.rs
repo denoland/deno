@@ -15,7 +15,7 @@ use deno_terminal::colors;
 use indexmap::IndexMap;
 
 use self::binary::extract_standalone;
-use self::file_system::DenoCompileFileSystem;
+use self::file_system::DenoRtSys;
 
 mod binary;
 mod code_cache;
@@ -81,7 +81,7 @@ fn main() {
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let sys = DenoCompileFileSystem::new(data.vfs.clone());
+        let sys = DenoRtSys::new(data.vfs.clone());
         let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }

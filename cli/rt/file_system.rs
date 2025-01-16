@@ -42,9 +42,9 @@ use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
 
 #[derive(Debug, Clone)]
-pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
+pub struct DenoRtSys(Arc<FileBackedVfs>);
 
-impl DenoCompileFileSystem {
+impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
     Self(vfs)
   }
@@ -87,7 +87,7 @@ impl DenoCompileFileSystem {
 }
 
 #[async_trait::async_trait(?Send)]
-impl FileSystem for DenoCompileFileSystem {
+impl FileSystem for DenoRtSys {
   fn cwd(&self) -> FsResult<PathBuf> {
     RealFs.cwd()
   }
@@ -433,17 +433,17 @@ impl FileSystem for DenoCompileFileSystem {
   }
 }
 
-impl ExtNodeSys for DenoCompileFileSystem {}
-impl DenoLibSys for DenoCompileFileSystem {}
+impl ExtNodeSys for DenoRtSys {}
+impl DenoLibSys for DenoRtSys {}
 
-impl sys_traits::BaseFsHardLink for DenoCompileFileSystem {
+impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]
   fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self.link_sync(src, dst).map_err(|err| err.into_io_error())
   }
 }
 
-impl sys_traits::BaseFsRead for DenoCompileFileSystem {
+impl sys_traits::BaseFsRead for DenoRtSys {
   #[inline]
   fn base_fs_read(&self, path: &Path) -> std::io::Result<Cow<'static, [u8]>> {
     self
@@ -564,7 +564,7 @@ impl sys_traits::FsDirEntry for FileBackedVfsDirEntry {
   }
 }
 
-impl sys_traits::BaseFsReadDir for DenoCompileFileSystem {
+impl sys_traits::BaseFsReadDir for DenoRtSys {
   type ReadDirEntry = BoxedFsDirEntry;
 
   fn base_fs_read_dir(
@@ -585,14 +585,14 @@ impl sys_traits::BaseFsReadDir for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsCanonicalize for DenoCompileFileSystem {
+impl sys_traits::BaseFsCanonicalize for DenoRtSys {
   #[inline]
   fn base_fs_canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
     self.realpath_sync(path).map_err(|err| err.into_io_error())
   }
 }
 
-impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
+impl sys_traits::BaseFsMetadata for DenoRtSys {
   type Metadata = BoxedFsMetadataValue;
 
   #[inline]
@@ -619,7 +619,7 @@ impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsCopy for DenoCompileFileSystem {
+impl sys_traits::BaseFsCopy for DenoRtSys {
   #[inline]
   fn base_fs_copy(&self, from: &Path, to: &Path) -> std::io::Result<u64> {
     self
@@ -634,7 +634,7 @@ impl sys_traits::BaseFsCopy for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsCloneFile for DenoCompileFileSystem {
+impl sys_traits::BaseFsCloneFile for DenoRtSys {
   fn base_fs_clone_file(
     &self,
     _from: &Path,
@@ -645,7 +645,7 @@ impl sys_traits::BaseFsCloneFile for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsCreateDir for DenoCompileFileSystem {
+impl sys_traits::BaseFsCreateDir for DenoRtSys {
   #[inline]
   fn base_fs_create_dir(
     &self,
@@ -658,7 +658,7 @@ impl sys_traits::BaseFsCreateDir for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsRemoveFile for DenoCompileFileSystem {
+impl sys_traits::BaseFsRemoveFile for DenoRtSys {
   #[inline]
   fn base_fs_remove_file(&self, path: &Path) -> std::io::Result<()> {
     self
@@ -667,7 +667,7 @@ impl sys_traits::BaseFsRemoveFile for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsRename for DenoCompileFileSystem {
+impl sys_traits::BaseFsRename for DenoRtSys {
   #[inline]
   fn base_fs_rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
     self
@@ -827,7 +827,7 @@ impl sys_traits::FsFileIsTerminal for FsFileAdapter {
   }
 }
 
-impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
+impl sys_traits::BaseFsOpen for DenoRtSys {
   type File = FsFileAdapter;
 
   fn base_fs_open(
@@ -846,7 +846,7 @@ impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::BaseFsSymlinkDir for DenoCompileFileSystem {
+impl sys_traits::BaseFsSymlinkDir for DenoRtSys {
   fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     self
       .symlink_sync(src, dst, Some(FsFileType::Directory))
@@ -854,7 +854,7 @@ impl sys_traits::BaseFsSymlinkDir for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::SystemRandom for DenoCompileFileSystem {
+impl sys_traits::SystemRandom for DenoRtSys {
   #[inline]
   fn sys_random(&self, buf: &mut [u8]) -> std::io::Result<()> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
@@ -862,7 +862,7 @@ impl sys_traits::SystemRandom for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::SystemTimeNow for DenoCompileFileSystem {
+impl sys_traits::SystemTimeNow for DenoRtSys {
   #[inline]
   fn sys_time_now(&self) -> SystemTime {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
@@ -870,7 +870,7 @@ impl sys_traits::SystemTimeNow for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::ThreadSleep for DenoCompileFileSystem {
+impl sys_traits::ThreadSleep for DenoRtSys {
   #[inline]
   fn thread_sleep(&self, dur: Duration) {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
@@ -878,14 +878,14 @@ impl sys_traits::ThreadSleep for DenoCompileFileSystem {
   }
 }
 
-impl sys_traits::EnvCurrentDir for DenoCompileFileSystem {
+impl sys_traits::EnvCurrentDir for DenoRtSys {
   fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
     sys_traits::impls::RealSys.env_current_dir()
   }
 }
 
-impl sys_traits::BaseEnvVar for DenoCompileFileSystem {
+impl sys_traits::BaseEnvVar for DenoRtSys {
   fn base_env_var_os(
     &self,
     key: &std::ffi::OsStr,

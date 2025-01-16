@@ -547,7 +547,6 @@ impl LibMainWorker {
     self.worker.evaluate_module(id).await
   }
 
-  // todo(THIS PR): get cli worker to use this
   pub async fn run(&mut self) -> Result<i32, CoreError> {
     log::debug!("main_module {}", self.main_module);
 

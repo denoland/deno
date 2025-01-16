@@ -93,6 +93,8 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.worker.main_module());
 
+    // WARNING: Remember to update cli/lib/worker.rs to align with
+    // changes made here so that they affect deno_compile as well.
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
