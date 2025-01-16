@@ -17292,3 +17292,52 @@ fn wildcard_augment() {
   let diagnostics = client.did_open_file(&source);
   assert_eq!(diagnostics.all().len(), 0);
 }
+
+#[test]
+fn compiler_options_types() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      const foo = [1];
+      foo.augmented();
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/augments-global": "npm:@denotest/augments-global@1"
+    },
+    "compilerOptions": { "types": ["@denotest/augments-global"] },
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context
+      .new_command()
+      .args("install")
+      .run()
+      .skip_output_check()
+      .assert_exit_code(0);
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 0);
+    client.did_close_file(&source);
+  }
+}

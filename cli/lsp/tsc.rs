@@ -74,6 +74,7 @@ use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::logging::lsp_log;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
 use super::refactor::RefactorCodeActionData;
@@ -4695,7 +4696,24 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .graph_imports_by_referrer(scope)
     {
       for specifier in specifiers {
-        script_names.insert(specifier.to_string());
+        if let Ok(req_ref) =
+          deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
+        {
+          let Some((resolved, _)) =
+            state.state_snapshot.resolver.npm_to_file_url(
+              &req_ref,
+              scope,
+              ResolutionMode::Import,
+              Some(scope),
+            )
+          else {
+            lsp_log!("failed to resolve {req_ref} to file URL");
+            continue;
+          };
+          script_names.insert(resolved.to_string());
+        } else {
+          script_names.insert(specifier.to_string());
+        }
       }
     }
   }
@@ -6245,7 +6263,40 @@ mod tests {
             "kind": "keyword"
           }
         ],
-        "documentation": []
+        "documentation": [
+          {
+            "text": "Outputs a message to the console",
+            "kind": "text",
+          },
+        ],
+        "tags": [
+          {
+            "name": "param",
+            "text": [
+              {
+                "text": "data",
+                "kind": "parameterName",
+              },
+              {
+                "text": " ",
+                "kind": "space",
+              },
+              {
+                "text": "Values to be printed to the console",
+                "kind": "text",
+              },
+            ],
+          },
+          {
+            "name": "example",
+            "text": [
+              {
+                "text": "```ts\nconsole.log('Hello', 'World', 123);\n```",
+                "kind": "text",
+              },
+            ],
+          },
+        ]
       })
     );
   }
