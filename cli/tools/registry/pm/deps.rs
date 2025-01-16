@@ -683,10 +683,21 @@ impl DepManager {
               .and_then(|info| {
                 let latest_tag = info.dist_tags.get("latest")?;
                 let lower_bound = &semver_compatible.as_ref()?.version;
-                if latest_tag > lower_bound {
+                if latest_tag >= lower_bound {
                   Some(latest_tag.clone())
                 } else {
-                  latest_version(Some(latest_tag), info.versions.keys())
+                  latest_version(
+                    Some(latest_tag),
+                    info.versions.iter().filter_map(
+                      |(version, version_info)| {
+                        if version_info.deprecated.is_none() {
+                          Some(version)
+                        } else {
+                          None
+                        }
+                      },
+                    ),
+                  )
                 }
               })
               .map(|version| PackageNv {
