@@ -239,6 +239,15 @@ declare function alert(message?: string): void;
  *
  * If the stdin is not interactive, it returns false.
  *
+ * @example
+ * ```ts
+ * const shouldProceed = confirm("Do you want to proceed?");
+ *
+ * // If the user presses 'y' or 'Y', the result will be true
+ * // If the user presses 'n' or 'N', the result will be false
+ * console.log("Should proceed?", shouldProceed);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/confirm
  * @category Platform
  *
  * @param message
@@ -255,6 +264,15 @@ declare function confirm(message?: string): boolean;
  * string.
  *
  * If the stdin is not interactive, it returns null.
+ *
+ * @example
+ * ```ts
+ * const pet = prompt("Cats or dogs?", "It's fine to love both!");
+ *
+ * // Displays the user's input or the default value of "It's fine to love both!"
+ * console.log("Best pet:", pet);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/prompt
  *
  * @category Platform
  *
