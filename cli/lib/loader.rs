@@ -95,7 +95,7 @@ impl<
     specifier: &Url,
     maybe_referrer: Option<&Url>,
   ) -> Result<ModuleCodeStringSource, AnyError> {
-    let file_path = specifier.to_file_path().unwrap();
+    let file_path = deno_path_util::url_to_file_path(specifier)?;
     let code = self
       .sys
       .fs_read(&file_path)
@@ -112,7 +112,7 @@ impl<
             msg.push_str(referrer.as_str());
             let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
               .iter()
-              .find(|e| dir_path.join(e).is_file());
+              .find(|e| self.sys.fs_is_file_no_err(dir_path.join(e)));
             if let Some(entrypoint_name) = entrypoint_name {
               msg.push_str("\nDid you mean to import ");
               msg.push_str(entrypoint_name);

@@ -42,7 +42,7 @@ disallowed-methods = [
   { path = "std::fs::write", reason = "File system operations should be done using DenoLibSys" },
   { path = "std::path::Path::canonicalize", reason = "File system operations should be done using DenoLibSys" },
   { path = "std::path::Path::exists", reason = "File system operations should be done using DenoLibSys" },
-  { path = "url::Url::to_file_path", reason = "Use deno_path_util instead so it works in Wasm" },
-  { path = "url::Url::from_file_path", reason = "Use deno_path_util instead so it works in Wasm" },
-  { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead so it works in Wasm" },
+  { path = "url::Url::to_file_path", reason = "Use deno_path_util instead" },
+  { path = "url::Url::from_file_path", reason = "Use deno_path_util instead" },
+  { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead" },
 ]

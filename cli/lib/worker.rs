@@ -114,6 +114,8 @@ impl StorageKeyResolver {
 }
 
 pub fn get_cache_storage_dir() -> PathBuf {
+  // ok because this won't ever be used by the js runtime
+  #[allow(clippy::disallowed_methods)]
   // Note: we currently use temp_dir() to avoid managing storage size.
   std::env::temp_dir().join("deno_cache")
 }

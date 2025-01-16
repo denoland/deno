@@ -417,6 +417,8 @@ impl VfsBuilder {
     path: &Path,
   ) -> Result<(), AnyError> {
     self.add_dir_raw(path);
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
     let read_dir = std::fs::read_dir(path)
       .with_context(|| format!("Reading {}", path.display()))?;
 
@@ -519,6 +521,8 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
     self.add_file_with_data(path, file_bytes, VfsFileSubDataKind::Raw)
@@ -528,6 +532,8 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
     self.add_file_with_data_raw(path, file_bytes, VfsFileSubDataKind::Raw)
@@ -539,6 +545,8 @@ impl VfsBuilder {
     data: Vec<u8>,
     sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
     let metadata = std::fs::symlink_metadata(path).with_context(|| {
       format!("Resolving target path for '{}'", path.display())
     })?;
@@ -606,6 +614,8 @@ impl VfsBuilder {
   }
 
   fn resolve_target_path(&mut self, path: &Path) -> Result<PathBuf, AnyError> {
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
     let metadata = std::fs::symlink_metadata(path).with_context(|| {
       format!("Resolving target path for '{}'", path.display())
     })?;
@@ -630,6 +640,8 @@ impl VfsBuilder {
   ) -> Result<SymlinkTarget, AnyError> {
     log::debug!("Adding symlink '{}'", path.display());
     let target = strip_unc_prefix(
+      // ok, fs implementation
+      #[allow(clippy::disallowed_methods)]
       std::fs::read_link(path)
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
@@ -650,6 +662,8 @@ impl VfsBuilder {
         // ignore previously inserted
       },
     );
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
     let target_metadata =
       std::fs::symlink_metadata(&target).with_context(|| {
         format!("Reading symlink target '{}'", target.display())
