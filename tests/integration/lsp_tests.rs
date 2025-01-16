@@ -17297,15 +17297,6 @@ fn wildcard_augment() {
   assert_eq!(diagnostics.all().len(), 0);
 }
 
-fn deno_install(context: &test_util::TestContext) {
-  context
-    .new_command()
-    .args("install")
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
-}
-
 #[test]
 fn compiler_options_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
@@ -17335,7 +17326,7 @@ fn compiler_options_types() {
     let mut deno_json = deno_json.clone();
     deno_json["nodeModulesDir"] = json!(node_modules_dir);
     temp.write("deno.json", deno_json.to_string());
-    deno_install(&context);
+    context.run_deno("install");
     client.did_change_watched_files(json!({
       "changes": [{
         "uri": temp.url().join("deno.json").unwrap(),
@@ -17408,7 +17399,7 @@ fn type_reference_import_meta() {
     let mut deno_json = deno_json.clone();
     deno_json["nodeModulesDir"] = json!(node_modules_dir);
     temp.write("deno.json", deno_json.to_string());
-    deno_install(&context);
+    context.run_deno("install");
     client.did_change_watched_files(json!({
       "changes": [{
         "uri": temp.url().join("deno.json").unwrap(),
