@@ -17388,8 +17388,8 @@ fn type_reference_import_meta() {
     }
   ```
   */
-  let types = source_file(
-    temp_dir.join("types.d.ts"),
+  temp.write(
+    "types.d.ts",
     r#"
       /// <reference types="@denotest/augments-global/import-meta" />
       "#,
