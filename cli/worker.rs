@@ -21,7 +21,6 @@ use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;
-use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
