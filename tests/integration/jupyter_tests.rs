@@ -10,7 +10,6 @@ use chrono::DateTime;
 use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
-use serde_json;
 use serde_json::json;
 use serde_json::Value;
 use test_util::assertions::assert_json_subset;

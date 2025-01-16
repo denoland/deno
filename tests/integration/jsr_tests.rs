@@ -5,7 +5,6 @@ use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
-use serde_json;
 use serde_json::json;
 use serde_json::Value;
 use test_util as util;

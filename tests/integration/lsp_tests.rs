@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
-use serde_json;
 use serde_json::json;
 use serde_json::Value;
 use test_util::assert_starts_with;

@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
-use serde_json;
 use serde_json::json;
 use serde_json::Value;
 use test_util as util;

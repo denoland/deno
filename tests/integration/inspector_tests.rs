@@ -15,7 +15,6 @@ use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper::Response;
 use hyper_util::rt::TokioIo;
-use serde_json;
 use serde_json::json;
 use test_util as util;
 use tokio::net::TcpStream;
