@@ -1882,7 +1882,7 @@ Deno.test("[node/http] decompress brotli response", {
   ], ["user-agent", "Deno/2.1.1"]]);
 });
 
-Deno.test("[node/http] an error with DNS propagates to reqeust object", async () => {
+Deno.test("[node/http] an error with DNS propagates to request object", async () => {
   const { resolve, promise } = Promise.withResolvers<void>();
   const req = http.request("http://invalid-hostname.test", () => {});
   req.on("error", (err) => {
