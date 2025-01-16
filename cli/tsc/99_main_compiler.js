@@ -500,6 +500,8 @@ delete Object.prototype.__proto__;
     // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
     // so we will ignore complaints about this compiler setting.
     5070,
+    // TS6053: File '{0}' not found.
+    6053,
     // TS7016: Could not find a declaration file for module '...'. '...'
     // implicitly has an 'any' type.  This is due to `allowJs` being off by
     // default but importing of a JavaScript module.
@@ -705,15 +707,14 @@ delete Object.prototype.__proto__;
     resolveTypeReferenceDirectiveReferences(
       typeDirectiveReferences,
       containingFilePath,
-      redirectedReference,
+      _redirectedReference,
       options,
       containingSourceFile,
       _reusedNames,
     ) {
       const isCjs =
         containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS;
-      /** @type {Array<ts.ResolvedTypeReferenceDirectiveWithFailedLookupLocations>} */
-      const result = typeDirectiveReferences.map((arg) => {
+      const toResolve = typeDirectiveReferences.map((arg) => {
         /** @type {ts.FileReference} */
         const fileReference = typeof arg === "string"
           ? {
@@ -722,46 +723,50 @@ delete Object.prototype.__proto__;
             fileName: arg,
           }
           : arg;
-        if (fileReference.fileName.startsWith("npm:")) {
-          /** @type {[string, ts.Extension | null] | undefined} */
-          const resolved = ops.op_resolve(
-            containingFilePath,
-            [
-              [
-                fileReference.resolutionMode == null
-                  ? isCjs
-                  : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
-                fileReference.fileName,
-              ],
-            ],
-          )?.[0];
-          if (resolved && resolved[1]) {
-            return {
-              resolvedTypeReferenceDirective: {
-                primary: true,
-                resolvedFileName: resolved[0],
-                // todo(dsherret): we should probably be setting this
-                isExternalLibraryImport: undefined,
-              },
-            };
-          } else {
-            return {
-              resolvedTypeReferenceDirective: undefined,
-            };
-          }
+        return [
+          fileReference.resolutionMode == null
+            ? isCjs
+            : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
+          fileReference.fileName,
+        ];
+      });
+
+      /** @type {Array<[string, ts.Extension | null] | undefined>} */
+      const resolved = ops.op_resolve(
+        containingFilePath,
+        toResolve,
+      );
+
+      /** @type {Array<ts.ResolvedTypeReferenceDirectiveWithFailedLookupLocations>} */
+      const result = resolved.map((item) => {
+        if (item && item[1]) {
+          const [resolvedFileName, extension] = item;
+          return {
+            resolvedTypeReferenceDirective: {
+              primary: true,
+              resolvedFileName,
+              extension,
+              isExternalLibraryImport: false,
+            },
+          };
         } else {
-          return ts.resolveTypeReferenceDirective(
-            fileReference.fileName,
-            containingFilePath,
-            options,
-            host,
-            redirectedReference,
-            undefined,
-            containingSourceFile?.impliedNodeFormat ??
-              fileReference.resolutionMode,
-          );
+          return {
+            resolvedTypeReferenceDirective: undefined,
+          };
         }
       });
+
+      if (logDebug) {
+        debug(
+          "resolveTypeReferenceDirectiveReferences ",
+          typeDirectiveReferences,
+          containingFilePath,
+          options,
+          containingSourceFile?.fileName,
+          " => ",
+          result,
+        );
+      }
       return result;
     },
     resolveModuleNameLiterals(
@@ -1116,6 +1121,36 @@ delete Object.prototype.__proto__;
     if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
       return false;
     }
+
+    // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
+    // the one in @types/node. the types of the filename and dirname properties are different,
+    // which causes tsc to error.
+    const importMetaFilenameDirnameModifiersRe =
+      /^All declarations of '(filename|dirname)'/;
+    const importMetaFilenameDirnameTypesRe =
+      /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
+    // Declarations of X must have identical modifiers.
+    if (diagnostic.code === 2687) {
+      if (
+        typeof diagnostic.messageText === "string" &&
+        (importMetaFilenameDirnameModifiersRe.test(diagnostic.messageText)) &&
+        (diagnostic.file?.fileName.startsWith("asset:///") ||
+          diagnostic.file?.fileName?.includes("@types/node"))
+      ) {
+        return false;
+      }
+    }
+    // Subsequent property declarations must have the same type.
+    if (diagnostic.code === 2717) {
+      if (
+        typeof diagnostic.messageText === "string" &&
+        (importMetaFilenameDirnameTypesRe.test(diagnostic.messageText)) &&
+        (diagnostic.file?.fileName.startsWith("asset:///") ||
+          diagnostic.file?.fileName?.includes("@types/node"))
+      ) {
+        return false;
+      }
+    }
     // make the diagnostic for using an `export =` in an es module a warning
     if (diagnostic.code === 1203) {
       diagnostic.category = ts.DiagnosticCategory.Warning;
@@ -1410,7 +1445,6 @@ delete Object.prototype.__proto__;
     "ErrorConstructor",
     "gc",
     "Global",
-    "ImportMeta",
     "localStorage",
     "queueMicrotask",
     "RequestInit",
