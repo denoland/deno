@@ -166,9 +166,9 @@ declare var localStorage: Storage;
 /**
  * Deno's `sessionStorage` API operates similarly to the {@linkcode localStorage} API,
  * but it is intended for storing data temporarily for the duration of a session.
- * Data stored in sessionStorage is cleared when the application session ends.
- * This makes it suitable for temporary data that you do not need to persist
- * across user sessions.
+ * Data stored in sessionStorage is cleared when the application session or
+ * process ends. This makes it suitable for temporary data that you do not need
+ * to persist across user sessions.
  *
  * - Key-Value Storage: Stores data as key-value pairs.
  * - Session-Based: Data is only available for the duration of the page session.
