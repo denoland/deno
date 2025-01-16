@@ -55,9 +55,11 @@ lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
-glibc_version = "0.1.2"
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
+
+[target.'cfg(unix)'.build-dependencies]
+glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -151,7 +153,6 @@ rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
-shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
 sqlformat = "=0.3.2"
 strsim = "0.11.1"
@@ -180,6 +181,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
+shell-escape = "=0.1.5"
 
 [dev-dependencies]
 deno_bench_util.workspace = true

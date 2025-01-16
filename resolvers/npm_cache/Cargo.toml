@@ -35,6 +35,8 @@ ring.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 tar.workspace = true
-tempfile = "3.4.0"
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tempfile = "3.4.0"
