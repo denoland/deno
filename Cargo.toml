@@ -85,7 +85,7 @@ deno_kv = { version = "0.94.0", path = "./ext/kv" }
 deno_napi = { version = "0.117.0", path = "./ext/napi" }
 deno_net = { version = "0.178.0", path = "./ext/net" }
 deno_node = { version = "0.124.0", path = "./ext/node" }
-deno_os = { version = "0.2.0", path = "./ext/os" }
+deno_os = { version = "0.3.0", path = "./ext/os" }
 deno_telemetry = { version = "0.8.0", path = "./ext/telemetry" }
 deno_tls = { version = "0.173.0", path = "./ext/tls" }
 deno_url = { version = "0.186.0", path = "./ext/url" }
