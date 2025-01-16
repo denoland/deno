@@ -322,7 +322,7 @@ pub enum ResolveBinaryEntrypointFallbackError {
 pub enum CreateCustomWorkerError {
   #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] deno_runtime::deno_io::fs::FsError),
+  Io(#[from] std::io::Error),
   #[class(inherit)]
   #[error(transparent)]
   Core(#[from] CoreError),
@@ -441,9 +441,8 @@ impl CliMainWorkerFactory {
         ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
           .unwrap()
           .join("package.json")?;
-      let package_folder = self
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(
+      let package_folder =
+        self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
           package_ref.req(),
           &referrer,
         )?;
