@@ -13,7 +13,7 @@
  */
 /** Interface representing the console object that provides methods for logging, debugging, and timing */
 interface Console {
-  /** 
+  /**
    * Tests that an expression is true. If not, logs an error message
    * @param condition The expression to test for truthiness
    * @param data Additional arguments to be printed if the assertion fails
@@ -25,7 +25,7 @@ interface Console {
    */
   assert(condition?: boolean, ...data: any[]): void;
 
-  /** 
+  /**
    * Clears the console if the environment allows it
    * @example
    * ```ts
@@ -34,7 +34,7 @@ interface Console {
    */
   clear(): void;
 
-  /** 
+  /**
    * Maintains an internal counter for a given label, incrementing it each time the method is called
    * @param label The label to count. Defaults to 'default'
    * @example
@@ -83,7 +83,7 @@ interface Console {
   dirxml(...data: any[]): void;
 
   /**
-   * Outputs an error message to the console. 
+   * Outputs an error message to the console.
    * This method routes the output to stderr,
    * unlike other console methods that route to stdout.
    * @param data Values to be printed to the console
@@ -118,7 +118,7 @@ interface Console {
    */
   groupCollapsed(...data: any[]): void;
 
-  /** 
+  /**
    * Exits the current inline group in the console
    * @example
    * ```ts
