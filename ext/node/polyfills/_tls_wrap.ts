@@ -79,7 +79,7 @@ export class TLSSocket extends net.Socket {
   ssl: any;
 
   _start() {
-    this[kHandle].afterConnect();
+    this[kHandle].afterConnectTls();
   }
 
   constructor(socket: any, opts: any = kEmptyObject) {
@@ -199,6 +199,7 @@ export class TLSSocket extends net.Socket {
       // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
       handle._parent = handle;
       handle._parentWrap = wrap;
+
       return handle;
     }
   }

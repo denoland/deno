@@ -12,7 +12,7 @@ import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
-import { text } from "node:stream/consumers"
+import { text } from "node:stream/consumers";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -104,9 +104,11 @@ Deno.test("tls.connect makes tls connection to example.com", async () => {
   await new Promise((resolve) => {
     socket.on("secureConnect", resolve);
   });
-  socket.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n");
+  socket.write(
+    "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
+  );
   assertStringIncludes(await text(socket), "<title>Example Domain</title>");
-})
+});
 
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
@@ -275,12 +277,10 @@ Deno.test("tls connect upgrade tcp", async () => {
   const socket = new net.Socket();
   socket.connect(443, "google.com");
   socket.on("connect", () => {
-    console.log("hi")
     const secure = tls.connect({ socket });
     secure.on("secureConnect", () => resolve());
   });
 
-  console.log("hi")
   await promise;
   socket.destroy();
 });

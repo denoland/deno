@@ -356,12 +356,6 @@ async function _afterConnect(
     return;
   }
 
-  // Deno specific: run tls handshake if it's from a tls socket
-  // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
-  if (typeof handle.afterConnectTls === "function") {
-    await handle.afterConnectTls();
-  }
-
   debug("afterConnect");
 
   assert(socket.connecting);
@@ -383,6 +377,12 @@ async function _afterConnect(
 
     socket.emit("connect");
     socket.emit("ready");
+
+    // Deno specific: run tls handshake if it's from a tls socket
+    // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
+    if (typeof handle.afterConnectTls === "function") {
+      await handle.afterConnectTls();
+    }
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
