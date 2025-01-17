@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use bytemuck::cast_slice;
 use bytemuck::cast_slice_mut;
@@ -570,8 +570,9 @@ pub(crate) fn create_image_from_raw_bytes(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use image::Rgba;
+
+  use super::*;
 
   #[test]
   fn test_premultiply_alpha() {
