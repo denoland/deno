@@ -12,7 +12,7 @@ use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_runtime::ops::process::NpmProcessStateProviderRc;
+use deno_runtime::deno_process::NpmProcessStateProviderRc;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
