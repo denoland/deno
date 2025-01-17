@@ -37,6 +37,7 @@ use deno_core::futures::AsyncReadExt;
 use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_graph::ModuleGraph;
 use deno_lib::cache::DenoDir;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
@@ -278,7 +279,7 @@ impl StandaloneModules {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a ModuleSpecifier,
-  ) -> Result<Option<&'a ModuleSpecifier>, AnyError> {
+  ) -> Result<Option<&'a ModuleSpecifier>, JsErrorBox> {
     if specifier.scheme() == "file" {
       Ok(Some(specifier))
     } else {

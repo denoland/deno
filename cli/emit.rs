@@ -112,9 +112,9 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    module_kind: deno_ast::ModuleKind,
+    module_kind: ModuleKind,
     source: &Arc<str>,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, EmitParsedSourceHelperError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, module_kind, source) {
