@@ -8,6 +8,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use deno_broadcast_channel::InMemoryBroadcastChannel;
+use deno_cache::CacheImpl;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
 use deno_core::error::CoreError;
@@ -200,6 +201,7 @@ pub struct WorkerOptions {
   pub strace_ops: Option<Vec<String>>,
 
   pub cache_storage_dir: Option<std::path::PathBuf>,
+  pub use_lsc_cache: bool,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub enable_stack_trace_arg_in_ops: bool,
@@ -221,6 +223,7 @@ impl Default for WorkerOptions {
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
+      use_lsc_cache: false,
       extensions: Default::default(),
       startup_snapshot: Default::default(),
       create_params: Default::default(),
@@ -341,6 +344,39 @@ impl MainWorker {
       },
     );
 
+    fn create_cache_inner(options: &WorkerOptions) -> Option<CreateCache> {
+      if let Some(storage_dir) = &options.cache_storage_dir {
+        let storage_dir = storage_dir.clone();
+        let create_cache_fn = move || {
+          let s = SqliteBackedCache::new(storage_dir.clone())?;
+          Ok(CacheImpl::Sqlite(s))
+        };
+        return Some(CreateCache(Arc::new(create_cache_fn)));
+      }
+
+      if options.use_lsc_cache {
+        use deno_cache::CacheShard;
+        let Ok(endpoint) = std::env::var("LSC_ENDPOINT") else {
+          return None;
+        };
+        let Ok(token) = std::env::var("LSC_TOKEN") else {
+          return None;
+        };
+        let shard = Rc::new(CacheShard::new(endpoint, token));
+        let create_cache_fn = move || {
+          let x = deno_cache::LscBackend::default();
+          x.set_shard(shard.clone());
+
+          Ok(CacheImpl::Lsc(x))
+        };
+        #[allow(clippy::arc_with_non_send_sync)]
+        return Some(CreateCache(Arc::new(create_cache_fn)));
+      }
+
+      None
+    }
+    let create_cache = create_cache_inner(&options);
+
     // Get our op metrics
     let (op_summary_metrics, op_metrics_factory_fn) = create_op_metrics(
       options.bootstrap.enable_op_summary_metrics,
@@ -350,10 +386,6 @@ impl MainWorker {
     // Permissions: many ops depend on this
     let enable_testing_features = options.bootstrap.enable_testing_features;
     let exit_code = ExitCode::default();
-    let create_cache = options.cache_storage_dir.map(|storage_dir| {
-      let create_cache_fn = move || SqliteBackedCache::new(storage_dir.clone());
-      CreateCache(Arc::new(create_cache_fn))
-    });
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
     // `runtime/web_worker.rs` and `runtime/snapshot.rs`!
@@ -381,9 +413,7 @@ impl MainWorker {
           ..Default::default()
         },
       ),
-      deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(
-        create_cache,
-      ),
+      deno_cache::deno_cache::init_ops_and_esm(create_cache),
       deno_websocket::deno_websocket::init_ops_and_esm::<PermissionsContainer>(
         options.bootstrap.user_agent.clone(),
         services.root_cert_store_provider.clone(),

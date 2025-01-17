@@ -1,21 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
-use std::pin::Pin;
 use std::rc::Rc;
 
 use async_stream::try_stream;
-use async_trait::async_trait;
 use base64::Engine;
 use bytes::Bytes;
 use deno_core::unsync::spawn;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
-use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use http::header::VARY;
@@ -23,19 +17,16 @@ use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
 use slab::Slab;
-use tokio::io::AsyncRead;
-use tokio::io::AsyncReadExt;
-use tokio_util::io::StreamReader;
 
 use crate::get_header;
 use crate::get_headers_from_vary_header;
 use crate::lsc_shard::CacheShard;
-use crate::Cache;
 use crate::CacheDeleteRequest;
 use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
+use crate::CacheResponseResource;
 
 const REQHDR_PREFIX: &str = "x-lsc-meta-reqhdr-";
 
@@ -51,13 +42,14 @@ impl LscBackend {
   }
 }
 
-#[async_trait(?Send)]
-impl Cache for LscBackend {
-  type CacheMatchResourceType = CacheResponseResource;
-
+#[allow(clippy::unused_async)]
+impl LscBackend {
   /// Open a cache storage. Internally, this allocates an id and maps it
   /// to the provided cache name.
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError> {
+  pub async fn storage_open(
+    &self,
+    cache_name: String,
+  ) -> Result<i64, CacheError> {
     if cache_name.is_empty() {
       return Err(CacheError::EmptyName);
     }
@@ -66,12 +58,15 @@ impl Cache for LscBackend {
   }
 
   /// Check if a cache with the provided name exists. Always returns `true`.
-  async fn storage_has(&self, _cache_name: String) -> Result<bool, CacheError> {
+  pub async fn storage_has(
+    &self,
+    _cache_name: String,
+  ) -> Result<bool, CacheError> {
     Ok(true)
   }
 
   /// Delete a cache storage. Not yet implemented.
-  async fn storage_delete(
+  pub async fn storage_delete(
     &self,
     _cache_name: String,
   ) -> Result<bool, CacheError> {
@@ -79,7 +74,7 @@ impl Cache for LscBackend {
   }
 
   /// Writes an entry to the cache.
-  async fn put(
+  pub async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
@@ -150,7 +145,7 @@ impl Cache for LscBackend {
   }
 
   /// Matches a request against the cache.
-  async fn r#match(
+  pub async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
@@ -246,7 +241,7 @@ impl Cache for LscBackend {
       response_headers,
     };
 
-    let body = CacheResponseResource::new(
+    let body = CacheResponseResource::lsc(
       res
         .bytes_stream()
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
@@ -255,7 +250,7 @@ impl Cache for LscBackend {
     Ok(Some((meta, Some(body))))
   }
 
-  async fn delete(
+  pub async fn delete(
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
@@ -297,38 +292,6 @@ impl Cache for LscBackend {
 impl deno_core::Resource for LscBackend {
   fn name(&self) -> std::borrow::Cow<str> {
     "LscBackend".into()
-  }
-}
-
-pub struct CacheResponseResource {
-  body: AsyncRefCell<Pin<Box<dyn AsyncRead>>>,
-}
-
-impl CacheResponseResource {
-  fn new(
-    body: impl Stream<Item = Result<Bytes, std::io::Error>> + 'static,
-  ) -> Self {
-    Self {
-      body: AsyncRefCell::new(Box::pin(StreamReader::new(body))),
-    }
-  }
-
-  async fn read(
-    self: Rc<Self>,
-    data: &mut [u8],
-  ) -> Result<usize, std::io::Error> {
-    let resource = deno_core::RcRef::map(&self, |r| &r.body);
-    let mut body = resource.borrow_mut().await;
-    let nread = body.read(data).await?;
-    Ok(nread)
-  }
-}
-
-impl Resource for CacheResponseResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "CacheResponseResource".into()
   }
 }
 
