@@ -1,30 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::analysis;
-use super::client::Client;
-use super::config::Config;
-use super::documents;
-use super::documents::Document;
-use super::documents::Documents;
-use super::documents::DocumentsFilter;
-use super::language_server;
-use super::language_server::StateSnapshot;
-use super::performance::Performance;
-use super::tsc;
-use super::tsc::TsServer;
-use super::urls::uri_parse_unencoded;
-use super::urls::url_to_uri;
-use super::urls::LspUrlMap;
-
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
-use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
-use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
-use crate::util::path::to_percent_decoded_str;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::thread;
 
 use deno_ast::MediaType;
 use deno_config::deno_json::LintConfig;
@@ -44,28 +25,49 @@ use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
+use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node;
 use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
-use import_map::ImportMapError;
+use import_map::ImportMapErrorKind;
 use log::error;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
+
+use super::analysis;
+use super::client::Client;
+use super::config::Config;
+use super::documents;
+use super::documents::Document;
+use super::documents::Documents;
+use super::documents::DocumentsFilter;
+use super::language_server;
+use super::language_server::StateSnapshot;
+use super::performance::Performance;
+use super::tsc;
+use super::tsc::TsServer;
+use super::urls::uri_parse_unencoded;
+use super::urls::url_to_uri;
+use super::urls::LspUrlMap;
+use crate::graph_util;
+use crate::graph_util::enhanced_resolution_error_message;
+use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
+use crate::tools::lint::LintRuleProvider;
+use crate::tsc::DiagnosticCategory;
+use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
@@ -263,7 +265,7 @@ impl TsDiagnosticsStore {
 }
 
 pub fn should_send_diagnostic_batch_index_notifications() -> bool {
-  crate::args::has_flag_env_var(
+  deno_lib::env::has_flag_env_var(
     "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
   )
 }
@@ -833,7 +835,7 @@ fn generate_lint_diagnostics(
               lint_rule_provider.resolve_lint_rules(Default::default(), None)
             },
             fix: false,
-            deno_lint_config: deno_lint::linter::LintConfig {
+            deno_lint_config: DenoLintConfig {
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
@@ -906,8 +908,22 @@ async fn generate_ts_diagnostics(
   } else {
     Default::default()
   };
-  for (specifier_str, ts_json_diagnostics) in ts_diagnostics_map {
+  for (specifier_str, mut ts_json_diagnostics) in ts_diagnostics_map {
     let specifier = resolve_url(&specifier_str)?;
+    let suggestion_actions_settings = snapshot
+      .config
+      .language_settings_for_specifier(&specifier)
+      .map(|s| s.suggestion_actions.clone())
+      .unwrap_or_default();
+    if !suggestion_actions_settings.enabled {
+      ts_json_diagnostics.retain(|d| {
+        d.category != DiagnosticCategory::Suggestion
+          // Still show deprecated and unused diagnostics.
+          // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
+          || d.reports_deprecated == Some(true)
+          || d.reports_unnecessary == Some(true)
+      });
+    }
     let version = snapshot
       .documents
       .get(&specifier)
@@ -1262,10 +1278,10 @@ impl DenoDiagnostic {
       Self::NoAttributeType => (lsp::DiagnosticSeverity::ERROR, "The module is a JSON module and not being imported with an import attribute. Consider adding `with { type: \"json\" }` to the import statement.".to_string(), None),
       Self::NoCache(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Uncached or missing remote URL: {specifier}"), Some(json!({ "specifier": specifier }))),
       Self::NotInstalledJsr(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("JSR package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
-      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("NPM package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
+      Self::NotInstalledNpm(pkg_req, specifier) => (lsp::DiagnosticSeverity::ERROR, format!("npm package \"{pkg_req}\" is not installed or doesn't exist."), Some(json!({ "specifier": specifier }))),
       Self::NoLocal(specifier) => {
         let maybe_sloppy_resolution = CliSloppyImportsResolver::new(
-          SloppyImportsCachedFs::new(Arc::new(deno_fs::RealFs))
+          SloppyImportsCachedFs::new(CliSys::default())
         ).resolve(specifier, SloppyImportsResolutionKind::Execution);
         let data = maybe_sloppy_resolution.as_ref().map(|res| {
           json!({
@@ -1281,8 +1297,8 @@ impl DenoDiagnostic {
         let mut message;
         message = enhanced_resolution_error_message(err);
         if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
-            if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) = resolve_error.downcast_ref::<ImportMapError>() {
+          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
+            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
               if specifier.chars().next().unwrap_or('\0') == '@'{
                 let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
                 message.push_str(hint.as_str());
@@ -1355,7 +1371,7 @@ fn diagnose_resolution(
     }
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
-    // @deno-types and that's a bit complicated to explain
+    // @ts-types and that's a bit complicated to explain
     let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
       && doc.media_type().is_declaration()
       && !MediaType::from_specifier(specifier).is_declaration();
@@ -1523,7 +1539,7 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
-  // TODO(nayeemrmn): This is a crude way of detecting `@deno-types` which has
+  // TODO(nayeemrmn): This is a crude way of detecting `@ts-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
   // a separate dependency: https://github.com/denoland/deno_graph/issues/247.
@@ -1540,7 +1556,7 @@ fn diagnose_dependency(
       snapshot,
       dependency_key,
       if dependency.maybe_code.is_none()
-        // If not @deno-types, diagnose the types if the code errored because
+        // If not @ts-types, diagnose the types if the code errored because
         // it's likely resolving into the node_modules folder, which might be
         // erroring correctly due to resolution only being for bundlers. Let this
         // fail at runtime if necessary, but don't bother erroring in the editor
@@ -1630,6 +1646,12 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use deno_config::deno_json::ConfigFile;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   use super::*;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
@@ -1639,11 +1661,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
-
-  use deno_config::deno_json::ConfigFile;
-  use pretty_assertions::assert_eq;
-  use std::sync::Arc;
-  use test_util::TempDir;
 
   fn mock_config() -> Config {
     let root_url = resolve_url("file:///").unwrap();
@@ -1678,12 +1695,7 @@ mod tests {
     let mut config = Config::new_with_roots([root_uri.clone()]);
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_uri.join(relative_path).unwrap();
-      let config_file = ConfigFile::new(
-        json_string,
-        base_url,
-        &deno_config::deno_json::ConfigParseOptions::default(),
-      )
-      .unwrap();
+      let config_file = ConfigFile::new(json_string, base_url).unwrap();
       config.tree.inject_config_file(config_file).await;
     }
     let resolver =
@@ -1951,7 +1963,7 @@ let c: number = "a";
       &[(
         "a.ts",
         r#"
-        // @deno-types="bad.d.ts"
+        // @ts-types="bad.d.ts"
         import "bad.js";
         import "bad.js";
         "#,
@@ -2005,11 +2017,11 @@ let c: number = "a";
           "range": {
             "start": {
               "line": 1,
-              "character": 23
+              "character": 21
             },
             "end": {
               "line": 1,
-              "character": 33
+              "character": 31
             }
           },
           "severity": 1,

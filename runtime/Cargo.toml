@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_runtime"
-version = "0.188.0"
+version = "0.194.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -49,6 +49,7 @@ deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
 deno_fetch.workspace = true
+deno_os.workspace = true
 deno_ffi.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
 deno_http.workspace = true
@@ -79,6 +80,7 @@ deno_console.workspace = true
 deno_core.workspace = true
 deno_cron.workspace = true
 deno_crypto.workspace = true
+deno_error.workspace = true
 deno_fetch.workspace = true
 deno_ffi.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
@@ -88,8 +90,10 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_resolver.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
@@ -112,7 +116,6 @@ hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
-netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
 percent-encoding.workspace = true
@@ -120,8 +123,7 @@ regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file = "1.0.6"
 serde.workspace = true
-signal-hook = "0.3.17"
-signal-hook-registry = "1.4.0"
+sys_traits.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

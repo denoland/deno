@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -10,10 +10,10 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
+use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use deno_task_shell::ShellCommandContext;
 use deno_task_shell::ShellPipeReader;
@@ -22,10 +22,11 @@ use lazy_regex::Lazy;
 use regex::Regex;
 use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
+use tokio_util::sync::CancellationToken;
 
+use crate::node::CliNodeResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
@@ -45,9 +46,11 @@ impl TaskStdio {
   pub fn stdout() -> Self {
     Self(None, ShellPipeWriter::stdout())
   }
+
   pub fn stderr() -> Self {
     Self(None, ShellPipeWriter::stderr())
   }
+
   pub fn piped() -> Self {
     let (r, w) = deno_task_shell::pipe();
     Self(Some(r), w)
@@ -62,8 +65,8 @@ pub struct TaskIo {
 impl Default for TaskIo {
   fn default() -> Self {
     Self {
-      stderr: TaskStdio::stderr(),
       stdout: TaskStdio::stdout(),
+      stderr: TaskStdio::stderr(),
     }
   }
 }
@@ -78,6 +81,7 @@ pub struct RunTaskOptions<'a> {
   pub custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   pub root_node_modules_dir: Option<&'a Path>,
   pub stdio: Option<TaskIo>,
+  pub kill_signal: KillSignal,
 }
 
 pub type TaskCustomCommands = HashMap<String, Rc<dyn ShellCommand>>;
@@ -96,8 +100,12 @@ pub async fn run_task(
     .with_context(|| format!("Error parsing script '{}'.", opts.task_name))?;
   let env_vars =
     prepare_env_vars(opts.env_vars, opts.init_cwd, opts.root_node_modules_dir);
-  let state =
-    deno_task_shell::ShellState::new(env_vars, opts.cwd, opts.custom_commands);
+  let state = deno_task_shell::ShellState::new(
+    env_vars,
+    opts.cwd,
+    opts.custom_commands,
+    opts.kill_signal,
+  );
   let stdio = opts.stdio.unwrap_or_default();
   let (
     TaskStdio(stdout_read, stdout_write),
@@ -405,15 +413,15 @@ impl ShellCommand for NodeModulesFileRunCommand {
 }
 
 pub fn resolve_custom_commands(
-  npm_resolver: &dyn CliNpmResolver,
-  node_resolver: &NodeResolver,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  let mut commands = match npm_resolver.as_inner() {
-    InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+  let mut commands = match npm_resolver {
+    CliNpmResolver::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
       resolve_npm_commands_from_bin_dir(node_modules_dir)
     }
-    InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(npm_resolver, node_resolver)?
     }
   };
@@ -512,13 +520,12 @@ fn resolve_execution_path_from_npx_shim(
 }
 
 fn resolve_managed_npm_commands(
-  npm_resolver: &ManagedCliNpmResolver,
-  node_resolver: &NodeResolver,
+  npm_resolver: &CliManagedNpmResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
-  let snapshot = npm_resolver.snapshot();
-  for id in snapshot.top_level_packages() {
-    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(id)?;
+  for id in npm_resolver.resolution().top_level_packages() {
+    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
     let bin_commands =
       node_resolver.resolve_binary_commands(&package_folder)?;
     for bin_command in bin_commands {
@@ -535,6 +542,86 @@ fn resolve_managed_npm_commands(
     result.insert("npx".to_string(), Rc::new(NpxCommand));
   }
   Ok(result)
+}
+
+/// Runs a deno task future forwarding any signals received
+/// to the process.
+///
+/// Signal listeners and ctrl+c listening will be setup.
+pub async fn run_future_forwarding_signals<TOutput>(
+  kill_signal: KillSignal,
+  future: impl std::future::Future<Output = TOutput>,
+) -> TOutput {
+  fn spawn_future_with_cancellation(
+    future: impl std::future::Future<Output = ()> + 'static,
+    token: CancellationToken,
+  ) {
+    deno_core::unsync::spawn(async move {
+      tokio::select! {
+        _ = future => {}
+        _ = token.cancelled() => {}
+      }
+    });
+  }
+
+  let token = CancellationToken::new();
+  let _token_drop_guard = token.clone().drop_guard();
+  let _drop_guard = kill_signal.clone().drop_guard();
+
+  spawn_future_with_cancellation(
+    listen_ctrl_c(kill_signal.clone()),
+    token.clone(),
+  );
+  #[cfg(unix)]
+  spawn_future_with_cancellation(
+    listen_and_forward_all_signals(kill_signal),
+    token,
+  );
+
+  future.await
+}
+
+async fn listen_ctrl_c(kill_signal: KillSignal) {
+  while let Ok(()) = tokio::signal::ctrl_c().await {
+    // On windows, ctrl+c is sent to the process group, so the signal would
+    // have already been sent to the child process. We still want to listen
+    // for ctrl+c here to keep the process alive when receiving it, but no
+    // need to forward the signal because it's already been sent.
+    if !cfg!(windows) {
+      kill_signal.send(deno_task_shell::SignalKind::SIGINT)
+    }
+  }
+}
+
+#[cfg(unix)]
+async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
+  use deno_core::futures::FutureExt;
+  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
+
+  // listen and forward every signal we support
+  let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());
+  for signo in SIGNAL_NUMS.iter().copied() {
+    if signo == libc::SIGKILL || signo == libc::SIGSTOP {
+      continue; // skip, can't listen to these
+    }
+
+    let kill_signal = kill_signal.clone();
+    futures.push(
+      async move {
+        let Ok(mut stream) = tokio::signal::unix::signal(
+          tokio::signal::unix::SignalKind::from_raw(signo),
+        ) else {
+          return;
+        };
+        let signal_kind: deno_task_shell::SignalKind = signo.into();
+        while let Some(()) = stream.recv().await {
+          kill_signal.send(signal_kind);
+        }
+      }
+      .boxed_local(),
+    )
+  }
+  futures::future::join_all(futures).await;
 }
 
 #[cfg(test)]

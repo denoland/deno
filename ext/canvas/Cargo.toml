@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_canvas"
-version = "0.48.0"
+version = "0.55.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,6 +17,7 @@ path = "lib.rs"
 bytemuck = "1.17.1"
 deno_core.workspace = true
 deno_terminal.workspace = true
+deno_error.workspace = true
 deno_webgpu.workspace = true
 image = { version = "0.25.4", default-features = false, features = ["png", "jpeg", "bmp", "ico", "webp", "gif"] }
 # NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko,

@@ -1,12 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::DenoSubcommand;
-use crate::args::Flags;
-use crate::args::InitFlags;
-use crate::args::PackagesAllowedScripts;
-use crate::args::PermissionFlags;
-use crate::args::RunFlags;
-use crate::colors;
+use std::io::IsTerminal;
+use std::io::Write;
+use std::path::Path;
+
 use color_print::cformat;
 use color_print::cstr;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -15,9 +12,14 @@ use deno_core::error::AnyError;
 use deno_core::serde_json::json;
 use deno_runtime::WorkerExecutionMode;
 use log::info;
-use std::io::IsTerminal;
-use std::io::Write;
-use std::path::Path;
+
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::InitFlags;
+use crate::args::PackagesAllowedScripts;
+use crate::args::PermissionFlags;
+use crate::args::RunFlags;
+use crate::colors;
 
 pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
   if let Some(package) = &init_flags.package {
@@ -252,8 +254,46 @@ Deno.test(function addTest() {
   Ok(0)
 }
 
+fn npm_name_to_create_package(name: &str) -> String {
+  let mut s = "npm:".to_string();
+
+  let mut scoped = false;
+  let mut create = false;
+
+  for (i, ch) in name.char_indices() {
+    if i == 0 {
+      if ch == '@' {
+        scoped = true;
+      } else {
+        create = true;
+        s.push_str("create-");
+      }
+    } else if scoped {
+      if ch == '/' {
+        scoped = false;
+        create = true;
+        s.push_str("/create-");
+        continue;
+      } else if ch == '@' && !create {
+        scoped = false;
+        create = true;
+        s.push_str("/create@");
+        continue;
+      }
+    }
+
+    s.push(ch);
+  }
+
+  if !create {
+    s.push_str("/create");
+  }
+
+  s
+}
+
 async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
-  let script_name = format!("npm:create-{}", name);
+  let script_name = npm_name_to_create_package(name);
 
   fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
     log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.", script_name, args.join(" ")));
@@ -334,5 +374,39 @@ fn create_file(
       .with_context(|| format!("Failed to create {filename} file"))?;
     file.write_all(content.as_bytes())?;
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::tools::init::npm_name_to_create_package;
+
+  #[test]
+  fn npm_name_to_create_package_test() {
+    // See https://docs.npmjs.com/cli/v8/commands/npm-init#description
+    assert_eq!(
+      npm_name_to_create_package("foo"),
+      "npm:create-foo".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("foo@1.0.0"),
+      "npm:create-foo@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo"),
+      "npm:@foo/create".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo@1.0.0"),
+      "npm:@foo/create@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar"),
+      "npm:@foo/create-bar".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar@1.0.0"),
+      "npm:@foo/create-bar@1.0.0".to_string()
+    );
   }
 }

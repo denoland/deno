@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -77,7 +77,9 @@ const maxQueueBackoffInterval = 60 * 60 * 1000;
 
 function validateBackoffSchedule(backoffSchedule: number[]) {
   if (backoffSchedule.length > maxQueueBackoffIntervals) {
-    throw new TypeError("Invalid backoffSchedule");
+    throw new TypeError(
+      `Invalid backoffSchedule, max ${maxQueueBackoffIntervals} intervals allowed`,
+    );
   }
   for (let i = 0; i < backoffSchedule.length; ++i) {
     const interval = backoffSchedule[i];
@@ -85,7 +87,9 @@ function validateBackoffSchedule(backoffSchedule: number[]) {
       interval < 0 || interval > maxQueueBackoffInterval ||
       NumberIsNaN(interval)
     ) {
-      throw new TypeError("Invalid backoffSchedule");
+      throw new TypeError(
+        `Invalid backoffSchedule, interval at index ${i} is invalid`,
+      );
     }
   }
 }

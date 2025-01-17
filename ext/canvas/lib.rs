@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 
@@ -7,30 +7,30 @@ mod op_create_image_bitmap;
 use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
   /// Image formats that is 32-bit depth are not supported currently due to the following reasons:
   /// - e.g. OpenEXR, it's not covered by the spec.
   /// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
   ///   https://github.com/whatwg/mimesniff/issues/143
   ///
-  /// This error will be mapped to TypeError.
+  #[class(type)]
   #[error("Unsupported color type and bit depth: '{0:?}'")]
   UnsupportedColorType(ColorType),
-  /// This error will be mapped to DOMExceptionInvalidStateError.
+  #[class("DOMExceptionInvalidStateError")]
   #[error("Cannot decode image '{0}'")]
   InvalidImage(image::ImageError),
-  /// This error will be mapped to DOMExceptionInvalidStateError.
+  #[class("DOMExceptionInvalidStateError")]
   #[error("The chunk data is not big enough with the specified width: {0} and height: {1}")]
   NotBigEnoughChunk(u32, u32),
-  /// This error will be mapped to DOMExceptionInvalidStateError.
+  #[class("DOMExceptionInvalidStateError")]
   #[error("The width: {0} or height: {1} could not be zero")]
   InvalidSizeZero(u32, u32),
-  /// This error will be mapped to TypeError.
+  #[class(generic)]
   #[error(transparent)]
   Lcms(#[from] lcms2::Error),
+  #[class(generic)]
   #[error(transparent)]
-  /// This error will be mapped to TypeError.
   Image(#[from] image::ImageError),
 }
 

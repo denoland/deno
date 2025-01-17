@@ -1,28 +1,31 @@
 {
   "tempDir": true,
   "steps": [{
-    "if": "unix",
-    "args": "compile --output main1 main.ts",
+    "args": "run -A setup.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --output main2 main.ts",
+    "args": "compile --no-config --output a/main a/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "run --allow-read=. assert_equal.ts main1 main2",
+    "args": "compile --no-config --output b/main b/main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "run --allow-read=. assert_equal.ts a/main b/main",
     "output": "Same\n"
   }, {
     "if": "windows",
-    "args": "compile --output main1.exe main.ts",
+    "args": "compile --no-config --output a/main.exe a/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "args": "compile --output main2.exe main.ts",
+    "args": "compile --no-config --output b/main.exe b/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "windows",
-    "args": "run --allow-read=. assert_equal.ts main1.exe main2.exe",
+    "args": "run --allow-read=. assert_equal.ts a/main.exe b/main.exe",
     "output": "Same\n"
   }]
 }

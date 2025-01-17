@@ -3,9 +3,9 @@
     "@denotest/add": "jsr:@denotest/add@^1.0.0",
     "@denotest/add/": "jsr:/@denotest/add@^1.0.0/",
     "@denotest/subtract": "jsr:@denotest/subtract@^1.0.0",
-    "@denotest/with-subpath": "jsr:@denotest/multiple-exports@^1.0.0/data-json",
-    "@denotest/breaking-change-between-versions": "npm:@denotest/breaking-change-between-versions@^2.0.0",
-    "@denotest/bin": "npm:@denotest/bin@^1.0.0",
+    "@denotest/with-subpath": "jsr:@denotest/multiple-exports@1.0.0/data-json",
+    "@denotest/breaking-change-between-versions": "npm:@denotest/breaking-change-between-versions@2.0.0",
+    "@denotest/bin": "npm:@denotest/bin@1.0.0",
     "@denotest/has-patch-versions": "npm:@denotest/has-patch-versions@^0.2.0"
   },
   "scopes": {
@@ -13,7 +13,7 @@
       "@denotest/add": "jsr:@denotest/add@^1.0.0",
       "@denotest/add/": "jsr:/@denotest/add@^1.0.0/",
       "@denotest/subtract": "jsr:@denotest/subtract@^1.0.0",
-      "@denotest/with-subpath": "jsr:@denotest/multiple-exports@^1.0.0/data-json"
+      "@denotest/with-subpath": "jsr:@denotest/multiple-exports@1.0.0/data-json"
     }
   }
 }

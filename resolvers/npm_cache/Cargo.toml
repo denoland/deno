@@ -1,0 +1,40 @@
+# Copyright 2018-2025 the Deno authors. MIT license.
+
+[package]
+name = "deno_npm_cache"
+version = "0.5.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Helpers for downloading and caching npm dependencies for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+base64.workspace = true
+boxed_error.workspace = true
+deno_cache_dir.workspace = true
+deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
+deno_npm.workspace = true
+deno_path_util.workspace = true
+deno_semver.workspace = true
+deno_unsync = { workspace = true, features = ["tokio"] }
+faster-hex.workspace = true
+flate2 = { workspace = true, features = ["zlib-ng-compat"] }
+futures.workspace = true
+http.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+percent-encoding.workspace = true
+rand.workspace = true
+ring.workspace = true
+serde_json.workspace = true
+sys_traits.workspace = true
+tar.workspace = true
+tempfile = "3.4.0"
+thiserror.workspace = true
+url.workspace = true

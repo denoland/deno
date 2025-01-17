@@ -1,21 +1,31 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::WebGpuResult;
+use std::borrow::Cow;
+use std::rc::Rc;
+
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::rc::Rc;
 use wgpu_types::SurfaceStatus;
 
-#[derive(Debug, thiserror::Error)]
+use crate::error::WebGpuResult;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SurfaceError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    ResourceError,
+  ),
+  #[class(generic)]
   #[error("Invalid Surface Status")]
   InvalidStatus,
+  #[class(generic)]
   #[error(transparent)]
   Surface(wgpu_core::present::SurfaceError),
 }
@@ -50,7 +60,7 @@ pub struct SurfaceConfigureArgs {
 pub fn op_webgpu_surface_configure(
   state: &mut OpState,
   #[serde] args: SurfaceConfigureArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -88,13 +98,10 @@ pub fn op_webgpu_surface_get_current_texture(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(device_rid)
-    .map_err(SurfaceError::Resource)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.1;
-  let surface_resource = state
-    .resource_table
-    .get::<WebGpuSurface>(surface_rid)
-    .map_err(SurfaceError::Resource)?;
+  let surface_resource =
+    state.resource_table.get::<WebGpuSurface>(surface_rid)?;
   let surface = surface_resource.1;
 
   let output =
@@ -124,13 +131,10 @@ pub fn op_webgpu_surface_present(
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
-    .get::<super::WebGpuDevice>(device_rid)
-    .map_err(SurfaceError::Resource)?;
+    .get::<super::WebGpuDevice>(device_rid)?;
   let device = device_resource.1;
-  let surface_resource = state
-    .resource_table
-    .get::<WebGpuSurface>(surface_rid)
-    .map_err(SurfaceError::Resource)?;
+  let surface_resource =
+    state.resource_table.get::<WebGpuSurface>(surface_rid)?;
   let surface = surface_resource.1;
 
   let _ = gfx_select!(device => instance.surface_present(surface))

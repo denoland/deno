@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 
@@ -6,19 +6,20 @@ use deno_ast::ModuleSpecifier;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::unsync::sync::AtomicFlag;
+use deno_lib::cache::DiskCache;
 
-use super::DiskCache;
+use crate::sys::CliSys;
 
 /// The cache that stores previously emitted files.
 #[derive(Debug)]
 pub struct EmitCache {
-  disk_cache: DiskCache,
+  disk_cache: DiskCache<CliSys>,
   emit_failed_flag: AtomicFlag,
   file_serializer: EmitFileSerializer,
 }
 
 impl EmitCache {
-  pub fn new(disk_cache: DiskCache) -> Self {
+  pub fn new(disk_cache: DiskCache<CliSys>) -> Self {
     Self {
       disk_cache,
       emit_failed_flag: Default::default(),
@@ -160,11 +161,13 @@ mod test {
   use test_util::TempDir;
 
   use super::*;
+  use crate::sys::CliSys;
 
   #[test]
   pub fn emit_cache_general_use() {
     let temp_dir = TempDir::new();
-    let disk_cache = DiskCache::new(temp_dir.path().as_path());
+    let disk_cache =
+      DiskCache::new(CliSys::default(), temp_dir.path().as_path());
     let cache = EmitCache {
       disk_cache: disk_cache.clone(),
       file_serializer: EmitFileSerializer {

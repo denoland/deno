@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="./compiler.d.ts" />
@@ -41,6 +41,13 @@ delete Object.prototype.__proto__;
     "listen",
     "listenDatagram",
     "openKv",
+    "connectQuic",
+    "listenQuic",
+    "QuicBidirectionalStream",
+    "QuicConn",
+    "QuicListener",
+    "QuicReceiveStream",
+    "QuicSendStream",
   ]);
   const unstableMsgSuggestion =
     "If not, try changing the 'lib' compiler option to include 'deno.unstable' " +
@@ -402,9 +409,20 @@ delete Object.prototype.__proto__;
       messageText = formatMessage(msgText, ri.code);
     }
     if (start !== undefined && length !== undefined && file) {
-      const startPos = file.getLineAndCharacterOfPosition(start);
-      const sourceLine = file.getFullText().split("\n")[startPos.line];
-      const fileName = file.fileName;
+      let startPos = file.getLineAndCharacterOfPosition(start);
+      let sourceLine = file.getFullText().split("\n")[startPos.line];
+      const originalFileName = file.fileName;
+      const fileName = ops.op_remap_specifier
+        ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
+        : file.fileName;
+      // Bit of a hack to detect when we have a .wasm file and want to hide
+      // the .d.ts text. This is not perfect, but will work in most scenarios
+      if (
+        fileName.endsWith(".wasm") && originalFileName.endsWith(".wasm.d.mts")
+      ) {
+        startPos = { line: 0, character: 0 };
+        sourceLine = undefined;
+      }
       return {
         start: startPos,
         end: file.getLineAndCharacterOfPosition(start + length),
@@ -468,6 +486,9 @@ delete Object.prototype.__proto__;
     2792,
     // TS2307: Cannot find module '{0}' or its corresponding type declarations.
     2307,
+    // Relative import errors to add an extension
+    2834,
+    2835,
     // TS5009: Cannot find the common subdirectory path for the input files.
     5009,
     // TS5055: Cannot write file
@@ -479,6 +500,8 @@ delete Object.prototype.__proto__;
     // Microsoft/TypeScript#26825 but that doesn't seem to be working here,
     // so we will ignore complaints about this compiler setting.
     5070,
+    // TS6053: File '{0}' not found.
+    6053,
     // TS7016: Could not find a declaration file for module '...'. '...'
     // implicitly has an 'any' type.  This is due to `allowJs` being off by
     // default but importing of a JavaScript module.
@@ -684,15 +707,14 @@ delete Object.prototype.__proto__;
     resolveTypeReferenceDirectiveReferences(
       typeDirectiveReferences,
       containingFilePath,
-      redirectedReference,
+      _redirectedReference,
       options,
       containingSourceFile,
       _reusedNames,
     ) {
       const isCjs =
         containingSourceFile?.impliedNodeFormat === ts.ModuleKind.CommonJS;
-      /** @type {Array<ts.ResolvedTypeReferenceDirectiveWithFailedLookupLocations>} */
-      const result = typeDirectiveReferences.map((arg) => {
+      const toResolve = typeDirectiveReferences.map((arg) => {
         /** @type {ts.FileReference} */
         const fileReference = typeof arg === "string"
           ? {
@@ -701,46 +723,50 @@ delete Object.prototype.__proto__;
             fileName: arg,
           }
           : arg;
-        if (fileReference.fileName.startsWith("npm:")) {
-          /** @type {[string, ts.Extension] | undefined} */
-          const resolved = ops.op_resolve(
-            containingFilePath,
-            [
-              [
-                fileReference.resolutionMode == null
-                  ? isCjs
-                  : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
-                fileReference.fileName,
-              ],
-            ],
-          )?.[0];
-          if (resolved) {
-            return {
-              resolvedTypeReferenceDirective: {
-                primary: true,
-                resolvedFileName: resolved[0],
-                // todo(dsherret): we should probably be setting this
-                isExternalLibraryImport: undefined,
-              },
-            };
-          } else {
-            return {
-              resolvedTypeReferenceDirective: undefined,
-            };
-          }
+        return [
+          fileReference.resolutionMode == null
+            ? isCjs
+            : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
+          fileReference.fileName,
+        ];
+      });
+
+      /** @type {Array<[string, ts.Extension | null] | undefined>} */
+      const resolved = ops.op_resolve(
+        containingFilePath,
+        toResolve,
+      );
+
+      /** @type {Array<ts.ResolvedTypeReferenceDirectiveWithFailedLookupLocations>} */
+      const result = resolved.map((item) => {
+        if (item && item[1]) {
+          const [resolvedFileName, extension] = item;
+          return {
+            resolvedTypeReferenceDirective: {
+              primary: true,
+              resolvedFileName,
+              extension,
+              isExternalLibraryImport: false,
+            },
+          };
         } else {
-          return ts.resolveTypeReferenceDirective(
-            fileReference.fileName,
-            containingFilePath,
-            options,
-            host,
-            redirectedReference,
-            undefined,
-            containingSourceFile?.impliedNodeFormat ??
-              fileReference.resolutionMode,
-          );
+          return {
+            resolvedTypeReferenceDirective: undefined,
+          };
         }
       });
+
+      if (logDebug) {
+        debug(
+          "resolveTypeReferenceDirectiveReferences ",
+          typeDirectiveReferences,
+          containingFilePath,
+          options,
+          containingSourceFile?.fileName,
+          " => ",
+          result,
+        );
+      }
       return result;
     },
     resolveModuleNameLiterals(
@@ -764,7 +790,7 @@ delete Object.prototype.__proto__;
         debug(`  base: ${base}`);
         debug(`  specifiers: ${specifiers.map((s) => s[1]).join(", ")}`);
       }
-      /** @type {Array<[string, ts.Extension] | undefined>} */
+      /** @type {Array<[string, ts.Extension | null] | undefined>} */
       const resolved = ops.op_resolve(
         base,
         specifiers,
@@ -772,7 +798,7 @@ delete Object.prototype.__proto__;
       if (resolved) {
         /** @type {Array<ts.ResolvedModuleWithFailedLookupLocations>} */
         const result = resolved.map((item) => {
-          if (item) {
+          if (item && item[1]) {
             const [resolvedFileName, extension] = item;
             return {
               resolvedModule: {
@@ -1030,24 +1056,27 @@ delete Object.prototype.__proto__;
       configFileParsingDiagnostics,
     });
 
-    const checkFiles = localOnly
-      ? rootNames
-        .filter((n) => !n.startsWith("http"))
-        .map((checkName) => {
-          const sourceFile = program.getSourceFile(checkName);
-          if (sourceFile == null) {
-            throw new Error("Could not find source file for: " + checkName);
-          }
-          return sourceFile;
-        })
-      : undefined;
+    let checkFiles = undefined;
 
-    if (checkFiles != null) {
+    if (localOnly) {
+      const checkFileNames = new Set();
+      checkFiles = [];
+
+      for (const checkName of rootNames) {
+        if (checkName.startsWith("http")) {
+          continue;
+        }
+        const sourceFile = program.getSourceFile(checkName);
+        if (sourceFile != null) {
+          checkFiles.push(sourceFile);
+        }
+        checkFileNames.add(checkName);
+      }
+
       // When calling program.getSemanticDiagnostics(...) with a source file, we
       // need to call this code first in order to get it to invalidate cached
       // diagnostics correctly. This is what program.getSemanticDiagnostics()
       // does internally when calling without any arguments.
-      const checkFileNames = new Set(checkFiles.map((f) => f.fileName));
       while (
         program.getSemanticDiagnosticsOfNextAffectedFile(
           undefined,
@@ -1091,6 +1120,36 @@ delete Object.prototype.__proto__;
   function filterMapDiagnostic(diagnostic) {
     if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
       return false;
+    }
+
+    // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
+    // the one in @types/node. the types of the filename and dirname properties are different,
+    // which causes tsc to error.
+    const importMetaFilenameDirnameModifiersRe =
+      /^All declarations of '(filename|dirname)'/;
+    const importMetaFilenameDirnameTypesRe =
+      /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
+    // Declarations of X must have identical modifiers.
+    if (diagnostic.code === 2687) {
+      if (
+        typeof diagnostic.messageText === "string" &&
+        (importMetaFilenameDirnameModifiersRe.test(diagnostic.messageText)) &&
+        (diagnostic.file?.fileName.startsWith("asset:///") ||
+          diagnostic.file?.fileName?.includes("@types/node"))
+      ) {
+        return false;
+      }
+    }
+    // Subsequent property declarations must have the same type.
+    if (diagnostic.code === 2717) {
+      if (
+        typeof diagnostic.messageText === "string" &&
+        (importMetaFilenameDirnameTypesRe.test(diagnostic.messageText)) &&
+        (diagnostic.file?.fileName.startsWith("asset:///") ||
+          diagnostic.file?.fileName?.includes("@types/node"))
+      ) {
+        return false;
+      }
     }
     // make the diagnostic for using an `export =` in an es module a warning
     if (diagnostic.code === 1203) {
@@ -1386,7 +1445,6 @@ delete Object.prototype.__proto__;
     "ErrorConstructor",
     "gc",
     "Global",
-    "ImportMeta",
     "localStorage",
     "queueMicrotask",
     "RequestInit",

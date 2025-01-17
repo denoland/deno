@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 import { op_now, op_time_origin } from "ext:core/ops";
@@ -123,14 +123,14 @@ function convertMarkToTimestamp(mark) {
     const entry = findMostRecent(mark, "mark");
     if (!entry) {
       throw new DOMException(
-        `Cannot find mark: "${mark}".`,
+        `Cannot find mark: "${mark}"`,
         "SyntaxError",
       );
     }
     return entry.startTime;
   }
   if (mark < 0) {
-    throw new TypeError("Mark cannot be negative.");
+    throw new TypeError(`Mark cannot be negative: received ${mark}`);
   }
   return mark;
 }
@@ -261,7 +261,9 @@ class PerformanceMark extends PerformanceEntry {
     super(name, "mark", startTime, 0, illegalConstructorKey);
     this[webidl.brand] = webidl.brand;
     if (startTime < 0) {
-      throw new TypeError("startTime cannot be negative");
+      throw new TypeError(
+        `Cannot construct PerformanceMark: startTime cannot be negative, received ${startTime}`,
+      );
     }
     this[_detail] = structuredClone(detail);
   }
@@ -504,14 +506,14 @@ class Performance extends EventTarget {
       ObjectKeys(startOrMeasureOptions).length > 0
     ) {
       if (endMark) {
-        throw new TypeError("Options cannot be passed with endMark.");
+        throw new TypeError('Options cannot be passed with "endMark"');
       }
       if (
         !ReflectHas(startOrMeasureOptions, "start") &&
         !ReflectHas(startOrMeasureOptions, "end")
       ) {
         throw new TypeError(
-          "A start or end mark must be supplied in options.",
+          'A "start" or "end" mark must be supplied in options',
         );
       }
       if (
@@ -520,7 +522,7 @@ class Performance extends EventTarget {
         ReflectHas(startOrMeasureOptions, "end")
       ) {
         throw new TypeError(
-          "Cannot specify start, end, and duration together in options.",
+          'Cannot specify "start", "end", and "duration" together in options',
         );
       }
     }

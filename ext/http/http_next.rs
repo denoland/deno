@@ -1,24 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use crate::compressible::is_content_compressible;
-use crate::extract_network_stream;
-use crate::network_buffered_stream::NetworkStreamPrefixCheck;
-use crate::request_body::HttpRequestBody;
-use crate::request_properties::HttpConnectionProperties;
-use crate::request_properties::HttpListenProperties;
-use crate::request_properties::HttpPropertyExtractor;
-use crate::response_body::Compression;
-use crate::response_body::ResponseBytesInner;
-use crate::service::handle_request;
-use crate::service::http_general_trace;
-use crate::service::http_trace;
-use crate::service::HttpRecord;
-use crate::service::HttpRecordResponse;
-use crate::service::HttpRequestBodyAutocloser;
-use crate::service::HttpServerState;
-use crate::service::SignallingRc;
-use crate::websocket_upgrade::WebSocketUpgrade;
-use crate::LocalExecutor;
-use crate::Options;
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::future::Future;
+use std::io;
+use std::pin::Pin;
+use std::ptr::null;
+use std::rc::Rc;
+
 use cache_control::CacheControl;
 use deno_core::external;
 use deno_core::futures::future::poll_fn;
@@ -44,6 +33,7 @@ use deno_core::ResourceId;
 use deno_net::ops_tls::TlsStream;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
+use fly_accept_encoding::Encoding;
 use hyper::body::Incoming;
 use hyper::header::HeaderMap;
 use hyper::header::ACCEPT_ENCODING;
@@ -63,20 +53,30 @@ use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use once_cell::sync::Lazy;
 use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::future::Future;
-use std::io;
-use std::pin::Pin;
-use std::ptr::null;
-use std::rc::Rc;
-
-use super::fly_accept_encoding;
-use fly_accept_encoding::Encoding;
-
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+
+use super::fly_accept_encoding;
+use crate::compressible::is_content_compressible;
+use crate::extract_network_stream;
+use crate::network_buffered_stream::NetworkStreamPrefixCheck;
+use crate::request_body::HttpRequestBody;
+use crate::request_properties::HttpConnectionProperties;
+use crate::request_properties::HttpListenProperties;
+use crate::request_properties::HttpPropertyExtractor;
+use crate::response_body::Compression;
+use crate::response_body::ResponseBytesInner;
+use crate::service::handle_request;
+use crate::service::http_general_trace;
+use crate::service::http_trace;
+use crate::service::HttpRecord;
+use crate::service::HttpRecordResponse;
+use crate::service::HttpRequestBodyAutocloser;
+use crate::service::HttpServerState;
+use crate::service::SignallingRc;
+use crate::websocket_upgrade::WebSocketUpgrade;
+use crate::LocalExecutor;
+use crate::Options;
 
 type Request = hyper::Request<Incoming>;
 
@@ -146,24 +146,44 @@ macro_rules! clone_external {
   }};
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpNextError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] io::Error),
+  #[class(inherit)]
   #[error(transparent)]
   WebSocketUpgrade(crate::websocket_upgrade::WebSocketUpgradeError),
+  #[class("Http")]
   #[error("{0}")]
   Hyper(#[from] hyper::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  JoinError(#[from] tokio::task::JoinError),
+  JoinError(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
+  #[class(inherit)]
   #[error(transparent)]
-  Canceled(#[from] deno_core::Canceled),
-  #[error(transparent)]
-  HttpPropertyExtractor(deno_core::error::AnyError),
+  Canceled(
+    #[from]
+    #[inherit]
+    deno_core::Canceled,
+  ),
+  #[class(generic)]
   #[error(transparent)]
   UpgradeUnavailable(#[from] crate::service::UpgradeUnavailableError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Other(
+    #[from]
+    #[inherit]
+    deno_error::JsErrorBox,
+  ),
 }
 
 #[op2(fast)]
@@ -747,15 +767,9 @@ pub async fn op_http_set_response_body_resource(
   let resource = {
     let mut state = state.borrow_mut();
     if auto_close {
-      state
-        .resource_table
-        .take_any(stream_rid)
-        .map_err(HttpNextError::Resource)?
+      state.resource_table.take_any(stream_rid)?
     } else {
-      state
-        .resource_table
-        .get_any(stream_rid)
-        .map_err(HttpNextError::Resource)?
+      state.resource_table.get_any(stream_rid)?
     }
   };
 
@@ -1063,8 +1077,7 @@ where
   HTTP: HttpPropertyExtractor,
 {
   let listener =
-    HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)
-      .map_err(HttpNextError::Resource)?;
+    HTTP::get_listener_for_rid(&mut state.borrow_mut(), listener_rid)?;
 
   let listen_properties = HTTP::listen_properties_from_listener(&listener)?;
 
@@ -1084,8 +1097,7 @@ where
     loop {
       let conn = HTTP::accept_connection_from_listener(&listener)
         .try_or_cancel(listen_cancel_clone.clone())
-        .await
-        .map_err(HttpNextError::HttpPropertyExtractor)?;
+        .await?;
       serve_http_on::<HTTP>(
         conn,
         &listen_properties_clone,
@@ -1120,8 +1132,7 @@ where
   HTTP: HttpPropertyExtractor,
 {
   let connection =
-    HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)
-      .map_err(HttpNextError::Resource)?;
+    HTTP::get_connection_for_rid(&mut state.borrow_mut(), connection_rid)?;
 
   let listen_properties = HTTP::listen_properties_from_connection(&connection)?;
 
@@ -1190,8 +1201,7 @@ pub async fn op_http_wait(
   let join_handle = state
     .borrow_mut()
     .resource_table
-    .get::<HttpJoinHandle>(rid)
-    .map_err(HttpNextError::Resource)?;
+    .get::<HttpJoinHandle>(rid)?;
 
   let cancel = join_handle.listen_cancel_handle();
   let next = async {
@@ -1236,7 +1246,7 @@ pub fn op_http_cancel(
   state: &mut OpState,
   #[smi] rid: ResourceId,
   graceful: bool,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), deno_core::error::ResourceError> {
   let join_handle = state.resource_table.get::<HttpJoinHandle>(rid)?;
 
   if graceful {
@@ -1260,8 +1270,7 @@ pub async fn op_http_close(
   let join_handle = state
     .borrow_mut()
     .resource_table
-    .take::<HttpJoinHandle>(rid)
-    .map_err(HttpNextError::Resource)?;
+    .take::<HttpJoinHandle>(rid)?;
 
   if graceful {
     http_general_trace!("graceful shutdown");
@@ -1390,11 +1399,8 @@ pub async fn op_raw_write_vectored(
   #[buffer] buf1: JsBuffer,
   #[buffer] buf2: JsBuffer,
 ) -> Result<usize, HttpNextError> {
-  let resource: Rc<UpgradeStream> = state
-    .borrow()
-    .resource_table
-    .get::<UpgradeStream>(rid)
-    .map_err(HttpNextError::Resource)?;
+  let resource: Rc<UpgradeStream> =
+    state.borrow().resource_table.get::<UpgradeStream>(rid)?;
   let nwritten = resource.write_vectored(&buf1, &buf2).await?;
   Ok(nwritten)
 }

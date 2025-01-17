@@ -1,19 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
 import { EventEmitter } from "node:events";
 import { Buffer } from "node:buffer";
-import { promises, read, write } from "node:fs";
-export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { Mode, promises, read, write } from "node:fs";
+import { core } from "ext:core/mod.js";
 import {
   BinaryOptionsArgument,
   FileOptionsArgument,
   ReadOptions,
   TextOptionsArgument,
 } from "ext:deno_node/_fs/_fs_common.ts";
-import { core } from "ext:core/mod.js";
+import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
+export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
+import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
 
 interface WriteResult {
   bytesWritten: number;
@@ -25,11 +27,15 @@ interface ReadResult {
   buffer: Buffer;
 }
 
+type Path = string | Buffer | URL;
 export class FileHandle extends EventEmitter {
   #rid: number;
-  constructor(rid: number) {
+  #path: Path;
+
+  constructor(rid: number, path: Path) {
     super();
     this.#rid = rid;
+    this.#path = path;
   }
 
   get fd() {
@@ -59,7 +65,7 @@ export class FileHandle extends EventEmitter {
           position,
           (err, bytesRead, buffer) => {
             if (err) reject(err);
-            else resolve({ buffer: buffer, bytesRead: bytesRead });
+            else resolve({ buffer, bytesRead });
           },
         );
       });
@@ -67,10 +73,14 @@ export class FileHandle extends EventEmitter {
       return new Promise((resolve, reject) => {
         read(this.fd, bufferOrOpt, (err, bytesRead, buffer) => {
           if (err) reject(err);
-          else resolve({ buffer: buffer, bytesRead: bytesRead });
+          else resolve({ buffer, bytesRead });
         });
       });
     }
+  }
+
+  truncate(len?: number): Promise<void> {
+    return fsCall(ftruncatePromise, this, len);
   }
 
   readFile(
@@ -85,11 +95,7 @@ export class FileHandle extends EventEmitter {
     length: number,
     position: number,
   ): Promise<WriteResult>;
-  write(
-    str: string,
-    position: number,
-    encoding: string,
-  ): Promise<WriteResult>;
+  write(str: string, position: number, encoding: string): Promise<WriteResult>;
   write(
     bufferOrStr: Uint8Array | string,
     offsetOrPosition: number,
@@ -120,22 +126,20 @@ export class FileHandle extends EventEmitter {
       const encoding = lengthOrEncoding;
 
       return new Promise((resolve, reject) => {
-        write(
-          this.fd,
-          str,
-          position,
-          encoding,
-          (err, bytesWritten, buffer) => {
-            if (err) reject(err);
-            else resolve({ buffer, bytesWritten });
-          },
-        );
+        write(this.fd, str, position, encoding, (err, bytesWritten, buffer) => {
+          if (err) reject(err);
+          else resolve({ buffer, bytesWritten });
+        });
       });
     }
   }
 
   writeFile(data, options): Promise<void> {
     return fsCall(promises.writeFile, this, data, options);
+  }
+
+  writev(buffers: ArrayBufferView[], position?: number): Promise<WriteVResult> {
+    return fsCall(writevPromise, this, buffers, position);
   }
 
   close(): Promise<void> {
@@ -149,17 +153,37 @@ export class FileHandle extends EventEmitter {
   stat(options?: { bigint: boolean }): Promise<Stats | BigIntStats> {
     return fsCall(promises.fstat, this, options);
   }
+  chmod(mode: Mode): Promise<void> {
+    assertNotClosed(this, promises.chmod.name);
+    return promises.chmod(this.#path, mode);
+  }
+
+  utimes(
+    atime: number | string | Date,
+    mtime: number | string | Date,
+  ): Promise<void> {
+    assertNotClosed(this, promises.utimes.name);
+    return promises.utimes(this.#path, atime, mtime);
+  }
+
+  chown(uid: number, gid: number): Promise<void> {
+    assertNotClosed(this, promises.chown.name);
+    return promises.chown(this.#path, uid, gid);
+  }
 }
 
-function fsCall(fn, handle, ...args) {
+function assertNotClosed(handle: FileHandle, syscall: string) {
   if (handle.fd === -1) {
     const err = new Error("file closed");
     throw Object.assign(err, {
       code: "EBADF",
-      syscall: fn.name,
+      syscall,
     });
   }
+}
 
+function fsCall(fn, handle, ...args) {
+  assertNotClosed(handle, fn.name);
   return fn(handle.fd, ...args);
 }
 

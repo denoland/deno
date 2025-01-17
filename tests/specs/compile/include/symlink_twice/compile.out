@@ -1,0 +1,11 @@
+Compile [WILDLINE]
+
+Embedded Files
+
+main[WILDLINE]
+├── index.js ([WILDLINE])
+├── link.js --> index.js
+└── setup.js ([WILDLINE])
+
+Size: [WILDLINE]
+

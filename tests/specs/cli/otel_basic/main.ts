@@ -1,8 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 const data = {
   spans: [],
   logs: [],
+  metrics: [],
 };
 
 const server = Deno.serve(
@@ -12,6 +13,7 @@ const server = Deno.serve(
       const command = new Deno.Command(Deno.execPath(), {
         args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
         env: {
+          OTEL_DENO: "true",
           DENO_UNSTABLE_OTEL_DETERMINISTIC: "1",
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,
@@ -19,8 +21,13 @@ const server = Deno.serve(
         stdout: "null",
       });
       const child = command.spawn();
-      child.output()
-        .then(() => server.shutdown())
+      child.status
+        .then((status) => {
+          if (status.signal) {
+            throw new Error("child process failed: " + JSON.stringify(status));
+          }
+          return server.shutdown();
+        })
         .then(() => {
           data.logs.sort((a, b) =>
             Number(
@@ -43,6 +50,11 @@ const server = Deno.serve(
       body.resourceSpans?.forEach((rSpans) => {
         rSpans.scopeSpans.forEach((sSpans) => {
           data.spans.push(...sSpans.spans);
+        });
+      });
+      body.resourceMetrics?.forEach((rMetrics) => {
+        rMetrics.scopeMetrics.forEach((sMetrics) => {
+          data.metrics.push(...sMetrics.metrics);
         });
       });
       return Response.json({ partialSuccess: {} }, { status: 200 });

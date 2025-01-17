@@ -1,21 +1,19 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod urlpattern;
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
+use std::path::PathBuf;
+
 use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
 use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
-use std::path::PathBuf;
+use deno_error::JsErrorBox;
 
 use crate::urlpattern::op_urlpattern_parse;
 use crate::urlpattern::op_urlpattern_process_match_input;
-
-pub use urlpattern::UrlPatternError;
 
 deno_core::extension!(
   deno_url,
@@ -220,7 +218,7 @@ pub fn op_url_reparse(
 pub fn op_url_parse_search_params(
   #[string] args: Option<String>,
   #[buffer] zero_copy: Option<JsBuffer>,
-) -> Result<Vec<(String, String)>, AnyError> {
+) -> Result<Vec<(String, String)>, JsErrorBox> {
   let params = match (args, zero_copy) {
     (None, Some(zero_copy)) => form_urlencoded::parse(&zero_copy)
       .into_iter()
@@ -230,7 +228,7 @@ pub fn op_url_parse_search_params(
       .into_iter()
       .map(|(k, v)| (k.as_ref().to_owned(), v.as_ref().to_owned()))
       .collect(),
-    _ => return Err(type_error("invalid parameters")),
+    _ => return Err(JsErrorBox::type_error("invalid parameters")),
   };
   Ok(params)
 }

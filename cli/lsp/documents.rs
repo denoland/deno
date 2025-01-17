@@ -1,41 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::cache::calculate_fs_version;
-use super::cache::LspCache;
-use super::config::Config;
-use super::resolver::LspResolver;
-use super::resolver::ScopeDepInfo;
-use super::resolver::SingleReferrerGraphResolver;
-use super::testing::TestCollector;
-use super::testing::TestModule;
-use super::text::LineIndex;
-use super::tsc;
-use super::tsc::AssetDocument;
-
-use crate::graph_util::CliJsrUrlProvider;
-
-use dashmap::DashMap;
-use deno_ast::swc::visit::VisitWith;
-use deno_ast::MediaType;
-use deno_ast::ParsedSource;
-use deno_ast::SourceTextInfo;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::ModuleSpecifier;
-use deno_graph::Resolution;
-use deno_path_util::url_to_file_path;
-use deno_runtime::deno_node;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
-use indexmap::IndexMap;
-use indexmap::IndexSet;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -48,7 +12,43 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use dashmap::DashMap;
+use deno_ast::swc::visit::VisitWith;
+use deno_ast::MediaType;
+use deno_ast::ParsedSource;
+use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
+use deno_core::futures::future;
+use deno_core::futures::future::Shared;
+use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
+use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
+use deno_runtime::deno_node;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use tower_lsp::lsp_types as lsp;
+
+use super::cache::calculate_fs_version;
+use super::cache::LspCache;
+use super::config::Config;
+use super::resolver::LspResolver;
+use super::resolver::ScopeDepInfo;
+use super::resolver::SingleReferrerGraphResolver;
+use super::testing::TestCollector;
+use super::testing::TestModule;
+use super::text::LineIndex;
+use super::tsc;
+use super::tsc::AssetDocument;
+use crate::graph_util::CliJsrUrlProvider;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -64,7 +64,16 @@ pub enum LanguageId {
   Markdown,
   Html,
   Css,
+  Scss,
+  Sass,
+  Less,
   Yaml,
+  Sql,
+  Svelte,
+  Vue,
+  Astro,
+  Vento,
+  Nunjucks,
   Unknown,
 }
 
@@ -80,7 +89,16 @@ impl LanguageId {
       LanguageId::Markdown => Some("md"),
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
+      LanguageId::Scss => Some("scss"),
+      LanguageId::Sass => Some("sass"),
+      LanguageId::Less => Some("less"),
       LanguageId::Yaml => Some("yaml"),
+      LanguageId::Sql => Some("sql"),
+      LanguageId::Svelte => Some("svelte"),
+      LanguageId::Vue => Some("vue"),
+      LanguageId::Astro => Some("astro"),
+      LanguageId::Vento => Some("vto"),
+      LanguageId::Nunjucks => Some("njk"),
       LanguageId::Unknown => None,
     }
   }
@@ -95,7 +113,16 @@ impl LanguageId {
       LanguageId::Markdown => Some("text/markdown"),
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
+      LanguageId::Scss => None,
+      LanguageId::Sass => None,
+      LanguageId::Less => None,
       LanguageId::Yaml => Some("application/yaml"),
+      LanguageId::Sql => None,
+      LanguageId::Svelte => None,
+      LanguageId::Vue => None,
+      LanguageId::Astro => None,
+      LanguageId::Vento => None,
+      LanguageId::Nunjucks => None,
       LanguageId::Unknown => None,
     }
   }
@@ -122,7 +149,16 @@ impl FromStr for LanguageId {
       "markdown" => Ok(Self::Markdown),
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
+      "scss" => Ok(Self::Scss),
+      "sass" => Ok(Self::Sass),
+      "less" => Ok(Self::Less),
       "yaml" => Ok(Self::Yaml),
+      "sql" => Ok(Self::Sql),
+      "svelte" => Ok(Self::Svelte),
+      "vue" => Ok(Self::Vue),
+      "astro" => Ok(Self::Astro),
+      "vento" => Ok(Self::Vento),
+      "nunjucks" => Ok(Self::Nunjucks),
       _ => Ok(Self::Unknown),
     }
   }
@@ -226,6 +262,13 @@ impl AssetOrDocument {
 
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
+  }
+
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    match self {
+      AssetOrDocument::Asset(_) => ResolutionMode::Import,
+      AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
   }
 }
 
@@ -437,7 +480,7 @@ impl Document {
       let is_cjs_resolver =
         resolver.as_is_cjs_resolver(self.file_referrer.as_ref());
       let npm_resolver =
-        resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
+        resolver.as_graph_npm_resolver(self.file_referrer.as_ref());
       let config_data = resolver.as_config_data(self.file_referrer.as_ref());
       let jsx_import_source_config =
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
@@ -460,7 +503,7 @@ impl Document {
                 s,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(&npm_resolver),
+                Some(npm_resolver.as_ref()),
               ),
             )
           })
@@ -470,7 +513,7 @@ impl Document {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
           Some(&resolver),
-          Some(&npm_resolver),
+          Some(npm_resolver.as_ref()),
         ))
       });
       is_script = self.is_script;
@@ -925,7 +968,7 @@ impl FileSystemDocuments {
       let content = bytes_to_content(
         specifier,
         media_type,
-        cached_file.content,
+        cached_file.content.into_owned(),
         maybe_charset,
       )
       .ok()?;
@@ -1038,7 +1081,7 @@ impl Documents {
       .or_else(|| self.file_system_docs.remove_document(specifier))
       .map(Ok)
       .unwrap_or_else(|| {
-        Err(custom_error(
+        Err(JsErrorBox::new(
           "NotFound",
           format!("The specifier \"{specifier}\" was not found."),
         ))
@@ -1659,7 +1702,7 @@ fn analyze_module(
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
+      let npm_resolver = resolver.as_graph_npm_resolver(file_referrer);
       let cli_resolver = resolver.as_cli_resolver(file_referrer);
       let is_cjs_resolver = resolver.as_is_cjs_resolver(file_referrer);
       let config_data = resolver.as_config_data(file_referrer);
@@ -1688,7 +1731,7 @@ fn analyze_module(
             file_system: &deno_graph::source::NullFileSystem,
             jsr_url_provider: &CliJsrUrlProvider,
             maybe_resolver: Some(&resolver),
-            maybe_npm_resolver: Some(&npm_resolver),
+            maybe_npm_resolver: Some(npm_resolver.as_ref()),
           },
         )),
         module_resolution_mode,
@@ -1723,15 +1766,14 @@ fn bytes_to_content(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::lsp::cache::LspCache;
-
   use deno_config::deno_json::ConfigFile;
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
+  use crate::lsp::cache::LspCache;
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -1881,7 +1923,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1925,7 +1966,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
