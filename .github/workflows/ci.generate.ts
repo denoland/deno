@@ -46,9 +46,9 @@ const Runners = {
   macosArmSelfHosted: {
     os: "macos",
     arch: "aarch64",
-    // Actually use self-hosted runner only in denoland/deno on `main` branch.
+    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
     runner:
-      `\${{ github.repository == 'denoland/deno' && github.ref == 'refs/heads/main' && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
