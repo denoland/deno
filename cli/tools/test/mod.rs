@@ -1,4 +1,72 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::env;
+use std::fmt::Write as _;
+use std::future::poll_fn;
+use std::io::Write;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::task::Poll;
+use std::time::Duration;
+use std::time::Instant;
+
+use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::File;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::WalkEntry;
+use deno_core::anyhow;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_core::error::JsError;
+use deno_core::futures::future;
+use deno_core::futures::stream;
+use deno_core::futures::FutureExt;
+use deno_core::futures::StreamExt;
+use deno_core::located_script_name;
+use deno_core::serde_v8;
+use deno_core::stats::RuntimeActivity;
+use deno_core::stats::RuntimeActivityDiff;
+use deno_core::stats::RuntimeActivityStats;
+use deno_core::stats::RuntimeActivityStatsFactory;
+use deno_core::stats::RuntimeActivityStatsFilter;
+use deno_core::stats::RuntimeActivityType;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_core::url::Url;
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_core::OpState;
+use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
+use deno_runtime::deno_io::Stdio;
+use deno_runtime::deno_io::StdioPipe;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::worker::MainWorker;
+use deno_runtime::WorkerExecutionMode;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
+use log::Level;
+use rand::rngs::SmallRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
+use regex::Regex;
+use serde::Deserialize;
+use tokio::signal;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -20,73 +88,6 @@ use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
 
-use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::File;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::WalkEntry;
-use deno_core::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context as _;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::future;
-use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
-use deno_core::futures::StreamExt;
-use deno_core::located_script_name;
-use deno_core::serde_v8;
-use deno_core::stats::RuntimeActivity;
-use deno_core::stats::RuntimeActivityDiff;
-use deno_core::stats::RuntimeActivityStats;
-use deno_core::stats::RuntimeActivityStatsFactory;
-use deno_core::stats::RuntimeActivityStatsFilter;
-use deno_core::stats::RuntimeActivityType;
-use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
-use deno_core::url::Url;
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::OpState;
-use deno_core::PollEventLoopOptions;
-use deno_runtime::deno_io::Stdio;
-use deno_runtime::deno_io::StdioPipe;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
-use deno_runtime::tokio_util::create_and_run_current_thread;
-use deno_runtime::worker::MainWorker;
-use deno_runtime::WorkerExecutionMode;
-use indexmap::IndexMap;
-use indexmap::IndexSet;
-use log::Level;
-use rand::rngs::SmallRng;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use regex::Regex;
-use serde::Deserialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::env;
-use std::fmt::Write as _;
-use std::future::poll_fn;
-use std::io::Write;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::task::Poll;
-use std::time::Duration;
-use std::time::Instant;
-use tokio::signal;
-
 mod channel;
 pub mod fmt;
 pub mod reporters;
@@ -104,6 +105,8 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
+use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
@@ -611,7 +614,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), CoreError> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -639,21 +642,15 @@ async fn configure_main_worker(
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(err)) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+      )
+      .map_err(JsErrorBox::from_err)?;
+      Ok(())
     }
+    Err(err) => Err(err),
   }?;
   Ok((coverage_collector, worker))
 }
@@ -690,21 +687,14 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(err)) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+      )?;
+      Ok(())
     }
+    Err(e) => Err(e.into()),
   }
 }
 
@@ -717,7 +707,7 @@ async fn test_specifier_inner(
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
-) -> Result<(), AnyError> {
+) -> Result<(), CoreError> {
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
@@ -764,7 +754,7 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
 /// Yields to tokio to allow async work to process, and then polls
 /// the event loop once.
 #[must_use = "The event loop result should be checked"]
-pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), CoreError> {
   // Allow any ops that to do work in the tokio event loop to do so
   tokio::task::yield_now().await;
   // Spin the event loop once
@@ -783,13 +773,11 @@ pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
 pub fn send_test_event(
   op_state: &RefCell<OpState>,
   event: TestEvent,
-) -> Result<(), AnyError> {
-  Ok(
-    op_state
-      .borrow_mut()
-      .borrow_mut::<TestEventSender>()
-      .send(event)?,
-  )
+) -> Result<(), ChannelClosedError> {
+  op_state
+    .borrow_mut()
+    .borrow_mut::<TestEventSender>()
+    .send(event)
 }
 
 pub async fn run_tests_for_worker(
@@ -985,13 +973,10 @@ async fn run_tests_for_worker_inner(
     let result = match result {
       Ok(r) => r,
       Err(error) => {
-        if error.is::<JsError>() {
+        if let CoreError::Js(js_error) = error {
           send_test_event(
             &state_rc,
-            TestEvent::UncaughtError(
-              specifier.to_string(),
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ),
+            TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
           )?;
           fail_fast_tracker.add_failure();
           send_test_event(
@@ -1001,7 +986,7 @@ async fn run_tests_for_worker_inner(
           had_uncaught_error = true;
           continue;
         } else {
-          return Err(error);
+          return Err(error.into());
         }
       }
     };
@@ -1373,25 +1358,20 @@ pub async fn report_tests(
   reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
-      Err(generic_error(format!(
-        "Test reporter failed to flush: {}",
-        err
-      ))),
+      Err(anyhow!("Test reporter failed to flush: {}", err)),
       receiver,
     );
   }
 
   if used_only {
     return (
-      Err(generic_error(
-        "Test failed because the \"only\" option was used",
-      )),
+      Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
   }
 
   if failed {
-    return (Err(generic_error("Test failed")), receiver);
+    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1574,7 +1554,7 @@ pub async fn run_tests(
 
   if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
   {
-    return Err(generic_error("No test modules found"));
+    return Err(anyhow!("No test modules found"));
   }
 
   let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
@@ -1610,10 +1590,10 @@ pub async fn run_tests(
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
-          generic_error(format!(
+          anyhow!(
             "Unable to construct URL from the path of cwd: {}",
             cli_options.initial_cwd().to_string_lossy(),
-          ))
+          )
         },
       )?,
       concurrent_jobs: workspace_test_options.concurrent_jobs,
@@ -1792,10 +1772,10 @@ pub async fn run_tests_with_watch(
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
-                generic_error(format!(
+                anyhow!(
                   "Unable to construct URL from the path of cwd: {}",
                   cli_options.initial_cwd().to_string_lossy(),
-                ))
+                )
               },
             )?,
             concurrent_jobs: workspace_test_options.concurrent_jobs,

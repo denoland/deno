@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod io;
 pub mod ops;
@@ -10,15 +10,16 @@ pub mod raw;
 pub mod resolve_addr;
 pub mod tcp;
 
-use deno_core::error::AnyError;
-use deno_core::OpState;
-use deno_permissions::PermissionCheckError;
-use deno_tls::rustls::RootCertStore;
-use deno_tls::RootCertStoreProvider;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use deno_core::OpState;
+use deno_permissions::PermissionCheckError;
+use deno_tls::rustls::RootCertStore;
+use deno_tls::RootCertStoreProvider;
+pub use quic::QuicError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "net";
 
@@ -105,7 +106,9 @@ pub struct DefaultTlsOptions {
 }
 
 impl DefaultTlsOptions {
-  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, AnyError> {
+  pub fn root_cert_store(
+    &self,
+  ) -> Result<Option<RootCertStore>, deno_error::JsErrorBox> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -160,33 +163,42 @@ deno_core::extension!(deno_net,
     ops_unix::op_net_recv_unixpacket,
     ops_unix::op_net_send_unixpacket<P>,
 
-    quic::op_quic_accept,
-    quic::op_quic_accept_bi,
-    quic::op_quic_accept_incoming,
-    quic::op_quic_accept_uni,
-    quic::op_quic_close_connection,
-    quic::op_quic_close_endpoint,
+    quic::op_quic_connecting_0rtt,
+    quic::op_quic_connecting_1rtt,
+    quic::op_quic_connection_accept_bi,
+    quic::op_quic_connection_accept_uni,
+    quic::op_quic_connection_close,
     quic::op_quic_connection_closed,
     quic::op_quic_connection_get_protocol,
     quic::op_quic_connection_get_remote_addr,
-    quic::op_quic_connect<P>,
+    quic::op_quic_connection_get_server_name,
+    quic::op_quic_connection_handshake,
+    quic::op_quic_connection_open_bi,
+    quic::op_quic_connection_open_uni,
+    quic::op_quic_connection_get_max_datagram_size,
+    quic::op_quic_connection_read_datagram,
+    quic::op_quic_connection_send_datagram,
+    quic::op_quic_endpoint_close,
+    quic::op_quic_endpoint_connect<P>,
+    quic::op_quic_endpoint_create<P>,
     quic::op_quic_endpoint_get_addr,
-    quic::op_quic_get_send_stream_priority,
+    quic::op_quic_endpoint_listen,
     quic::op_quic_incoming_accept,
-    quic::op_quic_incoming_refuse,
+    quic::op_quic_incoming_accept_0rtt,
     quic::op_quic_incoming_ignore,
     quic::op_quic_incoming_local_ip,
+    quic::op_quic_incoming_refuse,
     quic::op_quic_incoming_remote_addr,
     quic::op_quic_incoming_remote_addr_validated,
-    quic::op_quic_listen<P>,
-    quic::op_quic_max_datagram_size,
-    quic::op_quic_open_bi,
-    quic::op_quic_open_uni,
-    quic::op_quic_read_datagram,
-    quic::op_quic_send_datagram,
-    quic::op_quic_set_send_stream_priority,
+    quic::op_quic_listener_accept,
+    quic::op_quic_listener_stop,
+    quic::op_quic_recv_stream_get_id,
+    quic::op_quic_send_stream_get_id,
+    quic::op_quic_send_stream_get_priority,
+    quic::op_quic_send_stream_set_priority,
   ],
-  esm = [ "01_net.js", "02_tls.js", "03_quic.js" ],
+  esm = [ "01_net.js", "02_tls.js" ],
+  lazy_loaded_esm = [ "03_quic.js" ],
   options = {
     root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
     unsafely_ignore_certificate_errors: Option<Vec<String>>,
@@ -204,8 +216,9 @@ deno_core::extension!(deno_net,
 /// Stub ops for non-unix platforms.
 #[cfg(not(unix))]
 mod ops_unix {
-  use crate::NetPermissions;
   use deno_core::op2;
+
+  use crate::NetPermissions;
 
   macro_rules! stub_op {
     ($name:ident) => {

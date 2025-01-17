@@ -1,6 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::cache::DenoDir;
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::SystemTime;
+
+use deno_core::url::Url;
+use deno_core::ModuleSpecifier;
+use deno_lib::cache::DenoDir;
+use deno_path_util::url_to_file_path;
+
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
 use crate::cache::LocalLspHttpCache;
@@ -8,15 +18,6 @@ use crate::lsp::config::Config;
 use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
-
-use deno_core::url::Url;
-use deno_core::ModuleSpecifier;
-use deno_path_util::url_to_file_path;
-use std::collections::BTreeMap;
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::SystemTime;
 
 pub fn calculate_fs_version(
   cache: &LspCache,
@@ -69,7 +70,7 @@ fn calculate_fs_version_in_cache(
 
 #[derive(Debug, Clone)]
 pub struct LspCache {
-  deno_dir: DenoDir,
+  deno_dir: DenoDir<CliSys>,
   global: Arc<GlobalHttpCache>,
   vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
 }
@@ -120,7 +121,7 @@ impl LspCache {
       .collect();
   }
 
-  pub fn deno_dir(&self) -> &DenoDir {
+  pub fn deno_dir(&self) -> &DenoDir<CliSys> {
     &self.deno_dir
   }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -38,6 +38,13 @@ use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
+use deno_lib::cache::DenoDir;
+use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::VfsEntry;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::standalone::virtual_fs::VirtualDirectory;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
+use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -51,6 +58,7 @@ use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_node::PackageJson;
+use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_semver::npm::NpmVersionReqParseError;
 use deno_semver::package::PackageReq;
 use deno_semver::Version;
@@ -60,28 +68,6 @@ use indexmap::IndexMap;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
-
-use crate::args::CaData;
-use crate::args::CliOptions;
-use crate::args::CompileFlags;
-use crate::args::NpmInstallDepsProvider;
-use crate::args::PermissionFlags;
-use crate::args::UnstableConfig;
-use crate::cache::DenoDir;
-use crate::cache::FastInsecureHasher;
-use crate::emit::Emitter;
-use crate::file_fetcher::CliFileFetcher;
-use crate::http_util::HttpClientProvider;
-use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::resolver::CjsTracker;
-use crate::shared::ReleaseChannel;
-use crate::standalone::virtual_fs::VfsEntry;
-use crate::util::archive;
-use crate::util::fs::canonicalize_path;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::util::progress_bar::ProgressBar;
-use crate::util::progress_bar::ProgressBarStyle;
 
 use super::file_system::DenoCompileFileSystem;
 use super::serialization::deserialize_binary_data_section;
@@ -95,11 +81,26 @@ use super::virtual_fs::output_vfs;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VfsFileSubDataKind;
 use super::virtual_fs::VfsRoot;
-use super::virtual_fs::VirtualDirectory;
-use super::virtual_fs::VirtualDirectoryEntries;
-use super::virtual_fs::WindowsSystemRootablePath;
+use crate::args::CaData;
+use crate::args::CliOptions;
+use crate::args::CompileFlags;
+use crate::args::NpmInstallDepsProvider;
+use crate::args::PermissionFlags;
+use crate::args::UnstableConfig;
+use crate::cache::FastInsecureHasher;
+use crate::emit::Emitter;
+use crate::file_fetcher::CliFileFetcher;
+use crate::http_util::HttpClientProvider;
+use crate::npm::CliNpmResolver;
+use crate::resolver::CliCjsTracker;
+use crate::shared::ReleaseChannel;
+use crate::sys::CliSys;
+use crate::util::archive;
+use crate::util::fs::canonicalize_path;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
 
 pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
   ".deno_compile_node_modules";
@@ -189,7 +190,7 @@ pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,
   pub code_cache_key: Option<u64>,
-  pub permissions: PermissionFlags,
+  pub permissions: PermissionsOptions,
   pub location: Option<Url>,
   pub v8_flags: Vec<String>,
   pub log_level: Option<Level>,
@@ -202,6 +203,7 @@ pub struct Metadata {
   pub node_modules: Option<NodeModules>,
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
+  pub vfs_case_sensitivity: FileSystemCaseSensitivity,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -379,7 +381,11 @@ pub fn extract_standalone(
       root_path: root_path.clone(),
       start_file_offset: 0,
     };
-    Arc::new(FileBackedVfs::new(Cow::Borrowed(vfs_files_data), fs_root))
+    Arc::new(FileBackedVfs::new(
+      Cow::Borrowed(vfs_files_data),
+      fs_root,
+      metadata.vfs_case_sensitivity,
+    ))
   };
   Ok(Some(StandaloneData {
     metadata,
@@ -404,13 +410,13 @@ pub struct WriteBinOptions<'a> {
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
-  cjs_tracker: &'a CjsTracker,
+  cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
-  deno_dir: &'a DenoDir,
+  deno_dir: &'a DenoDir<CliSys>,
   emitter: &'a Emitter,
   file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
-  npm_resolver: &'a dyn CliNpmResolver,
+  npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver,
   npm_system_info: NpmSystemInfo,
 }
@@ -418,13 +424,13 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    cjs_tracker: &'a CjsTracker,
+    cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
-    deno_dir: &'a DenoDir,
+    deno_dir: &'a DenoDir<CliSys>,
     emitter: &'a Emitter,
     file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
-    npm_resolver: &'a dyn CliNpmResolver,
+    npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
@@ -593,10 +599,11 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
-    let npm_snapshot = match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(managed) => {
-        let snapshot =
-          managed.serialized_valid_snapshot_for_system(&self.npm_system_info);
+    let npm_snapshot = match &self.npm_resolver {
+      CliNpmResolver::Managed(managed) => {
+        let snapshot = managed
+          .resolution()
+          .serialized_valid_snapshot_for_system(&self.npm_system_info);
         if !snapshot.as_serialized().packages.is_empty() {
           self.fill_npm_vfs(&mut vfs).context("Building npm vfs.")?;
           Some(snapshot)
@@ -604,7 +611,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           None
         }
       }
-      InnerCliNpmResolverRef::Byonm(_) => {
+      CliNpmResolver::Byonm(_) => {
         self.fill_npm_vfs(&mut vfs)?;
         None
       }
@@ -745,8 +752,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       );
     }
 
-    let node_modules = match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(_) => {
+    let node_modules = match &self.npm_resolver {
+      CliNpmResolver::Managed(_) => {
         npm_snapshot.as_ref().map(|_| NodeModules::Managed {
           node_modules_dir: self.npm_resolver.root_node_modules_path().map(
             |path| {
@@ -759,7 +766,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           ),
         })
       }
-      InnerCliNpmResolverRef::Byonm(resolver) => Some(NodeModules::Byonm {
+      CliNpmResolver::Byonm(resolver) => Some(NodeModules::Byonm {
         root_node_modules_dir: resolver.root_node_modules_path().map(
           |node_modules_dir| {
             root_dir_url
@@ -794,7 +801,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       seed: self.cli_options.seed(),
       code_cache_key,
       location: self.cli_options.location_flag().clone(),
-      permissions: self.cli_options.permission_flags().clone(),
+      permissions: self.cli_options.permissions_options(),
       v8_flags: self.cli_options.v8_flags().clone(),
       unsafely_ignore_certificate_errors: self
         .cli_options
@@ -851,6 +858,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
+      vfs_case_sensitivity: vfs.case_sensitivity,
     };
 
     write_binary_bytes(
@@ -873,16 +881,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
 
-    match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    match &self.npm_resolver {
+      CliNpmResolver::Managed(npm_resolver) => {
         if let Some(node_modules_path) = npm_resolver.root_node_modules_path() {
           maybe_warn_different_system(&self.npm_system_info);
           builder.add_dir_recursive(node_modules_path)?;
           Ok(())
         } else {
           // we'll flatten to remove any custom registries later
-          let mut packages =
-            npm_resolver.all_system_packages(&self.npm_system_info);
+          let mut packages = npm_resolver
+            .resolution()
+            .all_system_packages(&self.npm_system_info);
           packages.sort_by(|a, b| a.id.cmp(&b.id)); // determinism
           for package in packages {
             let folder =
@@ -892,7 +901,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
           Ok(())
         }
       }
-      InnerCliNpmResolverRef::Byonm(_) => {
+      CliNpmResolver::Byonm(_) => {
         maybe_warn_different_system(&self.npm_system_info);
         for pkg_json in self.cli_options.workspace().package_jsons() {
           builder.add_file_at_path(&pkg_json.path)?;
@@ -935,8 +944,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     &self,
     mut vfs: VfsBuilder,
   ) -> BuiltVfs {
-    match self.npm_resolver.as_inner() {
-      InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    match &self.npm_resolver {
+      CliNpmResolver::Managed(npm_resolver) => {
         if npm_resolver.root_node_modules_path().is_some() {
           return vfs.build();
         }
@@ -984,11 +993,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
         // it's better to not expose the user's cache directory, so take it out
         // of there
+        let case_sensitivity = vfs.case_sensitivity();
         let parent = global_cache_root_path.parent().unwrap();
         let parent_dir = vfs.get_dir_mut(parent).unwrap();
         let index = parent_dir
           .entries
-          .binary_search(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME)
+          .binary_search(
+            DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME,
+            case_sensitivity,
+          )
           .unwrap();
         let npm_global_cache_dir_entry = parent_dir.entries.remove(index);
 
@@ -996,9 +1009,19 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         // this is not as optimized as it could be
         let mut last_name =
           Cow::Borrowed(DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME);
-        for ancestor in parent.ancestors() {
-          let dir = vfs.get_dir_mut(ancestor).unwrap();
-          if let Ok(index) = dir.entries.binary_search(&last_name) {
+        for ancestor in
+          parent.ancestors().map(Some).chain(std::iter::once(None))
+        {
+          let dir = if let Some(ancestor) = ancestor {
+            vfs.get_dir_mut(ancestor).unwrap()
+          } else if cfg!(windows) {
+            vfs.get_system_root_dir_mut()
+          } else {
+            break;
+          };
+          if let Ok(index) =
+            dir.entries.binary_search(&last_name, case_sensitivity)
+          {
             dir.entries.remove(index);
           }
           last_name = Cow::Owned(dir.name.clone());
@@ -1009,10 +1032,12 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
         // now build the vfs and add the global cache dir entry there
         let mut built_vfs = vfs.build();
-        built_vfs.entries.insert(npm_global_cache_dir_entry);
+        built_vfs
+          .entries
+          .insert(npm_global_cache_dir_entry, case_sensitivity);
         built_vfs
       }
-      InnerCliNpmResolverRef::Byonm(_) => vfs.build(),
+      CliNpmResolver::Byonm(_) => vfs.build(),
     }
   }
 }

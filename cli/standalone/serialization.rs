@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::Cell;
@@ -17,6 +17,7 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -25,12 +26,9 @@ use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use indexmap::IndexMap;
 
-use crate::standalone::virtual_fs::VirtualDirectory;
-
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VirtualDirectoryEntries;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 

@@ -1,7 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::File;
@@ -22,6 +23,17 @@ use deno_core::parking_lot::Mutex;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
+use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::OffsetWithLength;
+use deno_lib::standalone::virtual_fs::VfsEntry;
+use deno_lib::standalone::virtual_fs::VfsEntryRef;
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
+use deno_lib::standalone::virtual_fs::VirtualDirectory;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
+use deno_lib::standalone::virtual_fs::VirtualFile;
+use deno_lib::standalone::virtual_fs::VirtualSymlink;
+use deno_lib::standalone::virtual_fs::VirtualSymlinkParts;
+use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -34,58 +46,18 @@ use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
+use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
 use crate::util;
 use crate::util::display::human_size;
 use crate::util::display::DisplayTreeNode;
 use crate::util::fs::canonicalize_path;
 
-use super::binary::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum WindowsSystemRootablePath {
-  /// The root of the system above any drive letters.
-  WindowSystemRoot,
-  Path(PathBuf),
-}
-
-impl WindowsSystemRootablePath {
-  pub fn join(&self, name_component: &str) -> PathBuf {
-    // this method doesn't handle multiple components
-    debug_assert!(
-      !name_component.contains('\\'),
-      "Invalid component: {}",
-      name_component
-    );
-    debug_assert!(
-      !name_component.contains('/'),
-      "Invalid component: {}",
-      name_component
-    );
-
-    match self {
-      WindowsSystemRootablePath::WindowSystemRoot => {
-        // windows drive letter
-        PathBuf::from(&format!("{}\\", name_component))
-      }
-      WindowsSystemRootablePath::Path(path) => path.join(name_component),
-    }
-  }
-}
-
 #[derive(Debug)]
 pub struct BuiltVfs {
   pub root_path: WindowsSystemRootablePath,
+  pub case_sensitivity: FileSystemCaseSensitivity,
   pub entries: VirtualDirectoryEntries,
   pub files: Vec<Vec<u8>>,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum VfsFileSubDataKind {
-  /// Raw bytes of the file.
-  Raw,
-  /// Bytes to use for module loading. For example, for TypeScript
-  /// files this will be the transpiled JavaScript source.
-  ModuleGraph,
 }
 
 #[derive(Debug)]
@@ -96,6 +68,7 @@ pub struct VfsBuilder {
   file_offsets: HashMap<String, u64>,
   /// The minimum root directory that should be included in the VFS.
   min_root_dir: Option<WindowsSystemRootablePath>,
+  case_sensitivity: FileSystemCaseSensitivity,
 }
 
 impl VfsBuilder {
@@ -109,7 +82,21 @@ impl VfsBuilder {
       current_offset: 0,
       file_offsets: Default::default(),
       min_root_dir: Default::default(),
+      // This is not exactly correct because file systems on these OSes
+      // may be case-sensitive or not based on the directory, but this
+      // is a good enough approximation and limitation. In the future,
+      // we may want to store this information per directory instead
+      // depending on the feedback we get.
+      case_sensitivity: if cfg!(windows) || cfg!(target_os = "macos") {
+        FileSystemCaseSensitivity::Insensitive
+      } else {
+        FileSystemCaseSensitivity::Sensitive
+      },
     }
+  }
+
+  pub fn case_sensitivity(&self) -> FileSystemCaseSensitivity {
+    self.case_sensitivity
   }
 
   /// Add a directory that might be the minimum root directory
@@ -216,21 +203,21 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let index = match current_dir.entries.binary_search(&name) {
-        Ok(index) => index,
-        Err(insert_index) => {
-          current_dir.entries.0.insert(
-            insert_index,
-            VfsEntry::Dir(VirtualDirectory {
-              name: name.to_string(),
-              entries: Default::default(),
-            }),
-          );
-          insert_index
-        }
-      };
-      match &mut current_dir.entries.0[index] {
-        VfsEntry::Dir(dir) => {
+      let index = current_dir.entries.insert_or_modify(
+        &name,
+        self.case_sensitivity,
+        || {
+          VfsEntry::Dir(VirtualDirectory {
+            name: name.to_string(),
+            entries: Default::default(),
+          })
+        },
+        |_| {
+          // ignore
+        },
+      );
+      match current_dir.entries.get_mut_by_index(index) {
+        Some(VfsEntry::Dir(dir)) => {
           current_dir = dir;
         }
         _ => unreachable!(),
@@ -253,7 +240,9 @@ impl VfsBuilder {
         continue;
       }
       let name = component.as_os_str().to_string_lossy();
-      let entry = current_dir.entries.get_mut_by_name(&name)?;
+      let entry = current_dir
+        .entries
+        .get_mut_by_name(&name, self.case_sensitivity)?;
       match entry {
         VfsEntry::Dir(dir) => {
           current_dir = dir;
@@ -304,7 +293,8 @@ impl VfsBuilder {
     sub_data_kind: VfsFileSubDataKind,
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
-    let checksum = util::checksum::gen(&[&data]);
+    let checksum = deno_lib::util::checksum::gen(&[&data]);
+    let case_sensitivity = self.case_sensitivity;
     let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
       // duplicate file, reuse an old offset
       *offset
@@ -319,32 +309,28 @@ impl VfsBuilder {
       offset,
       len: data.len() as u64,
     };
-    match dir.entries.binary_search(&name) {
-      Ok(index) => {
-        let entry = &mut dir.entries.0[index];
-        match entry {
-          VfsEntry::File(virtual_file) => match sub_data_kind {
-            VfsFileSubDataKind::Raw => {
-              virtual_file.offset = offset_and_len;
-            }
-            VfsFileSubDataKind::ModuleGraph => {
-              virtual_file.module_graph_offset = offset_and_len;
-            }
-          },
-          VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
-        }
-      }
-      Err(insert_index) => {
-        dir.entries.0.insert(
-          insert_index,
-          VfsEntry::File(VirtualFile {
-            name: name.to_string(),
-            offset: offset_and_len,
-            module_graph_offset: offset_and_len,
-          }),
-        );
-      }
-    }
+    dir.entries.insert_or_modify(
+      &name,
+      case_sensitivity,
+      || {
+        VfsEntry::File(VirtualFile {
+          name: name.to_string(),
+          offset: offset_and_len,
+          module_graph_offset: offset_and_len,
+        })
+      },
+      |entry| match entry {
+        VfsEntry::File(virtual_file) => match sub_data_kind {
+          VfsFileSubDataKind::Raw => {
+            virtual_file.offset = offset_and_len;
+          }
+          VfsFileSubDataKind::ModuleGraph => {
+            virtual_file.module_graph_offset = offset_and_len;
+          }
+        },
+        VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
+      },
+    );
 
     // new file, update the list of files
     if self.current_offset == offset {
@@ -380,21 +366,23 @@ impl VfsBuilder {
       std::fs::read_link(path)
         .with_context(|| format!("Reading symlink '{}'", path.display()))?,
     );
+    let case_sensitivity = self.case_sensitivity;
     let target = normalize_path(path.parent().unwrap().join(&target));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
-    match dir.entries.binary_search(&name) {
-      Ok(_) => {} // previously inserted
-      Err(insert_index) => {
-        dir.entries.0.insert(
-          insert_index,
-          VfsEntry::Symlink(VirtualSymlink {
-            name: name.to_string(),
-            dest_parts: VirtualSymlinkParts::from_path(&target),
-          }),
-        );
-      }
-    }
+    dir.entries.insert_or_modify(
+      &name,
+      case_sensitivity,
+      || {
+        VfsEntry::Symlink(VirtualSymlink {
+          name: name.to_string(),
+          dest_parts: VirtualSymlinkParts::from_path(&target),
+        })
+      },
+      |_| {
+        // ignore previously inserted
+      },
+    );
     let target_metadata =
       std::fs::symlink_metadata(&target).with_context(|| {
         format!("Reading symlink target '{}'", target.display())
@@ -425,16 +413,20 @@ impl VfsBuilder {
       dir: &mut VirtualDirectory,
       parts: &[String],
     ) {
-      for entry in &mut dir.entries.0 {
+      for entry in dir.entries.iter_mut() {
         match entry {
           VfsEntry::Dir(dir) => {
             strip_prefix_from_symlinks(dir, parts);
           }
           VfsEntry::File(_) => {}
           VfsEntry::Symlink(symlink) => {
-            let old_parts = std::mem::take(&mut symlink.dest_parts.0);
-            symlink.dest_parts.0 =
-              old_parts.into_iter().skip(parts.len()).collect();
+            let parts = symlink
+              .dest_parts
+              .take_parts()
+              .into_iter()
+              .skip(parts.len())
+              .collect();
+            symlink.dest_parts.set_parts(parts);
           }
         }
       }
@@ -453,13 +445,13 @@ impl VfsBuilder {
       if self.min_root_dir.as_ref() == Some(&current_path) {
         break;
       }
-      match &current_dir.entries.0[0] {
+      match current_dir.entries.iter().next().unwrap() {
         VfsEntry::Dir(dir) => {
           if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
             // special directory we want to maintain
             break;
           }
-          match current_dir.entries.0.remove(0) {
+          match current_dir.entries.remove(0) {
             VfsEntry::Dir(dir) => {
               current_path =
                 WindowsSystemRootablePath::Path(current_path.join(&dir.name));
@@ -474,11 +466,12 @@ impl VfsBuilder {
     if let WindowsSystemRootablePath::Path(path) = &current_path {
       strip_prefix_from_symlinks(
         &mut current_dir,
-        &VirtualSymlinkParts::from_path(path).0,
+        VirtualSymlinkParts::from_path(path).parts(),
       );
     }
     BuiltVfs {
       root_path: current_path,
+      case_sensitivity: self.case_sensitivity,
       entries: current_dir.entries,
       files: self.files,
     }
@@ -553,7 +546,7 @@ fn vfs_as_display_tree(
     All(Size),
     Subset(Vec<DirEntryOutput<'a>>),
     File(Size),
-    Symlink(&'a [String]),
+    Symlink(&'a VirtualSymlinkParts),
   }
 
   impl<'a> EntryOutput<'a> {
@@ -602,7 +595,7 @@ fn vfs_as_display_tree(
             format!("{} ({})", name, format_size(*size))
           }
           EntryOutput::Symlink(parts) => {
-            format!("{} --> {}", name, parts.join("/"))
+            format!("{} --> {}", name, parts.display())
           }
         },
         children: match self {
@@ -745,7 +738,7 @@ fn vfs_as_display_tree(
               EntryOutput::File(file_size(file, seen_offsets))
             }
             VfsEntry::Symlink(virtual_symlink) => {
-              EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
+              EntryOutput::Symlink(&virtual_symlink.dest_parts)
             }
           },
         })
@@ -782,7 +775,7 @@ fn vfs_as_display_tree(
       }
       VfsEntry::File(file) => EntryOutput::File(file_size(file, seen_offsets)),
       VfsEntry::Symlink(virtual_symlink) => {
-        EntryOutput::Symlink(&virtual_symlink.dest_parts.0)
+        EntryOutput::Symlink(&virtual_symlink.dest_parts)
       }
     }
   }
@@ -849,187 +842,6 @@ fn vfs_as_display_tree(
 }
 
 #[derive(Debug)]
-enum VfsEntryRef<'a> {
-  Dir(&'a VirtualDirectory),
-  File(&'a VirtualFile),
-  Symlink(&'a VirtualSymlink),
-}
-
-impl VfsEntryRef<'_> {
-  pub fn as_metadata(&self) -> FileBackedVfsMetadata {
-    FileBackedVfsMetadata {
-      file_type: match self {
-        Self::Dir(_) => sys_traits::FileType::Dir,
-        Self::File(_) => sys_traits::FileType::File,
-        Self::Symlink(_) => sys_traits::FileType::Symlink,
-      },
-      name: self.name().to_string(),
-      len: match self {
-        Self::Dir(_) => 0,
-        Self::File(file) => file.offset.len,
-        Self::Symlink(_) => 0,
-      },
-    }
-  }
-
-  pub fn name(&self) -> &str {
-    match self {
-      Self::Dir(dir) => &dir.name,
-      Self::File(file) => &file.name,
-      Self::Symlink(symlink) => &symlink.name,
-    }
-  }
-}
-
-// todo(dsherret): we should store this more efficiently in the binary
-#[derive(Debug, Serialize, Deserialize)]
-pub enum VfsEntry {
-  Dir(VirtualDirectory),
-  File(VirtualFile),
-  Symlink(VirtualSymlink),
-}
-
-impl VfsEntry {
-  pub fn name(&self) -> &str {
-    match self {
-      Self::Dir(dir) => &dir.name,
-      Self::File(file) => &file.name,
-      Self::Symlink(symlink) => &symlink.name,
-    }
-  }
-
-  fn as_ref(&self) -> VfsEntryRef {
-    match self {
-      VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
-      VfsEntry::File(file) => VfsEntryRef::File(file),
-      VfsEntry::Symlink(symlink) => VfsEntryRef::Symlink(symlink),
-    }
-  }
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
-
-impl VirtualDirectoryEntries {
-  pub fn new(mut entries: Vec<VfsEntry>) -> Self {
-    // needs to be sorted by name
-    entries.sort_by(|a, b| a.name().cmp(b.name()));
-    Self(entries)
-  }
-
-  pub fn take_inner(&mut self) -> Vec<VfsEntry> {
-    std::mem::take(&mut self.0)
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
-  }
-
-  pub fn len(&self) -> usize {
-    self.0.len()
-  }
-
-  pub fn get_by_name(&self, name: &str) -> Option<&VfsEntry> {
-    self.binary_search(name).ok().map(|index| &self.0[index])
-  }
-
-  pub fn get_mut_by_name(&mut self, name: &str) -> Option<&mut VfsEntry> {
-    self
-      .binary_search(name)
-      .ok()
-      .map(|index| &mut self.0[index])
-  }
-
-  pub fn binary_search(&self, name: &str) -> Result<usize, usize> {
-    self.0.binary_search_by(|e| e.name().cmp(name))
-  }
-
-  pub fn insert(&mut self, entry: VfsEntry) {
-    match self.binary_search(entry.name()) {
-      Ok(index) => {
-        self.0[index] = entry;
-      }
-      Err(insert_index) => {
-        self.0.insert(insert_index, entry);
-      }
-    }
-  }
-
-  pub fn remove(&mut self, index: usize) -> VfsEntry {
-    self.0.remove(index)
-  }
-
-  pub fn iter(&self) -> std::slice::Iter<'_, VfsEntry> {
-    self.0.iter()
-  }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VirtualDirectory {
-  #[serde(rename = "n")]
-  pub name: String,
-  // should be sorted by name
-  #[serde(rename = "e")]
-  pub entries: VirtualDirectoryEntries,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct OffsetWithLength {
-  #[serde(rename = "o")]
-  pub offset: u64,
-  #[serde(rename = "l")]
-  pub len: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VirtualFile {
-  #[serde(rename = "n")]
-  pub name: String,
-  #[serde(rename = "o")]
-  pub offset: OffsetWithLength,
-  /// Offset file to use for module loading when it differs from the
-  /// raw file. Often this will be the same offset as above for data
-  /// such as JavaScript files, but for TypeScript files the `offset`
-  /// will be the original raw bytes when included as an asset and this
-  /// offset will be to the transpiled JavaScript source.
-  #[serde(rename = "m")]
-  pub module_graph_offset: OffsetWithLength,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VirtualSymlinkParts(Vec<String>);
-
-impl VirtualSymlinkParts {
-  pub fn from_path(path: &Path) -> Self {
-    Self(
-      path
-        .components()
-        .filter(|c| !matches!(c, std::path::Component::RootDir))
-        .map(|c| c.as_os_str().to_string_lossy().to_string())
-        .collect(),
-    )
-  }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VirtualSymlink {
-  #[serde(rename = "n")]
-  pub name: String,
-  #[serde(rename = "p")]
-  pub dest_parts: VirtualSymlinkParts,
-}
-
-impl VirtualSymlink {
-  pub fn resolve_dest_from_root(&self, root: &Path) -> PathBuf {
-    let mut dest = root.to_path_buf();
-    for part in &self.dest_parts.0 {
-      dest.push(part);
-    }
-    dest
-  }
-}
-
-#[derive(Debug)]
 pub struct VfsRoot {
   pub dir: VirtualDirectory,
   pub root_path: PathBuf,
@@ -1040,19 +852,21 @@ impl VfsRoot {
   fn find_entry<'a>(
     &'a self,
     path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
-    self.find_entry_inner(path, &mut HashSet::new())
+    self.find_entry_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
   fn find_entry_inner<'a>(
     &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let mut path = Cow::Borrowed(path);
     loop {
       let (resolved_path, entry) =
-        self.find_entry_no_follow_inner(&path, seen)?;
+        self.find_entry_no_follow_inner(&path, seen, case_sensitivity)?;
       match entry {
         VfsEntryRef::Symlink(symlink) => {
           if !seen.insert(path.to_path_buf()) {
@@ -1073,14 +887,16 @@ impl VfsRoot {
   fn find_entry_no_follow(
     &self,
     path: &Path,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef)> {
-    self.find_entry_no_follow_inner(path, &mut HashSet::new())
+    self.find_entry_no_follow_inner(path, &mut HashSet::new(), case_sensitivity)
   }
 
   fn find_entry_no_follow_inner<'a>(
     &'a self,
     path: &Path,
     seen: &mut HashSet<PathBuf>,
+    case_sensitivity: FileSystemCaseSensitivity,
   ) -> std::io::Result<(PathBuf, VfsEntryRef<'a>)> {
     let relative_path = match path.strip_prefix(&self.root_path) {
       Ok(p) => p,
@@ -1102,7 +918,8 @@ impl VfsRoot {
         }
         VfsEntryRef::Symlink(symlink) => {
           let dest = symlink.resolve_dest_from_root(&self.root_path);
-          let (resolved_path, entry) = self.find_entry_inner(&dest, seen)?;
+          let (resolved_path, entry) =
+            self.find_entry_inner(&dest, seen, case_sensitivity)?;
           final_path = resolved_path; // overwrite with the new resolved path
           match entry {
             VfsEntryRef::Dir(dir) => {
@@ -1127,7 +944,7 @@ impl VfsRoot {
       let component = component.to_string_lossy();
       current_entry = current_dir
         .entries
-        .get_by_name(&component)
+        .get_by_name(&component, case_sensitivity)
         .ok_or_else(|| {
           std::io::Error::new(std::io::ErrorKind::NotFound, "path not found")
         })?
@@ -1362,6 +1179,21 @@ pub struct FileBackedVfsMetadata {
 }
 
 impl FileBackedVfsMetadata {
+  pub fn from_vfs_entry_ref(vfs_entry: VfsEntryRef) -> Self {
+    FileBackedVfsMetadata {
+      file_type: match vfs_entry {
+        VfsEntryRef::Dir(_) => sys_traits::FileType::Dir,
+        VfsEntryRef::File(_) => sys_traits::FileType::File,
+        VfsEntryRef::Symlink(_) => sys_traits::FileType::Symlink,
+      },
+      name: vfs_entry.name().to_string(),
+      len: match vfs_entry {
+        VfsEntryRef::Dir(_) => 0,
+        VfsEntryRef::File(file) => file.offset.len,
+        VfsEntryRef::Symlink(_) => 0,
+      },
+    }
+  }
   pub fn as_fs_stat(&self) -> FsStat {
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
@@ -1393,13 +1225,19 @@ impl FileBackedVfsMetadata {
 pub struct FileBackedVfs {
   vfs_data: Cow<'static, [u8]>,
   fs_root: VfsRoot,
+  case_sensitivity: FileSystemCaseSensitivity,
 }
 
 impl FileBackedVfs {
-  pub fn new(data: Cow<'static, [u8]>, fs_root: VfsRoot) -> Self {
+  pub fn new(
+    data: Cow<'static, [u8]>,
+    fs_root: VfsRoot,
+    case_sensitivity: FileSystemCaseSensitivity,
+  ) -> Self {
     Self {
       vfs_data: data,
       fs_root,
+      case_sensitivity,
     }
   }
 
@@ -1447,12 +1285,14 @@ impl FileBackedVfs {
     let path = path.to_path_buf();
     Ok(dir.entries.iter().map(move |entry| FileBackedVfsDirEntry {
       parent_path: path.to_path_buf(),
-      metadata: entry.as_ref().as_metadata(),
+      metadata: FileBackedVfsMetadata::from_vfs_entry_ref(entry.as_ref()),
     }))
   }
 
   pub fn read_link(&self, path: &Path) -> std::io::Result<PathBuf> {
-    let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Symlink(symlink) => {
         Ok(symlink.resolve_dest_from_root(&self.fs_root.root_path))
@@ -1465,17 +1305,19 @@ impl FileBackedVfs {
   }
 
   pub fn lstat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
-    let (_, entry) = self.fs_root.find_entry_no_follow(path)?;
-    Ok(entry.as_metadata())
+    let (_, entry) = self
+      .fs_root
+      .find_entry_no_follow(path, self.case_sensitivity)?;
+    Ok(FileBackedVfsMetadata::from_vfs_entry_ref(entry))
   }
 
   pub fn stat(&self, path: &Path) -> std::io::Result<FileBackedVfsMetadata> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
-    Ok(entry.as_metadata())
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
+    Ok(FileBackedVfsMetadata::from_vfs_entry_ref(entry))
   }
 
   pub fn canonicalize(&self, path: &Path) -> std::io::Result<PathBuf> {
-    let (path, _) = self.fs_root.find_entry(path)?;
+    let (path, _) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     Ok(path)
   }
 
@@ -1537,7 +1379,7 @@ impl FileBackedVfs {
   }
 
   pub fn dir_entry(&self, path: &Path) -> std::io::Result<&VirtualDirectory> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Dir(dir) => Ok(dir),
       VfsEntryRef::Symlink(_) => unreachable!(),
@@ -1549,7 +1391,7 @@ impl FileBackedVfs {
   }
 
   pub fn file_entry(&self, path: &Path) -> std::io::Result<&VirtualFile> {
-    let (_, entry) = self.fs_root.find_entry(path)?;
+    let (_, entry) = self.fs_root.find_entry(path, self.case_sensitivity)?;
     match entry {
       VfsEntryRef::Dir(_) => Err(std::io::Error::new(
         std::io::ErrorKind::Other,
@@ -1563,9 +1405,10 @@ impl FileBackedVfs {
 
 #[cfg(test)]
 mod test {
+  use std::io::Write;
+
   use console_static_text::ansi::strip_ansi_codes;
   use deno_io::fs::File;
-  use std::io::Write;
   use test_util::assert_contains;
   use test_util::TempDir;
 
@@ -1685,6 +1528,7 @@ mod test {
     temp_dir.write("src/a.txt", "data");
     temp_dir.write("src/b.txt", "data");
     util::fs::symlink_dir(
+      &crate::sys::CliSys::default(),
       temp_dir_path.join("src/nested/sub_dir").as_path(),
       temp_dir_path.join("src/sub_dir_link").as_path(),
     )
@@ -1753,6 +1597,7 @@ mod test {
           root_path: dest_path.to_path_buf(),
           start_file_offset: 0,
         },
+        FileSystemCaseSensitivity::Sensitive,
       ),
     )
   }

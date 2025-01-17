@@ -1,8 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Note: Only add code in this folder that has no application specific logic
 pub mod archive;
-pub mod checksum;
 pub mod console;
 pub mod diff;
 pub mod display;

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -27,17 +27,19 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
-use super::CliNpmReqResolver;
-use super::ResolvePkgFolderFromDenoReqError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
+  #[class(generic)]
   #[error("Could not find \"{}\" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", .0)]
   MissingAlias(StackString),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJson(#[from] PackageJsonLoadError),
+  #[class(generic)]
   #[error("Could not find a matching package for 'npm:{}' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.", .0)]
   UnmatchedReq(PackageReq),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
 }
@@ -85,7 +87,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     }
   }
 
-  pub fn root_node_modules_dir(&self) -> Option<&Path> {
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir.as_deref()
   }
 
@@ -373,37 +375,8 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
   }
 }
 
-impl<
-    Sys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + Send
-      + Sync
-      + std::fmt::Debug,
-  > CliNpmReqResolver for ByonmNpmResolver<Sys>
-{
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
-      self, req, referrer,
-    )
-    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
-  }
-}
-
-impl<
-    Sys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + Send
-      + Sync
-      + std::fmt::Debug,
-  > NpmPackageFolderResolver for ByonmNpmResolver<Sys>
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -456,7 +429,7 @@ impl<
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {

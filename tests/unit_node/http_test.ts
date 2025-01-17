@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -1880,4 +1880,15 @@ Deno.test("[node/http] decompress brotli response", {
     "host",
     "localhost:3000",
   ], ["user-agent", "Deno/2.1.1"]]);
+});
+
+Deno.test("[node/http] an error with DNS propagates to request object", async () => {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  const req = http.request("http://invalid-hostname.test", () => {});
+  req.on("error", (err) => {
+    assertEquals(err.name, "Error");
+    assertEquals(err.message, "getaddrinfo ENOTFOUND invalid-hostname.test");
+    resolve();
+  });
+  await promise;
 });

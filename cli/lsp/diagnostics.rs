@@ -1,32 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::analysis;
-use super::client::Client;
-use super::config::Config;
-use super::documents;
-use super::documents::Document;
-use super::documents::Documents;
-use super::documents::DocumentsFilter;
-use super::language_server;
-use super::language_server::StateSnapshot;
-use super::performance::Performance;
-use super::tsc;
-use super::tsc::TsServer;
-use super::urls::uri_parse_unencoded;
-use super::urls::url_to_uri;
-use super::urls::LspUrlMap;
-
-use crate::graph_util;
-use crate::graph_util::enhanced_resolution_error_message;
-use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
-use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
-use crate::sys::CliSys;
-use crate::tools::lint::CliLinter;
-use crate::tools::lint::CliLinterOptions;
-use crate::tools::lint::LintRuleProvider;
-use crate::tsc::DiagnosticCategory;
-use crate::util::path::to_percent_decoded_str;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
+use std::thread;
 
 use deno_ast::MediaType;
 use deno_config::deno_json::LintConfig;
@@ -47,6 +26,7 @@ use deno_graph::Resolution;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_lint::linter::LintConfig as DenoLintConfig;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node;
@@ -55,19 +35,39 @@ use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use import_map::ImportMap;
-use import_map::ImportMapError;
+use import_map::ImportMapErrorKind;
 use log::error;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
-use std::thread;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
+
+use super::analysis;
+use super::client::Client;
+use super::config::Config;
+use super::documents;
+use super::documents::Document;
+use super::documents::Documents;
+use super::documents::DocumentsFilter;
+use super::language_server;
+use super::language_server::StateSnapshot;
+use super::performance::Performance;
+use super::tsc;
+use super::tsc::TsServer;
+use super::urls::uri_parse_unencoded;
+use super::urls::url_to_uri;
+use super::urls::LspUrlMap;
+use crate::graph_util;
+use crate::graph_util::enhanced_resolution_error_message;
+use crate::lsp::lsp_custom::DiagnosticBatchNotificationParams;
+use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
+use crate::tools::lint::CliLinter;
+use crate::tools::lint::CliLinterOptions;
+use crate::tools::lint::LintRuleProvider;
+use crate::tsc::DiagnosticCategory;
+use crate::util::path::to_percent_decoded_str;
 
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
@@ -265,7 +265,7 @@ impl TsDiagnosticsStore {
 }
 
 pub fn should_send_diagnostic_batch_index_notifications() -> bool {
-  crate::args::has_flag_env_var(
+  deno_lib::env::has_flag_env_var(
     "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
   )
 }
@@ -1297,8 +1297,8 @@ impl DenoDiagnostic {
         let mut message;
         message = enhanced_resolution_error_message(err);
         if let deno_graph::ResolutionError::ResolverError {error, ..} = err{
-          if let ResolveError::Other(resolve_error, ..) = (*error).as_ref() {
-            if let Some(ImportMapError::UnmappedBareSpecifier(specifier, _)) = resolve_error.downcast_ref::<ImportMapError>() {
+          if let ResolveError::ImportMap(importmap) = (*error).as_ref() {
+            if let ImportMapErrorKind::UnmappedBareSpecifier(specifier, _) = &**importmap {
               if specifier.chars().next().unwrap_or('\0') == '@'{
                 let hint = format!("\nHint: Use [deno add {}] to add the dependency.", specifier);
                 message.push_str(hint.as_str());
@@ -1646,6 +1646,12 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
+  use std::sync::Arc;
+
+  use deno_config::deno_json::ConfigFile;
+  use pretty_assertions::assert_eq;
+  use test_util::TempDir;
+
   use super::*;
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
@@ -1655,11 +1661,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
-
-  use deno_config::deno_json::ConfigFile;
-  use pretty_assertions::assert_eq;
-  use std::sync::Arc;
-  use test_util::TempDir;
 
   fn mock_config() -> Config {
     let root_url = resolve_url("file:///").unwrap();
@@ -1694,12 +1695,7 @@ mod tests {
     let mut config = Config::new_with_roots([root_uri.clone()]);
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_uri.join(relative_path).unwrap();
-      let config_file = ConfigFile::new(
-        json_string,
-        base_url,
-        &deno_config::deno_json::ConfigParseOptions::default(),
-      )
-      .unwrap();
+      let config_file = ConfigFile::new(json_string, base_url).unwrap();
       config.tree.inject_config_file(config_file).await;
     }
     let resolver =

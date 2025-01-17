@@ -1,4 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_ast::MediaType;
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
+use deno_cache_dir::file_fetcher::FileOrRedirect;
+use deno_core::futures;
+use deno_core::futures::FutureExt;
+use deno_core::ModuleSpecifier;
+use deno_graph::source::CacheInfo;
+use deno_graph::source::LoadFuture;
+use deno_graph::source::LoadResponse;
+use deno_graph::source::Loader;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use node_resolver::InNpmPackageChecker;
 
 use crate::args::jsr_url;
 use crate::file_fetcher::CliFetchNoFollowErrorKind;
@@ -7,31 +26,11 @@ use crate::file_fetcher::FetchNoFollowOptions;
 use crate::file_fetcher::FetchPermissionsOptionRef;
 use crate::sys::CliSys;
 
-use deno_ast::MediaType;
-use deno_cache_dir::file_fetcher::CacheSetting;
-use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
-use deno_cache_dir::file_fetcher::FileOrRedirect;
-use deno_core::error::AnyError;
-use deno_core::futures;
-use deno_core::futures::FutureExt;
-use deno_core::ModuleSpecifier;
-use deno_graph::source::CacheInfo;
-use deno_graph::source::LoadFuture;
-use deno_graph::source::LoadResponse;
-use deno_graph::source::Loader;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use node_resolver::InNpmPackageChecker;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-
 mod cache_db;
 mod caches;
 mod check;
 mod code_cache;
 mod common;
-mod deno_dir;
-mod disk_cache;
 mod emit;
 mod fast_check;
 mod incremental;
@@ -44,9 +43,8 @@ pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
 pub use common::FastInsecureHasher;
-pub use deno_dir::DenoDir;
-pub use deno_dir::DenoDirProvider;
-pub use disk_cache::DiskCache;
+/// Permissions used to save a file in the disk caches.
+pub use deno_cache_dir::CACHE_PERM;
 pub use emit::EmitCache;
 pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
@@ -55,13 +53,11 @@ pub use node::NodeAnalysisCache;
 pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
-/// Permissions used to save a file in the disk caches.
-pub use deno_cache_dir::CACHE_PERM;
-
 pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
 pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
 pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
+use deno_error::JsErrorBox;
 
 pub struct FetchCacherOptions {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
@@ -76,7 +72,7 @@ pub struct FetchCacher {
   pub file_header_overrides: HashMap<ModuleSpecifier, HashMap<String, String>>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   module_info_cache: Arc<ModuleInfoCache>,
   permissions: PermissionsContainer,
   sys: CliSys,
@@ -88,7 +84,7 @@ impl FetchCacher {
   pub fn new(
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     module_info_cache: Arc<ModuleInfoCache>,
     sys: CliSys,
     options: FetchCacherOptions,
@@ -194,9 +190,9 @@ impl Loader for FetchCacher {
         LoaderCacheSetting::Use => None,
         LoaderCacheSetting::Reload => {
           if matches!(file_fetcher.cache_setting(), CacheSetting::Only) {
-            return Err(deno_core::anyhow::anyhow!(
+            return Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::generic(
               "Could not resolve version constraint using only cached data. Try running again without --cached-only"
-            ));
+            ))));
           }
           Some(CacheSetting::ReloadAll)
         }
@@ -262,28 +258,27 @@ impl Loader for FetchCacher {
                 FetchNoFollowErrorKind::CacheSave  { .. } |
                 FetchNoFollowErrorKind::UnsupportedScheme  { .. } |
                 FetchNoFollowErrorKind::RedirectHeaderParse { .. } |
-                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(AnyError::from(err)),
+                FetchNoFollowErrorKind::InvalidHeader { .. } => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err)))),
                 FetchNoFollowErrorKind::NotCached { .. } => {
                   if options.cache_setting == LoaderCacheSetting::Only {
                     Ok(None)
                   } else {
-                    Err(AnyError::from(err))
+                    Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(err))))
                   }
                 },
                 FetchNoFollowErrorKind::ChecksumIntegrity(err) => {
                   // convert to the equivalent deno_graph error so that it
                   // enhances it if this is passed to deno_graph
                   Err(
-                    deno_graph::source::ChecksumIntegrityError {
+                    deno_graph::source::LoadError::ChecksumIntegrity(deno_graph::source::ChecksumIntegrityError {
                       actual: err.actual,
                       expected: err.expected,
-                    }
-                    .into(),
+                    }),
                   )
                 }
               }
             },
-            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(AnyError::from(permission_check_error)),
+            CliFetchNoFollowErrorKind::PermissionCheck(permission_check_error) => Err(deno_graph::source::LoadError::Other(Arc::new(JsErrorBox::from_err(permission_check_error)))),
           }
         })
     }
@@ -298,7 +293,7 @@ impl Loader for FetchCacher {
     module_info: &deno_graph::ModuleInfo,
   ) {
     log::debug!("Caching module info for {}", specifier);
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     let result = self.module_info_cache.set_module_info(
       specifier,
       media_type,

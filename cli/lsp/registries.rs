@@ -1,25 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::completions::IMPORT_COMMIT_CHARS;
-use super::logging::lsp_log;
-use super::path_to_regex::parse;
-use super::path_to_regex::string_to_regex;
-use super::path_to_regex::Compiler;
-use super::path_to_regex::Key;
-use super::path_to_regex::MatchResult;
-use super::path_to_regex::Matcher;
-use super::path_to_regex::StringOrNumber;
-use super::path_to_regex::StringOrVec;
-use super::path_to_regex::Token;
-
-use crate::cache::GlobalHttpCache;
-use crate::cache::HttpCache;
-use crate::file_fetcher::CliFileFetcher;
-use crate::file_fetcher::FetchOptions;
-use crate::file_fetcher::FetchPermissionsOptionRef;
-use crate::file_fetcher::TextDecodedFile;
-use crate::http_util::HttpClientProvider;
-use crate::sys::CliSys;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::anyhow;
@@ -35,11 +19,27 @@ use deno_core::ModuleSpecifier;
 use deno_graph::Dependency;
 use log::error;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
 use tower_lsp::lsp_types as lsp;
+
+use super::completions::IMPORT_COMMIT_CHARS;
+use super::logging::lsp_log;
+use super::path_to_regex::parse;
+use super::path_to_regex::string_to_regex;
+use super::path_to_regex::Compiler;
+use super::path_to_regex::Key;
+use super::path_to_regex::MatchResult;
+use super::path_to_regex::Matcher;
+use super::path_to_regex::StringOrNumber;
+use super::path_to_regex::StringOrVec;
+use super::path_to_regex::Token;
+use crate::cache::GlobalHttpCache;
+use crate::cache::HttpCache;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::FetchOptions;
+use crate::file_fetcher::FetchPermissionsOptionRef;
+use crate::file_fetcher::TextDecodedFile;
+use crate::http_util::HttpClientProvider;
+use crate::sys::CliSys;
 
 const CONFIG_PATH: &str = "/.well-known/deno-import-intellisense.json";
 const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
@@ -1128,8 +1128,9 @@ FetchPermissionsOptionRef::AllowAll,
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_validate_registry_configuration() {

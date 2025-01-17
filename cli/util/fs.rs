@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::Error;
 use std::io::ErrorKind;
@@ -13,10 +13,12 @@ use deno_config::glob::PathOrPattern;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn_blocking;
 use deno_core::ModuleSpecifier;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsDirEntry;
+use sys_traits::FsSymlinkDir;
 
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
@@ -126,7 +128,7 @@ pub fn collect_specifiers(
     .ignore_git_folder()
     .ignore_node_modules()
     .set_vendor_folder(vendor_folder)
-    .collect_file_patterns(&CliSys::default(), files)?;
+    .collect_file_patterns(&CliSys::default(), files);
   let mut collected_files_as_urls = collected_files
     .iter()
     .map(|f| specifier_from_file_path(f).unwrap())
@@ -148,86 +150,123 @@ pub async fn remove_dir_all_if_exists(path: &Path) -> std::io::Result<()> {
   }
 }
 
-mod clone_dir_imp {
-
-  #[cfg(target_vendor = "apple")]
-  mod apple {
-    use super::super::copy_dir_recursive;
-    use deno_core::error::AnyError;
-    use std::os::unix::ffi::OsStrExt;
-    use std::path::Path;
-    fn clonefile(from: &Path, to: &Path) -> std::io::Result<()> {
-      let from = std::ffi::CString::new(from.as_os_str().as_bytes())?;
-      let to = std::ffi::CString::new(to.as_os_str().as_bytes())?;
-      // SAFETY: `from` and `to` are valid C strings.
-      let ret = unsafe { libc::clonefile(from.as_ptr(), to.as_ptr(), 0) };
-      if ret != 0 {
-        return Err(std::io::Error::last_os_error());
-      }
-      Ok(())
-    }
-
-    pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-      if let Some(parent) = to.parent() {
-        std::fs::create_dir_all(parent)?;
-      }
-      // Try to clone the whole directory
-      if let Err(err) = clonefile(from, to) {
-        if err.kind() != std::io::ErrorKind::AlreadyExists {
-          log::warn!(
-            "Failed to clone dir {:?} to {:?} via clonefile: {}",
-            from,
-            to,
-            err
-          );
-        }
-        // clonefile won't overwrite existing files, so if the dir exists
-        // we need to handle it recursively.
-        copy_dir_recursive(from, to)?;
-      }
-
-      Ok(())
-    }
-  }
-
-  #[cfg(target_vendor = "apple")]
-  pub(super) use apple::clone_dir_recursive;
-
-  #[cfg(not(target_vendor = "apple"))]
-  pub(super) fn clone_dir_recursive(
-    from: &std::path::Path,
-    to: &std::path::Path,
-  ) -> Result<(), deno_core::error::AnyError> {
-    use crate::sys::CliSys;
-
-    if let Err(e) =
-      deno_npm_cache::hard_link_dir_recursive(&CliSys::default(), from, to)
-    {
-      log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
-      super::copy_dir_recursive(from, to)?;
-    }
-
-    Ok(())
-  }
-}
-
 /// Clones a directory to another directory. The exact method
 /// is not guaranteed - it may be a hardlink, copy, or other platform-specific
 /// operation.
 ///
 /// Note: Does not handle symlinks.
-pub fn clone_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  clone_dir_imp::clone_dir_recursive(from, to)
+pub fn clone_dir_recursive<
+  TSys: sys_traits::FsCopy
+    + sys_traits::FsCloneFile
+    + sys_traits::FsCloneFile
+    + sys_traits::FsCreateDir
+    + sys_traits::FsHardLink
+    + sys_traits::FsReadDir
+    + sys_traits::FsRemoveFile
+    + sys_traits::ThreadSleep,
+>(
+  sys: &TSys,
+  from: &Path,
+  to: &Path,
+) -> Result<(), CopyDirRecursiveError> {
+  if cfg!(target_vendor = "apple") {
+    if let Some(parent) = to.parent() {
+      sys.fs_create_dir_all(parent)?;
+    }
+    // Try to clone the whole directory
+    if let Err(err) = sys.fs_clone_file(from, to) {
+      if !matches!(
+        err.kind(),
+        std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::Unsupported
+      ) {
+        log::warn!(
+          "Failed to clone dir {:?} to {:?} via clonefile: {}",
+          from,
+          to,
+          err
+        );
+      }
+      // clonefile won't overwrite existing files, so if the dir exists
+      // we need to handle it recursively.
+      copy_dir_recursive(sys, from, to)?;
+    }
+  } else if let Err(e) = deno_npm_cache::hard_link_dir_recursive(sys, from, to)
+  {
+    log::debug!("Failed to hard link dir {:?} to {:?}: {}", from, to, e);
+    copy_dir_recursive(sys, from, to)?;
+  }
+
+  Ok(())
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CopyDirRecursiveError {
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Creating {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Creating {path}")]
+  Reading {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error("Dir {from} to {to}")]
+  Dir {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Box<Self>,
+  },
+  #[class(inherit)]
+  #[error("Copying {from} to {to}")]
+  Copying {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] Error),
 }
 
 /// Copies a directory to another directory.
 ///
 /// Note: Does not handle symlinks.
-pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
-  std::fs::create_dir_all(to)
-    .with_context(|| format!("Creating {}", to.display()))?;
-  let read_dir = std::fs::read_dir(from)
-    .with_context(|| format!("Reading {}", from.display()))?;
+pub fn copy_dir_recursive<
+  TSys: sys_traits::FsCopy
+    + sys_traits::FsCloneFile
+    + sys_traits::FsCreateDir
+    + sys_traits::FsHardLink
+    + sys_traits::FsReadDir,
+>(
+  sys: &TSys,
+  from: &Path,
+  to: &Path,
+) -> Result<(), CopyDirRecursiveError> {
+  sys.fs_create_dir_all(to).map_err(|source| {
+    CopyDirRecursiveError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  let read_dir =
+    sys
+      .fs_read_dir(from)
+      .map_err(|source| CopyDirRecursiveError::Reading {
+        path: from.to_path_buf(),
+        source,
+      })?;
 
   for entry in read_dir {
     let entry = entry?;
@@ -236,12 +275,20 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
     let new_to = to.join(entry.file_name());
 
     if file_type.is_dir() {
-      copy_dir_recursive(&new_from, &new_to).with_context(|| {
-        format!("Dir {} to {}", new_from.display(), new_to.display())
+      copy_dir_recursive(sys, &new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Dir {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source: Box::new(source),
+        }
       })?;
     } else if file_type.is_file() {
-      std::fs::copy(&new_from, &new_to).with_context(|| {
-        format!("Copying {} to {}", new_from.display(), new_to.display())
+      sys.fs_copy(&new_from, &new_to).map_err(|source| {
+        CopyDirRecursiveError::Copying {
+          from: new_from.to_path_buf(),
+          to: new_to.to_path_buf(),
+          source,
+        }
       })?;
     }
   }
@@ -249,7 +296,11 @@ pub fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), AnyError> {
   Ok(())
 }
 
-pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
+pub fn symlink_dir<TSys: sys_traits::BaseFsSymlinkDir>(
+  sys: &TSys,
+  oldpath: &Path,
+  newpath: &Path,
+) -> Result<(), Error> {
   let err_mapper = |err: Error, kind: Option<ErrorKind>| {
     Error::new(
       kind.unwrap_or_else(|| err.kind()),
@@ -261,26 +312,18 @@ pub fn symlink_dir(oldpath: &Path, newpath: &Path) -> Result<(), Error> {
       ),
     )
   };
-  #[cfg(unix)]
-  {
-    use std::os::unix::fs::symlink;
-    symlink(oldpath, newpath).map_err(|e| err_mapper(e, None))?;
-  }
-  #[cfg(not(unix))]
-  {
-    use std::os::windows::fs::symlink_dir;
-    symlink_dir(oldpath, newpath).map_err(|err| {
-      if let Some(code) = err.raw_os_error() {
-        if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
-          || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
-        {
-          return err_mapper(err, Some(ErrorKind::PermissionDenied));
-        }
+
+  sys.fs_symlink_dir(oldpath, newpath).map_err(|err| {
+    #[cfg(windows)]
+    if let Some(code) = err.raw_os_error() {
+      if code as u32 == winapi::shared::winerror::ERROR_PRIVILEGE_NOT_HELD
+        || code as u32 == winapi::shared::winerror::ERROR_INVALID_FUNCTION
+      {
+        return err_mapper(err, Some(ErrorKind::PermissionDenied));
       }
-      err_mapper(err, None)
-    })?;
-  }
-  Ok(())
+    }
+    err_mapper(err, None)
+  })
 }
 
 /// Gets the total size (in bytes) of a directory.
@@ -462,7 +505,6 @@ pub fn specifier_from_file_path(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
   use deno_path_util::normalize_path;
@@ -470,6 +512,8 @@ mod tests {
   use test_util::PathRef;
   use test_util::TempDir;
   use tokio::sync::Notify;
+
+  use super::*;
 
   #[test]
   fn test_normalize_path() {

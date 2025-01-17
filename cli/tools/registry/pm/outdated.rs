@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -12,6 +12,10 @@ use deno_semver::StackString;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
 
+use super::deps::Dep;
+use super::deps::DepManager;
+use super::deps::DepManagerArgs;
+use super::deps::PackageLatestVersion;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::OutdatedFlags;
@@ -20,11 +24,6 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 use crate::tools::registry::pm::deps::DepKind;
-
-use super::deps::Dep;
-use super::deps::DepManager;
-use super::deps::DepManagerArgs;
-use super::deps::PackageLatestVersion;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct OutdatedPackage {
@@ -281,9 +280,15 @@ fn choose_new_version_req(
     if preferred.version <= resolved?.version {
       return None;
     }
+    let exact = if let Some(range) = dep.req.version_req.range() {
+      range.0[0].start == range.0[0].end
+    } else {
+      false
+    };
     Some(
       VersionReq::parse_from_specifier(
-        format!("^{}", preferred.version).as_str(),
+        format!("{}{}", if exact { "" } else { "^" }, preferred.version)
+          .as_str(),
       )
       .unwrap(),
     )
@@ -446,6 +451,7 @@ async fn dep_manager_args(
     jsr_fetch_resolver,
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer()?.clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()

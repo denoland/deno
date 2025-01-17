@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // todo(dsherret): this should instead use conditional compilation and directly
 // surface the underlying implementation.
@@ -7,6 +7,8 @@
 // denort or the deno binary. We should extract out denort to a separate binary.
 
 use std::borrow::Cow;
+use std::path::Path;
+use std::path::PathBuf;
 
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsFile;
@@ -27,6 +29,8 @@ pub enum CliSys {
   DenoCompile(DenoCompileFileSystem),
 }
 
+impl deno_lib::sys::DenoLibSys for CliSys {}
+
 impl Default for CliSys {
   fn default() -> Self {
     Self::Real(sys_traits::impls::RealSys)
@@ -35,12 +39,35 @@ impl Default for CliSys {
 
 impl deno_runtime::deno_node::ExtNodeSys for CliSys {}
 
+impl sys_traits::BaseFsCloneFile for CliSys {
+  fn base_fs_clone_file(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    match self {
+      Self::Real(sys) => sys.base_fs_clone_file(src, dst),
+      Self::DenoCompile(sys) => sys.base_fs_clone_file(src, dst),
+    }
+  }
+}
+
+impl sys_traits::BaseFsSymlinkDir for CliSys {
+  fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    match self {
+      Self::Real(sys) => sys.base_fs_symlink_dir(src, dst),
+      Self::DenoCompile(sys) => sys.base_fs_symlink_dir(src, dst),
+    }
+  }
+}
+
+impl sys_traits::BaseFsCopy for CliSys {
+  fn base_fs_copy(&self, src: &Path, dst: &Path) -> std::io::Result<u64> {
+    match self {
+      Self::Real(sys) => sys.base_fs_copy(src, dst),
+      Self::DenoCompile(sys) => sys.base_fs_copy(src, dst),
+    }
+  }
+}
+
 impl sys_traits::BaseFsHardLink for CliSys {
-  fn base_fs_hard_link(
-    &self,
-    src: &std::path::Path,
-    dst: &std::path::Path,
-  ) -> std::io::Result<()> {
+  fn base_fs_hard_link(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
     match self {
       Self::Real(sys) => sys.base_fs_hard_link(src, dst),
       Self::DenoCompile(sys) => sys.base_fs_hard_link(src, dst),
@@ -49,10 +76,7 @@ impl sys_traits::BaseFsHardLink for CliSys {
 }
 
 impl sys_traits::BaseFsRead for CliSys {
-  fn base_fs_read(
-    &self,
-    p: &std::path::Path,
-  ) -> std::io::Result<Cow<'static, [u8]>> {
+  fn base_fs_read(&self, p: &Path) -> std::io::Result<Cow<'static, [u8]>> {
     match self {
       Self::Real(sys) => sys.base_fs_read(p),
       Self::DenoCompile(sys) => sys.base_fs_read(p),
@@ -65,7 +89,7 @@ impl sys_traits::BaseFsReadDir for CliSys {
 
   fn base_fs_read_dir(
     &self,
-    p: &std::path::Path,
+    p: &Path,
   ) -> std::io::Result<
     Box<dyn Iterator<Item = std::io::Result<Self::ReadDirEntry>> + '_>,
   > {
@@ -77,10 +101,7 @@ impl sys_traits::BaseFsReadDir for CliSys {
 }
 
 impl sys_traits::BaseFsCanonicalize for CliSys {
-  fn base_fs_canonicalize(
-    &self,
-    p: &std::path::Path,
-  ) -> std::io::Result<std::path::PathBuf> {
+  fn base_fs_canonicalize(&self, p: &Path) -> std::io::Result<PathBuf> {
     match self {
       Self::Real(sys) => sys.base_fs_canonicalize(p),
       Self::DenoCompile(sys) => sys.base_fs_canonicalize(p),
@@ -91,10 +112,7 @@ impl sys_traits::BaseFsCanonicalize for CliSys {
 impl sys_traits::BaseFsMetadata for CliSys {
   type Metadata = BoxedFsMetadataValue;
 
-  fn base_fs_metadata(
-    &self,
-    path: &std::path::Path,
-  ) -> std::io::Result<Self::Metadata> {
+  fn base_fs_metadata(&self, path: &Path) -> std::io::Result<Self::Metadata> {
     match self {
       Self::Real(sys) => sys.fs_metadata_boxed(path),
       Self::DenoCompile(sys) => sys.fs_metadata_boxed(path),
@@ -103,7 +121,7 @@ impl sys_traits::BaseFsMetadata for CliSys {
 
   fn base_fs_symlink_metadata(
     &self,
-    path: &std::path::Path,
+    path: &Path,
   ) -> std::io::Result<Self::Metadata> {
     match self {
       Self::Real(sys) => sys.fs_symlink_metadata_boxed(path),
@@ -115,7 +133,7 @@ impl sys_traits::BaseFsMetadata for CliSys {
 impl sys_traits::BaseFsCreateDir for CliSys {
   fn base_fs_create_dir(
     &self,
-    p: &std::path::Path,
+    p: &Path,
     options: &CreateDirOptions,
   ) -> std::io::Result<()> {
     match self {
@@ -130,7 +148,7 @@ impl sys_traits::BaseFsOpen for CliSys {
 
   fn base_fs_open(
     &self,
-    path: &std::path::Path,
+    path: &Path,
     options: &sys_traits::OpenOptions,
   ) -> std::io::Result<Self::File> {
     match self {
@@ -141,7 +159,7 @@ impl sys_traits::BaseFsOpen for CliSys {
 }
 
 impl sys_traits::BaseFsRemoveFile for CliSys {
-  fn base_fs_remove_file(&self, p: &std::path::Path) -> std::io::Result<()> {
+  fn base_fs_remove_file(&self, p: &Path) -> std::io::Result<()> {
     match self {
       Self::Real(sys) => sys.base_fs_remove_file(p),
       Self::DenoCompile(sys) => sys.base_fs_remove_file(p),
@@ -150,11 +168,7 @@ impl sys_traits::BaseFsRemoveFile for CliSys {
 }
 
 impl sys_traits::BaseFsRename for CliSys {
-  fn base_fs_rename(
-    &self,
-    old: &std::path::Path,
-    new: &std::path::Path,
-  ) -> std::io::Result<()> {
+  fn base_fs_rename(&self, old: &Path, new: &Path) -> std::io::Result<()> {
     match self {
       Self::Real(sys) => sys.base_fs_rename(old, new),
       Self::DenoCompile(sys) => sys.base_fs_rename(old, new),
@@ -190,7 +204,7 @@ impl sys_traits::ThreadSleep for CliSys {
 }
 
 impl sys_traits::EnvCurrentDir for CliSys {
-  fn env_current_dir(&self) -> std::io::Result<std::path::PathBuf> {
+  fn env_current_dir(&self) -> std::io::Result<PathBuf> {
     match self {
       Self::Real(sys) => sys.env_current_dir(),
       Self::DenoCompile(sys) => sys.env_current_dir(),
@@ -211,7 +225,7 @@ impl sys_traits::BaseEnvVar for CliSys {
 }
 
 impl sys_traits::EnvHomeDir for CliSys {
-  fn env_home_dir(&self) -> Option<std::path::PathBuf> {
+  fn env_home_dir(&self) -> Option<PathBuf> {
     #[allow(clippy::disallowed_types)] // ok because sys impl
     sys_traits::impls::RealSys.env_home_dir()
   }

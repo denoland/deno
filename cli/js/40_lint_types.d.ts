@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 export interface NodeFacade {
   type: string;
@@ -12,12 +12,20 @@ export interface AstContext {
   strTableOffset: number;
   rootOffset: number;
   nodes: Map<number, NodeFacade>;
+  spansOffset: number;
+  propsOffset: number;
   strByType: number[];
   strByProp: number[];
   typeByStr: Map<string, number>;
   propByStr: Map<string, number>;
   matcher: MatchContext;
 }
+
+export interface Node {
+  range: Range;
+}
+
+export type Range = [number, number];
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
 export interface RuleContext {
@@ -121,7 +129,6 @@ export interface MatchContext {
   getSiblings(id: number): number[];
   getParent(id: number): number;
   getType(id: number): number;
-  hasAttrPath(id: number, propIds: number[], idx: number): boolean;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 

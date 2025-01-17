@@ -1,10 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod args;
 mod cache;
 mod cdp;
 mod emit;
-mod errors;
 mod factory;
 mod file_fetcher;
 mod graph_container;
@@ -28,37 +27,37 @@ mod util;
 mod version;
 mod worker;
 
-use crate::args::flags_from_vec;
-use crate::args::DenoSubcommand;
-use crate::args::Flags;
-use crate::util::display;
-use crate::util::v8::get_v8_flags_from_env;
-use crate::util::v8::init_v8_flags;
-
-use args::TaskFlags;
-use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::WorkerExecutionMode;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
-
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::FutureExt;
-use deno_core::unsync::JoinHandle;
-use deno_npm::resolution::SnapshotFromLockfileError;
-use deno_runtime::fmt_errors::format_js_error;
-use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-use deno_terminal::colors;
-use factory::CliFactory;
-use standalone::MODULE_NOT_FOUND;
-use standalone::UNSUPPORTED_SCHEME;
 use std::env;
 use std::future::Future;
 use std::io::IsTerminal;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use args::TaskFlags;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_core::futures::FutureExt;
+use deno_core::unsync::JoinHandle;
+use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
+use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
+use deno_runtime::fmt_errors::format_js_error;
+use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
+use deno_runtime::WorkerExecutionMode;
+pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_terminal::colors;
+use factory::CliFactory;
+use standalone::MODULE_NOT_FOUND;
+use standalone::UNSUPPORTED_SCHEME;
+
+use self::npm::ResolveSnapshotError;
+use crate::args::flags_from_vec;
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::util::display;
+use crate::util::v8::get_v8_flags_from_env;
+use crate::util::v8::init_v8_flags;
 
 #[cfg(feature = "dhat-heap")]
 #[global_allocator]
@@ -202,7 +201,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = util::result::any_and_jserrorbox_downcast_ref::<ResolvePkgFolderFromDenoReqError>(&script_err) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -373,13 +372,19 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
-  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-    error.downcast_ref::<SnapshotFromLockfileError>()
+  if let Some(CoreError::Js(e)) =
+    util::result::any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
-    error_string = e.to_string();
-    error_code = 10;
+    error_string = format_js_error(e);
+  } else if let Some(e @ ResolveSnapshotError { .. }) =
+    util::result::any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(
+      &error,
+    )
+  {
+    if let Some(e) = e.maybe_integrity_check_error() {
+      error_string = e.to_string();
+      error_code = 10;
+    }
   }
 
   exit_with_message(&error_string, error_code);
@@ -447,8 +452,9 @@ fn resolve_flags_and_init(
     }
   };
 
-  deno_telemetry::init(crate::args::otel_runtime_config())?;
-  util::logger::init(flags.log_level, Some(flags.otel_config()));
+  let otel_config = flags.otel_config();
+  deno_telemetry::init(crate::args::otel_runtime_config(), &otel_config)?;
+  util::logger::init(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {

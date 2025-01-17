@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Validation logic in this file is shared with registry/api/src/ids.rs
 
@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::sys::CliSys;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
@@ -14,10 +13,10 @@ use deno_config::glob::FilePatterns;
 use deno_core::error::AnyError;
 use thiserror::Error;
 
-use crate::args::CliOptions;
-
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::args::CliOptions;
+use crate::sys::CliSys;
 
 /// A package path, like '/foo' or '/foo/bar'. The path is prefixed with a slash
 /// and does not end with a slash.
@@ -234,7 +233,7 @@ pub fn collect_publish_paths(
 ) -> Result<Vec<CollectedPublishPath>, AnyError> {
   let diagnostics_collector = opts.diagnostics_collector;
   let publish_paths =
-    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns)?;
+    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns);
   let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
   let capacity = publish_paths.len() + opts.force_include_paths.len();
   let mut paths = HashSet::with_capacity(capacity);
@@ -322,7 +321,7 @@ fn collect_paths(
   cli_options: &CliOptions,
   diagnostics_collector: &PublishDiagnosticsCollector,
   file_patterns: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {

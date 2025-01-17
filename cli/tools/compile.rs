@@ -1,17 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::check_warn_tsconfig;
-use crate::args::CompileFlags;
-use crate::args::Flags;
-use crate::factory::CliFactory;
-use crate::http_util::HttpClientProvider;
-use crate::standalone::binary::is_standalone_binary;
-use crate::standalone::binary::WriteBinOptions;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -19,13 +18,15 @@ use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use deno_terminal::colors;
 use rand::Rng;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use super::installer::infer_name_from_url;
+use crate::args::check_warn_tsconfig;
+use crate::args::CompileFlags;
+use crate::args::Flags;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClientProvider;
+use crate::standalone::binary::is_standalone_binary;
+use crate::standalone::binary::WriteBinOptions;
 
 pub async fn compile(
   flags: Arc<Flags>,
@@ -329,7 +330,7 @@ async fn resolve_compile_executable_output_path(
       .map(PathBuf::from)
   }
 
-  output_path.ok_or_else(|| generic_error(
+  output_path.ok_or_else(|| anyhow!(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output_path| {
     get_os_specific_filepath(output_path, &compile_flags.target)

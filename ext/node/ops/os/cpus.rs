@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde::Serialize;
 
@@ -127,12 +127,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
+  use std::os::windows::ffi::OsStrExt;
+  use std::os::windows::ffi::OsStringExt;
+
   use windows_sys::Wdk::System::SystemInformation::NtQuerySystemInformation;
   use windows_sys::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
-
-  use std::os::windows::ffi::OsStrExt;
-  use std::os::windows::ffi::OsStringExt;
 
   fn encode_wide(s: &str) -> Vec<u16> {
     std::ffi::OsString::from(s)
@@ -264,13 +264,16 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     let nice = fields.next()?.parse::<u64>().ok()?;
     let sys = fields.next()?.parse::<u64>().ok()?;
     let idle = fields.next()?.parse::<u64>().ok()?;
+    let _iowait = fields.next()?.parse::<u64>().ok()?;
     let irq = fields.next()?.parse::<u64>().ok()?;
 
-    cpus[i].times.user = user;
-    cpus[i].times.nice = nice;
-    cpus[i].times.sys = sys;
-    cpus[i].times.idle = idle;
-    cpus[i].times.irq = irq;
+    // sysconf(_SC_CLK_TCK) is fixed at 100 Hz, therefore the
+    // multiplier is always 1000/100 = 10
+    cpus[i].times.user = user * 10;
+    cpus[i].times.nice = nice * 10;
+    cpus[i].times.sys = sys * 10;
+    cpus[i].times.idle = idle * 10;
+    cpus[i].times.irq = irq * 10;
   }
 
   let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
@@ -287,6 +290,18 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     let model = fields.next()?.trim();
 
     cpus[j].model = model.to_string();
+
+    if let Ok(fp) = std::fs::File::open(format!(
+      "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_cur_freq",
+      j
+    )) {
+      let mut reader = std::io::BufReader::new(fp);
+      let mut speed = String::new();
+      reader.read_line(&mut speed).ok()?;
+
+      cpus[j].speed = speed.trim().parse::<u64>().ok()? / 1000;
+    }
+
     j += 1;
   }
 

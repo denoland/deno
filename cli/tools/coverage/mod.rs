@@ -1,4 +1,32 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::fs;
+use std::fs::File;
+use std::io::BufWriter;
+use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use deno_ast::MediaType;
+use deno_ast::ModuleKind;
+use deno_ast::ModuleSpecifier;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::serde_json;
+use deno_core::sourcemap::SourceMap;
+use deno_core::url::Url;
+use deno_core::LocalInspectorSession;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use node_resolver::InNpmPackageChecker;
+use regex::Regex;
+use text_lines::TextLines;
+use uuid::Uuid;
 
 use crate::args::CliOptions;
 use crate::args::CoverageFlags;
@@ -11,33 +39,6 @@ use crate::sys::CliSys;
 use crate::tools::fmt::format_json;
 use crate::tools::test::is_supported_test_path;
 use crate::util::text_encoding::source_map_from_code;
-
-use deno_ast::MediaType;
-use deno_ast::ModuleKind;
-use deno_ast::ModuleSpecifier;
-use deno_config::glob::FileCollector;
-use deno_config::glob::FilePatterns;
-use deno_config::glob::PathOrPattern;
-use deno_config::glob::PathOrPatternSet;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::sourcemap::SourceMap;
-use deno_core::url::Url;
-use deno_core::LocalInspectorSession;
-use node_resolver::InNpmPackageChecker;
-use regex::Regex;
-use std::fs;
-use std::fs::File;
-use std::io::BufWriter;
-use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use text_lines::TextLines;
-use uuid::Uuid;
 
 mod merge;
 mod range_tree;
@@ -429,7 +430,7 @@ fn collect_coverages(
   .ignore_git_folder()
   .ignore_node_modules()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&CliSys::default(), file_patterns)?;
+  .collect_file_patterns(&CliSys::default(), file_patterns);
 
   let coverage_patterns = FilePatterns {
     base: initial_cwd.to_path_buf(),
@@ -464,7 +465,7 @@ fn filter_coverages(
   coverages: Vec<cdp::ScriptCoverage>,
   include: Vec<String>,
   exclude: Vec<String>,
-  in_npm_pkg_checker: &dyn InNpmPackageChecker,
+  in_npm_pkg_checker: &DenoInNpmPackageChecker,
 ) -> Vec<cdp::ScriptCoverage> {
   let include: Vec<Regex> =
     include.iter().map(|e| Regex::new(e).unwrap()).collect();
@@ -504,7 +505,7 @@ pub fn cover_files(
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {
   if coverage_flags.files.include.is_empty() {
-    return Err(generic_error("No matching coverage profiles found"));
+    return Err(anyhow!("No matching coverage profiles found"));
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -526,16 +527,16 @@ pub fn cover_files(
     cli_options.initial_cwd(),
   )?;
   if script_coverages.is_empty() {
-    return Err(generic_error("No coverage files found"));
+    return Err(anyhow!("No coverage files found"));
   }
   let script_coverages = filter_coverages(
     script_coverages,
     coverage_flags.include,
     coverage_flags.exclude,
-    in_npm_pkg_checker.as_ref(),
+    in_npm_pkg_checker,
   );
   if script_coverages.is_empty() {
-    return Err(generic_error("No covered files included in the report"));
+    return Err(anyhow!("No covered files included in the report"));
   }
 
   let proc_coverages: Vec<_> = script_coverages

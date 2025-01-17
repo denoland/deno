@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::path::Path;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use std::path::Path;
+use deno_lib::cache::DenoDir;
 
-use crate::cache::DenoDir;
 use crate::colors;
 use crate::display;
 use crate::sys::CliSys;

@@ -1,6 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::convert::Infallible;
+use std::fmt::Debug;
+use std::fmt::Display;
+
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 
 pub trait InfallibleResultExt<T> {
   fn unwrap_infallible(self) -> T;
@@ -13,4 +20,24 @@ impl<T> InfallibleResultExt<T> for Result<T, Infallible> {
       Err(never) => match never {},
     }
   }
+}
+
+pub fn any_and_jserrorbox_downcast_ref<
+  E: Display + Debug + Send + Sync + 'static,
+>(
+  err: &AnyError,
+) -> Option<&E> {
+  err
+    .downcast_ref::<E>()
+    .or_else(|| {
+      err
+        .downcast_ref::<JsErrorBox>()
+        .and_then(|e| e.as_any().downcast_ref::<E>())
+    })
+    .or_else(|| {
+      err.downcast_ref::<CoreError>().and_then(|e| match e {
+        CoreError::JsNative(e) => e.as_any().downcast_ref::<E>(),
+        _ => None,
+      })
+    })
 }

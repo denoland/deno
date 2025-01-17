@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -908,7 +908,7 @@ const _original = Symbol("[[original]]");
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRid(rid, autoClose = true, Super) {
+function readableStreamForRid(rid, autoClose = true, Super, onError) {
   const stream = new (Super ?? ReadableStream)(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
@@ -947,7 +947,11 @@ function readableStreamForRid(rid, autoClose = true, Super) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(e);
+        if (onError) {
+          onError(controller, e);
+        } else {
+          controller.error(e);
+        }
         tryClose();
       }
     },

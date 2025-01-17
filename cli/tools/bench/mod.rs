@@ -1,4 +1,37 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+
+use deno_config::glob::WalkEntry;
+use deno_core::anyhow::anyhow;
+use deno_core::error::AnyError;
+use deno_core::error::CoreError;
+use deno_core::error::JsError;
+use deno_core::futures::future;
+use deno_core::futures::stream;
+use deno_core::futures::StreamExt;
+use deno_core::serde_v8;
+use deno_core::unsync::spawn;
+use deno_core::unsync::spawn_blocking;
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
+use deno_runtime::deno_permissions::Permissions;
+use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
+use deno_runtime::tokio_util::create_and_run_current_thread;
+use deno_runtime::WorkerExecutionMode;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
+use log::Level;
+use serde::Deserialize;
+use serde::Serialize;
+use tokio::sync::mpsc::unbounded_channel;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::BenchFlags;
 use crate::args::Flags;
@@ -15,36 +48,6 @@ use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
-
-use deno_config::glob::WalkEntry;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
-use deno_core::futures::future;
-use deno_core::futures::stream;
-use deno_core::futures::StreamExt;
-use deno_core::serde_v8;
-use deno_core::unsync::spawn;
-use deno_core::unsync::spawn_blocking;
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use deno_core::PollEventLoopOptions;
-use deno_runtime::deno_permissions::Permissions;
-use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::permissions::RuntimePermissionDescriptorParser;
-use deno_runtime::tokio_util::create_and_run_current_thread;
-use deno_runtime::WorkerExecutionMode;
-use indexmap::IndexMap;
-use indexmap::IndexSet;
-use log::Level;
-use serde::Deserialize;
-use serde::Serialize;
-use std::collections::HashSet;
-use std::path::Path;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::mpsc::unbounded_channel;
-use tokio::sync::mpsc::UnboundedSender;
 
 mod mitata;
 mod reporters;
@@ -161,17 +164,14 @@ async fn bench_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(error) => {
-      if error.is::<JsError>() {
-        sender.send(BenchEvent::UncaughtError(
-          specifier.to_string(),
-          Box::new(error.downcast::<JsError>().unwrap()),
-        ))?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(error)) => {
+      sender.send(BenchEvent::UncaughtError(
+        specifier.to_string(),
+        Box::new(error),
+      ))?;
+      Ok(())
     }
+    Err(e) => Err(e.into()),
   }
 }
 
@@ -182,7 +182,7 @@ async fn bench_specifier_inner(
   specifier: ModuleSpecifier,
   sender: &UnboundedSender<BenchEvent>,
   filter: TestFilter,
-) -> Result<(), AnyError> {
+) -> Result<(), CoreError> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Bench,
@@ -229,14 +229,18 @@ async fn bench_specifier_inner(
       .partial_cmp(&groups.get_index_of(&d2.group).unwrap())
       .unwrap()
   });
-  sender.send(BenchEvent::Plan(BenchPlan {
-    origin: specifier.to_string(),
-    total: benchmarks.len(),
-    used_only,
-    names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
-  }))?;
+  sender
+    .send(BenchEvent::Plan(BenchPlan {
+      origin: specifier.to_string(),
+      total: benchmarks.len(),
+      used_only,
+      names: benchmarks.iter().map(|(d, _)| d.name.clone()).collect(),
+    }))
+    .map_err(JsErrorBox::from_err)?;
   for (desc, function) in benchmarks {
-    sender.send(BenchEvent::Wait(desc.id))?;
+    sender
+      .send(BenchEvent::Wait(desc.id))
+      .map_err(JsErrorBox::from_err)?;
     let call = worker.js_runtime.call(&function);
     let result = worker
       .js_runtime
@@ -244,8 +248,11 @@ async fn bench_specifier_inner(
       .await?;
     let scope = &mut worker.js_runtime.handle_scope();
     let result = v8::Local::new(scope, result);
-    let result = serde_v8::from_v8::<BenchResult>(scope, result)?;
-    sender.send(BenchEvent::Result(desc.id, result))?;
+    let result = serde_v8::from_v8::<BenchResult>(scope, result)
+      .map_err(JsErrorBox::from_err)?;
+    sender
+      .send(BenchEvent::Result(desc.id, result))
+      .map_err(JsErrorBox::from_err)?;
   }
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
@@ -355,13 +362,13 @@ async fn bench_specifiers(
       reporter.report_end(&report);
 
       if used_only {
-        return Err(generic_error(
+        return Err(anyhow!(
           "Bench failed because the \"only\" option was used",
         ));
       }
 
       if report.failed > 0 {
-        return Err(generic_error("Bench failed"));
+        return Err(anyhow!("Bench failed"));
       }
 
       Ok(())
@@ -439,7 +446,7 @@ pub async fn run_benchmarks(
     .collect::<Vec<_>>();
 
   if specifiers.is_empty() {
-    return Err(generic_error("No bench modules found"));
+    return Err(anyhow!("No bench modules found"));
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;

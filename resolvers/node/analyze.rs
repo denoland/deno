@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -6,6 +6,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
+use anyhow::Context;
+use anyhow::Error as AnyError;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
@@ -13,19 +15,16 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
-
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
+use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
-use crate::NpmPackageFolderResolverRc;
+use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use crate::ResolutionMode;
@@ -63,28 +62,49 @@ pub trait CjsCodeAnalyzer {
 
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
-  npm_resolver: NpmPackageFolderResolverRc,
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  npm_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: TSys,
 }
 
 impl<
     TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: FsCanonicalize + FsMetadata + FsRead,
-  > NodeCodeTranslator<TCjsCodeAnalyzer, TIsBuiltInNodeModuleChecker, TSys>
+  >
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
 {
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
-    node_resolver: NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys>,
-    npm_resolver: NpmPackageFolderResolverRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
+    node_resolver: NodeResolverRc<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+    npm_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: TSys,
   ) -> Self {

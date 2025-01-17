@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Allow unused code warnings because we share
 // code between the two bin targets.
@@ -10,7 +10,6 @@ mod standalone;
 mod args;
 mod cache;
 mod emit;
-mod errors;
 mod file_fetcher;
 mod http_util;
 mod js;
@@ -24,8 +23,14 @@ mod util;
 mod version;
 mod worker;
 
-use deno_core::error::generic_error;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::env::current_exe;
+use std::sync::Arc;
+
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
@@ -34,13 +39,8 @@ use deno_terminal::colors;
 use indexmap::IndexMap;
 use standalone::DenoCompileFileSystem;
 
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::env::current_exe;
-use std::sync::Arc;
-
 use crate::args::Flags;
+use crate::util::result::any_and_jserrorbox_downcast_ref;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
@@ -65,8 +65,10 @@ fn unwrap_or_exit<T>(result: Result<T, AnyError>) -> T {
     Err(error) => {
       let mut error_string = format!("{:?}", error);
 
-      if let Some(e) = error.downcast_ref::<JsError>() {
-        error_string = format_js_error(e);
+      if let Some(CoreError::Js(js_error)) =
+        any_and_jserrorbox_downcast_ref::<CoreError>(&error)
+      {
+        error_string = format_js_error(js_error);
       }
 
       exit_with_message(&error_string, 1);
@@ -89,7 +91,10 @@ fn main() {
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        deno_telemetry::init(crate::args::otel_runtime_config())?;
+        deno_telemetry::init(
+          crate::args::otel_runtime_config(),
+          &data.metadata.otel_config,
+        )?;
         util::logger::init(
           data.metadata.log_level,
           Some(data.metadata.otel_config.clone()),

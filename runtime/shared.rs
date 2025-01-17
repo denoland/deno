@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Utilities shared between `build.rs` and the rest of the crate.
+
+use std::path::Path;
 
 use deno_ast::MediaType;
 use deno_ast::ParseParams;
 use deno_ast::SourceMapOption;
-use deno_core::error::AnyError;
 use deno_core::extension;
 use deno_core::Extension;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleName;
 use deno_core::SourceMapData;
-use std::path::Path;
+use deno_error::JsErrorBox;
 
 extension!(runtime,
   deps = [
@@ -41,10 +42,7 @@ extension!(runtime,
     "06_util.js",
     "10_permissions.js",
     "11_workers.js",
-    "30_os.js",
     "40_fs_events.js",
-    "40_process.js",
-    "40_signals.js",
     "40_tty.js",
     "41_prompt.js",
     "90_deno_ns.js",
@@ -63,10 +61,21 @@ extension!(runtime,
   }
 );
 
+deno_error::js_error_wrapper!(
+  deno_ast::ParseDiagnostic,
+  JsParseDiagnostic,
+  "Error"
+);
+deno_error::js_error_wrapper!(
+  deno_ast::TranspileError,
+  JsTranspileError,
+  "Error"
+);
+
 pub fn maybe_transpile_source(
   name: ModuleName,
   source: ModuleCodeString,
-) -> Result<(ModuleCodeString, Option<SourceMapData>), AnyError> {
+) -> Result<(ModuleCodeString, Option<SourceMapData>), JsErrorBox> {
   // Always transpile `node:` built-in modules, since they might be TypeScript.
   let media_type = if name.starts_with("node:") {
     MediaType::TypeScript
@@ -91,7 +100,8 @@ pub fn maybe_transpile_source(
     capture_tokens: false,
     scope_analysis: false,
     maybe_syntax: None,
-  })?;
+  })
+  .map_err(|e| JsErrorBox::from_err(JsParseDiagnostic(e)))?;
   let transpiled_source = parsed
     .transpile(
       &deno_ast::TranspileOptions {
@@ -107,7 +117,8 @@ pub fn maybe_transpile_source(
         },
         ..Default::default()
       },
-    )?
+    )
+    .map_err(|e| JsErrorBox::from_err(JsTranspileError(e)))?
     .into_source();
 
   let maybe_source_map: Option<SourceMapData> = transpiled_source

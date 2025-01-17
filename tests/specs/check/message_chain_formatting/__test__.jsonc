@@ -1,0 +1,6 @@
+// Regression test for https://github.com/denoland/deno/issues/27411.
+{
+  "args": "check --quiet message_chain_formatting.ts",
+  "output": "message_chain_formatting.out",
+  "exitCode": 1
+}

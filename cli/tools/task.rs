@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -36,6 +36,8 @@ use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::node::CliNodeResolver;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -203,6 +205,7 @@ pub async fn execute_script(
     }]
   };
 
+  let npm_installer = factory.npm_installer_if_managed()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
@@ -216,7 +219,8 @@ pub async fn execute_script(
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,
-    npm_resolver: npm_resolver.as_ref(),
+    npm_installer: npm_installer.map(|n| n.as_ref()),
+    npm_resolver,
     node_resolver: node_resolver.as_ref(),
     env_vars,
     cli_options,
@@ -266,7 +270,8 @@ struct RunSingleOptions<'a> {
 
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
-  npm_resolver: &'a dyn CliNpmResolver,
+  npm_installer: Option<&'a NpmInstaller>,
+  npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
@@ -458,11 +463,11 @@ impl<'a> TaskRunner<'a> {
       return Ok(0);
     };
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
-      npm_resolver
-        .cache_packages(crate::npm::PackageCaching::All)
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
         .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
     }
 
     let cwd = match &self.task_flags.cwd {
@@ -497,11 +502,11 @@ impl<'a> TaskRunner<'a> {
     argv: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
-      npm_resolver
-        .cache_packages(crate::npm::PackageCaching::All)
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
         .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
     }
 
     let cwd = match &self.task_flags.cwd {

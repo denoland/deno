@@ -1,7 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Alias for the future `!` type.
 use core::convert::Infallible as Never;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::pin::pin;
+use std::process;
+use std::rc::Rc;
+use std::thread;
+
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
@@ -28,13 +36,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::WebSocket;
 use hyper::body::Bytes;
 use hyper_util::rt::TokioIo;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::pin::pin;
-use std::process;
-use std::rc::Rc;
-use std::thread;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use uuid::Uuid;

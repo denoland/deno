@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -10,6 +10,8 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
+use deno_error::JsErrorBox;
+use deno_lockfile::Lockfile;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -17,14 +19,11 @@ use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
 
 use crate::args::deno_json::import_map_deps;
+use crate::args::DenoSubcommand;
+use crate::args::InstallFlags;
 use crate::cache;
 use crate::sys::CliSys;
 use crate::Flags;
-
-use crate::args::DenoSubcommand;
-use crate::args::InstallFlags;
-
-use deno_lockfile::Lockfile;
 
 #[derive(Debug)]
 pub struct CliLockfileReadFromPathOptions {
@@ -61,6 +60,14 @@ impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("Failed writing lockfile")]
+#[class(inherit)]
+struct AtomicWriteFileWithRetriesError {
+  #[source]
+  source: std::io::Error,
+}
+
 impl CliLockfile {
   /// Get the inner deno_lockfile::Lockfile.
   pub fn lock(&self) -> Guard<Lockfile> {
@@ -80,7 +87,7 @@ impl CliLockfile {
     self.lockfile.lock().overwrite
   }
 
-  pub fn write_if_changed(&self) -> Result<(), AnyError> {
+  pub fn write_if_changed(&self) -> Result<(), JsErrorBox> {
     if self.skip_write {
       return Ok(());
     }
@@ -98,7 +105,9 @@ impl CliLockfile {
       &bytes,
       cache::CACHE_PERM,
     )
-    .context("Failed writing lockfile.")?;
+    .map_err(|source| {
+      JsErrorBox::from_err(AtomicWriteFileWithRetriesError { source })
+    })?;
     lockfile.has_content_changed = false;
     Ok(())
   }
@@ -257,7 +266,7 @@ impl CliLockfile {
     })
   }
 
-  pub fn error_if_changed(&self) -> Result<(), AnyError> {
+  pub fn error_if_changed(&self) -> Result<(), JsErrorBox> {
     if !self.frozen {
       return Ok(());
     }
@@ -269,9 +278,7 @@ impl CliLockfile {
       let diff = crate::util::diff::diff(&contents, &new_contents);
       // has an extra newline at the end
       let diff = diff.trim_end();
-      Err(deno_core::anyhow::anyhow!(
-        "The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}"
-      ))
+      Err(JsErrorBox::generic(format!("The lockfile is out of date. Run `deno install --frozen=false`, or rerun with `--frozen=false` to update it.\nchanges:\n{diff}")))
     } else {
       Ok(())
     }

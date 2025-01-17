@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -655,21 +655,21 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::resolver::SloppyImportsCachedFs;
-
-  use super::*;
-  use crate::sys::CliSys;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
+  use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
   use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
+
+  use super::*;
+  use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);

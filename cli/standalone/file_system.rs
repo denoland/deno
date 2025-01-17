@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::io::ErrorKind;
@@ -9,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::SystemTime;
 
+use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -23,13 +24,13 @@ use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
+use sys_traits::FsCopy;
 use sys_traits::FsMetadata;
 
 use super::virtual_fs::FileBackedVfs;
 use super::virtual_fs::FileBackedVfsDirEntry;
 use super::virtual_fs::FileBackedVfsFile;
 use super::virtual_fs::FileBackedVfsMetadata;
-use super::virtual_fs::VfsFileSubDataKind;
 
 #[derive(Debug, Clone)]
 pub struct DenoCompileFileSystem(Arc<FileBackedVfs>);
@@ -47,24 +48,32 @@ impl DenoCompileFileSystem {
     }
   }
 
-  fn copy_to_real_path(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
+  fn copy_to_real_path(
+    &self,
+    oldpath: &Path,
+    newpath: &Path,
+  ) -> std::io::Result<u64> {
     let old_file = self.0.file_entry(oldpath)?;
     let old_file_bytes =
       self.0.read_file_all(old_file, VfsFileSubDataKind::Raw)?;
-    RealFs.write_file_sync(
-      newpath,
-      OpenOptions {
-        read: false,
-        write: true,
-        create: true,
-        truncate: true,
-        append: false,
-        create_new: false,
-        mode: None,
-      },
-      None,
-      &old_file_bytes,
-    )
+    let len = old_file_bytes.len() as u64;
+    RealFs
+      .write_file_sync(
+        newpath,
+        OpenOptions {
+          read: false,
+          write: true,
+          create: true,
+          truncate: true,
+          append: false,
+          create_new: false,
+          mode: None,
+        },
+        None,
+        &old_file_bytes,
+      )
+      .map_err(|err| err.into_io_error())?;
+    Ok(len)
   }
 }
 
@@ -191,7 +200,10 @@ impl FileSystem for DenoCompileFileSystem {
   fn copy_file_sync(&self, oldpath: &Path, newpath: &Path) -> FsResult<()> {
     self.error_if_in_vfs(newpath)?;
     if self.0.is_path_within(oldpath) {
-      self.copy_to_real_path(oldpath, newpath)
+      self
+        .copy_to_real_path(oldpath, newpath)
+        .map(|_| ())
+        .map_err(FsError::Io)
     } else {
       RealFs.copy_file_sync(oldpath, newpath)
     }
@@ -206,6 +218,8 @@ impl FileSystem for DenoCompileFileSystem {
       let fs = self.clone();
       tokio::task::spawn_blocking(move || {
         fs.copy_to_real_path(&oldpath, &newpath)
+          .map(|_| ())
+          .map_err(FsError::Io)
       })
       .await?
     } else {
@@ -593,6 +607,32 @@ impl sys_traits::BaseFsMetadata for DenoCompileFileSystem {
   }
 }
 
+impl sys_traits::BaseFsCopy for DenoCompileFileSystem {
+  #[inline]
+  fn base_fs_copy(&self, from: &Path, to: &Path) -> std::io::Result<u64> {
+    self
+      .error_if_in_vfs(to)
+      .map_err(|err| err.into_io_error())?;
+    if self.0.is_path_within(from) {
+      self.copy_to_real_path(from, to)
+    } else {
+      #[allow(clippy::disallowed_types)] // ok because we're implementing the fs
+      sys_traits::impls::RealSys.fs_copy(from, to)
+    }
+  }
+}
+
+impl sys_traits::BaseFsCloneFile for DenoCompileFileSystem {
+  fn base_fs_clone_file(
+    &self,
+    _from: &Path,
+    _to: &Path,
+  ) -> std::io::Result<()> {
+    // will cause a fallback in the code that uses this
+    Err(not_supported("cloning files"))
+  }
+}
+
 impl sys_traits::BaseFsCreateDir for DenoCompileFileSystem {
   #[inline]
   fn base_fs_create_dir(
@@ -791,6 +831,14 @@ impl sys_traits::BaseFsOpen for DenoCompileFileSystem {
         sys_traits::impls::RealSys.base_fs_open(path, options)?,
       ))
     }
+  }
+}
+
+impl sys_traits::BaseFsSymlinkDir for DenoCompileFileSystem {
+  fn base_fs_symlink_dir(&self, src: &Path, dst: &Path) -> std::io::Result<()> {
+    self
+      .symlink_sync(src, dst, Some(FsFileType::Directory))
+      .map_err(|err| err.into_io_error())
   }
 }
 

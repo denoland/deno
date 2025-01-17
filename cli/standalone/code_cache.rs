@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -395,10 +395,11 @@ fn deserialize_with_reader<T: Read>(
 
 #[cfg(test)]
 mod test {
+  use std::fs::File;
+
   use test_util::TempDir;
 
   use super::*;
-  use std::fs::File;
 
   #[test]
   fn serialize_deserialize() {

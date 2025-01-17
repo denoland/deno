@@ -1,4 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::fs;
+use std::str::FromStr;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
@@ -7,8 +10,6 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use pretty_assertions::assert_eq;
-use std::fs;
-use std::str::FromStr;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
@@ -9937,6 +9938,74 @@ fn lsp_auto_imports_npm_auto() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/deno/issues/23869.
+#[test]
+fn lsp_auto_imports_remote_dts() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let temp_dir = context.temp_dir();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": temp_dir.url().join("file.ts").unwrap(),
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        import "http://localhost:4545/subdir/imports_declaration/imports_interface.ts";
+        const a: SomeInterface
+      "#,
+    },
+  }));
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
+    }),
+  );
+  let list = client.get_completion_list(
+    temp_dir.url().join("file.ts").unwrap(),
+    (2, 21),
+    json!({ "triggerKind": 2 }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list
+    .items
+    .iter()
+    .find(|item| item.label == "SomeInterface")
+    .unwrap();
+  let res = client.write_request("completionItem/resolve", json!(item));
+  assert_eq!(
+    res,
+    json!({
+      "label": "SomeInterface",
+      "labelDetails": {
+        "description": "http://localhost:4545/subdir/imports_declaration/interface.d.ts",
+      },
+      "kind": 8,
+      "detail": "interface SomeInterface",
+      "documentation": {
+        "kind": "markdown",
+        "value": "",
+      },
+      "sortText": "￿16_1",
+      "additionalTextEdits": [
+        {
+          "range": {
+            "start": { "line": 2, "character": 0 },
+            "end": { "line": 2, "character": 0 },
+          },
+          "newText": "        import { SomeInterface } from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\";\n",
+        },
+      ],
+    }),
+  );
+  client.shutdown();
+}
+
 #[test]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
@@ -11623,6 +11692,46 @@ fn lsp_format_exclude_default_config() {
 }
 
 #[test]
+fn lsp_format_untitled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "untitled:Untitled-1",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "  console.log();\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "untitled:Untitled-1",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11889,13 +11998,22 @@ fn lsp_format_html() {
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  let file = source_file(temp_dir.path().join("file.css"), "  foo {}");
+  let css_file = source_file(temp_dir.path().join("file.css"), "  foo {}\n");
+  let scss_file = source_file(temp_dir.path().join("file.scss"), "  $font-stack: Helvetica, sans-serif;\n\nbody {\n  font: 100% $font-stack;\n}\n");
+  let sass_file = source_file(
+    temp_dir.path().join("file.sass"),
+    "  $font-stack: Helvetica, sans-serif\n\nbody\n  font: 100% $font-stack\n",
+  );
+  let less_file = source_file(
+    temp_dir.path().join("file.less"),
+    "  @width: 10px;\n\n#header {\n  width: @width;\n}\n",
+  );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": css_file.url() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -11912,12 +12030,71 @@ fn lsp_format_css() {
         },
         "newText": "",
       },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": scss_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
       {
         "range": {
-          "start": { "line": 0, "character": 8 },
-          "end": { "line": 0, "character": 8 },
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
         },
-        "newText": "\n",
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": sass_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": { "uri": less_file.url() },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
       },
     ]),
   );
@@ -17084,4 +17261,155 @@ fn lsp_wasm_module() {
     ])
   );
   client.shutdown();
+}
+
+#[test]
+fn wildcard_augment() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import styles from "./hello_world.scss";
+
+      function bar(v: string): string {
+        return v;
+      }
+
+      bar(styles);
+    "#,
+  );
+  temp_dir.join("index.d.ts").write(
+    r#"
+      declare module '*.scss' {
+        const content: string;
+        export default content;
+      }
+    "#,
+  );
+  temp_dir
+    .join("hello_world.scss")
+    .write("body { color: red; }");
+
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 0);
+}
+
+#[test]
+fn compiler_options_types() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      const foo = [1];
+      foo.augmented();
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/augments-global": "npm:@denotest/augments-global@1"
+    },
+    "compilerOptions": { "types": ["@denotest/augments-global"] },
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 0);
+    client.did_close_file(&source);
+  }
+}
+
+#[test]
+fn type_reference_import_meta() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      const test = import.meta.env.TEST;
+      const bar = import.meta.bar;
+      console.log(test, bar);
+    "#,
+  );
+  /*
+    tests type reference w/ bare specifier, type reference in an npm package,
+    and augmentation of `ImportMeta` (this combination modeled after the vanilla vite template,
+    which uses `vite/client`)
+
+    @denotest/augments-global/import-meta:
+    ```dts
+    /// <reference types="./real-import-meta.d.ts" />
+
+    export type Foo = number;
+    ```
+
+    real-import-meta.d.ts:
+    ```dts
+    interface ImportMetaEnv {
+      TEST: string;
+    }
+
+    interface ImportMeta {
+      env: ImportMetaEnv;
+      bar: number;
+    }
+  ```
+  */
+  temp.write(
+    "types.d.ts",
+    r#"
+      /// <reference types="@denotest/augments-global/import-meta" />
+      "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/augments-global": "npm:@denotest/augments-global@1"
+    }
+  });
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    let diagnostics = client.did_open_file(&source);
+    assert_eq!(diagnostics.all().len(), 0);
+    client.did_close_file(&source);
+  }
 }
