@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use deno_config::deno_json;
 use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -29,6 +30,7 @@ use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node;
@@ -36,8 +38,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
-use import_map::ImportMapError;
-use node_resolver::InNpmPackageChecker;
 
 use crate::args::config_to_deno_graph_workspace_member;
 use crate::args::jsr_url;
@@ -52,8 +52,11 @@ use crate::cache::ModuleInfoCache;
 use crate::cache::ParsedSourceCache;
 use crate::colors;
 use crate::file_fetcher::CliFileFetcher;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
+use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
@@ -264,7 +267,7 @@ pub struct CreateGraphOptions<'a> {
 
 pub struct ModuleGraphCreator {
   options: Arc<CliOptions>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   module_graph_builder: Arc<ModuleGraphBuilder>,
   type_checker: Arc<TypeChecker>,
 }
@@ -272,13 +275,13 @@ pub struct ModuleGraphCreator {
 impl ModuleGraphCreator {
   pub fn new(
     options: Arc<CliOptions>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     module_graph_builder: Arc<ModuleGraphBuilder>,
     type_checker: Arc<TypeChecker>,
   ) -> Self {
     Self {
       options,
-      npm_resolver,
+      npm_installer,
       module_graph_builder,
       type_checker,
     }
@@ -401,9 +404,9 @@ impl ModuleGraphCreator {
       .build_graph_with_npm_resolution(&mut graph, options)
       .await?;
 
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
+    if let Some(npm_installer) = &self.npm_installer {
       if graph.has_node_specifier && self.options.type_check_mode().is_true() {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
 
@@ -490,15 +493,17 @@ pub enum BuildGraphWithNpmResolutionError {
 
 pub struct ModuleGraphBuilder {
   caches: Arc<cache::Caches>,
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
   global_http_cache: Arc<GlobalHttpCache>,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+  in_npm_pkg_checker: DenoInNpmPackageChecker,
   lockfile: Option<Arc<CliLockfile>>,
   maybe_file_watcher_reporter: Option<FileWatcherReporter>,
   module_info_cache: Arc<ModuleInfoCache>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_graph_resolver: Arc<CliNpmGraphResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
+  npm_resolver: CliNpmResolver,
   parsed_source_cache: Arc<ParsedSourceCache>,
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
@@ -509,15 +514,17 @@ impl ModuleGraphBuilder {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     caches: Arc<cache::Caches>,
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     cli_options: Arc<CliOptions>,
     file_fetcher: Arc<CliFileFetcher>,
     global_http_cache: Arc<GlobalHttpCache>,
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
+    in_npm_pkg_checker: DenoInNpmPackageChecker,
     lockfile: Option<Arc<CliLockfile>>,
     maybe_file_watcher_reporter: Option<FileWatcherReporter>,
     module_info_cache: Arc<ModuleInfoCache>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_graph_resolver: Arc<CliNpmGraphResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
+    npm_resolver: CliNpmResolver,
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
@@ -533,6 +540,8 @@ impl ModuleGraphBuilder {
       lockfile,
       maybe_file_watcher_reporter,
       module_info_cache,
+      npm_graph_resolver,
+      npm_installer,
       npm_resolver,
       parsed_source_cache,
       resolver,
@@ -631,10 +640,7 @@ impl ModuleGraphBuilder {
       Some(loader) => MutLoaderRef::Borrowed(loader),
       None => MutLoaderRef::Owned(self.create_graph_loader()),
     };
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver =
-      cli_resolver.create_graph_npm_resolver(options.npm_caching);
     let maybe_file_watcher_reporter = self
       .maybe_file_watcher_reporter
       .as_ref()
@@ -655,7 +661,7 @@ impl ModuleGraphBuilder {
           executor: Default::default(),
           file_system: &self.sys,
           jsr_url_provider: &CliJsrUrlProvider,
-          npm_resolver: Some(&graph_npm_resolver),
+          npm_resolver: Some(self.npm_graph_resolver.as_ref()),
           module_analyzer: &analyzer,
           reporter: maybe_file_watcher_reporter,
           resolver: Some(&graph_resolver),
@@ -679,16 +685,15 @@ impl ModuleGraphBuilder {
     if self
       .cli_options
       .node_modules_dir()?
-      .map(|m| m.uses_node_modules_dir())
+      .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
     {
-      if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-        let already_done =
-          npm_resolver.ensure_top_level_package_json_install().await?;
+      if let Some(npm_installer) = &self.npm_installer {
+        let already_done = npm_installer
+          .ensure_top_level_package_json_install()
+          .await?;
         if !already_done && matches!(npm_caching, NpmCachingStrategy::Eager) {
-          npm_resolver
-            .cache_packages(crate::npm::PackageCaching::All)
-            .await?;
+          npm_installer.cache_packages(PackageCaching::All).await?;
         }
       }
     }
@@ -707,8 +712,7 @@ impl ModuleGraphBuilder {
     let initial_package_deps_len = graph.packages.package_deps_sum();
     let initial_package_mappings_len = graph.packages.mappings().len();
 
-    if roots.iter().any(|r| r.scheme() == "npm")
-      && self.npm_resolver.as_byonm().is_some()
+    if roots.iter().any(|r| r.scheme() == "npm") && self.npm_resolver.is_byonm()
     {
       return Err(BuildGraphWithNpmResolutionError::UnsupportedNpmSpecifierEntrypointResolutionWay);
     }
@@ -776,11 +780,7 @@ impl ModuleGraphBuilder {
       None
     };
     let parser = self.parsed_source_cache.as_capturing_parser();
-    let cli_resolver = &self.resolver;
     let graph_resolver = self.create_graph_resolver()?;
-    let graph_npm_resolver = cli_resolver.create_graph_npm_resolver(
-      self.cli_options.default_npm_caching_strategy(),
-    );
 
     graph.build_fast_check_type_graph(
       deno_graph::BuildFastCheckTypeGraphOptions {
@@ -789,7 +789,7 @@ impl ModuleGraphBuilder {
         fast_check_dts: false,
         jsr_url_provider: &CliJsrUrlProvider,
         resolver: Some(&graph_resolver),
-        npm_resolver: Some(&graph_npm_resolver),
+        npm_resolver: Some(self.npm_graph_resolver.as_ref()),
         workspace_fast_check: options.workspace_fast_check,
       },
     );
@@ -1024,14 +1024,11 @@ fn get_resolution_error_bare_specifier(
   {
     Some(specifier.as_str())
   } else if let ResolutionError::ResolverError { error, .. } = error {
-    if let ResolveError::Other(error) = (*error).as_ref() {
-      if let Some(import_map::ImportMapErrorKind::UnmappedBareSpecifier(
+    if let ResolveError::ImportMap(error) = (*error).as_ref() {
+      if let import_map::ImportMapErrorKind::UnmappedBareSpecifier(
         specifier,
         _,
-      )) = error
-        .as_any()
-        .downcast_ref::<ImportMapError>()
-        .map(|e| &**e)
+      ) = error.as_kind()
       {
         Some(specifier.as_str())
       } else {
@@ -1228,7 +1225,7 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
 
 #[derive(Debug)]
 struct CliGraphResolver<'a> {
-  cjs_tracker: &'a CjsTracker,
+  cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
   jsx_import_source_config: Option<JsxImportSourceConfig>,
 }
@@ -1324,7 +1321,7 @@ mod test {
       let specifier = ModuleSpecifier::parse("file:///file.ts").unwrap();
       let err = import_map.resolve(input, &specifier).err().unwrap();
       let err = ResolutionError::ResolverError {
-        error: Arc::new(ResolveError::Other(JsErrorBox::from_err(err))),
+        error: Arc::new(ResolveError::ImportMap(err)),
         specifier: input.to_string(),
         range: Range {
           specifier,

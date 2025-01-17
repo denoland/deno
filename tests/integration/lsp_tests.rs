@@ -11691,6 +11691,46 @@ fn lsp_format_exclude_default_config() {
 }
 
 #[test]
+fn lsp_format_untitled() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "untitled:Untitled-1",
+      "languageId": "typescript",
+      "version": 1,
+      "text": "  console.log();\n",
+    },
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "untitled:Untitled-1",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ])
+  );
+  client.shutdown();
+}
+
+#[test]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17220,4 +17260,155 @@ fn lsp_wasm_module() {
     ])
   );
   client.shutdown();
+}
+
+#[test]
+fn wildcard_augment() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import styles from "./hello_world.scss";
+
+      function bar(v: string): string {
+        return v;
+      }
+
+      bar(styles);
+    "#,
+  );
+  temp_dir.join("index.d.ts").write(
+    r#"
+      declare module '*.scss' {
+        const content: string;
+        export default content;
+      }
+    "#,
+  );
+  temp_dir
+    .join("hello_world.scss")
+    .write("body { color: red; }");
+
+  client.initialize_default();
+
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 0);
+}
+
+#[test]
+fn compiler_options_types() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      const foo = [1];
+      foo.augmented();
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/augments-global": "npm:@denotest/augments-global@1"
+    },
+    "compilerOptions": { "types": ["@denotest/augments-global"] },
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 0);
+    client.did_close_file(&source);
+  }
+}
+
+#[test]
+fn type_reference_import_meta() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      const test = import.meta.env.TEST;
+      const bar = import.meta.bar;
+      console.log(test, bar);
+    "#,
+  );
+  /*
+    tests type reference w/ bare specifier, type reference in an npm package,
+    and augmentation of `ImportMeta` (this combination modeled after the vanilla vite template,
+    which uses `vite/client`)
+
+    @denotest/augments-global/import-meta:
+    ```dts
+    /// <reference types="./real-import-meta.d.ts" />
+
+    export type Foo = number;
+    ```
+
+    real-import-meta.d.ts:
+    ```dts
+    interface ImportMetaEnv {
+      TEST: string;
+    }
+
+    interface ImportMeta {
+      env: ImportMetaEnv;
+      bar: number;
+    }
+  ```
+  */
+  temp.write(
+    "types.d.ts",
+    r#"
+      /// <reference types="@denotest/augments-global/import-meta" />
+      "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/augments-global": "npm:@denotest/augments-global@1"
+    }
+  });
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    let diagnostics = client.did_open_file(&source);
+    assert_eq!(diagnostics.all().len(), 0);
+    client.did_close_file(&source);
+  }
 }

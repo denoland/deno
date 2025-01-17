@@ -280,9 +280,15 @@ fn choose_new_version_req(
     if preferred.version <= resolved?.version {
       return None;
     }
+    let exact = if let Some(range) = dep.req.version_req.range() {
+      range.0[0].start == range.0[0].end
+    } else {
+      false
+    };
     Some(
       VersionReq::parse_from_specifier(
-        format!("^{}", preferred.version).as_str(),
+        format!("{}{}", if exact { "" } else { "^" }, preferred.version)
+          .as_str(),
       )
       .unwrap(),
     )
@@ -445,6 +451,7 @@ async fn dep_manager_args(
     jsr_fetch_resolver,
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
+    npm_installer: factory.npm_installer()?.clone(),
     permissions_container: factory.root_permissions_container()?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()

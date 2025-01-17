@@ -27,6 +27,7 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_lib::env::has_flag_env_var;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -95,7 +96,6 @@ use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::create_default_npmrc;
 use crate::args::get_root_cert_store;
-use crate::args::has_flag_env_var;
 use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -1419,18 +1419,16 @@ impl Inner {
             // the file path is only used to determine what formatter should
             // be used to format the file, so give the filepath an extension
             // that matches what the user selected as the language
-            let file_path = document
+            let ext = document
               .maybe_language_id()
-              .and_then(|id| id.as_extension())
-              .map(|ext| file_path.with_extension(ext))
-              .unwrap_or(file_path);
+              .and_then(|id| id.as_extension().map(|s| s.to_string()));
             // it's not a js/ts file, so attempt to format its contents
             format_file(
               &file_path,
               document.content(),
               &fmt_options,
               &unstable_options,
-              None,
+              ext,
             )
           }
         };
@@ -3623,8 +3621,6 @@ impl Inner {
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options:
-            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {

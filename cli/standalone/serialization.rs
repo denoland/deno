@@ -17,6 +17,8 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_error::JsErrorBox;
+use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
@@ -28,8 +30,6 @@ use indexmap::IndexMap;
 use super::binary::Metadata;
 use super::virtual_fs::BuiltVfs;
 use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VirtualDirectoryEntries;
-use crate::standalone::virtual_fs::VirtualDirectory;
 
 const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
 
@@ -442,12 +442,15 @@ impl RemoteModulesStore {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, AnyError> {
+  ) -> Result<Option<&'a Url>, JsErrorBox> {
     let mut count = 0;
     let mut current = specifier;
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
+        return Err(JsErrorBox::generic(format!(
+          "Too many redirects resolving '{}'",
+          specifier
+        )));
       }
       match self.specifiers.get(current) {
         Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {

@@ -35,7 +35,7 @@ import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { osUptime } from "ext:runtime/30_os.js";
+import { osUptime } from "ext:deno_os/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { primordials } from "ext:core/mod.js";
 const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;

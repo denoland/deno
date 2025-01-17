@@ -29,6 +29,8 @@ pub enum CliSys {
   DenoCompile(DenoCompileFileSystem),
 }
 
+impl deno_lib::sys::DenoLibSys for CliSys {}
+
 impl Default for CliSys {
   fn default() -> Self {
     Self::Real(sys_traits::impls::RealSys)

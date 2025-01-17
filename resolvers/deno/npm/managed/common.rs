@@ -6,40 +6,69 @@ use std::path::PathBuf;
 use deno_npm::NpmPackageCacheFolderId;
 use deno_npm::NpmPackageId;
 use node_resolver::NpmPackageFolderResolver;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
 use url::Url;
 
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
+#[derive(Debug)]
+pub enum NpmPackageFsResolver<TSys: FsCanonicalize + FsMetadata> {
+  Local(super::local::LocalNpmPackageResolver<TSys>),
+  Global(super::global::GlobalNpmPackageResolver),
+}
 
-#[allow(clippy::disallowed_types)]
-pub(super) type NpmPackageFsResolverRc =
-  crate::sync::MaybeArc<dyn NpmPackageFsResolver>;
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Package folder not found for '{0}'")]
-pub struct NpmPackageFsResolverPackageFolderError(deno_semver::StackString);
-
-/// Part of the resolution that interacts with the file system.
-pub trait NpmPackageFsResolver:
-  NpmPackageFolderResolver + MaybeSend + MaybeSync
-{
-  /// The local node_modules folder if it is applicable to the implementation.
-  fn node_modules_path(&self) -> Option<&Path>;
-
-  fn maybe_package_folder(&self, package_id: &NpmPackageId) -> Option<PathBuf>;
-
-  fn package_folder(
-    &self,
-    package_id: &NpmPackageId,
-  ) -> Result<PathBuf, NpmPackageFsResolverPackageFolderError> {
-    self.maybe_package_folder(package_id).ok_or_else(|| {
-      NpmPackageFsResolverPackageFolderError(package_id.as_serialized())
-    })
+impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFsResolver<TSys> {
+  /// The local node_modules folder (only for the local resolver).
+  pub fn node_modules_path(&self) -> Option<&Path> {
+    match self {
+      NpmPackageFsResolver::Local(resolver) => resolver.node_modules_path(),
+      NpmPackageFsResolver::Global(_) => None,
+    }
   }
 
-  fn resolve_package_cache_folder_id_from_specifier(
+  pub fn maybe_package_folder(
+    &self,
+    package_id: &NpmPackageId,
+  ) -> Option<PathBuf> {
+    match self {
+      NpmPackageFsResolver::Local(resolver) => {
+        resolver.maybe_package_folder(package_id)
+      }
+      NpmPackageFsResolver::Global(resolver) => {
+        resolver.maybe_package_folder(package_id)
+      }
+    }
+  }
+
+  pub fn resolve_package_cache_folder_id_from_specifier(
     &self,
     specifier: &Url,
-  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error>;
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
+    match self {
+      NpmPackageFsResolver::Local(resolver) => {
+        resolver.resolve_package_cache_folder_id_from_specifier(specifier)
+      }
+      NpmPackageFsResolver::Global(resolver) => {
+        resolver.resolve_package_cache_folder_id_from_specifier(specifier)
+      }
+    }
+  }
+}
+
+impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
+  for NpmPackageFsResolver<TSys>
+{
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+  ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
+    match self {
+      NpmPackageFsResolver::Local(r) => {
+        r.resolve_package_folder_from_package(specifier, referrer)
+      }
+      NpmPackageFsResolver::Global(r) => {
+        r.resolve_package_folder_from_package(specifier, referrer)
+      }
+    }
+  }
 }
