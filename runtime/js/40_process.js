@@ -296,16 +296,19 @@ class ChildProcess {
       this.#stderr = readableStreamForRidUnrefable(stderrRid);
     }
 
-    const onAbort = () => this.kill("SIGTERM");
-    signal?.[abortSignal.add](onAbort);
-
-    const waitPromise = op_spawn_wait(this.#rid);
-    this.#waitPromise = waitPromise;
-    this.#status = PromisePrototypeThen(waitPromise, (res) => {
-      signal?.[abortSignal.remove](onAbort);
-      this.#waitComplete = true;
-      return res;
-    });
+    try {
+      const onAbort = () => this.kill("SIGTERM");
+      signal?.[abortSignal.add](onAbort);
+      const waitPromise = op_spawn_wait(this.#rid);
+      this.#waitPromise = waitPromise;
+      this.#status = PromisePrototypeThen(waitPromise, (res) => {
+        signal?.[abortSignal.remove](onAbort);
+        this.#waitComplete = true;
+        return res;
+      });
+    } catch (e) {
+      void e;
+    }
   }
 
   #status;
