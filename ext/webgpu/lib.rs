@@ -18,6 +18,7 @@ mod adapter;
 mod bind_group;
 mod bind_group_layout;
 mod buffer;
+mod byow;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;
@@ -32,13 +33,11 @@ mod render_pass;
 mod render_pipeline;
 mod sampler;
 mod shader;
+mod surface;
 mod texture;
 mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
-
-//pub mod byow;
-//pub mod surface;
 
 pub type Instance = Arc<wgpu_core::global::Global>;
 
@@ -72,8 +71,10 @@ deno_core::extension!(
     adapter::GPUSupportedLimits,
     texture::GPUTexture,
     texture::GPUTextureView,
+    byow::UnsafeWindowSurface,
+    surface::GPUCanvasContext,
   ],
-  esm = ["00_init.js"],
+  esm = ["00_init.js", "02_surface.js"],
   lazy_loaded_esm = ["01_webgpu.js"],
 );
 

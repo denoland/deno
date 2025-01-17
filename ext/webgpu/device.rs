@@ -6,6 +6,7 @@ use std::rc::Rc;
 use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_error::JsErrorBox;
 use wgpu_core::binding_model::BindingResource;
@@ -55,6 +56,10 @@ impl Drop for GPUDevice {
   fn drop(&mut self) {
     self.instance.device_drop(self.id);
   }
+}
+
+impl WebIdlInterfaceConverter for GPUDevice {
+  const NAME: &'static str = "GPUDevice";
 }
 
 impl GarbageCollected for GPUDevice {}

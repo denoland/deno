@@ -690,9 +690,7 @@ ObjectDefineProperty(GPUQuerySet, customInspect, {
 const GPUQuerySetPrototype = GPUQuerySet.prototype;
 
 // Converters
-/*
 
-// DICTIONARY: GPUPipelineErrorInit
 webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
   "GPUPipelineErrorInit",
   [
@@ -704,7 +702,6 @@ webidl.converters["GPUPipelineErrorInit"] = webidl.createDictionaryConverter(
   ],
 );
 
-// ENUM: GPUPipelineErrorReason
 webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
   "GPUPipelineErrorReason",
   [
@@ -713,16 +710,8 @@ webidl.converters["GPUPipelineErrorReason"] = webidl.createEnumConverter(
   ],
 );
 
-// TYPEDEF: GPUError
-webidl.converters["GPUError"] = webidl.converters.any /!** put union here! **!/;
+webidl.converters["GPUError"] = webidl.converters.any /* put union here! */;
 
-// // INTERFACE: GPUUncapturedErrorEvent
-// webidl.converters.GPUUncapturedErrorEvent = webidl.createInterfaceConverter(
-//   "GPUUncapturedErrorEvent",
-//   GPUUncapturedErrorEvent.prototype,
-// );
-
-// DICTIONARY: GPUUncapturedErrorEventInit
 const dictMembersGPUUncapturedErrorEventInit = [
   { key: "error", converter: webidl.converters["GPUError"], required: true },
 ];
@@ -732,71 +721,6 @@ webidl.converters["GPUUncapturedErrorEventInit"] = webidl
     // dictMembersEventInit,
     dictMembersGPUUncapturedErrorEventInit,
   );
-
-// BYOW
-
-// ENUM: GPUCanvasAlphaMode
-webidl.converters["GPUCanvasAlphaMode"] = webidl.createEnumConverter(
-  "GPUCanvasAlphaMode",
-  [
-    "opaque",
-    "premultiplied",
-  ],
-);
-
-// NON-SPEC: ENUM: GPUPresentMode
-webidl.converters["GPUPresentMode"] = webidl.createEnumConverter(
-  "GPUPresentMode",
-  [
-    "autoVsync",
-    "autoNoVsync",
-    "fifo",
-    "fifoRelaxed",
-    "immediate",
-    "mailbox",
-  ],
-);
-
-// DICT: GPUCanvasConfiguration
-const dictMembersGPUCanvasConfiguration = [
-  { key: "device", converter: webidl.converters.GPUDevice, required: true },
-  {
-    key: "format",
-    converter: webidl.converters.GPUTextureFormat,
-    required: true,
-  },
-  {
-    key: "usage",
-    converter: webidl.converters["GPUTextureUsageFlags"],
-    defaultValue: GPUTextureUsage.RENDER_ATTACHMENT,
-  },
-  {
-    key: "alphaMode",
-    converter: webidl.converters["GPUCanvasAlphaMode"],
-    defaultValue: "opaque",
-  },
-
-  // Extended from spec
-  {
-    key: "presentMode",
-    converter: webidl.converters["GPUPresentMode"],
-  },
-  {
-    key: "viewFormats",
-    converter: webidl.createSequenceConverter(
-      webidl.converters["GPUTextureFormat"],
-    ),
-    get defaultValue() {
-      return [];
-    },
-  },
-];
-webidl.converters["GPUCanvasConfiguration"] = webidl
-  .createDictionaryConverter(
-    "GPUCanvasConfiguration",
-    dictMembersGPUCanvasConfiguration,
-  );
-*/
 
 let gpu;
 function initGPU() {
