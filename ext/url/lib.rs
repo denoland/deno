@@ -11,9 +11,9 @@ use deno_core::url::Url;
 use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
+pub use urlpattern::GROUP_STRING_FALLBACK as URLPATTERN_GROUP_STRING_FALLBACK;
 
-use crate::urlpattern::op_urlpattern_parse;
-use crate::urlpattern::op_urlpattern_process_match_input;
+use crate::urlpattern::URLPattern;
 
 deno_core::extension!(
   deno_url,
@@ -25,9 +25,8 @@ deno_core::extension!(
     op_url_parse_with_base,
     op_url_parse_search_params,
     op_url_stringify_search_params,
-    op_urlpattern_parse,
-    op_urlpattern_process_match_input
   ],
+  objects = [URLPattern],
   esm = ["00_url.js", "01_urlpattern.js"],
 );
 

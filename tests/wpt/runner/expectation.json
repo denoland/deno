@@ -11996,8 +11996,6 @@
     "urlpattern.any.html": [
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -12006,8 +12004,6 @@
     "urlpattern.any.worker.html": [
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -12016,8 +12012,6 @@
     "urlpattern.https.any.html": [
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",
@@ -12026,8 +12020,6 @@
     "urlpattern.https.any.worker.html": [
       "Pattern: [{\"hostname\":\"bad\\\\:hostname\"}] Inputs: undefined",
       "Pattern: [] Inputs: []",
-      "Pattern: [{\"pathname\":\"/foo/bar\"},{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO/BAR\"}]",
-      "Pattern: [\"https://example.com:8080/foo?bar#baz\",{\"ignoreCase\":true}] Inputs: [{\"pathname\":\"/FOO\",\"search\":\"BAR\",\"hash\":\"BAZ\",\"baseURL\":\"https://example.com:8080\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/a\"}]",
       "Pattern: [{\"pathname\":\"/([[a-z]--a])\"}] Inputs: [{\"pathname\":\"/z\"}]",
       "Pattern: [{\"pathname\":\"/([\\\\d&&[0-1]])\"}] Inputs: [{\"pathname\":\"/0\"}]",

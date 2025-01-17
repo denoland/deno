@@ -16,6 +16,8 @@ path = "lib.rs"
 [dependencies]
 deno_core.workspace = true
 deno_error.workspace = true
+indexmap.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 urlpattern = "0.3.0"
 
