@@ -12,7 +12,6 @@ use deno_runtime::deno_fs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
-use node_resolver::analyze::CjsCodeAnalysisError;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use serde::Deserialize;
@@ -76,7 +75,7 @@ impl CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Result<CliCjsAnalysis, CjsCodeAnalysisError> {
+  ) -> Result<CliCjsAnalysis, JsErrorBox> {
     let source_hash = CacheDBHash::from_hashable(source);
     if let Some(analysis) =
       self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
@@ -93,7 +92,9 @@ impl CliCjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(specifier, media_type)?;
+    let is_maybe_cjs = cjs_tracker
+      .is_maybe_cjs(specifier, media_type)
+      .map_err(JsErrorBox::from_err)?;
     let analysis = if is_maybe_cjs {
       let maybe_parsed_source = self
         .parsed_source_cache
@@ -103,7 +104,7 @@ impl CliCjsCodeAnalyzer {
       deno_core::unsync::spawn_blocking({
         let specifier = specifier.clone();
         let source: Arc<str> = source.into();
-        move || -> Result<_, CjsCodeAnalysisError> {
+        move || -> Result<_, JsErrorBox> {
           let parsed_source = maybe_parsed_source
             .map(Ok)
             .unwrap_or_else(|| {
@@ -118,11 +119,13 @@ impl CliCjsCodeAnalyzer {
             })
             .map_err(JsErrorBox::from_err)?;
           let is_script = parsed_source.compute_is_script();
-          let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
-            parsed_source.specifier(),
-            media_type,
-            is_script,
-          )?;
+          let is_cjs = cjs_tracker
+            .is_cjs_with_known_is_script(
+              parsed_source.specifier(),
+              media_type,
+              is_script,
+            )
+            .map_err(JsErrorBox::from_err)?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(CliCjsAnalysis::Cjs {
@@ -154,7 +157,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
-  ) -> Result<ExtNodeCjsAnalysis<'a>, CjsCodeAnalysisError> {
+  ) -> Result<ExtNodeCjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
       None => {

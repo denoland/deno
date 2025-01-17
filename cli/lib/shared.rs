@@ -1,8 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 /// This module is shared between build script and the binaries. Use it sparsely.
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("Unrecognized release channel: {0}")]
+pub struct UnrecognizedReleaseChannelError(pub String);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ReleaseChannel {
@@ -50,13 +53,17 @@ impl ReleaseChannel {
   // NOTE(bartlomieju): do not ever change these values, tools like `patchver`
   // rely on them.
   #[allow(unused)]
-  pub fn deserialize(str_: &str) -> Result<Self, AnyError> {
+  pub fn deserialize(
+    str_: &str,
+  ) -> Result<Self, UnrecognizedReleaseChannelError> {
     Ok(match str_ {
       "stable" => Self::Stable,
       "canary" => Self::Canary,
       "rc" => Self::Rc,
       "lts" => Self::Lts,
-      unknown => bail!("Unrecognized release channel: {}", unknown),
+      unknown => {
+        return Err(UnrecognizedReleaseChannelError(unknown.to_string()))
+      }
     })
   }
 }

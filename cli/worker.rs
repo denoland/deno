@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
@@ -12,20 +11,16 @@ use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
-use deno_runtime::code_cache;
+use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;
-use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
@@ -38,15 +33,6 @@ pub trait HmrRunner: Send + Sync {
   async fn start(&mut self) -> Result<(), CoreError>;
   async fn stop(&mut self) -> Result<(), CoreError>;
   async fn run(&mut self) -> Result<(), CoreError>;
-}
-
-pub trait CliCodeCache: code_cache::CodeCache {
-  /// Gets if the code cache is still enabled.
-  fn enabled(&self) -> bool {
-    true
-  }
-
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
 }
 
 #[async_trait::async_trait(?Send)]
@@ -102,6 +88,8 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.worker.main_module());
 
+    // WARNING: Remember to update cli/lib/worker.rs to align with
+    // changes made here so that they affect deno_compile as well.
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
@@ -296,29 +284,6 @@ impl CliMainWorker {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveBinaryEntrypointError {
-  #[class(inherit)]
-  #[error(transparent)]
-  ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
-  #[class(generic)]
-  #[error("{original:#}\n\nFallback failed: {fallback:#}")]
-  Fallback {
-    fallback: ResolveBinaryEntrypointFallbackError,
-    original: ResolvePkgJsonBinExportError,
-  },
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveBinaryEntrypointFallbackError {
-  #[class(inherit)]
-  #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
-  #[class(generic)]
-  #[error("Cannot find module '{0}'")]
-  ModuleNotFound(ModuleSpecifier),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CreateCustomWorkerError {
   #[class(inherit)]
   #[error(transparent)]
@@ -336,7 +301,7 @@ pub enum CreateCustomWorkerError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolveBinaryEntrypoint(#[from] ResolveBinaryEntrypointError),
+  ResolveNpmBinaryEntrypoint(#[from] ResolveNpmBinaryEntrypointError),
   #[class(inherit)]
   #[error(transparent)]
   NpmPackageReq(JsErrorBox),
@@ -350,7 +315,6 @@ pub enum CreateCustomWorkerError {
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: CliNpmResolver,
   root_permissions: PermissionsContainer,
@@ -366,7 +330,6 @@ impl CliMainWorkerFactory {
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
@@ -376,7 +339,6 @@ impl CliMainWorkerFactory {
     Self {
       lib_main_worker_factory,
       maybe_lockfile,
-      node_resolver,
       npm_installer,
       npm_resolver,
       root_permissions,
@@ -446,8 +408,11 @@ impl CliMainWorkerFactory {
           package_ref.req(),
           &referrer,
         )?;
-      let main_module = self
-        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
+      let main_module =
+        self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
+          &package_folder,
+          package_ref.sub_path(),
+        )?;
 
       if let Some(lockfile) = &self.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
@@ -493,71 +458,6 @@ impl CliMainWorkerFactory {
       worker,
       shared: self.shared.clone(),
     })
-  }
-
-  fn resolve_binary_entrypoint(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<ModuleSpecifier, ResolveBinaryEntrypointError> {
-    match self
-      .node_resolver
-      .resolve_binary_export(package_folder, sub_path)
-    {
-      Ok(specifier) => Ok(specifier),
-      Err(original_err) => {
-        // if the binary entrypoint was not found, fallback to regular node resolution
-        let result =
-          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
-        match result {
-          Ok(Some(specifier)) => Ok(specifier),
-          Ok(None) => Err(
-            ResolveBinaryEntrypointError::ResolvePkgJsonBinExport(original_err),
-          ),
-          Err(fallback_err) => Err(ResolveBinaryEntrypointError::Fallback {
-            original: original_err,
-            fallback: fallback_err,
-          }),
-        }
-      }
-    }
-  }
-
-  /// resolve the binary entrypoint using regular node resolution
-  fn resolve_binary_entrypoint_fallback(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<Option<ModuleSpecifier>, ResolveBinaryEntrypointFallbackError> {
-    // only fallback if the user specified a sub path
-    if sub_path.is_none() {
-      // it's confusing to users if the package doesn't have any binary
-      // entrypoint and we just execute the main script which will likely
-      // have blank output, so do not resolve the entrypoint in this case
-      return Ok(None);
-    }
-
-    let specifier = self
-      .node_resolver
-      .resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        /* referrer */ None,
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )
-      .map_err(ResolveBinaryEntrypointFallbackError::PackageSubpathResolve)?;
-    if specifier
-      .to_file_path()
-      .map(|p| p.exists())
-      .unwrap_or(false)
-    {
-      Ok(Some(specifier))
-    } else {
-      Err(ResolveBinaryEntrypointFallbackError::ModuleNotFound(
-        specifier,
-      ))
-    }
   }
 }
 

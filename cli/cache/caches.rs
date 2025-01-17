@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_lib::cache::DenoDirProvider;
+use deno_lib::version::DENO_VERSION_INFO;
 use once_cell::sync::OnceCell;
 
 use super::cache_db::CacheDB;
@@ -14,10 +14,10 @@ use super::fast_check::FAST_CHECK_CACHE_DB;
 use super::incremental::INCREMENTAL_CACHE_DB;
 use super::module_info::MODULE_INFO_CACHE_DB;
 use super::node::NODE_ANALYSIS_CACHE_DB;
-use crate::sys::CliSys;
+use crate::cache::DenoDirProvider;
 
 pub struct Caches {
-  dir_provider: Arc<DenoDirProvider<CliSys>>,
+  dir_provider: Arc<DenoDirProvider>,
   fmt_incremental_cache_db: OnceCell<CacheDB>,
   lint_incremental_cache_db: OnceCell<CacheDB>,
   dep_analysis_db: OnceCell<CacheDB>,
@@ -28,7 +28,7 @@ pub struct Caches {
 }
 
 impl Caches {
-  pub fn new(dir: Arc<DenoDirProvider<CliSys>>) -> Self {
+  pub fn new(dir: Arc<DenoDirProvider>) -> Self {
     Self {
       dir_provider: dir,
       fmt_incremental_cache_db: Default::default(),
@@ -49,13 +49,9 @@ impl Caches {
     cell
       .get_or_init(|| {
         if let Some(path) = path {
-          CacheDB::from_path(
-            config,
-            path,
-            crate::version::DENO_VERSION_INFO.deno,
-          )
+          CacheDB::from_path(config, path, DENO_VERSION_INFO.deno)
         } else {
-          CacheDB::in_memory(config, crate::version::DENO_VERSION_INFO.deno)
+          CacheDB::in_memory(config, DENO_VERSION_INFO.deno)
         }
       })
       .clone()
