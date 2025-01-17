@@ -5,13 +5,14 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use deno_graph::ParsedSourceStore;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
+use node_resolver::analyze::CjsCodeAnalysisError;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use serde::Deserialize;
@@ -75,7 +76,7 @@ impl CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: &str,
-  ) -> Result<CliCjsAnalysis, AnyError> {
+  ) -> Result<CliCjsAnalysis, CjsCodeAnalysisError> {
     let source_hash = CacheDBHash::from_hashable(source);
     if let Some(analysis) =
       self.cache.get_cjs_analysis(specifier.as_str(), source_hash)
@@ -102,9 +103,10 @@ impl CliCjsCodeAnalyzer {
       deno_core::unsync::spawn_blocking({
         let specifier = specifier.clone();
         let source: Arc<str> = source.into();
-        move || -> Result<_, AnyError> {
-          let parsed_source =
-            maybe_parsed_source.map(Ok).unwrap_or_else(|| {
+        move || -> Result<_, CjsCodeAnalysisError> {
+          let parsed_source = maybe_parsed_source
+            .map(Ok)
+            .unwrap_or_else(|| {
               deno_ast::parse_program(deno_ast::ParseParams {
                 specifier,
                 text: source,
@@ -113,7 +115,8 @@ impl CliCjsCodeAnalyzer {
                 scope_analysis: false,
                 maybe_syntax: None,
               })
-            })?;
+            })
+            .map_err(JsErrorBox::from_err)?;
           let is_script = parsed_source.compute_is_script();
           let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
             parsed_source.specifier(),
@@ -151,7 +154,7 @@ impl CjsCodeAnalyzer for CliCjsCodeAnalyzer {
     &self,
     specifier: &ModuleSpecifier,
     source: Option<Cow<'a, str>>,
-  ) -> Result<ExtNodeCjsAnalysis<'a>, AnyError> {
+  ) -> Result<ExtNodeCjsAnalysis<'a>, CjsCodeAnalysisError> {
     let source = match source {
       Some(source) => source,
       None => {
