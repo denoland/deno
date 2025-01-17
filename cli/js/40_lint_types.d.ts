@@ -27,9 +27,34 @@ export interface Node {
 
 export type Range = [number, number];
 
+export interface FixData {
+  range: Range;
+  text?: string;
+}
+
+export interface Fixer {
+  insertTextAfter(node: Node, text: string): FixData;
+  insertTextAfterRange(range: Range, text: string): FixData;
+  insertTextBefore(node: Node, text: string): FixData;
+  insertTextBeforeRange(range: Range, text: string): FixData;
+  remove(node: Node): FixData;
+  removeRange(range: Range): FixData;
+  replaceText(node: Node, text: string): FixData;
+  replaceTextRange(range: Range, text: string): FixData;
+}
+
+export interface ReportData {
+  node?: Node;
+  range?: Range;
+  message: string;
+  hint?: string;
+  fix?(fixer: Fixer): FixData;
+}
+
 // TODO(@marvinhagemeister) Remove once we land "official" types
 export interface RuleContext {
   id: string;
+  report(data: ReportData): void;
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
@@ -47,6 +72,8 @@ export interface LintPlugin {
 export interface LintState {
   plugins: LintPlugin[];
   installedPlugins: Set<string>;
+  /** format: `<plugin>/<rule>` */
+  ignoredRules: Set<string>;
 }
 
 export type VisitorFn = (node: unknown) => void;

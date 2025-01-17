@@ -615,6 +615,17 @@ async fn configure_main_worker(
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
 ) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), CoreError> {
+  #[allow(clippy::print_stdout)]
+  #[allow(clippy::print_stderr)]
+  fn linter_logger(msg: &str, is_err: bool) {
+    if is_err {
+      eprint!("{}", msg);
+    } else {
+      print!("{}", msg);
+    }
+  }
+  let logger = crate::tools::lint::PluginLogger::new(linter_logger, true);
+
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -622,7 +633,8 @@ async fn configure_main_worker(
       permissions_container,
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint::init_ops(),
+        // TODO(bartlomieju): this is temporary and should be removed before landing plugin support
+        ops::lint::deno_lint_ext::init_ops(logger),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),

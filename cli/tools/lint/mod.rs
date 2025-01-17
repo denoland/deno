@@ -40,6 +40,7 @@ use crate::args::LintOptions;
 use crate::args::WorkspaceLintOptions;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
+use crate::cache::FastInsecureHasher;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
@@ -55,6 +56,7 @@ use crate::util::sync::AtomicFlag;
 
 mod ast_buffer;
 mod linter;
+mod plugins;
 mod reporters;
 mod rules;
 
@@ -62,6 +64,8 @@ mod rules;
 pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
+pub use plugins::create_runner_and_load_plugins;
+pub use plugins::PluginLogger;
 pub use rules::collect_no_slow_type_diagnostics;
 pub use rules::ConfiguredRules;
 pub use rules::LintRuleProvider;
@@ -281,23 +285,58 @@ impl WorkspaceLinter {
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
 
+    let exclude = lint_options.rules.exclude.clone();
+
+    let maybe_plugin_specifiers = lint_options.resolve_lint_plugins()?;
     let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     )?;
-    let maybe_incremental_cache =
-      lint_rules.incremental_cache_state().map(|state| {
-        Arc::new(IncrementalCache::new(
-          self.caches.lint_incremental_cache_db(),
-          CacheDBHash::from_hashable(&state),
-          &paths,
-        ))
-      });
+    let mut maybe_incremental_cache = None;
+
+    // TODO(bartlomieju): how do we decide if plugins support incremental cache?
+    if lint_rules.supports_incremental_cache() {
+      let mut hasher = FastInsecureHasher::new_deno_versioned();
+      hasher.write_hashable(lint_rules.incremental_cache_state());
+      if let Some(plugin_specifiers) = maybe_plugin_specifiers.as_ref() {
+        hasher.write_hashable(plugin_specifiers);
+      }
+      let state_hash = hasher.finish();
+
+      maybe_incremental_cache = Some(Arc::new(IncrementalCache::new(
+        self.caches.lint_incremental_cache_db(),
+        CacheDBHash::new(state_hash),
+        &paths,
+      )));
+    }
+
+    #[allow(clippy::print_stdout)]
+    #[allow(clippy::print_stderr)]
+    fn logger_printer(msg: &str, is_err: bool) {
+      if is_err {
+        eprint!("{}", msg);
+      } else {
+        print!("{}", msg);
+      }
+    }
+
+    let mut plugin_runner = None;
+    if let Some(plugin_specifiers) = maybe_plugin_specifiers {
+      let logger = plugins::PluginLogger::new(logger_printer, true);
+      let runner = plugins::create_runner_and_load_plugins(
+        plugin_specifiers,
+        logger,
+        exclude,
+      )
+      .await?;
+      plugin_runner = Some(Arc::new(Mutex::new(runner)));
+    }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
       deno_lint_config: lint_config,
+      maybe_plugin_runner: plugin_runner,
     }));
 
     let has_error = self.has_error.clone();
@@ -520,7 +559,8 @@ fn lint_stdin(
   )));
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
-  let lint_options = LintOptions::resolve(lint_config, &lint_flags);
+  let lint_options =
+    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags);
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
     start_dir.maybe_deno_json().map(|c| c.as_ref()),
@@ -538,6 +578,7 @@ fn lint_stdin(
     fix: false,
     configured_rules,
     deno_lint_config,
+    maybe_plugin_runner: None,
   });
 
   let r = linter

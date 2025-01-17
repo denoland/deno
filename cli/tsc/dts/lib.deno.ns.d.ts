@@ -6160,4 +6160,14 @@ declare namespace Deno {
   ): HttpClient;
 
   export {}; // only export exports
+
+  export interface LintRule {
+    create(context: any): any;
+    destroy?(context: any): void;
+  }
+
+  export interface LintPlugin {
+    name: string;
+    rules: Record<string, LintRule>;
+  }
 }
