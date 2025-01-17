@@ -28,7 +28,7 @@ node_resolver = { workspace = true, features = ["sync"] }
 parking_lot.workspace = true
 ring.workspace = true
 serde = { workspace = true, features = ["derive"] }
-sys_traits.workspace = true
+sys_traits = { workspace = true, features = ["getrandom"] }
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
