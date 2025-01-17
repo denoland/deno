@@ -2031,6 +2031,7 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_permissions",
+ "deno_process",
  "deno_whoami",
  "der",
  "digest",
@@ -2068,7 +2069,6 @@ dependencies = [
  "p384",
  "path-clean",
  "pbkdf2",
- "pin-project-lite",
  "pkcs8",
  "rand",
  "regex",
@@ -2239,6 +2239,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_process"
+version = "0.1.0"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "deno_fs",
+ "deno_io",
+ "deno_os",
+ "deno_path_util",
+ "deno_permissions",
+ "libc",
+ "log",
+ "memchr",
+ "nix",
+ "pin-project-lite",
+ "rand",
+ "serde",
+ "simd-json",
+ "tempfile",
+ "thiserror 2.0.3",
+ "tokio",
+ "which",
+ "winapi",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "deno_resolver"
 version = "0.17.0"
 dependencies = [
@@ -2290,6 +2317,7 @@ dependencies = [
  "deno_os",
  "deno_path_util",
  "deno_permissions",
+ "deno_process",
  "deno_resolver",
  "deno_telemetry",
  "deno_terminal 0.2.0",
