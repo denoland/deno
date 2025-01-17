@@ -150,16 +150,14 @@ export class TLSSocket extends net.Socket {
 
       const { promise, resolve } = Promise.withResolvers();
 
-      // Patches `afterConnect` hook to replace TCP conn with TLS conn
-      const afterConnect = handle.afterConnect;
-      handle.afterConnect = async (req: any, status: number) => {
+      // Set `afterConnectTls` hook. This is called in the `afterConnect` method of net.Socket
+      handle.afterConnectTls = async () => {
         options.hostname ??= undefined; // coerce to undefined if null, startTls expects hostname to be undefined
         if (tlssock._needsSockInitWorkaround) {
           // skips the TLS handshake for @npmcli/agent as it's handled by
           // onSocket handler of ClientRequest object.
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
-          return afterConnect.call(handle, req, status);
         }
 
         try {
@@ -190,7 +188,6 @@ export class TLSSocket extends net.Socket {
         } catch {
           // TODO(kt3k): Handle this
         }
-        return afterConnect.call(handle, req, status);
       };
 
       handle.upgrading = promise;
@@ -202,7 +199,6 @@ export class TLSSocket extends net.Socket {
       // https://github.com/szmarczak/http2-wrapper/blob/51eeaf59ff9344fb192b092241bfda8506983620/source/utils/js-stream-socket.js#L6
       handle._parent = handle;
       handle._parentWrap = wrap;
-
       return handle;
     }
   }

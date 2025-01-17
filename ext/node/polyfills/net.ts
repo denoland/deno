@@ -337,7 +337,7 @@ export function _normalizeArgs(args: unknown[]): NormalizedArgs {
   return arr;
 }
 
-function _afterConnect(
+async function _afterConnect(
   status: number,
   // deno-lint-ignore no-explicit-any
   handle: any,
@@ -354,6 +354,12 @@ function _afterConnect(
   // Callback may come after call to destroy
   if (socket.destroyed) {
     return;
+  }
+
+  // Deno specific: run tls handshake if it's from a tls socket
+  // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
+  if (typeof handle.afterConnectTls === "function") {
+    await handle.afterConnectTls();
   }
 
   debug("afterConnect");
