@@ -158,7 +158,7 @@ pub enum NpmProcessStateKind {
 
 pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
   LazyLock::new(|| {
-    use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
+    use deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
     let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
     std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
     let fd = fd.parse::<usize>().ok()?;

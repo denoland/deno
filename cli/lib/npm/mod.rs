@@ -9,8 +9,8 @@ use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ManagedNpmResolverRc;
 use deno_resolver::npm::NpmResolver;
-use deno_runtime::ops::process::NpmProcessStateProvider;
-use deno_runtime::ops::process::NpmProcessStateProviderRc;
+use deno_runtime::deno_process::NpmProcessStateProvider;
+use deno_runtime::deno_process::NpmProcessStateProviderRc;
 pub use permission_checker::NpmRegistryReadPermissionChecker;
 pub use permission_checker::NpmRegistryReadPermissionCheckerMode;
 
