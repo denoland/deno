@@ -3,7 +3,6 @@
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
@@ -16,6 +15,9 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::errors::ResolvePkgJsonBinExportError;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
 
@@ -37,8 +39,8 @@ pub trait HmrRunner: Send + Sync {
 
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
-  async fn start_collecting(&mut self) -> Result<(), AnyError>;
-  async fn stop_collecting(&mut self) -> Result<(), AnyError>;
+  async fn start_collecting(&mut self) -> Result<(), CoreError>;
+  async fn stop_collecting(&mut self) -> Result<(), CoreError>;
 }
 
 pub type CreateHmrRunnerCb = Box<
@@ -76,7 +78,7 @@ impl CliMainWorker {
     self.worker.into_main_worker()
   }
 
-  pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
+  pub async fn setup_repl(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(false).await?;
     Ok(())
   }
@@ -159,7 +161,7 @@ impl CliMainWorker {
     Ok(self.worker.exit_code())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), AnyError> {
+  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -178,7 +180,7 @@ impl CliMainWorker {
 
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
-      pub async fn execute(&mut self) -> Result<(), AnyError> {
+      pub async fn execute(&mut self) -> Result<(), CoreError> {
         self.inner.execute_main_module().await?;
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
@@ -232,7 +234,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
+  ) -> Result<Option<Box<dyn HmrRunner>>, CoreError> {
     let Some(setup_hmr_runner) = self.shared.create_hmr_runner.as_ref() else {
       return Ok(None);
     };
@@ -254,7 +256,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
+  ) -> Result<Option<Box<dyn CoverageCollector>>, CoreError> {
     let Some(create_coverage_collector) =
       self.shared.create_coverage_collector.as_ref()
     else {
@@ -281,6 +283,58 @@ impl CliMainWorker {
   ) -> Result<v8::Global<v8::Value>, CoreError> {
     self.worker.js_runtime().execute_script(name, source_code)
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveBinaryEntrypointError {
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
+  #[class(generic)]
+  #[error("{original:#}\n\nFallback failed: {fallback:#}")]
+  Fallback {
+    fallback: ResolveBinaryEntrypointFallbackError,
+    original: ResolvePkgJsonBinExportError,
+  },
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ResolveBinaryEntrypointFallbackError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
+  #[class(generic)]
+  #[error("Cannot find module '{0}'")]
+  ModuleNotFound(ModuleSpecifier),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CreateCustomWorkerError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgFolderFromDenoReq(
+    #[from] deno_resolver::npm::ResolvePkgFolderFromDenoReqError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlParse(#[from] deno_core::url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveBinaryEntrypoint(#[from] ResolveBinaryEntrypointError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmPackageReq(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  AtomicWriteFileWithRetries(
+    #[from] crate::args::AtomicWriteFileWithRetriesError,
+  ),
 }
 
 pub struct CliMainWorkerFactory {
@@ -328,7 +382,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-  ) -> Result<CliMainWorker, CoreError> {
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
@@ -347,7 +401,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-  ) -> Result<CliMainWorker, CoreError> {
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
@@ -365,19 +419,20 @@ impl CliMainWorkerFactory {
               PackageCaching::All
             },
           )
-          .await?;
+          .await
+          .map_err(CreateCustomWorkerError::NpmPackageReq)?;
       }
 
       // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer = ModuleSpecifier::from_directory_path(
-        self.sys.env_current_dir().map_err(JsErrorBox::from_err)?,
-      )
-      .unwrap()
-      .join("package.json")?;
-      let package_folder = self
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
-        .map_err(JsErrorBox::from_err)?;
+      let referrer =
+        ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
+          .unwrap()
+          .join("package.json")?;
+      let package_folder =
+        self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+          package_ref.req(),
+          &referrer,
+        )?;
       let main_module =
         self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
           &package_folder,
