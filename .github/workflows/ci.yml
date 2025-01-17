@@ -73,7 +73,7 @@ jobs:
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && github.ref == ''refs/heads/main'' && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
