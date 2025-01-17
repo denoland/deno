@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.123.0"
+version = "0.124.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -37,6 +37,7 @@ deno_net.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_process.workspace = true
 deno_whoami = "0.1.0"
 der = { version = "0.7.9", features = ["derive"] }
 digest = { version = "0.10.5", features = ["core-api", "std"] }
@@ -73,7 +74,6 @@ p256.workspace = true
 p384.workspace = true
 path-clean = "=0.1.0"
 pbkdf2 = "0.12.1"
-pin-project-lite = "0.2.13"
 pkcs8 = { version = "0.10.2", features = ["std", "pkcs5", "encryption"] }
 rand.workspace = true
 regex.workspace = true
