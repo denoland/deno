@@ -1,110 +1,63 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env;
-use std::env::current_exe;
 use std::ffi::OsString;
 use std::fs;
 use std::fs::File;
-use std::future::Future;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
-use std::ops::Range;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
-use std::process::Command;
-use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::io::AllowStdIo;
-use deno_core::futures::AsyncReadExt;
-use deno_core::futures::AsyncSeekExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_graph::ModuleGraph;
-use deno_lib::cache::DenoDir;
-use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::args::CaData;
+use deno_lib::args::UnstableConfig;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::standalone::binary::Metadata;
+use deno_lib::standalone::binary::NodeModules;
+use deno_lib::standalone::binary::SerializedResolverWorkspaceJsrPackage;
+use deno_lib::standalone::binary::SerializedWorkspaceResolver;
+use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
+use deno_lib::standalone::binary::SourceMapStore;
+use deno_lib::standalone::virtual_fs::BuiltVfs;
+use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
+use deno_lib::standalone::virtual_fs::DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
-use deno_npm::resolution::SerializedNpmResolutionSnapshotPackage;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
-use deno_npm::NpmPackageId;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
-use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_fs;
-use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_io::fs::FsError;
-use deno_runtime::deno_node::PackageJson;
-use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_semver::npm::NpmVersionReqParseError;
-use deno_semver::package::PackageReq;
-use deno_semver::Version;
-use deno_semver::VersionReqSpecifierParseError;
-use deno_telemetry::OtelConfig;
 use indexmap::IndexMap;
-use log::Level;
-use serde::Deserialize;
-use serde::Serialize;
 
-use super::file_system::DenoCompileFileSystem;
-use super::serialization::deserialize_binary_data_section;
 use super::serialization::serialize_binary_data_section;
-use super::serialization::DenoCompileModuleData;
-use super::serialization::DeserializedDataSection;
-use super::serialization::RemoteModulesStore;
 use super::serialization::RemoteModulesStoreBuilder;
-use super::serialization::SourceMapStore;
 use super::virtual_fs::output_vfs;
-use super::virtual_fs::BuiltVfs;
-use super::virtual_fs::FileBackedVfs;
-use super::virtual_fs::VfsBuilder;
-use super::virtual_fs::VfsRoot;
-use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::CompileFlags;
-use crate::args::NpmInstallDepsProvider;
-use crate::args::PermissionFlags;
-use crate::args::UnstableConfig;
-use crate::cache::FastInsecureHasher;
+use crate::cache::DenoDir;
 use crate::emit::Emitter;
-use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
-use crate::shared::ReleaseChannel;
-use crate::sys::CliSys;
 use crate::util::archive;
-use crate::util::fs::canonicalize_path;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
-
-pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
-  ".deno_compile_node_modules";
 
 /// A URL that can be designated as the base for relative URLs.
 ///
@@ -149,62 +102,6 @@ impl<'a> StandaloneRelativeFileBaseUrl<'a> {
       None => Cow::Borrowed(target.as_str()),
     }
   }
-}
-
-#[derive(Deserialize, Serialize)]
-pub enum NodeModules {
-  Managed {
-    /// Relative path for the node_modules directory in the vfs.
-    node_modules_dir: Option<String>,
-  },
-  Byonm {
-    root_node_modules_dir: Option<String>,
-  },
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct SerializedWorkspaceResolverImportMap {
-  pub specifier: String,
-  pub json: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SerializedResolverWorkspaceJsrPackage {
-  pub relative_base: String,
-  pub name: String,
-  pub version: Option<Version>,
-  pub exports: IndexMap<String, String>,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct SerializedWorkspaceResolver {
-  pub import_map: Option<SerializedWorkspaceResolverImportMap>,
-  pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
-  pub package_jsons: BTreeMap<String, serde_json::Value>,
-  pub pkg_json_resolution: PackageJsonDepResolution,
-}
-
-// Note: Don't use hashmaps/hashsets. Ensure the serialization
-// is deterministic.
-#[derive(Deserialize, Serialize)]
-pub struct Metadata {
-  pub argv: Vec<String>,
-  pub seed: Option<u64>,
-  pub code_cache_key: Option<u64>,
-  pub permissions: PermissionsOptions,
-  pub location: Option<Url>,
-  pub v8_flags: Vec<String>,
-  pub log_level: Option<Level>,
-  pub ca_stores: Option<Vec<String>>,
-  pub ca_data: Option<Vec<u8>>,
-  pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
-  pub env_vars_from_env_file: IndexMap<String, String>,
-  pub workspace_resolver: SerializedWorkspaceResolver,
-  pub entrypoint_key: String,
-  pub node_modules: Option<NodeModules>,
-  pub unstable_config: UnstableConfig,
-  pub otel_config: OtelConfig,
-  pub vfs_case_sensitivity: FileSystemCaseSensitivity,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -261,146 +158,6 @@ pub fn is_standalone_binary(exe_path: &Path) -> bool {
     || libsui::utils::is_macho(&data)
 }
 
-pub struct StandaloneData {
-  pub metadata: Metadata,
-  pub modules: StandaloneModules,
-  pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-  pub root_path: PathBuf,
-  pub source_maps: SourceMapStore,
-  pub vfs: Arc<FileBackedVfs>,
-}
-
-pub struct StandaloneModules {
-  remote_modules: RemoteModulesStore,
-  vfs: Arc<FileBackedVfs>,
-}
-
-impl StandaloneModules {
-  pub fn resolve_specifier<'a>(
-    &'a self,
-    specifier: &'a ModuleSpecifier,
-  ) -> Result<Option<&'a ModuleSpecifier>, JsErrorBox> {
-    if specifier.scheme() == "file" {
-      Ok(Some(specifier))
-    } else {
-      self.remote_modules.resolve_specifier(specifier)
-    }
-  }
-
-  pub fn has_file(&self, path: &Path) -> bool {
-    self.vfs.file_entry(path).is_ok()
-  }
-
-  pub fn read<'a>(
-    &'a self,
-    specifier: &'a ModuleSpecifier,
-    kind: VfsFileSubDataKind,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
-    if specifier.scheme() == "file" {
-      let path = deno_path_util::url_to_file_path(specifier)?;
-      let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry, kind)?,
-        Err(err) if err.kind() == ErrorKind::NotFound => {
-          match RealFs.read_file_sync(&path, None) {
-            Ok(bytes) => bytes,
-            Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
-              return Ok(None)
-            }
-            Err(err) => return Err(err.into()),
-          }
-        }
-        Err(err) => return Err(err.into()),
-      };
-      Ok(Some(DenoCompileModuleData {
-        media_type: MediaType::from_specifier(specifier),
-        specifier,
-        data: bytes,
-      }))
-    } else {
-      self.remote_modules.read(specifier).map(|maybe_entry| {
-        maybe_entry.map(|entry| DenoCompileModuleData {
-          media_type: entry.media_type,
-          specifier: entry.specifier,
-          data: match kind {
-            VfsFileSubDataKind::Raw => entry.data,
-            VfsFileSubDataKind::ModuleGraph => {
-              entry.transpiled_data.unwrap_or(entry.data)
-            }
-          },
-        })
-      })
-    }
-  }
-}
-
-/// This function will try to run this binary as a standalone binary
-/// produced by `deno compile`. It determines if this is a standalone
-/// binary by skipping over the trailer width at the end of the file,
-/// then checking for the magic trailer string `d3n0l4nd`. If found,
-/// the bundle is executed. If not, this function exits with `Ok(None)`.
-pub fn extract_standalone(
-  cli_args: Cow<Vec<OsString>>,
-) -> Result<Option<StandaloneData>, AnyError> {
-  let Some(data) = libsui::find_section("d3n0l4nd") else {
-    return Ok(None);
-  };
-
-  let DeserializedDataSection {
-    mut metadata,
-    npm_snapshot,
-    remote_modules,
-    source_maps,
-    vfs_root_entries,
-    vfs_files_data,
-  } = match deserialize_binary_data_section(data)? {
-    Some(data_section) => data_section,
-    None => return Ok(None),
-  };
-
-  let root_path = {
-    let maybe_current_exe = std::env::current_exe().ok();
-    let current_exe_name = maybe_current_exe
-      .as_ref()
-      .and_then(|p| p.file_name())
-      .map(|p| p.to_string_lossy())
-      // should never happen
-      .unwrap_or_else(|| Cow::Borrowed("binary"));
-    std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
-  };
-  let cli_args = cli_args.into_owned();
-  metadata.argv.reserve(cli_args.len() - 1);
-  for arg in cli_args.into_iter().skip(1) {
-    metadata.argv.push(arg.into_string().unwrap());
-  }
-  let vfs = {
-    let fs_root = VfsRoot {
-      dir: VirtualDirectory {
-        // align the name of the directory with the root dir
-        name: root_path.file_name().unwrap().to_string_lossy().to_string(),
-        entries: vfs_root_entries,
-      },
-      root_path: root_path.clone(),
-      start_file_offset: 0,
-    };
-    Arc::new(FileBackedVfs::new(
-      Cow::Borrowed(vfs_files_data),
-      fs_root,
-      metadata.vfs_case_sensitivity,
-    ))
-  };
-  Ok(Some(StandaloneData {
-    metadata,
-    modules: StandaloneModules {
-      remote_modules,
-      vfs: vfs.clone(),
-    },
-    npm_snapshot,
-    root_path,
-    source_maps,
-    vfs,
-  }))
-}
-
 pub struct WriteBinOptions<'a> {
   pub writer: File,
   pub display_output_filename: &'a str,
@@ -413,9 +170,8 @@ pub struct WriteBinOptions<'a> {
 pub struct DenoCompileBinaryWriter<'a> {
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
-  deno_dir: &'a DenoDir<CliSys>,
+  deno_dir: &'a DenoDir,
   emitter: &'a Emitter,
-  file_fetcher: &'a CliFileFetcher,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
   workspace_resolver: &'a WorkspaceResolver,
@@ -427,9 +183,8 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   pub fn new(
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
-    deno_dir: &'a DenoDir<CliSys>,
+    deno_dir: &'a DenoDir,
     emitter: &'a Emitter,
-    file_fetcher: &'a CliFileFetcher,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
     workspace_resolver: &'a WorkspaceResolver,
@@ -440,7 +195,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       cli_options,
       deno_dir,
       emitter,
-      file_fetcher,
       http_client_provider,
       npm_resolver,
       workspace_resolver,
@@ -496,19 +250,14 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let target = compile_flags.resolve_target();
     let binary_name = format!("denort-{target}.zip");
 
-    let binary_path_suffix =
-      match crate::version::DENO_VERSION_INFO.release_channel {
-        ReleaseChannel::Canary => {
-          format!(
-            "canary/{}/{}",
-            crate::version::DENO_VERSION_INFO.git_hash,
-            binary_name
-          )
-        }
-        _ => {
-          format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
-        }
-      };
+    let binary_path_suffix = match DENO_VERSION_INFO.release_channel {
+      ReleaseChannel::Canary => {
+        format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
+      }
+      _ => {
+        format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+      }
+    };
 
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
