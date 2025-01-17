@@ -44,6 +44,7 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
+use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
@@ -59,7 +60,6 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::process::NpmProcessStateProviderRc;
 use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
@@ -548,6 +548,9 @@ impl WebWorker {
         services.fs.clone(),
       ),
       deno_os::deno_os_worker::init_ops_and_esm(),
+      deno_process::deno_process::init_ops_and_esm(
+        services.npm_process_state_provider,
+      ),
       deno_node::deno_node::init_ops_and_esm::<
         PermissionsContainer,
         TInNpmPackageChecker,
@@ -562,9 +565,6 @@ impl WebWorker {
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
       ops::bootstrap::deno_bootstrap::init_ops_and_esm(

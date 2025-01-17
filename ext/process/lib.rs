@@ -38,6 +38,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use tokio::process::Command;
 
+pub mod ipc;
+use ipc::IpcJsonStreamResource;
+use ipc::IpcRefTracker;
+
 pub const UNSTABLE_FEATURE_NAME: &str = "process";
 
 #[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
@@ -153,6 +157,7 @@ deno_core::extension!(
     deprecated::op_run_status,
     deprecated::op_kill,
   ],
+  esm = ["40_process.js"],
   options = { get_npm_process_state: Option<NpmProcessStateProviderRc>  },
   state = |state, options| {
     state.put::<NpmProcessStateProviderRc>(options.get_npm_process_state.unwrap_or(deno_fs::sync::MaybeArc::new(EmptyNpmProcessStateProvider)));
@@ -462,13 +467,10 @@ fn create_command(
         fds_to_dup.push((ipc_fd2, ipc));
         fds_to_close.push(ipc_fd2);
         /* One end returned to parent process (this) */
-        let pipe_rid =
-          state
-            .resource_table
-            .add(deno_node::IpcJsonStreamResource::new(
-              ipc_fd1 as _,
-              deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
-            )?);
+        let pipe_rid = state.resource_table.add(IpcJsonStreamResource::new(
+          ipc_fd1 as _,
+          IpcRefTracker::new(state.external_ops_tracker.clone()),
+        )?);
         /* The other end passed to child process via NODE_CHANNEL_FD */
         command.env("NODE_CHANNEL_FD", format!("{}", ipc));
         ipc_rid = Some(pipe_rid);
@@ -532,12 +534,11 @@ fn create_command(
         let (hd1, hd2) = deno_io::bi_pipe_pair_raw()?;
 
         /* One end returned to parent process (this) */
-        let pipe_rid = Some(state.resource_table.add(
-          deno_node::IpcJsonStreamResource::new(
+        let pipe_rid =
+          Some(state.resource_table.add(IpcJsonStreamResource::new(
             hd1 as i64,
-            deno_node::IpcRefTracker::new(state.external_ops_tracker.clone()),
-          )?,
-        ));
+            IpcRefTracker::new(state.external_ops_tracker.clone()),
+          )?));
 
         /* The other end passed to child process via NODE_CHANNEL_FD */
         command.env("NODE_CHANNEL_FD", format!("{}", hd2 as i64));

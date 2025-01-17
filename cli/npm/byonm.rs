@@ -5,7 +5,7 @@ use std::sync::Arc;
 use deno_core::serde_json;
 use deno_resolver::npm::ByonmNpmResolver;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
-use deno_runtime::ops::process::NpmProcessStateProvider;
+use deno_runtime::deno_process::NpmProcessStateProvider;
 
 use crate::args::NpmProcessState;
 use crate::args::NpmProcessStateKind;
