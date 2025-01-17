@@ -34,7 +34,6 @@ use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::standalone::binary::NodeModules;
-use deno_lib::standalone::binary::SourceMapStore;
 use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::from_utf8_lossy_cow;
@@ -104,7 +103,6 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<DenoRtNpmModuleLoader>,
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker<DenoRtSys>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
-  source_maps: SourceMapStore,
   vfs: Arc<FileBackedVfs>,
   workspace_resolver: WorkspaceResolver,
 }
@@ -511,16 +509,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
   }
 
   fn get_source_map(&self, file_name: &str) -> Option<Cow<[u8]>> {
-    if file_name.starts_with("file:///") {
-      let url =
-        deno_path_util::url_from_directory_path(self.shared.vfs.root()).ok()?;
-      let file_url = Url::parse(file_name).ok()?;
-      let relative_path = url.make_relative(&file_url)?;
-      self.shared.source_maps.get(&relative_path)
-    } else {
-      self.shared.source_maps.get(file_name)
-    }
-    .map(Cow::Borrowed)
+    let url = Url::parse(file_name).ok()?;
+    self.shared.modules.get_source_map(&url)
   }
 
   fn get_source_mapped_source_line(
@@ -653,7 +643,6 @@ pub async fn run(
     modules,
     npm_snapshot,
     root_path,
-    source_maps,
     vfs,
   } = data;
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
@@ -883,7 +872,6 @@ pub async fn run(
       )),
       npm_registry_permission_checker,
       npm_req_resolver,
-      source_maps,
       vfs: vfs.clone(),
       workspace_resolver,
     }),
