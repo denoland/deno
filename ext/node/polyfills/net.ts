@@ -337,7 +337,7 @@ export function _normalizeArgs(args: unknown[]): NormalizedArgs {
   return arr;
 }
 
-async function _afterConnect(
+function _afterConnect(
   status: number,
   // deno-lint-ignore no-explicit-any
   handle: any,
@@ -381,7 +381,7 @@ async function _afterConnect(
     // Deno specific: run tls handshake if it's from a tls socket
     // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
     if (typeof handle.afterConnectTls === "function") {
-      await handle.afterConnectTls();
+      handle.afterConnectTls();
     }
 
     // Start the first read, or get an immediate EOF.
