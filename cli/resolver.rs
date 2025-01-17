@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,8 +9,6 @@ use dashmap::DashSet;
 use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
@@ -84,6 +83,62 @@ pub struct NpmModuleLoader {
   node_code_translator: Arc<CliNodeCodeTranslator>,
 }
 
+#[derive(Debug, Error, deno_error::JsError)]
+pub enum NpmModuleLoadError {
+  #[class(inherit)]
+  #[error(transparent)]
+  NotSupportedKindInNpm(#[from] NotSupportedKindInNpmError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
+  #[class(inherit)]
+  #[error(transparent)]
+  TranslateCjsToEsm(#[from] node_resolver::analyze::TranslateCjsToEsmError),
+  #[class(inherit)]
+  #[error("{}", format_message(file_path, maybe_referrer))]
+  Fs {
+    file_path: PathBuf,
+    maybe_referrer: Option<ModuleSpecifier>,
+    #[source]
+    #[inherit]
+    source: deno_runtime::deno_io::fs::FsError,
+  },
+}
+
+fn format_message(
+  file_path: &std::path::Path,
+  maybe_referrer: &Option<ModuleSpecifier>,
+) -> String {
+  if file_path.is_dir() {
+    // directory imports are not allowed when importing from an
+    // ES module, so provide the user with a helpful error message
+    let dir_path = file_path;
+    let mut msg = "Directory import ".to_string();
+    msg.push_str(&dir_path.to_string_lossy());
+    if let Some(referrer) = maybe_referrer {
+      msg.push_str(" is not supported resolving import from ");
+      msg.push_str(referrer.as_str());
+      let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
+        .iter()
+        .find(|e| dir_path.join(e).is_file());
+      if let Some(entrypoint_name) = entrypoint_name {
+        msg.push_str("\nDid you mean to import ");
+        msg.push_str(entrypoint_name);
+        msg.push_str(" within the directory?");
+      }
+    }
+    msg
+  } else {
+    let mut msg = "Unable to load ".to_string();
+    msg.push_str(&file_path.to_string_lossy());
+    if let Some(referrer) = maybe_referrer {
+      msg.push_str(" imported from ");
+      msg.push_str(referrer.as_str());
+    }
+    msg
+  }
+}
+
 impl NpmModuleLoader {
   pub fn new(
     cjs_tracker: Arc<CliCjsTracker>,
@@ -101,50 +156,26 @@ impl NpmModuleLoader {
     &self,
     specifier: &ModuleSpecifier,
     maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
+  ) -> Result<ModuleCodeStringSource, NpmModuleLoadError> {
     let file_path = specifier.to_file_path().unwrap();
     let code = self
       .fs
       .read_file_async(file_path.clone(), None)
       .await
-      .map_err(AnyError::from)
-      .with_context(|| {
-        if file_path.is_dir() {
-          // directory imports are not allowed when importing from an
-          // ES module, so provide the user with a helpful error message
-          let dir_path = file_path;
-          let mut msg = "Directory import ".to_string();
-          msg.push_str(&dir_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" is not supported resolving import from ");
-            msg.push_str(referrer.as_str());
-            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
-              .iter()
-              .find(|e| dir_path.join(e).is_file());
-            if let Some(entrypoint_name) = entrypoint_name {
-              msg.push_str("\nDid you mean to import ");
-              msg.push_str(entrypoint_name);
-              msg.push_str(" within the directory?");
-            }
-          }
-          msg
-        } else {
-          let mut msg = "Unable to load ".to_string();
-          msg.push_str(&file_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" imported from ");
-            msg.push_str(referrer.as_str());
-          }
-          msg
-        }
+      .map_err(|source| NpmModuleLoadError::Fs {
+        file_path,
+        maybe_referrer: maybe_referrer.cloned(),
+        source,
       })?;
 
     let media_type = MediaType::from_specifier(specifier);
     if media_type.is_emittable() {
-      return Err(AnyError::from(NotSupportedKindInNpmError {
-        media_type,
-        specifier: specifier.clone(),
-      }));
+      return Err(NpmModuleLoadError::NotSupportedKindInNpm(
+        NotSupportedKindInNpmError {
+          media_type,
+          specifier: specifier.clone(),
+        },
+      ));
     }
 
     let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {

@@ -82,6 +82,7 @@ use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
 use import_map::resolve_import_map_value_from_specifier;
+pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;

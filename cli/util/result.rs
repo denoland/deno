@@ -36,7 +36,7 @@ pub fn any_and_jserrorbox_downcast_ref<
     })
     .or_else(|| {
       err.downcast_ref::<CoreError>().and_then(|e| match e {
-        CoreError::JsNative(e) => e.as_any().downcast_ref::<E>(),
+        CoreError::JsBox(e) => e.as_any().downcast_ref::<E>(),
         _ => None,
       })
     })
