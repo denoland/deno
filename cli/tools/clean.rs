@@ -4,8 +4,8 @@ use std::path::Path;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_lib::cache::DenoDir;
 
+use crate::cache::DenoDir;
 use crate::colors;
 use crate::display;
 use crate::sys::CliSys;

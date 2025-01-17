@@ -6,6 +6,7 @@ import { $, GitLogOutput, semver } from "./deps.ts";
 const workspace = await DenoWorkspace.load();
 const repo = workspace.repo;
 const cliCrate = workspace.getCliCrate();
+const denoRtCrate = workspace.getDenoRtCrate();
 const originalCliVersion = cliCrate.version;
 
 await bumpCiCacheVersion();
@@ -20,6 +21,8 @@ if (Deno.args.some((a) => a === "--patch")) {
 } else {
   await cliCrate.promptAndIncrement();
 }
+
+denoRtCrate.setVersion(cliCrate.version);
 
 // increment the dependency crate versions
 for (const crate of workspace.getCliDependencyCrates()) {

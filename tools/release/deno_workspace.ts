@@ -42,6 +42,10 @@ export class DenoWorkspace {
     return this.getCrate("deno");
   }
 
+  getDenoRtCrate() {
+    return this.getCrate("denort");
+  }
+
   getCrate(name: string) {
     return this.#repo.getCrate(name);
   }

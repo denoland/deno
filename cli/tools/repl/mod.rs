@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
@@ -244,7 +245,7 @@ pub async fn run(
   if !cli_options.is_quiet() {
     let mut handle = io::stdout().lock();
 
-    writeln!(handle, "Deno {}", crate::version::DENO_VERSION_INFO.deno)?;
+    writeln!(handle, "Deno {}", DENO_VERSION_INFO.deno)?;
     writeln!(handle, "exit using ctrl+d, ctrl+c, or close()")?;
 
     if repl_flags.is_default_command {
