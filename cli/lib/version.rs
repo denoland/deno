@@ -14,7 +14,7 @@ pub fn otel_runtime_config() -> OtelRuntimeConfig {
 }
 
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_HASH");
-const TYPESCRIPT: &str = env!("TS_VERSION");
+const TYPESCRIPT: &str = "5.6.2";
 const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 // TODO(bartlomieju): ideally we could remove this const.
 const IS_CANARY: bool = option_env!("DENO_CANARY").is_some();

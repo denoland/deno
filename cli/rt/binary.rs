@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::SourceMapStore;
 use deno_lib::standalone::binary::MAGIC_BYTES;
@@ -207,7 +208,7 @@ impl StandaloneModules {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, AnyError> {
+  ) -> Result<Option<&'a Url>, JsErrorBox> {
     if specifier.scheme() == "file" {
       Ok(Some(specifier))
     } else {
@@ -407,12 +408,15 @@ impl RemoteModulesStore {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, AnyError> {
+  ) -> Result<Option<&'a Url>, JsErrorBox> {
     let mut count = 0;
     let mut current = specifier;
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", specifier);
+        return Err(JsErrorBox::generic(format!(
+          "Too many redirects resolving '{}'",
+          specifier
+        )));
       }
       match self.specifiers.get(current) {
         Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {

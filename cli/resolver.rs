@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;

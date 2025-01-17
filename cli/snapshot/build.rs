@@ -16,8 +16,6 @@ fn main() {
 fn create_cli_snapshot(snapshot_path: std::path::PathBuf) {
   use deno_runtime::ops::bootstrap::SnapshotOptions;
 
-  // todo(THIS PR): include the typescript version in this crate
-  // so that it can be asserted when building the CLI
   let snapshot_options = SnapshotOptions {
     ts_version: shared::TS_VERSION.to_string(),
     v8_version: deno_runtime::deno_core::v8::VERSION_STRING,

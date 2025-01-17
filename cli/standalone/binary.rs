@@ -19,7 +19,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
-use deno_error::JsErrorBox;
 use deno_graph::ModuleGraph;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;

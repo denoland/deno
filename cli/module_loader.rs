@@ -39,6 +39,7 @@ use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
 use deno_lib::loader::NotSupportedKindInNpmError;
+use deno_lib::loader::NpmModuleLoadError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -436,7 +437,7 @@ impl ModuleLoaderFactory for CliModuleLoaderFactory {
 pub enum LoadCodeSourceError {
   #[class(inherit)]
   #[error(transparent)]
-  NpmModuleLoad(crate::resolver::NpmModuleLoadError),
+  NpmModuleLoad(NpmModuleLoadError),
   #[class(inherit)]
   #[error(transparent)]
   LoadPreparedModule(#[from] LoadPreparedModuleError),

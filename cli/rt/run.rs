@@ -380,7 +380,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
           let code_source = shared
             .npm_module_loader
             .load(&original_specifier, maybe_referrer.as_ref())
-            .await?;
+            .await
+            .map_err(JsErrorBox::from_err)?;
           let code_cache_entry = shared.get_code_cache(
             &code_source.found_url,
             code_source.code.as_bytes(),
@@ -443,7 +444,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
               let source = shared
                 .node_code_translator
                 .translate_cjs_to_esm(&module_specifier, Some(source))
-                .await?;
+                .await
+                .map_err(JsErrorBox::from_err)?;
               let module_source = match source {
                 Cow::Owned(source) => ModuleSourceCode::String(source.into()),
                 Cow::Borrowed(source) => {

@@ -11,13 +11,11 @@ use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
+use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::errors::ResolvePkgJsonBinExportError;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
 
@@ -286,29 +284,6 @@ impl CliMainWorker {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveBinaryEntrypointError {
-  #[class(inherit)]
-  #[error(transparent)]
-  ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
-  #[class(generic)]
-  #[error("{original:#}\n\nFallback failed: {fallback:#}")]
-  Fallback {
-    fallback: ResolveBinaryEntrypointFallbackError,
-    original: ResolvePkgJsonBinExportError,
-  },
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum ResolveBinaryEntrypointFallbackError {
-  #[class(inherit)]
-  #[error(transparent)]
-  PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
-  #[class(generic)]
-  #[error("Cannot find module '{0}'")]
-  ModuleNotFound(ModuleSpecifier),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CreateCustomWorkerError {
   #[class(inherit)]
   #[error(transparent)]
@@ -326,7 +301,7 @@ pub enum CreateCustomWorkerError {
   UrlParse(#[from] deno_core::url::ParseError),
   #[class(inherit)]
   #[error(transparent)]
-  ResolveBinaryEntrypoint(#[from] ResolveBinaryEntrypointError),
+  ResolveNpmBinaryEntrypoint(#[from] ResolveNpmBinaryEntrypointError),
   #[class(inherit)]
   #[error(transparent)]
   NpmPackageReq(JsErrorBox),

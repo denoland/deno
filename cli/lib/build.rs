@@ -8,8 +8,6 @@ fn main() {
     "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
     &commit_hash[..7]
   );
-  let ts_version = "5.6.2";
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version);
 }
 
 fn git_commit_hash() -> String {

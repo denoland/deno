@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_error::JsErrorBox;
 use deno_lib::loader::NpmModuleLoader;
 use deno_media_type::MediaType;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -63,7 +63,7 @@ impl CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     source: Cow<'a, str>,
-  ) -> Result<CjsAnalysis<'a>, AnyError> {
+  ) -> Result<CjsAnalysis<'a>, JsErrorBox> {
     let media_type = MediaType::from_specifier(specifier);
     if media_type == MediaType::Json {
       return Ok(CjsAnalysis::Cjs(CjsAnalysisExports {
@@ -73,12 +73,14 @@ impl CjsCodeAnalyzer {
     }
 
     let cjs_tracker = self.cjs_tracker.clone();
-    let is_maybe_cjs = cjs_tracker.is_maybe_cjs(specifier, media_type)?;
+    let is_maybe_cjs = cjs_tracker
+      .is_maybe_cjs(specifier, media_type)
+      .map_err(JsErrorBox::from_err)?;
     let analysis = if is_maybe_cjs {
       let maybe_cjs = deno_core::unsync::spawn_blocking({
         let specifier = specifier.clone();
         let source: Arc<str> = source.to_string().into();
-        move || -> Result<_, AnyError> {
+        move || -> Result<_, JsErrorBox> {
           let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
             specifier,
             text: source.clone(),
@@ -86,13 +88,16 @@ impl CjsCodeAnalyzer {
             capture_tokens: true,
             scope_analysis: false,
             maybe_syntax: None,
-          })?;
+          })
+          .map_err(JsErrorBox::from_err)?;
           let is_script = parsed_source.compute_is_script();
-          let is_cjs = cjs_tracker.is_cjs_with_known_is_script(
-            parsed_source.specifier(),
-            media_type,
-            is_script,
-          )?;
+          let is_cjs = cjs_tracker
+            .is_cjs_with_known_is_script(
+              parsed_source.specifier(),
+              media_type,
+              is_script,
+            )
+            .map_err(JsErrorBox::from_err)?;
           if is_cjs {
             let analysis = parsed_source.analyze_cjs();
             Ok(Some(CjsAnalysisExports {
@@ -124,7 +129,7 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     source: Option<Cow<'a, str>>,
-  ) -> Result<CjsAnalysis<'a>, AnyError> {
+  ) -> Result<CjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,
       None => {
