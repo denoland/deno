@@ -3786,6 +3786,7 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(
       Arg::new("internal-use-lsc-cache")
         .long("internal-use-lsc-cache")
+        .action(ArgAction::SetTrue)
         .hide(true),
     )
 }
