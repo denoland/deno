@@ -596,7 +596,7 @@ pub struct CliOptions {
   sys: CliSys,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub deno_dir_provider: Arc<DenoDirProvider<CliSys>>,
+  pub deno_dir_provider: Arc<DenoDirProvider>,
   pub scope_options: Option<Arc<ScopeOptions>>,
 }
 
