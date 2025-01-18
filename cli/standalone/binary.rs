@@ -919,10 +919,8 @@ fn write_binary_bytes(
 /// * <specifiers>
 /// * <redirects>
 /// * <remote_modules>
-/// * <cjs_export_analysis>
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
-/// * <source_map_data>
 /// * d3n0l4nd
 #[allow(clippy::too_many_arguments)]
 fn serialize_binary_data_section(
