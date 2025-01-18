@@ -27,6 +27,7 @@ hmr = ["include_js_files_for_snapshotting"]
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+snapshotting = ["deno_ast"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -73,7 +74,7 @@ serde.workspace = true
 winapi.workspace = true
 
 [dependencies]
-deno_ast.workspace = true
+deno_ast = { workspace = true, optional = true }
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_canvas.workspace = true

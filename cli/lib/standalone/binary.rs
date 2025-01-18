@@ -9,6 +9,7 @@ use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_semver::Version;
 use indexmap::IndexMap;
+use node_resolver::analyze::CjsAnalysisExports;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -126,30 +127,22 @@ impl<'a> DenoRtDeserializable<'a> for SpecifierId {
   }
 }
 
+#[derive(Deserialize, Serialize)]
+pub enum CjsExportAnalysisEntry {
+  Esm,
+  Cjs(CjsAnalysisExports),
+}
+
+const HAS_TRANSPILED_FLAG: u8 = 1 << 0;
+const HAS_SOURCE_MAP_FLAG: u8 = 1 << 1;
+const HAS_CJS_EXPORT_ANALYSIS_FLAG: u8 = 1 << 2;
+
 pub struct RemoteModuleEntry<'a> {
   pub media_type: MediaType,
   pub data: Cow<'a, [u8]>,
   pub maybe_transpiled: Option<Cow<'a, [u8]>>,
-}
-
-impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
-  fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    let (input, media_type) = MediaType::deserialize(input)?;
-    let (input, data) = read_bytes_with_u32_len(input)?;
-    let (input, transpiled) = read_bytes_with_u32_len(input)?;
-    Ok((
-      input,
-      Self {
-        media_type,
-        data: Cow::Borrowed(data),
-        maybe_transpiled: if transpiled.is_empty() {
-          None
-        } else {
-          Some(Cow::Borrowed(transpiled))
-        },
-      },
-    ))
-  }
+  pub maybe_source_map: Option<Cow<'a, [u8]>>,
+  pub maybe_cjs_export_analysis: Option<Cow<'a, [u8]>>,
 }
 
 impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
@@ -157,15 +150,74 @@ impl<'a> DenoRtSerializable<'a> for RemoteModuleEntry<'a> {
     &'a self,
     builder: &mut capacity_builder::BytesBuilder<'a, Vec<u8>>,
   ) {
+    fn append_maybe_data<'a>(
+      builder: &mut capacity_builder::BytesBuilder<'a, Vec<u8>>,
+      maybe_data: Option<&'a [u8]>,
+    ) {
+      if let Some(data) = maybe_data {
+        builder.append_le(data.len() as u32);
+        builder.append(data);
+      }
+    }
+
+    let mut has_data_flags = 0;
+    if self.maybe_transpiled.is_some() {
+      has_data_flags |= HAS_TRANSPILED_FLAG;
+    }
+    if self.maybe_source_map.is_some() {
+      has_data_flags |= HAS_SOURCE_MAP_FLAG;
+    }
+    if self.maybe_cjs_export_analysis.is_some() {
+      has_data_flags |= HAS_CJS_EXPORT_ANALYSIS_FLAG;
+    }
     builder.append(serialize_media_type(self.media_type));
     builder.append_le(self.data.len() as u32);
     builder.append(self.data.as_ref());
-    builder.append_le(
-      self.maybe_transpiled.as_ref().map(|t| t.len()).unwrap_or(0) as u32,
-    );
-    if let Some(data) = &self.maybe_transpiled {
-      builder.append(data.as_ref());
+    builder.append(has_data_flags);
+    append_maybe_data(builder, self.maybe_transpiled.as_deref());
+    append_maybe_data(builder, self.maybe_source_map.as_deref());
+    append_maybe_data(builder, self.maybe_cjs_export_analysis.as_deref());
+  }
+}
+
+impl<'a> DenoRtDeserializable<'a> for RemoteModuleEntry<'a> {
+  fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
+    #[allow(clippy::type_complexity)]
+    fn deserialize_data_if_has_flag(
+      input: &[u8],
+      has_data_flags: u8,
+      flag: u8,
+    ) -> std::io::Result<(&[u8], Option<Cow<[u8]>>)> {
+      if has_data_flags & flag != 0 {
+        let (input, bytes) = read_bytes_with_u32_len(input)?;
+        Ok((input, Some(Cow::Borrowed(bytes))))
+      } else {
+        Ok((input, None))
+      }
     }
+
+    let (input, media_type) = MediaType::deserialize(input)?;
+    let (input, data) = read_bytes_with_u32_len(input)?;
+    let (input, has_data_flags) = read_u8(input)?;
+    let (input, maybe_transpiled) =
+      deserialize_data_if_has_flag(input, has_data_flags, HAS_TRANSPILED_FLAG)?;
+    let (input, maybe_source_map) =
+      deserialize_data_if_has_flag(input, has_data_flags, HAS_SOURCE_MAP_FLAG)?;
+    let (input, maybe_cjs_export_analysis) = deserialize_data_if_has_flag(
+      input,
+      has_data_flags,
+      HAS_CJS_EXPORT_ANALYSIS_FLAG,
+    )?;
+    Ok((
+      input,
+      Self {
+        media_type,
+        data: Cow::Borrowed(data),
+        maybe_transpiled,
+        maybe_source_map,
+        maybe_cjs_export_analysis,
+      },
+    ))
   }
 }
 
@@ -232,6 +284,14 @@ pub struct SpecifierDataStore<TData> {
   data: IndexMap<SpecifierId, TData>,
 }
 
+impl<TData> Default for SpecifierDataStore<TData> {
+  fn default() -> Self {
+    Self {
+      data: IndexMap::new(),
+    }
+  }
+}
+
 impl<TData> SpecifierDataStore<TData> {
   pub fn with_capacity(capacity: usize) -> Self {
     Self {
@@ -246,6 +306,10 @@ impl<TData> SpecifierDataStore<TData> {
   #[allow(clippy::len_without_is_empty)]
   pub fn len(&self) -> usize {
     self.data.len()
+  }
+
+  pub fn contains(&self, specifier: SpecifierId) -> bool {
+    self.data.contains_key(&specifier)
   }
 
   pub fn add(&mut self, specifier: SpecifierId, value: TData) {
@@ -305,6 +369,11 @@ fn read_u32(input: &[u8]) -> std::io::Result<(&[u8], u32)> {
   let (input, len_bytes) = read_bytes(input, 4)?;
   let len = u32::from_le_bytes(len_bytes.try_into().unwrap());
   Ok((input, len))
+}
+
+fn read_u8(input: &[u8]) -> std::io::Result<(&[u8], u8)> {
+  check_has_len(input, 1)?;
+  Ok((&input[1..], input[0]))
 }
 
 fn read_bytes(input: &[u8], len: usize) -> std::io::Result<(&[u8], &[u8])> {

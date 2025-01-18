@@ -6,15 +6,17 @@ use std::sync::Arc;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::loader::NpmModuleLoader;
+use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_media_type::MediaType;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
-use deno_runtime::deno_fs;
+use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::NodeCodeTranslator;
 
+use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
 
 pub type DenoRtCjsTracker =
@@ -48,18 +50,24 @@ pub type DenoRtNpmReqResolver = NpmReqResolver<
 
 pub struct CjsCodeAnalyzer {
   cjs_tracker: Arc<DenoRtCjsTracker>,
-  fs: deno_fs::FileSystemRc,
+  modules: Arc<StandaloneModules>,
+  sys: DenoRtSys,
 }
 
 impl CjsCodeAnalyzer {
   pub fn new(
     cjs_tracker: Arc<DenoRtCjsTracker>,
-    fs: deno_fs::FileSystemRc,
+    modules: Arc<StandaloneModules>,
+    sys: DenoRtSys,
   ) -> Self {
-    Self { cjs_tracker, fs }
+    Self {
+      cjs_tracker,
+      modules,
+      sys,
+    }
   }
 
-  async fn inner_cjs_analysis<'a>(
+  fn inner_cjs_analysis<'a>(
     &self,
     specifier: &Url,
     source: Cow<'a, str>,
@@ -77,43 +85,42 @@ impl CjsCodeAnalyzer {
       .is_maybe_cjs(specifier, media_type)
       .map_err(JsErrorBox::from_err)?;
     let analysis = if is_maybe_cjs {
-      let maybe_cjs = deno_core::unsync::spawn_blocking({
-        let specifier = specifier.clone();
-        let source: Arc<str> = source.to_string().into();
-        move || -> Result<_, JsErrorBox> {
-          let parsed_source = deno_ast::parse_program(deno_ast::ParseParams {
-            specifier,
-            text: source.clone(),
-            media_type,
-            capture_tokens: true,
-            scope_analysis: false,
-            maybe_syntax: None,
-          })
-          .map_err(JsErrorBox::from_err)?;
-          let is_script = parsed_source.compute_is_script();
-          let is_cjs = cjs_tracker
-            .is_cjs_with_known_is_script(
-              parsed_source.specifier(),
-              media_type,
-              is_script,
-            )
-            .map_err(JsErrorBox::from_err)?;
-          if is_cjs {
-            let analysis = parsed_source.analyze_cjs();
-            Ok(Some(CjsAnalysisExports {
-              exports: analysis.exports,
-              reexports: analysis.reexports,
-            }))
-          } else {
-            Ok(None)
+      let data = self
+        .modules
+        .read(specifier)?
+        .and_then(|d| d.cjs_export_analysis);
+      match data {
+        Some(data) => {
+          let data: CjsExportAnalysisEntry = bincode::deserialize(&data)
+            .map_err(|err| JsErrorBox::generic(err.to_string()))?;
+          match data {
+            CjsExportAnalysisEntry::Esm => {
+              cjs_tracker.set_is_known_script(specifier, false);
+              CjsAnalysis::Esm(source)
+            }
+            CjsExportAnalysisEntry::Cjs(analysis) => {
+              cjs_tracker.set_is_known_script(specifier, true);
+              CjsAnalysis::Cjs(analysis)
+            }
           }
         }
-      })
-      .await
-      .unwrap()?;
-      match maybe_cjs {
-        Some(cjs) => CjsAnalysis::Cjs(cjs),
-        None => CjsAnalysis::Esm(source),
+        None => {
+          if log::log_enabled!(log::Level::Debug) {
+            if self.sys.is_specifier_in_vfs(specifier) {
+              log::debug!(
+                "No CJS export analysis was stored for '{}'. Assuming ESM. This might indicate a bug in Deno.",
+                specifier
+              );
+            } else {
+              log::debug!(
+                "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({}). Assuming ESM.",
+                specifier
+              );
+            }
+          }
+          // assume ESM as we don't have access to swc here
+          CjsAnalysis::Esm(source)
+        }
       }
     } else {
       CjsAnalysis::Esm(source)
@@ -133,9 +140,10 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
     let source = match source {
       Some(source) => source,
       None => {
-        if let Ok(path) = specifier.to_file_path() {
+        if let Ok(path) = deno_path_util::url_to_file_path(specifier) {
+          // todo(dsherret): should this use the sync method instead?
           if let Ok(source_from_file) =
-            self.fs.read_text_file_lossy_async(path, None).await
+            self.sys.read_text_file_lossy_async(path, None).await
           {
             source_from_file
           } else {
@@ -152,6 +160,6 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
         }
       }
     };
-    self.inner_cjs_analysis(specifier, source).await
+    self.inner_cjs_analysis(specifier, source)
   }
 }

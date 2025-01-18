@@ -25,7 +25,7 @@ use deno_graph::ModuleGraph;
 use deno_lib::args::CaData;
 use deno_lib::args::UnstableConfig;
 use deno_lib::shared::ReleaseChannel;
-use deno_lib::standalone::binary::DenoRtSerializable;
+use deno_lib::standalone::binary::CjsExportAnalysisEntry;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::NodeModules;
 use deno_lib::standalone::binary::RemoteModuleEntry;
@@ -38,7 +38,6 @@ use deno_lib::standalone::binary::MAGIC_BYTES;
 use deno_lib::standalone::virtual_fs::BuiltVfs;
 use deno_lib::standalone::virtual_fs::VfsBuilder;
 use deno_lib::standalone::virtual_fs::VfsEntry;
-use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_lib::standalone::virtual_fs::WindowsSystemRootablePath;
@@ -50,6 +49,8 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
 use indexmap::IndexMap;
+use node_resolver::analyze::CjsAnalysis;
+use node_resolver::analyze::CjsCodeAnalyzer;
 
 use super::virtual_fs::output_vfs;
 use crate::args::CliOptions;
@@ -57,6 +58,7 @@ use crate::args::CompileFlags;
 use crate::cache::DenoDir;
 use crate::emit::Emitter;
 use crate::http_util::HttpClientProvider;
+use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::util::archive;
@@ -184,6 +186,7 @@ pub struct WriteBinOptions<'a> {
 }
 
 pub struct DenoCompileBinaryWriter<'a> {
+  cjs_code_analyzer: CliCjsCodeAnalyzer,
   cjs_tracker: &'a CliCjsTracker,
   cli_options: &'a CliOptions,
   deno_dir: &'a DenoDir,
@@ -197,6 +200,7 @@ pub struct DenoCompileBinaryWriter<'a> {
 impl<'a> DenoCompileBinaryWriter<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
+    cjs_code_analyzer: CliCjsCodeAnalyzer,
     cjs_tracker: &'a CliCjsTracker,
     cli_options: &'a CliOptions,
     deno_dir: &'a DenoDir,
@@ -207,6 +211,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
+      cjs_code_analyzer,
       cjs_tracker,
       cli_options,
       deno_dir,
@@ -246,7 +251,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         )
       }
     }
-    self.write_standalone_binary(options, original_binary)
+    self.write_standalone_binary(options, original_binary).await
   }
 
   async fn get_base_binary(
@@ -344,7 +349,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
   /// This functions creates a standalone deno binary by appending a bundle
   /// and magic trailer to the currently executing binary.
   #[allow(clippy::too_many_arguments)]
-  fn write_standalone_binary(
+  async fn write_standalone_binary(
     &self,
     options: WriteBinOptions<'_>,
     original_bin: Vec<u8>,
@@ -392,22 +397,46 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let mut specifier_store = SpecifierStore::with_capacity(specifiers_count);
     let mut remote_modules_store =
       SpecifierDataStore::with_capacity(specifiers_count);
-    let mut source_maps = Vec::with_capacity(specifiers_count);
-    // todo(dsherret): transpile in parallel
+    // todo(dsherret): transpile and analyze CJS in parallel
     for module in graph.modules() {
       if module.specifier().scheme() == "data" {
         continue; // don't store data urls as an entry as they're in the code
       }
-      let (maybe_original_source, maybe_transpiled, media_type) = match module {
+      let mut maybe_source_map = None;
+      let mut maybe_transpiled = None;
+      let mut maybe_cjs_analysis = None;
+      let (maybe_original_source, media_type) = match module {
         deno_graph::Module::Js(m) => {
+          let specifier = &m.specifier;
           let original_bytes = m.source.as_bytes();
-          let maybe_transpiled = if m.media_type.is_emittable() {
-            let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
-              &m.specifier,
+          if self.cjs_tracker.is_maybe_cjs(specifier, m.media_type)? {
+            if self.cjs_tracker.is_cjs_with_known_is_script(
+              specifier,
               m.media_type,
               m.is_script,
-            )?;
-            let module_kind = ModuleKind::from_is_cjs(is_cjs);
+            )? {
+              let cjs_analysis = self
+                .cjs_code_analyzer
+                .analyze_cjs(
+                  module.specifier(),
+                  Some(Cow::Borrowed(m.source.as_ref())),
+                )
+                .await?;
+              maybe_cjs_analysis = Some(match cjs_analysis {
+                CjsAnalysis::Esm(_) => CjsExportAnalysisEntry::Esm,
+                CjsAnalysis::Cjs(exports) => {
+                  CjsExportAnalysisEntry::Cjs(exports)
+                }
+              });
+            } else {
+              maybe_cjs_analysis = Some(CjsExportAnalysisEntry::Esm);
+            }
+          }
+          if m.media_type.is_emittable() {
+            let module_kind = match maybe_cjs_analysis.as_ref() {
+              Some(CjsExportAnalysisEntry::Cjs(_)) => ModuleKind::Cjs,
+              _ => ModuleKind::Esm,
+            };
             let (source, source_map) =
               self.emitter.emit_parsed_source_for_deno_compile(
                 &m.specifier,
@@ -416,49 +445,42 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 &m.source,
               )?;
             if source != m.source.as_ref() {
-              source_maps.push((&m.specifier, source_map));
-              Some(source.into_bytes())
-            } else {
-              None
+              maybe_source_map = Some(source_map.into_bytes());
+              maybe_transpiled = Some(source.into_bytes());
             }
-          } else {
-            None
-          };
-          (Some(original_bytes), maybe_transpiled, m.media_type)
+          }
+          (Some(original_bytes), m.media_type)
         }
         deno_graph::Module::Json(m) => {
-          (Some(m.source.as_bytes()), None, m.media_type)
+          (Some(m.source.as_bytes()), m.media_type)
         }
         deno_graph::Module::Wasm(m) => {
-          (Some(m.source.as_ref()), None, MediaType::Wasm)
+          (Some(m.source.as_ref()), MediaType::Wasm)
         }
         deno_graph::Module::Npm(_)
         | deno_graph::Module::Node(_)
-        | deno_graph::Module::External(_) => (None, None, MediaType::Unknown),
+        | deno_graph::Module::External(_) => (None, MediaType::Unknown),
       };
       if let Some(original_source) = maybe_original_source {
+        let maybe_cjs_export_analysis = maybe_cjs_analysis
+          .as_ref()
+          .map(bincode::serialize)
+          .transpose()?;
         if module.specifier().scheme() == "file" {
           let file_path = deno_path_util::url_to_file_path(module.specifier())?;
           vfs
             .add_file_with_data(
               &file_path,
-              original_source.to_vec(),
-              VfsFileSubDataKind::Raw,
+              deno_lib::standalone::virtual_fs::AddFileDataOptions {
+                data: original_source.to_vec(),
+                maybe_transpiled,
+                maybe_source_map,
+                maybe_cjs_export_analysis,
+              },
             )
             .with_context(|| {
               format!("Failed adding '{}'", file_path.display())
             })?;
-          if let Some(transpiled_source) = maybe_transpiled {
-            vfs
-              .add_file_with_data(
-                &file_path,
-                transpiled_source,
-                VfsFileSubDataKind::ModuleGraph,
-              )
-              .with_context(|| {
-                format!("Failed adding '{}'", file_path.display())
-              })?;
-          }
         } else {
           let specifier_id = specifier_store.get_or_add(module.specifier());
           remote_modules_store.add(
@@ -467,6 +489,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
               media_type,
               data: Cow::Borrowed(original_source),
               maybe_transpiled: maybe_transpiled.map(Cow::Owned),
+              maybe_source_map: maybe_source_map.map(Cow::Owned),
+              maybe_cjs_export_analysis: maybe_cjs_export_analysis
+                .map(Cow::Owned),
             },
           );
         }
@@ -498,7 +523,48 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       }
     }
 
+    // do CJS export analysis on all the files in the VFS
+    // todo(dsherret): analyze cjs in parallel
+    let mut to_add = Vec::new();
+    for (file_path, file) in vfs.iter_files() {
+      if file.cjs_export_analysis_offset.is_some() {
+        continue; // already analyzed
+      }
+      let specifier = deno_path_util::url_from_file_path(&file_path)?;
+      let media_type = MediaType::from_specifier(&specifier);
+      if self.cjs_tracker.is_maybe_cjs(&specifier, media_type)? {
+        let maybe_source = vfs
+          .file_bytes(file.offset)
+          .map(|text| String::from_utf8_lossy(text));
+        let cjs_analysis_result = self
+          .cjs_code_analyzer
+          .analyze_cjs(&specifier, maybe_source)
+          .await;
+        let maybe_analysis = match cjs_analysis_result {
+          Ok(CjsAnalysis::Esm(_)) => Some(CjsExportAnalysisEntry::Esm),
+          Ok(CjsAnalysis::Cjs(exports)) => {
+            Some(CjsExportAnalysisEntry::Cjs(exports))
+          }
+          Err(err) => {
+            log::debug!(
+              "Ignoring cjs export analysis for '{}': {}",
+              specifier,
+              err
+            );
+            None
+          }
+        };
+        if let Some(analysis) = &maybe_analysis {
+          to_add.push((file_path, bincode::serialize(analysis)?));
+        }
+      }
+    }
+    for (file_path, analysis) in to_add {
+      vfs.add_cjs_export_analysis(&file_path, analysis);
+    }
+
     let vfs = self.build_vfs_consolidating_global_npm_cache(vfs);
+
     let root_dir_url = match &vfs.root_path {
       WindowsSystemRootablePath::Path(dir) => {
         Some(url_from_directory_path(dir)?)
@@ -523,16 +589,6 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     } else {
       None
     };
-
-    let mut source_map_store =
-      SpecifierDataStore::with_capacity(source_maps.len());
-    for (specifier, source_map) in source_maps {
-      let specifier_id = specifier_store.get_or_add(specifier);
-      source_map_store.add(
-        specifier_id,
-        SerializableBytesWithLen(Cow::Owned(source_map.into_bytes())),
-      );
-    }
 
     let node_modules = match &self.npm_resolver {
       CliNpmResolver::Managed(_) => {
@@ -643,19 +699,18 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs_case_sensitivity: vfs.case_sensitivity,
     };
 
-    write_binary_bytes(
-      writer,
-      original_bin,
+    let data_section_bytes = serialize_binary_data_section(
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
       &specifier_store.for_serialization(&root_dir_url),
       &redirects_store,
       &remote_modules_store,
-      &source_map_store,
       &vfs,
-      compile_flags,
     )
-    .context("Writing binary bytes")
+    .context("Serializing binary data section.")?;
+
+    write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
+      .context("Writing binary bytes")
   }
 
   fn fill_npm_vfs(&self, builder: &mut VfsBuilder) -> Result<(), AnyError> {
@@ -830,26 +885,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 fn write_binary_bytes(
   mut file_writer: File,
   original_bin: Vec<u8>,
-  metadata: &Metadata,
-  npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
-  specifiers: &SpecifierStoreForSerialization,
-  redirects: &SpecifierDataStore<SpecifierId>,
-  remote_modules: &SpecifierDataStore<RemoteModuleEntry<'_>>,
-  source_map_store: &SpecifierDataStore<SerializableBytesWithLen<'_>>,
-  vfs: &BuiltVfs,
+  data_section_bytes: Vec<u8>,
   compile_flags: &CompileFlags,
 ) -> Result<(), AnyError> {
-  let data_section_bytes = serialize_binary_data_section(
-    metadata,
-    npm_snapshot,
-    specifiers,
-    redirects,
-    remote_modules,
-    source_map_store,
-    vfs,
-  )
-  .context("Serializing binary data section.")?;
-
   let target = compile_flags.resolve_target();
   if target.contains("linux") {
     libsui::Elf::new(&original_bin).append(
@@ -874,18 +912,6 @@ fn write_binary_bytes(
   Ok(())
 }
 
-struct SerializableBytesWithLen<'a>(pub Cow<'a, [u8]>);
-
-impl<'a> DenoRtSerializable<'a> for SerializableBytesWithLen<'a> {
-  fn serialize(
-    &'a self,
-    builder: &mut capacity_builder::BytesBuilder<'a, Vec<u8>>,
-  ) {
-    builder.append_le(self.0.len() as u32);
-    builder.append(self.0.as_ref());
-  }
-}
-
 /// Binary format:
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
@@ -893,17 +919,18 @@ impl<'a> DenoRtSerializable<'a> for SerializableBytesWithLen<'a> {
 /// * <specifiers>
 /// * <redirects>
 /// * <remote_modules>
+/// * <cjs_export_analysis>
 /// * <vfs_headers_len><vfs_headers>
 /// * <vfs_file_data_len><vfs_file_data>
 /// * <source_map_data>
 /// * d3n0l4nd
+#[allow(clippy::too_many_arguments)]
 fn serialize_binary_data_section(
   metadata: &Metadata,
   npm_snapshot: Option<SerializedNpmResolutionSnapshot>,
   specifiers: &SpecifierStoreForSerialization,
   redirects: &SpecifierDataStore<SpecifierId>,
   remote_modules: &SpecifierDataStore<RemoteModuleEntry<'_>>,
-  source_map_store: &SpecifierDataStore<SerializableBytesWithLen<'_>>,
   vfs: &BuiltVfs,
 ) -> Result<Vec<u8>, AnyError> {
   let metadata = serde_json::to_string(metadata)?;
@@ -939,8 +966,6 @@ fn serialize_binary_data_section(
         builder.append(file);
       }
     }
-    // 7. Source maps
-    source_map_store.serialize(builder);
 
     // write the magic bytes at the end so we can use it
     // to make sure we've deserialized correctly

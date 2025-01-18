@@ -16,6 +16,7 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_lib::standalone::binary::DenoRtDeserializable;
 use deno_lib::standalone::binary::Metadata;
@@ -23,7 +24,6 @@ use deno_lib::standalone::binary::RemoteModuleEntry;
 use deno_lib::standalone::binary::SpecifierDataStore;
 use deno_lib::standalone::binary::SpecifierId;
 use deno_lib::standalone::binary::MAGIC_BYTES;
-use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
@@ -37,13 +37,14 @@ use deno_runtime::deno_io::fs::FsError;
 use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use indexmap::IndexMap;
+use thiserror::Error;
 
 use crate::file_system::FileBackedVfs;
 use crate::file_system::VfsRoot;
 
 pub struct StandaloneData {
   pub metadata: Metadata,
-  pub modules: StandaloneModules,
+  pub modules: Arc<StandaloneModules>,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub root_path: PathBuf,
   pub vfs: Arc<FileBackedVfs>,
@@ -107,10 +108,10 @@ pub fn extract_standalone(
   };
   Ok(Some(StandaloneData {
     metadata,
-    modules: StandaloneModules {
+    modules: Arc::new(StandaloneModules {
       modules: remote_modules,
       vfs: vfs.clone(),
-    },
+    }),
     npm_snapshot,
     root_path,
     vfs,
@@ -120,7 +121,7 @@ pub fn extract_standalone(
 pub struct DeserializedDataSection {
   pub metadata: Metadata,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-  pub modules_store: ModulesStore,
+  pub modules_store: RemoteModulesStore,
   pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
 }
@@ -176,10 +177,6 @@ pub fn deserialize_binary_data_section(
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
     read_bytes_with_u64_len(input).context("reading vfs files data")?;
-  // 7. Source maps
-  let (input, source_maps_store) =
-    SpecifierDataStore::<Cow<'static, [u8]>>::deserialize(input)
-      .context("deserializing source maps")?;
 
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
@@ -187,11 +184,10 @@ pub fn deserialize_binary_data_section(
     bail!("Could not find magic bytes at the end of the data.");
   }
 
-  let modules_store = ModulesStore::new(
+  let modules_store = RemoteModulesStore::new(
     specifiers_store,
     redirects_store,
     remote_modules_store,
-    source_maps_store,
   );
 
   Ok(Some(DeserializedDataSection {
@@ -250,7 +246,7 @@ impl SpecifierStore {
 }
 
 pub struct StandaloneModules {
-  modules: ModulesStore,
+  modules: RemoteModulesStore,
   vfs: Arc<FileBackedVfs>,
 }
 
@@ -258,7 +254,7 @@ impl StandaloneModules {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, JsErrorBox> {
+  ) -> Result<Option<&'a Url>, TooManyRedirectsError> {
     if specifier.scheme() == "file" {
       Ok(Some(specifier))
     } else {
@@ -273,35 +269,52 @@ impl StandaloneModules {
   pub fn read<'a>(
     &'a self,
     specifier: &'a Url,
-    kind: VfsFileSubDataKind,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, JsErrorBox> {
     if specifier.scheme() == "file" {
-      let path = deno_path_util::url_to_file_path(specifier)?;
+      let path = deno_path_util::url_to_file_path(specifier)
+        .map_err(JsErrorBox::from_err)?;
+      let mut transpiled = None;
+      let mut source_map = None;
+      let mut cjs_export_analysis = None;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry, kind)?,
+        Ok(entry) => {
+          let bytes = self
+            .vfs
+            .read_file_all(entry)
+            .map_err(JsErrorBox::from_err)?;
+          transpiled = entry
+            .transpiled_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          source_map = entry
+            .source_map_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          cjs_export_analysis = entry
+            .cjs_export_analysis_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          bytes
+        }
         Err(err) if err.kind() == ErrorKind::NotFound => {
           match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
             Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
               return Ok(None)
             }
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(JsErrorBox::from_err(err)),
           }
         }
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(JsErrorBox::from_err(err)),
       };
       Ok(Some(DenoCompileModuleData {
         media_type: MediaType::from_specifier(specifier),
         specifier,
         data: bytes,
+        transpiled,
+        source_map,
+        cjs_export_analysis,
       }))
     } else {
-      self.modules.read(specifier, kind)
+      self.modules.read(specifier).map_err(JsErrorBox::from_err)
     }
-  }
-
-  pub fn get_source_map(&self, specifier: &Url) -> Option<Cow<[u8]>> {
-    self.modules.get_source_map(specifier)
   }
 }
 
@@ -309,6 +322,9 @@ pub struct DenoCompileModuleData<'a> {
   pub specifier: &'a Url,
   pub media_type: MediaType,
   pub data: Cow<'static, [u8]>,
+  pub transpiled: Option<Cow<'static, [u8]>>,
+  pub source_map: Option<Cow<'static, [u8]>>,
+  pub cjs_export_analysis: Option<Cow<'static, [u8]>>,
 }
 
 impl<'a> DenoCompileModuleData<'a> {
@@ -323,6 +339,7 @@ impl<'a> DenoCompileModuleData<'a> {
       }
     }
 
+    let data = self.transpiled.unwrap_or(self.data);
     let (media_type, source) = match self.media_type {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -334,18 +351,15 @@ impl<'a> DenoCompileModuleData<'a> {
       | MediaType::Dts
       | MediaType::Dmts
       | MediaType::Dcts
-      | MediaType::Tsx => {
-        (ModuleType::JavaScript, into_string_unsafe(self.data))
-      }
-      MediaType::Json => (ModuleType::Json, into_string_unsafe(self.data)),
+      | MediaType::Tsx => (ModuleType::JavaScript, into_string_unsafe(data)),
+      MediaType::Json => (ModuleType::Json, into_string_unsafe(data)),
       MediaType::Wasm => {
-        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(self.data))
+        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }
       // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => (
-        ModuleType::JavaScript,
-        DenoCompileModuleSource::Bytes(self.data),
-      ),
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+        (ModuleType::JavaScript, DenoCompileModuleSource::Bytes(data))
+      }
     };
     (self.specifier, media_type, source)
   }
@@ -375,42 +389,41 @@ impl DenoCompileModuleSource {
   }
 }
 
-pub struct ModulesStore {
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Too many redirects resolving: {0}")]
+pub struct TooManyRedirectsError(Url);
+
+pub struct RemoteModulesStore {
   specifiers: SpecifierStore,
   redirects: SpecifierDataStore<SpecifierId>,
   remote_modules: SpecifierDataStore<RemoteModuleEntry<'static>>,
-  source_maps: SpecifierDataStore<Cow<'static, [u8]>>,
 }
 
-impl ModulesStore {
+impl RemoteModulesStore {
   fn new(
     specifiers: SpecifierStore,
     redirects: SpecifierDataStore<SpecifierId>,
     remote_modules: SpecifierDataStore<RemoteModuleEntry<'static>>,
-    source_maps: SpecifierDataStore<Cow<'static, [u8]>>,
   ) -> Self {
     Self {
       specifiers,
       redirects,
       remote_modules,
-      source_maps,
     }
   }
 
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, JsErrorBox> {
+  ) -> Result<Option<&'a Url>, TooManyRedirectsError> {
     let Some(mut current) = self.specifiers.get_id(specifier) else {
       return Ok(None);
     };
     let mut count = 0;
     loop {
       if count > 10 {
-        return Err(JsErrorBox::generic(format!(
-          "Too many redirects resolving '{}'",
-          specifier
-        )));
+        return Err(TooManyRedirectsError(specifier.clone()));
       }
       match self.redirects.get(current) {
         Some(to) => {
@@ -431,15 +444,27 @@ impl ModulesStore {
   pub fn read<'a>(
     &'a self,
     original_specifier: &'a Url,
-    kind: VfsFileSubDataKind,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, TooManyRedirectsError> {
+    #[allow(clippy::ptr_arg)]
+    fn handle_cow_ref(data: &Cow<'static, [u8]>) -> Cow<'static, [u8]> {
+      match data {
+        Cow::Borrowed(data) => Cow::Borrowed(data),
+        Cow::Owned(data) => {
+          // this variant should never happen because the data
+          // should always be borrowed static in denort
+          debug_assert!(false);
+          Cow::Owned(data.clone())
+        }
+      }
+    }
+
     let mut count = 0;
     let Some(mut specifier) = self.specifiers.get_id(original_specifier) else {
       return Ok(None);
     };
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", original_specifier);
+        return Err(TooManyRedirectsError(original_specifier.clone()));
       }
       match self.redirects.get(specifier) {
         Some(to) => {
@@ -457,30 +482,17 @@ impl ModulesStore {
               self.specifiers.get_specifier(specifier).unwrap()
             },
             media_type: entry.media_type,
-            data: {
-              let data = match kind {
-                VfsFileSubDataKind::Raw => &entry.data,
-                VfsFileSubDataKind::ModuleGraph => {
-                  entry.maybe_transpiled.as_ref().unwrap_or(&entry.data)
-                }
-              };
-              match data {
-                Cow::Borrowed(d) => Cow::Borrowed(d),
-                Cow::Owned(d) => Cow::Owned(d.clone()),
-              }
-            },
+            data: handle_cow_ref(&entry.data),
+            transpiled: entry.maybe_transpiled.as_ref().map(handle_cow_ref),
+            source_map: entry.maybe_source_map.as_ref().map(handle_cow_ref),
+            cjs_export_analysis: entry
+              .maybe_cjs_export_analysis
+              .as_ref()
+              .map(handle_cow_ref),
           }));
         }
       }
     }
-  }
-
-  pub fn get_source_map(&self, specifier: &Url) -> Option<Cow<[u8]>> {
-    let specifier_id = self.specifiers.get_id(specifier)?;
-    self
-      .source_maps
-      .get(specifier_id)
-      .map(|d| Cow::Borrowed(d.as_ref()))
   }
 }
 

@@ -813,19 +813,11 @@ impl CliFactory {
       .services
       .node_code_translator
       .get_or_try_init_async(async {
-        let caches = self.caches()?;
-        let node_analysis_cache =
-          NodeAnalysisCache::new(caches.node_analysis_db());
         let node_resolver = self.node_resolver().await?.clone();
-        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(
-          node_analysis_cache,
-          self.cjs_tracker()?.clone(),
-          self.fs().clone(),
-          Some(self.parsed_source_cache().clone()),
-        );
+        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
 
         Ok(Arc::new(NodeCodeTranslator::new(
-          cjs_esm_analyzer,
+          cjs_code_analyzer,
           self.in_npm_pkg_checker()?.clone(),
           node_resolver,
           self.npm_resolver().await?.clone(),
@@ -834,6 +826,17 @@ impl CliFactory {
         )))
       })
       .await
+  }
+
+  fn create_cjs_code_analyzer(&self) -> Result<CliCjsCodeAnalyzer, AnyError> {
+    let caches = self.caches()?;
+    let node_analysis_cache = NodeAnalysisCache::new(caches.node_analysis_db());
+    Ok(CliCjsCodeAnalyzer::new(
+      node_analysis_cache,
+      self.cjs_tracker()?.clone(),
+      self.fs().clone(),
+      Some(self.parsed_source_cache().clone()),
+    ))
   }
 
   pub async fn npm_req_resolver(
@@ -1025,6 +1028,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
+      self.create_cjs_code_analyzer()?,
       self.cjs_tracker()?,
       self.cli_options()?,
       self.deno_dir()?,
