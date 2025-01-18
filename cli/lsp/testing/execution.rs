@@ -305,9 +305,6 @@ impl TestRun {
     let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
     queue.sort();
 
-    let tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>> =
-      Arc::new(RwLock::new(IndexMap::new()));
-    let mut test_steps = IndexMap::new();
     let worker_factory =
       Arc::new(factory.create_cli_main_worker_factory().await?);
 
@@ -364,119 +361,29 @@ impl TestRun {
       .buffer_unordered(concurrent_jobs)
       .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>();
 
-    let mut reporter = Box::new(LspTestReporter::new(
-      self,
-      client.clone(),
-      maybe_root_uri,
-      self.tests.clone(),
-    ));
+    let mut test_event_handler = LspTestEventHandler {
+      reporter: Box::new(LspTestReporter::new(
+        self,
+        client.clone(),
+        maybe_root_uri,
+        self.tests.clone(),
+      )),
+      tests: Default::default(),
+      test_steps: Default::default(),
+      summary: Default::default(),
+      tests_with_result: Default::default(),
+      used_only: Default::default(),
+    };
 
     let handler = {
       spawn(async move {
-        let earlier = Instant::now();
-        let mut summary = test::TestSummary::new();
-        let mut tests_with_result = HashSet::new();
-        let mut used_only = false;
+        let start_time = Instant::now();
 
         while let Some((_, event)) = receiver.recv().await {
-          match event {
-            test::TestEvent::Register(description) => {
-              for (_, description) in description.into_iter() {
-                reporter.report_register(description).await;
-                // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
-                tests.write().insert(description.id, description.clone());
-              }
-            }
-            test::TestEvent::Plan(plan) => {
-              summary.total += plan.total;
-              summary.filtered_out += plan.filtered_out;
-
-              if plan.used_only {
-                used_only = true;
-              }
-
-              reporter.report_plan(&plan);
-            }
-            test::TestEvent::Wait(id) => {
-              reporter.report_wait(tests.read().get(&id).unwrap());
-            }
-            test::TestEvent::Output(output) => {
-              reporter.report_output(&output);
-            }
-            test::TestEvent::Slow(id, elapsed) => {
-              reporter.report_slow(tests.read().get(&id).unwrap(), elapsed);
-            }
-            test::TestEvent::Result(id, result, elapsed) => {
-              if tests_with_result.insert(id) {
-                let description = tests.read().get(&id).unwrap().clone();
-                match &result {
-                  test::TestResult::Ok => summary.passed += 1,
-                  test::TestResult::Ignored => summary.ignored += 1,
-                  test::TestResult::Failed(error) => {
-                    summary.failed += 1;
-                    summary
-                      .failures
-                      .push(((&description).into(), error.clone()));
-                  }
-                  test::TestResult::Cancelled => {
-                    summary.failed += 1;
-                  }
-                }
-                reporter.report_result(&description, &result, elapsed);
-              }
-            }
-            test::TestEvent::UncaughtError(origin, error) => {
-              reporter.report_uncaught_error(&origin, &error);
-              summary.failed += 1;
-              summary.uncaught_errors.push((origin, error));
-            }
-            test::TestEvent::StepRegister(description) => {
-              reporter.report_step_register(&description).await;
-              test_steps.insert(description.id, description);
-            }
-            test::TestEvent::StepWait(id) => {
-              reporter.report_step_wait(test_steps.get(&id).unwrap());
-            }
-            test::TestEvent::StepResult(id, result, duration) => {
-              if tests_with_result.insert(id) {
-                match &result {
-                  test::TestStepResult::Ok => {
-                    summary.passed_steps += 1;
-                  }
-                  test::TestStepResult::Ignored => {
-                    summary.ignored_steps += 1;
-                  }
-                  test::TestStepResult::Failed(_) => {
-                    summary.failed_steps += 1;
-                  }
-                }
-                reporter.report_step_result(
-                  test_steps.get(&id).unwrap(),
-                  &result,
-                  duration,
-                );
-              }
-            }
-            test::TestEvent::Completed => {
-              reporter.report_completed();
-            }
-            test::TestEvent::ForceEndReport => {}
-            test::TestEvent::Sigint => {}
-          }
+          test_event_handler.handle_event(event).await;
         }
 
-        let elapsed = Instant::now().duration_since(earlier);
-        reporter.report_summary(&summary, &elapsed);
-
-        if used_only {
-          return Err(anyhow!(
-            "Test failed because the \"only\" option was used"
-          ));
-        }
-
-        if summary.failed > 0 {
-          return Err(anyhow!("Test failed"));
-        }
+        test_event_handler.finish(start_time.elapsed())?;
 
         Ok(())
       })
@@ -598,6 +505,129 @@ impl LspTestDescription {
   }
 }
 
+struct LspTestEventHandler {
+  reporter: Box<LspTestReporter>,
+  tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>>,
+  test_steps: IndexMap<usize, TestStepDescription>,
+  summary: test::TestSummary,
+  tests_with_result: HashSet<usize>,
+  used_only: bool,
+}
+
+impl LspTestEventHandler {
+  async fn handle_event(&mut self, event: test::TestEvent) {
+    match event {
+      test::TestEvent::Register(description) => {
+        for (_, description) in description.into_iter() {
+          self.reporter.report_register(description).await;
+          // TODO(mmastrac): we shouldn't need to clone here - we can re-use the descriptions
+          self
+            .tests
+            .write()
+            .insert(description.id, description.clone());
+        }
+      }
+      test::TestEvent::Plan(plan) => {
+        self.summary.total += plan.total;
+        self.summary.filtered_out += plan.filtered_out;
+
+        if plan.used_only {
+          self.used_only = true;
+        }
+
+        self.reporter.report_plan(&plan);
+      }
+      test::TestEvent::Wait(id) => {
+        self
+          .reporter
+          .report_wait(self.tests.read().get(&id).unwrap());
+      }
+      test::TestEvent::Output(output) => {
+        self.reporter.report_output(&output);
+      }
+      test::TestEvent::Slow(id, elapsed) => {
+        self
+          .reporter
+          .report_slow(self.tests.read().get(&id).unwrap(), elapsed);
+      }
+      test::TestEvent::Result(id, result, elapsed) => {
+        if self.tests_with_result.insert(id) {
+          let description = self.tests.read().get(&id).unwrap().clone();
+          match &result {
+            test::TestResult::Ok => self.summary.passed += 1,
+            test::TestResult::Ignored => self.summary.ignored += 1,
+            test::TestResult::Failed(error) => {
+              self.summary.failed += 1;
+              self
+                .summary
+                .failures
+                .push(((&description).into(), error.clone()));
+            }
+            test::TestResult::Cancelled => {
+              self.summary.failed += 1;
+            }
+          }
+          self.reporter.report_result(&description, &result, elapsed);
+        }
+      }
+      test::TestEvent::UncaughtError(origin, error) => {
+        self.reporter.report_uncaught_error(&origin, &error);
+        self.summary.failed += 1;
+        self.summary.uncaught_errors.push((origin, error));
+      }
+      test::TestEvent::StepRegister(description) => {
+        self.reporter.report_step_register(&description).await;
+        self.test_steps.insert(description.id, description);
+      }
+      test::TestEvent::StepWait(id) => {
+        self
+          .reporter
+          .report_step_wait(self.test_steps.get(&id).unwrap());
+      }
+      test::TestEvent::StepResult(id, result, duration) => {
+        if self.tests_with_result.insert(id) {
+          match &result {
+            test::TestStepResult::Ok => {
+              self.summary.passed_steps += 1;
+            }
+            test::TestStepResult::Ignored => {
+              self.summary.ignored_steps += 1;
+            }
+            test::TestStepResult::Failed(_) => {
+              self.summary.failed_steps += 1;
+            }
+          }
+          self.reporter.report_step_result(
+            self.test_steps.get(&id).unwrap(),
+            &result,
+            duration,
+          );
+        }
+      }
+      test::TestEvent::Completed => {
+        self.reporter.report_completed();
+      }
+      test::TestEvent::ForceEndReport => {}
+      test::TestEvent::Sigint => {}
+    }
+  }
+
+  fn finish(
+    mut self,
+    elapsed: Duration,
+  ) -> Result<(), deno_core::anyhow::Error> {
+    self.reporter.report_summary(&self.summary, &elapsed);
+
+    if self.used_only {
+      return Err(anyhow!("Test failed because the \"only\" option was used"));
+    }
+
+    if self.summary.failed > 0 {
+      return Err(anyhow!("Test failed"));
+    }
+    Ok(())
+  }
+}
 struct LspTestReporter {
   client: Client,
   id: u32,
