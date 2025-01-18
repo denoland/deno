@@ -2342,7 +2342,6 @@ dependencies = [
  "dlopen2",
  "encoding_rs",
  "fastwebsockets",
- "flate2",
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",

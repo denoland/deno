@@ -244,13 +244,7 @@ fn serialize_media_type(media_type: MediaType) -> u8 {
 
 impl<'a> DenoRtDeserializable<'a> for MediaType {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)> {
-    if input.is_empty() {
-      return Err(std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "Unexpected end of data",
-      ));
-    }
-    let (input, value) = (&input[1..], input[0]);
+    let (input, value) = read_u8(input)?;
     let value = match value {
       0 => MediaType::JavaScript,
       1 => MediaType::Jsx,
