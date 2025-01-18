@@ -9,6 +9,7 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
@@ -181,9 +182,8 @@ pub const NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
 
 pub fn get_npm_config_user_agent() -> String {
   format!(
-    "deno/{} npm/? deno/{} {} {}",
-    env!("CARGO_PKG_VERSION"),
-    env!("CARGO_PKG_VERSION"),
+    "deno/{0} npm/? deno/{0} {1} {2}",
+    DENO_VERSION_INFO.deno,
     std::env::consts::OS,
     std::env::consts::ARCH
   )

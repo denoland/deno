@@ -1,6 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 fn main() {
+  // todo(dsherret): remove this after Deno 2.2.0 is published and then
+  // align the version of this crate with Deno then. We need to wait because
+  // there was previously a deno_lib 2.2.0 published (https://crates.io/crates/deno_lib/versions)
+  let version_path = std::path::Path::new(".").join("version.txt");
+  println!("cargo:rerun-if-changed={}", version_path.display());
+  let text = std::fs::read_to_string(version_path).unwrap();
+  println!("cargo:rustc-env=DENO_VERSION={}", text);
+
   let commit_hash = git_commit_hash();
   println!("cargo:rustc-env=GIT_COMMIT_HASH={}", commit_hash);
   println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
