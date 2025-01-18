@@ -31,8 +31,6 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
-pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;

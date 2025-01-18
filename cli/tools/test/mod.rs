@@ -86,6 +86,7 @@ use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
+use crate::worker::CreateCustomWorkerError;
 
 mod channel;
 pub mod fmt;
@@ -587,7 +588,10 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), CoreError> {
+) -> Result<
+  (Option<Box<dyn CoverageCollector>>, MainWorker),
+  CreateCustomWorkerError,
+> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -620,7 +624,7 @@ async fn configure_main_worker(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
       )
-      .map_err(JsErrorBox::from_err)?;
+      .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e)))?;
       Ok(())
     }
     Err(err) => Err(err),
@@ -660,7 +664,7 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(CoreError::Js(err)) => {
+    Err(TestSpecifierError::Core(CoreError::Js(err))) => {
       send_test_event(
         &worker.js_runtime.op_state(),
         TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
@@ -669,6 +673,16 @@ pub async fn test_specifier(
     }
     Err(e) => Err(e.into()),
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TestSpecifierError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  RunTestsForWorker(#[from] RunTestsForWorkerErr),
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -680,19 +694,21 @@ async fn test_specifier_inner(
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
-) -> Result<(), CoreError> {
+) -> Result<(), TestSpecifierError> {
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event()?;
+  worker.dispatch_load_event().map_err(CoreError::Js)?;
 
   run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
     .await?;
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event()?;
-  worker.dispatch_unload_event()?;
+  worker
+    .dispatch_beforeunload_event()
+    .map_err(CoreError::Js)?;
+  worker.dispatch_unload_event().map_err(CoreError::Js)?;
 
   // Ensure all output has been flushed
   _ = worker
@@ -753,12 +769,25 @@ pub fn send_test_event(
     .send(event)
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum RunTestsForWorkerErr {
+  #[class(inherit)]
+  #[error(transparent)]
+  ChannelClosed(#[from] ChannelClosedError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  SerdeV8(#[from] serde_v8::Error),
+}
+
 pub async fn run_tests_for_worker(
   worker: &mut MainWorker,
   specifier: &ModuleSpecifier,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
   let TestContainer(tests, test_functions) =
@@ -787,7 +816,7 @@ async fn run_tests_for_worker_inner(
   test_functions: Vec<v8::Global<v8::Function>>,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let unfiltered = tests.len();
   let state_rc = worker.js_runtime.op_state();
 
@@ -1082,7 +1111,7 @@ async fn wait_for_activity_to_stabilize(
   before: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
-) -> Result<Option<RuntimeActivityDiff>, AnyError> {
+) -> Result<Option<RuntimeActivityDiff>, CoreError> {
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);

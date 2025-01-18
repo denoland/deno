@@ -20,9 +20,9 @@ use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
+use deno_lib::util::hash::FastInsecureHasher;
 
 use crate::cache::EmitCache;
-use crate::cache::FastInsecureHasher;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
 
@@ -112,9 +112,9 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    module_kind: deno_ast::ModuleKind,
+    module_kind: ModuleKind,
     source: &Arc<str>,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, EmitParsedSourceHelperError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, module_kind, source) {

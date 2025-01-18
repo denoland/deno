@@ -1,9 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
+use deno_path_util::normalize_path;
+use deno_path_util::strip_unc_prefix;
+use deno_runtime::colors;
+use deno_runtime::deno_core::anyhow::bail;
+use deno_runtime::deno_core::anyhow::Context;
+use deno_runtime::deno_core::error::AnyError;
+use indexmap::IndexSet;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -291,6 +299,477 @@ impl VfsEntry {
       VfsEntry::Dir(dir) => VfsEntryRef::Dir(dir),
       VfsEntry::File(file) => VfsEntryRef::File(file),
       VfsEntry::Symlink(symlink) => VfsEntryRef::Symlink(symlink),
+    }
+  }
+}
+
+pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
+  ".deno_compile_node_modules";
+
+#[derive(Debug)]
+pub struct BuiltVfs {
+  pub root_path: WindowsSystemRootablePath,
+  pub case_sensitivity: FileSystemCaseSensitivity,
+  pub entries: VirtualDirectoryEntries,
+  pub files: Vec<Vec<u8>>,
+}
+
+#[derive(Debug)]
+pub struct VfsBuilder {
+  executable_root: VirtualDirectory,
+  files: Vec<Vec<u8>>,
+  current_offset: u64,
+  file_offsets: HashMap<String, u64>,
+  /// The minimum root directory that should be included in the VFS.
+  min_root_dir: Option<WindowsSystemRootablePath>,
+  case_sensitivity: FileSystemCaseSensitivity,
+}
+
+impl Default for VfsBuilder {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
+impl VfsBuilder {
+  pub fn new() -> Self {
+    Self {
+      executable_root: VirtualDirectory {
+        name: "/".to_string(),
+        entries: Default::default(),
+      },
+      files: Vec::new(),
+      current_offset: 0,
+      file_offsets: Default::default(),
+      min_root_dir: Default::default(),
+      // This is not exactly correct because file systems on these OSes
+      // may be case-sensitive or not based on the directory, but this
+      // is a good enough approximation and limitation. In the future,
+      // we may want to store this information per directory instead
+      // depending on the feedback we get.
+      case_sensitivity: if cfg!(windows) || cfg!(target_os = "macos") {
+        FileSystemCaseSensitivity::Insensitive
+      } else {
+        FileSystemCaseSensitivity::Sensitive
+      },
+    }
+  }
+
+  pub fn case_sensitivity(&self) -> FileSystemCaseSensitivity {
+    self.case_sensitivity
+  }
+
+  pub fn files_len(&self) -> usize {
+    self.files.len()
+  }
+
+  /// Add a directory that might be the minimum root directory
+  /// of the VFS.
+  ///
+  /// For example, say the user has a deno.json and specifies an
+  /// import map in a parent directory. The import map won't be
+  /// included in the VFS, but its base will meaning we need to
+  /// tell the VFS builder to include the base of the import map
+  /// by calling this method.
+  pub fn add_possible_min_root_dir(&mut self, path: &Path) {
+    self.add_dir_raw(path);
+
+    match &self.min_root_dir {
+      Some(WindowsSystemRootablePath::WindowSystemRoot) => {
+        // already the root dir
+      }
+      Some(WindowsSystemRootablePath::Path(current_path)) => {
+        let mut common_components = Vec::new();
+        for (a, b) in current_path.components().zip(path.components()) {
+          if a != b {
+            break;
+          }
+          common_components.push(a);
+        }
+        if common_components.is_empty() {
+          if cfg!(windows) {
+            self.min_root_dir =
+              Some(WindowsSystemRootablePath::WindowSystemRoot);
+          } else {
+            self.min_root_dir =
+              Some(WindowsSystemRootablePath::Path(PathBuf::from("/")));
+          }
+        } else {
+          self.min_root_dir = Some(WindowsSystemRootablePath::Path(
+            common_components.iter().collect(),
+          ));
+        }
+      }
+      None => {
+        self.min_root_dir =
+          Some(WindowsSystemRootablePath::Path(path.to_path_buf()));
+      }
+    }
+  }
+
+  pub fn add_dir_recursive(&mut self, path: &Path) -> Result<(), AnyError> {
+    let target_path = self.resolve_target_path(path)?;
+    self.add_dir_recursive_not_symlink(&target_path)
+  }
+
+  fn add_dir_recursive_not_symlink(
+    &mut self,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    self.add_dir_raw(path);
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let read_dir = std::fs::read_dir(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+
+    let mut dir_entries =
+      read_dir.into_iter().collect::<Result<Vec<_>, _>>()?;
+    dir_entries.sort_by_cached_key(|entry| entry.file_name()); // determinism
+
+    for entry in dir_entries {
+      let file_type = entry.file_type()?;
+      let path = entry.path();
+
+      if file_type.is_dir() {
+        self.add_dir_recursive_not_symlink(&path)?;
+      } else if file_type.is_file() {
+        self.add_file_at_path_not_symlink(&path)?;
+      } else if file_type.is_symlink() {
+        match self.add_symlink(&path) {
+          Ok(target) => match target {
+            SymlinkTarget::File(target) => {
+              self.add_file_at_path_not_symlink(&target)?
+            }
+            SymlinkTarget::Dir(target) => {
+              self.add_dir_recursive_not_symlink(&target)?;
+            }
+          },
+          Err(err) => {
+            log::warn!(
+            "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
+            colors::yellow("Warning"),
+            path.display(),
+            err
+          );
+          }
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {
+    log::debug!("Ensuring directory '{}'", path.display());
+    debug_assert!(path.is_absolute());
+    let mut current_dir = &mut self.executable_root;
+
+    for component in path.components() {
+      if matches!(component, std::path::Component::RootDir) {
+        continue;
+      }
+      let name = component.as_os_str().to_string_lossy();
+      let index = current_dir.entries.insert_or_modify(
+        &name,
+        self.case_sensitivity,
+        || {
+          VfsEntry::Dir(VirtualDirectory {
+            name: name.to_string(),
+            entries: Default::default(),
+          })
+        },
+        |_| {
+          // ignore
+        },
+      );
+      match current_dir.entries.get_mut_by_index(index) {
+        Some(VfsEntry::Dir(dir)) => {
+          current_dir = dir;
+        }
+        _ => unreachable!(),
+      };
+    }
+
+    current_dir
+  }
+
+  pub fn get_system_root_dir_mut(&mut self) -> &mut VirtualDirectory {
+    &mut self.executable_root
+  }
+
+  pub fn get_dir_mut(&mut self, path: &Path) -> Option<&mut VirtualDirectory> {
+    debug_assert!(path.is_absolute());
+    let mut current_dir = &mut self.executable_root;
+
+    for component in path.components() {
+      if matches!(component, std::path::Component::RootDir) {
+        continue;
+      }
+      let name = component.as_os_str().to_string_lossy();
+      let entry = current_dir
+        .entries
+        .get_mut_by_name(&name, self.case_sensitivity)?;
+      match entry {
+        VfsEntry::Dir(dir) => {
+          current_dir = dir;
+        }
+        _ => unreachable!(),
+      };
+    }
+
+    Some(current_dir)
+  }
+
+  pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let file_bytes = std::fs::read(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+    self.add_file_with_data(path, file_bytes, VfsFileSubDataKind::Raw)
+  }
+
+  fn add_file_at_path_not_symlink(
+    &mut self,
+    path: &Path,
+  ) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let file_bytes = std::fs::read(path)
+      .with_context(|| format!("Reading {}", path.display()))?;
+    self.add_file_with_data_raw(path, file_bytes, VfsFileSubDataKind::Raw)
+  }
+
+  pub fn add_file_with_data(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+    sub_data_kind: VfsFileSubDataKind,
+  ) -> Result<(), AnyError> {
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+      format!("Resolving target path for '{}'", path.display())
+    })?;
+    if metadata.is_symlink() {
+      let target = self.add_symlink(path)?.into_path_buf();
+      self.add_file_with_data_raw(&target, data, sub_data_kind)
+    } else {
+      self.add_file_with_data_raw(path, data, sub_data_kind)
+    }
+  }
+
+  pub fn add_file_with_data_raw(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+    sub_data_kind: VfsFileSubDataKind,
+  ) -> Result<(), AnyError> {
+    log::debug!("Adding file '{}'", path.display());
+    let checksum = crate::util::checksum::gen(&[&data]);
+    let case_sensitivity = self.case_sensitivity;
+    let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
+      // duplicate file, reuse an old offset
+      *offset
+    } else {
+      self.file_offsets.insert(checksum, self.current_offset);
+      self.current_offset
+    };
+
+    let dir = self.add_dir_raw(path.parent().unwrap());
+    let name = path.file_name().unwrap().to_string_lossy();
+    let offset_and_len = OffsetWithLength {
+      offset,
+      len: data.len() as u64,
+    };
+    dir.entries.insert_or_modify(
+      &name,
+      case_sensitivity,
+      || {
+        VfsEntry::File(VirtualFile {
+          name: name.to_string(),
+          offset: offset_and_len,
+          module_graph_offset: offset_and_len,
+        })
+      },
+      |entry| match entry {
+        VfsEntry::File(virtual_file) => match sub_data_kind {
+          VfsFileSubDataKind::Raw => {
+            virtual_file.offset = offset_and_len;
+          }
+          VfsFileSubDataKind::ModuleGraph => {
+            virtual_file.module_graph_offset = offset_and_len;
+          }
+        },
+        VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
+      },
+    );
+
+    // new file, update the list of files
+    if self.current_offset == offset {
+      self.files.push(data);
+      self.current_offset += offset_and_len.len;
+    }
+
+    Ok(())
+  }
+
+  fn resolve_target_path(&mut self, path: &Path) -> Result<PathBuf, AnyError> {
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let metadata = std::fs::symlink_metadata(path).with_context(|| {
+      format!("Resolving target path for '{}'", path.display())
+    })?;
+    if metadata.is_symlink() {
+      Ok(self.add_symlink(path)?.into_path_buf())
+    } else {
+      Ok(path.to_path_buf())
+    }
+  }
+
+  pub fn add_symlink(
+    &mut self,
+    path: &Path,
+  ) -> Result<SymlinkTarget, AnyError> {
+    self.add_symlink_inner(path, &mut IndexSet::new())
+  }
+
+  fn add_symlink_inner(
+    &mut self,
+    path: &Path,
+    visited: &mut IndexSet<PathBuf>,
+  ) -> Result<SymlinkTarget, AnyError> {
+    log::debug!("Adding symlink '{}'", path.display());
+    let target = strip_unc_prefix(
+      // ok, fs implementation
+      #[allow(clippy::disallowed_methods)]
+      std::fs::read_link(path)
+        .with_context(|| format!("Reading symlink '{}'", path.display()))?,
+    );
+    let case_sensitivity = self.case_sensitivity;
+    let target = normalize_path(path.parent().unwrap().join(&target));
+    let dir = self.add_dir_raw(path.parent().unwrap());
+    let name = path.file_name().unwrap().to_string_lossy();
+    dir.entries.insert_or_modify(
+      &name,
+      case_sensitivity,
+      || {
+        VfsEntry::Symlink(VirtualSymlink {
+          name: name.to_string(),
+          dest_parts: VirtualSymlinkParts::from_path(&target),
+        })
+      },
+      |_| {
+        // ignore previously inserted
+      },
+    );
+    // ok, fs implementation
+    #[allow(clippy::disallowed_methods)]
+    let target_metadata =
+      std::fs::symlink_metadata(&target).with_context(|| {
+        format!("Reading symlink target '{}'", target.display())
+      })?;
+    if target_metadata.is_symlink() {
+      if !visited.insert(target.clone()) {
+        // todo: probably don't error in this scenario
+        bail!(
+          "Circular symlink detected: {} -> {}",
+          visited
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(" -> "),
+          target.display()
+        );
+      }
+      self.add_symlink_inner(&target, visited)
+    } else if target_metadata.is_dir() {
+      Ok(SymlinkTarget::Dir(target))
+    } else {
+      Ok(SymlinkTarget::File(target))
+    }
+  }
+
+  pub fn build(self) -> BuiltVfs {
+    fn strip_prefix_from_symlinks(
+      dir: &mut VirtualDirectory,
+      parts: &[String],
+    ) {
+      for entry in dir.entries.iter_mut() {
+        match entry {
+          VfsEntry::Dir(dir) => {
+            strip_prefix_from_symlinks(dir, parts);
+          }
+          VfsEntry::File(_) => {}
+          VfsEntry::Symlink(symlink) => {
+            let parts = symlink
+              .dest_parts
+              .take_parts()
+              .into_iter()
+              .skip(parts.len())
+              .collect();
+            symlink.dest_parts.set_parts(parts);
+          }
+        }
+      }
+    }
+
+    let mut current_dir = self.executable_root;
+    let mut current_path = if cfg!(windows) {
+      WindowsSystemRootablePath::WindowSystemRoot
+    } else {
+      WindowsSystemRootablePath::Path(PathBuf::from("/"))
+    };
+    loop {
+      if current_dir.entries.len() != 1 {
+        break;
+      }
+      if self.min_root_dir.as_ref() == Some(&current_path) {
+        break;
+      }
+      match current_dir.entries.iter().next().unwrap() {
+        VfsEntry::Dir(dir) => {
+          if dir.name == DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME {
+            // special directory we want to maintain
+            break;
+          }
+          match current_dir.entries.remove(0) {
+            VfsEntry::Dir(dir) => {
+              current_path =
+                WindowsSystemRootablePath::Path(current_path.join(&dir.name));
+              current_dir = dir;
+            }
+            _ => unreachable!(),
+          };
+        }
+        VfsEntry::File(_) | VfsEntry::Symlink(_) => break,
+      }
+    }
+    if let WindowsSystemRootablePath::Path(path) = &current_path {
+      strip_prefix_from_symlinks(
+        &mut current_dir,
+        VirtualSymlinkParts::from_path(path).parts(),
+      );
+    }
+    BuiltVfs {
+      root_path: current_path,
+      case_sensitivity: self.case_sensitivity,
+      entries: current_dir.entries,
+      files: self.files,
+    }
+  }
+}
+
+#[derive(Debug)]
+pub enum SymlinkTarget {
+  File(PathBuf),
+  Dir(PathBuf),
+}
+
+impl SymlinkTarget {
+  pub fn into_path_buf(self) -> PathBuf {
+    match self {
+      Self::File(path) => path,
+      Self::Dir(path) => path,
     }
   }
 }

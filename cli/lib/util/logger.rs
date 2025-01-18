@@ -2,44 +2,33 @@
 
 use std::io::Write;
 
-use deno_telemetry::OtelConfig;
-use deno_telemetry::OtelConsoleConfig;
+use deno_runtime::deno_telemetry;
+use deno_runtime::deno_telemetry::OtelConfig;
+use deno_runtime::deno_telemetry::OtelConsoleConfig;
 
-use super::draw_thread::DrawThread;
-
-struct CliLogger {
+struct CliLogger<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> {
   otel_console_config: OtelConsoleConfig,
   logger: env_logger::Logger,
+  on_log_start: FnOnLogStart,
+  on_log_end: FnOnLogEnd,
 }
 
-impl CliLogger {
-  pub fn new(
-    logger: env_logger::Logger,
-    otel_console_config: OtelConsoleConfig,
-  ) -> Self {
-    Self {
-      logger,
-      otel_console_config,
-    }
-  }
-
+impl<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> CliLogger<FnOnLogStart, FnOnLogEnd> {
   pub fn filter(&self) -> log::LevelFilter {
     self.logger.filter()
   }
 }
 
-impl log::Log for CliLogger {
+impl<FnOnLogStart: Fn() + Send + Sync, FnOnLogEnd: Fn() + Send + Sync> log::Log
+  for CliLogger<FnOnLogStart, FnOnLogEnd>
+{
   fn enabled(&self, metadata: &log::Metadata) -> bool {
     self.logger.enabled(metadata)
   }
 
   fn log(&self, record: &log::Record) {
     if self.enabled(record.metadata()) {
-      // it was considered to hold the draw thread's internal lock
-      // across logging, but if outputting to stderr blocks then that
-      // could potentially block other threads that access the draw
-      // thread's state
-      DrawThread::hide();
+      (self.on_log_start)();
 
       match self.otel_console_config {
         OtelConsoleConfig::Ignore => {
@@ -54,7 +43,7 @@ impl log::Log for CliLogger {
         }
       }
 
-      DrawThread::show();
+      (self.on_log_end)();
     }
   }
 
@@ -63,8 +52,20 @@ impl log::Log for CliLogger {
   }
 }
 
-pub fn init(maybe_level: Option<log::Level>, otel_config: Option<OtelConfig>) {
-  let log_level = maybe_level.unwrap_or(log::Level::Info);
+pub struct InitLoggingOptions<FnOnLogStart: Fn(), FnOnLogEnd: Fn()> {
+  pub on_log_start: FnOnLogStart,
+  pub on_log_end: FnOnLogEnd,
+  pub maybe_level: Option<log::Level>,
+  pub otel_config: Option<OtelConfig>,
+}
+
+pub fn init<
+  FOnLogStart: Fn() + Send + Sync + 'static,
+  FnOnLogEnd: Fn() + Send + Sync + 'static,
+>(
+  options: InitLoggingOptions<FOnLogStart, FnOnLogEnd>,
+) {
+  let log_level = options.maybe_level.unwrap_or(log::Level::Info);
   let logger = env_logger::Builder::from_env(
     env_logger::Env::new()
       // Use `DENO_LOG` and `DENO_LOG_STYLE` instead of `RUST_` prefix
@@ -117,12 +118,15 @@ pub fn init(maybe_level: Option<log::Level>, otel_config: Option<OtelConfig>) {
   })
   .build();
 
-  let cli_logger = CliLogger::new(
+  let cli_logger = CliLogger {
+    on_log_start: options.on_log_start,
+    on_log_end: options.on_log_end,
     logger,
-    otel_config
+    otel_console_config: options
+      .otel_config
       .map(|c| c.console)
       .unwrap_or(OtelConsoleConfig::Ignore),
-  );
+  };
   let max_level = cli_logger.filter();
   let r = log::set_boxed_logger(Box::new(cli_logger));
   if r.is_ok() {

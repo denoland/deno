@@ -18,6 +18,7 @@ pub use deno_net;
 pub use deno_node;
 pub use deno_os;
 pub use deno_permissions;
+pub use deno_process;
 pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
@@ -115,7 +116,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
   // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
-    name: ops::process::UNSTABLE_FEATURE_NAME,
+    name: deno_process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
     show_in_help: false,
     id: 10,

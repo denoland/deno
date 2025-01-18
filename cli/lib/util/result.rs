@@ -4,10 +4,10 @@ use std::convert::Infallible;
 use std::fmt::Debug;
 use std::fmt::Display;
 
-use deno_core::error::AnyError;
-use deno_core::error::CoreError;
 use deno_error::JsErrorBox;
 use deno_error::JsErrorClass;
+use deno_runtime::deno_core::error::AnyError;
+use deno_runtime::deno_core::error::CoreError;
 
 pub trait InfallibleResultExt<T> {
   fn unwrap_infallible(self) -> T;
@@ -36,7 +36,7 @@ pub fn any_and_jserrorbox_downcast_ref<
     })
     .or_else(|| {
       err.downcast_ref::<CoreError>().and_then(|e| match e {
-        CoreError::JsNative(e) => e.as_any().downcast_ref::<E>(),
+        CoreError::JsBox(e) => e.as_any().downcast_ref::<E>(),
         _ => None,
       })
     })

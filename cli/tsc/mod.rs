@@ -29,6 +29,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_lib::util::checksum;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -44,7 +45,6 @@ use thiserror::Error;
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
-use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
