@@ -123,7 +123,7 @@ Deno.test({
 // Issue #27441
 // https://github.com/denoland/deno/issues/27441
 Deno.test({
-  name: "aes-256-gcm supports IV of non standard length",
+  name: "aes-256-gcm supports IV of non standard length and auth tag check",
   fn() {
     const decipher = crypto.createDecipheriv(
       "aes-256-gcm",
@@ -136,6 +136,10 @@ Deno.test({
       "utf-8",
     );
     assertEquals(decrypted, "this is a secret");
-    decipher.final();
+    assertThrows(
+      () => decipher.final(),
+      TypeError,
+      "Failed to authenticate data",
+    );
   },
 });
