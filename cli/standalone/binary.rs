@@ -255,7 +255,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         format!("canary/{}/{}", DENO_VERSION_INFO.git_hash, binary_name)
       }
       _ => {
-        format!("release/v{}/{}", env!("CARGO_PKG_VERSION"), binary_name)
+        format!("release/v{}/{}", DENO_VERSION_INFO.deno, binary_name)
       }
     };
 
