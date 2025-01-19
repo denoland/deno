@@ -1277,6 +1277,26 @@ Deno.test({
   }
 });
 
+Deno.test(
+  { permissions: { net: true } },
+  async function netTcpWithAbortSignal() {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 100);
+    const error = await assertRejects(
+      async () => {
+        await Deno.connect({
+          hostname: "deno.com",
+          port: 50000,
+          transport: "tcp",
+          signal: controller.signal,
+        });
+      },
+    );
+    assert(error instanceof DOMException);
+    assertEquals(error.name, "AbortError");
+  },
+);
+
 Deno.test({
   ignore: Deno.build.os === "linux",
   permissions: { net: true },
