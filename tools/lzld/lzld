@@ -1,0 +1,56 @@
+#!/bin/bash
+#
+# This script is a wrapper around the `lld` linker that adds the path to the
+# `liblzld` static library to the linker search path and links against it.
+#
+# Additionally, this script strips out `-framework` arguments
+
+arch=$(uname -m)
+
+# Find the path to the `lld` binary.
+lld=$(which lld)
+if [ -z "$lld" ]; then
+  lld=$(which ld64.lld)
+fi
+
+if [ ! -x "$lld" ]; then
+  echo "Error: unable to find 'lld' binary" >&2
+  exit 23
+fi
+
+# Filter out `-framework` arguments.
+args=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -framework)
+      shift 2
+      ;;
+    -Wl)
+      # Process `-Wl`
+      shift
+      IFS=',' read -r -a wl_args <<< "$1"
+      for arg in "${wl_args[@]}"; do
+        args+=("$arg")
+      done
+      shift
+      ;;
+    *)
+      if [[ $1 == -Wl,* ]]; then
+        IFS=',' read -r -a wl_args <<< "${1:4}"
+        for arg in "${wl_args[@]}"; do
+          args+=("$arg")
+        done
+      else
+        args+=("$1")
+      fi
+      shift
+      ;;
+  esac
+done
+
+args+=("-L$(dirname "$(realpath "$0")")")
+args+=("-llzld_${arch}")
+
+exec "$lld" "${args[@]}"
+
