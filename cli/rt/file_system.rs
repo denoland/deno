@@ -17,9 +17,9 @@ use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
+use deno_lib::standalone::virtual_fs::OffsetWithLength;
 use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsEntryRef;
-use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualFile;
 use deno_lib::sys::DenoLibSys;
@@ -40,6 +40,7 @@ use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
 use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
+use url::Url;
 
 #[derive(Debug, Clone)]
 pub struct DenoRtSys(Arc<FileBackedVfs>);
@@ -47,6 +48,16 @@ pub struct DenoRtSys(Arc<FileBackedVfs>);
 impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
     Self(vfs)
+  }
+
+  pub fn is_specifier_in_vfs(&self, specifier: &Url) -> bool {
+    deno_path_util::url_to_file_path(specifier)
+      .map(|p| self.is_in_vfs(&p))
+      .unwrap_or(false)
+  }
+
+  pub fn is_in_vfs(&self, path: &Path) -> bool {
+    self.0.is_path_within(path)
   }
 
   fn error_if_in_vfs(&self, path: &Path) -> FsResult<()> {
@@ -63,8 +74,7 @@ impl DenoRtSys {
     newpath: &Path,
   ) -> std::io::Result<u64> {
     let old_file = self.0.file_entry(oldpath)?;
-    let old_file_bytes =
-      self.0.read_file_all(old_file, VfsFileSubDataKind::Raw)?;
+    let old_file_bytes = self.0.read_file_all(old_file)?;
     let len = old_file_bytes.len() as u64;
     RealFs
       .write_file_sync(
@@ -1079,11 +1089,7 @@ impl FileBackedVfsFile {
       return Ok(Cow::Borrowed(&[]));
     }
     if read_pos == 0 {
-      Ok(
-        self
-          .vfs
-          .read_file_all(&self.file, VfsFileSubDataKind::Raw)?,
-      )
+      Ok(self.vfs.read_file_all(&self.file)?)
     } else {
       let size = (self.file.offset.len - read_pos) as usize;
       let mut buf = vec![0; size];
@@ -1378,13 +1384,16 @@ impl FileBackedVfs {
   pub fn read_file_all(
     &self,
     file: &VirtualFile,
-    sub_data_kind: VfsFileSubDataKind,
   ) -> std::io::Result<Cow<'static, [u8]>> {
-    let read_len = match sub_data_kind {
-      VfsFileSubDataKind::Raw => file.offset.len,
-      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset.len,
-    };
-    let read_range = self.get_read_range(file, sub_data_kind, 0, read_len)?;
+    self.read_file_offset_with_len(file.offset)
+  }
+
+  pub fn read_file_offset_with_len(
+    &self,
+    offset_with_len: OffsetWithLength,
+  ) -> std::io::Result<Cow<'static, [u8]>> {
+    let read_range =
+      self.get_read_range(offset_with_len, 0, offset_with_len.len)?;
     match &self.vfs_data {
       Cow::Borrowed(data) => Ok(Cow::Borrowed(&data[read_range])),
       Cow::Owned(data) => Ok(Cow::Owned(data[read_range].to_vec())),
@@ -1397,12 +1406,7 @@ impl FileBackedVfs {
     pos: u64,
     buf: &mut [u8],
   ) -> std::io::Result<usize> {
-    let read_range = self.get_read_range(
-      file,
-      VfsFileSubDataKind::Raw,
-      pos,
-      buf.len() as u64,
-    )?;
+    let read_range = self.get_read_range(file.offset, pos, buf.len() as u64)?;
     let read_len = read_range.len();
     buf[..read_len].copy_from_slice(&self.vfs_data[read_range]);
     Ok(read_len)
@@ -1410,15 +1414,10 @@ impl FileBackedVfs {
 
   fn get_read_range(
     &self,
-    file: &VirtualFile,
-    sub_data_kind: VfsFileSubDataKind,
+    file_offset_and_len: OffsetWithLength,
     pos: u64,
     len: u64,
   ) -> std::io::Result<Range<usize>> {
-    let file_offset_and_len = match sub_data_kind {
-      VfsFileSubDataKind::Raw => file.offset,
-      VfsFileSubDataKind::ModuleGraph => file.module_graph_offset,
-    };
     if pos > file_offset_and_len.len {
       return Err(std::io::Error::new(
         std::io::ErrorKind::UnexpectedEof,
@@ -1470,13 +1469,7 @@ mod test {
   #[track_caller]
   fn read_file(vfs: &FileBackedVfs, path: &Path) -> String {
     let file = vfs.file_entry(path).unwrap();
-    String::from_utf8(
-      vfs
-        .read_file_all(file, VfsFileSubDataKind::Raw)
-        .unwrap()
-        .into_owned(),
-    )
-    .unwrap()
+    String::from_utf8(vfs.read_file_all(file).unwrap().into_owned()).unwrap()
   }
 
   #[test]
@@ -1492,32 +1485,19 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(
-        &src_path.join("a.txt"),
-        "data".into(),
-        VfsFileSubDataKind::Raw,
-      )
+      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into())
       .unwrap();
     builder
-      .add_file_with_data_raw(
-        &src_path.join("b.txt"),
-        "data".into(),
-        VfsFileSubDataKind::Raw,
-      )
+      .add_file_with_data_raw(&src_path.join("b.txt"), "data".into())
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(
-        &src_path.join("c.txt"),
-        "c".into(),
-        VfsFileSubDataKind::Raw,
-      )
+      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into())
       .unwrap();
     builder
       .add_file_with_data_raw(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
-        VfsFileSubDataKind::Raw,
       )
       .unwrap();
     builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
@@ -1678,7 +1658,6 @@ mod test {
       .add_file_with_data_raw(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
-        VfsFileSubDataKind::Raw,
       )
       .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);

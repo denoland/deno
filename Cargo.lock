@@ -1960,11 +1960,12 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a417f8bd3f1074185c4c8ccb6ea6261ae173781596cc358e68ad07aaac11009d"
+checksum = "577fe2bbe04f3e9b1b7c6fac6a75101a9fbd611c50a6b68789e69f4d63dcb2b4"
 dependencies = [
  "data-url",
+ "encoding_rs",
  "serde",
  "url",
 ]
@@ -2341,7 +2342,6 @@ dependencies = [
  "dlopen2",
  "encoding_rs",
  "fastwebsockets",
- "flate2",
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
@@ -2682,12 +2682,11 @@ name = "denort"
 version = "2.1.5"
 dependencies = [
  "async-trait",
- "deno_ast",
+ "bincode",
  "deno_cache_dir",
  "deno_config",
  "deno_core",
  "deno_error",
- "deno_graph",
  "deno_lib",
  "deno_media_type",
  "deno_npm",
@@ -2705,8 +2704,10 @@ dependencies = [
  "node_resolver",
  "pretty_assertions",
  "serde",
+ "serde_json",
  "sys_traits",
  "test_server",
+ "thiserror 2.0.3",
  "tokio",
  "tokio-util",
  "twox-hash",
@@ -5246,6 +5247,7 @@ dependencies = [
  "once_cell",
  "path-clean",
  "regex",
+ "serde",
  "serde_json",
  "sys_traits",
  "thiserror 2.0.3",
