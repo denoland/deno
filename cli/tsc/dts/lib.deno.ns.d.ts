@@ -4042,6 +4042,18 @@ declare namespace Deno {
     variable?: string;
   }
 
+  /** Specifies if the import permission should be requested or revoked.
+   * If set to "inherit" the current import permission will be inherited.
+   * If set to true, the global import permission will be requested.
+   * If set to false, the global import permission will be revoked.
+   * If set to Array<string>, the import permissions will be requested with the specified domains.
+   *
+   * @category Permissions */
+  export interface ImportPermissionDescriptor {
+    name: "import";
+    variable?: string;
+  }
+
   /** The permission descriptor for the `allow-sys` and `deny-sys` permissions, which controls
    * access to sensitive host system information, which malicious code might
    * attempt to exploit. The option `kind` allows scoping the permission to a
@@ -4096,7 +4108,8 @@ declare namespace Deno {
     | NetPermissionDescriptor
     | EnvPermissionDescriptor
     | SysPermissionDescriptor
-    | FfiPermissionDescriptor;
+    | FfiPermissionDescriptor
+    | ImportPermissionDescriptor;
 
   /** The interface which defines what event types are supported by
    * {@linkcode PermissionStatus} instances.
