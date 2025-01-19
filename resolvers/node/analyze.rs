@@ -14,6 +14,8 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
+use serde::Deserialize;
+use serde::Serialize;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -36,7 +38,7 @@ pub enum CjsAnalysis<'a> {
   Cjs(CjsAnalysisExports),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
