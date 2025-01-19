@@ -369,9 +369,14 @@ export class NodeSyntaxError extends NodeErrorAbstraction
   constructor(code: string, message: string) {
     super(SyntaxError.prototype.name, code, message);
     Object.setPrototypeOf(this, SyntaxError.prototype);
-    this.toString = function () {
-      return `${this.name} [${this.code}]: ${this.message}`;
-    };
+    Object.defineProperty(this, "toString", {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
   }
 }
 
@@ -379,9 +384,14 @@ export class NodeRangeError extends NodeErrorAbstraction {
   constructor(code: string, message: string) {
     super(RangeError.prototype.name, code, message);
     Object.setPrototypeOf(this, RangeError.prototype);
-    this.toString = function () {
-      return `${this.name} [${this.code}]: ${this.message}`;
-    };
+    Object.defineProperty(this, "toString", {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
   }
 }
 
@@ -389,9 +399,14 @@ export class NodeTypeError extends NodeErrorAbstraction implements TypeError {
   constructor(code: string, message: string) {
     super(TypeError.prototype.name, code, message);
     Object.setPrototypeOf(this, TypeError.prototype);
-    this.toString = function () {
-      return `${this.name} [${this.code}]: ${this.message}`;
-    };
+    Object.defineProperty(this, "toString", {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
   }
 }
 
@@ -399,9 +414,14 @@ export class NodeURIError extends NodeErrorAbstraction implements URIError {
   constructor(code: string, message: string) {
     super(URIError.prototype.name, code, message);
     Object.setPrototypeOf(this, URIError.prototype);
-    this.toString = function () {
-      return `${this.name} [${this.code}]: ${this.message}`;
-    };
+    Object.defineProperty(this, "toString", {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
   }
 }
 
@@ -510,10 +530,15 @@ class NodeSystemError extends Error {
         configurable: true,
       });
     }
-  }
 
-  override toString() {
-    return `${this.name} [${this.code}]: ${this.message}`;
+    Object.defineProperty(this, "toString", {
+      configurable: true,
+      enumerable: false,
+      value: function toString() {
+        return `${this.name} [${this.code}]: ${this.message}`;
+      },
+      writable: true,
+    });
   }
 
   // deno-lint-ignore no-explicit-any
