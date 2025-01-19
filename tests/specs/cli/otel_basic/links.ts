@@ -35,5 +35,6 @@ span3.addLink({
   attributes: {
     key: "value",
   },
+  droppedAttributesCount: 1,
 });
 span3.end();

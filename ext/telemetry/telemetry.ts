@@ -187,7 +187,6 @@ interface OtelSpan {
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
   dropEvent(): void;
-  dropLink(): void;
   end(endTime: number): void;
 }
 
@@ -361,22 +360,17 @@ class Span {
   }
 
   addLink(link: Link): Span {
-    if (
-      link.attributes === undefined ||
-      ObjectKeys(link.attributes).length === 0
-    ) {
-      const valid = op_otel_span_add_link(
-        this.#otelSpan,
-        link.context.traceId,
-        link.context.spanId,
-        link.context.traceFlags,
-        link.context.isRemote ?? false,
-      );
-      if (!valid) return this;
-    } else {
-      // We don't support link attributes yet.
-      this.#otelSpan?.dropLink();
-    }
+    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
+      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+    const valid = op_otel_span_add_link(
+      this.#otelSpan,
+      link.context.traceId,
+      link.context.spanId,
+      link.context.traceFlags,
+      link.context.isRemote ?? false,
+      droppedAttributeCount,
+    );
+    if (!valid) return this;
     return this;
   }
 

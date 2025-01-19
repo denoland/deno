@@ -1327,17 +1327,6 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn drop_link(&self) {
-    let mut state = self.0.borrow_mut();
-    match &mut **state {
-      OtelSpanState::Recording(span) => {
-        span.links.dropped_count += 1;
-      }
-      OtelSpanState::Done(_) => {}
-    }
-  }
-
-  #[fast]
   fn end(&self, end_time: f64) {
     let end_time = if end_time.is_nan() {
       SystemTime::now()
@@ -1458,6 +1447,7 @@ fn op_otel_span_add_link<'s>(
   span_id: v8::Local<'s, v8::Value>,
   #[smi] trace_flags: u8,
   is_remote: bool,
+  #[smi] dropped_attributes_count: u32,
 ) -> bool {
   let trace_id = parse_trace_id(scope, trace_id);
   if trace_id == TraceId::INVALID {
@@ -1482,7 +1472,11 @@ fn op_otel_span_add_link<'s>(
   };
   let mut state = span.0.borrow_mut();
   if let OtelSpanState::Recording(span) = &mut **state {
-    span.links.links.push(Link::with_context(span_context));
+    span.links.links.push(Link::new(
+      span_context,
+      vec![],
+      dropped_attributes_count,
+    ));
   }
   true
 }

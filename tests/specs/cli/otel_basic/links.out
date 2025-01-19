@@ -74,8 +74,17 @@
       "droppedAttributesCount": 0,
       "events": [],
       "droppedEventsCount": 0,
-      "links": [],
-      "droppedLinksCount": 1,
+      "links": [
+        {
+          "traceId": "1234567890abcdef1234567890abcdef",
+          "spanId": "1234567890abcdef",
+          "traceState": "",
+          "attributes": [],
+          "droppedAttributesCount": 2,
+          "flags": 1
+        }
+      ],
+      "droppedLinksCount": 0,
       "status": {
         "message": "",
         "code": 0
