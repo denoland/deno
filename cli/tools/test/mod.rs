@@ -1185,9 +1185,9 @@ async fn test_specifiers(
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
   let mut specifiers = if let Some(changed_paths) = changed_paths {
-    factory.dependent_checked_specifiers(changed_paths).await?
+    factory.dependent_specifiers(changed_paths).await?
   } else {
-    factory.checked_specifiers().collect()
+    factory.specifiers().collect()
   };
   if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
@@ -1467,8 +1467,8 @@ pub async fn collect_specifiers_for_tests(
         .into_iter()
         .map(|specifier| {
           let info = SpecifierInfo {
-            check: module_specifiers.contains(&specifier),
-            check_doc: true,
+            include: module_specifiers.contains(&specifier),
+            include_doc: true,
           };
           (specifier, info)
         })
@@ -1476,8 +1476,8 @@ pub async fn collect_specifiers_for_tests(
     })?
   } else {
     let info = SpecifierInfo {
-      check: true,
-      check_doc: false,
+      include: true,
+      include_doc: false,
     };
     module_specifiers
       .into_iter()
@@ -1488,7 +1488,7 @@ pub async fn collect_specifiers_for_tests(
     let file = file_fetcher.fetch_bypass_permissions(specifier).await?;
     let (media_type, _) = file.resolve_media_type_and_charset();
     if matches!(media_type, MediaType::Unknown | MediaType::Dts) {
-      info.check = false;
+      info.include = false;
     }
   }
   Ok(specifiers)

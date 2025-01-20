@@ -289,9 +289,9 @@ async fn bench_specifiers(
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
   let specifiers = if let Some(changed_paths) = changed_paths {
-    factory.dependent_checked_specifiers(changed_paths).await?
+    factory.dependent_specifiers(changed_paths).await?
   } else {
-    factory.checked_specifiers().collect()
+    factory.specifiers().collect()
   };
   let worker_factory =
     Arc::new(factory.inner.create_cli_main_worker_factory().await?);
@@ -452,8 +452,8 @@ pub async fn run_benchmarks(
     |patterns, cli_options, _, _| {
       async move {
         let info = SpecifierInfo {
-          check: true,
-          check_doc: false,
+          include: true,
+          include_doc: false,
         };
         collect_specifiers(
           patterns,
@@ -525,8 +525,8 @@ pub async fn run_benchmarks_with_watch(
             |patterns, cli_options, _, _| {
               async move {
                 let info = SpecifierInfo {
-                  check: true,
-                  check_doc: false,
+                  include: true,
+                  include_doc: false,
                 };
                 collect_specifiers(
                   patterns,

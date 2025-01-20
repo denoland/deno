@@ -67,8 +67,8 @@ pub async fn check(
     |patterns, cli_options, _, (doc, doc_only)| {
       async move {
         let info = SpecifierInfo {
-          check: !doc_only,
-          check_doc: doc || doc_only,
+          include: !doc_only,
+          include_doc: doc || doc_only,
         };
         collect_specifiers(
           patterns,

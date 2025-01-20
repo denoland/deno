@@ -1233,17 +1233,17 @@ impl CliFactory {
 
 #[derive(Debug, Copy, Clone)]
 pub struct SpecifierInfo {
-  /// Type check as an ES module.
-  pub check: bool,
+  /// Include as an ES module.
+  pub include: bool,
   /// Type check virtual modules from doc snippets. If this is set but `check`
   /// is not, this may be a markdown file for example.
-  pub check_doc: bool,
+  pub include_doc: bool,
 }
 
 pub struct CliFactoryWithWorkspaceFiles {
   pub inner: CliFactory,
   pub cli_options: Arc<CliOptions>,
-  specifiers: Vec<(ModuleSpecifier, SpecifierInfo)>,
+  file_specifiers: Vec<ModuleSpecifier>,
   doc_snippet_specifiers: Vec<ModuleSpecifier>,
   initial_cwd: PathBuf,
 }
@@ -1280,7 +1280,7 @@ impl CliFactoryWithWorkspaceFiles {
       let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
     }
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
-    let mut specifiers = Vec::new();
+    let mut file_specifiers = Vec::new();
     let mut doc_snippet_specifiers = Vec::new();
     for (_, files) in workspace_dirs_with_files {
       if let Some(watcher_communicator) = watcher_communicator {
@@ -1293,7 +1293,7 @@ impl CliFactoryWithWorkspaceFiles {
         );
       }
       let file_fetcher = factory.file_fetcher()?;
-      let dir_specifiers = collect_specifiers(
+      let specifiers = collect_specifiers(
         files,
         cli_options.clone(),
         file_fetcher.clone(),
@@ -1302,7 +1302,7 @@ impl CliFactoryWithWorkspaceFiles {
       .await?;
       if let Some(extract_doc_files) = extract_doc_files {
         let root_permissions = factory.root_permissions_container()?;
-        for (s, _) in dir_specifiers.iter().filter(|(_, i)| i.check_doc) {
+        for (s, _) in specifiers.iter().filter(|(_, i)| i.include_doc) {
           let file = file_fetcher.fetch(s, root_permissions).await?;
           let snippet_files = extract_doc_files(file)?;
           for snippet_file in snippet_files {
@@ -1311,12 +1311,16 @@ impl CliFactoryWithWorkspaceFiles {
           }
         }
       }
-      specifiers.extend(dir_specifiers);
+      file_specifiers.extend(
+        specifiers
+          .into_iter()
+          .filter_map(|(s, i)| i.include.then_some(s)),
+      );
     }
     Ok(Self {
       inner: factory,
       cli_options,
-      specifiers,
+      file_specifiers,
       doc_snippet_specifiers,
       initial_cwd,
     })
@@ -1327,25 +1331,24 @@ impl CliFactoryWithWorkspaceFiles {
   }
 
   pub fn found_specifiers(&self) -> bool {
-    !self.specifiers.is_empty()
+    !self.file_specifiers.is_empty() || !self.doc_snippet_specifiers.is_empty()
   }
 
-  pub fn checked_specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
+  pub fn specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
     self
-      .specifiers
+      .file_specifiers
       .iter()
-      .filter_map(|(s, i)| i.check.then_some(s))
       .chain(self.doc_snippet_specifiers.iter())
   }
 
-  pub async fn dependent_checked_specifiers(
+  pub async fn dependent_specifiers(
     &self,
     canonicalized_dep_paths: &HashSet<PathBuf>,
   ) -> Result<Vec<&ModuleSpecifier>, AnyError> {
     let graph_kind =
       self.inner.cli_options()?.type_check_mode().as_graph_kind();
     let module_graph_creator = self.inner.module_graph_creator().await?;
-    let specifiers = self.checked_specifiers().collect::<Vec<_>>();
+    let specifiers = self.specifiers().collect::<Vec<_>>();
     let graph = module_graph_creator
       .create_graph(
         graph_kind,
@@ -1387,7 +1390,7 @@ impl CliFactoryWithWorkspaceFiles {
   pub async fn check(&self) -> Result<(), AnyError> {
     let main_graph_container =
       self.inner.main_module_graph_container().await?.clone();
-    let specifiers = self.checked_specifiers().cloned().collect::<Vec<_>>();
+    let specifiers = self.specifiers().cloned().collect::<Vec<_>>();
     if specifiers.is_empty() {
       return Ok(());
     }
