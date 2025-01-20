@@ -1,0 +1,72 @@
+{
+  "name": "dns2",
+  "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
+  "dist-tags": {
+    "latest": "2.1.0"
+  },
+  "versions": {
+    "2.1.0": {
+      "name": "dns2",
+      "version": "2.1.0",
+      "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
+      "main": "index.js",
+      "scripts": {
+        "test": "node test",
+        "lint": "eslint .",
+        "example-server-udp": "node example/server/udp.js",
+        "example-server-tcp": "node example/server/tcp.js",
+        "example-server-doh": "node example/server/doh.js",
+        "example-client-doh": "node example/client/doh.js",
+        "example-client-udp": "node example/client/udp.js",
+        "example-client-tcp": "node example/client/tcp.js",
+        "example-client-google": "node example/client/google.js",
+        "example-client-udp-subnet": "node example/client/udp-subnet.js"
+      },
+      "author": {
+        "name": "Liu Song",
+        "email": "song940@gmail.com"
+      },
+      "license": "MIT",
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/song940/node-dns.git"
+      },
+      "bugs": {
+        "url": "https://github.com/song940/node-dns/issues"
+      },
+      "devDependencies": {
+        "eslint": "^7.28.0",
+        "eslint-config-semistandard": "^15.0.1",
+        "eslint-plugin-node": "^11.1.0",
+        "eslint-plugin-promise": "^4.2.1"
+      },
+      "gitHead": "28fd77405b98081ac1efb41d0c800e827c1cf6ff",
+      "_id": "dns2@2.1.0",
+      "_nodeVersion": "19.3.0",
+      "_npmVersion": "9.2.0",
+      "dist": {
+        "integrity": "sha512-m27K11aQalRbmUs7RLaz6aPyceLjAoqjPRNTdE7qUouQpl+PC8Bi67O+i9SuJUPbQC8dxFrczAxfmTPuTKHNkw==",
+        "shasum": "15b07567befb2b914aedbb55a9ea0862c63c3d73",
+        "tarball": "https://registry.npmjs.org/dns2/-/dns2-2.1.0.tgz",
+        "fileCount": 37,
+        "unpackedSize": 75538
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
+    }
+  },
+  "homepage": "https://github.com/song940/node-dns#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/song940/node-dns.git"
+  },
+  "author": {
+    "name": "Liu Song",
+    "email": "song940@gmail.com"
+  },
+  "bugs": {
+    "url": "https://github.com/song940/node-dns/issues"
+  },
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
