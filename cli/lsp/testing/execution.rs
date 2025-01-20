@@ -467,6 +467,14 @@ impl TestRun {
             permission_desc_parser.as_ref(),
             &cli_options.permissions_options(),
           )?;
+
+          let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+          let test_files = queue
+            .iter()
+            .filter_map(|v| v.to_file_path().ok())
+            .collect::<Vec<_>>();
+          let _ = watcher_communicator.watch_paths(test_files);
+
           let main_graph_container =
             factory.main_module_graph_container().await?;
           main_graph_container
