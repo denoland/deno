@@ -1527,7 +1527,7 @@ pub async fn run_tests(
     return Ok(());
   }
 
-  let initial_cwd = factory.initial_cwd();
+  let initial_cwd = factory.cli_options.initial_cwd();
   test_specifiers(
     &factory,
     None,
@@ -1535,7 +1535,7 @@ pub async fn run_tests(
       cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
         anyhow!(
           "Unable to construct URL from the path of cwd: {}",
-          factory.cli_options.initial_cwd().to_string_lossy(),
+          initial_cwd.to_string_lossy(),
         )
       })?,
       concurrent_jobs: test_flags
@@ -1623,7 +1623,7 @@ pub async fn run_tests_with_watch(
           return Ok(());
         }
 
-        let initial_cwd = factory.initial_cwd();
+        let initial_cwd = factory.cli_options.initial_cwd();
         test_specifiers(
           &factory,
           changed_paths.map(|p| p.into_iter().collect()).as_ref(),
@@ -1631,7 +1631,7 @@ pub async fn run_tests_with_watch(
             cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
               anyhow!(
                 "Unable to construct URL from the path of cwd: {}",
-                factory.cli_options.initial_cwd().to_string_lossy(),
+                initial_cwd.to_string_lossy(),
               )
             })?,
             concurrent_jobs: test_flags

@@ -1245,7 +1245,6 @@ pub struct CliFactoryWithWorkspaceFiles {
   pub cli_options: Arc<CliOptions>,
   file_specifiers: Vec<ModuleSpecifier>,
   doc_snippet_specifiers: Vec<ModuleSpecifier>,
-  initial_cwd: PathBuf,
 }
 
 impl CliFactoryWithWorkspaceFiles {
@@ -1275,7 +1274,6 @@ impl CliFactoryWithWorkspaceFiles {
       ));
     let mut factory = CliFactory::from_cli_options(cli_options.clone());
     factory.watcher_communicator = watcher_communicator.cloned();
-    let initial_cwd = cli_options.initial_cwd().to_path_buf();
     if let Some(watcher_communicator) = watcher_communicator {
       let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
     }
@@ -1322,12 +1320,7 @@ impl CliFactoryWithWorkspaceFiles {
       cli_options,
       file_specifiers,
       doc_snippet_specifiers,
-      initial_cwd,
     })
-  }
-
-  pub fn initial_cwd(&self) -> &PathBuf {
-    &self.initial_cwd
   }
 
   pub fn found_specifiers(&self) -> bool {
