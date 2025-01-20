@@ -73,8 +73,8 @@ use crate::args::TestFlags;
 use crate::args::TestReporterConfig;
 use crate::colors;
 use crate::display;
+use crate::factory::CliFactoryWithWorkspaceFiles;
 use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFilesFactory;
 use crate::file_fetcher::CliFileFetcher;
 use crate::ops;
 use crate::sys::CliSys;
@@ -1180,38 +1180,27 @@ static HAS_TEST_RUN_SIGINT_HANDLER: AtomicBool = AtomicBool::new(false);
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn test_specifiers(
-  workspace_files_factory: &WorkspaceFilesFactory,
+  factory: &CliFactoryWithWorkspaceFiles,
   changed_paths: Option<&HashSet<PathBuf>>,
   options: TestSpecifiersOptions,
 ) -> Result<(), AnyError> {
-  let mut specifiers_with_services = vec![];
-  for factory in workspace_files_factory.dirs() {
-    let worker_factory =
-      Arc::new(factory.create_cli_main_worker_factory().await?);
-    let permission_desc_parser = factory.permission_desc_parser()?;
-    let permissions = Arc::new(Permissions::from_options(
-      permission_desc_parser.as_ref(),
-      factory.permissions_options(),
-    )?);
-    let specifiers = if let Some(changed_paths) = changed_paths {
-      factory.dependent_checked_specifiers(changed_paths).await?
-    } else {
-      factory.checked_specifiers().collect()
-    };
-    specifiers_with_services.extend(specifiers.into_iter().map(|s| {
-      (
-        s.clone(),
-        worker_factory.clone(),
-        permission_desc_parser.clone(),
-        permissions.clone(),
-      )
-    }));
-  }
+  let mut specifiers = if let Some(changed_paths) = changed_paths {
+    factory.dependent_checked_specifiers(changed_paths).await?
+  } else {
+    factory.checked_specifiers().collect()
+  };
   if let Some(seed) = options.specifier.shuffle {
     let mut rng = SmallRng::seed_from_u64(seed);
-    specifiers_with_services.sort_by_cached_key(|(s, ..)| s.to_string());
-    specifiers_with_services.shuffle(&mut rng);
+    specifiers.sort();
+    specifiers.shuffle(&mut rng);
   }
+  let worker_factory =
+    Arc::new(factory.inner.create_cli_main_worker_factory().await?);
+  let permission_desc_parser = factory.inner.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &factory.cli_options.permissions_options(),
+  )?;
 
   let (test_event_sender_factory, receiver) = create_test_event_channel();
   let concurrent_jobs = options.concurrent_jobs;
@@ -1225,27 +1214,26 @@ async fn test_specifiers(
   let reporter = get_test_reporter(&options);
   let fail_fast_tracker = FailFastTracker::new(options.fail_fast);
 
-  let join_handles = specifiers_with_services.into_iter().map(
-    move |(specifier, worker_factory, permission_desc_parser, permissions)| {
-      let permissions_container = PermissionsContainer::new(
-        permission_desc_parser,
-        permissions.as_ref().clone(),
-      );
-      let worker_sender = test_event_sender_factory.worker();
-      let fail_fast_tracker = fail_fast_tracker.clone();
-      let specifier_options = options.specifier.clone();
-      spawn_blocking(move || {
-        create_and_run_current_thread(test_specifier(
-          worker_factory,
-          permissions_container,
-          specifier,
-          worker_sender,
-          fail_fast_tracker,
-          specifier_options,
-        ))
-      })
-    },
-  );
+  let join_handles = specifiers.into_iter().cloned().map(move |specifier| {
+    let worker_factory = worker_factory.clone();
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
+    let worker_sender = test_event_sender_factory.worker();
+    let fail_fast_tracker = fail_fast_tracker.clone();
+    let specifier_options = options.specifier.clone();
+    spawn_blocking(move || {
+      create_and_run_current_thread(test_specifier(
+        worker_factory,
+        permissions_container,
+        specifier,
+        worker_sender,
+        fail_fast_tracker,
+        specifier_options,
+      ))
+    })
+  });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(concurrent_jobs.get())
@@ -1516,40 +1504,38 @@ pub async fn run_tests(
     .resolve_test_options_for_members(&test_flags)?
     .into_iter()
     .map(|(d, o)| (d, o.files))
-    .collect();
-  let workspace_files_factory =
-    WorkspaceFilesFactory::from_workspace_dirs_with_files(
-      workspace_dirs_with_files,
-      |patterns, cli_options, file_fetcher, doc| {
-        collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
-          .boxed_local()
-      },
-      test_flags.doc,
-      Some(extract_doc_tests),
-      &cli_options,
-      None,
-    )
-    .await?;
-  if !test_flags.permit_no_files && !workspace_files_factory.found_specifiers()
-  {
+    .collect::<Vec<_>>();
+  let factory = CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
+    workspace_dirs_with_files,
+    |patterns, cli_options, file_fetcher, doc| {
+      collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
+        .boxed_local()
+    },
+    test_flags.doc,
+    Some(extract_doc_tests),
+    cli_options,
+    None,
+  )
+  .await?;
+  if !test_flags.permit_no_files && !factory.found_specifiers() {
     return Err(anyhow!("No test modules found"));
   }
 
-  workspace_files_factory.check().await?;
+  factory.check().await?;
 
   if test_flags.no_run {
     return Ok(());
   }
 
-  let initial_cwd = workspace_files_factory.initial_cwd();
+  let initial_cwd = factory.initial_cwd();
   test_specifiers(
-    &workspace_files_factory,
+    &factory,
     None,
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
         anyhow!(
           "Unable to construct URL from the path of cwd: {}",
-          cli_options.initial_cwd().to_string_lossy(),
+          factory.cli_options.initial_cwd().to_string_lossy(),
         )
       })?,
       concurrent_jobs: test_flags
@@ -1612,8 +1598,8 @@ pub async fn run_tests_with_watch(
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect::<Vec<_>>();
-        let workspace_files_factory =
-          WorkspaceFilesFactory::from_workspace_dirs_with_files(
+        let factory =
+          CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
             |patterns, cli_options, file_fetcher, doc| {
               collect_specifiers_for_tests(
@@ -1626,26 +1612,26 @@ pub async fn run_tests_with_watch(
             },
             test_flags.doc,
             Some(extract_doc_tests),
-            &cli_options,
+            cli_options,
             Some(&watcher_communicator),
           )
           .await?;
 
-        workspace_files_factory.check().await?;
+        factory.check().await?;
 
         if test_flags.no_run {
           return Ok(());
         }
 
-        let initial_cwd = workspace_files_factory.initial_cwd();
+        let initial_cwd = factory.initial_cwd();
         test_specifiers(
-          &workspace_files_factory,
+          &factory,
           changed_paths.map(|p| p.into_iter().collect()).as_ref(),
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(initial_cwd).map_err(|_| {
               anyhow!(
                 "Unable to construct URL from the path of cwd: {}",
-                cli_options.initial_cwd().to_string_lossy(),
+                factory.cli_options.initial_cwd().to_string_lossy(),
               )
             })?,
             concurrent_jobs: test_flags

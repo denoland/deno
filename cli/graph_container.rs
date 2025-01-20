@@ -13,7 +13,6 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::module_loader::PrepareModuleLoadError;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 
@@ -70,7 +69,7 @@ impl MainModuleGraphContainer {
     &self,
     specifiers: &[ModuleSpecifier],
     ext_overwrite: Option<&String>,
-  ) -> Result<(), PrepareModuleLoadError> {
+  ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
     self
@@ -100,7 +99,7 @@ impl MainModuleGraphContainer {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    Ok(self.check_specifiers(&specifiers, None).await?)
+    self.check_specifiers(&specifiers, None).await
   }
 
   pub fn collect_specifiers(

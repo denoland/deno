@@ -8,7 +8,7 @@ mod lockfile;
 mod package_json;
 
 use std::borrow::Cow;
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
@@ -557,15 +557,6 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-/// Overrides for the options below that when set will
-/// use these values over the values derived from the
-/// CLI flags or config file.
-#[derive(Debug, Clone)]
-pub struct ScopeOptions {
-  pub scope: Option<Arc<ModuleSpecifier>>,
-  pub all_scopes: Arc<BTreeSet<Arc<ModuleSpecifier>>>,
-}
-
 fn load_external_import_map(
   deno_json: &ConfigFile,
 ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
@@ -593,11 +584,10 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
-  sys: CliSys,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
+  pub all_dirs: BTreeMap<Arc<Url>, Arc<WorkspaceDirectory>>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
-  pub scope_options: Option<Arc<ScopeOptions>>,
 }
 
 impl CliOptions {
@@ -611,7 +601,6 @@ impl CliOptions {
     start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
     maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
-    scope_options: Option<Arc<ScopeOptions>>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -643,6 +632,9 @@ impl CliOptions {
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
+    let all_dirs = [(start_dir.dir_url().clone(), start_dir.clone())]
+      .into_iter()
+      .collect();
     Ok(Self {
       flags,
       initial_cwd,
@@ -653,9 +645,8 @@ impl CliOptions {
       main_module_cell: std::sync::OnceLock::new(),
       maybe_external_import_map,
       start_dir,
+      all_dirs,
       deno_dir_provider,
-      sys: sys.clone(),
-      scope_options,
     })
   }
 
@@ -752,39 +743,18 @@ impl CliOptions {
       Arc::new(start_dir),
       false,
       external_import_map,
-      None,
     )
   }
 
-  pub fn with_new_start_dir_and_scope_options(
-    &self,
-    start_dir: Arc<WorkspaceDirectory>,
-    scope_options: Option<ScopeOptions>,
-  ) -> Result<Self, AnyError> {
-    let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
-    let external_import_map =
-      if let Some(deno_json) = start_dir.workspace.root_deno_json() {
-        load_external_import_map(deno_json)?
-      } else {
-        None
-      };
-    let lockfile = CliLockfile::discover(
-      &self.sys,
-      &self.flags,
-      &start_dir.workspace,
-      external_import_map.as_ref().map(|(_, v)| v),
-    )?;
-    Self::new(
-      &self.sys,
-      self.flags.clone(),
-      self.initial_cwd().to_path_buf(),
-      lockfile.map(Arc::new),
-      npmrc,
-      start_dir,
-      false,
-      external_import_map,
-      scope_options.map(Arc::new),
-    )
+  pub fn with_all_dirs(
+    self,
+    all_dirs: impl IntoIterator<Item = Arc<WorkspaceDirectory>>,
+  ) -> Self {
+    let all_dirs = all_dirs
+      .into_iter()
+      .map(|d| (d.dir_url().clone(), d))
+      .collect();
+    Self { all_dirs, ..self }
   }
 
   /// This method is purposefully verbose to disourage its use. Do not use it

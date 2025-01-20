@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
@@ -13,7 +12,6 @@ use deno_config::glob::FilePatterns;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
@@ -42,7 +40,6 @@ use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
-use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
@@ -57,7 +54,6 @@ use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::NpmInstallDepsProvider;
-use crate::args::ScopeOptions;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
@@ -79,7 +75,6 @@ use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
-use crate::module_loader::PrepareModuleLoadError;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
@@ -105,12 +100,10 @@ use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::check::CheckError;
 use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
-use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
@@ -1247,15 +1240,96 @@ pub struct SpecifierInfo {
   pub check_doc: bool,
 }
 
-pub struct WorkspaceDirFilesFactory {
+pub struct CliFactoryWithWorkspaceFiles {
+  pub inner: CliFactory,
+  pub cli_options: Arc<CliOptions>,
   specifiers: Vec<(ModuleSpecifier, SpecifierInfo)>,
   doc_snippet_specifiers: Vec<ModuleSpecifier>,
-  cli_options: Arc<CliOptions>,
-  cli_factory: CliFactory,
-  permissions_options: Deferred<PermissionsOptions>,
+  initial_cwd: PathBuf,
 }
 
-impl WorkspaceDirFilesFactory {
+impl CliFactoryWithWorkspaceFiles {
+  #[allow(clippy::type_complexity)]
+  pub async fn from_workspace_dirs_with_files<T: Clone>(
+    mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
+    collect_specifiers: fn(
+      FilePatterns,
+      Arc<CliOptions>,
+      Arc<CliFileFetcher>,
+      T,
+    ) -> std::pin::Pin<
+      Box<
+        dyn Future<
+          Output = Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError>,
+        >,
+      >,
+    >,
+    args: T,
+    extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
+    cli_options: CliOptions,
+    watcher_communicator: Option<&Arc<WatcherCommunicator>>,
+  ) -> Result<Self, AnyError> {
+    let cli_options =
+      Arc::new(cli_options.with_all_dirs(
+        workspace_dirs_with_files.iter().map(|(d, _)| d.clone()),
+      ));
+    let mut factory = CliFactory::from_cli_options(cli_options.clone());
+    factory.watcher_communicator = watcher_communicator.cloned();
+    let initial_cwd = cli_options.initial_cwd().to_path_buf();
+    if let Some(watcher_communicator) = watcher_communicator {
+      let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+    }
+    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
+    let mut specifiers = Vec::new();
+    let mut doc_snippet_specifiers = Vec::new();
+    for (_, files) in workspace_dirs_with_files {
+      if let Some(watcher_communicator) = watcher_communicator {
+        let _ = watcher_communicator.watch_paths(
+          files
+            .include
+            .iter()
+            .flat_map(|set| set.base_paths())
+            .collect(),
+        );
+      }
+      let file_fetcher = factory.file_fetcher()?;
+      let dir_specifiers = collect_specifiers(
+        files,
+        cli_options.clone(),
+        file_fetcher.clone(),
+        args.clone(),
+      )
+      .await?;
+      if let Some(extract_doc_files) = extract_doc_files {
+        let root_permissions = factory.root_permissions_container()?;
+        for (s, _) in dir_specifiers.iter().filter(|(_, i)| i.check_doc) {
+          let file = file_fetcher.fetch(s, root_permissions).await?;
+          let snippet_files = extract_doc_files(file)?;
+          for snippet_file in snippet_files {
+            doc_snippet_specifiers.push(snippet_file.url.clone());
+            file_fetcher.insert_memory_files(snippet_file);
+          }
+        }
+      }
+      specifiers.extend(dir_specifiers);
+    }
+    Ok(Self {
+      inner: factory,
+      cli_options,
+      specifiers,
+      doc_snippet_specifiers,
+      initial_cwd,
+    })
+  }
+
+  pub fn initial_cwd(&self) -> &PathBuf {
+    &self.initial_cwd
+  }
+
+  pub fn found_specifiers(&self) -> bool {
+    !self.specifiers.is_empty()
+  }
+
   pub fn checked_specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
     self
       .specifiers
@@ -1268,23 +1342,20 @@ impl WorkspaceDirFilesFactory {
     &self,
     canonicalized_dep_paths: &HashSet<PathBuf>,
   ) -> Result<Vec<&ModuleSpecifier>, AnyError> {
-    let graph_kind = self
-      .cli_factory
-      .cli_options()?
-      .type_check_mode()
-      .as_graph_kind();
-    let module_graph_creator = self.cli_factory.module_graph_creator().await?;
-    let specifiers = self.checked_specifiers().cloned().collect::<Vec<_>>();
+    let graph_kind =
+      self.inner.cli_options()?.type_check_mode().as_graph_kind();
+    let module_graph_creator = self.inner.module_graph_creator().await?;
+    let specifiers = self.checked_specifiers().collect::<Vec<_>>();
     let graph = module_graph_creator
       .create_graph(
         graph_kind,
-        specifiers.clone(),
+        specifiers.iter().map(|&s| s.clone()).collect(),
         crate::graph_util::NpmCachingStrategy::Eager,
       )
       .await?;
     module_graph_creator.graph_valid(&graph)?;
-    let dependent_specifiers = self
-      .checked_specifiers()
+    let dependent_specifiers = specifiers
+      .into_iter()
       .filter(|s| {
         let mut dependency_specifiers = graph.walk(
           std::iter::once(*s),
@@ -1313,172 +1384,16 @@ impl WorkspaceDirFilesFactory {
     Ok(dependent_specifiers)
   }
 
-  pub fn permissions_options(&self) -> &PermissionsOptions {
-    self
-      .permissions_options
-      .get_or_init(|| self.cli_options.permissions_options())
-  }
-
-  pub fn permission_desc_parser(
-    &self,
-  ) -> Result<&Arc<RuntimePermissionDescriptorParser<CliSys>>, AnyError> {
-    self.cli_factory.permission_desc_parser()
-  }
-
-  pub async fn create_cli_main_worker_factory(
-    &self,
-  ) -> Result<CliMainWorkerFactory, AnyError> {
-    self.cli_factory.create_cli_main_worker_factory().await
-  }
-}
-
-pub struct WorkspaceFilesFactory {
-  dirs: Vec<WorkspaceDirFilesFactory>,
-  initial_cwd: PathBuf,
-}
-
-impl WorkspaceFilesFactory {
-  #[allow(clippy::type_complexity)]
-  pub async fn from_workspace_dirs_with_files<T: Clone>(
-    mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
-    collect_specifiers: fn(
-      FilePatterns,
-      Arc<CliOptions>,
-      Arc<CliFileFetcher>,
-      T,
-    ) -> std::pin::Pin<
-      Box<
-        dyn Future<
-          Output = Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError>,
-        >,
-      >,
-    >,
-    args: T,
-    extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
-    cli_options: &CliOptions,
-    watcher_communicator: Option<&Arc<WatcherCommunicator>>,
-  ) -> Result<Self, AnyError> {
-    let initial_cwd = cli_options.initial_cwd().to_path_buf();
-    if let Some(watcher_communicator) = watcher_communicator {
-      let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-    }
-    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
-    let all_scopes = Arc::new(
-      workspace_dirs_with_files
-        .iter()
-        .filter(|(d, _)| d.has_deno_or_pkg_json())
-        .map(|(d, _)| d.dir_url().clone())
-        .collect::<BTreeSet<_>>(),
-    );
-    let dir_count = workspace_dirs_with_files.len();
-    let mut dirs = Vec::with_capacity(dir_count);
-    for (workspace_dir, files) in workspace_dirs_with_files {
-      if let Some(watcher_communicator) = watcher_communicator {
-        let _ = watcher_communicator.watch_paths(
-          files
-            .include
-            .iter()
-            .flat_map(|set| set.base_paths())
-            .collect(),
-        );
-      }
-      let scope_options = (dir_count > 1).then(|| ScopeOptions {
-        scope: workspace_dir
-          .has_deno_or_pkg_json()
-          .then(|| workspace_dir.dir_url().clone()),
-        all_scopes: all_scopes.clone(),
-      });
-      let cli_options = Arc::new(
-        cli_options
-          .with_new_start_dir_and_scope_options(workspace_dir, scope_options)?,
-      );
-      let mut factory = CliFactory::from_cli_options(cli_options.clone());
-      factory.watcher_communicator = watcher_communicator.cloned();
-      let file_fetcher = factory.file_fetcher()?;
-      let specifiers = collect_specifiers(
-        files,
-        cli_options.clone(),
-        file_fetcher.clone(),
-        args.clone(),
-      )
-      .await?;
-      let mut doc_snippet_specifiers = vec![];
-      if let Some(extract_doc_files) = extract_doc_files {
-        let root_permissions = factory.root_permissions_container()?;
-        for (s, _) in specifiers.iter().filter(|(_, i)| i.check_doc) {
-          let file = file_fetcher.fetch(s, root_permissions).await?;
-          let snippet_files = extract_doc_files(file)?;
-          for snippet_file in snippet_files {
-            doc_snippet_specifiers.push(snippet_file.url.clone());
-            file_fetcher.insert_memory_files(snippet_file);
-          }
-        }
-      }
-      dirs.push(WorkspaceDirFilesFactory {
-        specifiers,
-        doc_snippet_specifiers,
-        cli_options,
-        cli_factory: factory,
-        permissions_options: Default::default(),
-      });
-    }
-    Ok(Self { dirs, initial_cwd })
-  }
-
-  pub fn dirs(&self) -> &Vec<WorkspaceDirFilesFactory> {
-    &self.dirs
-  }
-
-  pub fn initial_cwd(&self) -> &PathBuf {
-    &self.initial_cwd
-  }
-
-  pub fn found_specifiers(&self) -> bool {
-    self.dirs.iter().any(|e| !e.specifiers.is_empty())
-  }
-
   pub async fn check(&self) -> Result<(), AnyError> {
-    let mut diagnostics = vec![];
-    let mut all_errors = vec![];
-    for entry in &self.dirs {
-      let main_graph_container = entry
-        .cli_factory
-        .main_module_graph_container()
-        .await?
-        .clone();
-      let specifiers_for_typecheck =
-        entry.checked_specifiers().cloned().collect::<Vec<_>>();
-      if specifiers_for_typecheck.is_empty() {
-        continue;
-      }
-      let ext_flag = entry.cli_factory.cli_options()?.ext_flag().as_ref();
-      if let Err(err) = main_graph_container
-        .check_specifiers(&specifiers_for_typecheck, ext_flag)
-        .await
-      {
-        match err {
-          PrepareModuleLoadError::Check(CheckError::Diagnostics(
-            Diagnostics(d),
-          )) => diagnostics.extend(d),
-          err => all_errors.push(err),
-        }
-      }
+    let main_graph_container =
+      self.inner.main_module_graph_container().await?.clone();
+    let specifiers = self.checked_specifiers().cloned().collect::<Vec<_>>();
+    if specifiers.is_empty() {
+      return Ok(());
     }
-    if !diagnostics.is_empty() {
-      all_errors.push(PrepareModuleLoadError::Check(CheckError::Diagnostics(
-        Diagnostics(diagnostics),
-      )));
-    }
-    if !all_errors.is_empty() {
-      return Err(anyhow!(
-        "{}",
-        all_errors
-          .into_iter()
-          .map(|e| e.to_string())
-          .collect::<Vec<_>>()
-          .join("\n\n"),
-      ));
-    }
-    Ok(())
+    let ext_flag = self.cli_options.ext_flag().as_ref();
+    main_graph_container
+      .check_specifiers(&specifiers, ext_flag)
+      .await
   }
 }

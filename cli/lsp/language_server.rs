@@ -3666,7 +3666,6 @@ impl Inner {
       workspace,
       force_global_cache,
       None,
-      None,
     )?;
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);

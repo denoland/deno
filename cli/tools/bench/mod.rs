@@ -39,8 +39,8 @@ use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
+use crate::factory::CliFactoryWithWorkspaceFiles;
 use crate::factory::SpecifierInfo;
-use crate::factory::WorkspaceFilesFactory;
 use crate::ops;
 use crate::sys::CliSys;
 use crate::tools::test::format_test_error;
@@ -284,57 +284,46 @@ async fn bench_specifier_inner(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
-  workspace_files_factory: &WorkspaceFilesFactory,
+  factory: &CliFactoryWithWorkspaceFiles,
   changed_paths: Option<&HashSet<PathBuf>>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let mut specifiers_with_services = vec![];
-  for factory in workspace_files_factory.dirs() {
-    let worker_factory =
-      Arc::new(factory.create_cli_main_worker_factory().await?);
-    let permission_desc_parser = factory.permission_desc_parser()?;
-    let permissions = Arc::new(Permissions::from_options(
-      permission_desc_parser.as_ref(),
-      factory.permissions_options(),
-    )?);
-    let specifiers = if let Some(changed_paths) = changed_paths {
-      factory.dependent_checked_specifiers(changed_paths).await?
-    } else {
-      factory.checked_specifiers().collect()
-    };
-    specifiers_with_services.extend(specifiers.into_iter().map(|s| {
-      (
-        s.clone(),
-        worker_factory.clone(),
-        permission_desc_parser.clone(),
-        permissions.clone(),
-      )
-    }));
-  }
+  let specifiers = if let Some(changed_paths) = changed_paths {
+    factory.dependent_checked_specifiers(changed_paths).await?
+  } else {
+    factory.checked_specifiers().collect()
+  };
+  let worker_factory =
+    Arc::new(factory.inner.create_cli_main_worker_factory().await?);
+  let permission_desc_parser = factory.inner.permission_desc_parser()?;
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &factory.cli_options.permissions_options(),
+  )?;
+
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
   let log_level = options.log_level;
   let option_for_handles = options.clone();
 
-  let join_handles = specifiers_with_services.into_iter().map(
-    move |(specifier, worker_factory, permissions_desc_parser, permissions)| {
-      let permissions_container = PermissionsContainer::new(
-        permissions_desc_parser.clone(),
-        permissions.as_ref().clone(),
+  let join_handles = specifiers.into_iter().cloned().map(move |specifier| {
+    let worker_factory = worker_factory.clone();
+    let permissions_container = PermissionsContainer::new(
+      permission_desc_parser.clone(),
+      permissions.clone(),
+    );
+    let sender = sender.clone();
+    let options = option_for_handles.clone();
+    spawn_blocking(move || {
+      let future = bench_specifier(
+        worker_factory,
+        permissions_container,
+        specifier,
+        sender,
+        options.filter,
       );
-      let sender = sender.clone();
-      let options = option_for_handles.clone();
-      spawn_blocking(move || {
-        let future = bench_specifier(
-          worker_factory,
-          permissions_container,
-          specifier,
-          sender,
-          options.filter,
-        );
-        create_and_run_current_thread(future)
-      })
-    },
-  );
+      create_and_run_current_thread(future)
+    })
+  });
 
   let join_stream = stream::iter(join_handles)
     .buffer_unordered(1)
@@ -457,43 +446,42 @@ pub async fn run_benchmarks(
     .resolve_bench_options_for_members(&bench_flags)?
     .into_iter()
     .map(|(d, o)| (d, o.files))
-    .collect();
-  let workspace_files_factory =
-    WorkspaceFilesFactory::from_workspace_dirs_with_files(
-      workspace_dirs_with_files,
-      |patterns, cli_options, _, _| {
-        async move {
-          let info = SpecifierInfo {
-            check: true,
-            check_doc: false,
-          };
-          collect_specifiers(
-            patterns,
-            cli_options.vendor_dir_path().map(ToOwned::to_owned),
-            is_supported_bench_path,
-          )
-          .map(|s| s.into_iter().map(|s| (s, info)).collect())
-        }
-        .boxed_local()
-      },
-      (),
-      None,
-      &cli_options,
-      None,
-    )
-    .await?;
-  if !workspace_files_factory.found_specifiers() {
+    .collect::<Vec<_>>();
+  let factory = CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
+    workspace_dirs_with_files,
+    |patterns, cli_options, _, _| {
+      async move {
+        let info = SpecifierInfo {
+          check: true,
+          check_doc: false,
+        };
+        collect_specifiers(
+          patterns,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          is_supported_bench_path,
+        )
+        .map(|s| s.into_iter().map(|s| (s, info)).collect())
+      }
+      .boxed_local()
+    },
+    (),
+    None,
+    cli_options,
+    None,
+  )
+  .await?;
+  if !factory.found_specifiers() {
     return Err(anyhow!("No test modules found"));
   }
 
-  workspace_files_factory.check().await?;
+  factory.check().await?;
 
   if bench_flags.no_run {
     return Ok(());
   }
 
   bench_specifiers(
-    &workspace_files_factory,
+    &factory,
     None,
     BenchSpecifierOptions {
       filter: TestFilter::from_flag(&bench_flags.filter),
@@ -531,8 +519,8 @@ pub async fn run_benchmarks_with_watch(
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect::<Vec<_>>();
-        let workspace_files_factory =
-          WorkspaceFilesFactory::from_workspace_dirs_with_files(
+        let factory =
+          CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
             workspace_dirs_with_files,
             |patterns, cli_options, _, _| {
               async move {
@@ -551,19 +539,19 @@ pub async fn run_benchmarks_with_watch(
             },
             (),
             None,
-            &cli_options,
+            cli_options,
             Some(&watcher_communicator),
           )
           .await?;
 
-        workspace_files_factory.check().await?;
+        factory.check().await?;
 
         if bench_flags.no_run {
           return Ok(());
         }
 
         bench_specifiers(
-          &workspace_files_factory,
+          &factory,
           changed_paths.map(|p| p.into_iter().collect()).as_ref(),
           BenchSpecifierOptions {
             filter: TestFilter::from_flag(&bench_flags.filter),
