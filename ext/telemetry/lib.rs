@@ -477,10 +477,14 @@ mod hyper_client {
   use std::task::Poll;
   use std::task::{self};
 
+  use deno_tls::create_client_config;
+  use deno_tls::SocketUse;
+  use deno_tls::TlsKeys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
   use hyper::body::Body as HttpBody;
   use hyper::body::Frame;
+  use hyper_rustls::HttpsConnector;
   use hyper_util::client::legacy::connect::HttpConnector;
   use hyper_util::client::legacy::Client;
   use opentelemetry_http::Bytes;
@@ -494,13 +498,23 @@ mod hyper_client {
   // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
   #[derive(Debug, Clone)]
   pub struct HyperClient {
-    inner: Client<HttpConnector, Body>,
+    inner: Client<HttpsConnector<HttpConnector>, Body>,
   }
 
   impl HyperClient {
     pub fn new() -> Self {
+      let tls_config = create_client_config(
+        None,
+        vec![],
+        None,
+        TlsKeys::Null,
+        SocketUse::Http,
+      )
+      .unwrap();
+      let http_connector = HttpConnector::new();
+      let connector = HttpsConnector::from((http_connector, tls_config));
       Self {
-        inner: Client::builder(OtelSharedRuntime).build(HttpConnector::new()),
+        inner: Client::builder(OtelSharedRuntime).build(connector),
       }
     }
   }
