@@ -1240,11 +1240,16 @@ pub struct SpecifierInfo {
   pub include_doc: bool,
 }
 
+struct WorkspaceFile {
+  specifier: ModuleSpecifier,
+  doc_snippet_specifiers: Vec<ModuleSpecifier>,
+  doc_only: bool,
+}
+
 pub struct CliFactoryWithWorkspaceFiles {
   pub inner: CliFactory,
   pub cli_options: Arc<CliOptions>,
-  file_specifiers: Vec<ModuleSpecifier>,
-  doc_snippet_specifiers: Vec<ModuleSpecifier>,
+  workspace_files: Vec<WorkspaceFile>,
 }
 
 impl CliFactoryWithWorkspaceFiles {
@@ -1278,8 +1283,7 @@ impl CliFactoryWithWorkspaceFiles {
       let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
     }
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
-    let mut file_specifiers = Vec::new();
-    let mut doc_snippet_specifiers = Vec::new();
+    let mut workspace_files = Vec::new();
     for (_, files) in workspace_dirs_with_files {
       if let Some(watcher_communicator) = watcher_communicator {
         let _ = watcher_communicator.watch_paths(
@@ -1298,40 +1302,44 @@ impl CliFactoryWithWorkspaceFiles {
         args.clone(),
       )
       .await?;
-      if let Some(extract_doc_files) = extract_doc_files {
-        let root_permissions = factory.root_permissions_container()?;
-        for (s, _) in specifiers.iter().filter(|(_, i)| i.include_doc) {
-          let file = file_fetcher.fetch(s, root_permissions).await?;
-          let snippet_files = extract_doc_files(file)?;
-          for snippet_file in snippet_files {
-            doc_snippet_specifiers.push(snippet_file.url.clone());
-            file_fetcher.insert_memory_files(snippet_file);
+      workspace_files.reserve_exact(specifiers.len());
+      for (specifier, info) in &specifiers {
+        let mut doc_snippet_specifiers = Vec::new();
+        if info.include_doc {
+          if let Some(extract_doc_files) = extract_doc_files {
+            let root_permissions = factory.root_permissions_container()?;
+            let file = file_fetcher.fetch(specifier, root_permissions).await?;
+            let snippet_files = extract_doc_files(file)?;
+            for snippet_file in snippet_files {
+              doc_snippet_specifiers.push(snippet_file.url.clone());
+              file_fetcher.insert_memory_files(snippet_file);
+            }
           }
         }
+        workspace_files.push(WorkspaceFile {
+          specifier: specifier.clone(),
+          doc_snippet_specifiers,
+          doc_only: !info.include,
+        })
       }
-      file_specifiers.extend(
-        specifiers
-          .into_iter()
-          .filter_map(|(s, i)| i.include.then_some(s)),
-      );
     }
     Ok(Self {
       inner: factory,
       cli_options,
-      file_specifiers,
-      doc_snippet_specifiers,
+      workspace_files,
     })
   }
 
   pub fn found_specifiers(&self) -> bool {
-    !self.file_specifiers.is_empty() || !self.doc_snippet_specifiers.is_empty()
+    !self.workspace_files.is_empty()
   }
 
   pub fn specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
-    self
-      .file_specifiers
-      .iter()
-      .chain(self.doc_snippet_specifiers.iter())
+    self.workspace_files.iter().flat_map(|f| {
+      std::iter::once(&f.specifier)
+        .filter(|_| !f.doc_only)
+        .chain(f.doc_snippet_specifiers.iter())
+    })
   }
 
   pub async fn dependent_specifiers(
@@ -1341,20 +1349,24 @@ impl CliFactoryWithWorkspaceFiles {
     let graph_kind =
       self.inner.cli_options()?.type_check_mode().as_graph_kind();
     let module_graph_creator = self.inner.module_graph_creator().await?;
-    let specifiers = self.specifiers().collect::<Vec<_>>();
     let graph = module_graph_creator
       .create_graph(
         graph_kind,
-        specifiers.iter().map(|&s| s.clone()).collect(),
+        self
+          .workspace_files
+          .iter()
+          .map(|f| f.specifier.clone())
+          .collect(),
         crate::graph_util::NpmCachingStrategy::Eager,
       )
       .await?;
     module_graph_creator.graph_valid(&graph)?;
-    let dependent_specifiers = specifiers
-      .into_iter()
-      .filter(|s| {
+    let dependent_specifiers = self
+      .workspace_files
+      .iter()
+      .filter(|f| {
         let mut dependency_specifiers = graph.walk(
-          std::iter::once(*s),
+          std::iter::once(&f.specifier),
           deno_graph::WalkOptions {
             follow_dynamic: true,
             kind: deno_graph::GraphKind::All,
@@ -1375,6 +1387,11 @@ impl CliFactoryWithWorkspaceFiles {
           }
         }
         false
+      })
+      .flat_map(|f| {
+        std::iter::once(&f.specifier)
+          .filter(|_| !f.doc_only)
+          .chain(f.doc_snippet_specifiers.iter())
       })
       .collect();
     Ok(dependent_specifiers)
