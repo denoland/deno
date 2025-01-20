@@ -1,7 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cmp::Ordering;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::collections::VecDeque;
+use std::fmt;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -12,17 +15,13 @@ use deno_runtime::deno_core::anyhow::bail;
 use deno_runtime::deno_core::anyhow::Context;
 use deno_runtime::deno_core::error::AnyError;
 use indexmap::IndexSet;
+use serde::de;
+use serde::de::SeqAccess;
+use serde::de::Visitor;
 use serde::Deserialize;
+use serde::Deserializer;
 use serde::Serialize;
-
-#[derive(Debug, Copy, Clone)]
-pub enum VfsFileSubDataKind {
-  /// Raw bytes of the file.
-  Raw,
-  /// Bytes to use for module loading. For example, for TypeScript
-  /// files this will be the transpiled JavaScript source.
-  ModuleGraph,
-}
+use serde::Serializer;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WindowsSystemRootablePath {
@@ -32,6 +31,14 @@ pub enum WindowsSystemRootablePath {
 }
 
 impl WindowsSystemRootablePath {
+  pub fn root_for_current_os() -> Self {
+    if cfg!(windows) {
+      WindowsSystemRootablePath::WindowSystemRoot
+    } else {
+      WindowsSystemRootablePath::Path(PathBuf::from("/"))
+    }
+  }
+
   pub fn join(&self, name_component: &str) -> PathBuf {
     // this method doesn't handle multiple components
     debug_assert!(
@@ -118,6 +125,10 @@ impl VirtualDirectoryEntries {
     self.0.get_mut(index)
   }
 
+  pub fn get_by_index(&self, index: usize) -> Option<&VfsEntry> {
+    self.0.get(index)
+  }
+
   pub fn binary_search(
     &self,
     name: &str,
@@ -188,12 +199,53 @@ pub struct VirtualDirectory {
   pub entries: VirtualDirectoryEntries,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct OffsetWithLength {
-  #[serde(rename = "o")]
   pub offset: u64,
-  #[serde(rename = "l")]
   pub len: u64,
+}
+
+// serialize as an array in order to save space
+impl Serialize for OffsetWithLength {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let array = [self.offset, self.len];
+    array.serialize(serializer)
+  }
+}
+
+impl<'de> Deserialize<'de> for OffsetWithLength {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    struct OffsetWithLengthVisitor;
+
+    impl<'de> Visitor<'de> for OffsetWithLengthVisitor {
+      type Value = OffsetWithLength;
+
+      fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("an array with two elements: [offset, len]")
+      }
+
+      fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+      where
+        A: SeqAccess<'de>,
+      {
+        let offset = seq
+          .next_element()?
+          .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+        let len = seq
+          .next_element()?
+          .ok_or_else(|| de::Error::invalid_length(1, &self))?;
+        Ok(OffsetWithLength { offset, len })
+      }
+    }
+
+    deserializer.deserialize_seq(OffsetWithLengthVisitor)
+  }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,13 +254,12 @@ pub struct VirtualFile {
   pub name: String,
   #[serde(rename = "o")]
   pub offset: OffsetWithLength,
-  /// Offset file to use for module loading when it differs from the
-  /// raw file. Often this will be the same offset as above for data
-  /// such as JavaScript files, but for TypeScript files the `offset`
-  /// will be the original raw bytes when included as an asset and this
-  /// offset will be to the transpiled JavaScript source.
-  #[serde(rename = "m")]
-  pub module_graph_offset: OffsetWithLength,
+  #[serde(rename = "m", skip_serializing_if = "Option::is_none")]
+  pub transpiled_offset: Option<OffsetWithLength>,
+  #[serde(rename = "c", skip_serializing_if = "Option::is_none")]
+  pub cjs_export_analysis_offset: Option<OffsetWithLength>,
+  #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
+  pub source_map_offset: Option<OffsetWithLength>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -314,12 +365,82 @@ pub struct BuiltVfs {
   pub files: Vec<Vec<u8>>,
 }
 
+#[derive(Debug, Default)]
+struct FilesData {
+  files: Vec<Vec<u8>>,
+  current_offset: u64,
+  file_offsets: HashMap<(String, usize), OffsetWithLength>,
+}
+
+impl FilesData {
+  pub fn file_bytes(&self, offset: OffsetWithLength) -> Option<&[u8]> {
+    if offset.len == 0 {
+      return Some(&[]);
+    }
+
+    // the debug assertions in this method should never happen
+    // because it would indicate providing an offset not in the vfs
+    let mut count: u64 = 0;
+    for file in &self.files {
+      // clippy wanted a match
+      match count.cmp(&offset.offset) {
+        Ordering::Equal => {
+          debug_assert_eq!(offset.len, file.len() as u64);
+          if offset.len == file.len() as u64 {
+            return Some(file);
+          } else {
+            return None;
+          }
+        }
+        Ordering::Less => {
+          count += file.len() as u64;
+        }
+        Ordering::Greater => {
+          debug_assert!(false);
+          return None;
+        }
+      }
+    }
+    debug_assert!(false);
+    None
+  }
+
+  pub fn add_data(&mut self, data: Vec<u8>) -> OffsetWithLength {
+    if data.is_empty() {
+      return OffsetWithLength { offset: 0, len: 0 };
+    }
+    let checksum = crate::util::checksum::gen(&[&data]);
+    match self.file_offsets.entry((checksum, data.len())) {
+      Entry::Occupied(occupied_entry) => {
+        let offset_and_len = *occupied_entry.get();
+        debug_assert_eq!(data.len() as u64, offset_and_len.len);
+        offset_and_len
+      }
+      Entry::Vacant(vacant_entry) => {
+        let offset_and_len = OffsetWithLength {
+          offset: self.current_offset,
+          len: data.len() as u64,
+        };
+        vacant_entry.insert(offset_and_len);
+        self.current_offset += offset_and_len.len;
+        self.files.push(data);
+        offset_and_len
+      }
+    }
+  }
+}
+
+pub struct AddFileDataOptions {
+  pub data: Vec<u8>,
+  pub maybe_transpiled: Option<Vec<u8>>,
+  pub maybe_source_map: Option<Vec<u8>>,
+  pub maybe_cjs_export_analysis: Option<Vec<u8>>,
+}
+
 #[derive(Debug)]
 pub struct VfsBuilder {
   executable_root: VirtualDirectory,
-  files: Vec<Vec<u8>>,
-  current_offset: u64,
-  file_offsets: HashMap<String, u64>,
+  files: FilesData,
   /// The minimum root directory that should be included in the VFS.
   min_root_dir: Option<WindowsSystemRootablePath>,
   case_sensitivity: FileSystemCaseSensitivity,
@@ -338,9 +459,7 @@ impl VfsBuilder {
         name: "/".to_string(),
         entries: Default::default(),
       },
-      files: Vec::new(),
-      current_offset: 0,
-      file_offsets: Default::default(),
+      files: Default::default(),
       min_root_dir: Default::default(),
       // This is not exactly correct because file systems on these OSes
       // may be case-sensitive or not based on the directory, but this
@@ -360,7 +479,11 @@ impl VfsBuilder {
   }
 
   pub fn files_len(&self) -> usize {
-    self.files.len()
+    self.files.files.len()
+  }
+
+  pub fn file_bytes(&self, offset: OffsetWithLength) -> Option<&[u8]> {
+    self.files.file_bytes(offset)
   }
 
   /// Add a directory that might be the minimum root directory
@@ -387,13 +510,8 @@ impl VfsBuilder {
           common_components.push(a);
         }
         if common_components.is_empty() {
-          if cfg!(windows) {
-            self.min_root_dir =
-              Some(WindowsSystemRootablePath::WindowSystemRoot);
-          } else {
-            self.min_root_dir =
-              Some(WindowsSystemRootablePath::Path(PathBuf::from("/")));
-          }
+          self.min_root_dir =
+            Some(WindowsSystemRootablePath::root_for_current_os());
         } else {
           self.min_root_dir = Some(WindowsSystemRootablePath::Path(
             common_components.iter().collect(),
@@ -513,7 +631,7 @@ impl VfsBuilder {
         VfsEntry::Dir(dir) => {
           current_dir = dir;
         }
-        _ => unreachable!(),
+        _ => unreachable!("{}", path.display()),
       };
     }
 
@@ -525,7 +643,15 @@ impl VfsBuilder {
     #[allow(clippy::disallowed_methods)]
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data(path, file_bytes, VfsFileSubDataKind::Raw)
+    self.add_file_with_data(
+      path,
+      AddFileDataOptions {
+        data: file_bytes,
+        maybe_cjs_export_analysis: None,
+        maybe_transpiled: None,
+        maybe_source_map: None,
+      },
+    )
   }
 
   fn add_file_at_path_not_symlink(
@@ -536,14 +662,13 @@ impl VfsBuilder {
     #[allow(clippy::disallowed_methods)]
     let file_bytes = std::fs::read(path)
       .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data_raw(path, file_bytes, VfsFileSubDataKind::Raw)
+    self.add_file_with_data_raw(path, file_bytes)
   }
 
   pub fn add_file_with_data(
     &mut self,
     path: &Path,
-    data: Vec<u8>,
-    sub_data_kind: VfsFileSubDataKind,
+    options: AddFileDataOptions,
   ) -> Result<(), AnyError> {
     // ok, fs implementation
     #[allow(clippy::disallowed_methods)]
@@ -552,9 +677,9 @@ impl VfsBuilder {
     })?;
     if metadata.is_symlink() {
       let target = self.add_symlink(path)?.into_path_buf();
-      self.add_file_with_data_raw(&target, data, sub_data_kind)
+      self.add_file_with_data_raw_options(&target, options)
     } else {
-      self.add_file_with_data_raw(path, data, sub_data_kind)
+      self.add_file_with_data_raw_options(path, options)
     }
   }
 
@@ -562,25 +687,39 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
     data: Vec<u8>,
-    sub_data_kind: VfsFileSubDataKind,
+  ) -> Result<(), AnyError> {
+    self.add_file_with_data_raw_options(
+      path,
+      AddFileDataOptions {
+        data,
+        maybe_transpiled: None,
+        maybe_cjs_export_analysis: None,
+        maybe_source_map: None,
+      },
+    )
+  }
+
+  fn add_file_with_data_raw_options(
+    &mut self,
+    path: &Path,
+    options: AddFileDataOptions,
   ) -> Result<(), AnyError> {
     log::debug!("Adding file '{}'", path.display());
-    let checksum = crate::util::checksum::gen(&[&data]);
     let case_sensitivity = self.case_sensitivity;
-    let offset = if let Some(offset) = self.file_offsets.get(&checksum) {
-      // duplicate file, reuse an old offset
-      *offset
-    } else {
-      self.file_offsets.insert(checksum, self.current_offset);
-      self.current_offset
-    };
 
+    let offset_and_len = self.files.add_data(options.data);
+    let transpiled_offset = options
+      .maybe_transpiled
+      .map(|data| self.files.add_data(data));
+    let source_map_offset = options
+      .maybe_source_map
+      .map(|data| self.files.add_data(data));
+    let cjs_export_analysis_offset = options
+      .maybe_cjs_export_analysis
+      .map(|data| self.files.add_data(data));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
-    let offset_and_len = OffsetWithLength {
-      offset,
-      len: data.len() as u64,
-    };
+
     dir.entries.insert_or_modify(
       &name,
       case_sensitivity,
@@ -588,27 +727,29 @@ impl VfsBuilder {
         VfsEntry::File(VirtualFile {
           name: name.to_string(),
           offset: offset_and_len,
-          module_graph_offset: offset_and_len,
+          transpiled_offset,
+          cjs_export_analysis_offset,
+          source_map_offset,
         })
       },
       |entry| match entry {
-        VfsEntry::File(virtual_file) => match sub_data_kind {
-          VfsFileSubDataKind::Raw => {
-            virtual_file.offset = offset_and_len;
+        VfsEntry::File(virtual_file) => {
+          virtual_file.offset = offset_and_len;
+          // doesn't overwrite to None
+          if transpiled_offset.is_some() {
+            virtual_file.transpiled_offset = transpiled_offset;
           }
-          VfsFileSubDataKind::ModuleGraph => {
-            virtual_file.module_graph_offset = offset_and_len;
+          if source_map_offset.is_some() {
+            virtual_file.source_map_offset = source_map_offset;
           }
-        },
+          if cjs_export_analysis_offset.is_some() {
+            virtual_file.cjs_export_analysis_offset =
+              cjs_export_analysis_offset;
+          }
+        }
         VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
       },
     );
-
-    // new file, update the list of files
-    if self.current_offset == offset {
-      self.files.push(data);
-      self.current_offset += offset_and_len.len;
-    }
 
     Ok(())
   }
@@ -689,6 +830,53 @@ impl VfsBuilder {
     }
   }
 
+  /// Adds the CJS export analysis to the provided file.
+  ///
+  /// Warning: This will panic if the file wasn't properly
+  /// setup before calling this.
+  pub fn add_cjs_export_analysis(&mut self, path: &Path, data: Vec<u8>) {
+    self.add_data_for_file_or_panic(path, data, |file, offset_with_length| {
+      file.cjs_export_analysis_offset = Some(offset_with_length);
+    })
+  }
+
+  fn add_data_for_file_or_panic(
+    &mut self,
+    path: &Path,
+    data: Vec<u8>,
+    update_file: impl FnOnce(&mut VirtualFile, OffsetWithLength),
+  ) {
+    let offset_with_length = self.files.add_data(data);
+    let case_sensitivity = self.case_sensitivity;
+    let dir = self.get_dir_mut(path.parent().unwrap()).unwrap();
+    let name = path.file_name().unwrap().to_string_lossy();
+    let file = dir
+      .entries
+      .get_mut_by_name(&name, case_sensitivity)
+      .unwrap();
+    match file {
+      VfsEntry::File(virtual_file) => {
+        update_file(virtual_file, offset_with_length);
+      }
+      VfsEntry::Dir(_) | VfsEntry::Symlink(_) => {
+        unreachable!()
+      }
+    }
+  }
+
+  /// Iterates through all the files in the virtual file system.
+  pub fn iter_files(
+    &self,
+  ) -> impl Iterator<Item = (PathBuf, &VirtualFile)> + '_ {
+    FileIterator {
+      pending_dirs: VecDeque::from([(
+        WindowsSystemRootablePath::root_for_current_os(),
+        &self.executable_root,
+      )]),
+      current_dir_index: 0,
+    }
+  }
+
   pub fn build(self) -> BuiltVfs {
     fn strip_prefix_from_symlinks(
       dir: &mut VirtualDirectory,
@@ -714,11 +902,7 @@ impl VfsBuilder {
     }
 
     let mut current_dir = self.executable_root;
-    let mut current_path = if cfg!(windows) {
-      WindowsSystemRootablePath::WindowSystemRoot
-    } else {
-      WindowsSystemRootablePath::Path(PathBuf::from("/"))
-    };
+    let mut current_path = WindowsSystemRootablePath::root_for_current_os();
     loop {
       if current_dir.entries.len() != 1 {
         break;
@@ -754,8 +938,48 @@ impl VfsBuilder {
       root_path: current_path,
       case_sensitivity: self.case_sensitivity,
       entries: current_dir.entries,
-      files: self.files,
+      files: self.files.files,
     }
+  }
+}
+
+struct FileIterator<'a> {
+  pending_dirs: VecDeque<(WindowsSystemRootablePath, &'a VirtualDirectory)>,
+  current_dir_index: usize,
+}
+
+impl<'a> Iterator for FileIterator<'a> {
+  type Item = (PathBuf, &'a VirtualFile);
+
+  fn next(&mut self) -> Option<Self::Item> {
+    while !self.pending_dirs.is_empty() {
+      let (dir_path, current_dir) = self.pending_dirs.front()?;
+      if let Some(entry) =
+        current_dir.entries.get_by_index(self.current_dir_index)
+      {
+        self.current_dir_index += 1;
+        match entry {
+          VfsEntry::Dir(virtual_directory) => {
+            self.pending_dirs.push_back((
+              WindowsSystemRootablePath::Path(
+                dir_path.join(&virtual_directory.name),
+              ),
+              virtual_directory,
+            ));
+          }
+          VfsEntry::File(virtual_file) => {
+            return Some((dir_path.join(&virtual_file.name), virtual_file));
+          }
+          VfsEntry::Symlink(_) => {
+            // ignore
+          }
+        }
+      } else {
+        self.pending_dirs.pop_front();
+        self.current_dir_index = 0;
+      }
+    }
+    None
   }
 }
 

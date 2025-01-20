@@ -16,11 +16,14 @@ use deno_core::url::Url;
 use deno_core::FastString;
 use deno_core::ModuleSourceCode;
 use deno_core::ModuleType;
+use deno_error::JsError;
 use deno_error::JsErrorBox;
+use deno_lib::standalone::binary::DenoRtDeserializable;
 use deno_lib::standalone::binary::Metadata;
-use deno_lib::standalone::binary::SourceMapStore;
+use deno_lib::standalone::binary::RemoteModuleEntry;
+use deno_lib::standalone::binary::SpecifierDataStore;
+use deno_lib::standalone::binary::SpecifierId;
 use deno_lib::standalone::binary::MAGIC_BYTES;
-use deno_lib::standalone::virtual_fs::VfsFileSubDataKind;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualDirectoryEntries;
 use deno_media_type::MediaType;
@@ -33,16 +36,17 @@ use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_io::fs::FsError;
 use deno_semver::package::PackageReq;
 use deno_semver::StackString;
+use indexmap::IndexMap;
+use thiserror::Error;
 
 use crate::file_system::FileBackedVfs;
 use crate::file_system::VfsRoot;
 
 pub struct StandaloneData {
   pub metadata: Metadata,
-  pub modules: StandaloneModules,
+  pub modules: Arc<StandaloneModules>,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
   pub root_path: PathBuf,
-  pub source_maps: SourceMapStore,
   pub vfs: Arc<FileBackedVfs>,
 }
 
@@ -58,18 +62,6 @@ pub fn extract_standalone(
     return Ok(None);
   };
 
-  let DeserializedDataSection {
-    mut metadata,
-    npm_snapshot,
-    remote_modules,
-    source_maps,
-    vfs_root_entries,
-    vfs_files_data,
-  } = match deserialize_binary_data_section(data)? {
-    Some(data_section) => data_section,
-    None => return Ok(None),
-  };
-
   let root_path = {
     let maybe_current_exe = std::env::current_exe().ok();
     let current_exe_name = maybe_current_exe
@@ -80,6 +72,19 @@ pub fn extract_standalone(
       .unwrap_or_else(|| Cow::Borrowed("binary"));
     std::env::temp_dir().join(format!("deno-compile-{}", current_exe_name))
   };
+  let root_url = deno_path_util::url_from_directory_path(&root_path)?;
+
+  let DeserializedDataSection {
+    mut metadata,
+    npm_snapshot,
+    modules_store: remote_modules,
+    vfs_root_entries,
+    vfs_files_data,
+  } = match deserialize_binary_data_section(&root_url, data)? {
+    Some(data_section) => data_section,
+    None => return Ok(None),
+  };
+
   let cli_args = cli_args.into_owned();
   metadata.argv.reserve(cli_args.len() - 1);
   for arg in cli_args.into_iter().skip(1) {
@@ -103,13 +108,12 @@ pub fn extract_standalone(
   };
   Ok(Some(StandaloneData {
     metadata,
-    modules: StandaloneModules {
-      remote_modules,
+    modules: Arc::new(StandaloneModules {
+      modules: remote_modules,
       vfs: vfs.clone(),
-    },
+    }),
     npm_snapshot,
     root_path,
-    source_maps,
     vfs,
   }))
 }
@@ -117,13 +121,13 @@ pub fn extract_standalone(
 pub struct DeserializedDataSection {
   pub metadata: Metadata,
   pub npm_snapshot: Option<ValidSerializedNpmResolutionSnapshot>,
-  pub remote_modules: RemoteModulesStore,
-  pub source_maps: SourceMapStore,
+  pub modules_store: RemoteModulesStore,
   pub vfs_root_entries: VirtualDirectoryEntries,
   pub vfs_files_data: &'static [u8],
 }
 
 pub fn deserialize_binary_data_section(
+  root_dir_url: &Url,
   data: &'static [u8],
 ) -> Result<Option<DeserializedDataSection>, AnyError> {
   fn read_magic_bytes(input: &[u8]) -> Result<(&[u8], bool), AnyError> {
@@ -135,15 +139,6 @@ pub fn deserialize_binary_data_section(
       return Ok((input, false));
     }
     Ok((input, true))
-  }
-
-  #[allow(clippy::type_complexity)]
-  fn read_source_map_entry(
-    input: &[u8],
-  ) -> Result<(&[u8], (Cow<str>, &[u8])), AnyError> {
-    let (input, specifier) = read_string_lossy(input)?;
-    let (input, source_map) = read_bytes_with_u32_len(input)?;
-    Ok((input, (specifier, source_map)))
   }
 
   let (input, found) = read_magic_bytes(data)?;
@@ -164,24 +159,24 @@ pub fn deserialize_binary_data_section(
   } else {
     Some(deserialize_npm_snapshot(data).context("deserializing npm snapshot")?)
   };
-  // 3. Remote modules
-  let (input, remote_modules) =
-    RemoteModulesStore::build(input).context("deserializing remote modules")?;
-  // 4. VFS
+  // 3. Specifiers
+  let (input, specifiers_store) =
+    SpecifierStore::deserialize(root_dir_url, input)
+      .context("deserializing specifiers")?;
+  // 4. Redirects
+  let (input, redirects_store) =
+    SpecifierDataStore::<SpecifierId>::deserialize(input)
+      .context("deserializing redirects")?;
+  // 5. Remote modules
+  let (input, remote_modules_store) =
+    SpecifierDataStore::<RemoteModuleEntry<'static>>::deserialize(input)
+      .context("deserializing remote modules")?;
+  // 6. VFS
   let (input, data) = read_bytes_with_u64_len(input).context("vfs")?;
   let vfs_root_entries: VirtualDirectoryEntries =
     serde_json::from_slice(data).context("deserializing vfs data")?;
   let (input, vfs_files_data) =
     read_bytes_with_u64_len(input).context("reading vfs files data")?;
-  // 5. Source maps
-  let (mut input, source_map_data_len) = read_u32_as_usize(input)?;
-  let mut source_maps = SourceMapStore::with_capacity(source_map_data_len);
-  for _ in 0..source_map_data_len {
-    let (current_input, (specifier, source_map)) =
-      read_source_map_entry(input)?;
-    input = current_input;
-    source_maps.add(specifier, Cow::Borrowed(source_map));
-  }
 
   // finally ensure we read the magic bytes at the end
   let (_input, found) = read_magic_bytes(input)?;
@@ -189,18 +184,69 @@ pub fn deserialize_binary_data_section(
     bail!("Could not find magic bytes at the end of the data.");
   }
 
+  let modules_store = RemoteModulesStore::new(
+    specifiers_store,
+    redirects_store,
+    remote_modules_store,
+  );
+
   Ok(Some(DeserializedDataSection {
     metadata,
     npm_snapshot,
-    remote_modules,
-    source_maps,
+    modules_store,
     vfs_root_entries,
     vfs_files_data,
   }))
 }
 
+struct SpecifierStore {
+  data: IndexMap<Arc<Url>, SpecifierId>,
+  reverse: IndexMap<SpecifierId, Arc<Url>>,
+}
+
+impl SpecifierStore {
+  pub fn deserialize<'a>(
+    root_dir_url: &Url,
+    input: &'a [u8],
+  ) -> std::io::Result<(&'a [u8], Self)> {
+    let (input, len) = read_u32_as_usize(input)?;
+    let mut data = IndexMap::with_capacity(len);
+    let mut reverse = IndexMap::with_capacity(len);
+    let mut input = input;
+    for _ in 0..len {
+      let (new_input, specifier_str) = read_string_lossy(input)?;
+      let specifier = match Url::parse(&specifier_str) {
+        Ok(url) => url,
+        Err(err) => match root_dir_url.join(&specifier_str) {
+          Ok(url) => url,
+          Err(_) => {
+            return Err(std::io::Error::new(
+              std::io::ErrorKind::InvalidData,
+              err,
+            ));
+          }
+        },
+      };
+      let (new_input, id) = SpecifierId::deserialize(new_input)?;
+      let specifier = Arc::new(specifier);
+      data.insert(specifier.clone(), id);
+      reverse.insert(id, specifier);
+      input = new_input;
+    }
+    Ok((input, Self { data, reverse }))
+  }
+
+  pub fn get_id(&self, specifier: &Url) -> Option<SpecifierId> {
+    self.data.get(specifier).cloned()
+  }
+
+  pub fn get_specifier(&self, specifier_id: SpecifierId) -> Option<&Url> {
+    self.reverse.get(&specifier_id).map(|url| url.as_ref())
+  }
+}
+
 pub struct StandaloneModules {
-  remote_modules: RemoteModulesStore,
+  modules: RemoteModulesStore,
   vfs: Arc<FileBackedVfs>,
 }
 
@@ -208,11 +254,11 @@ impl StandaloneModules {
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, JsErrorBox> {
+  ) -> Result<Option<&'a Url>, TooManyRedirectsError> {
     if specifier.scheme() == "file" {
       Ok(Some(specifier))
     } else {
-      self.remote_modules.resolve_specifier(specifier)
+      self.modules.resolve_specifier(specifier)
     }
   }
 
@@ -223,41 +269,51 @@ impl StandaloneModules {
   pub fn read<'a>(
     &'a self,
     specifier: &'a Url,
-    kind: VfsFileSubDataKind,
-  ) -> Result<Option<DenoCompileModuleData<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, JsErrorBox> {
     if specifier.scheme() == "file" {
-      let path = deno_path_util::url_to_file_path(specifier)?;
+      let path = deno_path_util::url_to_file_path(specifier)
+        .map_err(JsErrorBox::from_err)?;
+      let mut transpiled = None;
+      let mut source_map = None;
+      let mut cjs_export_analysis = None;
       let bytes = match self.vfs.file_entry(&path) {
-        Ok(entry) => self.vfs.read_file_all(entry, kind)?,
+        Ok(entry) => {
+          let bytes = self
+            .vfs
+            .read_file_all(entry)
+            .map_err(JsErrorBox::from_err)?;
+          transpiled = entry
+            .transpiled_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          source_map = entry
+            .source_map_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          cjs_export_analysis = entry
+            .cjs_export_analysis_offset
+            .and_then(|t| self.vfs.read_file_offset_with_len(t).ok());
+          bytes
+        }
         Err(err) if err.kind() == ErrorKind::NotFound => {
           match RealFs.read_file_sync(&path, None) {
             Ok(bytes) => bytes,
             Err(FsError::Io(err)) if err.kind() == ErrorKind::NotFound => {
               return Ok(None)
             }
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(JsErrorBox::from_err(err)),
           }
         }
-        Err(err) => return Err(err.into()),
+        Err(err) => return Err(JsErrorBox::from_err(err)),
       };
       Ok(Some(DenoCompileModuleData {
         media_type: MediaType::from_specifier(specifier),
         specifier,
         data: bytes,
+        transpiled,
+        source_map,
+        cjs_export_analysis,
       }))
     } else {
-      self.remote_modules.read(specifier).map(|maybe_entry| {
-        maybe_entry.map(|entry| DenoCompileModuleData {
-          media_type: entry.media_type,
-          specifier: entry.specifier,
-          data: match kind {
-            VfsFileSubDataKind::Raw => entry.data,
-            VfsFileSubDataKind::ModuleGraph => {
-              entry.transpiled_data.unwrap_or(entry.data)
-            }
-          },
-        })
-      })
+      self.modules.read(specifier).map_err(JsErrorBox::from_err)
     }
   }
 }
@@ -266,6 +322,9 @@ pub struct DenoCompileModuleData<'a> {
   pub specifier: &'a Url,
   pub media_type: MediaType,
   pub data: Cow<'static, [u8]>,
+  pub transpiled: Option<Cow<'static, [u8]>>,
+  pub source_map: Option<Cow<'static, [u8]>>,
+  pub cjs_export_analysis: Option<Cow<'static, [u8]>>,
 }
 
 impl<'a> DenoCompileModuleData<'a> {
@@ -280,6 +339,7 @@ impl<'a> DenoCompileModuleData<'a> {
       }
     }
 
+    let data = self.transpiled.unwrap_or(self.data);
     let (media_type, source) = match self.media_type {
       MediaType::JavaScript
       | MediaType::Jsx
@@ -291,18 +351,15 @@ impl<'a> DenoCompileModuleData<'a> {
       | MediaType::Dts
       | MediaType::Dmts
       | MediaType::Dcts
-      | MediaType::Tsx => {
-        (ModuleType::JavaScript, into_string_unsafe(self.data))
-      }
-      MediaType::Json => (ModuleType::Json, into_string_unsafe(self.data)),
+      | MediaType::Tsx => (ModuleType::JavaScript, into_string_unsafe(data)),
+      MediaType::Json => (ModuleType::Json, into_string_unsafe(data)),
       MediaType::Wasm => {
-        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(self.data))
+        (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }
       // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => (
-        ModuleType::JavaScript,
-        DenoCompileModuleSource::Bytes(self.data),
-      ),
+      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+        (ModuleType::JavaScript, DenoCompileModuleSource::Bytes(data))
+      }
     };
     (self.specifier, media_type, source)
   }
@@ -332,102 +389,53 @@ impl DenoCompileModuleSource {
   }
 }
 
-pub struct RemoteModuleEntry<'a> {
-  pub specifier: &'a Url,
-  pub media_type: MediaType,
-  pub data: Cow<'static, [u8]>,
-  pub transpiled_data: Option<Cow<'static, [u8]>>,
-}
-
-enum RemoteModulesStoreSpecifierValue {
-  Data(usize),
-  Redirect(Url),
-}
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
+#[error("Too many redirects resolving: {0}")]
+pub struct TooManyRedirectsError(Url);
 
 pub struct RemoteModulesStore {
-  specifiers: HashMap<Url, RemoteModulesStoreSpecifierValue>,
-  files_data: &'static [u8],
+  specifiers: SpecifierStore,
+  redirects: SpecifierDataStore<SpecifierId>,
+  remote_modules: SpecifierDataStore<RemoteModuleEntry<'static>>,
 }
 
 impl RemoteModulesStore {
-  fn build(input: &'static [u8]) -> Result<(&'static [u8], Self), AnyError> {
-    fn read_specifier(input: &[u8]) -> Result<(&[u8], (Url, u64)), AnyError> {
-      let (input, specifier) = read_string_lossy(input)?;
-      let specifier = Url::parse(&specifier)?;
-      let (input, offset) = read_u64(input)?;
-      Ok((input, (specifier, offset)))
+  fn new(
+    specifiers: SpecifierStore,
+    redirects: SpecifierDataStore<SpecifierId>,
+    remote_modules: SpecifierDataStore<RemoteModuleEntry<'static>>,
+  ) -> Self {
+    Self {
+      specifiers,
+      redirects,
+      remote_modules,
     }
-
-    fn read_redirect(input: &[u8]) -> Result<(&[u8], (Url, Url)), AnyError> {
-      let (input, from) = read_string_lossy(input)?;
-      let from = Url::parse(&from)?;
-      let (input, to) = read_string_lossy(input)?;
-      let to = Url::parse(&to)?;
-      Ok((input, (from, to)))
-    }
-
-    fn read_headers(
-      input: &[u8],
-    ) -> Result<(&[u8], HashMap<Url, RemoteModulesStoreSpecifierValue>), AnyError>
-    {
-      let (input, specifiers_len) = read_u32_as_usize(input)?;
-      let (mut input, redirects_len) = read_u32_as_usize(input)?;
-      let mut specifiers =
-        HashMap::with_capacity(specifiers_len + redirects_len);
-      for _ in 0..specifiers_len {
-        let (current_input, (specifier, offset)) =
-          read_specifier(input).context("reading specifier")?;
-        input = current_input;
-        specifiers.insert(
-          specifier,
-          RemoteModulesStoreSpecifierValue::Data(offset as usize),
-        );
-      }
-
-      for _ in 0..redirects_len {
-        let (current_input, (from, to)) = read_redirect(input)?;
-        input = current_input;
-        specifiers.insert(from, RemoteModulesStoreSpecifierValue::Redirect(to));
-      }
-
-      Ok((input, specifiers))
-    }
-
-    let (input, specifiers) = read_headers(input)?;
-    let (input, files_data) = read_bytes_with_u64_len(input)?;
-
-    Ok((
-      input,
-      Self {
-        specifiers,
-        files_data,
-      },
-    ))
   }
 
   pub fn resolve_specifier<'a>(
     &'a self,
     specifier: &'a Url,
-  ) -> Result<Option<&'a Url>, JsErrorBox> {
+  ) -> Result<Option<&'a Url>, TooManyRedirectsError> {
+    let Some(mut current) = self.specifiers.get_id(specifier) else {
+      return Ok(None);
+    };
     let mut count = 0;
-    let mut current = specifier;
     loop {
       if count > 10 {
-        return Err(JsErrorBox::generic(format!(
-          "Too many redirects resolving '{}'",
-          specifier
-        )));
+        return Err(TooManyRedirectsError(specifier.clone()));
       }
-      match self.specifiers.get(current) {
-        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          current = to;
+      match self.redirects.get(current) {
+        Some(to) => {
+          current = *to;
           count += 1;
         }
-        Some(RemoteModulesStoreSpecifierValue::Data(_)) => {
-          return Ok(Some(current));
-        }
         None => {
-          return Ok(None);
+          if count == 0 {
+            return Ok(Some(specifier));
+          } else {
+            return Ok(self.specifiers.get_specifier(current));
+          }
         }
       }
     }
@@ -436,45 +444,52 @@ impl RemoteModulesStore {
   pub fn read<'a>(
     &'a self,
     original_specifier: &'a Url,
-  ) -> Result<Option<RemoteModuleEntry<'a>>, AnyError> {
+  ) -> Result<Option<DenoCompileModuleData<'a>>, TooManyRedirectsError> {
+    #[allow(clippy::ptr_arg)]
+    fn handle_cow_ref(data: &Cow<'static, [u8]>) -> Cow<'static, [u8]> {
+      match data {
+        Cow::Borrowed(data) => Cow::Borrowed(data),
+        Cow::Owned(data) => {
+          // this variant should never happen because the data
+          // should always be borrowed static in denort
+          debug_assert!(false);
+          Cow::Owned(data.clone())
+        }
+      }
+    }
+
     let mut count = 0;
-    let mut specifier = original_specifier;
+    let Some(mut specifier) = self.specifiers.get_id(original_specifier) else {
+      return Ok(None);
+    };
     loop {
       if count > 10 {
-        bail!("Too many redirects resolving '{}'", original_specifier);
+        return Err(TooManyRedirectsError(original_specifier.clone()));
       }
-      match self.specifiers.get(specifier) {
-        Some(RemoteModulesStoreSpecifierValue::Redirect(to)) => {
-          specifier = to;
+      match self.redirects.get(specifier) {
+        Some(to) => {
+          specifier = *to;
           count += 1;
         }
-        Some(RemoteModulesStoreSpecifierValue::Data(offset)) => {
-          let input = &self.files_data[*offset..];
-          let (input, media_type_byte) = read_bytes(input, 1)?;
-          let media_type = deserialize_media_type(media_type_byte[0])?;
-          let (input, data) = read_bytes_with_u32_len(input)?;
-          check_has_len(input, 1)?;
-          let (input, has_transpiled) = (&input[1..], input[0]);
-          let (_, transpiled_data) = match has_transpiled {
-            0 => (input, None),
-            1 => {
-              let (input, data) = read_bytes_with_u32_len(input)?;
-              (input, Some(data))
-            }
-            value => bail!(
-              "Invalid transpiled data flag: {}. Compiled data is corrupt.",
-              value
-            ),
-          };
-          return Ok(Some(RemoteModuleEntry {
-            specifier,
-            media_type,
-            data: Cow::Borrowed(data),
-            transpiled_data: transpiled_data.map(Cow::Borrowed),
-          }));
-        }
         None => {
-          return Ok(None);
+          let Some(entry) = self.remote_modules.get(specifier) else {
+            return Ok(None);
+          };
+          return Ok(Some(DenoCompileModuleData {
+            specifier: if count == 0 {
+              original_specifier
+            } else {
+              self.specifiers.get_specifier(specifier).unwrap()
+            },
+            media_type: entry.media_type,
+            data: handle_cow_ref(&entry.data),
+            transpiled: entry.maybe_transpiled.as_ref().map(handle_cow_ref),
+            source_map: entry.maybe_source_map.as_ref().map(handle_cow_ref),
+            cjs_export_analysis: entry
+              .maybe_cjs_export_analysis
+              .as_ref()
+              .map(handle_cow_ref),
+          }));
         }
       }
     }
@@ -581,28 +596,6 @@ fn deserialize_npm_snapshot(
   )
 }
 
-fn deserialize_media_type(value: u8) -> Result<MediaType, AnyError> {
-  match value {
-    0 => Ok(MediaType::JavaScript),
-    1 => Ok(MediaType::Jsx),
-    2 => Ok(MediaType::Mjs),
-    3 => Ok(MediaType::Cjs),
-    4 => Ok(MediaType::TypeScript),
-    5 => Ok(MediaType::Mts),
-    6 => Ok(MediaType::Cts),
-    7 => Ok(MediaType::Dts),
-    8 => Ok(MediaType::Dmts),
-    9 => Ok(MediaType::Dcts),
-    10 => Ok(MediaType::Tsx),
-    11 => Ok(MediaType::Json),
-    12 => Ok(MediaType::Wasm),
-    13 => Ok(MediaType::Css),
-    14 => Ok(MediaType::SourceMap),
-    15 => Ok(MediaType::Unknown),
-    _ => bail!("Unknown media type value: {}", value),
-  }
-}
-
 fn parse_hashmap_n_times<TKey: std::cmp::Eq + std::hash::Hash, TValue>(
   mut input: &[u8],
   times: usize,
@@ -641,45 +634,49 @@ fn parse_vec_n_times_with_index<TResult>(
   Ok((input, results))
 }
 
-fn read_bytes_with_u64_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+fn read_bytes_with_u64_len(input: &[u8]) -> std::io::Result<(&[u8], &[u8])> {
   let (input, len) = read_u64(input)?;
   let (input, data) = read_bytes(input, len as usize)?;
   Ok((input, data))
 }
 
-fn read_bytes_with_u32_len(input: &[u8]) -> Result<(&[u8], &[u8]), AnyError> {
+fn read_bytes_with_u32_len(input: &[u8]) -> std::io::Result<(&[u8], &[u8])> {
   let (input, len) = read_u32_as_usize(input)?;
   let (input, data) = read_bytes(input, len)?;
   Ok((input, data))
 }
 
-fn read_bytes(input: &[u8], len: usize) -> Result<(&[u8], &[u8]), AnyError> {
+fn read_bytes(input: &[u8], len: usize) -> std::io::Result<(&[u8], &[u8])> {
   check_has_len(input, len)?;
   let (len_bytes, input) = input.split_at(len);
   Ok((input, len_bytes))
 }
 
 #[inline(always)]
-fn check_has_len(input: &[u8], len: usize) -> Result<(), AnyError> {
+fn check_has_len(input: &[u8], len: usize) -> std::io::Result<()> {
   if input.len() < len {
-    bail!("Unexpected end of data.");
+    Err(std::io::Error::new(
+      std::io::ErrorKind::InvalidData,
+      "Unexpected end of data",
+    ))
+  } else {
+    Ok(())
   }
-  Ok(())
 }
 
-fn read_string_lossy(input: &[u8]) -> Result<(&[u8], Cow<str>), AnyError> {
+fn read_string_lossy(input: &[u8]) -> std::io::Result<(&[u8], Cow<str>)> {
   let (input, data_bytes) = read_bytes_with_u32_len(input)?;
   Ok((input, String::from_utf8_lossy(data_bytes)))
 }
 
-fn read_u32_as_usize(input: &[u8]) -> Result<(&[u8], usize), AnyError> {
+fn read_u32_as_usize(input: &[u8]) -> std::io::Result<(&[u8], usize)> {
   let (input, len_bytes) = read_bytes(input, 4)?;
-  let len = u32::from_le_bytes(len_bytes.try_into()?);
+  let len = u32::from_le_bytes(len_bytes.try_into().unwrap());
   Ok((input, len as usize))
 }
 
-fn read_u64(input: &[u8]) -> Result<(&[u8], u64), AnyError> {
+fn read_u64(input: &[u8]) -> std::io::Result<(&[u8], u64)> {
   let (input, len_bytes) = read_bytes(input, 8)?;
-  let len = u64::from_le_bytes(len_bytes.try_into()?);
+  let len = u64::from_le_bytes(len_bytes.try_into().unwrap());
   Ok((input, len))
 }
