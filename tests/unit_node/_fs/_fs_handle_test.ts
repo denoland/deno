@@ -300,3 +300,20 @@ Deno.test({
     await fileHandle.close();
   },
 });
+
+Deno.test({
+  name:
+    "[node/fs filehandle.sync] Request that all data for the open file descriptor is flushed to the storage device",
+  async fn() {
+    const fileHandle = await fs.open(testData, "r+");
+
+    await fileHandle.datasync();
+    await fileHandle.sync();
+    const buf = Buffer.from("hello world");
+    await fileHandle.write(buf);
+    const ret = await fileHandle.read(Buffer.alloc(11), 0, 11, 0);
+    assertEquals(ret.bytesRead, 11);
+    assertEquals(ret.buffer, buf);
+    await fileHandle.close();
+  },
+});

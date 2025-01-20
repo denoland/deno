@@ -16,6 +16,8 @@ import {
 import { ftruncatePromise } from "ext:deno_node/_fs/_fs_ftruncate.ts";
 export type { BigIntStats, Stats } from "ext:deno_node/_fs/_fs_stat.ts";
 import { writevPromise, WriteVResult } from "ext:deno_node/_fs/_fs_writev.ts";
+import { fdatasyncPromise } from "ext:deno_node/_fs/_fs_fdatasync.ts";
+import { fsyncPromise } from "ext:deno_node/_fs/_fs_fsync.ts";
 
 interface WriteResult {
   bytesWritten: number;
@@ -156,6 +158,14 @@ export class FileHandle extends EventEmitter {
   chmod(mode: Mode): Promise<void> {
     assertNotClosed(this, promises.chmod.name);
     return promises.chmod(this.#path, mode);
+  }
+
+  datasync(): Promise<void> {
+    return fsCall(fdatasyncPromise, this);
+  }
+
+  sync(): Promise<void> {
+    return fsCall(fsyncPromise, this);
   }
 
   utimes(

@@ -5,6 +5,7 @@
 
 import { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { FsFile } from "ext:deno_fs/30_fs.js";
+import { promisify } from "ext:deno_node/internal/util.mjs";
 
 export function fsync(
   fd: number,
@@ -19,3 +20,5 @@ export function fsync(
 export function fsyncSync(fd: number) {
   new FsFile(fd, Symbol.for("Deno.internal.FsFile")).syncSync();
 }
+
+export const fsyncPromise = promisify(fsync) as (fd: number) => Promise<void>;
