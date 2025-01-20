@@ -71,6 +71,7 @@ generate_builtin_node_module_lists! {
   "readline",
   "readline/promises",
   "repl",
+  "sqlite",
   "stream",
   "stream/consumers",
   "stream/promises",

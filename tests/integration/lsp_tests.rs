@@ -8725,6 +8725,7 @@ fn lsp_completions_node_specifier() {
       "node:readline",
       "node:readline/promises",
       "node:repl",
+      "node:sqlite",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
