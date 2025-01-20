@@ -627,7 +627,6 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
-  pub internal_use_lsc_cache: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3765,12 +3764,6 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
-    .arg(
-      Arg::new("internal-use-lsc-cache")
-        .long("internal-use-lsc-cache")
-        .action(ArgAction::SetTrue)
-        .hide(true),
-    )
 }
 
 fn allow_import_arg() -> Arg {
@@ -5641,7 +5634,6 @@ fn runtime_args_parse(
     allow_scripts_arg_parse(flags, matches)?;
   }
   location_arg_parse(flags, matches);
-  flags.internal_use_lsc_cache = matches.get_flag("internal-use-lsc-cache");
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);

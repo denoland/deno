@@ -945,7 +945,6 @@ pub async fn run(
     pkg_json_resolver,
     root_cert_store_provider,
     StorageKeyResolver::empty(),
-    false,
     sys.clone(),
     lib_main_worker_options,
   );

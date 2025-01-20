@@ -1662,10 +1662,6 @@ impl CliOptions {
     &self.flags.v8_flags
   }
 
-  pub fn use_lsc_cache(&self) -> bool {
-    self.flags.internal_use_lsc_cache
-  }
-
   pub fn code_cache_enabled(&self) -> bool {
     self.flags.code_cache_enabled
   }

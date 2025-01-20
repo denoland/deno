@@ -1131,7 +1131,6 @@ impl CliFactory {
       pkg_json_resolver,
       self.root_cert_store_provider().clone(),
       cli_options.resolve_storage_key_resolver(),
-      cli_options.use_lsc_cache(),
       self.sys(),
       self.create_lib_main_worker_options()?,
     );

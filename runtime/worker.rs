@@ -200,7 +200,6 @@ pub struct WorkerOptions {
   pub strace_ops: Option<Vec<String>>,
 
   pub cache_storage_dir: Option<std::path::PathBuf>,
-  pub use_lsc_cache: bool,
   pub origin_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub enable_stack_trace_arg_in_ops: bool,
@@ -222,7 +221,6 @@ impl Default for WorkerOptions {
       format_js_error_fn: Default::default(),
       origin_storage_dir: Default::default(),
       cache_storage_dir: Default::default(),
-      use_lsc_cache: false,
       extensions: Default::default(),
       startup_snapshot: Default::default(),
       create_params: Default::default(),
@@ -344,31 +342,32 @@ impl MainWorker {
     );
 
     fn create_cache_inner(options: &WorkerOptions) -> Option<CreateCache> {
+      if let Ok(var) = std::env::var("DENO_CACHE_LSC_ENDPOINT") {
+        let elems: Vec<_> = var.split(",").collect();
+        if elems.len() == 2 {
+          let endpoint = elems[0];
+          let token = elems[1];
+          use deno_cache::CacheShard;
+
+          let shard =
+            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+          let create_cache_fn = move || {
+            let x = deno_cache::LscBackend::default();
+            x.set_shard(shard.clone());
+
+            Ok(CacheImpl::Lsc(x))
+          };
+          #[allow(clippy::arc_with_non_send_sync)]
+          return Some(CreateCache(Arc::new(create_cache_fn)));
+        }
+      }
+
       if let Some(storage_dir) = &options.cache_storage_dir {
         let storage_dir = storage_dir.clone();
         let create_cache_fn = move || {
           let s = SqliteBackedCache::new(storage_dir.clone())?;
           Ok(CacheImpl::Sqlite(s))
         };
-        return Some(CreateCache(Arc::new(create_cache_fn)));
-      }
-
-      if options.use_lsc_cache {
-        use deno_cache::CacheShard;
-        let Ok(endpoint) = std::env::var("LSC_ENDPOINT") else {
-          return None;
-        };
-        let Ok(token) = std::env::var("LSC_TOKEN") else {
-          return None;
-        };
-        let shard = Rc::new(CacheShard::new(endpoint, token));
-        let create_cache_fn = move || {
-          let x = deno_cache::LscBackend::default();
-          x.set_shard(shard.clone());
-
-          Ok(CacheImpl::Lsc(x))
-        };
-        #[allow(clippy::arc_with_non_send_sync)]
         return Some(CreateCache(Arc::new(create_cache_fn)));
       }
 

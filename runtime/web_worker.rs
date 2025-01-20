@@ -376,7 +376,6 @@ pub struct WebWorkerOptions {
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub worker_type: WebWorkerType,
   pub cache_storage_dir: Option<std::path::PathBuf>,
-  pub use_lsc_cache: bool,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
   pub close_on_idle: bool,
@@ -456,31 +455,32 @@ impl WebWorker {
     let enable_testing_features = options.bootstrap.enable_testing_features;
 
     fn create_cache_inner(options: &WebWorkerOptions) -> Option<CreateCache> {
+      if let Ok(var) = std::env::var("DENO_CACHE_LSC_ENDPOINT") {
+        let elems: Vec<_> = var.split(",").collect();
+        if elems.len() == 2 {
+          let endpoint = elems[0];
+          let token = elems[1];
+          use deno_cache::CacheShard;
+
+          let shard =
+            Rc::new(CacheShard::new(endpoint.to_string(), token.to_string()));
+          let create_cache_fn = move || {
+            let x = deno_cache::LscBackend::default();
+            x.set_shard(shard.clone());
+
+            Ok(CacheImpl::Lsc(x))
+          };
+          #[allow(clippy::arc_with_non_send_sync)]
+          return Some(CreateCache(Arc::new(create_cache_fn)));
+        }
+      }
+
       if let Some(storage_dir) = &options.cache_storage_dir {
         let storage_dir = storage_dir.clone();
         let create_cache_fn = move || {
           let s = SqliteBackedCache::new(storage_dir.clone())?;
           Ok(CacheImpl::Sqlite(s))
         };
-        return Some(CreateCache(Arc::new(create_cache_fn)));
-      }
-
-      if options.use_lsc_cache {
-        use deno_cache::CacheShard;
-        let Ok(endpoint) = std::env::var("LSC_ENDPOINT") else {
-          return None;
-        };
-        let Ok(token) = std::env::var("LSC_TOKEN") else {
-          return None;
-        };
-        let shard = Rc::new(CacheShard::new(endpoint, token));
-        let create_cache_fn = move || {
-          let x = deno_cache::LscBackend::default();
-          x.set_shard(shard.clone());
-
-          Ok(CacheImpl::Lsc(x))
-        };
-        #[allow(clippy::arc_with_non_send_sync)]
         return Some(CreateCache(Arc::new(create_cache_fn)));
       }
 
