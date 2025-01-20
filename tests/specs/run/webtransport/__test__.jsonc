@@ -1,0 +1,5 @@
+{
+  "args": "run --quiet --unstable-net -A main.ts",
+  "output": "",
+  "exitCode": 0
+}
