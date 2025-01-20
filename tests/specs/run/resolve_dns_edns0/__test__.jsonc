@@ -1,0 +1,9 @@
+{
+  "tests": {
+    "resolve_dns": {
+      "args": "test --allow-net=127.0.0.1 test.ts",
+      "output": "test.out",
+      "exitCode": 0
+    }
+  }
+}
