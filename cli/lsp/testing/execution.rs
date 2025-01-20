@@ -232,6 +232,8 @@ impl TestRun {
 
   /// If being executed, cancel the test.
   pub fn cancel(&self) {
+    lsp_log!("TOKEN CANCEL");
+
     self.token.cancel();
   }
 
@@ -436,12 +438,14 @@ impl TestRun {
     let (test_event_sender_factory, mut receiver) = create_test_event_channel();
     let test_event_sender_factory = Arc::new(test_event_sender_factory);
 
+    lsp_log!("Starting the setup");
     let join_handle = file_watcher::watch_recv(
       flags.clone(),
       file_watcher::PrintConfig::new("Test", false),
       file_watcher::WatcherRestartMode::Automatic,
       self.token.clone(),
       move |flags, watcher_communicator, changed_paths| {
+        lsp_log!("Running dem tests");
         let test_event_sender_factory = test_event_sender_factory.clone();
         Ok(async move {
           let (queue, filters) = {
@@ -479,7 +483,8 @@ impl TestRun {
 
           let token = self.token.clone();
           if token.is_cancelled() {
-            return Ok(());
+            // TODO: Really? That's not really an error now is it.
+            return Err(anyhow!("Tests have been cancelled"));
           }
 
           let join_handles = queue.into_iter().map(move |specifier| {
@@ -505,6 +510,8 @@ impl TestRun {
                 .unwrap_or_default(),
             };
             let token = self.token.clone();
+
+            lsp_log!("Running a test");
 
             spawn_blocking(move || {
               if fail_fast_tracker.should_stop() {
@@ -538,10 +545,13 @@ impl TestRun {
           for join_result in join_stream {
             join_result??;
           }
+          lsp_log!("Done running dem tests");
+
           Ok(())
         })
       },
     );
+    lsp_log!("After file watcher");
 
     let mut test_event_handler = LspTestEventHandler {
       reporter: Box::new(LspTestReporter::new(
@@ -559,12 +569,14 @@ impl TestRun {
 
     let handler = spawn(async move {
       let start_time = Instant::now();
+      lsp_log!("Handler startup");
 
       while let Some((_, event)) = receiver.recv().await {
         test_event_handler.handle_event(event).await;
       }
 
       test_event_handler.finish(start_time.elapsed())?;
+      lsp_log!("Handler shutdown");
 
       Result::<_, AnyError>::Ok(())
     });
@@ -574,6 +586,8 @@ impl TestRun {
     // propagate any errors
     join_result?;
     result??;
+
+    lsp_log!("Done propagating the errors");
 
     Ok(())
   }
