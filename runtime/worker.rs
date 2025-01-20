@@ -53,7 +53,6 @@ use crate::code_cache::CodeCache;
 use crate::code_cache::CodeCacheType;
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::BootstrapOptions;
 
@@ -532,9 +531,7 @@ impl MainWorker {
       shared_array_buffer_store: services.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: services.compiled_wasm_module_store.clone(),
       extensions,
-      extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
-      })),
+      extension_transpiler: None,
       inspector: true,
       is_main: true,
       feature_checker: Some(services.feature_checker.clone()),

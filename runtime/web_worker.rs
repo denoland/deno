@@ -61,7 +61,6 @@ use node_resolver::NpmPackageFolderResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::create_op_metrics;
@@ -624,9 +623,7 @@ impl WebWorker {
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
       extensions,
-      extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
-      })),
+      extension_transpiler: None,
       inspector: true,
       feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,

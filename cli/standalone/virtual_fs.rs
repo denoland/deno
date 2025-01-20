@@ -204,8 +204,13 @@ fn vfs_as_display_tree(
 
     let mut size = Size::default();
     add_offset_to_size(file.offset, &mut size, seen_offsets);
-    if file.module_graph_offset.offset != file.offset.offset {
-      add_offset_to_size(file.module_graph_offset, &mut size, seen_offsets);
+    let maybe_offsets = [
+      file.transpiled_offset,
+      file.source_map_offset,
+      file.cjs_export_analysis_offset,
+    ];
+    for offset in maybe_offsets.into_iter().flatten() {
+      add_offset_to_size(offset, &mut size, seen_offsets);
     }
     size
   }
