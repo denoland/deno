@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::future::Future;
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
@@ -606,28 +607,28 @@ impl GPUDevice {
   }
 
   #[async_method]
-  async fn pop_error_scope<'a>(
+  fn pop_error_scope<'a>(
     &self,
-    //scope: &mut v8::HandleScope<'a>,
-  ) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
-    /* if self.error_handler.is_lost.get().is_some() {
-      return Ok(v8::null(scope).into());
+    scope: &mut v8::HandleScope<'a>,
+  ) -> impl Future<Output = Result<v8::Local<'a, v8::Value>, JsErrorBox>> {
+    if self.error_handler.is_lost.get().is_some() {
+      return std::future::ready(Ok(v8::null(scope).into()));
     }
 
-    let Some((_, errors)) = self.error_handler.scopes.borrow_mut().pop() else {
-      return Err(JsErrorBox::new(
+    let Some((_, errors)) = self.error_handler.scopes.lock().unwrap().pop() else {
+      return std::future::ready(Err(JsErrorBox::new(
         "DOMExceptionOperationError",
         "There are no error scopes on the error scope stack",
-      ));
+      )));
     };
 
-    if let Some(err) = errors.into_iter().next() {
+    let val = if let Some(err) = errors.into_iter().next() {
       Ok(deno_core::error::to_v8_error(scope, &err))
     } else {
       Ok(v8::null(scope).into())
-    }*/
+    };
 
-    todo!()
+    std::future::ready(val)
   }
 }
 
