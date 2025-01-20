@@ -9,6 +9,7 @@ use log::info;
 use serde::Serialize;
 
 use super::LintError;
+use super::LintSkipped;
 use crate::args::LintReporterKind;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
@@ -23,6 +24,7 @@ pub fn create_reporter(kind: LintReporterKind) -> Box<dyn LintReporter + Send> {
 
 pub trait LintReporter {
   fn visit_diagnostic(&mut self, d: &LintDiagnostic);
+  fn visit_skipped(&mut self, file_path: &str, reason: &str);
   fn visit_error(&mut self, file_path: &str, err: &AnyError);
   fn close(&mut self, check_count: usize);
 }
@@ -49,6 +51,11 @@ impl LintReporter for PrettyLintReporter {
     }
 
     log::error!("{}\n", d.display());
+  }
+
+  fn visit_skipped(&mut self, file_path: &str, reason: &str) {
+    log::info!("File was skipped: {file_path}");
+    log::info!("   {reason}");
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
@@ -112,6 +119,11 @@ impl LintReporter for CompactLintReporter {
     }
   }
 
+  fn visit_skipped(&mut self, file_path: &str, reason: &str) {
+    log::info!("File was skipped: {file_path}");
+    log::info!("   {reason}");
+  }
+
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     log::error!("Error linting: {file_path}");
     log::error!("   {err}");
@@ -173,6 +185,7 @@ struct JsonLintDiagnostic {
 struct JsonLintReporter {
   version: u8,
   diagnostics: Vec<JsonLintDiagnostic>,
+  skipped: Vec<LintSkipped>,
   errors: Vec<LintError>,
   checked_files: Vec<String>,
 }
@@ -182,6 +195,7 @@ impl JsonLintReporter {
     JsonLintReporter {
       version: JSON_SCHEMA_VERSION,
       diagnostics: Vec::new(),
+      skipped: Vec::new(),
       errors: Vec::new(),
       checked_files: Vec::new(),
     }
@@ -221,6 +235,13 @@ impl LintReporter for JsonLintReporter {
     if !self.checked_files.contains(&file_path) {
       self.checked_files.push(file_path);
     }
+  }
+
+  fn visit_skipped(&mut self, file_path: &str, reason: &str) {
+    self.skipped.push(LintSkipped {
+      file_path: file_path.to_string(),
+      message: reason.to_string(),
+    });
   }
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
