@@ -116,6 +116,12 @@ deno_core::extension!(
     "op_exit" | "op_set_exit_code" | "op_get_exit_code" =>
       op.with_implementation_from(&deno_core::op_void_sync()),
     _ => op,
+  },
+  state = |state| {
+    #[cfg(unix)]
+    {
+      state.put(ops::signal::SignalState::default());
+    }
   }
 );
 
