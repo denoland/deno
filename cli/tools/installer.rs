@@ -1615,7 +1615,7 @@ mod tests {
   fn test_remove_import_map_field_from_text() {
     assert_eq!(
       remove_import_map_field_from_text(
-        &r#"{
+        r#"{
     "importMap": "./value.json"
 }"#,
       )
