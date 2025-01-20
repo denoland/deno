@@ -19,7 +19,6 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_lib::args::CaData;
-use deno_runtime::colors;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -601,7 +600,10 @@ async fn resolve_shim_data(
     // (which is just something we haven't implemented yet)
     if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
       if flags.import_map_path.is_none() {
-        log::warn!("{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.", colors::yellow("Warning"))
+        log::warn!(
+          "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
+          crate::colors::yellow("Warning"),
+        );
       }
       config_text = new_text;
     }
@@ -648,7 +650,7 @@ async fn resolve_shim_data(
 
 fn remove_import_map_field_from_text(config_text: &str) -> Option<String> {
   let value =
-    jsonc_parser::cst::CstRootNode::parse(&config_text, &Default::default())
+    jsonc_parser::cst::CstRootNode::parse(config_text, &Default::default())
       .ok()?;
   let root_value = value.object_value()?;
   let import_map_value = root_value.get("importMap")?;
