@@ -47,7 +47,7 @@
       "dist": {
         "integrity": "sha512-m27K11aQalRbmUs7RLaz6aPyceLjAoqjPRNTdE7qUouQpl+PC8Bi67O+i9SuJUPbQC8dxFrczAxfmTPuTKHNkw==",
         "shasum": "15b07567befb2b914aedbb55a9ea0862c63c3d73",
-        "tarball": "https://registry.npmjs.org/dns2/-/dns2-2.1.0.tgz",
+        "tarball": "http://localhost:4260/dns2/dns2-2.1.0.tgz",
         "fileCount": 37,
         "unpackedSize": 75538
       },
