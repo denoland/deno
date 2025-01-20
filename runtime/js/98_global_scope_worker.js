@@ -64,6 +64,7 @@ ObjectDefineProperties(WorkerNavigator.prototype, {
     get() {
       webidl.assertBranded(this, WorkerNavigatorPrototype);
       const webgpu = loadWebGPU();
+      webgpu.initGPU();
       return webgpu.gpu;
     },
   },
