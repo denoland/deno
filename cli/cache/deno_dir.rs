@@ -6,18 +6,18 @@ use std::path::PathBuf;
 use deno_cache_dir::DenoDirResolutionError;
 
 use super::DiskCache;
-use crate::sys::DenoLibSys;
+use crate::sys::CliSys;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
-pub struct DenoDirProvider<TSys: DenoLibSys> {
-  sys: TSys,
+pub struct DenoDirProvider {
+  sys: CliSys,
   maybe_custom_root: Option<PathBuf>,
-  deno_dir: std::sync::OnceLock<Result<DenoDir<TSys>, DenoDirResolutionError>>,
+  deno_dir: std::sync::OnceLock<Result<DenoDir, DenoDirResolutionError>>,
 }
 
-impl<TSys: DenoLibSys> DenoDirProvider<TSys> {
-  pub fn new(sys: TSys, maybe_custom_root: Option<PathBuf>) -> Self {
+impl DenoDirProvider {
+  pub fn new(sys: CliSys, maybe_custom_root: Option<PathBuf>) -> Self {
     Self {
       sys,
       maybe_custom_root,
@@ -25,9 +25,7 @@ impl<TSys: DenoLibSys> DenoDirProvider<TSys> {
     }
   }
 
-  pub fn get_or_create(
-    &self,
-  ) -> Result<&DenoDir<TSys>, DenoDirResolutionError> {
+  pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
     self
       .deno_dir
       .get_or_init(|| {
@@ -50,16 +48,16 @@ impl<TSys: DenoLibSys> DenoDirProvider<TSys> {
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
 #[derive(Debug, Clone)]
-pub struct DenoDir<TSys: DenoLibSys> {
+pub struct DenoDir {
   /// Example: /Users/rld/.deno/
   pub root: PathBuf,
   /// Used by TsCompiler to cache compiler output.
-  pub gen_cache: DiskCache<TSys>,
+  pub gen_cache: DiskCache,
 }
 
-impl<TSys: DenoLibSys> DenoDir<TSys> {
+impl DenoDir {
   pub fn new(
-    sys: TSys,
+    sys: CliSys,
     maybe_custom_root: Option<PathBuf>,
   ) -> Result<Self, deno_cache_dir::DenoDirResolutionError> {
     let root = deno_cache_dir::resolve_deno_dir(

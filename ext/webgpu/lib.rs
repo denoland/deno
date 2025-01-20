@@ -39,6 +39,25 @@ mod webidl;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
 
+#[allow(clippy::print_stdout)]
+pub fn print_linker_flags(name: &str) {
+  if cfg!(windows) {
+    // these dls load slowly, so delay loading them
+    let dlls = [
+      // webgpu
+      "d3dcompiler_47",
+      "OPENGL32",
+      // network related functions
+      "iphlpapi",
+    ];
+    for dll in dlls {
+      println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");
+    }
+    // enable delay loading
+    println!("cargo:rustc-link-arg-bin={name}=delayimp.lib");
+  }
+}
+
 pub type Instance = Arc<wgpu_core::global::Global>;
 
 deno_core::extension!(

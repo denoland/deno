@@ -265,7 +265,7 @@ impl TsDiagnosticsStore {
 }
 
 pub fn should_send_diagnostic_batch_index_notifications() -> bool {
-  deno_lib::env::has_flag_env_var(
+  deno_lib::args::has_flag_env_var(
     "DENO_DONT_USE_INTERNAL_LSP_DIAGNOSTIC_SYNC_FLAG",
   )
 }

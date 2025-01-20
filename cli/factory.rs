@@ -11,8 +11,10 @@ use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
 use deno_core::FeatureChecker;
 use deno_error::JsErrorBox;
-use deno_lib::cache::DenoDir;
-use deno_lib::cache::DenoDirProvider;
+use deno_lib::args::get_root_cert_store;
+use deno_lib::args::CaData;
+use deno_lib::loader::NpmModuleLoader;
+use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::worker::LibMainWorkerFactory;
@@ -42,8 +44,6 @@ use node_resolver::analyze::NodeCodeTranslator;
 use once_cell::sync::OnceCell;
 
 use crate::args::check_warn_tsconfig;
-use crate::args::get_root_cert_store;
-use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -51,6 +51,8 @@ use crate::args::NpmInstallDepsProvider;
 use crate::args::TsConfigType;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
+use crate::cache::DenoDir;
+use crate::cache::DenoDirProvider;
 use crate::cache::EmitCache;
 use crate::cache::GlobalHttpCache;
 use crate::cache::HttpCache;
@@ -71,7 +73,6 @@ use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
-use crate::npm::create_npm_process_state_provider;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
 use crate::npm::CliByonmNpmResolverCreateOptions;
@@ -91,7 +92,6 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
-use crate::resolver::NpmModuleLoader;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
 use crate::tools::check::TypeChecker;
@@ -283,13 +283,11 @@ impl CliFactory {
     })
   }
 
-  pub fn deno_dir_provider(
-    &self,
-  ) -> Result<&Arc<DenoDirProvider<CliSys>>, AnyError> {
+  pub fn deno_dir_provider(&self) -> Result<&Arc<DenoDirProvider>, AnyError> {
     Ok(&self.cli_options()?.deno_dir_provider)
   }
 
-  pub fn deno_dir(&self) -> Result<&DenoDir<CliSys>, AnyError> {
+  pub fn deno_dir(&self) -> Result<&DenoDir, AnyError> {
     Ok(self.deno_dir_provider()?.get_or_create()?)
   }
 
@@ -815,19 +813,11 @@ impl CliFactory {
       .services
       .node_code_translator
       .get_or_try_init_async(async {
-        let caches = self.caches()?;
-        let node_analysis_cache =
-          NodeAnalysisCache::new(caches.node_analysis_db());
         let node_resolver = self.node_resolver().await?.clone();
-        let cjs_esm_analyzer = CliCjsCodeAnalyzer::new(
-          node_analysis_cache,
-          self.cjs_tracker()?.clone(),
-          self.fs().clone(),
-          Some(self.parsed_source_cache().clone()),
-        );
+        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
 
         Ok(Arc::new(NodeCodeTranslator::new(
-          cjs_esm_analyzer,
+          cjs_code_analyzer,
           self.in_npm_pkg_checker()?.clone(),
           node_resolver,
           self.npm_resolver().await?.clone(),
@@ -836,6 +826,17 @@ impl CliFactory {
         )))
       })
       .await
+  }
+
+  fn create_cjs_code_analyzer(&self) -> Result<CliCjsCodeAnalyzer, AnyError> {
+    let caches = self.caches()?;
+    let node_analysis_cache = NodeAnalysisCache::new(caches.node_analysis_db());
+    Ok(CliCjsCodeAnalyzer::new(
+      node_analysis_cache,
+      self.cjs_tracker()?.clone(),
+      self.fs().clone(),
+      Some(self.parsed_source_cache().clone()),
+    ))
   }
 
   pub async fn npm_req_resolver(
@@ -1027,11 +1028,11 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
+      self.create_cjs_code_analyzer()?,
       self.cjs_tracker()?,
       self.cli_options()?,
       self.deno_dir()?,
       self.emitter()?,
-      self.file_fetcher()?,
       self.http_client_provider(),
       self.npm_resolver().await?,
       self.workspace_resolver().await?.as_ref(),
@@ -1103,8 +1104,8 @@ impl CliFactory {
       node_resolver.clone(),
       NpmModuleLoader::new(
         self.cjs_tracker()?.clone(),
-        fs.clone(),
         node_code_translator.clone(),
+        self.sys(),
       ),
       npm_registry_permission_checker,
       npm_req_resolver.clone(),
@@ -1138,7 +1139,6 @@ impl CliFactory {
       lib_main_worker_factory,
       maybe_file_watcher_communicator,
       cli_options.maybe_lockfile().cloned(),
-      node_resolver.clone(),
       self.npm_installer_if_managed()?.cloned(),
       npm_resolver.clone(),
       self.sys(),
@@ -1180,8 +1180,6 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      deno_version: crate::version::DENO_VERSION_INFO.deno,
-      deno_user_agent: crate::version::DENO_VERSION_INFO.user_agent,
       otel_config: self.cli_options()?.otel_config(),
       startup_snapshot: crate::js::deno_isolate_init(),
     })

@@ -18,6 +18,7 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
+use deno_lib::args::CaData;
 use deno_semver::npm::NpmPackageReqReference;
 use log::Level;
 use once_cell::sync::Lazy;
@@ -26,7 +27,6 @@ use regex::RegexBuilder;
 
 use crate::args::resolve_no_prompt;
 use crate::args::AddFlags;
-use crate::args::CaData;
 use crate::args::ConfigFlag;
 use crate::args::Flags;
 use crate::args::InstallFlags;
@@ -657,6 +657,7 @@ fn is_in_path(dir: &Path) -> bool {
 mod tests {
   use std::process::Command;
 
+  use deno_lib::args::UnstableConfig;
   use test_util::testdata_path;
   use test_util::TempDir;
 
@@ -664,7 +665,6 @@ mod tests {
   use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
-  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
 
   #[tokio::test]

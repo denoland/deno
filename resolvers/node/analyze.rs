@@ -14,6 +14,8 @@ use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
+use serde::Deserialize;
+use serde::Serialize;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -36,20 +38,10 @@ pub enum CjsAnalysis<'a> {
   Cjs(CjsAnalysisExports),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CjsCodeAnalysisError {
-  #[class(inherit)]
-  #[error(transparent)]
-  ClosestPkgJson(#[from] crate::errors::ClosestPkgJsonError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[from] JsErrorBox),
 }
 
 /// Code analyzer for CJS and ESM files.
@@ -66,17 +58,17 @@ pub trait CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     maybe_source: Option<Cow<'a, str>>,
-  ) -> Result<CjsAnalysis<'a>, CjsCodeAnalysisError>;
+  ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TranslateCjsToEsmError {
   #[class(inherit)]
   #[error(transparent)]
-  CjsCodeAnalysis(#[from] CjsCodeAnalysisError),
+  CjsCodeAnalysis(JsErrorBox),
   #[class(inherit)]
   #[error(transparent)]
-  ExportAnalysis(#[from] JsErrorBox),
+  ExportAnalysis(JsErrorBox),
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -87,7 +79,7 @@ pub struct CjsAnalysisCouldNotLoadError {
   reexport_specifier: Url,
   referrer: Url,
   #[source]
-  source: CjsCodeAnalysisError,
+  source: JsErrorBox,
 }
 
 pub struct NodeCodeTranslator<
@@ -164,7 +156,8 @@ impl<
     let analysis = self
       .cjs_code_analyzer
       .analyze_cjs(entry_specifier, source)
-      .await?;
+      .await
+      .map_err(TranslateCjsToEsmError::CjsCodeAnalysis)?;
 
     let analysis = match analysis {
       CjsAnalysis::Esm(source) => return Ok(source),

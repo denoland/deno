@@ -14,23 +14,32 @@ description = "Shared code between the Deno CLI and denort"
 path = "lib.rs"
 
 [dependencies]
-deno_cache_dir.workspace = true
+capacity_builder.workspace = true
+deno_config.workspace = true
 deno_error.workspace = true
 deno_fs = { workspace = true, features = ["sync_fs"] }
+deno_media_type.workspace = true
 deno_node = { workspace = true, features = ["sync_fs"] }
+deno_npm.workspace = true
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime.workspace = true
+deno_semver.workspace = true
 deno_terminal.workspace = true
+env_logger = "=0.10.0"
 faster-hex.workspace = true
+indexmap.workspace = true
+libsui.workspace = true
 log.workspace = true
 node_resolver = { workspace = true, features = ["sync"] }
 parking_lot.workspace = true
 ring.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom"] }
 thiserror.workspace = true
 tokio.workspace = true
+twox-hash.workspace = true
 url.workspace = true
 
 [dev-dependencies]
