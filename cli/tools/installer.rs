@@ -115,10 +115,16 @@ exec deno {} "$@"
   Ok(())
 }
 
-fn get_installer_root() -> Result<PathBuf, io::Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
+fn get_installer_root() -> Result<PathBuf, AnyError> {
+  if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
+      let env_dir = PathBuf::from(env_dir);
+      return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
+        format!(
+          "Canonicalizing DENO_INSTALL_ROOT ('{}').",
+          env_dir.display()
+        )
+      });
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -584,11 +590,22 @@ async fn resolve_shim_data(
     let copy_path = get_hidden_file_with_ext(&file_path, "deno.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
-    extra_files.push((
-      copy_path,
-      fs::read_to_string(config_path)
-        .with_context(|| format!("error reading {config_path}"))?,
-    ));
+    let mut config_text = fs::read_to_string(config_path)
+      .with_context(|| format!("error reading {config_path}"))?;
+    // always remove the import map field because when someone specifies `--import-map` we
+    // don't want that file to be attempted to be loaded and when they don't specify that
+    // (which is just something we haven't implemented yet)
+    if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
+      if flags.import_map_path.is_none() {
+        log::warn!(
+          "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
+          crate::colors::yellow("Warning"),
+        );
+      }
+      config_text = new_text;
+    }
+
+    extra_files.push((copy_path, config_text));
   } else {
     executable_args.push("--no-config".to_string());
   }
@@ -626,6 +643,16 @@ async fn resolve_shim_data(
     args: executable_args,
     extra_files,
   })
+}
+
+fn remove_import_map_field_from_text(config_text: &str) -> Option<String> {
+  let value =
+    jsonc_parser::cst::CstRootNode::parse(config_text, &Default::default())
+      .ok()?;
+  let root_value = value.object_value()?;
+  let import_map_value = root_value.get("importMap")?;
+  import_map_value.remove();
+  Some(value.to_string())
 }
 
 fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
@@ -1581,5 +1608,18 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
     }
+  }
+
+  #[test]
+  fn test_remove_import_map_field_from_text() {
+    assert_eq!(
+      remove_import_map_field_from_text(
+        r#"{
+    "importMap": "./value.json"
+}"#,
+      )
+      .unwrap(),
+      "{}"
+    );
   }
 }
