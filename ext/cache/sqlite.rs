@@ -1,5 +1,4 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -7,19 +6,15 @@ use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
-use async_trait::async_trait;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
-use deno_core::AsyncRefCell;
-use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::ByteString;
 use deno_core::Resource;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
-use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
@@ -27,12 +22,12 @@ use crate::deserialize_headers;
 use crate::get_header;
 use crate::serialize_headers;
 use crate::vary_header_matches;
-use crate::Cache;
 use crate::CacheDeleteRequest;
 use crate::CacheError;
 use crate::CacheMatchRequest;
 use crate::CacheMatchResponseMeta;
 use crate::CachePutRequest;
+use crate::CacheResponseResource;
 
 #[derive(Clone)]
 pub struct SqliteBackedCache {
@@ -94,14 +89,14 @@ impl SqliteBackedCache {
   }
 }
 
-#[async_trait(?Send)]
-impl Cache for SqliteBackedCache {
-  type CacheMatchResourceType = CacheResponseResource;
-
+impl SqliteBackedCache {
   /// Open a cache storage. Internally, this creates a row in the
   /// sqlite db if the cache doesn't exist and returns the internal id
   /// of the cache.
-  async fn storage_open(&self, cache_name: String) -> Result<i64, CacheError> {
+  pub async fn storage_open(
+    &self,
+    cache_name: String,
+  ) -> Result<i64, CacheError> {
     let db = self.connection.clone();
     let cache_storage_dir = self.cache_storage_dir.clone();
     spawn_blocking(move || {
@@ -127,7 +122,10 @@ impl Cache for SqliteBackedCache {
 
   /// Check if a cache with the provided name exists.
   /// Note: this doesn't check the disk, it only checks the sqlite db.
-  async fn storage_has(&self, cache_name: String) -> Result<bool, CacheError> {
+  pub async fn storage_has(
+    &self,
+    cache_name: String,
+  ) -> Result<bool, CacheError> {
     let db = self.connection.clone();
     spawn_blocking(move || {
       let db = db.lock();
@@ -145,7 +143,7 @@ impl Cache for SqliteBackedCache {
   }
 
   /// Delete a cache storage. Internally, this deletes the row in the sqlite db.
-  async fn storage_delete(
+  pub async fn storage_delete(
     &self,
     cache_name: String,
   ) -> Result<bool, CacheError> {
@@ -174,7 +172,7 @@ impl Cache for SqliteBackedCache {
     .await?
   }
 
-  async fn put(
+  pub async fn put(
     &self,
     request_response: CachePutRequest,
     resource: Option<Rc<dyn Resource>>,
@@ -227,7 +225,7 @@ impl Cache for SqliteBackedCache {
     Ok(())
   }
 
-  async fn r#match(
+  pub async fn r#match(
     &self,
     request: CacheMatchRequest,
   ) -> Result<
@@ -298,14 +296,17 @@ impl Cache for SqliteBackedCache {
           }
           Err(err) => return Err(err.into()),
         };
-        Ok(Some((cache_meta, Some(CacheResponseResource::new(file)))))
+        Ok(Some((
+          cache_meta,
+          Some(CacheResponseResource::sqlite(file)),
+        )))
       }
       Some((cache_meta, None)) => Ok(Some((cache_meta, None))),
       None => Ok(None),
     }
   }
 
-  async fn delete(
+  pub async fn delete(
     &self,
     request: CacheDeleteRequest,
   ) -> Result<bool, CacheError> {
@@ -367,36 +368,6 @@ fn get_responses_dir(cache_storage_dir: PathBuf, cache_id: i64) -> PathBuf {
 impl deno_core::Resource for SqliteBackedCache {
   fn name(&self) -> std::borrow::Cow<str> {
     "SqliteBackedCache".into()
-  }
-}
-
-pub struct CacheResponseResource {
-  file: AsyncRefCell<tokio::fs::File>,
-}
-
-impl CacheResponseResource {
-  fn new(file: tokio::fs::File) -> Self {
-    Self {
-      file: AsyncRefCell::new(file),
-    }
-  }
-
-  async fn read(
-    self: Rc<Self>,
-    data: &mut [u8],
-  ) -> Result<usize, std::io::Error> {
-    let resource = deno_core::RcRef::map(&self, |r| &r.file);
-    let mut file = resource.borrow_mut().await;
-    let nread = file.read(data).await?;
-    Ok(nread)
-  }
-}
-
-impl Resource for CacheResponseResource {
-  deno_core::impl_readable_byob!();
-
-  fn name(&self) -> Cow<str> {
-    "CacheResponseResource".into()
   }
 }
 
