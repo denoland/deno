@@ -1,10 +1,22 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
+import { primordials } from "ext:core/mod.js";
+
+const {
+  ArrayPrototypeJoin,
+  ArrayPrototypeMap,
+  ObjectCreate,
+  ObjectDefineProperty,
+  SafeArrayIterator,
+  SafeRegExp,
+  String,
+  StringPrototypeToLowerCase,
+  StringPrototypeReplace,
+  StringPrototypeReplaceAll,
+  StringPrototypeToUpperCase,
+} = primordials;
 
 // `debugImpls` and `testEnabled` are deliberately not initialized so any call
 // to `debuglog()` before `initializeDebugEnv()` is called will throw.
@@ -13,13 +25,16 @@ let testEnabled: (str: string) => boolean;
 
 // `debugEnv` is initial value of process.env.NODE_DEBUG
 export function initializeDebugEnv(debugEnv: string) {
-  debugImpls = Object.create(null);
+  debugImpls = ObjectCreate(null);
   if (debugEnv) {
-    // This is run before any user code, it's OK not to use primordials.
-    debugEnv = debugEnv.replace(/[|\\{}()[\]^$+?.]/g, "\\$&")
-      .replaceAll("*", ".*")
-      .replaceAll(",", "$|^");
-    const debugEnvRegex = new RegExp(`^${debugEnv}$`, "i");
+    debugEnv = StringPrototypeReplace(
+      debugEnv,
+      new SafeRegExp(/[|\\{}()[\]^$+?.]/g),
+      "\\$&",
+    );
+    debugEnv = StringPrototypeReplaceAll(debugEnv, "*", ".*");
+    debugEnv = StringPrototypeReplaceAll(debugEnv, ",", "$|^");
+    const debugEnvRegex = new SafeRegExp(`^${debugEnv}$`, "i");
     testEnabled = (str) => debugEnvRegex.exec(str) !== null;
   } else {
     testEnabled = () => false;
@@ -33,7 +48,7 @@ function emitWarningIfNeeded(set: string) {
     // deno-lint-ignore no-console
     console.warn(
       "Setting the NODE_DEBUG environment variable " +
-        "to '" + set.toLowerCase() + "' can expose sensitive " +
+        "to '" + StringPrototypeToLowerCase(set) + "' can expose sensitive " +
         "data (such as passwords, tokens and authentication headers) " +
         "in the resulting log.",
     );
@@ -50,7 +65,10 @@ function debuglogImpl(
     if (enabled) {
       emitWarningIfNeeded(set);
       debugImpls[set] = function debug(...args: unknown[]) {
-        const msg = args.map((arg) => inspect(arg)).join(" ");
+        const msg = ArrayPrototypeJoin(
+          ArrayPrototypeMap(args, (arg) => inspect(arg)),
+          " ",
+        );
         // deno-lint-ignore no-console
         console.error("%s %s: %s", set, String(Deno.pid), msg);
       };
@@ -71,7 +89,7 @@ export function debuglog(
   cb?: (debug: (...args: unknown[]) => void) => void,
 ) {
   function init() {
-    set = set.toUpperCase();
+    set = StringPrototypeToUpperCase(set);
     enabled = testEnabled(set);
   }
 
@@ -85,7 +103,7 @@ export function debuglog(
       cb(debug);
     }
 
-    return debug(...args);
+    return debug(...new SafeArrayIterator(args));
   };
 
   let enabled: boolean;
@@ -95,9 +113,10 @@ export function debuglog(
     return enabled;
   };
 
-  const logger = (...args: unknown[]) => debug(...args);
+  const logger = (...args: unknown[]) => debug(...new SafeArrayIterator(args));
 
-  Object.defineProperty(logger, "enabled", {
+  ObjectDefineProperty(logger, "enabled", {
+    __proto__: null,
     get() {
       return test();
     },
