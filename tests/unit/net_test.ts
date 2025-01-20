@@ -1357,5 +1357,6 @@ Deno.test({ permissions: { net: true } }, async function resolveDnsEdns0() {
   const addr = await Deno.resolveDns("example.com", "A", {
     nameServer: { ipAddr: "127.0.0.1", port },
   });
+  assertEquals(addr.length, NUM_RECORD);
   await server.close();
 });
