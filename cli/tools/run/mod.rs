@@ -14,7 +14,6 @@ use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::npm::installer::PackageCaching;
 use crate::util;
-use crate::util::file_watcher::WatcherRestartMode;
 
 pub mod hmr;
 
@@ -117,14 +116,13 @@ async fn run_with_watch(
   flags: Arc<Flags>,
   watch_flags: WatchFlagsWithPaths,
 ) -> Result<i32, AnyError> {
-  util::file_watcher::watch_recv(
+  util::file_watcher::watch_func(
     flags,
     util::file_watcher::PrintConfig::new_with_banner(
       if watch_flags.hmr { "HMR" } else { "Watcher" },
       "Process",
       !watch_flags.no_clear_screen,
     ),
-    WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {

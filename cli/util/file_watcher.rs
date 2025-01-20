@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
 
 use crate::args::Flags;
 use crate::colors;
@@ -66,7 +67,10 @@ impl DebouncedReceiver {
     loop {
       select! {
         items = self.receiver.recv() => {
-          self.received_items.extend(items?);
+          match items {
+            Some(items) => self.received_items.extend(items),
+            None => return Some(self.received_items.drain().collect())
+          };
         }
         _ = sleep(DEBOUNCE_INTERVAL) => {
           return Some(self.received_items.drain().collect());
@@ -262,6 +266,7 @@ where
     flags,
     print_config,
     WatcherRestartMode::Automatic,
+    CancellationToken::new(),
     operation,
   )
   .boxed_local();
@@ -288,6 +293,7 @@ pub async fn watch_recv<O, F>(
   mut flags: Arc<Flags>,
   print_config: PrintConfig,
   restart_mode: WatcherRestartMode,
+  token: CancellationToken,
   mut operation: O,
 ) -> Result<(), AnyError>
 where
@@ -331,12 +337,17 @@ where
   deno_core::unsync::spawn(async move {
     loop {
       let received_changed_paths = watcher_receiver.recv().await;
+      let should_stop = received_changed_paths.is_none();
       changed_paths_
         .borrow_mut()
         .clone_from(&received_changed_paths);
 
       // TODO(bartlomieju): should we fail on sending changed paths?
       let _ = watcher_.send(received_changed_paths);
+
+      if should_stop {
+        break;
+      }
     }
   });
 
@@ -346,6 +357,9 @@ where
     // start to fail, this may need to be increased.
     for _ in 0..10 {
       tokio::task::yield_now().await;
+    }
+    if token.is_cancelled() {
+      break;
     }
 
     let mut watcher = new_watcher(watcher_sender.clone())?;
@@ -372,6 +386,9 @@ where
     }
 
     select! {
+      _ = token.cancelled() => {
+          break;
+      }
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
         print_after_restart();
@@ -403,6 +420,9 @@ where
     // and see if there are any new paths to watch received or any of the already
     // watched paths has changed.
     select! {
+      _ = token.cancelled() => {
+          break;
+      }
       _ = receiver_future => {},
       _ = restart_rx.recv() => {
         print_after_restart();
@@ -410,6 +430,8 @@ where
       },
     }
   }
+
+  Ok(())
 }
 
 fn new_watcher(

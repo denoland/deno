@@ -215,14 +215,15 @@ impl TestServer {
     params: lsp_custom::TestRunRequestParams,
     workspace_settings: config::WorkspaceSettings,
   ) -> LspResult<Option<Value>> {
+    let id = params.id;
     let test_run =
-      { TestRun::init(&params, self.tests.clone(), workspace_settings).await };
+      { TestRun::init(params, self.tests.clone(), workspace_settings).await };
     let enqueued = test_run.as_enqueued().await;
     {
       let mut runs = self.runs.lock();
-      runs.insert(params.id, test_run);
+      runs.insert(id, test_run);
     }
-    self.enqueue_run(params.id).map_err(|err| {
+    self.enqueue_run(id).map_err(|err| {
       log::error!("cannot enqueue run: {}", err);
       LspError::internal_error()
     })?;

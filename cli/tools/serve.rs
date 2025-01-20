@@ -12,7 +12,6 @@ use crate::args::Flags;
 use crate::args::ServeFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
-use crate::util::file_watcher::WatcherRestartMode;
 use crate::worker::CliMainWorkerFactory;
 
 pub async fn serve(
@@ -144,14 +143,13 @@ async fn serve_with_watch(
   worker_count: Option<usize>,
 ) -> Result<i32, AnyError> {
   let hmr = watch_flags.hmr;
-  crate::util::file_watcher::watch_recv(
+  crate::util::file_watcher::watch_func(
     flags,
     crate::util::file_watcher::PrintConfig::new_with_banner(
       if watch_flags.hmr { "HMR" } else { "Watcher" },
       "Process",
       !watch_flags.no_clear_screen,
     ),
-    WatcherRestartMode::Automatic,
     move |flags, watcher_communicator, changed_paths| {
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {

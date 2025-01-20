@@ -44,11 +44,13 @@ use crate::tools::test::create_test_event_channel;
 use crate::tools::test::FailFastTracker;
 use crate::tools::test::TestFailure;
 use crate::tools::test::TestFailureFormatOptions;
+use crate::util::file_watcher;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
 fn as_queue_and_filters(
-  params: &lsp_custom::TestRunRequestParams,
+  exclude_tests: &[lsp_custom::TestIdentifier],
+  include_tests: Option<&[lsp_custom::TestIdentifier]>,
   tests: &HashMap<ModuleSpecifier, (TestModule, String)>,
 ) -> (
   HashSet<ModuleSpecifier>,
@@ -57,7 +59,7 @@ fn as_queue_and_filters(
   let mut queue: HashSet<ModuleSpecifier> = HashSet::new();
   let mut filters: HashMap<ModuleSpecifier, LspTestFilter> = HashMap::new();
 
-  if let Some(include) = &params.include {
+  if let Some(include) = include_tests {
     for item in include {
       let url = uri_to_url(&item.text_document.uri);
       if let Some((test_definitions, _)) = tests.get(&url) {
@@ -80,7 +82,7 @@ fn as_queue_and_filters(
     queue.extend(tests.keys().cloned());
   }
 
-  for item in &params.exclude {
+  for item in exclude_tests {
     let url = uri_to_url(&item.text_document.uri);
     if let Some((test_definitions, _)) = tests.get(&url) {
       if let Some(id) = &item.id {
@@ -101,26 +103,6 @@ fn as_queue_and_filters(
   queue.retain(|s| !tests.get(s).unwrap().0.is_empty());
 
   (queue, filters)
-}
-
-fn as_test_messages<S: AsRef<str>>(
-  message: S,
-  is_markdown: bool,
-) -> Vec<lsp_custom::TestMessage> {
-  let message = lsp::MarkupContent {
-    kind: if is_markdown {
-      lsp::MarkupKind::Markdown
-    } else {
-      lsp::MarkupKind::PlainText
-    },
-    value: message.as_ref().to_string(),
-  };
-  vec![lsp_custom::TestMessage {
-    message,
-    expected_output: None,
-    actual_output: None,
-    location: None,
-  }]
 }
 
 fn failure_to_test_message(
@@ -191,8 +173,8 @@ pub struct TestRun {
   id: u32,
   kind: lsp_custom::TestRunKind,
   is_continuous: bool,
-  filters: HashMap<ModuleSpecifier, LspTestFilter>,
-  queue: HashSet<ModuleSpecifier>,
+  exclude_tests: Vec<lsp_custom::TestIdentifier>,
+  include_tests: Option<Vec<lsp_custom::TestIdentifier>>,
   tests: TestServerTests,
   token: CancellationToken,
   workspace_settings: config::WorkspaceSettings,
@@ -200,21 +182,16 @@ pub struct TestRun {
 
 impl TestRun {
   pub async fn init(
-    params: &lsp_custom::TestRunRequestParams,
+    params: lsp_custom::TestRunRequestParams,
     tests: TestServerTests,
     workspace_settings: config::WorkspaceSettings,
   ) -> Self {
-    let (queue, filters) = {
-      let tests = tests.lock().await;
-      as_queue_and_filters(params, &tests)
-    };
-
     Self {
       id: params.id,
-      kind: params.kind.clone(),
+      kind: params.kind,
       is_continuous: params.is_continuous,
-      filters,
-      queue,
+      exclude_tests: params.exclude,
+      include_tests: params.include,
       tests,
       token: CancellationToken::new(),
       workspace_settings,
@@ -225,12 +202,17 @@ impl TestRun {
   /// to the client to indicate tests are enqueued for testing.
   pub async fn as_enqueued(&self) -> Vec<lsp_custom::EnqueuedTestModule> {
     let tests = self.tests.lock().await;
-    self
-      .queue
+    let (queue, filters) = as_queue_and_filters(
+      &self.exclude_tests,
+      self.include_tests.as_deref(),
+      &tests,
+    );
+
+    queue
       .iter()
       .filter_map(|s| {
         let ids = if let Some((test_module, _)) = tests.get(s) {
-          if let Some(filter) = self.filters.get(s) {
+          if let Some(filter) = filters.get(s) {
             filter.as_ids(test_module)
           } else {
             LspTestFilter::default().as_ids(test_module)
@@ -259,6 +241,26 @@ impl TestRun {
     client: &Client,
     maybe_root_uri: Option<&ModuleSpecifier>,
   ) -> Result<(), AnyError> {
+    if self.is_continuous {
+      self.run_tests_with_watch(client, maybe_root_uri).await
+    } else {
+      self.run_tests(client, maybe_root_uri).await
+    }
+  }
+
+  async fn run_tests(
+    &self,
+    client: &Client,
+    maybe_root_uri: Option<&ModuleSpecifier>,
+  ) -> Result<(), AnyError> {
+    let (queue, filters) = {
+      let tests = self.tests.lock().await;
+      as_queue_and_filters(
+        &self.exclude_tests,
+        self.include_tests.as_deref(),
+        &tests,
+      )
+    };
     let args = self.get_args();
     lsp_log!("Executing test run with arguments: {}", args.join(" "));
     let flags = Arc::new(flags_from_vec(
@@ -276,7 +278,7 @@ impl TestRun {
     )?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
-      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .check_specifiers(&queue.iter().cloned().collect::<Vec<_>>(), None)
       .await?;
 
     let (concurrent_jobs, fail_fast) =
@@ -300,9 +302,10 @@ impl TestRun {
     let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
 
     let (test_event_sender_factory, mut receiver) = create_test_event_channel();
+    // test_event_sender_factory.weak_sender().send(test::TestEvent::Sigint); // TODO: Dis?
     let fail_fast_tracker = FailFastTracker::new(fail_fast);
 
-    let mut queue = self.queue.iter().collect::<Vec<&ModuleSpecifier>>();
+    let mut queue = queue.iter().collect::<Vec<&ModuleSpecifier>>();
     queue.sort();
 
     let worker_factory =
@@ -317,7 +320,7 @@ impl TestRun {
       );
       let worker_sender = test_event_sender_factory.worker();
       let fail_fast_tracker = fail_fast_tracker.clone();
-      let lsp_filter = self.filters.get(&specifier);
+      let lsp_filter = filters.get(&specifier);
       let filter = test::TestFilter {
         substring: None,
         regex: None,
@@ -370,24 +373,22 @@ impl TestRun {
       )),
       tests: Default::default(),
       test_steps: Default::default(),
-      summary: Default::default(),
+      summary: test::TestSummary::new(),
       tests_with_result: Default::default(),
       used_only: Default::default(),
     };
 
-    let handler = {
-      spawn(async move {
-        let start_time = Instant::now();
+    let handler = spawn(async move {
+      let start_time = Instant::now();
 
-        while let Some((_, event)) = receiver.recv().await {
-          test_event_handler.handle_event(event).await;
-        }
+      while let Some((_, event)) = receiver.recv().await {
+        test_event_handler.handle_event(event).await;
+      }
 
-        test_event_handler.finish(start_time.elapsed())?;
+      test_event_handler.finish(start_time.elapsed())?;
 
-        Ok(())
-      })
-    };
+      Result::<_, AnyError>::Ok(())
+    });
 
     let (join_results, result) = future::join(join_stream, handler).await;
 
@@ -396,6 +397,182 @@ impl TestRun {
       join_result??;
     }
 
+    result??;
+
+    Ok(())
+  }
+
+  async fn run_tests_with_watch(
+    &self,
+    client: &Client,
+    maybe_root_uri: Option<&ModuleSpecifier>,
+  ) -> Result<(), AnyError> {
+    let args = self.get_args();
+    lsp_log!("Executing test run with arguments: {}", args.join(" "));
+    let flags = Arc::new(flags_from_vec(
+      args.into_iter().map(|s| From::from(s.as_ref())).collect(),
+    )?);
+
+    let (concurrent_jobs, fail_fast) = {
+      let factory = CliFactory::from_flags(flags.clone());
+      let cli_options = factory.cli_options()?;
+      if let DenoSubcommand::Test(test_flags) = cli_options.sub_command() {
+        let concurrent_jobs = test_flags
+          .concurrent_jobs
+          .unwrap_or_else(|| NonZeroUsize::new(1).unwrap())
+          .into();
+
+        // TODO(mmastrac): Temporarily limit concurrency in windows testing to avoid named pipe issue:
+        // *** Unexpected server pipe failure '"\\\\.\\pipe\\deno_pipe_e30f45c9df61b1e4.1198.222\\0"': 3
+        // This is likely because we're hitting some sort of invisible resource limit
+        // This limit is both in cli/lsp/testing/execution.rs and cli/tools/test/mod.rs
+        #[cfg(windows)]
+        let concurrent_jobs = std::cmp::min(concurrent_jobs, 4);
+        (concurrent_jobs, test_flags.fail_fast)
+      } else {
+        unreachable!("Should always be Test subcommand.");
+      }
+    };
+    let (test_event_sender_factory, mut receiver) = create_test_event_channel();
+    let test_event_sender_factory = Arc::new(test_event_sender_factory);
+
+    let join_handle = file_watcher::watch_recv(
+      flags.clone(),
+      file_watcher::PrintConfig::new("Test", false),
+      file_watcher::WatcherRestartMode::Automatic,
+      self.token.clone(),
+      move |flags, watcher_communicator, changed_paths| {
+        let test_event_sender_factory = test_event_sender_factory.clone();
+        Ok(async move {
+          let (queue, filters) = {
+            let tests = self.tests.lock().await;
+            as_queue_and_filters(
+              &self.exclude_tests,
+              self.include_tests.as_deref(),
+              &tests,
+            )
+          };
+          let factory = CliFactory::from_flags(flags);
+          let cli_options = factory.cli_options()?;
+          // Various test files should not share the same permissions in terms of
+          // `PermissionsContainer` - otherwise granting/revoking permissions in one
+          // file would have impact on other files, which is undesirable.
+          let permission_desc_parser =
+            factory.permission_desc_parser()?.clone();
+          let permissions = Permissions::from_options(
+            permission_desc_parser.as_ref(),
+            &cli_options.permissions_options(),
+          )?;
+          let main_graph_container =
+            factory.main_module_graph_container().await?;
+          main_graph_container
+            .check_specifiers(&queue.iter().cloned().collect::<Vec<_>>(), None)
+            .await?;
+
+          let fail_fast_tracker = FailFastTracker::new(fail_fast);
+
+          let mut queue = queue.iter().collect::<Vec<&ModuleSpecifier>>();
+          queue.sort();
+
+          let worker_factory =
+            Arc::new(factory.create_cli_main_worker_factory().await?);
+
+          let token = self.token.clone();
+          if token.is_cancelled() {
+            return Ok(());
+          }
+
+          let join_handles = queue.into_iter().map(move |specifier| {
+            let specifier = specifier.clone();
+            let worker_factory = worker_factory.clone();
+            let permissions_container = PermissionsContainer::new(
+              permission_desc_parser.clone(),
+              permissions.clone(),
+            );
+            let worker_sender = test_event_sender_factory.worker();
+            let fail_fast_tracker = fail_fast_tracker.clone();
+            let lsp_filter = filters.get(&specifier);
+            let filter = test::TestFilter {
+              substring: None,
+              regex: None,
+              include: lsp_filter.and_then(|f| {
+                f.include
+                  .as_ref()
+                  .map(|i| i.values().map(|t| t.name.clone()).collect())
+              }),
+              exclude: lsp_filter
+                .map(|f| f.exclude.values().map(|t| t.name.clone()).collect())
+                .unwrap_or_default(),
+            };
+            let token = self.token.clone();
+
+            spawn_blocking(move || {
+              if fail_fast_tracker.should_stop() {
+                return Ok(());
+              }
+              if token.is_cancelled() {
+                Ok(())
+              } else {
+                // All JsErrors are handled by test_specifier and piped into the test
+                // channel.
+                create_and_run_current_thread(test::test_specifier(
+                  worker_factory,
+                  permissions_container,
+                  specifier,
+                  worker_sender,
+                  fail_fast_tracker,
+                  test::TestSpecifierOptions {
+                    filter,
+                    shuffle: None,
+                    trace_leaks: false,
+                  },
+                ))
+              }
+            })
+          });
+
+          let join_stream = stream::iter(join_handles)
+          .buffer_unordered(concurrent_jobs)
+          .collect::<Vec<Result<Result<(), AnyError>, tokio::task::JoinError>>>()
+          .await;
+          for join_result in join_stream {
+            join_result??;
+          }
+          Ok(())
+        })
+      },
+    );
+
+    let mut test_event_handler = LspTestEventHandler {
+      reporter: Box::new(LspTestReporter::new(
+        self,
+        client.clone(),
+        maybe_root_uri,
+        self.tests.clone(),
+      )),
+      tests: Default::default(),
+      test_steps: Default::default(),
+      summary: test::TestSummary::new(),
+      tests_with_result: Default::default(),
+      used_only: Default::default(),
+    };
+
+    let handler = spawn(async move {
+      let start_time = Instant::now();
+
+      while let Some((_, event)) = receiver.recv().await {
+        test_event_handler.handle_event(event).await;
+      }
+
+      test_event_handler.finish(start_time.elapsed())?;
+
+      Result::<_, AnyError>::Ok(())
+    });
+
+    let (join_result, result) = future::join(join_handle, handler).await;
+
+    // propagate any errors
+    join_result?;
     result??;
 
     Ok(())
@@ -508,7 +685,7 @@ impl LspTestDescription {
 struct LspTestEventHandler {
   reporter: Box<LspTestReporter>,
   tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>>,
-  test_steps: IndexMap<usize, TestStepDescription>,
+  test_steps: IndexMap<usize, test::TestStepDescription>,
   summary: test::TestSummary,
   tests_with_result: HashSet<usize>,
   used_only: bool,
@@ -612,10 +789,7 @@ impl LspTestEventHandler {
     }
   }
 
-  fn finish(
-    mut self,
-    elapsed: Duration,
-  ) -> Result<(), deno_core::anyhow::Error> {
+  fn finish(mut self, elapsed: Duration) -> Result<(), AnyError> {
     self.reporter.report_summary(&self.summary, &elapsed);
 
     if self.used_only {
@@ -767,7 +941,16 @@ impl LspTestReporter {
       origin,
       test::fmt::format_test_error(js_error, &TestFailureFormatOptions::default())
     );
-    let messages = as_test_messages(err_string, false);
+    let messages = vec![lsp_custom::TestMessage {
+      message: lsp::MarkupContent {
+        kind: lsp::MarkupKind::PlainText,
+        value: err_string,
+      },
+      expected_output: None,
+      actual_output: None,
+      location: None,
+    }];
+
     for desc in self.tests.values().filter(|d| d.origin() == origin) {
       self.progress(lsp_custom::TestRunProgressMessage::Failed {
         test: desc.as_test_identifier(&self.tests),
@@ -941,7 +1124,8 @@ mod tests {
       non_test_specifier.clone(),
       (TestModule::new(non_test_specifier), "1".to_string()),
     );
-    let (queue, filters) = as_queue_and_filters(&params, &tests);
+    let (queue, filters) =
+      as_queue_and_filters(&params.exclude, params.include.as_deref(), &tests);
     assert_eq!(json!(queue), json!([specifier]));
     let mut exclude = HashMap::new();
     exclude.insert(
