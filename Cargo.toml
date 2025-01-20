@@ -49,6 +49,10 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+# TODO(nayeemrmn): Use proper version when https://github.com/denoland/deno_graph/pull/565 lands!
+[patch.crates-io]
+deno_graph = { git = "https://github.com/denoland/deno_graph.git", rev = "70ca7ebbb7fe9bb6cf35115ef9531aa58aadec55" }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.331.0" }

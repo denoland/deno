@@ -978,19 +978,25 @@ pub struct SingleReferrerGraphResolver<'a> {
 }
 
 impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+  fn default_jsx_import_source(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .and_then(|c| c.default_specifier.clone())
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .and_then(|c| c.default_types_specifier.clone())
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, _referrer: &ModuleSpecifier) -> &str {
     self
       .jsx_import_source_config
       .map(|c| c.module.as_str())

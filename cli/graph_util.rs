@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -854,14 +855,22 @@ impl ModuleGraphBuilder {
     &self,
   ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
   {
-    let jsx_import_source_config = self
+    let jsx_import_source_config_unscoped = self
       .cli_options
       .start_dir
       .to_maybe_jsx_import_source_config()?;
+    let mut jsx_import_source_config_by_scope = BTreeMap::default();
+    for (dir_url, dir) in &self.cli_options.all_dirs {
+      let jsx_import_source_config_unscoped =
+        dir.to_maybe_jsx_import_source_config()?;
+      jsx_import_source_config_by_scope
+        .insert(dir_url.clone(), jsx_import_source_config_unscoped);
+    }
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
       resolver: &self.resolver,
-      jsx_import_source_config,
+      jsx_import_source_config_unscoped,
+      jsx_import_source_config_by_scope,
     })
   }
 }
@@ -1193,28 +1202,45 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
 struct CliGraphResolver<'a> {
   cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
-  jsx_import_source_config: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_unscoped: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_by_scope:
+    BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
 }
 
 impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+  fn default_jsx_import_source(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .jsx_import_source_config_by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
       .and_then(|c| c.default_specifier.clone())
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .jsx_import_source_config_by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
       .and_then(|c| c.default_types_specifier.clone())
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .jsx_import_source_config_by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }
