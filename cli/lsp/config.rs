@@ -1425,7 +1425,9 @@ impl ConfigData {
     );
 
     let ts_config = LspTsConfig::new(
-      member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
+      member_dir
+        .deno_json_for_compiler_options()
+        .map(|c| c.as_ref()),
     );
 
     let deno_lint_config =
@@ -1672,7 +1674,6 @@ impl ConfigData {
   ) -> Option<JsxImportSourceConfig> {
     self
       .member_dir
-      .workspace
       .to_maybe_jsx_import_source_config()
       .ok()
       .flatten()

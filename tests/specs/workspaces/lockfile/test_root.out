@@ -1,5 +1,4 @@
 Check file:///[WILDLINE]/integration.test.ts
-Check file:///[WILDLINE]/pkg/mod.test.ts
 running 1 test from ./integration.test.ts
 should add ... ok ([WILDLINE])
 running 1 test from ./pkg/mod.test.ts

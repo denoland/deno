@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,7 +28,6 @@ use deno_graph::ModuleLoadError;
 use deno_graph::ResolutionError;
 use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
-use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
@@ -64,7 +62,6 @@ use crate::tools::check;
 use crate::tools::check::CheckError;
 use crate::tools::check::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::fs::canonicalize_path;
 
 #[derive(Clone)]
 pub struct GraphValidOptions {
@@ -859,7 +856,7 @@ impl ModuleGraphBuilder {
   {
     let jsx_import_source_config = self
       .cli_options
-      .workspace()
+      .start_dir
       .to_maybe_jsx_import_source_config()?;
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
@@ -1085,37 +1082,6 @@ fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
   }
 
   maybe_specifier.map(|s| s.as_str())
-}
-
-/// Gets if any of the specified root's "file:" dependents are in the
-/// provided changed set.
-pub fn has_graph_root_local_dependent_changed(
-  graph: &ModuleGraph,
-  root: &ModuleSpecifier,
-  canonicalized_changed_paths: &HashSet<PathBuf>,
-) -> bool {
-  let mut dependent_specifiers = graph.walk(
-    std::iter::once(root),
-    deno_graph::WalkOptions {
-      follow_dynamic: true,
-      kind: GraphKind::All,
-      prefer_fast_check_graph: true,
-      check_js: true,
-    },
-  );
-  while let Some((s, _)) = dependent_specifiers.next() {
-    if let Ok(path) = url_to_file_path(s) {
-      if let Ok(path) = canonicalize_path(&path) {
-        if canonicalized_changed_paths.contains(&path) {
-          return true;
-        }
-      }
-    } else {
-      // skip walking this remote module's dependencies
-      dependent_specifiers.skip_previous_dependencies();
-    }
-  }
-  false
 }
 
 #[derive(Clone, Debug)]

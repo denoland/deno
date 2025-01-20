@@ -322,7 +322,7 @@ impl fmt::Display for Diagnostic {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
-pub struct Diagnostics(Vec<Diagnostic>);
+pub struct Diagnostics(pub Vec<Diagnostic>);
 
 impl Diagnostics {
   #[cfg(test)]
