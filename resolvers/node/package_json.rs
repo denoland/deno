@@ -39,13 +39,11 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
-pub trait DebuggablePackageJsonResolver: PackageJsonResolver + Debug {}
-
 #[allow(clippy::disallowed_types)]
 pub type PackageJsonResolverRc =
-  crate::sync::MaybeArc<dyn DebuggablePackageJsonResolver>;
+  crate::sync::MaybeArc<dyn PackageJsonResolver + Send + Sync>;
 
-pub trait PackageJsonResolver {
+pub trait PackageJsonResolver: Debug {
   fn get_closest_package_json(
     &self,
     url: &Url,
@@ -73,7 +71,9 @@ impl<TSys: FsRead> NodePackageJsonResolver<TSys> {
   }
 }
 
-impl<TSys: FsRead> PackageJsonResolver for NodePackageJsonResolver<TSys> {
+impl<TSys: FsRead + Debug> PackageJsonResolver
+  for NodePackageJsonResolver<TSys>
+{
   fn get_closest_package_json(
     &self,
     url: &Url,

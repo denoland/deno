@@ -5,7 +5,6 @@ use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
-use sys_traits::FsRead;
 use url::Url;
 
 use crate::sync::MaybeDashMap;
