@@ -67,6 +67,8 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
+use deno_resolver::factory::ConfigDiscoveryOption;
+use deno_resolver::factory::ResolverFactoryOptions;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -87,6 +89,7 @@ use thiserror::Error;
 
 use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
+use crate::resolver::CliResolverFactory;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
@@ -482,6 +485,53 @@ fn resolve_lint_rules_options(
   }
 }
 
+pub fn create_resolver_factory(
+  sys: CliSys,
+  initial_cwd: PathBuf,
+  flags: Arc<Flags>,
+) -> CliResolverFactory {
+  CliResolverFactory::new(
+    sys,
+    initial_cwd,
+    ResolverFactoryOptions {
+      additional_config_file_names: if matches!(
+        flags.subcommand,
+        DenoSubcommand::Publish(..)
+      ) {
+        &["jsr.json", "jsr.jsonc"]
+      } else {
+        &[]
+      },
+      config_discovery: match &flags.config_flag {
+        ConfigFlag::Discover => {
+          if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
+            ConfigDiscoveryOption::Discover { start_paths }
+          } else {
+            ConfigDiscoveryOption::Disabled
+          }
+        }
+        ConfigFlag::Path(path) => {
+          ConfigDiscoveryOption::Path(PathBuf::from(path))
+        }
+        ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
+      },
+      maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
+      no_npm: flags.no_npm,
+      no_sloppy_imports_cache: false,
+      node_modules_dir: flags.node_modules_dir,
+      npm_system_info: flags.subcommand.npm_system_info(),
+      process_state_node_modules_dir: NPM_PROCESS_STATE.as_ref().map(|s| {
+        s.local_node_modules_path
+          .as_ref()
+          .map(|s| Cow::Borrowed(s.as_str()))
+      }),
+      specified_import_map: todo!(),
+      vendor: flags.vendor,
+      unstable_sloppy_imports: flags.unstable_config.sloppy_imports,
+    },
+  )
+}
+
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -546,7 +596,6 @@ impl CliOptions {
       maybe_lockfile,
       npmrc,
       maybe_node_modules_folder,
-      overrides: Default::default(),
       main_module_cell: std::sync::OnceLock::new(),
       maybe_external_import_map,
       start_dir,
@@ -715,49 +764,7 @@ impl CliOptions {
   }
 
   pub fn npm_system_info(&self) -> NpmSystemInfo {
-    match self.sub_command() {
-      DenoSubcommand::Compile(CompileFlags {
-        target: Some(target),
-        ..
-      }) => {
-        // the values of NpmSystemInfo align with the possible values for the
-        // `arch` and `platform` fields of Node.js' `process` global:
-        // https://nodejs.org/api/process.html
-        match target.as_str() {
-          "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".into(),
-            cpu: "arm64".into(),
-          },
-          "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".into(),
-            cpu: "arm64".into(),
-          },
-          "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".into(),
-            cpu: "x64".into(),
-          },
-          "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".into(),
-            cpu: "x64".into(),
-          },
-          "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".into(),
-            cpu: "x64".into(),
-          },
-          value => {
-            log::warn!(
-              concat!(
-                "Not implemented npm system info for target '{}'. Using current ",
-                "system default. This may impact architecture specific dependencies."
-              ),
-              value,
-            );
-            NpmSystemInfo::default()
-          }
-        }
-      }
-      _ => NpmSystemInfo::default(),
-    }
+    self.sub_command().npm_system_info()
   }
 
   /// Resolve the specifier for a specified import map.

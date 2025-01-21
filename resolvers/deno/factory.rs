@@ -227,30 +227,28 @@ pub trait SpecifiedImportMapProvider:
   ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
-#[derive(Debug, Default)]
-pub struct ResolverFactoryOptions {
+pub struct WorkspaceFactoryOptions {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
-  pub import_map: Option<String>,
   pub maybe_custom_deno_dir_root: Option<PathBuf>,
-  pub no_npm: bool,
-  pub no_sloppy_imports_cache: bool,
   pub node_modules_dir: Option<NodeModulesDirMode>,
-  pub npm_system_info: NpmSystemInfo,
+  pub no_npm: bool,
   /// The node_modules directory if using ext/node and the current process
   /// was "forked". This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
   pub process_state_node_modules_dir: Option<Option<Cow<'static, str>>>,
-  pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
   pub vendor: Option<bool>,
-  pub unstable_sloppy_imports: Option<bool>,
 }
 
-pub struct ResolverFactory<
+#[allow(clippy::disallowed_types)]
+pub type WorkspaceFactoryRc<TSys> =
+  crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
+
+pub struct WorkspaceFactory<
   TSys: EnvCacheDir
-    + EnvCurrentDir
     + EnvHomeDir
     + EnvVar
+    + EnvCurrentDir
     + FsCanonicalize
     + FsCreateDirAll
     + FsMetadata
@@ -259,65 +257,31 @@ pub struct ResolverFactory<
     + FsReadDir
     + FsRemoveFile
     + FsRename
-    + ThreadSleep
     + SystemRandom
     + SystemTimeNow
+    + ThreadSleep
     + std::fmt::Debug
     + MaybeSend
     + MaybeSync
     + Clone
     + 'static,
 > {
-  initial_cwd: PathBuf,
-  options: ResolverFactoryOptions,
   sys: TSys,
   deno_dir_path: Deferred<PathBuf>,
-  deno_resolver: Deferred<
-    DenoResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      SloppyImportsCachedFs<TSys>,
-      TSys,
-    >,
-  >,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<HttpCacheRc>,
-  in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
-  node_resolver: Deferred<
-    NodeResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      TSys,
-    >,
-  >,
-  npm_cache_dir: Deferred<NpmCacheDirRc>,
-  npm_req_resolver: Deferred<
-    NpmReqResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      TSys,
-    >,
-  >,
-  npm_resolver: Deferred<NpmResolver<TSys>>,
-  npm_resolution: NpmResolutionCellRc,
-  npmrc: Deferred<ResolvedNpmRcRc>,
-  pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
-  sloppy_imports_resolver:
-    Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
-  workspace_resolver: Deferred<WorkspaceResolverRc>,
+  initial_cwd: PathBuf,
+  options: WorkspaceFactoryOptions,
 }
 
 impl<
     TSys: EnvCacheDir
-      + EnvCurrentDir
       + EnvHomeDir
       + EnvVar
+      + EnvCurrentDir
       + FsCanonicalize
       + FsCreateDirAll
       + FsMetadata
@@ -326,138 +290,40 @@ impl<
       + FsReadDir
       + FsRemoveFile
       + FsRename
-      + ThreadSleep
       + SystemRandom
       + SystemTimeNow
+      + ThreadSleep
       + std::fmt::Debug
       + MaybeSend
       + MaybeSync
       + Clone
       + 'static,
-  > ResolverFactory<TSys>
+  > WorkspaceFactory<TSys>
 {
   pub fn new(
     sys: TSys,
     initial_cwd: PathBuf,
-    options: ResolverFactoryOptions,
+    options: WorkspaceFactoryOptions,
   ) -> Self {
     Self {
-      initial_cwd,
-      options,
       sys,
       deno_dir_path: Default::default(),
-      deno_resolver: Default::default(),
       global_http_cache: Default::default(),
       http_cache: Default::default(),
-      in_npm_package_checker: Default::default(),
       node_modules_dir: Default::default(),
       node_modules_dir_path: Default::default(),
-      node_resolver: Default::default(),
-      npm_cache_dir: Default::default(),
-      npm_req_resolver: Default::default(),
-      npm_resolution: Default::default(),
-      npm_resolver: Default::default(),
-      npmrc: Default::default(),
-      pkg_json_resolver: Default::default(),
-      sloppy_imports_resolver: Default::default(),
       workspace_directory: Default::default(),
-      workspace_resolver: Default::default(),
+      initial_cwd,
+      options,
     }
   }
 
-  pub fn deno_dir_path(&self) -> Result<&PathBuf, DenoDirResolutionError> {
-    self.deno_dir_path.get_or_try_init(|| {
-      deno_cache_dir::resolve_deno_dir(
-        &self.sys,
-        self.options.maybe_custom_deno_dir_root.clone(),
-      )
-    })
+  pub fn initial_cwd(&self) -> &PathBuf {
+    &self.initial_cwd
   }
 
-  pub async fn deno_resolver(
-    &self,
-  ) -> Result<
-    &DenoResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      SloppyImportsCachedFs<TSys>,
-      TSys,
-    >,
-    anyhow::Error,
-  > {
-    self
-      .deno_resolver
-      .get_or_try_init_async(async {
-        Ok(new_rc(DenoResolver::new(DenoResolverOptions {
-          in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
-          node_and_req_resolver: if self.options.no_npm {
-            None
-          } else {
-            Some(NodeAndNpmReqResolver {
-              node_resolver: self.node_resolver()?.clone(),
-              npm_req_resolver: self.npm_req_resolver()?.clone(),
-            })
-          },
-          is_byonm: self.is_byonm()?,
-          maybe_vendor_dir: self
-            .workspace_directory()?
-            .workspace
-            .vendor_dir_path(),
-          sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
-          workspace_resolver: self.workspace_resolver().await?.clone(),
-        })))
-      })
-      .await
-  }
-
-  pub fn global_http_cache(
-    &self,
-  ) -> Result<&GlobalHttpCacheRc<TSys>, DenoDirResolutionError> {
-    self.global_http_cache.get_or_try_init(|| {
-      let global_cache_dir = self.deno_dir_path()?.join("remote");
-      let global_http_cache = new_rc(deno_cache_dir::GlobalHttpCache::new(
-        self.sys.clone(),
-        global_cache_dir,
-      ));
-      Ok(global_http_cache)
-    })
-  }
-
-  pub fn http_cache(&self) -> Result<&HttpCacheRc, HttpCacheCreateError> {
-    self.http_cache.get_or_try_init(|| {
-      let global_cache = self.global_http_cache()?.clone();
-      match self.workspace_directory()?.workspace.vendor_dir_path() {
-        Some(local_path) => {
-          let local_cache = LocalHttpCache::new(
-            local_path.clone(),
-            global_cache,
-            deno_cache_dir::GlobalToLocalCopy::Allow,
-          );
-          Ok(new_rc(local_cache))
-        }
-        None => Ok(global_cache),
-      }
-    })
-  }
-
-  pub fn in_npm_package_checker(
-    &self,
-  ) -> Result<&DenoInNpmPackageChecker, InNpmPackageCheckerCreateError> {
-    self.in_npm_package_checker.get_or_try_init(|| {
-      let options = match self.node_modules_dir()? {
-        Some(NodeModulesDirMode::Manual) => CreateInNpmPkgCheckerOptions::Byonm,
-        Some(NodeModulesDirMode::Auto)
-        | Some(NodeModulesDirMode::None)
-        | None => CreateInNpmPkgCheckerOptions::Managed(
-          ManagedInNpmPkgCheckerCreateOptions {
-            root_cache_dir_url: self.npm_cache_dir()?.root_dir_url(),
-            maybe_node_modules_path: self.node_modules_dir_path()?,
-          },
-        ),
-      };
-      Ok(DenoInNpmPackageChecker::new(options))
-    })
+  pub fn no_npm(&self) -> bool {
+    self.options.no_npm
   }
 
   pub fn node_modules_dir(
@@ -551,6 +417,290 @@ impl<
         Ok(Some(canonicalize_path_maybe_not_exists(&self.sys, &path)?))
       })
       .map(|p| p.as_deref())
+  }
+
+  pub fn deno_dir_path(&self) -> Result<&PathBuf, DenoDirResolutionError> {
+    self.deno_dir_path.get_or_try_init(|| {
+      deno_cache_dir::resolve_deno_dir(
+        &self.sys,
+        self.options.maybe_custom_deno_dir_root.clone(),
+      )
+    })
+  }
+
+  pub fn global_http_cache(
+    &self,
+  ) -> Result<&GlobalHttpCacheRc<TSys>, DenoDirResolutionError> {
+    self.global_http_cache.get_or_try_init(|| {
+      let global_cache_dir = self.deno_dir_path()?.join("remote");
+      let global_http_cache = new_rc(deno_cache_dir::GlobalHttpCache::new(
+        self.sys.clone(),
+        global_cache_dir,
+      ));
+      Ok(global_http_cache)
+    })
+  }
+
+  pub fn http_cache(&self) -> Result<&HttpCacheRc, HttpCacheCreateError> {
+    self.http_cache.get_or_try_init(|| {
+      let global_cache = self.global_http_cache()?.clone();
+      match self.workspace_directory()?.workspace.vendor_dir_path() {
+        Some(local_path) => {
+          let local_cache = LocalHttpCache::new(
+            local_path.clone(),
+            global_cache,
+            deno_cache_dir::GlobalToLocalCopy::Allow,
+          );
+          Ok(new_rc(local_cache))
+        }
+        None => Ok(global_cache),
+      }
+    })
+  }
+
+  pub fn workspace_directory(
+    &self,
+  ) -> Result<&WorkspaceDirectoryRc, WorkspaceDiscoverError> {
+    self.workspace_directory.get_or_try_init(|| {
+      let maybe_vendor_override = self.options.vendor.map(|v| match v {
+        true => VendorEnablement::Enable {
+          cwd: &self.initial_cwd,
+        },
+        false => VendorEnablement::Disable,
+      });
+      let resolve_workspace_discover_options = || {
+        let discover_pkg_json = !self.options.no_npm
+          && !self.has_flag_env_var("DENO_NO_PACKAGE_JSON");
+        if !discover_pkg_json {
+          log::debug!("package.json auto-discovery is disabled");
+        }
+        WorkspaceDiscoverOptions {
+          deno_json_cache: None,
+          pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
+          workspace_cache: None,
+          additional_config_file_names: self
+            .options
+            .additional_config_file_names,
+          discover_pkg_json,
+          maybe_vendor_override,
+        }
+      };
+      let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
+        root_dir: new_rc(
+          deno_path_util::url_from_directory_path(&self.initial_cwd).unwrap(),
+        ),
+        use_vendor_dir: maybe_vendor_override
+          .unwrap_or(VendorEnablement::Disable),
+      };
+
+      let dir = match &self.options.config_discovery {
+        ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
+          &self.sys,
+          WorkspaceDiscoverStart::Paths(&[self.initial_cwd.clone()]),
+          &resolve_workspace_discover_options(),
+        )?,
+        ConfigDiscoveryOption::Discover { start_paths } => {
+          WorkspaceDirectory::discover(
+            &self.sys,
+            WorkspaceDiscoverStart::Paths(&start_paths),
+            &resolve_workspace_discover_options(),
+          )?
+        }
+        ConfigDiscoveryOption::Path(path) => {
+          let config_path = normalize_path(self.initial_cwd.join(path));
+          WorkspaceDirectory::discover(
+            &self.sys,
+            WorkspaceDiscoverStart::ConfigFile(&config_path),
+            &resolve_workspace_discover_options(),
+          )?
+        }
+        ConfigDiscoveryOption::Disabled => {
+          WorkspaceDirectory::empty(resolve_empty_options())
+        }
+      };
+      Ok(new_rc(dir))
+    })
+  }
+
+  fn has_flag_env_var(&self, name: &str) -> bool {
+    let value = self.sys.env_var_os(name);
+    match value {
+      Some(value) => value == "1",
+      None => false,
+    }
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct ResolverFactoryOptions {
+  pub no_sloppy_imports_cache: bool,
+  pub npm_system_info: NpmSystemInfo,
+  pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
+  pub unstable_sloppy_imports: bool,
+}
+
+pub struct ResolverFactory<
+  TSys: EnvCacheDir
+    + EnvCurrentDir
+    + EnvHomeDir
+    + EnvVar
+    + FsCanonicalize
+    + FsCreateDirAll
+    + FsMetadata
+    + FsOpen
+    + FsRead
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + SystemTimeNow
+    + std::fmt::Debug
+    + MaybeSend
+    + MaybeSync
+    + Clone
+    + 'static,
+> {
+  options: ResolverFactoryOptions,
+  sys: TSys,
+  deno_resolver: Deferred<
+    DenoResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      SloppyImportsCachedFs<TSys>,
+      TSys,
+    >,
+  >,
+  in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
+  node_resolver: Deferred<
+    NodeResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+  >,
+  npm_cache_dir: Deferred<NpmCacheDirRc>,
+  npm_req_resolver: Deferred<
+    NpmReqResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+  >,
+  npm_resolver: Deferred<NpmResolver<TSys>>,
+  npm_resolution: NpmResolutionCellRc,
+  npmrc: Deferred<ResolvedNpmRcRc>,
+  pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
+  sloppy_imports_resolver:
+    Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
+  workspace_factory: WorkspaceFactoryRc<TSys>,
+  workspace_resolver: Deferred<WorkspaceResolverRc>,
+}
+
+impl<
+    TSys: EnvCacheDir
+      + EnvCurrentDir
+      + EnvHomeDir
+      + EnvVar
+      + FsCanonicalize
+      + FsCreateDirAll
+      + FsMetadata
+      + FsOpen
+      + FsRead
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + SystemTimeNow
+      + std::fmt::Debug
+      + MaybeSend
+      + MaybeSync
+      + Clone
+      + 'static,
+  > ResolverFactory<TSys>
+{
+  pub fn new(
+    sys: TSys,
+    workspace_factory: WorkspaceFactoryRc<TSys>,
+    options: ResolverFactoryOptions,
+  ) -> Self {
+    Self {
+      options,
+      sys,
+      deno_resolver: Default::default(),
+      in_npm_package_checker: Default::default(),
+      node_resolver: Default::default(),
+      npm_cache_dir: Default::default(),
+      npm_req_resolver: Default::default(),
+      npm_resolution: Default::default(),
+      npm_resolver: Default::default(),
+      npmrc: Default::default(),
+      pkg_json_resolver: Default::default(),
+      sloppy_imports_resolver: Default::default(),
+      workspace_factory,
+      workspace_resolver: Default::default(),
+    }
+  }
+
+  pub async fn deno_resolver(
+    &self,
+  ) -> Result<
+    &DenoResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      SloppyImportsCachedFs<TSys>,
+      TSys,
+    >,
+    anyhow::Error,
+  > {
+    self
+      .deno_resolver
+      .get_or_try_init_async(async {
+        Ok(new_rc(DenoResolver::new(DenoResolverOptions {
+          in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
+          node_and_req_resolver: if self.workspace_factory.no_npm() {
+            None
+          } else {
+            Some(NodeAndNpmReqResolver {
+              node_resolver: self.node_resolver()?.clone(),
+              npm_req_resolver: self.npm_req_resolver()?.clone(),
+            })
+          },
+          is_byonm: self.is_byonm()?,
+          maybe_vendor_dir: self
+            .workspace_factory
+            .workspace_directory()?
+            .workspace
+            .vendor_dir_path(),
+          sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
+          workspace_resolver: self.workspace_resolver().await?.clone(),
+        })))
+      })
+      .await
+  }
+
+  pub fn in_npm_package_checker(
+    &self,
+  ) -> Result<&DenoInNpmPackageChecker, InNpmPackageCheckerCreateError> {
+    self.in_npm_package_checker.get_or_try_init(|| {
+      let options = match self.node_modules_dir()? {
+        Some(NodeModulesDirMode::Manual) => CreateInNpmPkgCheckerOptions::Byonm,
+        Some(NodeModulesDirMode::Auto)
+        | Some(NodeModulesDirMode::None)
+        | None => CreateInNpmPkgCheckerOptions::Managed(
+          ManagedInNpmPkgCheckerCreateOptions {
+            root_cache_dir_url: self.npm_cache_dir()?.root_dir_url(),
+            maybe_node_modules_path: self.node_modules_dir_path()?,
+          },
+        ),
+      };
+      Ok(DenoInNpmPackageChecker::new(options))
+    })
   }
 
   pub fn node_resolver(
@@ -671,13 +821,11 @@ impl<
     self
       .sloppy_imports_resolver
       .get_or_try_init(|| {
-        let enabled = match self.options.unstable_sloppy_imports {
-          Some(value) => value,
-          None => self
+        let enabled = self.options.unstable_sloppy_imports
+          || self
             .workspace_directory()?
             .workspace
-            .has_unstable("sloppy-imports"),
-        };
+            .has_unstable("sloppy-imports");
         if enabled {
           Ok(Some(new_rc(SloppyImportsResolver::new(
             if self.options.no_sloppy_imports_cache {
@@ -691,70 +839,6 @@ impl<
         }
       })
       .map(|v| v.as_ref())
-  }
-
-  pub fn workspace_directory(
-    &self,
-  ) -> Result<&WorkspaceDirectoryRc, WorkspaceDiscoverError> {
-    self.workspace_directory.get_or_try_init(|| {
-      let maybe_vendor_override = self.options.vendor.map(|v| match v {
-        true => VendorEnablement::Enable {
-          cwd: &self.initial_cwd,
-        },
-        false => VendorEnablement::Disable,
-      });
-      let resolve_workspace_discover_options = || {
-        let discover_pkg_json = !self.options.no_npm
-          && !self.has_flag_env_var("DENO_NO_PACKAGE_JSON");
-        if !discover_pkg_json {
-          log::debug!("package.json auto-discovery is disabled");
-        }
-        WorkspaceDiscoverOptions {
-          deno_json_cache: None,
-          pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
-          workspace_cache: None,
-          additional_config_file_names: self
-            .options
-            .additional_config_file_names,
-          discover_pkg_json,
-          maybe_vendor_override,
-        }
-      };
-      let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
-        root_dir: new_rc(
-          deno_path_util::url_from_directory_path(&self.initial_cwd).unwrap(),
-        ),
-        use_vendor_dir: maybe_vendor_override
-          .unwrap_or(VendorEnablement::Disable),
-      };
-
-      let dir = match &self.options.config_discovery {
-        ConfigDiscoveryOption::DiscoverCwd => WorkspaceDirectory::discover(
-          &self.sys,
-          WorkspaceDiscoverStart::Paths(&[self.initial_cwd.clone()]),
-          &resolve_workspace_discover_options(),
-        )?,
-        ConfigDiscoveryOption::Discover { start_paths } => {
-          WorkspaceDirectory::discover(
-            &self.sys,
-            WorkspaceDiscoverStart::Paths(&start_paths),
-            &resolve_workspace_discover_options(),
-          )?
-        }
-        ConfigDiscoveryOption::Path(path) => {
-          let config_path = normalize_path(self.initial_cwd.join(path));
-          WorkspaceDirectory::discover(
-            &self.sys,
-            WorkspaceDiscoverStart::ConfigFile(&config_path),
-            &resolve_workspace_discover_options(),
-          )?
-        }
-        ConfigDiscoveryOption::Disabled => {
-          WorkspaceDirectory::empty(resolve_empty_options())
-        }
-      };
-      Ok(new_rc(dir))
-    })
   }
 
   pub async fn workspace_resolver(
@@ -808,13 +892,5 @@ impl<
         .map(|n| n == NodeModulesDirMode::Manual)
         .unwrap_or(false),
     )
-  }
-
-  fn has_flag_env_var(&self, name: &str) -> bool {
-    let value = self.sys.env_var_os(name);
-    match value {
-      Some(value) => value == "1",
-      None => false,
-    }
   }
 }
