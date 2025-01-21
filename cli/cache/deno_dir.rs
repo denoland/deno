@@ -32,7 +32,7 @@ impl DenoDirProvider {
 
   pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
     self.deno_dir.get_or_try_init(|| {
-      let path = self.deno_dir_path_provider.get_or_create();
+      let path = self.deno_dir_path_provider.get_or_create()?;
       Ok(DenoDir::new(self.sys.clone(), path.clone()))
     })
   }

@@ -189,21 +189,6 @@ pub enum NodeModulesFolderResolveErrorKind {
   Workspace(#[from] WorkspaceDiscoverError),
 }
 
-#[derive(Debug, Boxed)]
-pub struct InNpmPackageCheckerCreateError(
-  pub Box<InNpmPackageCheckerCreateErrorKind>,
-);
-
-#[derive(Debug, Error)]
-pub enum InNpmPackageCheckerCreateErrorKind {
-  #[error(transparent)]
-  NodeModulesModeResolve(#[from] NodeModulesModeResolveError),
-  #[error(transparent)]
-  NpmCacheDirCreate(#[from] NpmCacheDirCreateError),
-  #[error(transparent)]
-  NodeModulesFolderResolve(#[from] NodeModulesFolderResolveError),
-}
-
 #[derive(Debug, Default)]
 pub enum ConfigDiscoveryOption {
   #[default]
@@ -265,6 +250,12 @@ impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
   }
 }
 
+#[derive(Debug)]
+pub struct NpmProcessStateOptions {
+  pub node_modules_dir: Option<Cow<'static, str>>,
+  pub is_byonm: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions<
   TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
@@ -274,10 +265,10 @@ pub struct WorkspaceFactoryOptions<
   pub deno_dir_path_provider: Option<DenoDirPathProviderRc<TSys>>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_npm: bool,
-  /// The node_modules directory if using ext/node and the current process
-  /// was "forked". This value is found at `deno_lib::args::NPM_PROCESS_STATE`
+  /// The process sate if using ext/node and the current process was "forked".
+  /// This value is found at `deno_lib::args::NPM_PROCESS_STATE`
   /// but in most scenarios this can probably just be `None`.
-  pub process_state_node_modules_dir: Option<Option<Cow<'static, str>>>,
+  pub npm_process_state: Option<NpmProcessStateOptions>,
   pub vendor: Option<bool>,
 }
 
@@ -311,9 +302,11 @@ pub struct WorkspaceFactory<
   deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<HttpCacheRc>,
-  node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
+  npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
+  resolved_node_modules_dir: Deferred<NodeModulesDirMode>,
+  specified_node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
@@ -361,9 +354,11 @@ impl<
       sys,
       global_http_cache: Default::default(),
       http_cache: Default::default(),
-      node_modules_dir: Default::default(),
       node_modules_dir_path: Default::default(),
+      npm_cache_dir: Default::default(),
       npmrc: Default::default(),
+      resolved_node_modules_dir: Default::default(),
+      specified_node_modules_dir: Default::default(),
       workspace_directory: Default::default(),
       initial_cwd,
       options,
@@ -385,14 +380,45 @@ impl<
     self.options.no_npm
   }
 
-  pub fn node_modules_dir(
+  pub fn resolved_node_modules_dir(
+    &self,
+  ) -> Result<NodeModulesDirMode, anyhow::Error> {
+    self
+      .resolved_node_modules_dir
+      .get_or_try_init(|| {
+        if let Some(specified) = self.specified_node_modules_dir()? {
+          return Ok(specified);
+        }
+        let workspace = &self.workspace_directory()?.workspace;
+        let node_modules_dir_path = self.node_modules_dir_path()?;
+        let is_byonm = node_modules_dir_path.is_some()
+          && workspace
+            .config_folders()
+            .values()
+            .any(|f| f.pkg_json.is_some());
+        if is_byonm {
+          Ok(NodeModulesDirMode::Manual)
+        } else {
+          Ok(NodeModulesDirMode::None)
+        }
+      })
+      .copied()
+  }
+
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<Option<NodeModulesDirMode>, NodeModulesModeResolveError> {
     self
-      .node_modules_dir
+      .specified_node_modules_dir
       .get_or_try_init(|| match self.options.node_modules_dir {
         Some(flag) => Ok(Some(flag)),
         None => {
+          if let Some(process_state) = &self.options.npm_process_state {
+            if process_state.is_byonm {
+              return Ok(Some(NodeModulesDirMode::Manual));
+            }
+          }
+
           let workspace = &self.workspace_directory()?.workspace;
           Ok(
             workspace.node_modules_dir()?.or(
@@ -440,15 +466,15 @@ impl<
       .get_or_try_init(|| {
         let workspace = &self.workspace_directory()?.workspace;
         let root_folder = workspace.root_folder_configs();
-        let use_node_modules_dir =
-          self.node_modules_dir()?.map(|v| v.uses_node_modules_dir());
+        let use_node_modules_dir = self
+          .specified_node_modules_dir()?
+          .map(|v| v.uses_node_modules_dir());
         let path = if use_node_modules_dir == Some(false) {
           return Ok(None);
-        } else if let Some(node_modules_path) =
-          &self.options.process_state_node_modules_dir
-        {
+        } else if let Some(process_state) = &self.options.npm_process_state {
           return Ok(
-            node_modules_path
+            process_state
+              .node_modules_dir
               .as_ref()
               .map(|p| PathBuf::from(p.as_ref())),
           );
@@ -509,6 +535,19 @@ impl<
         }
         None => Ok(global_cache),
       }
+    })
+  }
+
+  pub fn npm_cache_dir(
+    &self,
+  ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
+    self.npm_cache_dir.get_or_try_init(|| {
+      let npm_cache_dir = self.deno_dir_path()?.join("npm");
+      Ok(new_rc(NpmCacheDir::new(
+        &self.sys,
+        npm_cache_dir,
+        self.npmrc()?.get_all_known_registries_urls(),
+      )))
     })
   }
 
@@ -645,7 +684,6 @@ pub struct ResolverFactory<
       TSys,
     >,
   >,
-  npm_cache_dir: Deferred<NpmCacheDirRc>,
   npm_req_resolver: Deferred<
     NpmReqResolverRc<
       DenoInNpmPackageChecker,
@@ -697,7 +735,6 @@ impl<
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
-      npm_cache_dir: Default::default(),
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
@@ -733,7 +770,7 @@ impl<
               npm_req_resolver: self.npm_req_resolver()?.clone(),
             })
           },
-          is_byonm: self.is_byonm()?,
+          is_byonm: self.use_byonm()?,
           maybe_vendor_dir: self
             .workspace_factory
             .workspace_directory()?
@@ -748,15 +785,16 @@ impl<
 
   pub fn in_npm_package_checker(
     &self,
-  ) -> Result<&DenoInNpmPackageChecker, InNpmPackageCheckerCreateError> {
+  ) -> Result<&DenoInNpmPackageChecker, anyhow::Error> {
     self.in_npm_package_checker.get_or_try_init(|| {
-      let options = match self.workspace_factory.node_modules_dir()? {
-        Some(NodeModulesDirMode::Manual) => CreateInNpmPkgCheckerOptions::Byonm,
-        Some(NodeModulesDirMode::Auto)
-        | Some(NodeModulesDirMode::None)
-        | None => CreateInNpmPkgCheckerOptions::Managed(
+      let options = match self.use_byonm()? {
+        true => CreateInNpmPkgCheckerOptions::Byonm,
+        false => CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
-            root_cache_dir_url: self.npm_cache_dir()?.root_dir_url(),
+            root_cache_dir_url: self
+              .workspace_factory
+              .npm_cache_dir()?
+              .root_dir_url(),
             maybe_node_modules_path: self
               .workspace_factory
               .node_modules_dir_path()?,
@@ -791,22 +829,6 @@ impl<
     })
   }
 
-  pub fn npm_cache_dir(
-    &self,
-  ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
-    self.npm_cache_dir.get_or_try_init(|| {
-      let npm_cache_dir = self.workspace_factory.deno_dir_path()?.join("npm");
-      Ok(new_rc(NpmCacheDir::new(
-        &self.sys,
-        npm_cache_dir,
-        self
-          .workspace_factory
-          .npmrc()?
-          .get_all_known_registries_urls(),
-      )))
-    })
-  }
-
   pub fn npm_resolution(&self) -> &NpmResolutionCellRc {
     &self.npm_resolution
   }
@@ -834,7 +856,7 @@ impl<
 
   pub fn npm_resolver(&self) -> Result<&NpmResolver<TSys>, anyhow::Error> {
     self.npm_resolver.get_or_try_init(|| {
-      Ok(NpmResolver::<TSys>::new::<TSys>(if self.is_byonm()? {
+      Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
           sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
@@ -855,7 +877,7 @@ impl<
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
           sys: self.sys.clone(),
           npm_resolution: self.npm_resolution().clone(),
-          npm_cache_dir: self.npm_cache_dir()?.clone(),
+          npm_cache_dir: self.workspace_factory.npm_cache_dir()?.clone(),
           maybe_node_modules_path: self
             .workspace_factory
             .node_modules_dir_path()?
@@ -916,7 +938,7 @@ impl<
           None => None,
         };
         let node_modules_dir_mode =
-          self.workspace_factory.node_modules_dir()?;
+          self.workspace_factory.specified_node_modules_dir()?;
         // todo(THIS PR): do not use Disabled for `deno publish`?
         let options = deno_config::workspace::CreateResolverOptions {
           pkg_json_dep_resolution: match node_modules_dir_mode {
@@ -948,13 +970,10 @@ impl<
       .await
   }
 
-  fn is_byonm(&self) -> Result<bool, anyhow::Error> {
+  pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {
     Ok(
-      self
-        .workspace_factory
-        .node_modules_dir()?
-        .map(|n| n == NodeModulesDirMode::Manual)
-        .unwrap_or(false),
+      self.workspace_factory.resolved_node_modules_dir()?
+        == NodeModulesDirMode::Manual,
     )
   }
 }

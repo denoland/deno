@@ -3,7 +3,6 @@
 pub mod deno_json;
 mod flags;
 mod flags_net;
-mod import_map;
 mod lockfile;
 mod package_json;
 
@@ -66,16 +65,15 @@ use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
 pub use flags::*;
-use import_map::resolve_import_map_value_from_specifier;
 pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
 pub use package_json::NpmInstallDepsProvider;
 pub use package_json::PackageJsonDepValueParseWithLocationError;
+use sys_traits::FsRead;
 use thiserror::Error;
 
-use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 
 // todo(THIS PR): remove or re-use from deno_resolver
@@ -202,6 +200,53 @@ pub fn ts_config_to_transpile_and_emit_options(
       source_map_file: None,
     },
   ))
+}
+
+#[derive(Debug, Clone)]
+pub struct ExternalImportMap {
+  pub path: PathBuf,
+  pub value: serde_json::Value,
+}
+
+#[derive(Debug)]
+pub struct WorkspaceExternalImportMapLoader {
+  sys: CliSys,
+  workspace: Arc<Workspace>,
+  maybe_external_import_map:
+    once_cell::sync::OnceCell<Option<ExternalImportMap>>,
+}
+
+impl WorkspaceExternalImportMapLoader {
+  pub fn new(sys: CliSys, workspace: Arc<Workspace>) -> Self {
+    Self {
+      sys,
+      workspace,
+      maybe_external_import_map: Default::default(),
+    }
+  }
+
+  pub fn get_or_load(&self) -> Result<Option<&ExternalImportMap>, AnyError> {
+    self
+      .maybe_external_import_map
+      .get_or_try_init(|| {
+        let Some(deno_json) = self.workspace.root_deno_json() else {
+          return Ok(None);
+        };
+        if deno_json.is_an_import_map() {
+          return Ok(None);
+        }
+        let Some(path) = deno_json.to_import_map_path()? else {
+          return Ok(None);
+        };
+        let contents =
+          self.sys.fs_read_to_string(&path).with_context(|| {
+            format!("Unable to read import map at '{}'", path.display())
+          })?;
+        let value = serde_json::from_str(&contents)?;
+        Ok(Some(ExternalImportMap { path, value }))
+      })
+      .map(|v| v.as_ref())
+  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -472,6 +517,7 @@ fn resolve_lint_rules_options(
 
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
+#[derive(Debug)]
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
@@ -480,7 +526,6 @@ pub struct CliOptions {
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
 
@@ -492,7 +537,6 @@ impl CliOptions {
     maybe_lockfile: Option<Arc<CliLockfile>>,
     maybe_node_modules_folder: Option<PathBuf>,
     start_dir: Arc<WorkspaceDirectory>,
-    maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -516,7 +560,6 @@ impl CliOptions {
       initial_cwd,
       maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
-      maybe_external_import_map,
       maybe_node_modules_folder,
       start_dir,
     })
@@ -527,39 +570,18 @@ impl CliOptions {
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_node_modules_folder: Option<PathBuf>,
+    maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    fn load_external_import_map(
-      deno_json: &ConfigFile,
-    ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
-      if !deno_json.is_an_import_map() {
-        if let Some(path) = deno_json.to_import_map_path()? {
-          let contents = std::fs::read_to_string(&path).with_context(|| {
-            format!("Unable to read import map at '{}'", path.display())
-          })?;
-          let map = serde_json::from_str(&contents)?;
-          return Ok(Some((path, map)));
-        }
-      }
-      Ok(None)
-    }
-
-    let external_import_map =
-      if let Some(deno_json) = start_dir.workspace.root_deno_json() {
-        load_external_import_map(deno_json)?
-      } else {
-        None
-      };
-
     let maybe_lock_file = CliLockfile::discover(
       sys,
       &flags,
       &start_dir.workspace,
-      external_import_map.as_ref().map(|(_, v)| v),
+      maybe_external_import_map.as_ref().map(|v| &v.value),
     )?;
 
     log::debug!("Finished config loading.");
@@ -570,7 +592,6 @@ impl CliOptions {
       maybe_lock_file.map(Arc::new),
       maybe_node_modules_folder,
       start_dir,
-      external_import_map,
     )
   }
 
@@ -629,51 +650,6 @@ impl CliOptions {
       self.workspace().root_deno_json().map(|c| c.as_ref()),
       &self.initial_cwd,
     )
-  }
-
-  pub async fn create_workspace_resolver(
-    &self,
-    file_fetcher: &CliFileFetcher,
-    pkg_json_dep_resolution: PackageJsonDepResolution,
-  ) -> Result<WorkspaceResolver, AnyError> {
-    let cli_arg_specified_import_map = {
-      let maybe_import_map_specifier =
-        self.resolve_specified_import_map_specifier()?;
-      match maybe_import_map_specifier {
-        Some(specifier) => {
-          let value =
-            resolve_import_map_value_from_specifier(&specifier, file_fetcher)
-              .await
-              .with_context(|| {
-                format!("Unable to load '{}' import map", specifier)
-              })?;
-          Some(deno_config::workspace::SpecifiedImportMap {
-            base_url: specifier,
-            value,
-          })
-        }
-        None => {
-          if let Some((path, import_map)) =
-            self.maybe_external_import_map.as_ref()
-          {
-            let path_url = deno_path_util::url_from_file_path(path)?;
-            Some(deno_config::workspace::SpecifiedImportMap {
-              base_url: path_url,
-              value: import_map.clone(),
-            })
-          } else {
-            None
-          }
-        }
-      }
-    };
-    Ok(self.workspace().create_resolver(
-      &CliSys::default(),
-      CreateResolverOptions {
-        pkg_json_dep_resolution,
-        specified_import_map: cli_arg_specified_import_map,
-      },
-    )?)
   }
 
   pub fn node_ipc_fd(&self) -> Option<i64> {
@@ -1269,41 +1245,6 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
-  fn byonm_enabled(&self) -> bool {
-    // check if enabled via unstable
-    self.node_modules_dir().ok().flatten() == Some(NodeModulesDirMode::Manual)
-      || NPM_PROCESS_STATE
-        .as_ref()
-        .map(|s| matches!(s.kind, NpmProcessStateKind::Byonm))
-        .unwrap_or(false)
-  }
-
-  pub fn use_byonm(&self) -> bool {
-    if matches!(
-      self.sub_command(),
-      DenoSubcommand::Install(_)
-        | DenoSubcommand::Add(_)
-        | DenoSubcommand::Remove(_)
-        | DenoSubcommand::Init(_)
-        | DenoSubcommand::Outdated(_)
-    ) {
-      // For `deno install/add/remove/init` we want to force the managed resolver so it can set up `node_modules/` directory.
-      return false;
-    }
-    if self.node_modules_dir().ok().flatten().is_none()
-      && self.maybe_node_modules_folder.is_some()
-      && self
-        .workspace()
-        .config_folders()
-        .values()
-        .any(|f| f.pkg_json.is_some())
-    {
-      return true;
-    }
-
-    self.byonm_enabled()
-  }
-
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
@@ -1460,7 +1401,7 @@ fn try_resolve_node_binary_main_entrypoint(
 
 #[derive(Debug, Error)]
 #[error("Bad URL for import map.")]
-struct ImportMapSpecifierResolveError {
+pub struct ImportMapSpecifierResolveError {
   #[source]
   source: deno_path_util::ResolveUrlOrPathError,
 }
