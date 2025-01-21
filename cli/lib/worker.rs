@@ -192,7 +192,7 @@ struct LibWorkerFactorySharedState<TSys: DenoLibSys> {
   node_resolver:
     Arc<NodeResolver<DenoInNpmPackageChecker, NpmResolver<TSys>, TSys>>,
   npm_process_state_provider: NpmProcessStateProviderRc,
-  pkg_json_resolver: Arc<node_resolver::PackageJsonResolver>,
+  pkg_json_resolver: Arc<dyn node_resolver::PackageJsonResolver>,
   root_cert_store_provider: Arc<dyn RootCertStoreProvider>,
   shared_array_buffer_store: SharedArrayBufferStore,
   storage_key_resolver: StorageKeyResolver,
