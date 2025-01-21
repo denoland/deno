@@ -30,12 +30,12 @@ use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
@@ -917,7 +917,7 @@ impl<'a> ResolverFactory<'a> {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
         Some(Arc::new(CliNodeResolver::new(
           self.in_npm_pkg_checker().clone(),
-          RealIsBuiltInNodeModuleChecker,
+          DenoIsBuiltInNodeModuleChecker,
           npm_resolver.clone(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),

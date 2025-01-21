@@ -9,11 +9,11 @@ use deno_error::JsErrorBox;
 use deno_graph::ParsedSourceStore;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_runtime::deno_fs;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis as ExtNodeCjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::CjsCodeAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -27,7 +27,7 @@ use crate::sys::CliSys;
 pub type CliNodeCodeTranslator = NodeCodeTranslator<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSys,
 >;

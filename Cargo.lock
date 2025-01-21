@@ -1460,8 +1460,6 @@ dependencies = [
 [[package]]
 name = "deno_cache_dir"
 version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73ed17f285731a23df9779ca1e0e721de866db6776ed919ebd9235e0a107c4c"
 dependencies = [
  "async-trait",
  "base32",
@@ -2219,8 +2217,6 @@ dependencies = [
 [[package]]
 name = "deno_path_util"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "420e8211aaba7fde83ccaa9a5dad855c3b940ed988d70c95159acd600a70dc87"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2293,8 +2289,10 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
+ "deno_terminal 0.2.0",
  "log",
  "node_resolver",
+ "once_cell",
  "parking_lot",
  "sys_traits",
  "test_server",

@@ -90,6 +90,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+#[deprecated]
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
     let env_var_name = "NPM_CONFIG_REGISTRY";
@@ -480,134 +481,6 @@ fn resolve_lint_rules_options(
   }
 }
 
-pub fn discover_npmrc_from_workspace(
-  workspace: &Workspace,
-) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
-  let root_folder = workspace.root_folder_configs();
-  discover_npmrc(
-    root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
-    root_folder.deno_json.as_ref().and_then(|cf| {
-      if cf.specifier.scheme() == "file" {
-        Some(cf.specifier.to_file_path().unwrap())
-      } else {
-        None
-      }
-    }),
-  )
-}
-
-/// Discover `.npmrc` file - currently we only support it next to `package.json`
-/// or next to `deno.json`.
-///
-/// In the future we will need to support it in user directory or global directory
-/// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
-fn discover_npmrc(
-  maybe_package_json_path: Option<PathBuf>,
-  maybe_deno_json_path: Option<PathBuf>,
-) -> Result<(Arc<ResolvedNpmRc>, Option<PathBuf>), AnyError> {
-  const NPMRC_NAME: &str = ".npmrc";
-
-  fn get_env_var(var_name: &str) -> Option<String> {
-    std::env::var(var_name).ok()
-  }
-
-  #[derive(Debug, Error)]
-  #[error("Error loading .npmrc at {}.", path.display())]
-  struct NpmRcLoadError {
-    path: PathBuf,
-    #[source]
-    source: std::io::Error,
-  }
-
-  fn try_to_read_npmrc(
-    dir: &Path,
-  ) -> Result<Option<(String, PathBuf)>, NpmRcLoadError> {
-    let path = dir.join(NPMRC_NAME);
-    let maybe_source = match std::fs::read_to_string(&path) {
-      Ok(source) => Some(source),
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
-      Err(err) => return Err(NpmRcLoadError { path, source: err }),
-    };
-
-    Ok(maybe_source.map(|source| (source, path)))
-  }
-
-  fn try_to_parse_npmrc(
-    source: String,
-    path: &Path,
-  ) -> Result<Arc<ResolvedNpmRc>, AnyError> {
-    let npmrc = NpmRc::parse(&source, &get_env_var).with_context(|| {
-      format!("Failed to parse .npmrc at {}", path.display())
-    })?;
-    let resolved = npmrc
-      .as_resolved(npm_registry_url())
-      .context("Failed to resolve .npmrc options")?;
-    log::debug!(".npmrc found at: '{}'", path.display());
-    Ok(Arc::new(resolved))
-  }
-
-  // 1. Try `.npmrc` next to `package.json`
-  if let Some(package_json_path) = maybe_package_json_path {
-    if let Some(package_json_dir) = package_json_path.parent() {
-      if let Some((source, path)) = try_to_read_npmrc(package_json_dir)? {
-        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
-      }
-    }
-  }
-
-  // 2. Try `.npmrc` next to `deno.json(c)`
-  if let Some(deno_json_path) = maybe_deno_json_path {
-    if let Some(deno_json_dir) = deno_json_path.parent() {
-      if let Some((source, path)) = try_to_read_npmrc(deno_json_dir)? {
-        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
-      }
-    }
-  }
-
-  // TODO(bartlomieju): update to read both files - one in the project root and one and
-  // home dir and then merge them.
-  // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = crate::sys::CliSys::default().env_home_dir() {
-    match try_to_read_npmrc(&home_dir) {
-      Ok(Some((source, path))) => {
-        return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
-      }
-      Ok(None) => {}
-      Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
-        log::debug!(
-          "Skipping .npmrc in home directory due to permission denied error. {:#}",
-          err
-        );
-      }
-      Err(err) => {
-        return Err(err.into());
-      }
-    }
-  }
-
-  log::debug!("No .npmrc file found");
-  Ok((create_default_npmrc(), None))
-}
-
-pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
-  Arc::new(ResolvedNpmRc {
-    default_config: deno_npm::npm_rc::RegistryConfigWithUrl {
-      registry_url: npm_registry_url().clone(),
-      config: Default::default(),
-    },
-    scopes: Default::default(),
-    registry_configs: Default::default(),
-  })
-}
-
-/// Overrides for the options below that when set will
-/// use these values over the values derived from the
-/// CLI flags or config file.
-#[derive(Default, Clone)]
-struct CliOptionOverrides {
-  import_map_specifier: Option<Option<ModuleSpecifier>>,
-}
-
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -894,14 +767,11 @@ impl CliOptions {
   pub fn resolve_specified_import_map_specifier(
     &self,
   ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    match self.overrides.import_map_specifier.clone() {
-      Some(maybe_url) => Ok(maybe_url),
-      None => resolve_import_map_specifier(
-        self.flags.import_map_path.as_deref(),
-        self.workspace().root_deno_json().map(|c| c.as_ref()),
-        &self.initial_cwd,
-      ),
-    }
+    resolve_import_map_specifier(
+      self.flags.import_map_path.as_deref(),
+      self.workspace().root_deno_json().map(|c| c.as_ref()),
+      &self.initial_cwd,
+    )
   }
 
   pub async fn create_workspace_resolver(
@@ -909,19 +779,7 @@ impl CliOptions {
     file_fetcher: &CliFileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
-    let overrode_no_import_map: bool = self
-      .overrides
-      .import_map_specifier
-      .as_ref()
-      .map(|s| s.is_none())
-      == Some(true);
-    let cli_arg_specified_import_map = if overrode_no_import_map {
-      // use a fake empty import map
-      Some(deno_config::workspace::SpecifiedImportMap {
-        base_url: self.workspace().root_dir().join("import_map.json").unwrap(),
-        value: serde_json::Value::Object(Default::default()),
-      })
-    } else {
+    let cli_arg_specified_import_map = {
       let maybe_import_map_specifier =
         self.resolve_specified_import_map_specifier()?;
       match maybe_import_map_specifier {
@@ -1730,63 +1588,6 @@ impl CliOptions {
   }
 }
 
-/// Resolves the path to use for a local node_modules folder.
-fn resolve_node_modules_folder(
-  cwd: &Path,
-  flags: &Flags,
-  workspace: &Workspace,
-  deno_dir_provider: &Arc<DenoDirProvider>,
-) -> Result<Option<PathBuf>, AnyError> {
-  fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
-    root_folder
-      .deno_json
-      .as_ref()
-      .map(|c| Cow::Owned(c.dir_path()))
-      .or_else(|| {
-        root_folder
-          .pkg_json
-          .as_ref()
-          .map(|c| Cow::Borrowed(c.dir_path()))
-      })
-      .unwrap_or(Cow::Borrowed(cwd))
-      .join("node_modules")
-  }
-
-  let root_folder = workspace.root_folder_configs();
-  let use_node_modules_dir = if let Some(mode) = flags.node_modules_dir {
-    Some(mode.uses_node_modules_dir())
-  } else {
-    workspace
-      .node_modules_dir()?
-      .map(|m| m.uses_node_modules_dir())
-      .or(flags.vendor)
-      .or_else(|| root_folder.deno_json.as_ref().and_then(|c| c.json.vendor))
-  };
-  let path = if use_node_modules_dir == Some(false) {
-    return Ok(None);
-  } else if let Some(state) = &*NPM_PROCESS_STATE {
-    return Ok(state.local_node_modules_path.as_ref().map(PathBuf::from));
-  } else if root_folder.pkg_json.is_some() {
-    let node_modules_dir = resolve_from_root(root_folder, cwd);
-    if let Ok(deno_dir) = deno_dir_provider.get_or_create() {
-      // `deno_dir.root` can be symlink in macOS
-      if let Ok(root) = canonicalize_path_maybe_not_exists(&deno_dir.root) {
-        if node_modules_dir.starts_with(root) {
-          // if the package.json is in deno_dir, then do not use node_modules
-          // next to it as local node_modules dir
-          return Ok(None);
-        }
-      }
-    }
-    node_modules_dir
-  } else if use_node_modules_dir.is_none() {
-    return Ok(None);
-  } else {
-    resolve_from_root(root_folder, cwd)
-  };
-  Ok(Some(canonicalize_path_maybe_not_exists(&path)?))
-}
-
 fn try_resolve_node_binary_main_entrypoint(
   specifier: &str,
   initial_cwd: &Path,
@@ -1817,22 +1618,31 @@ fn try_resolve_node_binary_main_entrypoint(
   }
 }
 
+#[derive(Debug, Error)]
+#[error("Bad URL for import map.")]
+struct ImportMapSpecifierResolveError {
+  #[source]
+  source: deno_path_util::ResolveUrlOrPathError,
+}
+
 fn resolve_import_map_specifier(
   maybe_import_map_path: Option<&str>,
   maybe_config_file: Option<&ConfigFile>,
   current_dir: &Path,
-) -> Result<Option<ModuleSpecifier>, AnyError> {
+) -> Result<Option<Url>, ImportMapSpecifierResolveError> {
   if let Some(import_map_path) = maybe_import_map_path {
     if let Some(config_file) = &maybe_config_file {
       if config_file.json.import_map.is_some() {
-        log::warn!("{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.", colors::yellow("Warning"), config_file.specifier);
+        log::warn!(
+          "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
+          deno_terminal::colors::yellow("Warning"),
+          config_file.specifier,
+        );
       }
     }
     let specifier =
-      deno_core::resolve_url_or_path(import_map_path, current_dir)
-        .with_context(|| {
-          format!("Bad URL (\"{import_map_path}\") for import map.")
-        })?;
+      deno_path_util::resolve_url_or_path(import_map_path, current_dir)
+        .map_err(|source| ImportMapSpecifierResolveError { source })?;
     Ok(Some(specifier))
   } else {
     Ok(None)
@@ -1911,52 +1721,6 @@ mod test {
   use super::*;
 
   #[test]
-  fn resolve_import_map_flags_take_precedence() {
-    let config_text = r#"{
-      "importMap": "import_map.json"
-    }"#;
-    let cwd = &std::env::current_dir().unwrap();
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      Some("import-map.json"),
-      Some(&config_file),
-      cwd,
-    );
-    let import_map_path = cwd.join("import-map.json");
-    let expected_specifier =
-      ModuleSpecifier::from_file_path(import_map_path).unwrap();
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, Some(expected_specifier));
-  }
-
-  #[test]
-  fn resolve_import_map_none() {
-    let config_text = r#"{}"#;
-    let config_specifier =
-      ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
-    let actual = resolve_import_map_specifier(
-      None,
-      Some(&config_file),
-      &PathBuf::from("/"),
-    );
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, None);
-  }
-
-  #[test]
-  fn resolve_import_map_no_config() {
-    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
-    assert!(actual.is_ok());
-    let actual = actual.unwrap();
-    assert_eq!(actual, None);
-  }
-
-  #[test]
   fn jsr_urls() {
     let reg_url = jsr_url();
     assert!(reg_url.as_str().ends_with('/'));
@@ -1984,5 +1748,49 @@ mod test {
       Some("example.com:80".to_string())
     );
     assert_eq!(parse("file:///example.com"), None);
+  }
+
+  #[test]
+  fn resolve_import_map_flags_take_precedence() {
+    let config_text = r#"{
+      "importMap": "import_map.json"
+    }"#;
+    let cwd = &std::env::current_dir().unwrap();
+    let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(
+      Some("import-map.json"),
+      Some(&config_file),
+      cwd,
+    );
+    let import_map_path = cwd.join("import-map.json");
+    let expected_specifier =
+      deno_path_util::url_from_file_path(&import_map_path).unwrap();
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, Some(expected_specifier));
+  }
+
+  #[test]
+  fn resolve_import_map_none() {
+    let config_text = r#"{}"#;
+    let config_specifier = Url::parse("file:///deno/deno.jsonc").unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
+    let actual = resolve_import_map_specifier(
+      None,
+      Some(&config_file),
+      &PathBuf::from("/"),
+    );
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn resolve_import_map_no_config() {
+    let actual = resolve_import_map_specifier(None, None, &PathBuf::from("/"));
+    assert!(actual.is_ok());
+    let actual = actual.unwrap();
+    assert_eq!(actual, None);
   }
 }

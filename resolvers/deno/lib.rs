@@ -43,15 +43,14 @@ use thiserror::Error;
 use url::Url;
 
 pub mod cjs;
+pub mod factory;
 pub mod npm;
+pub mod npmrc;
 pub mod sloppy_imports;
 mod sync;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
-
-#[allow(clippy::disallowed_types)]
-pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
 
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;

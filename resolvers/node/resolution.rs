@@ -132,10 +132,6 @@ impl NodeResolution {
   }
 }
 
-pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
-  fn is_builtin_node_module(&self, specifier: &str) -> bool;
-}
-
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,

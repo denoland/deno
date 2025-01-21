@@ -31,7 +31,6 @@ use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -41,6 +40,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use log::warn;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use once_cell::sync::OnceCell;
 
 use crate::args::check_warn_tsconfig;
@@ -794,7 +794,7 @@ impl CliFactory {
         async {
           Ok(Arc::new(CliNodeResolver::new(
             self.in_npm_pkg_checker()?.clone(),
-            RealIsBuiltInNodeModuleChecker,
+            DenoIsBuiltInNodeModuleChecker,
             self.npm_resolver().await?.clone(),
             self.pkg_json_resolver().clone(),
             self.sys(),

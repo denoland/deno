@@ -28,8 +28,8 @@ use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
+use crate::npmrc::ResolvedNpmRcRc;
 use crate::NpmCacheDirRc;
-use crate::ResolvedNpmRcRc;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolvePkgFolderFromDenoModuleError {

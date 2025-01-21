@@ -17,7 +17,7 @@ use url::Url;
 
 use super::resolution::NpmResolutionCellRc;
 use super::NpmCacheDirRc;
-use crate::ResolvedNpmRcRc;
+use crate::npmrc::ResolvedNpmRcRc;
 
 /// Resolves packages from the global npm cache.
 #[derive(Debug)]

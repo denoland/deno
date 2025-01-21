@@ -67,8 +67,8 @@ winres.workspace = true
 
 [dependencies]
 deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-deno_cache_dir.workspace = true
-deno_config.workspace = true
+deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_doc = { version = "=0.164.0", features = ["rust", "comrak"] }
 deno_error.workspace = true
@@ -78,7 +78,7 @@ deno_lint = { version = "=0.68.2", features = ["docs"] }
 deno_lockfile.workspace = true
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
-deno_package_json.workspace = true
+deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }

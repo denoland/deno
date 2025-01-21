@@ -32,8 +32,10 @@ pub fn has_trace_permissions_enabled() -> bool {
 }
 
 pub fn has_flag_env_var(name: &str) -> bool {
-  let value = std::env::var(name);
-  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
+  match std::env::var_os(name) {
+    Some(value) => value == "1",
+    None => false,
+  }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
