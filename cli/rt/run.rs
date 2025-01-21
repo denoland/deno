@@ -75,9 +75,9 @@ use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::NodePackageJsonResolver;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
-use node_resolver::PackageJsonResolver;
 use node_resolver::ResolutionMode;
 
 use crate::binary::DenoCompileModuleSource;
@@ -652,7 +652,7 @@ pub async fn run(
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(sys.clone()));
+  let pkg_json_resolver = Arc::new(NodePackageJsonResolver::new(sys.clone()));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {
       Some(NodeModules::Managed {

@@ -39,20 +39,38 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc<TSys> =
-  crate::sync::MaybeArc<PackageJsonResolver<TSys>>;
+pub type PackageJsonResolverRc = crate::sync::MaybeArc<dyn PackageJsonResolver>;
+
+pub trait PackageJsonResolver {
+  fn get_closest_package_json(
+    &self,
+    url: &Url,
+  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError>;
+
+  fn get_closest_package_json_from_file_path(
+    &self,
+    file_path: &Path,
+  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError>;
+
+  fn load_package_json(
+    &self,
+    path: &Path,
+  ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError>;
+}
 
 #[derive(Debug)]
-pub struct PackageJsonResolver<TSys: FsRead> {
+pub struct NodePackageJsonResolver<TSys: FsRead> {
   sys: TSys,
 }
 
-impl<TSys: FsRead> PackageJsonResolver<TSys> {
+impl<TSys: FsRead> NodePackageJsonResolver<TSys> {
   pub fn new(sys: TSys) -> Self {
     Self { sys }
   }
+}
 
-  pub fn get_closest_package_json(
+impl<TSys: FsRead> PackageJsonResolver for NodePackageJsonResolver<TSys> {
+  fn get_closest_package_json(
     &self,
     url: &Url,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
@@ -62,7 +80,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
     self.get_closest_package_json_from_file_path(&file_path)
   }
 
-  pub fn get_closest_package_json_from_file_path(
+  fn get_closest_package_json_from_file_path(
     &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
@@ -77,7 +95,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
     Ok(None)
   }
 
-  pub fn load_package_json(
+  fn load_package_json(
     &self,
     path: &Path,
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {

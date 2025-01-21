@@ -36,7 +36,8 @@ pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
   CliNpmResolver,
   CliSys,
 >;
-pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
+pub type CliPackageJsonResolver =
+  node_resolver::NodePackageJsonResolver<CliSys>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CliCjsAnalysis {
