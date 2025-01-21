@@ -3,20 +3,23 @@
 use hyper::header::AUTHORIZATION;
 use hyper::HeaderMap;
 use hyper::StatusCode;
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
+use hyper_util::rt::tokio::TokioExecutor;
 
 use crate::CacheError;
 
 pub struct CacheShard {
-  client: reqwest::Client,
+  client: Client<HttpConnector, http_body::Body>,
   endpoint: String,
   token: String,
 }
 
 impl CacheShard {
   pub fn new(endpoint: String, token: String) -> Self {
-    let client = reqwest::Client::builder()
-      .build()
-      .expect("Failed to build reqwest client");
+    let client = Client::builder(TokioExecutor::new())
+      .pool_idle_timeout(std::time::Duration::from_secs(30))
+      .build_http();
     Self {
       client,
       endpoint,
