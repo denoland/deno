@@ -25,9 +25,17 @@ pub enum Resolver {
 }
 
 /// Alias for the `Future` type returned by a custom DNS resolver.
+// The future has to be `Send` as `tokio::spawn` is used to execute the future.
 pub type Resolving =
   Pin<Box<dyn Future<Output = Result<SocketAddrs, io::Error>> + Send>>;
 
+/// A trait for customizing DNS resolution in ext/fetch.
+// The resolver needs to be `Send` and `Sync` for two reasons. One is it is
+// wrapped inside an `Arc` and will be cloned and moved to an async block to
+// perfrom DNS resolution. That async block will be executed by `tokio::spawn`,
+// so to make that async block `Send`, `Arc<dyn Resolve>` needs to be
+// `Send`. The other is `Resolver` needs to be `Send` to make the wrapping
+// `HttpConnector` `Send`.
 pub trait Resolve: Send + Sync + std::fmt::Debug {
   fn resolve(&self, name: Name) -> Resolving;
 }
