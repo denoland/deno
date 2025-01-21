@@ -1,5 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::convert::Infallible;
+
+use bytes::Bytes;
+use http::Method;
+use http::Request;
+use http::Response;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::Empty;
+use http_body_util::StreamBody;
+use hyper::body::Incoming;
 use hyper::header::AUTHORIZATION;
 use hyper::HeaderMap;
 use hyper::StatusCode;
@@ -10,7 +20,7 @@ use hyper_util::rt::tokio::TokioExecutor;
 use crate::CacheError;
 
 pub struct CacheShard {
-  client: Client<HttpConnector, http_body::Body>,
+  client: Client<HttpConnector, UnsyncBoxBody<Bytes, Infallible>>,
   endpoint: String,
   token: String,
 }
@@ -30,15 +40,16 @@ impl CacheShard {
   pub async fn get_object(
     &self,
     object_key: &str,
-  ) -> Result<Option<reqwest::Response>, CacheError> {
-    let res = self
-      .client
-      .get(format!("{}/objects/{}", self.endpoint, object_key))
+  ) -> Result<Option<Response<Incoming>>, CacheError> {
+    let req = Request::builder()
+      .method(Method::GET)
+      .uri(format!("{}/objects/{}", self.endpoint, object_key))
       .header(&AUTHORIZATION, format!("Bearer {}", self.token))
       .header("x-ryw", "1")
-      .send()
-      .await
-      .map_err(|e| e.without_url())?;
+      .body(UnsyncBoxBody::new(Empty::new()))
+      .unwrap();
+
+    let res = self.client.request(req).await?;
 
     if res.status().is_success() {
       Ok(Some(res))
@@ -56,17 +67,20 @@ impl CacheShard {
     &self,
     object_key: &str,
     headers: HeaderMap,
-    body: reqwest::Body,
+    body: StreamBody<Bytes>,
   ) -> Result<(), CacheError> {
-    let res = self
-      .client
-      .put(format!("{}/objects/{}", self.endpoint, object_key))
-      .headers(headers)
-      .header(&AUTHORIZATION, format!("Bearer {}", self.token))
-      .body(body)
-      .send()
-      .await
-      .map_err(|e| e.without_url())?;
+    let mut builder = Request::builder()
+      .method(Method::PUT)
+      .uri(format!("{}/objects/{}", self.endpoint, object_key))
+      .header(&AUTHORIZATION, format!("Bearer {}", self.token));
+
+    for (key, val) in headers.iter() {
+      builder = builder.header(key, val)
+    }
+
+    let req = builder.body(UnsyncBoxBody::new(body)).unwrap();
+
+    let res = self.client.request(req).await?;
 
     if res.status().is_success() {
       Ok(())
