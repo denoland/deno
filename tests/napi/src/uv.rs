@@ -137,7 +137,7 @@ unsafe extern "C" fn callback(handle: *mut uv_async_t) {
     &mut result,
   ));
   uv_mutex_unlock((*async_).mutex);
-  if value == 5 {
+  if value == 1 {
     uv_close(handle.cast(), Some(close_cb));
   }
 }
@@ -166,7 +166,6 @@ extern "C" fn test_uv_async(
   let uv_async = uv_async.cast::<uv_async_t>();
   let mut js_cb = null_mut();
   assert_napi_ok!(napi_create_reference(env, args[0], 1, &mut js_cb));
-  // let mut tsfn = null_mut();
 
   let data = new_raw(Async {
     env,
@@ -181,14 +180,13 @@ extern "C" fn test_uv_async(
     let uv_async = UvAsyncPtr(uv_async);
     std::thread::spawn({
       move || {
+        std::thread::sleep(Duration::from_millis(50));
         let data = (*uv_async.0).data as *mut Async;
-        for _ in 0..5 {
-          uv_mutex_lock((*data).mutex);
-          (*data).value += 1;
-          uv_mutex_unlock((*data).mutex);
-          std::thread::sleep(Duration::from_millis(10));
-          uv_async_send(uv_async);
-        }
+        uv_mutex_lock((*data).mutex);
+        (*data).value += 1;
+        uv_mutex_unlock((*data).mutex);
+        std::thread::sleep(Duration::from_millis(10));
+        uv_async_send(uv_async);
       }
     });
   }
