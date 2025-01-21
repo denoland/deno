@@ -42,6 +42,7 @@ use opentelemetry::metrics::InstrumentBuilder;
 use opentelemetry::metrics::MeterProvider as _;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
+use opentelemetry::trace::Link;
 use opentelemetry::trace::SpanContext;
 use opentelemetry::trace::SpanId;
 use opentelemetry::trace::SpanKind;
@@ -94,6 +95,7 @@ deno_core::extension!(
     op_otel_span_attribute1,
     op_otel_span_attribute2,
     op_otel_span_attribute3,
+    op_otel_span_add_link,
     op_otel_span_update_name,
     op_otel_metric_attribute3,
     op_otel_metric_record0,
@@ -1325,17 +1327,6 @@ impl OtelSpan {
   }
 
   #[fast]
-  fn drop_link(&self) {
-    let mut state = self.0.borrow_mut();
-    match &mut **state {
-      OtelSpanState::Recording(span) => {
-        span.links.dropped_count += 1;
-      }
-      OtelSpanState::Done(_) => {}
-    }
-  }
-
-  #[fast]
   fn end(&self, end_time: f64) {
     let end_time = if end_time.is_nan() {
       SystemTime::now()
@@ -1446,6 +1437,48 @@ fn op_otel_span_update_name<'s>(
   if let OtelSpanState::Recording(span) = &mut **state {
     span.name = Cow::Owned(name)
   }
+}
+
+#[op2(fast)]
+fn op_otel_span_add_link<'s>(
+  scope: &mut v8::HandleScope<'s>,
+  span: v8::Local<'s, v8::Value>,
+  trace_id: v8::Local<'s, v8::Value>,
+  span_id: v8::Local<'s, v8::Value>,
+  #[smi] trace_flags: u8,
+  is_remote: bool,
+  #[smi] dropped_attributes_count: u32,
+) -> bool {
+  let trace_id = parse_trace_id(scope, trace_id);
+  if trace_id == TraceId::INVALID {
+    return false;
+  };
+  let span_id = parse_span_id(scope, span_id);
+  if span_id == SpanId::INVALID {
+    return false;
+  };
+  let span_context = SpanContext::new(
+    trace_id,
+    span_id,
+    TraceFlags::new(trace_flags),
+    is_remote,
+    TraceState::NONE,
+  );
+
+  let Some(span) =
+    deno_core::_ops::try_unwrap_cppgc_object::<OtelSpan>(scope, span)
+  else {
+    return true;
+  };
+  let mut state = span.0.borrow_mut();
+  if let OtelSpanState::Recording(span) = &mut **state {
+    span.links.links.push(Link::new(
+      span_context,
+      vec![],
+      dropped_attributes_count,
+    ));
+  }
+  true
 }
 
 struct OtelMeter(opentelemetry::metrics::Meter);
