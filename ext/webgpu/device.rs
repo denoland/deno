@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::future::Future;
 use std::num::NonZeroU64;
 use std::rc::Rc;
@@ -607,11 +607,12 @@ impl GPUDevice {
   }
 
   #[async_method]
-  fn pop_error_scope<'a>(
+  async fn pop_error_scope<'a>(
     &self,
-    scope: &mut v8::HandleScope<'a>,
-  ) -> impl Future<Output = Result<v8::Local<'a, v8::Value>, JsErrorBox>> {
-    if self.error_handler.is_lost.get().is_some() {
+    //scope: &mut v8::HandleScope<'a>,
+  ) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    unreachable!();
+    /*if self.error_handler.is_lost.get().is_some() {
       return std::future::ready(Ok(v8::null(scope).into()));
     }
 
@@ -623,12 +624,12 @@ impl GPUDevice {
     };
 
     let val = if let Some(err) = errors.into_iter().next() {
-      Ok(deno_core::error::to_v8_error(scope, &err))
+      deno_core::error::to_v8_error(scope, &err)
     } else {
-      Ok(v8::null(scope).into())
+      v8::null(scope).into()
     };
 
-    std::future::ready(val)
+    std::future::ready(Ok(val))*/
   }
 }
 

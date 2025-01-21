@@ -96,11 +96,12 @@ impl GPUAdapter {
   }
 
   #[async_method]
-  #[cppgc]
+  #[global]
   async fn request_device(
     &self,
+    scope: &mut v8::HandleScope,
     #[webidl] descriptor: GPUDeviceDescriptor,
-  ) -> Result<GPUDevice, CreateDeviceError> {
+  ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
     let features = self.instance.adapter_features(self.id);
     let supported_features = features_to_feature_names(features);
     let required_features = descriptor
@@ -137,21 +138,49 @@ impl GPUAdapter {
       None,
     )?;
 
-    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
+    let (uncaptured_sender, mut uncaptured_receiver) = tokio::sync::mpsc::unbounded_channel();
 
-    Ok(GPUDevice {
+    let device = GPUDevice {
       instance: self.instance.clone(),
       id: device,
       queue,
       label: descriptor.label,
       queue_obj: SameObject::new(),
       adapter_info: self.info.clone(),
-      error_handler: Arc::new(super::error::DeviceErrorHandler::new(sender)),
+      error_handler: Arc::new(super::error::DeviceErrorHandler::new(lost_sender, uncaptured_sender)),
       adapter: self.id,
-      lost_receiver: Mutex::new(Some(receiver)),
+      lost_receiver: Mutex::new(Some(lost_receiver)),
       limits: SameObject::new(),
       features: SameObject::new(),
-    })
+    };
+    let device = deno_core::cppgc::make_cppgc_object(scope, device);
+    let key = v8::String::new(scope, "dispatchEvent").unwrap();
+    let val = device.get(scope, key.into()).unwrap();
+    let func = v8::Global::new(scope, val.try_cast::<v8::Function>().unwrap());
+    let device = v8::Global::<v8::Value>::new(scope, device.into());
+
+    let mut isolate = ***scope;
+
+    let task_device = device.clone();
+    tokio::task::spawn(async move {
+      loop {
+        // TODO(@crowlKats): check for is_closed instead once tokio is upgraded
+        let Some(error) = uncaptured_receiver.recv().await else {
+          break;
+        };
+
+        let scope = &mut v8::HandleScope::new(&mut isolate);
+        let error = deno_core::error::to_v8_error(scope, &error);
+
+        // TODO: create GPUUncapturedErrorEvent instead of passing the error directly
+        
+        let recv = v8::Local::new(scope, task_device.clone());
+        func.open(scope).call(scope, recv, &[error]);
+      }
+    });
+
+    Ok(device)
   }
 }
 

@@ -36,15 +36,18 @@ pub type ErrorHandler = std::sync::Arc<DeviceErrorHandler>;
 pub struct DeviceErrorHandler {
   pub is_lost: OnceLock<()>,
   lost_sender: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+  
+  pub uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>,
 
   pub scopes: Mutex<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
 }
 
 impl DeviceErrorHandler {
-  pub fn new(sender: tokio::sync::oneshot::Sender<()>) -> Self {
+  pub fn new(lost_sender: tokio::sync::oneshot::Sender<()>, uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>) -> Self {
     Self {
       is_lost: Default::default(),
-      lost_sender: Mutex::new(Some(sender)),
+      lost_sender: Mutex::new(Some(lost_sender)),
+      uncaptured_sender,
       scopes: Mutex::new(vec![]),
     }
   }
@@ -84,13 +87,7 @@ impl DeviceErrorHandler {
     if let Some(scope) = scope {
       scope.1.push(err);
     } else {
-      /* TODO:
-         this.device.dispatchEvent(
-           new GPUUncapturedErrorEvent("uncapturederror", {
-             error: constructedError,
-           }),
-         );
-      */
+      self.uncaptured_sender.send(err).unwrap();
     }
   }
 }

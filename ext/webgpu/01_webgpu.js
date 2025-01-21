@@ -39,6 +39,7 @@ const {
   Error,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
+  ObjectSetPrototypeOf,
   Symbol,
   SymbolFor,
 } = primordials;
@@ -47,7 +48,7 @@ import * as webidl from "ext:deno_webidl/00_webidl.js";
 import {
   defineEventHandler,
   Event,
-  EventTarget,
+  EventTargetPrototype,
   setEventTargetData,
 } from "ext:deno_web/02_event.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
@@ -256,6 +257,7 @@ ObjectDefineProperty(GPUDevice, customInspect, {
   },
 });
 const GPUDevicePrototype = GPUDevice.prototype;
+ObjectSetPrototypeOf(GPUDevicePrototype, EventTargetPrototype);
 defineEventHandler(GPUDevice.prototype, "uncapturederror");
 
 ObjectDefineProperty(GPUQueue, customInspect, {
