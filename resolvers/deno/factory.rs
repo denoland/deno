@@ -9,18 +9,15 @@ use deno_cache_dir::DenoDirResolutionError;
 use deno_cache_dir::GlobalHttpCacheRc;
 use deno_cache_dir::HttpCacheRc;
 use deno_cache_dir::LocalHttpCache;
-use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
-use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverError;
 use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
-use deno_config::workspace::WorkspaceResolver;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
@@ -46,7 +43,6 @@ use sys_traits::SystemRandom;
 use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
 use thiserror::Error;
-use url::Url;
 
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
@@ -82,6 +78,7 @@ type MaybeOnceLock<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
 type MaybeOnceLock<T> = once_cell::unsync::OnceCell<T>;
 
+#[derive(Debug)]
 struct Deferred<T>(MaybeOnceLock<T>);
 
 impl<T> Default for Deferred<T> {
@@ -227,10 +224,54 @@ pub trait SpecifiedImportMapProvider:
   ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
-pub struct WorkspaceFactoryOptions {
+#[derive(Debug, Clone)]
+pub struct DenoDirPathProviderOptions {
+  pub maybe_custom_root: Option<PathBuf>,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type DenoDirPathProviderRc<TSys> =
+  crate::sync::MaybeArc<DenoDirPathProvider<TSys>>;
+
+/// Lazily creates the deno dir which might be useful in scenarios
+/// where functionality wants to continue if the DENO_DIR can't be created.
+#[derive(Debug)]
+pub struct DenoDirPathProvider<
+  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
+> {
+  sys: TSys,
+  options: DenoDirPathProviderOptions,
+  deno_dir: Deferred<PathBuf>,
+}
+
+impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
+  DenoDirPathProvider<TSys>
+{
+  pub fn new(sys: TSys, options: DenoDirPathProviderOptions) -> Self {
+    Self {
+      sys,
+      options,
+      deno_dir: Default::default(),
+    }
+  }
+
+  pub fn get_or_create(&self) -> Result<&PathBuf, DenoDirResolutionError> {
+    self.deno_dir.get_or_try_init(|| {
+      deno_cache_dir::resolve_deno_dir(
+        &self.sys,
+        self.options.maybe_custom_root.clone(),
+      )
+    })
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct WorkspaceFactoryOptions<
+  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
+> {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
-  pub maybe_custom_deno_dir_root: Option<PathBuf>,
+  pub deno_dir_path_provider: Option<DenoDirPathProviderRc<TSys>>,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_npm: bool,
   /// The node_modules directory if using ext/node and the current process
@@ -267,14 +308,15 @@ pub struct WorkspaceFactory<
     + 'static,
 > {
   sys: TSys,
-  deno_dir_path: Deferred<PathBuf>,
+  deno_dir_path: DenoDirPathProviderRc<TSys>,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<HttpCacheRc>,
   node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
+  npmrc: Deferred<ResolvedNpmRcRc>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   initial_cwd: PathBuf,
-  options: WorkspaceFactoryOptions,
+  options: WorkspaceFactoryOptions<TSys>,
 }
 
 impl<
@@ -303,19 +345,36 @@ impl<
   pub fn new(
     sys: TSys,
     initial_cwd: PathBuf,
-    options: WorkspaceFactoryOptions,
+    mut options: WorkspaceFactoryOptions<TSys>,
   ) -> Self {
     Self {
+      deno_dir_path: options.deno_dir_path_provider.take().unwrap_or_else(
+        || {
+          new_rc(DenoDirPathProvider::new(
+            sys.clone(),
+            DenoDirPathProviderOptions {
+              maybe_custom_root: None,
+            },
+          ))
+        },
+      ),
       sys,
-      deno_dir_path: Default::default(),
       global_http_cache: Default::default(),
       http_cache: Default::default(),
       node_modules_dir: Default::default(),
       node_modules_dir_path: Default::default(),
+      npmrc: Default::default(),
       workspace_directory: Default::default(),
       initial_cwd,
       options,
     }
+  }
+
+  pub fn set_workspace_directory(
+    &mut self,
+    workspace_directory: WorkspaceDirectoryRc,
+  ) {
+    self.workspace_directory = Deferred::from_value(workspace_directory);
   }
 
   pub fn initial_cwd(&self) -> &PathBuf {
@@ -420,12 +479,7 @@ impl<
   }
 
   pub fn deno_dir_path(&self) -> Result<&PathBuf, DenoDirResolutionError> {
-    self.deno_dir_path.get_or_try_init(|| {
-      deno_cache_dir::resolve_deno_dir(
-        &self.sys,
-        self.options.maybe_custom_deno_dir_root.clone(),
-      )
-    })
+    self.deno_dir_path.get_or_create()
   }
 
   pub fn global_http_cache(
@@ -455,6 +509,16 @@ impl<
         }
         None => Ok(global_cache),
       }
+    })
+  }
+
+  pub fn npmrc(&self) -> Result<&ResolvedNpmRcRc, NpmRcCreateError> {
+    self.npmrc.get_or_try_init(|| {
+      let (npmrc, _) = discover_npmrc_from_workspace(
+        &self.sys,
+        &self.workspace_directory()?.workspace,
+      )?;
+      Ok(new_rc(npmrc))
     })
   }
 
@@ -592,7 +656,6 @@ pub struct ResolverFactory<
   >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
-  npmrc: Deferred<ResolvedNpmRcRc>,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
   sloppy_imports_resolver:
     Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
@@ -638,7 +701,6 @@ impl<
       npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
-      npmrc: Default::default(),
       pkg_json_resolver: Default::default(),
       sloppy_imports_resolver: Default::default(),
       workspace_factory,
@@ -688,14 +750,16 @@ impl<
     &self,
   ) -> Result<&DenoInNpmPackageChecker, InNpmPackageCheckerCreateError> {
     self.in_npm_package_checker.get_or_try_init(|| {
-      let options = match self.node_modules_dir()? {
+      let options = match self.workspace_factory.node_modules_dir()? {
         Some(NodeModulesDirMode::Manual) => CreateInNpmPkgCheckerOptions::Byonm,
         Some(NodeModulesDirMode::Auto)
         | Some(NodeModulesDirMode::None)
         | None => CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: self.npm_cache_dir()?.root_dir_url(),
-            maybe_node_modules_path: self.node_modules_dir_path()?,
+            maybe_node_modules_path: self
+              .workspace_factory
+              .node_modules_dir_path()?,
           },
         ),
       };
@@ -731,11 +795,14 @@ impl<
     &self,
   ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
     self.npm_cache_dir.get_or_try_init(|| {
-      let npm_cache_dir = self.deno_dir_path()?.join("npm");
+      let npm_cache_dir = self.workspace_factory.deno_dir_path()?.join("npm");
       Ok(new_rc(NpmCacheDir::new(
         &self.sys,
         npm_cache_dir,
-        self.npmrc()?.get_all_known_registries_urls(),
+        self
+          .workspace_factory
+          .npmrc()?
+          .get_all_known_registries_urls(),
       )))
     })
   }
@@ -771,15 +838,18 @@ impl<
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
           sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
-          root_node_modules_dir: Some(match self.node_modules_dir_path()? {
-            Some(node_modules_path) => node_modules_path.to_path_buf(),
-            // path needs to be canonicalized for node resolution
-            // (node_modules_dir_path above is already canonicalized)
-            None => {
-              canonicalize_path_maybe_not_exists(&self.sys, &self.initial_cwd)?
-                .join("node_modules")
-            }
-          }),
+          root_node_modules_dir: Some(
+            match self.workspace_factory.node_modules_dir_path()? {
+              Some(node_modules_path) => node_modules_path.to_path_buf(),
+              // path needs to be canonicalized for node resolution
+              // (node_modules_dir_path above is already canonicalized)
+              None => canonicalize_path_maybe_not_exists(
+                &self.sys,
+                self.workspace_factory.initial_cwd(),
+              )?
+              .join("node_modules"),
+            },
+          ),
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
@@ -787,22 +857,13 @@ impl<
           npm_resolution: self.npm_resolution().clone(),
           npm_cache_dir: self.npm_cache_dir()?.clone(),
           maybe_node_modules_path: self
+            .workspace_factory
             .node_modules_dir_path()?
             .map(|p| p.to_path_buf()),
           npm_system_info: self.options.npm_system_info.clone(),
-          npmrc: self.npmrc()?.clone(),
+          npmrc: self.workspace_factory.npmrc()?.clone(),
         })
       }))
-    })
-  }
-
-  pub fn npmrc(&self) -> Result<&ResolvedNpmRcRc, NpmRcCreateError> {
-    self.npmrc.get_or_try_init(|| {
-      let (npmrc, _) = discover_npmrc_from_workspace(
-        &self.sys,
-        &self.workspace_directory()?.workspace,
-      )?;
-      Ok(new_rc(npmrc))
     })
   }
 
@@ -823,6 +884,7 @@ impl<
       .get_or_try_init(|| {
         let enabled = self.options.unstable_sloppy_imports
           || self
+            .workspace_factory
             .workspace_directory()?
             .workspace
             .has_unstable("sloppy-imports");
@@ -847,13 +909,14 @@ impl<
     self
       .workspace_resolver
       .get_or_try_init_async(async {
-        let directory = self.workspace_directory()?;
+        let directory = self.workspace_factory.workspace_directory()?;
         let workspace = &directory.workspace;
         let specified_import_map = match &self.options.specified_import_map {
           Some(import_map) => import_map.get().await?,
           None => None,
         };
-        let node_modules_dir_mode = self.node_modules_dir()?;
+        let node_modules_dir_mode =
+          self.workspace_factory.node_modules_dir()?;
         // todo(THIS PR): do not use Disabled for `deno publish`?
         let options = deno_config::workspace::CreateResolverOptions {
           pkg_json_dep_resolution: match node_modules_dir_mode {
@@ -888,6 +951,7 @@ impl<
   fn is_byonm(&self) -> Result<bool, anyhow::Error> {
     Ok(
       self
+        .workspace_factory
         .node_modules_dir()?
         .map(|n| n == NodeModulesDirMode::Manual)
         .unwrap_or(false),

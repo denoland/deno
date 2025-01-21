@@ -50,7 +50,7 @@ pub async fn info(
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
     let resolver = factory.workspace_resolver().await?.clone();
-    let npmrc = cli_options.npmrc();
+    let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =

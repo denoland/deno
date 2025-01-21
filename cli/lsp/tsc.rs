@@ -42,7 +42,7 @@ use deno_core::RuntimeOptions;
 use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_node::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::tokio_util::create_basic_runtime;
 use indexmap::IndexMap;
@@ -3807,7 +3807,7 @@ impl CompletionEntry {
         self.auto_import_data =
           Some(CompletionNormalizedAutoImportData { raw, normalized });
       }
-    } else if DENO_SUPPORTED_BUILTIN_NODE_MODULES
+    } else if SUPPORTED_BUILTIN_NODE_MODULES
       .contains(&raw.module_specifier.as_str())
     {
       if let Ok(normalized) =

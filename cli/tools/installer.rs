@@ -370,7 +370,7 @@ async fn install_global(
     log::Level::Trace,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
+  let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));

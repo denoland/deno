@@ -36,14 +36,9 @@ pub use deno_config::deno_json::TsConfigType;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::CreateResolverOptions;
-use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
-use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
@@ -62,13 +57,7 @@ use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
 use deno_lint::linter::LintConfig as DenoLintConfig;
-use deno_npm::npm_rc::NpmRc;
-use deno_npm::npm_rc::ResolvedNpmRc;
-use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_path_util::normalize_path;
-use deno_resolver::factory::ConfigDiscoveryOption;
-use deno_resolver::factory::ResolverFactoryOptions;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_semver::npm::NpmPackageReqReference;
@@ -84,14 +73,10 @@ pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
 pub use package_json::NpmInstallDepsProvider;
 pub use package_json::PackageJsonDepValueParseWithLocationError;
-use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache::DenoDirProvider;
 use crate::file_fetcher::CliFileFetcher;
-use crate::resolver::CliResolverFactory;
 use crate::sys::CliSys;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 // todo(THIS PR): remove or re-use from deno_resolver
 #[deprecated]
@@ -485,53 +470,6 @@ fn resolve_lint_rules_options(
   }
 }
 
-pub fn create_resolver_factory(
-  sys: CliSys,
-  initial_cwd: PathBuf,
-  flags: Arc<Flags>,
-) -> CliResolverFactory {
-  CliResolverFactory::new(
-    sys,
-    initial_cwd,
-    ResolverFactoryOptions {
-      additional_config_file_names: if matches!(
-        flags.subcommand,
-        DenoSubcommand::Publish(..)
-      ) {
-        &["jsr.json", "jsr.jsonc"]
-      } else {
-        &[]
-      },
-      config_discovery: match &flags.config_flag {
-        ConfigFlag::Discover => {
-          if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
-            ConfigDiscoveryOption::Discover { start_paths }
-          } else {
-            ConfigDiscoveryOption::Disabled
-          }
-        }
-        ConfigFlag::Path(path) => {
-          ConfigDiscoveryOption::Path(PathBuf::from(path))
-        }
-        ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
-      },
-      maybe_custom_deno_dir_root: flags.internal.cache_path.clone(),
-      no_npm: flags.no_npm,
-      no_sloppy_imports_cache: false,
-      node_modules_dir: flags.node_modules_dir,
-      npm_system_info: flags.subcommand.npm_system_info(),
-      process_state_node_modules_dir: NPM_PROCESS_STATE.as_ref().map(|s| {
-        s.local_node_modules_path
-          .as_ref()
-          .map(|s| Cow::Borrowed(s.as_str()))
-      }),
-      specified_import_map: todo!(),
-      vendor: flags.vendor,
-      unstable_sloppy_imports: flags.unstable_config.sloppy_imports,
-    },
-  )
-}
-
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -541,23 +479,19 @@ pub struct CliOptions {
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
   maybe_node_modules_folder: Option<PathBuf>,
-  npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    npmrc: Arc<ResolvedNpmRc>,
+    maybe_node_modules_folder: Option<PathBuf>,
     start_dir: Arc<WorkspaceDirectory>,
-    force_global_cache: bool,
     maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -575,101 +509,29 @@ impl CliOptions {
       }
     }
 
-    let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let deno_dir_provider = Arc::new(DenoDirProvider::new(
-      sys.clone(),
-      flags.internal.cache_path.clone(),
-    ));
-    let maybe_node_modules_folder = resolve_node_modules_folder(
-      &initial_cwd,
-      &flags,
-      &start_dir.workspace,
-      &deno_dir_provider,
-    )
-    .with_context(|| "Resolving node_modules folder.")?;
-
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
     Ok(Self {
       flags,
       initial_cwd,
       maybe_lockfile,
-      npmrc,
-      maybe_node_modules_folder,
       main_module_cell: std::sync::OnceLock::new(),
       maybe_external_import_map,
+      maybe_node_modules_folder,
       start_dir,
-      deno_dir_provider,
     })
   }
 
-  pub fn from_flags(sys: &CliSys, flags: Arc<Flags>) -> Result<Self, AnyError> {
-    let initial_cwd =
-      std::env::current_dir().with_context(|| "Failed getting cwd.")?;
-    let maybe_vendor_override = flags.vendor.map(|v| match v {
-      true => VendorEnablement::Enable { cwd: &initial_cwd },
-      false => VendorEnablement::Disable,
-    });
-    let resolve_workspace_discover_options = || {
-      let additional_config_file_names: &'static [&'static str] =
-        if matches!(flags.subcommand, DenoSubcommand::Publish(..)) {
-          &["jsr.json", "jsr.jsonc"]
-        } else {
-          &[]
-        };
-      let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
-        && !flags.no_npm
-        && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
-      if !discover_pkg_json {
-        log::debug!("package.json auto-discovery is disabled");
-      }
-      WorkspaceDiscoverOptions {
-        deno_json_cache: None,
-        pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
-        workspace_cache: None,
-        additional_config_file_names,
-        discover_pkg_json,
-        maybe_vendor_override,
-      }
-    };
-    let resolve_empty_options = || WorkspaceDirectoryEmptyOptions {
-      root_dir: Arc::new(
-        ModuleSpecifier::from_directory_path(&initial_cwd).unwrap(),
-      ),
-      use_vendor_dir: maybe_vendor_override
-        .unwrap_or(VendorEnablement::Disable),
-    };
-
-    let start_dir = match &flags.config_flag {
-      ConfigFlag::Discover => {
-        if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
-          WorkspaceDirectory::discover(
-            sys,
-            WorkspaceDiscoverStart::Paths(&start_paths),
-            &resolve_workspace_discover_options(),
-          )?
-        } else {
-          WorkspaceDirectory::empty(resolve_empty_options())
-        }
-      }
-      ConfigFlag::Path(path) => {
-        let config_path = normalize_path(initial_cwd.join(path));
-        WorkspaceDirectory::discover(
-          sys,
-          WorkspaceDiscoverStart::ConfigFile(&config_path),
-          &resolve_workspace_discover_options(),
-        )?
-      }
-      ConfigFlag::Disabled => {
-        WorkspaceDirectory::empty(resolve_empty_options())
-      }
-    };
-
+  pub fn from_flags(
+    sys: &CliSys,
+    flags: Arc<Flags>,
+    initial_cwd: PathBuf,
+    maybe_node_modules_folder: Option<PathBuf>,
+    start_dir: Arc<WorkspaceDirectory>,
+  ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
-
-    let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
     fn load_external_import_map(
       deno_json: &ConfigFile,
@@ -703,25 +565,13 @@ impl CliOptions {
     log::debug!("Finished config loading.");
 
     Self::new(
-      sys,
       flags,
       initial_cwd,
       maybe_lock_file.map(Arc::new),
-      npmrc,
-      Arc::new(start_dir),
-      false,
+      maybe_node_modules_folder,
+      start_dir,
       external_import_map,
     )
-  }
-
-  /// This method is purposefully verbose to disourage its use. Do not use it
-  /// except in the factory structs. Instead, prefer specific methods on `CliOptions`
-  /// that can take all sources of information into account (ex. config files or env vars).
-  pub fn into_self_and_flags(
-    self: Arc<CliOptions>,
-  ) -> (Arc<CliOptions>, Arc<Flags>) {
-    let flags = self.flags.clone();
-    (self, flags)
   }
 
   #[inline(always)]
@@ -933,19 +783,6 @@ impl CliOptions {
     }
   }
 
-  pub fn resolve_npm_resolution_snapshot(
-    &self,
-  ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, AnyError> {
-    if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
-      NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
-    {
-      // TODO(bartlomieju): remove this clone
-      Ok(Some(snapshot.clone().into_valid()?))
-    } else {
-      Ok(None)
-    }
-  }
-
   pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
     if let Some(location) = &self.flags.location {
       StorageKeyResolver::from_flag(location)
@@ -1033,10 +870,6 @@ impl CliOptions {
           })
           .collect()
       })
-  }
-
-  pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
-    &self.npmrc
   }
 
   pub fn resolve_fmt_options_for_members(

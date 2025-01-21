@@ -20,7 +20,6 @@ use deno_runtime::colors;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::package::PackageReq;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
-use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
@@ -52,7 +51,6 @@ pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   CliNpmResolver,
   CliSys,
 >;
-pub type CliResolverFactory = deno_resolver::factory::ResolverFactory<CliSys>;
 
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);

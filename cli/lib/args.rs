@@ -7,6 +7,8 @@ use std::io::Seek;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
+use deno_npm::resolution::PackageIdNotFoundError;
+use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_runtime::colors;
 use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
 use deno_runtime::deno_tls::rustls;
@@ -188,6 +190,19 @@ pub static NPM_PROCESS_STATE: LazyLock<Option<NpmProcessState>> =
       .ok()?;
     Some(state)
   });
+
+pub fn resolve_npm_resolution_snapshot(
+) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, PackageIdNotFoundError>
+{
+  if let Some(NpmProcessStateKind::Snapshot(snapshot)) =
+    NPM_PROCESS_STATE.as_ref().map(|s| &s.kind)
+  {
+    // TODO(bartlomieju): remove this clone
+    Ok(Some(snapshot.clone().into_valid()?))
+  } else {
+    Ok(None)
+  }
+}
 
 #[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct UnstableConfig {
