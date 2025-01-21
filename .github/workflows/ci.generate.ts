@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 32;
+const cacheVersion = 36;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -14,7 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "self-hosted";
+const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
   linuxX86: {
@@ -41,8 +41,14 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
+    runner: macosArmRunner,
+  },
+  macosArmSelfHosted: {
+    os: "macos",
+    arch: "aarch64",
+    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
     runner:
-      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -384,7 +390,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArm,
+            ...Runners.macosArmSelfHosted,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -486,7 +492,7 @@ const ci = {
         },
         {
           name: "Cache Cargo home",
-          uses: "actions/cache@v4",
+          uses: "cirruslabs/cache@v4",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             // Note that with the new sparse registry format, we no longer have to cache a `.git` dir

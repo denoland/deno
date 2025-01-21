@@ -61,11 +61,13 @@ impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("Failed writing lockfile")]
-#[class(inherit)]
-struct AtomicWriteFileWithRetriesError {
-  #[source]
-  source: std::io::Error,
+pub enum AtomicWriteFileWithRetriesError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Changed(JsErrorBox),
+  #[class(inherit)]
+  #[error("Failed writing lockfile")]
+  Io(#[source] std::io::Error),
 }
 
 impl CliLockfile {
@@ -87,12 +89,16 @@ impl CliLockfile {
     self.lockfile.lock().overwrite
   }
 
-  pub fn write_if_changed(&self) -> Result<(), JsErrorBox> {
+  pub fn write_if_changed(
+    &self,
+  ) -> Result<(), AtomicWriteFileWithRetriesError> {
     if self.skip_write {
       return Ok(());
     }
 
-    self.error_if_changed()?;
+    self
+      .error_if_changed()
+      .map_err(AtomicWriteFileWithRetriesError::Changed)?;
     let mut lockfile = self.lockfile.lock();
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
@@ -105,9 +111,7 @@ impl CliLockfile {
       &bytes,
       cache::CACHE_PERM,
     )
-    .map_err(|source| {
-      JsErrorBox::from_err(AtomicWriteFileWithRetriesError { source })
-    })?;
+    .map_err(AtomicWriteFileWithRetriesError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }

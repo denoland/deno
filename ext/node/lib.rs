@@ -15,8 +15,9 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
-use node_resolver::NpmPackageFolderResolverRc;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
 use once_cell::sync::Lazy;
 
@@ -30,8 +31,6 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
 pub use ops::ipc::ChildPipeFd;
-pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
@@ -185,17 +184,21 @@ fn op_node_build_os() -> String {
 }
 
 #[derive(Clone)]
-pub struct NodeExtInitServices<TSys: ExtNodeSys> {
+pub struct NodeExtInitServices<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: ExtNodeSys,
+> {
   pub node_require_loader: NodeRequireLoaderRc,
-  pub node_resolver: NodeResolverRc<TSys>,
-  pub npm_resolver: NpmPackageFolderResolverRc,
+  pub node_resolver:
+    NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
   pub sys: TSys,
 }
 
 deno_core::extension!(deno_node,
   deps = [ deno_io, deno_fs ],
-  parameters = [P: NodePermissions, TSys: ExtNodeSys],
+  parameters = [P: NodePermissions, TInNpmPackageChecker: InNpmPackageChecker, TNpmPackageFolderResolver: NpmPackageFolderResolver, TSys: ExtNodeSys],
   ops = [
     ops::blocklist::op_socket_address_parse,
     ops::blocklist::op_socket_address_get_serialization,
@@ -223,7 +226,6 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_take,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -395,13 +397,13 @@ deno_core::extension!(deno_node,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P, TSys>,
     ops::require::op_require_proxy_path,
-    ops::require::op_require_is_deno_dir_package<TSys>,
-    ops::require::op_require_resolve_deno_dir,
+    ops::require::op_require_is_deno_dir_package<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+    ops::require::op_require_resolve_deno_dir<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_is_maybe_cjs,
     ops::require::op_require_is_request_relative,
     ops::require::op_require_resolve_lookup_paths,
     ops::require::op_require_try_self_parent_path<P, TSys>,
-    ops::require::op_require_try_self<P, TSys>,
+    ops::require::op_require_try_self<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_real_path<P, TSys>,
     ops::require::op_require_path_is_absolute,
     ops::require::op_require_path_dirname,
@@ -410,9 +412,9 @@ deno_core::extension!(deno_node,
     ops::require::op_require_path_basename,
     ops::require::op_require_read_file<P>,
     ops::require::op_require_as_file_path,
-    ops::require::op_require_resolve_exports<P, TSys>,
+    ops::require::op_require_resolve_exports<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_read_package_scope<P, TSys>,
-    ops::require::op_require_package_imports_resolve<P, TSys>,
+    ops::require::op_require_package_imports_resolve<P, TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
     ops::require::op_require_break_on_next_statement,
     ops::util::op_node_guess_handle_type,
     ops::worker_threads::op_worker_threads_filename<P, TSys>,
@@ -487,7 +489,7 @@ deno_core::extension!(deno_node,
     "_fs/_fs_watch.ts",
     "_fs/_fs_write.mjs",
     "_fs/_fs_writeFile.ts",
-    "_fs/_fs_writev.mjs",
+    "_fs/_fs_writev.ts",
     "_next_tick.ts",
     "_process/exiting.ts",
     "_process/process.ts",
@@ -681,7 +683,7 @@ deno_core::extension!(deno_node,
     "node:zlib" = "zlib.ts",
   ],
   options = {
-    maybe_init: Option<NodeExtInitServices<TSys>>,
+    maybe_init: Option<NodeExtInitServices<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>>,
     fs: deno_fs::FileSystemRc,
   },
   state = |state, options| {
@@ -691,7 +693,6 @@ deno_core::extension!(deno_node,
       state.put(init.sys.clone());
       state.put(init.node_require_loader.clone());
       state.put(init.node_resolver.clone());
-      state.put(init.npm_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
     }
   },
@@ -833,10 +834,18 @@ pub trait ExtNodeSys:
 
 impl ExtNodeSys for sys_traits::impls::RealSys {}
 
-pub type NodeResolver<TSys> =
-  node_resolver::NodeResolver<RealIsBuiltInNodeModuleChecker, TSys>;
+pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
+  node_resolver::NodeResolver<
+    TInNpmPackageChecker,
+    RealIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >;
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc<TSys> = deno_fs::sync::MaybeArc<NodeResolver<TSys>>;
+pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
+  deno_fs::sync::MaybeArc<
+    NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
+  >;
 #[allow(clippy::disallowed_types)]
 
 pub fn create_host_defined_options<'s>(

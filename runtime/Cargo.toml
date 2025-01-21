@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.192.0"
+version = "0.194.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -27,6 +27,7 @@ hmr = ["include_js_files_for_snapshotting"]
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
+snapshotting = ["deno_ast"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -39,39 +40,8 @@ path = "lib.rs"
 name = "extension"
 path = "examples/extension/main.rs"
 
-[build-dependencies]
-deno_ast.workspace = true
-deno_broadcast_channel.workspace = true
-deno_cache.workspace = true
-deno_canvas.workspace = true
-deno_console.workspace = true
-deno_core.workspace = true
-deno_cron.workspace = true
-deno_crypto.workspace = true
-deno_fetch.workspace = true
-deno_ffi.workspace = true
-deno_fs = { workspace = true, features = ["sync_fs"] }
-deno_http.workspace = true
-deno_io.workspace = true
-deno_net.workspace = true
-deno_node.workspace = true
-deno_kv.workspace = true
-deno_tls.workspace = true
-deno_url.workspace = true
-deno_web.workspace = true
-deno_webgpu.workspace = true
-deno_webidl.workspace = true
-deno_websocket.workspace = true
-deno_webstorage.workspace = true
-deno_napi.workspace = true
-flate2 = { workspace = true, features = ["default"] }
-serde.workspace = true
-
-[target.'cfg(windows)'.build-dependencies]
-winapi.workspace = true
-
 [dependencies]
-deno_ast.workspace = true
+deno_ast = { workspace = true, optional = true }
 deno_broadcast_channel.workspace = true
 deno_cache.workspace = true
 deno_canvas.workspace = true
@@ -89,8 +59,11 @@ deno_kv.workspace = true
 deno_napi.workspace = true
 deno_net.workspace = true
 deno_node.workspace = true
+deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
+deno_process.workspace = true
+deno_resolver.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true
@@ -113,7 +86,6 @@ hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
 libc.workspace = true
 log.workspace = true
-netif = "0.1.6"
 notify.workspace = true
 once_cell.workspace = true
 percent-encoding.workspace = true
@@ -121,8 +93,6 @@ regex.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
 same-file = "1.0.6"
 serde.workspace = true
-signal-hook = "0.3.17"
-signal-hook-registry = "1.4.0"
 sys_traits.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true

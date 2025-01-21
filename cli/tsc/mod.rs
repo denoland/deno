@@ -28,6 +28,10 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_lib::util::checksum;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::worker::create_isolate_create_params;
+use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeJsErrorCode;
@@ -41,15 +45,12 @@ use thiserror::Error;
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
-use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
-use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_isolate_create_params;
 
 mod diagnostics;
 
@@ -299,13 +300,13 @@ pub fn into_specifier_and_media_type(
 
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   module_info_cache: Arc<ModuleInfoCache>,
 }
 
 impl TypeCheckingCjsTracker {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
@@ -357,7 +358,7 @@ impl TypeCheckingCjsTracker {
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
+  pub npm_resolver: CliNpmResolver,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
@@ -709,9 +710,7 @@ pub enum ResolveError {
   PackageSubpathResolve(PackageSubpathResolveError),
   #[class(inherit)]
   #[error("{0}")]
-  ResolvePkgFolderFromDenoModule(
-    #[from] crate::npm::ResolvePkgFolderFromDenoModuleError,
-  ),
+  ResolvePkgFolderFromDenoModule(#[from] ResolvePkgFolderFromDenoModuleError),
   #[class(inherit)]
   #[error("{0}")]
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
@@ -746,7 +745,7 @@ fn op_resolve(
   state: &mut OpState,
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
-) -> Result<Vec<(String, &'static str)>, ResolveError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -754,9 +753,9 @@ fn op_resolve(
 fn op_resolve_inner(
   state: &mut OpState,
   args: ResolveArgs,
-) -> Result<Vec<(String, &'static str)>, ResolveError> {
+) -> Result<Vec<(String, Option<&'static str>)>, ResolveError> {
   let state = state.borrow_mut::<State>();
-  let mut resolved: Vec<(String, &'static str)> =
+  let mut resolved: Vec<(String, Option<&'static str>)> =
     Vec::with_capacity(args.specifiers.len());
   let referrer = if let Some(remapped_specifier) =
     state.maybe_remapped_specifier(&args.base)
@@ -770,14 +769,14 @@ fn op_resolve_inner(
     if specifier.starts_with("node:") {
       resolved.push((
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ));
       continue;
     }
 
     if specifier.starts_with("asset:///") {
       let ext = MediaType::from_str(&specifier).as_ts_extension();
-      resolved.push((specifier, ext));
+      resolved.push((specifier, Some(ext)));
       continue;
     }
 
@@ -857,14 +856,15 @@ fn op_resolve_inner(
         (
           specifier_str,
           match media_type {
-            MediaType::Css => ".js", // surface these as .js for typescript
-            media_type => media_type.as_ts_extension(),
+            MediaType::Css => Some(".js"), // surface these as .js for typescript
+            MediaType::Unknown => None,
+            media_type => Some(media_type.as_ts_extension()),
           },
         )
       }
       None => (
         MISSING_DEPENDENCY_SPECIFIER.to_string(),
-        MediaType::Dts.as_ts_extension(),
+        Some(MediaType::Dts.as_ts_extension()),
       ),
     };
     log::debug!("Resolved {} from {} to {:?}", specifier, referrer, result);
@@ -1441,7 +1441,10 @@ mod tests {
       },
     )
     .expect("should have invoked op");
-    assert_eq!(actual, vec![("https://deno.land/x/b.ts".into(), ".ts")]);
+    assert_eq!(
+      actual,
+      vec![("https://deno.land/x/b.ts".into(), Some(".ts"))]
+    );
   }
 
   #[tokio::test]
@@ -1460,7 +1463,10 @@ mod tests {
       },
     )
     .expect("should have not errored");
-    assert_eq!(actual, vec![(MISSING_DEPENDENCY_SPECIFIER.into(), ".d.ts")]);
+    assert_eq!(
+      actual,
+      vec![(MISSING_DEPENDENCY_SPECIFIER.into(), Some(".d.ts"))]
+    );
   }
 
   #[tokio::test]

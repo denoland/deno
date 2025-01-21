@@ -18,6 +18,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
+use deno_lib::version::DENO_VERSION_INFO;
 use jupyter_runtime::messaging;
 use jupyter_runtime::ConnectionInfo;
 use jupyter_runtime::ExecutionCount;
@@ -679,10 +680,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
-    implementation_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
+    implementation_version: DENO_VERSION_INFO.deno.to_string(),
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
-      version: crate::version::DENO_VERSION_INFO.typescript.to_string(),
+      version: DENO_VERSION_INFO.typescript.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),
