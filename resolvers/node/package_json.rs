@@ -2,6 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
@@ -38,8 +39,11 @@ impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   }
 }
 
+pub trait DebuggablePackageJsonResolver: PackageJsonResolver + Debug {}
+
 #[allow(clippy::disallowed_types)]
-pub type PackageJsonResolverRc = crate::sync::MaybeArc<dyn PackageJsonResolver>;
+pub type PackageJsonResolverRc =
+  crate::sync::MaybeArc<dyn DebuggablePackageJsonResolver>;
 
 pub trait PackageJsonResolver {
   fn get_closest_package_json(

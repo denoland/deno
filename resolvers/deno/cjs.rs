@@ -16,17 +16,17 @@ use crate::sync::MaybeDashMap;
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
-  is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
+pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker> {
+  is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker>,
   known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
-  CjsTracker<TInNpmPackageChecker, TSys>
+impl<TInNpmPackageChecker: InNpmPackageChecker>
+  CjsTracker<TInNpmPackageChecker>
 {
   pub fn new(
     in_npm_pkg_checker: TInNpmPackageChecker,
-    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    pkg_json_resolver: PackageJsonResolverRc,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -147,21 +147,18 @@ pub enum IsCjsResolutionMode {
 
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
-pub struct IsCjsResolver<
-  TInNpmPackageChecker: InNpmPackageChecker,
-  TSys: FsRead,
-> {
+pub struct IsCjsResolver<TInNpmPackageChecker: InNpmPackageChecker> {
   in_npm_pkg_checker: TInNpmPackageChecker,
-  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pkg_json_resolver: PackageJsonResolverRc,
   mode: IsCjsResolutionMode,
 }
 
-impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
-  IsCjsResolver<TInNpmPackageChecker, TSys>
+impl<TInNpmPackageChecker: InNpmPackageChecker>
+  IsCjsResolver<TInNpmPackageChecker>
 {
   pub fn new(
     in_npm_pkg_checker: TInNpmPackageChecker,
-    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    pkg_json_resolver: PackageJsonResolverRc,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {

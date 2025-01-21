@@ -48,7 +48,7 @@ pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
   pub sys: TSys,
-  pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pub pkg_json_resolver: PackageJsonResolverRc,
 }
 
 #[allow(clippy::disallowed_types)]
@@ -60,7 +60,7 @@ pub struct ByonmNpmResolver<
   TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir,
 > {
   sys: TSys,
-  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pkg_json_resolver: PackageJsonResolverRc,
   root_node_modules_dir: Option<PathBuf>,
 }
 
