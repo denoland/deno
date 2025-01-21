@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::io::TcpStreamResource;
-use crate::ops::IpAddr;
-use crate::ops::NetError;
-use crate::ops::TlsHandshakeInfo;
-use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
-use crate::tcp::TcpListener;
-use crate::DefaultTlsOptions;
-use crate::NetPermissions;
-use crate::UnsafelyIgnoreCertificateErrors;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::convert::From;
+use std::fs::File;
+use std::io::BufReader;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::v8;
@@ -22,6 +23,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -35,25 +37,25 @@ use deno_tls::TlsKey;
 use deno_tls::TlsKeyLookup;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
+pub use rustls_tokio_stream::TlsStream;
 use rustls_tokio_stream::TlsStreamRead;
 use rustls_tokio_stream::TlsStreamWrite;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::convert::From;
-use std::fs::File;
-use std::io::BufReader;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::net::SocketAddr;
-use std::num::NonZeroUsize;
-use std::rc::Rc;
-use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-pub use rustls_tokio_stream::TlsStream;
+use crate::io::TcpStreamResource;
+use crate::ops::IpAddr;
+use crate::ops::NetError;
+use crate::ops::TlsHandshakeInfo;
+use crate::raw::NetworkListenerResource;
+use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
+use crate::DefaultTlsOptions;
+use crate::NetPermissions;
+use crate::UnsafelyIgnoreCertificateErrors;
 
 pub(crate) const TLS_BUFFER_SIZE: Option<NonZeroUsize> =
   NonZeroUsize::new(65536);
@@ -162,7 +164,7 @@ impl Resource for TlsStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {

@@ -1,15 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::sync::Arc;
-
-use dashmap::DashMap;
 use deno_media_type::MediaType;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
-use node_resolver::PackageJsonResolver;
+use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
+use sys_traits::FsRead;
 use url::Url;
+
+use crate::sync::MaybeDashMap;
 
 /// Keeps track of what module specifiers were resolved as CJS.
 ///
@@ -17,15 +16,17 @@ use url::Url;
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TEnv: NodeResolverEnv> {
-  is_cjs_resolver: IsCjsResolver<TEnv>,
-  known: DashMap<Url, ResolutionMode>,
+pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
+  is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
+  known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  CjsTracker<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: TInNpmPackageChecker,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -47,6 +48,26 @@ impl<TEnv: NodeResolverEnv> CjsTracker<TEnv> {
     media_type: MediaType,
   ) -> Result<bool, ClosestPkgJsonError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
+  }
+
+  /// Mark a file as being known CJS or ESM.
+  pub fn set_is_known_script(&self, specifier: &Url, is_script: bool) {
+    let new_value = if is_script {
+      ResolutionMode::Require
+    } else {
+      ResolutionMode::Import
+    };
+    // block to really ensure dashmap is not borrowed while trying to insert
+    {
+      if let Some(value) = self.known.get(specifier) {
+        // you shouldn't be insert a value in here that's
+        // already known and is a different value than what
+        // was previously determined
+        debug_assert_eq!(*value, new_value);
+        return;
+      }
+    }
+    self.known.insert(specifier.clone(), new_value);
   }
 
   /// Gets whether the file is CJS. If true, this is for sure
@@ -126,16 +147,21 @@ pub enum IsCjsResolutionMode {
 
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
-pub struct IsCjsResolver<TEnv: NodeResolverEnv> {
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+pub struct IsCjsResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: FsRead,
+> {
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  IsCjsResolver<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-    pkg_json_resolver: Arc<PackageJsonResolver<TEnv>>,
+    in_npm_pkg_checker: TInNpmPackageChecker,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
     Self {
@@ -185,7 +211,7 @@ impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
     specifier: &Url,
     media_type: MediaType,
     is_script: Option<bool>,
-    known_cache: &DashMap<Url, ResolutionMode>,
+    known_cache: &MaybeDashMap<Url, ResolutionMode>,
   ) -> Option<ResolutionMode> {
     if specifier.scheme() != "file" {
       return Some(ResolutionMode::Import);
@@ -227,7 +253,7 @@ impl<TEnv: NodeResolverEnv> IsCjsResolver<TEnv> {
           }
         } else if is_script == Some(false) {
           // we know this is esm
-            known_cache.insert(specifier.clone(), ResolutionMode::Import);
+          known_cache.insert(specifier.clone(), ResolutionMode::Import);
           Some(ResolutionMode::Import)
         } else {
           None

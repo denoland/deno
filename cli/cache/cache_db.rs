@@ -1,20 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::AnyError;
-use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::MutexGuard;
-use deno_core::unsync::spawn_blocking;
-use deno_runtime::deno_webstorage::rusqlite;
-use deno_runtime::deno_webstorage::rusqlite::Connection;
-use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
-use deno_runtime::deno_webstorage::rusqlite::Params;
-use once_cell::sync::OnceCell;
 use std::io::IsTerminal;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::FastInsecureHasher;
+use deno_core::error::AnyError;
+use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::MutexGuard;
+use deno_core::unsync::spawn_blocking;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_runtime::deno_webstorage::rusqlite;
+use deno_runtime::deno_webstorage::rusqlite::Connection;
+use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
+use deno_runtime::deno_webstorage::rusqlite::Params;
+use once_cell::sync::OnceCell;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CacheDBHash(u64);
@@ -24,12 +24,12 @@ impl CacheDBHash {
     Self(hash)
   }
 
-  pub fn from_source(source: impl std::hash::Hash) -> Self {
+  pub fn from_hashable(hashable: impl std::hash::Hash) -> Self {
     Self::new(
       // always write in the deno version just in case
       // the clearing on deno version change doesn't work
       FastInsecureHasher::new_deno_versioned()
-        .write_hashable(source)
+        .write_hashable(hashable)
         .finish(),
     )
   }

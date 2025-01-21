@@ -1,6 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsString;
@@ -32,21 +31,21 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::CaData;
+use deno_lib::args::UnstableConfig;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_telemetry::OtelConfig;
+use deno_telemetry::OtelConsoleConfig;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::args::resolve_no_prompt;
-use crate::util::fs::canonicalize_path;
-
 use super::flags_net;
-use super::jsr_url;
+use crate::util::fs::canonicalize_path;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum ConfigFlag {
@@ -550,15 +549,6 @@ impl Default for TypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CaData {
-  /// The string is a file path
-  File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
-  Bytes(Vec<u8>),
-}
-
 // Info needed to run NPM lifecycle scripts
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
@@ -584,19 +574,6 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   } else {
     Ok(s.into())
   }
-}
-
-#[derive(
-  Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
-)]
-pub struct UnstableConfig {
-  // TODO(bartlomieju): remove in Deno 2.5
-  pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
-  pub sloppy_imports: bool,
-  pub npm_lazy_caching: bool,
-  pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -691,97 +668,6 @@ impl PermissionFlags {
       || self.allow_write.is_some()
       || self.deny_write.is_some()
       || self.allow_import.is_some()
-  }
-
-  pub fn to_options(&self, cli_arg_urls: &[Cow<Url>]) -> PermissionsOptions {
-    fn handle_allow<T: Default>(
-      allow_all: bool,
-      value: Option<T>,
-    ) -> Option<T> {
-      if allow_all {
-        assert!(value.is_none());
-        Some(T::default())
-      } else {
-        value
-      }
-    }
-
-    fn handle_imports(
-      cli_arg_urls: &[Cow<Url>],
-      imports: Option<Vec<String>>,
-    ) -> Option<Vec<String>> {
-      if imports.is_some() {
-        return imports;
-      }
-
-      let builtin_allowed_import_hosts = [
-        "jsr.io:443",
-        "deno.land:443",
-        "esm.sh:443",
-        "cdn.jsdelivr.net:443",
-        "raw.githubusercontent.com:443",
-        "gist.githubusercontent.com:443",
-      ];
-
-      let mut imports =
-        Vec::with_capacity(builtin_allowed_import_hosts.len() + 1);
-      imports
-        .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
-
-      // also add the JSR_URL env var
-      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
-        imports.push(jsr_host);
-      }
-      // include the cli arg urls
-      for url in cli_arg_urls {
-        if let Some(host) = allow_import_host_from_url(url) {
-          imports.push(host);
-        }
-      }
-
-      Some(imports)
-    }
-
-    PermissionsOptions {
-      allow_all: self.allow_all,
-      allow_env: handle_allow(self.allow_all, self.allow_env.clone()),
-      deny_env: self.deny_env.clone(),
-      allow_net: handle_allow(self.allow_all, self.allow_net.clone()),
-      deny_net: self.deny_net.clone(),
-      allow_ffi: handle_allow(self.allow_all, self.allow_ffi.clone()),
-      deny_ffi: self.deny_ffi.clone(),
-      allow_read: handle_allow(self.allow_all, self.allow_read.clone()),
-      deny_read: self.deny_read.clone(),
-      allow_run: handle_allow(self.allow_all, self.allow_run.clone()),
-      deny_run: self.deny_run.clone(),
-      allow_sys: handle_allow(self.allow_all, self.allow_sys.clone()),
-      deny_sys: self.deny_sys.clone(),
-      allow_write: handle_allow(self.allow_all, self.allow_write.clone()),
-      deny_write: self.deny_write.clone(),
-      allow_import: handle_imports(
-        cli_arg_urls,
-        handle_allow(self.allow_all, self.allow_import.clone()),
-      ),
-      prompt: !resolve_no_prompt(self),
-    }
-  }
-}
-
-/// Gets the --allow-import host from the provided url
-fn allow_import_host_from_url(url: &Url) -> Option<String> {
-  let host = url.host()?;
-  if let Some(port) = url.port() {
-    Some(format!("{}:{}", host, port))
-  } else {
-    use deno_core::url::Host::*;
-    match host {
-      Domain(domain) if domain == "jsr.io" && url.scheme() == "https" => None,
-      _ => match url.scheme() {
-        "https" => Some(format!("{}:443", host)),
-        "http" => Some(format!("{}:80", host)),
-        _ => None,
-      },
-    }
   }
 }
 
@@ -986,21 +872,43 @@ impl Flags {
     args
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
-    if self
+  pub fn otel_config(&self) -> OtelConfig {
+    let has_unstable_flag = self
       .unstable_config
       .features
-      .contains(&String::from("otel"))
-    {
-      Some(OtelConfig {
-        runtime_name: Cow::Borrowed("deno"),
-        runtime_version: Cow::Borrowed(crate::version::DENO_VERSION_INFO.deno),
-        deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
-          .is_ok(),
-        ..Default::default()
-      })
-    } else {
-      None
+      .contains(&String::from("otel"));
+
+    let otel_var = |name| match std::env::var(name) {
+      Ok(s) if s.to_lowercase() == "true" => Some(true),
+      Ok(s) if s.to_lowercase() == "false" => Some(false),
+      _ => None,
+    };
+
+    let disabled =
+      !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
+    let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
+
+    OtelConfig {
+      tracing_enabled: !disabled
+        && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
+      metrics_enabled: !disabled
+        && otel_var("OTEL_DENO_METRICS").unwrap_or(default),
+      console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
+        Ok(_) if disabled => OtelConsoleConfig::Ignore,
+        Ok("ignore") => OtelConsoleConfig::Ignore,
+        Ok("capture") => OtelConsoleConfig::Capture,
+        Ok("replace") => OtelConsoleConfig::Replace,
+        _ => {
+          if default {
+            OtelConsoleConfig::Capture
+          } else {
+            OtelConsoleConfig::Ignore
+          }
+        }
+      },
+      deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+        .as_deref()
+        == Ok("1"),
     }
   }
 
@@ -1557,14 +1465,15 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 }
 
 pub fn clap_root() -> Command {
+  debug_assert_eq!(DENO_VERSION_INFO.typescript, deno_snapshots::TS_VERSION);
   let long_version = format!(
     "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO_VERSION_INFO.deno,
-    crate::version::DENO_VERSION_INFO.release_channel.name(),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
     deno_core::v8::VERSION_STRING,
-    crate::version::DENO_VERSION_INFO.typescript
+    DENO_VERSION_INFO.typescript
   );
 
   run_args(Command::new("deno"), true)
@@ -1580,7 +1489,7 @@ pub fn clap_root() -> Command {
     )
     .color(ColorChoice::Auto)
     .term_width(800)
-    .version(crate::version::DENO_VERSION_INFO.deno)
+    .version(DENO_VERSION_INFO.deno)
     .long_version(long_version)
     .disable_version_flag(true)
     .disable_help_flag(true)
@@ -6036,8 +5945,9 @@ pub fn resolve_urls(urls: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
+
+  use super::*;
 
   /// Creates vector of strings, Vec<String>
   macro_rules! svec {
@@ -11526,8 +11436,6 @@ mod tests {
         ..Default::default()
       }
     );
-    // just make sure this doesn't panic
-    let _ = flags.permissions.to_options(&[]);
   }
 
   #[test]
@@ -11601,29 +11509,6 @@ mod tests {
 
 Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
     )
-  }
-
-  #[test]
-  fn test_allow_import_host_from_url() {
-    fn parse(text: &str) -> Option<String> {
-      allow_import_host_from_url(&Url::parse(text).unwrap())
-    }
-
-    assert_eq!(parse("https://jsr.io"), None);
-    assert_eq!(
-      parse("http://127.0.0.1:4250"),
-      Some("127.0.0.1:4250".to_string())
-    );
-    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
-    assert_eq!(
-      parse("https://example.com"),
-      Some("example.com:443".to_string())
-    );
-    assert_eq!(
-      parse("http://example.com"),
-      Some("example.com:80".to_string())
-    );
-    assert_eq!(parse("file:///example.com"), None);
   }
 
   #[test]

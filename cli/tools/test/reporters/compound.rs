@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use super::*;
 
@@ -129,7 +129,7 @@ impl TestReporter for CompoundTestReporter {
     if errors.is_empty() {
       Ok(())
     } else {
-      bail!(
+      anyhow::bail!(
         "error in one or more wrapped reporters:\n{}",
         errors
           .iter()

@@ -1,0 +1,24 @@
+{
+  "tests": {
+    "check": {
+      "args": "check --allow-import main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "run": {
+      "args": "run --check --allow-import main.ts",
+      "output": "main.out",
+      "exitCode": 1
+    },
+    "missing_local_root": {
+      "args": "check --allow-import non_existent.ts",
+      "output": "missing_local_root.out",
+      "exitCode": 1
+    },
+    "missing_remote_root": {
+      "args": "check --allow-import http://localhost:4545/missing_non_existent.ts",
+      "output": "missing_remote_root.out",
+      "exitCode": 1
+    }
+  }
+}

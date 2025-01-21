@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::io::TcpStreamResource;
-use crate::raw::NetworkListenerResource;
-use crate::resolve_addr::resolve_addr;
-use crate::resolve_addr::resolve_addr_sync;
-use crate::tcp::TcpListener;
-use crate::NetPermissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
+use std::rc::Rc;
+use std::str::FromStr;
+
 use deno_core::op2;
-use deno_core::CancelFuture;
-
 use deno_core::AsyncRefCell;
 use deno_core::ByteString;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::JsBuffer;
@@ -35,15 +36,15 @@ use socket2::Domain;
 use socket2::Protocol;
 use socket2::Socket;
 use socket2::Type;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
-use std::rc::Rc;
-use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+
+use crate::io::TcpStreamResource;
+use crate::raw::NetworkListenerResource;
+use crate::resolve_addr::resolve_addr;
+use crate::resolve_addr::resolve_addr_sync;
+use crate::tcp::TcpListener;
+use crate::NetPermissions;
 
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -66,60 +67,87 @@ impl From<SocketAddr> for IpAddr {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum NetError {
+  #[class("BadResource")]
   #[error("Listener has been closed")]
   ListenerClosed,
+  #[class("Busy")]
   #[error("Listener already in use")]
   ListenerBusy,
+  #[class("BadResource")]
   #[error("Socket has been closed")]
   SocketClosed,
+  #[class("NotConnected")]
   #[error("Socket has been closed")]
   SocketClosedNotConnected,
+  #[class("Busy")]
   #[error("Socket already in use")]
   SocketBusy,
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class("Busy")]
   #[error("Another accept task is ongoing")]
   AcceptTaskOngoing,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(generic)]
   #[error("No resolved address found")]
   NoResolvedAddress,
+  #[class(generic)]
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),
+  #[class(inherit)]
   #[error("{0}")]
   Map(crate::io::MapError),
+  #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
+  #[class("NotFound")]
   #[error("{0}")]
   DnsNotFound(ResolveError),
+  #[class("NotConnected")]
   #[error("{0}")]
   DnsNotConnected(ResolveError),
+  #[class("TimedOut")]
   #[error("{0}")]
   DnsTimedOut(ResolveError),
+  #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
+  #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(generic)]
   #[error("unexpected key type")]
   UnexpectedKeyType,
+  #[class(type)]
   #[error("Invalid hostname: '{0}'")]
-  InvalidHostname(String), // TypeError
+  InvalidHostname(String),
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class(generic)]
   #[error("{0}")]
   Rustls(#[from] deno_tls::rustls::Error),
+  #[class(inherit)]
   #[error("{0}")]
   Tls(#[from] deno_tls::TlsError),
+  #[class("InvalidData")]
   #[error("Error creating TLS certificate: Deno.listenTls requires a key")]
-  ListenTlsRequiresKey, // InvalidData
+  ListenTlsRequiresKey,
+  #[class(inherit)]
   #[error("{0}")]
-  RootCertStore(deno_core::anyhow::Error),
+  RootCertStore(deno_error::JsErrorBox),
+  #[class(generic)]
   #[error("{0}")]
   Reunite(tokio::net::tcp::ReuniteError),
 }
@@ -712,10 +740,8 @@ pub fn op_set_nodelay_inner(
   rid: ResourceId,
   nodelay: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_nodelay(nodelay).map_err(NetError::Map)
 }
 
@@ -734,10 +760,8 @@ pub fn op_set_keepalive_inner(
   rid: ResourceId,
   keepalive: bool,
 ) -> Result<(), NetError> {
-  let resource: Rc<TcpStreamResource> = state
-    .resource_table
-    .get::<TcpStreamResource>(rid)
-    .map_err(NetError::Resource)?;
+  let resource: Rc<TcpStreamResource> =
+    state.resource_table.get::<TcpStreamResource>(rid)?;
   resource.set_keepalive(keepalive).map_err(NetError::Map)
 }
 
@@ -834,7 +858,14 @@ fn rdata_to_return_record(
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::net::Ipv4Addr;
+  use std::net::Ipv6Addr;
+  use std::net::ToSocketAddrs;
+  use std::path::Path;
+  use std::path::PathBuf;
+  use std::sync::Arc;
+  use std::sync::Mutex;
+
   use deno_core::futures::FutureExt;
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
@@ -855,13 +886,8 @@ mod tests {
   use hickory_proto::rr::record_data::RData;
   use hickory_proto::rr::Name;
   use socket2::SockRef;
-  use std::net::Ipv4Addr;
-  use std::net::Ipv6Addr;
-  use std::net::ToSocketAddrs;
-  use std::path::Path;
-  use std::path::PathBuf;
-  use std::sync::Arc;
-  use std::sync::Mutex;
+
+  use super::*;
 
   #[test]
   fn rdata_to_return_record_a() {

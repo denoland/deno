@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod deno_json;
 mod flags;
@@ -7,9 +7,34 @@ mod import_map;
 mod lockfile;
 mod package_json;
 
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::env;
+use std::net::SocketAddr;
+use std::num::NonZeroUsize;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use deno_ast::MediaType;
+use deno_ast::ModuleSpecifier;
 use deno_ast::SourceMapOption;
+use deno_cache_dir::file_fetcher::CacheSetting;
+pub use deno_config::deno_json::BenchConfig;
+pub use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::ConfigFileError;
+use deno_config::deno_json::FmtConfig;
+pub use deno_config::deno_json::FmtOptionsConfig;
+use deno_config::deno_json::LintConfig;
+pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
+pub use deno_config::deno_json::ProseWrap;
+use deno_config::deno_json::TestConfig;
+pub use deno_config::deno_json::TsConfig;
+pub use deno_config::deno_json::TsConfigForEmit;
+pub use deno_config::deno_json::TsConfigType;
+pub use deno_config::deno_json::TsTypeLib;
+pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::CreateResolverOptions;
 use deno_config::workspace::FolderConfigs;
 use deno_config::workspace::PackageJsonDepResolution;
@@ -21,76 +46,49 @@ use deno_config::workspace::WorkspaceDiscoverOptions;
 use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_config::workspace::WorkspaceResolver;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::GraphKind;
+pub use deno_json::check_warn_tsconfig;
+use deno_lib::args::has_flag_env_var;
+use deno_lib::args::npm_pkg_req_ref_to_binary_command;
+use deno_lib::args::CaData;
+use deno_lib::args::NpmProcessStateKind;
+use deno_lib::args::NPM_PROCESS_STATE;
+use deno_lib::version::DENO_VERSION_INFO;
+use deno_lib::worker::StorageKeyResolver;
+use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::NpmRc;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
-use deno_npm_cache::NpmCacheSetting;
 use deno_path_util::normalize_path;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_telemetry::OtelConfig;
-use import_map::resolve_import_map_value_from_specifier;
-
-pub use deno_config::deno_json::BenchConfig;
-pub use deno_config::deno_json::ConfigFile;
-pub use deno_config::deno_json::FmtOptionsConfig;
-pub use deno_config::deno_json::LintRulesConfig;
-pub use deno_config::deno_json::ProseWrap;
-pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsConfigForEmit;
-pub use deno_config::deno_json::TsConfigType;
-pub use deno_config::deno_json::TsTypeLib;
-pub use deno_config::glob::FilePatterns;
-pub use deno_json::check_warn_tsconfig;
-pub use flags::*;
-pub use lockfile::CliLockfile;
-pub use lockfile::CliLockfileReadFromPathOptions;
-pub use package_json::NpmInstallDepsProvider;
-pub use package_json::PackageJsonDepValueParseWithLocationError;
-
-use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::url::Url;
 use deno_runtime::deno_permissions::PermissionsOptions;
-use deno_runtime::deno_tls::deno_native_certs::load_native_certs;
-use deno_runtime::deno_tls::rustls;
-use deno_runtime::deno_tls::rustls::RootCertStore;
-use deno_runtime::deno_tls::rustls_pemfile;
-use deno_runtime::deno_tls::webpki_roots;
 use deno_runtime::inspector_server::InspectorServer;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::StackString;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use dotenvy::from_filename;
+pub use flags::*;
+use import_map::resolve_import_map_value_from_specifier;
+pub use lockfile::AtomicWriteFileWithRetriesError;
+pub use lockfile::CliLockfile;
+pub use lockfile::CliLockfileReadFromPathOptions;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::env;
-use std::io::BufReader;
-use std::io::Cursor;
-use std::io::Read;
-use std::io::Seek;
-use std::net::SocketAddr;
-use std::num::NonZeroUsize;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
+pub use package_json::NpmInstallDepsProvider;
+pub use package_json::PackageJsonDepValueParseWithLocationError;
+use sys_traits::EnvHomeDir;
 use thiserror::Error;
 
-use crate::cache;
 use crate::cache::DenoDirProvider;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
+use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
-use crate::version;
-
-use deno_config::deno_json::FmtConfig;
-use deno_config::deno_json::LintConfig;
-use deno_config::deno_json::TestConfig;
 
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -214,52 +212,6 @@ pub fn ts_config_to_transpile_and_emit_options(
       source_map_file: None,
     },
   ))
-}
-
-/// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum CacheSetting {
-  /// Only the cached files should be used.  Any files not in the cache will
-  /// error.  This is the equivalent of `--cached-only` in the CLI.
-  Only,
-  /// No cached source files should be used, and all files should be reloaded.
-  /// This is the equivalent of `--reload` in the CLI.
-  ReloadAll,
-  /// Only some cached resources should be used.  This is the equivalent of
-  /// `--reload=jsr:@std/http/file-server` or
-  /// `--reload=jsr:@std/http/file-server,jsr:@std/assert/assert-equals`.
-  ReloadSome(Vec<String>),
-  /// The usability of a cached value is determined by analyzing the cached
-  /// headers and other metadata associated with a cached response, reloading
-  /// any cached "non-fresh" cached responses.
-  RespectHeaders,
-  /// The cached source files should be used for local modules.  This is the
-  /// default behavior of the CLI.
-  Use,
-}
-
-impl CacheSetting {
-  pub fn as_npm_cache_setting(&self) -> NpmCacheSetting {
-    match self {
-      CacheSetting::Only => NpmCacheSetting::Only,
-      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
-      CacheSetting::ReloadSome(values) => {
-        if values.iter().any(|v| v == "npm:") {
-          NpmCacheSetting::ReloadAll
-        } else {
-          NpmCacheSetting::ReloadSome {
-            npm_package_names: values
-              .iter()
-              .filter_map(|v| v.strip_prefix("npm:"))
-              .map(|n| n.to_string())
-              .collect(),
-          }
-        }
-      }
-      CacheSetting::RespectHeaders => unreachable!(), // not supported
-      CacheSetting::Use => NpmCacheSetting::Use,
-    }
-  }
 }
 
 pub struct WorkspaceBenchOptions {
@@ -615,7 +567,7 @@ fn discover_npmrc(
   // TODO(bartlomieju): update to read both files - one in the project root and one and
   // home dir and then merge them.
   // 3. Try `.npmrc` in the user's home directory
-  if let Some(home_dir) = cache::home_dir() {
+  if let Some(home_dir) = crate::sys::CliSys::default().env_home_dir() {
     match try_to_read_npmrc(&home_dir) {
       Ok(Some((source, path))) => {
         return try_to_parse_npmrc(source, &path).map(|r| (r, Some(path)));
@@ -648,146 +600,6 @@ pub fn create_default_npmrc() -> Arc<ResolvedNpmRc> {
   })
 }
 
-#[derive(Error, Debug, Clone)]
-pub enum RootCertStoreLoadError {
-  #[error(
-    "Unknown certificate store \"{0}\" specified (allowed: \"system,mozilla\")"
-  )]
-  UnknownStore(String),
-  #[error("Unable to add pem file to certificate store: {0}")]
-  FailedAddPemFile(String),
-  #[error("Failed opening CA file: {0}")]
-  CaFileOpenError(String),
-}
-
-/// Create and populate a root cert store based on the passed options and
-/// environment.
-pub fn get_root_cert_store(
-  maybe_root_path: Option<PathBuf>,
-  maybe_ca_stores: Option<Vec<String>>,
-  maybe_ca_data: Option<CaData>,
-) -> Result<RootCertStore, RootCertStoreLoadError> {
-  let mut root_cert_store = RootCertStore::empty();
-  let ca_stores: Vec<String> = maybe_ca_stores
-    .or_else(|| {
-      let env_ca_store = env::var("DENO_TLS_CA_STORE").ok()?;
-      Some(
-        env_ca_store
-          .split(',')
-          .map(|s| s.trim().to_string())
-          .filter(|s| !s.is_empty())
-          .collect(),
-      )
-    })
-    .unwrap_or_else(|| vec!["mozilla".to_string()]);
-
-  for store in ca_stores.iter() {
-    match store.as_str() {
-      "mozilla" => {
-        root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
-      }
-      "system" => {
-        let roots = load_native_certs().expect("could not load platform certs");
-        for root in roots {
-          if let Err(err) = root_cert_store
-            .add(rustls::pki_types::CertificateDer::from(root.0.clone()))
-          {
-            log::error!(
-              "{}",
-              colors::yellow(&format!(
-                "Unable to add system certificate to certificate store: {:?}",
-                err
-              ))
-            );
-            let hex_encoded_root = faster_hex::hex_string(&root.0);
-            log::error!("{}", colors::gray(&hex_encoded_root));
-          }
-        }
-      }
-      _ => {
-        return Err(RootCertStoreLoadError::UnknownStore(store.clone()));
-      }
-    }
-  }
-
-  let ca_data =
-    maybe_ca_data.or_else(|| env::var("DENO_CERT").ok().map(CaData::File));
-  if let Some(ca_data) = ca_data {
-    let result = match ca_data {
-      CaData::File(ca_file) => {
-        let ca_file = if let Some(root) = &maybe_root_path {
-          root.join(&ca_file)
-        } else {
-          PathBuf::from(ca_file)
-        };
-        let certfile = std::fs::File::open(ca_file).map_err(|err| {
-          RootCertStoreLoadError::CaFileOpenError(err.to_string())
-        })?;
-        let mut reader = BufReader::new(certfile);
-        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
-      }
-      CaData::Bytes(data) => {
-        let mut reader = BufReader::new(Cursor::new(data));
-        rustls_pemfile::certs(&mut reader).collect::<Result<Vec<_>, _>>()
-      }
-    };
-
-    match result {
-      Ok(certs) => {
-        root_cert_store.add_parsable_certificates(certs);
-      }
-      Err(e) => {
-        return Err(RootCertStoreLoadError::FailedAddPemFile(e.to_string()));
-      }
-    }
-  }
-
-  Ok(root_cert_store)
-}
-
-/// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct NpmProcessState {
-  pub kind: NpmProcessStateKind,
-  pub local_node_modules_path: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum NpmProcessStateKind {
-  Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
-  Byonm,
-}
-
-static NPM_PROCESS_STATE: Lazy<Option<NpmProcessState>> = Lazy::new(|| {
-  use deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME;
-  let fd = std::env::var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME).ok()?;
-  std::env::remove_var(NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME);
-  let fd = fd.parse::<usize>().ok()?;
-  let mut file = {
-    use deno_runtime::deno_io::FromRawIoHandle;
-    unsafe { std::fs::File::from_raw_io_handle(fd as _) }
-  };
-  let mut buf = Vec::new();
-  // seek to beginning. after the file is written the position will be inherited by this subprocess,
-  // and also this file might have been read before
-  file.seek(std::io::SeekFrom::Start(0)).unwrap();
-  file
-    .read_to_end(&mut buf)
-    .inspect_err(|e| {
-      log::error!("failed to read npm process state from fd {fd}: {e}");
-    })
-    .ok()?;
-  let state: NpmProcessState = serde_json::from_slice(&buf)
-    .inspect_err(|e| {
-      log::error!(
-        "failed to deserialize npm process state: {e} {}",
-        String::from_utf8_lossy(&buf)
-      )
-    })
-    .ok()?;
-  Some(state)
-});
-
 /// Overrides for the options below that when set will
 /// use these values over the values derived from the
 /// CLI flags or config file.
@@ -807,19 +619,23 @@ pub struct CliOptions {
   maybe_node_modules_folder: Option<PathBuf>,
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
+  maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
 impl CliOptions {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
+    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
     npmrc: Arc<ResolvedNpmRc>,
     start_dir: Arc<WorkspaceDirectory>,
     force_global_cache: bool,
+    maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
       flags.unsafely_ignore_certificate_errors.as_ref()
@@ -837,8 +653,10 @@ impl CliOptions {
     }
 
     let maybe_lockfile = maybe_lockfile.filter(|_| !force_global_cache);
-    let deno_dir_provider =
-      Arc::new(DenoDirProvider::new(flags.internal.cache_path.clone()));
+    let deno_dir_provider = Arc::new(DenoDirProvider::new(
+      sys.clone(),
+      flags.internal.cache_path.clone(),
+    ));
     let maybe_node_modules_folder = resolve_node_modules_folder(
       &initial_cwd,
       &flags,
@@ -857,12 +675,13 @@ impl CliOptions {
       maybe_node_modules_folder,
       overrides: Default::default(),
       main_module_cell: std::sync::OnceLock::new(),
+      maybe_external_import_map,
       start_dir,
       deno_dir_provider,
     })
   }
 
-  pub fn from_flags(flags: Arc<Flags>) -> Result<Self, AnyError> {
+  pub fn from_flags(sys: &CliSys, flags: Arc<Flags>) -> Result<Self, AnyError> {
     let initial_cwd =
       std::env::current_dir().with_context(|| "Failed getting cwd.")?;
     let maybe_vendor_override = flags.vendor.map(|v| match v {
@@ -876,8 +695,6 @@ impl CliOptions {
         } else {
           &[]
         };
-      let config_parse_options =
-        deno_config::deno_json::ConfigParseOptions::default();
       let discover_pkg_json = flags.config_flag != ConfigFlag::Disabled
         && !flags.no_npm
         && !has_flag_env_var("DENO_NO_PACKAGE_JSON");
@@ -885,11 +702,9 @@ impl CliOptions {
         log::debug!("package.json auto-discovery is disabled");
       }
       WorkspaceDiscoverOptions {
-        fs: Default::default(), // use real fs
         deno_json_cache: None,
         pkg_json_cache: Some(&node_resolver::PackageJsonThreadLocalCache),
         workspace_cache: None,
-        config_parse_options,
         additional_config_file_names,
         discover_pkg_json,
         maybe_vendor_override,
@@ -907,6 +722,7 @@ impl CliOptions {
       ConfigFlag::Discover => {
         if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
           WorkspaceDirectory::discover(
+            sys,
             WorkspaceDiscoverStart::Paths(&start_paths),
             &resolve_workspace_discover_options(),
           )?
@@ -917,6 +733,7 @@ impl CliOptions {
       ConfigFlag::Path(path) => {
         let config_path = normalize_path(initial_cwd.join(path));
         WorkspaceDirectory::discover(
+          sys,
           WorkspaceDiscoverStart::ConfigFile(&config_path),
           &resolve_workspace_discover_options(),
         )?
@@ -932,17 +749,46 @@ impl CliOptions {
 
     let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
-    let maybe_lock_file = CliLockfile::discover(&flags, &start_dir.workspace)?;
+    fn load_external_import_map(
+      deno_json: &ConfigFile,
+    ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
+      if !deno_json.is_an_import_map() {
+        if let Some(path) = deno_json.to_import_map_path()? {
+          let contents = std::fs::read_to_string(&path).with_context(|| {
+            format!("Unable to read import map at '{}'", path.display())
+          })?;
+          let map = serde_json::from_str(&contents)?;
+          return Ok(Some((path, map)));
+        }
+      }
+      Ok(None)
+    }
+
+    let external_import_map =
+      if let Some(deno_json) = start_dir.workspace.root_deno_json() {
+        load_external_import_map(deno_json)?
+      } else {
+        None
+      };
+
+    let maybe_lock_file = CliLockfile::discover(
+      sys,
+      &flags,
+      &start_dir.workspace,
+      external_import_map.as_ref().map(|(_, v)| v),
+    )?;
 
     log::debug!("Finished config loading.");
 
     Self::new(
+      sys,
       flags,
       initial_cwd,
       maybe_lock_file.map(Arc::new),
       npmrc,
       Arc::new(start_dir),
       false,
+      external_import_map,
     )
   }
 
@@ -1006,24 +852,24 @@ impl CliOptions {
         // https://nodejs.org/api/process.html
         match target.as_str() {
           "aarch64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "arm64".to_string(),
+            os: "darwin".into(),
+            cpu: "arm64".into(),
           },
           "aarch64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "arm64".to_string(),
+            os: "linux".into(),
+            cpu: "arm64".into(),
           },
           "x86_64-apple-darwin" => NpmSystemInfo {
-            os: "darwin".to_string(),
-            cpu: "x64".to_string(),
+            os: "darwin".into(),
+            cpu: "x64".into(),
           },
           "x86_64-unknown-linux-gnu" => NpmSystemInfo {
-            os: "linux".to_string(),
-            cpu: "x64".to_string(),
+            os: "linux".into(),
+            cpu: "x64".into(),
           },
           "x86_64-pc-windows-msvc" => NpmSystemInfo {
-            os: "win32".to_string(),
-            cpu: "x64".to_string(),
+            os: "win32".into(),
+            cpu: "x64".into(),
           },
           value => {
             log::warn!(
@@ -1060,10 +906,10 @@ impl CliOptions {
 
   pub async fn create_workspace_resolver(
     &self,
-    file_fetcher: &FileFetcher,
+    file_fetcher: &CliFileFetcher,
     pkg_json_dep_resolution: PackageJsonDepResolution,
   ) -> Result<WorkspaceResolver, AnyError> {
-    let overrode_no_import_map = self
+    let overrode_no_import_map: bool = self
       .overrides
       .import_map_specifier
       .as_ref()
@@ -1091,15 +937,27 @@ impl CliOptions {
             value,
           })
         }
-        None => None,
+        None => {
+          if let Some((path, import_map)) =
+            self.maybe_external_import_map.as_ref()
+          {
+            let path_url = deno_path_util::url_from_file_path(path)?;
+            Some(deno_config::workspace::SpecifiedImportMap {
+              base_url: path_url,
+              value: import_map.clone(),
+            })
+          } else {
+            None
+          }
+        }
       }
     };
     Ok(self.workspace().create_resolver(
+      &CliSys::default(),
       CreateResolverOptions {
         pkg_json_dep_resolution,
         specified_import_map: cli_arg_specified_import_map,
       },
-      |path| Ok(std::fs::read_to_string(path)?),
     )?)
   }
 
@@ -1130,7 +988,7 @@ impl CliOptions {
     }
   }
 
-  pub fn otel_config(&self) -> Option<OtelConfig> {
+  pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }
 
@@ -1223,6 +1081,16 @@ impl CliOptions {
     }
   }
 
+  pub fn resolve_storage_key_resolver(&self) -> StorageKeyResolver {
+    if let Some(location) = &self.flags.location {
+      StorageKeyResolver::from_flag(location)
+    } else if let Some(deno_json) = self.start_dir.maybe_deno_json() {
+      StorageKeyResolver::from_config_file_url(&deno_json.specifier)
+    } else {
+      StorageKeyResolver::new_use_main_module()
+    }
+  }
+
   // If the main module should be treated as being in an npm package.
   // This is triggered via a secret environment variable which is used
   // for functionality like child_process.fork. Users should NOT depend
@@ -1241,11 +1109,14 @@ impl CliOptions {
 
   pub fn node_modules_dir(
     &self,
-  ) -> Result<Option<NodeModulesDirMode>, AnyError> {
+  ) -> Result<
+    Option<NodeModulesDirMode>,
+    deno_config::deno_json::NodeModulesDirParseError,
+  > {
     if let Some(flag) = self.flags.node_modules_dir {
       return Ok(Some(flag));
     }
-    self.workspace().node_modules_dir().map_err(Into::into)
+    self.workspace().node_modules_dir()
   }
 
   pub fn vendor_dir_path(&self) -> Option<&PathBuf> {
@@ -1255,7 +1126,7 @@ impl CliOptions {
   pub fn resolve_ts_config_for_emit(
     &self,
     config_type: TsConfigType,
-  ) -> Result<TsConfigForEmit, AnyError> {
+  ) -> Result<TsConfigForEmit, ConfigFileError> {
     self.workspace().resolve_ts_config_for_emit(config_type)
   }
 
@@ -1274,7 +1145,7 @@ impl CliOptions {
 
     Ok(Some(InspectorServer::new(
       host,
-      version::DENO_VERSION_INFO.user_agent,
+      DENO_VERSION_INFO.user_agent,
     )?))
   }
 
@@ -1284,7 +1155,7 @@ impl CliOptions {
 
   pub fn to_compiler_option_types(
     &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, AnyError> {
+  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
     self
       .workspace()
       .to_compiler_option_types()
@@ -1354,9 +1225,7 @@ impl CliOptions {
     Ok(result)
   }
 
-  pub fn resolve_deno_lint_config(
-    &self,
-  ) -> Result<deno_lint::linter::LintConfig, AnyError> {
+  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
     let ts_config_result =
       self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
 
@@ -1365,11 +1234,11 @@ impl CliOptions {
         ts_config_result.ts_config,
       )?;
 
-    Ok(deno_lint::linter::LintConfig {
+    Ok(DenoLintConfig {
       default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_factory.clone()),
+        .then_some(transpile_options.jsx_factory),
       default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then(|| transpile_options.jsx_fragment_factory.clone()),
+        .then_some(transpile_options.jsx_fragment_factory),
     })
   }
 
@@ -1523,20 +1392,100 @@ impl CliOptions {
     self.flags.no_npm
   }
 
-  pub fn permission_flags(&self) -> &PermissionFlags {
-    &self.flags.permissions
-  }
-
   pub fn permissions_options(&self) -> PermissionsOptions {
-    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
-      files
-        .iter()
-        .filter_map(|f| Url::parse(f).ok().map(Cow::Owned))
-        .collect()
+    // bury this in here to ensure people use cli_options.permissions_options()
+    fn flags_to_options(flags: &PermissionFlags) -> PermissionsOptions {
+      fn handle_allow<T: Default>(
+        allow_all: bool,
+        value: Option<T>,
+      ) -> Option<T> {
+        if allow_all {
+          assert!(value.is_none());
+          Some(T::default())
+        } else {
+          value
+        }
+      }
+
+      PermissionsOptions {
+        allow_all: flags.allow_all,
+        allow_env: handle_allow(flags.allow_all, flags.allow_env.clone()),
+        deny_env: flags.deny_env.clone(),
+        allow_net: handle_allow(flags.allow_all, flags.allow_net.clone()),
+        deny_net: flags.deny_net.clone(),
+        allow_ffi: handle_allow(flags.allow_all, flags.allow_ffi.clone()),
+        deny_ffi: flags.deny_ffi.clone(),
+        allow_read: handle_allow(flags.allow_all, flags.allow_read.clone()),
+        deny_read: flags.deny_read.clone(),
+        allow_run: handle_allow(flags.allow_all, flags.allow_run.clone()),
+        deny_run: flags.deny_run.clone(),
+        allow_sys: handle_allow(flags.allow_all, flags.allow_sys.clone()),
+        deny_sys: flags.deny_sys.clone(),
+        allow_write: handle_allow(flags.allow_all, flags.allow_write.clone()),
+        deny_write: flags.deny_write.clone(),
+        allow_import: handle_allow(flags.allow_all, flags.allow_import.clone()),
+        prompt: !resolve_no_prompt(flags),
+      }
     }
 
-    // get a list of urls to imply for --allow-import
-    let cli_arg_urls = self
+    let mut permissions_options = flags_to_options(&self.flags.permissions);
+    self.augment_import_permissions(&mut permissions_options);
+    permissions_options
+  }
+
+  fn augment_import_permissions(&self, options: &mut PermissionsOptions) {
+    // do not add if the user specified --allow-all or --allow-import
+    if !options.allow_all && options.allow_import.is_none() {
+      options.allow_import = Some(self.implicit_allow_import());
+    }
+  }
+
+  fn implicit_allow_import(&self) -> Vec<String> {
+    // allow importing from anywhere when using cached only
+    if self.cache_setting() == CacheSetting::Only {
+      vec![] // allow all imports
+    } else {
+      // implicitly allow some trusted hosts and the CLI arg urls
+      let cli_arg_urls = self.get_cli_arg_urls();
+      let builtin_allowed_import_hosts = [
+        "jsr.io:443",
+        "deno.land:443",
+        "esm.sh:443",
+        "cdn.jsdelivr.net:443",
+        "raw.githubusercontent.com:443",
+        "gist.githubusercontent.com:443",
+      ];
+      let mut imports = Vec::with_capacity(
+        builtin_allowed_import_hosts.len() + cli_arg_urls.len() + 1,
+      );
+      imports
+        .extend(builtin_allowed_import_hosts.iter().map(|s| s.to_string()));
+      // also add the JSR_URL env var
+      if let Some(jsr_host) = allow_import_host_from_url(jsr_url()) {
+        if jsr_host != "jsr.io:443" {
+          imports.push(jsr_host);
+        }
+      }
+      // include the cli arg urls
+      for url in cli_arg_urls {
+        if let Some(host) = allow_import_host_from_url(&url) {
+          imports.push(host);
+        }
+      }
+      imports
+    }
+  }
+
+  fn get_cli_arg_urls(&self) -> Vec<Cow<'_, Url>> {
+    fn files_to_urls(files: &[String]) -> Vec<Cow<'_, Url>> {
+      files.iter().filter_map(|f| file_to_url(f)).collect()
+    }
+
+    fn file_to_url(file: &str) -> Option<Cow<'_, Url>> {
+      Url::parse(file).ok().map(Cow::Owned)
+    }
+
+    self
       .resolve_main_module()
       .ok()
       .map(|url| vec![Cow::Borrowed(url)])
@@ -1548,18 +1497,18 @@ impl CliOptions {
           Some(files_to_urls(&check_flags.files))
         }
         DenoSubcommand::Install(InstallFlags::Global(flags)) => {
-          Url::parse(&flags.module_url)
-            .ok()
-            .map(|url| vec![Cow::Owned(url)])
+          file_to_url(&flags.module_url).map(|url| vec![url])
         }
         DenoSubcommand::Doc(DocFlags {
           source_files: DocSourceFileFlag::Paths(paths),
           ..
         }) => Some(files_to_urls(paths)),
+        DenoSubcommand::Info(InfoFlags {
+          file: Some(file), ..
+        }) => file_to_url(file).map(|url| vec![url]),
         _ => None,
       })
-      .unwrap_or_default();
-    self.flags.permissions.to_options(&cli_arg_urls)
+      .unwrap_or_default()
   }
 
   pub fn reload_flag(&self) -> bool {
@@ -1890,75 +1839,16 @@ fn resolve_import_map_specifier(
   }
 }
 
-pub struct StorageKeyResolver(Option<Option<String>>);
-
-impl StorageKeyResolver {
-  pub fn from_options(options: &CliOptions) -> Self {
-    Self(if let Some(location) = &options.flags.location {
-      // if a location is set, then the ascii serialization of the location is
-      // used, unless the origin is opaque, and then no storage origin is set, as
-      // we can't expect the origin to be reproducible
-      let storage_origin = location.origin();
-      if storage_origin.is_tuple() {
-        Some(Some(storage_origin.ascii_serialization()))
-      } else {
-        Some(None)
-      }
-    } else {
-      // otherwise we will use the path to the config file or None to
-      // fall back to using the main module's path
-      options
-        .start_dir
-        .maybe_deno_json()
-        .map(|config_file| Some(config_file.specifier.to_string()))
-    })
-  }
-
-  /// Creates a storage key resolver that will always resolve to being empty.
-  pub fn empty() -> Self {
-    Self(Some(None))
-  }
-
-  /// Resolves the storage key to use based on the current flags, config, or main module.
-  pub fn resolve_storage_key(
-    &self,
-    main_module: &ModuleSpecifier,
-  ) -> Option<String> {
-    // use the stored value or fall back to using the path of the main module.
-    if let Some(maybe_value) = &self.0 {
-      maybe_value.clone()
-    } else {
-      Some(main_module.to_string())
-    }
-  }
-}
-
 /// Resolves the no_prompt value based on the cli flags and environment.
 pub fn resolve_no_prompt(flags: &PermissionFlags) -> bool {
   flags.no_prompt || has_flag_env_var("DENO_NO_PROMPT")
 }
 
-pub fn has_trace_permissions_enabled() -> bool {
-  has_flag_env_var("DENO_TRACE_PERMISSIONS")
-}
-
-pub fn has_flag_env_var(name: &str) -> bool {
-  let value = env::var(name);
-  matches!(value.as_ref().map(|s| s.as_str()), Ok("1"))
-}
-
-pub fn npm_pkg_req_ref_to_binary_command(
-  req_ref: &NpmPackageReqReference,
-) -> String {
-  let binary_name = req_ref.sub_path().unwrap_or(req_ref.req().name.as_str());
-  binary_name.to_string()
-}
-
 pub fn config_to_deno_graph_workspace_member(
   config: &ConfigFile,
 ) -> Result<deno_graph::WorkspaceMember, AnyError> {
-  let name = match &config.json.name {
-    Some(name) => name.clone(),
+  let name: StackString = match &config.json.name {
+    Some(name) => name.as_str().into(),
     None => bail!("Missing 'name' field in config file."),
   };
   let version = match &config.json.version {
@@ -1993,6 +1883,20 @@ fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
   }
 }
 
+/// Gets the --allow-import host from the provided url
+fn allow_import_host_from_url(url: &Url) -> Option<String> {
+  let host = url.host()?;
+  if let Some(port) = url.port() {
+    Some(format!("{}:{}", host, port))
+  } else {
+    match url.scheme() {
+      "https" => Some(format!("{}:443", host)),
+      "http" => Some(format!("{}:80", host)),
+      _ => None,
+    }
+  }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum NpmCachingStrategy {
   Eager,
@@ -2014,12 +1918,7 @@ mod test {
     let cwd = &std::env::current_dir().unwrap();
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(
-      config_text,
-      config_specifier,
-      &deno_config::deno_json::ConfigParseOptions::default(),
-    )
-    .unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       Some("import-map.json"),
       Some(&config_file),
@@ -2038,12 +1937,7 @@ mod test {
     let config_text = r#"{}"#;
     let config_specifier =
       ModuleSpecifier::parse("file:///deno/deno.jsonc").unwrap();
-    let config_file = ConfigFile::new(
-      config_text,
-      config_specifier,
-      &deno_config::deno_json::ConfigParseOptions::default(),
-    )
-    .unwrap();
+    let config_file = ConfigFile::new(config_text, config_specifier).unwrap();
     let actual = resolve_import_map_specifier(
       None,
       Some(&config_file),
@@ -2063,31 +1957,32 @@ mod test {
   }
 
   #[test]
-  fn storage_key_resolver_test() {
-    let resolver = StorageKeyResolver(None);
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
-    assert_eq!(
-      resolver.resolve_storage_key(&specifier),
-      Some(specifier.to_string())
-    );
-    let resolver = StorageKeyResolver(Some(None));
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
-    let resolver = StorageKeyResolver(Some(Some("value".to_string())));
-    assert_eq!(
-      resolver.resolve_storage_key(&specifier),
-      Some("value".to_string())
-    );
-
-    // test empty
-    let resolver = StorageKeyResolver::empty();
-    assert_eq!(resolver.resolve_storage_key(&specifier), None);
-  }
-
-  #[test]
   fn jsr_urls() {
     let reg_url = jsr_url();
     assert!(reg_url.as_str().ends_with('/'));
     let reg_api_url = jsr_api_url();
     assert!(reg_api_url.as_str().ends_with('/'));
+  }
+
+  #[test]
+  fn test_allow_import_host_from_url() {
+    fn parse(text: &str) -> Option<String> {
+      allow_import_host_from_url(&Url::parse(text).unwrap())
+    }
+
+    assert_eq!(
+      parse("http://127.0.0.1:4250"),
+      Some("127.0.0.1:4250".to_string())
+    );
+    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
+    assert_eq!(
+      parse("https://example.com"),
+      Some("example.com:443".to_string())
+    );
+    assert_eq!(
+      parse("http://example.com"),
+      Some("example.com:80".to_string())
+    );
+    assert_eq!(parse("file:///example.com"), None);
   }
 }

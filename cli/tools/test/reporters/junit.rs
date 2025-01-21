@@ -1,7 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
+
+use deno_core::anyhow::Context;
 
 use super::fmt::to_relative_path_or_remote_url;
 use super::*;
