@@ -435,9 +435,10 @@ impl TestRun {
         unreachable!("Should always be Test subcommand.");
       }
     };
-    let (test_event_sender_factory, mut receiver) = create_test_event_channel();
-    let test_event_sender_factory = Arc::new(test_event_sender_factory);
+    let (test_run_event_sender, mut receiver) =
+      tokio::sync::mpsc::unbounded_channel::<TestRunEvent>();
 
+    let mut first_run_token = Some(());
     lsp_log!("Starting the setup");
     let join_handle = file_watcher::watch_recv(
       flags.clone(),
@@ -446,8 +447,19 @@ impl TestRun {
       self.token.clone(),
       move |flags, watcher_communicator, changed_paths| {
         lsp_log!("Running dem tests");
-        let test_event_sender_factory = test_event_sender_factory.clone();
+        let test_run_event_sender = test_run_event_sender.clone();
+        let is_first_run = first_run_token.take().is_some();
         Ok(async move {
+          let (test_event_sender_factory, receiver) =
+            create_test_event_channel();
+          if is_first_run {
+            let _ = test_run_event_sender.send(TestRunEvent::Started(receiver));
+          } else {
+            let _ = test_run_event_sender.send(TestRunEvent::Restarted(
+              receiver,
+              self.as_enqueued().await,
+            ));
+          }
           let (queue, filters) = {
             let tests = self.tests.lock().await;
             as_queue_and_filters(
@@ -579,8 +591,18 @@ impl TestRun {
       let start_time = Instant::now();
       lsp_log!("Handler startup");
 
-      while let Some((_, event)) = receiver.recv().await {
-        test_event_handler.handle_event(event).await;
+      while let Some(test_run_event) = receiver.recv().await {
+        let mut test_event_receiver = match test_run_event {
+          TestRunEvent::Started(v) => v,
+          TestRunEvent::Restarted(v, enqueued) => {
+            test_event_handler.restart(enqueued);
+            v
+          }
+        };
+
+        while let Some((_, event)) = test_event_receiver.recv().await {
+          test_event_handler.handle_event(event).await;
+        }
       }
 
       test_event_handler.finish(start_time.elapsed())?;
@@ -642,6 +664,11 @@ impl TestRun {
     }
     args
   }
+}
+
+enum TestRunEvent {
+  Started(test::TestEventReceiver),
+  Restarted(test::TestEventReceiver, Vec<lsp_custom::EnqueuedTestModule>),
 }
 
 #[derive(Debug, PartialEq)]
@@ -708,12 +735,16 @@ struct LspTestEventHandler {
   reporter: Box<LspTestReporter>,
   tests: Arc<RwLock<IndexMap<usize, test::TestDescription>>>,
   test_steps: IndexMap<usize, test::TestStepDescription>,
-  summary: test::TestSummary,
-  tests_with_result: HashSet<usize>,
+  summary: test::TestSummary, // TODO: This can accumulate some very questionable values. like 22 failed, 1 total
+  tests_with_result: HashSet<usize>, // TODO: This is useless now
   used_only: bool,
 }
 
 impl LspTestEventHandler {
+  fn restart(&mut self, enqueued: Vec<lsp_custom::EnqueuedTestModule>) {
+    self.reporter.report_restart(enqueued);
+  }
+
   async fn handle_event(&mut self, event: test::TestEvent) {
     match event {
       test::TestEvent::Register(description) => {
@@ -750,24 +781,24 @@ impl LspTestEventHandler {
           .report_slow(self.tests.read().get(&id).unwrap(), elapsed);
       }
       test::TestEvent::Result(id, result, elapsed) => {
-        if self.tests_with_result.insert(id) {
-          let description = self.tests.read().get(&id).unwrap().clone();
-          match &result {
-            test::TestResult::Ok => self.summary.passed += 1,
-            test::TestResult::Ignored => self.summary.ignored += 1,
-            test::TestResult::Failed(error) => {
-              self.summary.failed += 1;
-              self
-                .summary
-                .failures
-                .push(((&description).into(), error.clone()));
-            }
-            test::TestResult::Cancelled => {
-              self.summary.failed += 1;
-            }
+        self.tests_with_result.insert(id);
+        // TODO: Dis surpresses duplicate test results
+        let description = self.tests.read().get(&id).unwrap().clone();
+        match &result {
+          test::TestResult::Ok => self.summary.passed += 1,
+          test::TestResult::Ignored => self.summary.ignored += 1,
+          test::TestResult::Failed(error) => {
+            self.summary.failed += 1;
+            self
+              .summary
+              .failures
+              .push(((&description).into(), error.clone()));
           }
-          self.reporter.report_result(&description, &result, elapsed);
+          test::TestResult::Cancelled => {
+            self.summary.failed += 1;
+          }
         }
+        self.reporter.report_result(&description, &result, elapsed);
       }
       test::TestEvent::UncaughtError(origin, error) => {
         self.reporter.report_uncaught_error(&origin, &error);
@@ -784,24 +815,23 @@ impl LspTestEventHandler {
           .report_step_wait(self.test_steps.get(&id).unwrap());
       }
       test::TestEvent::StepResult(id, result, duration) => {
-        if self.tests_with_result.insert(id) {
-          match &result {
-            test::TestStepResult::Ok => {
-              self.summary.passed_steps += 1;
-            }
-            test::TestStepResult::Ignored => {
-              self.summary.ignored_steps += 1;
-            }
-            test::TestStepResult::Failed(_) => {
-              self.summary.failed_steps += 1;
-            }
+        self.tests_with_result.insert(id);
+        match &result {
+          test::TestStepResult::Ok => {
+            self.summary.passed_steps += 1;
           }
-          self.reporter.report_step_result(
-            self.test_steps.get(&id).unwrap(),
-            &result,
-            duration,
-          );
+          test::TestStepResult::Ignored => {
+            self.summary.ignored_steps += 1;
+          }
+          test::TestStepResult::Failed(_) => {
+            self.summary.failed_steps += 1;
+          }
         }
+        self.reporter.report_step_result(
+          self.test_steps.get(&id).unwrap(),
+          &result,
+          duration,
+        );
       }
       test::TestEvent::Completed => {
         self.reporter.report_completed();
@@ -1054,6 +1084,10 @@ impl LspTestReporter {
         })
       }
     }
+  }
+
+  fn report_restart(&mut self, enqueued: Vec<lsp_custom::EnqueuedTestModule>) {
+    self.progress(lsp_custom::TestRunProgressMessage::Restart { enqueued })
   }
 
   fn report_completed(&mut self) {

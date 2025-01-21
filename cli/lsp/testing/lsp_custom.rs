@@ -166,6 +166,9 @@ pub enum TestRunProgressMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     location: Option<lsp::Location>,
   },
+  Restart {
+    enqueued: Vec<EnqueuedTestModule>,
+  },
   End,
 }
 
