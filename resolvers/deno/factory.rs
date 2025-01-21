@@ -24,6 +24,9 @@ use deno_config::workspace::WorkspaceResolver;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
+use node_resolver::ConditionsFromResolutionMode;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
+use node_resolver::NodeResolver;
 use node_resolver::NodeResolverRc;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonResolverRc;
@@ -51,6 +54,8 @@ use crate::npm::managed::NpmResolutionCellRc;
 use crate::npm::ByonmNpmResolverCreateOptions;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::DenoInNpmPackageChecker;
+use crate::npm::NpmReqResolver;
+use crate::npm::NpmReqResolverOptions;
 use crate::npm::NpmReqResolverRc;
 use crate::npm::NpmResolver;
 use crate::npm::NpmResolverCreateOptions;
@@ -64,6 +69,10 @@ use crate::sync::new_rc;
 use crate::sync::MaybeArc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::DenoResolver;
+use crate::DenoResolverOptions;
+use crate::DenoResolverRc;
+use crate::NodeAndNpmReqResolver;
 use crate::NpmCacheDirRc;
 use crate::WorkspaceResolverRc;
 
@@ -234,6 +243,7 @@ pub struct ResolverFactoryOptions {
   pub process_state_node_modules_dir: Option<Option<Cow<'static, str>>>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
   pub vendor: Option<bool>,
+  pub unstable_sloppy_imports: Option<bool>,
 }
 
 pub struct ResolverFactory<
@@ -262,20 +272,43 @@ pub struct ResolverFactory<
   options: ResolverFactoryOptions,
   sys: TSys,
   deno_dir_path: Deferred<PathBuf>,
+  deno_resolver: Deferred<
+    DenoResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      SloppyImportsCachedFs<TSys>,
+      TSys,
+    >,
+  >,
   global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
   http_cache: Deferred<HttpCacheRc>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   node_modules_dir_path: Deferred<Option<PathBuf>>,
-  //node_resolver: Deferred<NodeResolverRc<DenoInNpmPackageChecker, >>
+  node_resolver: Deferred<
+    NodeResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+  >,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
-  //npm_req_resolver: Deferred<NpmReqResolverRc<DenoInNpmPackageChecker, TSys>>,
+  npm_req_resolver: Deferred<
+    NpmReqResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+  >,
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
   npmrc: Deferred<ResolvedNpmRcRc>,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
   sloppy_imports_resolver:
-    Deferred<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>,
+    Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   workspace_resolver: Deferred<WorkspaceResolverRc>,
 }
@@ -313,12 +346,15 @@ impl<
       options,
       sys,
       deno_dir_path: Default::default(),
+      deno_resolver: Default::default(),
       global_http_cache: Default::default(),
       http_cache: Default::default(),
       in_npm_package_checker: Default::default(),
       node_modules_dir: Default::default(),
       node_modules_dir_path: Default::default(),
+      node_resolver: Default::default(),
       npm_cache_dir: Default::default(),
+      npm_req_resolver: Default::default(),
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
       npmrc: Default::default(),
@@ -336,6 +372,43 @@ impl<
         self.options.maybe_custom_deno_dir_root.clone(),
       )
     })
+  }
+
+  pub async fn deno_resolver(
+    &self,
+  ) -> Result<
+    &DenoResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      SloppyImportsCachedFs<TSys>,
+      TSys,
+    >,
+    anyhow::Error,
+  > {
+    self
+      .deno_resolver
+      .get_or_try_init_async(async {
+        Ok(new_rc(DenoResolver::new(DenoResolverOptions {
+          in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
+          node_and_req_resolver: if self.options.no_npm {
+            None
+          } else {
+            Some(NodeAndNpmReqResolver {
+              node_resolver: self.node_resolver()?.clone(),
+              npm_req_resolver: self.npm_req_resolver()?.clone(),
+            })
+          },
+          is_byonm: self.is_byonm()?,
+          maybe_vendor_dir: self
+            .workspace_directory()?
+            .workspace
+            .vendor_dir_path(),
+          sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
+          workspace_resolver: self.workspace_resolver().await?.clone(),
+        })))
+      })
+      .await
   }
 
   pub fn global_http_cache(
@@ -480,6 +553,30 @@ impl<
       .map(|p| p.as_deref())
   }
 
+  pub fn node_resolver(
+    &self,
+  ) -> Result<
+    &NodeResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+    anyhow::Error,
+  > {
+    self.node_resolver.get_or_try_init(|| {
+      Ok(new_rc(NodeResolver::new(
+        self.in_npm_package_checker()?.clone(),
+        DenoIsBuiltInNodeModuleChecker,
+        self.npm_resolver()?.clone(),
+        self.pkg_json_resolver().clone(),
+        self.sys.clone(),
+        // todo(THIS PR): move to options
+        ConditionsFromResolutionMode::default(),
+      )))
+    })
+  }
+
   pub fn npm_cache_dir(
     &self,
   ) -> Result<&NpmCacheDirRc, NpmCacheDirCreateError> {
@@ -497,13 +594,30 @@ impl<
     &self.npm_resolution
   }
 
+  pub fn npm_req_resolver(
+    &self,
+  ) -> Result<
+    &NpmReqResolverRc<
+      DenoInNpmPackageChecker,
+      DenoIsBuiltInNodeModuleChecker,
+      NpmResolver<TSys>,
+      TSys,
+    >,
+    anyhow::Error,
+  > {
+    self.npm_req_resolver.get_or_try_init(|| {
+      Ok(new_rc(NpmReqResolver::new(NpmReqResolverOptions {
+        in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
+        node_resolver: self.node_resolver()?.clone(),
+        npm_resolver: self.npm_resolver()?.clone(),
+        sys: self.sys.clone(),
+      })))
+    })
+  }
+
   pub fn npm_resolver(&self) -> Result<&NpmResolver<TSys>, anyhow::Error> {
     self.npm_resolver.get_or_try_init(|| {
-      let is_byonm = self
-        .node_modules_dir()?
-        .map(|n| n == NodeModulesDirMode::Manual)
-        .unwrap_or(false);
-      Ok(NpmResolver::<TSys>::new::<TSys>(if is_byonm {
+      Ok(NpmResolver::<TSys>::new::<TSys>(if self.is_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
           sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
@@ -550,16 +664,33 @@ impl<
 
   pub fn sloppy_imports_resolver(
     &self,
-  ) -> &SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>> {
-    self.sloppy_imports_resolver.get_or_init(|| {
-      new_rc(SloppyImportsResolver::new(
-        if self.options.no_sloppy_imports_cache {
-          SloppyImportsCachedFs::new_without_stat_cache(self.sys.clone())
+  ) -> Result<
+    Option<&SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>,
+    anyhow::Error,
+  > {
+    self
+      .sloppy_imports_resolver
+      .get_or_try_init(|| {
+        let enabled = match self.options.unstable_sloppy_imports {
+          Some(value) => value,
+          None => self
+            .workspace_directory()?
+            .workspace
+            .has_unstable("sloppy-imports"),
+        };
+        if enabled {
+          Ok(Some(new_rc(SloppyImportsResolver::new(
+            if self.options.no_sloppy_imports_cache {
+              SloppyImportsCachedFs::new_without_stat_cache(self.sys.clone())
+            } else {
+              SloppyImportsCachedFs::new(self.sys.clone())
+            },
+          ))))
         } else {
-          SloppyImportsCachedFs::new(self.sys.clone())
-        },
-      ))
-    })
+          Ok(None)
+        }
+      })
+      .map(|v| v.as_ref())
   }
 
   pub fn workspace_directory(
@@ -668,6 +799,15 @@ impl<
         Ok(new_rc(resolver))
       })
       .await
+  }
+
+  fn is_byonm(&self) -> Result<bool, anyhow::Error> {
+    Ok(
+      self
+        .node_modules_dir()?
+        .map(|n| n == NodeModulesDirMode::Manual)
+        .unwrap_or(false),
+    )
   }
 
   fn has_flag_env_var(&self, name: &str) -> bool {

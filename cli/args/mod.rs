@@ -90,6 +90,7 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::sys::CliSys;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 
+// todo(THIS PR): remove or re-use from deno_resolver
 #[deprecated]
 pub fn npm_registry_url() -> &'static Url {
   static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> = Lazy::new(|| {
@@ -493,7 +494,6 @@ pub struct CliOptions {
   npmrc: Arc<ResolvedNpmRc>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
-  overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
@@ -766,7 +766,7 @@ impl CliOptions {
   /// happens to be an import map.
   pub fn resolve_specified_import_map_specifier(
     &self,
-  ) -> Result<Option<ModuleSpecifier>, AnyError> {
+  ) -> Result<Option<ModuleSpecifier>, ImportMapSpecifierResolveError> {
     resolve_import_map_specifier(
       self.flags.import_map_path.as_deref(),
       self.workspace().root_deno_json().map(|c| c.as_ref()),

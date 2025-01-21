@@ -185,7 +185,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
-  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
+  let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();

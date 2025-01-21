@@ -120,11 +120,7 @@ impl FetchCacher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      #[allow(deprecated)]
-      self
-        .global_http_cache
-        .get_global_cache_filepath(specifier)
-        .ok()
+      self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
 }

@@ -41,6 +41,10 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
 
+pub fn is_builtin_node_module(module_name: &str) -> bool {
+  DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
+}
+
 pub trait NodePermissions {
   fn check_net_url(
     &mut self,

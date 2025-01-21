@@ -28,6 +28,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -41,7 +42,6 @@ use node_resolver::ResolutionMode;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
-use crate::args::create_default_npmrc;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmCachingStrategy;
@@ -263,18 +263,19 @@ impl LspScopeResolver {
           }
           CliNpmResolver::Managed(managed_npm_resolver) => {
             CliNpmResolverCreateOptions::Managed({
+              let sys = CliSys::default();
               let npmrc = self
                 .config_data
                 .as_ref()
                 .and_then(|d| d.npmrc.clone())
-                .unwrap_or_else(create_default_npmrc);
+                .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
               let npm_cache_dir = Arc::new(NpmCacheDir::new(
-                &CliSys::default(),
+                &sys,
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
               CliManagedNpmResolverCreateOptions {
-                sys: CliSys::default(),
+                sys,
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
@@ -710,7 +711,7 @@ impl<'a> ResolverFactory<'a> {
       let npmrc = self
         .config_data
         .and_then(|d| d.npmrc.clone())
-        .unwrap_or_else(create_default_npmrc);
+        .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
         cache.deno_dir().npm_folder_path(),

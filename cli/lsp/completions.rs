@@ -10,7 +10,7 @@ use deno_core::serde_json::json;
 use deno_core::url::Position;
 use deno_core::ModuleSpecifier;
 use deno_path_util::url_to_file_path;
-use deno_runtime::deno_node::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
+use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use import_map::ImportMap;
@@ -740,7 +740,7 @@ fn get_node_completions(
   if !specifier.starts_with("node:") {
     return None;
   }
-  let items = DENO_SUPPORTED_BUILTIN_NODE_MODULES
+  let items = SUPPORTED_BUILTIN_NODE_MODULES
     .iter()
     .filter_map(|name| {
       if name.starts_with('_') {

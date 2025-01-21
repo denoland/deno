@@ -32,6 +32,7 @@ use deno_lib::args::has_flag_env_var;
 use deno_lib::args::CaData;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
+use deno_resolver::npmrc::create_default_npmrc;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -97,7 +98,6 @@ use super::tsc::TsServer;
 use super::urls;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use crate::args::create_default_npmrc;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
@@ -3662,7 +3662,7 @@ impl Inner {
       config_data.and_then(|d| d.lockfile.clone()),
       config_data
         .and_then(|d| d.npmrc.clone())
-        .unwrap_or_else(create_default_npmrc),
+        .unwrap_or_else(|| Arc::new(create_default_npmrc(&CliSys::default()))),
       workspace,
       force_global_cache,
       None,
