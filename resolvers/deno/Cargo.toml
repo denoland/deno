@@ -32,6 +32,7 @@ deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
 deno_terminal.workspace = true
+futures.workspace = true
 log.workspace = true
 node_resolver.workspace = true
 once_cell.workspace = true

@@ -2301,6 +2301,7 @@ dependencies = [
  "deno_path_util",
  "deno_semver",
  "deno_terminal 0.2.0",
+ "futures",
  "log",
  "node_resolver",
  "once_cell",

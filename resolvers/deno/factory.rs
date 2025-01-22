@@ -22,6 +22,7 @@ use deno_config::workspace::WorkspaceDiscoverStart;
 use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
+use futures::future::FutureExt;
 use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -74,37 +75,9 @@ use crate::WorkspaceResolverRc;
 
 // todo(https://github.com/rust-lang/rust/issues/109737): remove once_cell after get_or_try_init is stabilized
 #[cfg(feature = "sync")]
-type MaybeOnceLock<T> = once_cell::sync::OnceCell<T>;
+type Deferred<T> = once_cell::sync::OnceCell<T>;
 #[cfg(not(feature = "sync"))]
-type MaybeOnceLock<T> = once_cell::unsync::OnceCell<T>;
-
-#[derive(Debug)]
-struct Deferred<T>(MaybeOnceLock<T>);
-
-impl<T> Default for Deferred<T> {
-  fn default() -> Self {
-    Self(Default::default())
-  }
-}
-
-impl<T> Deferred<T> {
-  pub fn from_value(value: T) -> Self {
-    Self(MaybeOnceLock::from(value))
-  }
-
-  #[inline(always)]
-  pub fn get_or_try_init<TError>(
-    &self,
-    create: impl FnOnce() -> Result<T, TError>,
-  ) -> Result<&T, TError> {
-    self.0.get_or_try_init(create)
-  }
-
-  #[inline(always)]
-  pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
-    self.0.get_or_init(create)
-  }
-}
+type Deferred<T> = once_cell::unsync::OnceCell<T>;
 
 #[allow(clippy::disallowed_types)]
 type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
@@ -321,7 +294,7 @@ impl<
     &mut self,
     workspace_directory: WorkspaceDirectoryRc,
   ) {
-    self.workspace_directory = Deferred::from_value(workspace_directory);
+    self.workspace_directory = Deferred::from(workspace_directory);
   }
 
   pub fn initial_cwd(&self) -> &PathBuf {
@@ -684,27 +657,31 @@ impl<
   ) -> Result<&DefaultDenoResolverRc<TSys>, anyhow::Error> {
     self
       .deno_resolver
-      .get_or_try_init(async {
-        Ok(new_rc(DenoResolver::new(DenoResolverOptions {
-          in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
-          node_and_req_resolver: if self.workspace_factory.no_npm() {
-            None
-          } else {
-            Some(NodeAndNpmReqResolver {
-              node_resolver: self.node_resolver()?.clone(),
-              npm_req_resolver: self.npm_req_resolver()?.clone(),
-            })
-          },
-          is_byonm: self.use_byonm()?,
-          maybe_vendor_dir: self
-            .workspace_factory
-            .workspace_directory()?
-            .workspace
-            .vendor_dir_path(),
-          sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
-          workspace_resolver: self.workspace_resolver().await?.clone(),
-        })))
-      })
+      .get_or_try_init(
+        async {
+          Ok(new_rc(DenoResolver::new(DenoResolverOptions {
+            in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
+            node_and_req_resolver: if self.workspace_factory.no_npm() {
+              None
+            } else {
+              Some(NodeAndNpmReqResolver {
+                node_resolver: self.node_resolver()?.clone(),
+                npm_req_resolver: self.npm_req_resolver()?.clone(),
+              })
+            },
+            is_byonm: self.use_byonm()?,
+            maybe_vendor_dir: self
+              .workspace_factory
+              .workspace_directory()?
+              .workspace
+              .vendor_dir_path(),
+            sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
+            workspace_resolver: self.workspace_resolver().await?.clone(),
+          })))
+        }
+        // boxed to prevent the futures getting big and exploding the stack
+        .boxed_local(),
+      )
       .await
   }
 
@@ -856,50 +833,54 @@ impl<
   ) -> Result<&WorkspaceResolverRc, anyhow::Error> {
     self
       .workspace_resolver
-      .get_or_try_init(async {
-        let directory = self.workspace_factory.workspace_directory()?;
-        let workspace = &directory.workspace;
-        let specified_import_map = match &self.options.specified_import_map {
-          Some(import_map) => import_map.get().await?,
-          None => None,
-        };
-        let options = deno_config::workspace::CreateResolverOptions {
-          pkg_json_dep_resolution: match self
-            .options
-            .package_json_dep_resolution
-          {
-            Some(value) => value,
-            None => {
-              match self.workspace_factory.node_modules_dir_mode()? {
-                NodeModulesDirMode::Manual => {
-                  PackageJsonDepResolution::Disabled
-                }
-                NodeModulesDirMode::Auto | NodeModulesDirMode::None => {
-                  // todo(dsherret): should this be disabled for auto?
-                  PackageJsonDepResolution::Enabled
+      .get_or_try_init(
+        async {
+          let directory = self.workspace_factory.workspace_directory()?;
+          let workspace = &directory.workspace;
+          let specified_import_map = match &self.options.specified_import_map {
+            Some(import_map) => import_map.get().await?,
+            None => None,
+          };
+          let options = deno_config::workspace::CreateResolverOptions {
+            pkg_json_dep_resolution: match self
+              .options
+              .package_json_dep_resolution
+            {
+              Some(value) => value,
+              None => {
+                match self.workspace_factory.node_modules_dir_mode()? {
+                  NodeModulesDirMode::Manual => {
+                    PackageJsonDepResolution::Disabled
+                  }
+                  NodeModulesDirMode::Auto | NodeModulesDirMode::None => {
+                    // todo(dsherret): should this be disabled for auto?
+                    PackageJsonDepResolution::Enabled
+                  }
                 }
               }
-            }
-          },
-          specified_import_map,
-        };
-        let resolver =
-          workspace.create_resolver(&self.workspace_factory.sys, options)?;
-        if !resolver.diagnostics().is_empty() {
-          // todo(dsherret): do not log this in this crate... that should be
-          // a CLI responsibility
-          log::warn!(
-            "Import map diagnostics:\n{}",
-            resolver
-              .diagnostics()
-              .iter()
-              .map(|d| format!("  - {d}"))
-              .collect::<Vec<_>>()
-              .join("\n")
-          );
+            },
+            specified_import_map,
+          };
+          let resolver =
+            workspace.create_resolver(&self.workspace_factory.sys, options)?;
+          if !resolver.diagnostics().is_empty() {
+            // todo(dsherret): do not log this in this crate... that should be
+            // a CLI responsibility
+            log::warn!(
+              "Import map diagnostics:\n{}",
+              resolver
+                .diagnostics()
+                .iter()
+                .map(|d| format!("  - {d}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+            );
+          }
+          Ok(new_rc(resolver))
         }
-        Ok(new_rc(resolver))
-      })
+        // boxed to prevent the futures getting big and exploding the stack
+        .boxed_local(),
+      )
       .await
   }
 
