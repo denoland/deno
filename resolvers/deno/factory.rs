@@ -407,7 +407,7 @@ impl<
       .copied()
   }
 
-  pub fn specified_node_modules_dir(
+  fn specified_node_modules_dir(
     &self,
   ) -> Result<Option<NodeModulesDirMode>, NodeModulesModeResolveError> {
     self
@@ -469,7 +469,7 @@ impl<
         let workspace = &self.workspace_directory()?.workspace;
         let root_folder = workspace.root_folder_configs();
         let use_node_modules_dir = self
-          .specified_node_modules_dir()?
+          .resolved_node_modules_dir()?
           .map(|v| v.uses_node_modules_dir());
         let path = if use_node_modules_dir == Some(false) {
           return Ok(None);
@@ -923,14 +923,13 @@ impl<
           None => None,
         };
         let node_modules_dir_mode =
-          self.workspace_factory.specified_node_modules_dir()?;
+          self.workspace_factory.resolved_node_modules_dir()?;
         // todo(THIS PR): do not use Disabled for `deno publish`?
         let options = deno_config::workspace::CreateResolverOptions {
           pkg_json_dep_resolution: match node_modules_dir_mode {
-            Some(NodeModulesDirMode::Manual) | None => {
-              PackageJsonDepResolution::Disabled
-            }
-            Some(NodeModulesDirMode::Auto) | Some(NodeModulesDirMode::None) => {
+            NodeModulesDirMode::Manual => PackageJsonDepResolution::Disabled,
+            NodeModulesDirMode::Auto | NodeModulesDirMode::None => {
+              // todo(dsherret): this should be disabled for auto?
               PackageJsonDepResolution::Enabled
             }
           },
