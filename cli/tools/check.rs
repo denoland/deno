@@ -342,6 +342,7 @@ impl TypeChecker {
     Ok((graph, diagnostics))
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn check_diagnostics_in_folder(
     &self,
     root_names: Vec<(Url, MediaType)>,
@@ -390,7 +391,7 @@ impl TypeChecker {
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
     let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write_hashable(&ts_config)
+      .write_hashable(ts_config)
       .finish();
     let response = tsc::exec(tsc::Request {
       config: ts_config.clone(),
@@ -411,7 +412,7 @@ impl TypeChecker {
       .diagnostics
       .filter(|d| self.should_include_diagnostic(options.type_check_mode, d));
 
-    diagnostics.apply_fast_check_source_maps(&graph);
+    diagnostics.apply_fast_check_source_maps(graph);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       type_check_cache.set_tsbuildinfo(&first_root, &tsbuildinfo);
