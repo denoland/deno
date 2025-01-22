@@ -56,11 +56,12 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-type ConditionsFromResolutionModeFn = Box<
+#[allow(clippy::disallowed_types)]
+type ConditionsFromResolutionModeFn = crate::sync::MaybeArc<
   dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
 >;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConditionsFromResolutionMode(Option<ConditionsFromResolutionModeFn>);
 
 impl Debug for ConditionsFromResolutionMode {

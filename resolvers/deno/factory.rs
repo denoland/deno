@@ -583,8 +583,10 @@ impl<
 
 #[derive(Debug, Default)]
 pub struct ResolverFactoryOptions {
+  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
   pub no_sloppy_imports_cache: bool,
   pub npm_system_info: NpmSystemInfo,
+  pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
   pub unstable_sloppy_imports: bool,
 }
@@ -750,8 +752,7 @@ impl<
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
         self.workspace_factory.sys.clone(),
-        // todo(THIS PR): move to options
-        ConditionsFromResolutionMode::default(),
+        self.options.conditions_from_resolution_mode.clone(),
       )))
     })
   }
@@ -866,15 +867,22 @@ impl<
           Some(import_map) => import_map.get().await?,
           None => None,
         };
-        let node_modules_dir_mode =
-          self.workspace_factory.resolved_node_modules_dir()?;
-        // todo(THIS PR): do not use Disabled for `deno publish`?
         let options = deno_config::workspace::CreateResolverOptions {
-          pkg_json_dep_resolution: match node_modules_dir_mode {
-            NodeModulesDirMode::Manual => PackageJsonDepResolution::Disabled,
-            NodeModulesDirMode::Auto | NodeModulesDirMode::None => {
-              // todo(dsherret): this should be disabled for auto?
-              PackageJsonDepResolution::Enabled
+          pkg_json_dep_resolution: match self
+            .options
+            .package_json_dep_resolution
+          {
+            Some(value) => value,
+            None => {
+              match self.workspace_factory.resolved_node_modules_dir()? {
+                NodeModulesDirMode::Manual => {
+                  PackageJsonDepResolution::Disabled
+                }
+                NodeModulesDirMode::Auto | NodeModulesDirMode::None => {
+                  // todo(dsherret): should this be disabled for auto?
+                  PackageJsonDepResolution::Enabled
+                }
+              }
             }
           },
           specified_import_map,

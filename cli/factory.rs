@@ -699,6 +699,7 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
+          conditions_from_resolution_mode: Default::default(),
           no_sloppy_imports_cache: false,
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
@@ -709,6 +710,14 @@ impl CliFactory {
               .clone(),
           })),
           unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          package_json_dep_resolution: match &self.flags.subcommand {
+            DenoSubcommand::Publish(_) => {
+              // the node_modules directory is not published to jsr, so resolve
+              // dependencies via the package.json rather than using node resolution
+              Some(deno_config::workspace::PackageJsonDepResolution::Enabled)
+            }
+            _ => None,
+          },
         },
       )))
     })
@@ -1319,7 +1328,21 @@ fn new_workspace_factory_options(
     },
     deno_dir_path_provider: Some(deno_dir_path_provider),
     no_npm: flags.no_npm,
-    node_modules_dir: flags.node_modules_dir,
+    node_modules_dir: match flags.node_modules_dir {
+      Some(value) => Some(value),
+      None => match &flags.subcommand {
+        // For `deno install/add/remove/init` we want to force the managed
+        // resolver so it can set up `node_modules/` directory.
+        DenoSubcommand::Install(_)
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Remove(_)
+        | DenoSubcommand::Init(_)
+        | DenoSubcommand::Outdated(_) => {
+          Some(deno_config::deno_json::NodeModulesDirMode::Auto)
+        }
+        _ => None,
+      },
+    },
     npm_process_state: NPM_PROCESS_STATE.as_ref().map(|s| {
       NpmProcessStateOptions {
         node_modules_dir: s
