@@ -1500,16 +1500,15 @@ pub async fn run_tests(
   let log_level = flags.log_level;
   let factory = CliFactoryWithWorkspaceFiles::from_flags(
     flags,
-    |cli_options, test_flags| {
+    |cli_options| {
       Ok(
         cli_options
-          .resolve_test_options_for_members(test_flags)?
+          .resolve_test_options_for_members(&test_flags)?
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect(),
       )
     },
-    &test_flags,
     |patterns, cli_options, file_fetcher, doc| {
       collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
         .boxed_local()
@@ -1596,16 +1595,15 @@ pub async fn run_tests_with_watch(
         let log_level = flags.log_level;
         let factory = CliFactoryWithWorkspaceFiles::from_flags(
           flags,
-          |cli_options, test_flags| {
+          |cli_options| {
             Ok(
               cli_options
-                .resolve_test_options_for_members(test_flags)?
+                .resolve_test_options_for_members(&test_flags)?
                 .into_iter()
                 .map(|(d, o)| (d, o.files))
                 .collect(),
             )
           },
-          &test_flags,
           |patterns, cli_options, file_fetcher, doc| {
             collect_specifiers_for_tests(
               patterns,

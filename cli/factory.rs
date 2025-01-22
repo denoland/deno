@@ -1254,21 +1254,19 @@ pub struct CliFactoryWithWorkspaceFiles {
 
 impl CliFactoryWithWorkspaceFiles {
   #[allow(clippy::type_complexity)]
-  pub async fn from_flags<T, U: Clone>(
+  pub async fn from_flags<T: Clone>(
     flags: Arc<Flags>,
-    get_dirs_with_files: fn(
+    get_dirs_with_files: impl FnOnce(
       &CliOptions,
-      T,
     ) -> Result<
       Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
       AnyError,
     >,
-    get_dirs_with_files_args: T,
     collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
       Arc<CliFileFetcher>,
-      U,
+      T,
     ) -> std::pin::Pin<
       Box<
         dyn Future<
@@ -1276,13 +1274,12 @@ impl CliFactoryWithWorkspaceFiles {
         >,
       >,
     >,
-    collect_specifiers_args: U,
+    collect_specifiers_args: T,
     extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
     watcher_communicator: Option<&Arc<WatcherCommunicator>>,
   ) -> Result<Self, AnyError> {
     let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-    let mut workspace_dirs_with_files =
-      get_dirs_with_files(&cli_options, get_dirs_with_files_args)?;
+    let mut workspace_dirs_with_files = get_dirs_with_files(&cli_options)?;
     workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let cli_options =
       Arc::new(cli_options.with_all_dirs(

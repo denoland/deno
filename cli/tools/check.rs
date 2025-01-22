@@ -56,15 +56,13 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
+  let file_flags = FileFlags {
+    ignore: Default::default(),
+    include: check_flags.files,
+  };
   let factory = CliFactoryWithWorkspaceFiles::from_flags(
     flags,
-    |cli_options, files| {
-      cli_options.resolve_file_flags_for_members(&FileFlags {
-        ignore: Default::default(),
-        include: files,
-      })
-    },
-    check_flags.files,
+    |cli_options| cli_options.resolve_file_flags_for_members(&file_flags),
     |patterns, cli_options, _, (doc, doc_only)| {
       async move {
         let info = SpecifierInfo {

@@ -441,16 +441,15 @@ pub async fn run_benchmarks(
   let log_level = flags.log_level;
   let factory = CliFactoryWithWorkspaceFiles::from_flags(
     flags,
-    |cli_options, bench_flags| {
+    |cli_options| {
       Ok(
         cli_options
-          .resolve_bench_options_for_members(bench_flags)?
+          .resolve_bench_options_for_members(&bench_flags)?
           .into_iter()
           .map(|(d, o)| (d, o.files))
           .collect(),
       )
     },
-    &bench_flags,
     |patterns, cli_options, _, _| {
       async move {
         let info = SpecifierInfo {
@@ -516,16 +515,15 @@ pub async fn run_benchmarks_with_watch(
         let log_level: Option<Level> = flags.log_level;
         let factory = CliFactoryWithWorkspaceFiles::from_flags(
           flags,
-          |cli_options, bench_flags| {
+          |cli_options| {
             Ok(
               cli_options
-                .resolve_bench_options_for_members(bench_flags)?
+                .resolve_bench_options_for_members(&bench_flags)?
                 .into_iter()
                 .map(|(d, o)| (d, o.files))
                 .collect(),
             )
           },
-          &bench_flags,
           |patterns, cli_options, _, _| {
             async move {
               let info = SpecifierInfo {
