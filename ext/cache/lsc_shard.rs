@@ -3,10 +3,14 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
+use futures::Stream;
 use http::Method;
 use http::Request;
 use http::Response;
+use http_body::Body;
 use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyStream;
+use http_body_util::Either;
 use http_body_util::Empty;
 use http_body_util::StreamBody;
 use hyper::body::Incoming;
@@ -20,7 +24,10 @@ use hyper_util::rt::tokio::TokioExecutor;
 use crate::CacheError;
 
 pub struct CacheShard {
-  client: Client<HttpConnector, UnsyncBoxBody<Bytes, Infallible>>,
+  client: Client<
+    HttpConnector,
+    Either<UnsyncBoxBody<Bytes, CacheError>, UnsyncBoxBody<Bytes, Infallible>>,
+  >,
   endpoint: String,
   token: String,
 }
@@ -41,12 +48,13 @@ impl CacheShard {
     &self,
     object_key: &str,
   ) -> Result<Option<Response<Incoming>>, CacheError> {
+    let body = Either::Right(UnsyncBoxBody::new(Empty::new()));
     let req = Request::builder()
       .method(Method::GET)
       .uri(format!("{}/objects/{}", self.endpoint, object_key))
       .header(&AUTHORIZATION, format!("Bearer {}", self.token))
       .header("x-ryw", "1")
-      .body(UnsyncBoxBody::new(Empty::new()))
+      .body(body)
       .unwrap();
 
     let res = self.client.request(req).await?;
@@ -67,7 +75,7 @@ impl CacheShard {
     &self,
     object_key: &str,
     headers: HeaderMap,
-    body: StreamBody<Bytes>,
+    body: UnsyncBoxBody<Bytes, CacheError>,
   ) -> Result<(), CacheError> {
     let mut builder = Request::builder()
       .method(Method::PUT)
@@ -78,7 +86,7 @@ impl CacheShard {
       builder = builder.header(key, val)
     }
 
-    let req = builder.body(UnsyncBoxBody::new(body)).unwrap();
+    let req = builder.body(Either::Left(body)).unwrap();
 
     let res = self.client.request(req).await?;
 

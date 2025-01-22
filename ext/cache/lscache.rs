@@ -16,6 +16,8 @@ use http::header::VARY;
 use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
+use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyExt;
 use slab::Slab;
 
 use crate::get_header;
@@ -139,8 +141,10 @@ impl LscBackend {
     };
     let (body_tx, body_rx) = futures::channel::mpsc::channel(4);
     spawn(body.map(Ok::<Result<_, CacheError>, _>).forward(body_tx));
-    let body = http_body_util::BodyDataStream::new(body_rx);
-    shard.put_object(&object_key, headers, body).await?;
+    let stream = body_rx.into_stream();
+    let body = http_body_util::StreamBody::new(stream);
+    let stream = http_body_util::BodyStream::new(body);
+    shard.put_object(&object_key, headers, stream).await?;
     Ok(())
   }
 
@@ -284,7 +288,11 @@ impl LscBackend {
       )?,
     );
     shard
-      .put_object(&object_key, headers, reqwest::Body::from(&[][..]))
+      .put_object(
+        &object_key,
+        headers,
+        UnsyncBoxBody::new(http_body_util::Full::new(Bytes::new())),
+      )
       .await?;
     Ok(true)
   }

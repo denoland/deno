@@ -86,9 +86,6 @@ pub enum CacheError {
     method: &'static str,
     status: hyper::StatusCode,
   },
-  #[class(generic)]
-  #[error("{0}")]
-  Reqwest(#[from] reqwest::Error),
 }
 
 #[derive(Clone)]
