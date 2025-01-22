@@ -501,11 +501,11 @@ impl MainWorker {
       shared_array_buffer_store: services.shared_array_buffer_store.clone(),
       compiled_wasm_module_store: services.compiled_wasm_module_store.clone(),
       extensions,
-      #[cfg(feature = "hmr")]
+      #[cfg(feature = "transpile")]
       extension_transpiler: Some(Rc::new(|specifier, source| {
         crate::transpile::maybe_transpile_source(specifier, source)
       })),
-      #[cfg(not(feature = "hmr"))]
+      #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
       is_main: true,
