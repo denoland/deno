@@ -35,14 +35,12 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::BenchFlags;
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactoryWithWorkspaceFiles;
 use crate::factory::SpecifierInfo;
 use crate::ops;
-use crate::sys::CliSys;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
@@ -441,14 +439,18 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let log_level = flags.log_level;
-  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-  let workspace_dirs_with_files = cli_options
-    .resolve_bench_options_for_members(&bench_flags)?
-    .into_iter()
-    .map(|(d, o)| (d, o.files))
-    .collect::<Vec<_>>();
-  let factory = CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
-    workspace_dirs_with_files,
+  let factory = CliFactoryWithWorkspaceFiles::from_flags(
+    flags,
+    |cli_options, bench_flags| {
+      Ok(
+        cli_options
+          .resolve_bench_options_for_members(bench_flags)?
+          .into_iter()
+          .map(|(d, o)| (d, o.files))
+          .collect(),
+      )
+    },
+    &bench_flags,
     |patterns, cli_options, _, _| {
       async move {
         let info = SpecifierInfo {
@@ -466,7 +468,6 @@ pub async fn run_benchmarks(
     },
     (),
     None,
-    cli_options,
     None,
   )
   .await?;
@@ -513,36 +514,38 @@ pub async fn run_benchmarks_with_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let log_level: Option<Level> = flags.log_level;
-        let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-        let workspace_dirs_with_files = cli_options
-          .resolve_bench_options_for_members(&bench_flags)?
-          .into_iter()
-          .map(|(d, o)| (d, o.files))
-          .collect::<Vec<_>>();
-        let factory =
-          CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
-            workspace_dirs_with_files,
-            |patterns, cli_options, _, _| {
-              async move {
-                let info = SpecifierInfo {
-                  include: true,
-                  include_doc: false,
-                };
-                collect_specifiers(
-                  patterns,
-                  cli_options.vendor_dir_path().map(ToOwned::to_owned),
-                  is_supported_bench_path,
-                )
-                .map(|s| s.into_iter().map(|s| (s, info)).collect())
-              }
-              .boxed_local()
-            },
-            (),
-            None,
-            cli_options,
-            Some(&watcher_communicator),
-          )
-          .await?;
+        let factory = CliFactoryWithWorkspaceFiles::from_flags(
+          flags,
+          |cli_options, bench_flags| {
+            Ok(
+              cli_options
+                .resolve_bench_options_for_members(bench_flags)?
+                .into_iter()
+                .map(|(d, o)| (d, o.files))
+                .collect(),
+            )
+          },
+          &bench_flags,
+          |patterns, cli_options, _, _| {
+            async move {
+              let info = SpecifierInfo {
+                include: true,
+                include_doc: false,
+              };
+              collect_specifiers(
+                patterns,
+                cli_options.vendor_dir_path().map(ToOwned::to_owned),
+                is_supported_bench_path,
+              )
+              .map(|s| s.into_iter().map(|s| (s, info)).collect())
+            }
+            .boxed_local()
+          },
+          (),
+          None,
+          Some(&watcher_communicator),
+        )
+        .await?;
 
         factory.check().await?;
 

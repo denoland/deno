@@ -56,14 +56,15 @@ pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-  let workspace_dirs_with_files =
-    cli_options.resolve_file_flags_for_members(&FileFlags {
-      ignore: Default::default(),
-      include: check_flags.files,
-    })?;
-  let factory = CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
-    workspace_dirs_with_files,
+  let factory = CliFactoryWithWorkspaceFiles::from_flags(
+    flags,
+    |cli_options, files| {
+      cli_options.resolve_file_flags_for_members(&FileFlags {
+        ignore: Default::default(),
+        include: files,
+      })
+    },
+    check_flags.files,
     |patterns, cli_options, _, (doc, doc_only)| {
       async move {
         let info = SpecifierInfo {
@@ -81,7 +82,6 @@ pub async fn check(
     },
     (check_flags.doc, check_flags.doc_only),
     Some(extract_snippet_files),
-    cli_options,
     None,
   )
   .await?;

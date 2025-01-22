@@ -77,7 +77,6 @@ use crate::factory::CliFactoryWithWorkspaceFiles;
 use crate::factory::SpecifierInfo;
 use crate::file_fetcher::CliFileFetcher;
 use crate::ops;
-use crate::sys::CliSys;
 use crate::util::extract::extract_doc_tests;
 use crate::util::file_watcher;
 use crate::util::fs::collect_specifiers;
@@ -1499,21 +1498,24 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let log_level = flags.log_level;
-  let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-  let workspace_dirs_with_files = cli_options
-    .resolve_test_options_for_members(&test_flags)?
-    .into_iter()
-    .map(|(d, o)| (d, o.files))
-    .collect::<Vec<_>>();
-  let factory = CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
-    workspace_dirs_with_files,
+  let factory = CliFactoryWithWorkspaceFiles::from_flags(
+    flags,
+    |cli_options, test_flags| {
+      Ok(
+        cli_options
+          .resolve_test_options_for_members(test_flags)?
+          .into_iter()
+          .map(|(d, o)| (d, o.files))
+          .collect(),
+      )
+    },
+    &test_flags,
     |patterns, cli_options, file_fetcher, doc| {
       collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
         .boxed_local()
     },
     test_flags.doc,
     Some(extract_doc_tests),
-    cli_options,
     None,
   )
   .await?;
@@ -1592,30 +1594,32 @@ pub async fn run_tests_with_watch(
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
         let log_level = flags.log_level;
-        let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-        let workspace_dirs_with_files = cli_options
-          .resolve_test_options_for_members(&test_flags)?
-          .into_iter()
-          .map(|(d, o)| (d, o.files))
-          .collect::<Vec<_>>();
-        let factory =
-          CliFactoryWithWorkspaceFiles::from_workspace_dirs_with_files(
-            workspace_dirs_with_files,
-            |patterns, cli_options, file_fetcher, doc| {
-              collect_specifiers_for_tests(
-                patterns,
-                cli_options,
-                file_fetcher,
-                doc,
-              )
-              .boxed_local()
-            },
-            test_flags.doc,
-            Some(extract_doc_tests),
-            cli_options,
-            Some(&watcher_communicator),
-          )
-          .await?;
+        let factory = CliFactoryWithWorkspaceFiles::from_flags(
+          flags,
+          |cli_options, test_flags| {
+            Ok(
+              cli_options
+                .resolve_test_options_for_members(test_flags)?
+                .into_iter()
+                .map(|(d, o)| (d, o.files))
+                .collect(),
+            )
+          },
+          &test_flags,
+          |patterns, cli_options, file_fetcher, doc| {
+            collect_specifiers_for_tests(
+              patterns,
+              cli_options,
+              file_fetcher,
+              doc,
+            )
+            .boxed_local()
+          },
+          test_flags.doc,
+          Some(extract_doc_tests),
+          Some(&watcher_communicator),
+        )
+        .await?;
 
         factory.check().await?;
 

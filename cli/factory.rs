@@ -1254,13 +1254,21 @@ pub struct CliFactoryWithWorkspaceFiles {
 
 impl CliFactoryWithWorkspaceFiles {
   #[allow(clippy::type_complexity)]
-  pub async fn from_workspace_dirs_with_files<T: Clone>(
-    mut workspace_dirs_with_files: Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
+  pub async fn from_flags<T, U: Clone>(
+    flags: Arc<Flags>,
+    get_dirs_with_files: fn(
+      &CliOptions,
+      T,
+    ) -> Result<
+      Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
+      AnyError,
+    >,
+    get_dirs_with_files_args: T,
     collect_specifiers: fn(
       FilePatterns,
       Arc<CliOptions>,
       Arc<CliFileFetcher>,
-      T,
+      U,
     ) -> std::pin::Pin<
       Box<
         dyn Future<
@@ -1268,11 +1276,14 @@ impl CliFactoryWithWorkspaceFiles {
         >,
       >,
     >,
-    args: T,
+    collect_specifiers_args: U,
     extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
-    cli_options: CliOptions,
     watcher_communicator: Option<&Arc<WatcherCommunicator>>,
   ) -> Result<Self, AnyError> {
+    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
+    let mut workspace_dirs_with_files =
+      get_dirs_with_files(&cli_options, get_dirs_with_files_args)?;
+    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let cli_options =
       Arc::new(cli_options.with_all_dirs(
         workspace_dirs_with_files.iter().map(|(d, _)| d.clone()),
@@ -1282,7 +1293,6 @@ impl CliFactoryWithWorkspaceFiles {
     if let Some(watcher_communicator) = watcher_communicator {
       let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
     }
-    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
     let mut workspace_files = Vec::new();
     for (_, files) in workspace_dirs_with_files {
       if let Some(watcher_communicator) = watcher_communicator {
@@ -1299,7 +1309,7 @@ impl CliFactoryWithWorkspaceFiles {
         files,
         cli_options.clone(),
         file_fetcher.clone(),
-        args.clone(),
+        collect_specifiers_args.clone(),
       )
       .await?;
       workspace_files.reserve_exact(specifiers.len());
