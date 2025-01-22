@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1152 tests out of 3681 have been ported from Node 20.11.1 (31.30% ported, 69.22% remaining).
+1154 tests out of 3681 have been ported from Node 20.11.1 (31.35% ported, 69.19% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -673,7 +673,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-fs-promises-file-handle-read.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-read.js)
 - [parallel/test-fs-promises-file-handle-readFile.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-readFile.js)
 - [parallel/test-fs-promises-file-handle-stream.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-stream.js)
-- [parallel/test-fs-promises-file-handle-sync.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-sync.js)
 - [parallel/test-fs-promises-file-handle-truncate.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-truncate.js)
 - [parallel/test-fs-promises-file-handle-writeFile.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-file-handle-writeFile.js)
 - [parallel/test-fs-promises-readfile.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-fs-promises-readfile.js)
