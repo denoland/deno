@@ -161,9 +161,10 @@ impl LintRule for NoSloppyImportsRule {
     CODE
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_sloppy_imports.md")
-  }
+  // TODO(bartlomieju): this document needs to be exposed to `https://lint.deno.land`.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_sloppy_imports.md")
+  // }
 
   fn tags(&self) -> &'static [&'static str] {
     &["recommended"]
