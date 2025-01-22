@@ -1239,7 +1239,7 @@ export class Socket extends Duplex {
 
     super(options);
 
-    // Note: If the socket is created from one of `pkgNeedsSockInitWorkaround`,
+    // Note: If the TCP/TLS socket is created from one of `pkgNeedsSockInitWorkaround`,
     // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
     // That swaps the sequence of op_node_http_request_with_conn() call and
     // initial socket read. That causes op_node_http_request_with_conn() not
@@ -1250,7 +1250,7 @@ export class Socket extends Duplex {
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
     this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
-      errorStack?.includes(pkg)
+      errorStack?.includes(pkg) && options.handle?.ipc !== true
     );
     if (this._needsSockInitWorkaround) {
       this.pause();
