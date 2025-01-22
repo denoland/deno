@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { $, ReleasesMdFile, Repo } from "./deps.ts";
 
@@ -40,6 +40,14 @@ export class DenoWorkspace {
 
   getCliCrate() {
     return this.getCrate("deno");
+  }
+
+  getDenoRtCrate() {
+    return this.getCrate("denort");
+  }
+
+  getDenoLibCrate() {
+    return this.getCrate("deno_lib");
   }
 
   getCrate(name: string) {

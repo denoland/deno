@@ -1,15 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 
 use base64::Engine;
-use deno_core::error::type_error;
 use deno_core::op2;
 use deno_core::serde_v8::BigInt as V8BigInt;
 use deno_core::unsync::spawn_blocking;
 use deno_core::GarbageCollected;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use ed25519_dalek::pkcs8::BitStringRef;
 use elliptic_curve::JwkEcKey;
 use num_bigint::BigInt;
@@ -26,6 +26,7 @@ use rsa::pkcs1::DecodeRsaPrivateKey as _;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::pkcs1::EncodeRsaPrivateKey as _;
 use rsa::pkcs1::EncodeRsaPublicKey;
+use rsa::traits::PrivateKeyParts;
 use rsa::traits::PublicKeyParts;
 use rsa::RsaPrivateKey;
 use rsa::RsaPublicKey;
@@ -255,6 +256,16 @@ impl EcPrivateKey {
       EcPrivateKey::P384(key) => EcPublicKey::P384(key.public_key()),
     }
   }
+
+  pub fn to_jwk(&self) -> Result<JwkEcKey, AsymmetricPrivateKeyJwkError> {
+    match self {
+      EcPrivateKey::P224(_) => {
+        Err(AsymmetricPrivateKeyJwkError::UnsupportedJwkEcCurveP224)
+      }
+      EcPrivateKey::P256(key) => Ok(key.to_jwk()),
+      EcPrivateKey::P384(key) => Ok(key.to_jwk()),
+    }
+  }
 }
 
 // https://oidref.com/
@@ -364,55 +375,72 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>> for RsaPssParameters<'a> {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X509PublicKeyError {
+  #[class(generic)]
   #[error(transparent)]
-  X509(#[from] x509_parser::error::X509Error),
+  X509(#[from] X509Error),
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
+  #[class(generic)]
   #[error(transparent)]
   Asn1(#[from] x509_parser::der_parser::asn1_rs::Error),
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
+  #[class(type)]
   #[error("unsupported ec named curve")]
   UnsupportedEcNamedCurve,
+  #[class(type)]
   #[error("missing ec parameters")]
   MissingEcParameters,
+  #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
+  #[class(type)]
   #[error("unsupported x509 public key type")]
   UnsupportedX509KeyType,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum RsaJwkError {
+  #[class(generic)]
   #[error(transparent)]
   Base64(#[from] base64::DecodeError),
+  #[class(generic)]
   #[error(transparent)]
   Rsa(#[from] rsa::Error),
+  #[class(type)]
   #[error("missing RSA private component")]
   MissingRsaPrivateComponent,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EcJwkError {
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
+  #[class(type)]
   #[error("unsupported curve: {0}")]
   UnsupportedCurve(String),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EdRawError {
+  #[class(generic)]
   #[error(transparent)]
   Ed25519Signature(#[from] ed25519_dalek::SignatureError),
+  #[class(type)]
   #[error("invalid Ed25519 key")]
   InvalidEd25519Key,
+  #[class(type)]
   #[error("unsupported curve")]
   UnsupportedCurve,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPrivateKeyError {
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
   InvalidPemPrivateKeyInvalidUtf8(usize),
@@ -428,8 +456,13 @@ pub enum AsymmetricPrivateKeyError {
   InvalidSec1PrivateKey,
   #[error("unsupported PEM label: {0}")]
   UnsupportedPemLabel(String),
+  #[class(inherit)]
   #[error(transparent)]
-  RsaPssParamsParse(#[from] RsaPssParamsParseError),
+  RsaPssParamsParse(
+    #[from]
+    #[inherit]
+    RsaPssParamsParseError,
+  ),
   #[error("invalid encrypted PKCS#8 private key")]
   InvalidEncryptedPkcs8PrivateKey,
   #[error("invalid PKCS#8 private key")]
@@ -462,58 +495,96 @@ pub enum AsymmetricPrivateKeyError {
   UnsupportedPrivateKeyOid,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum AsymmetricPublicKeyError {
+  #[class(type)]
   #[error("invalid PEM private key: not valid utf8 starting at byte {0}")]
   InvalidPemPrivateKeyInvalidUtf8(usize),
+  #[class(type)]
   #[error("invalid PEM public key")]
   InvalidPemPublicKey,
+  #[class(type)]
   #[error("invalid PKCS#1 public key")]
   InvalidPkcs1PublicKey,
+  #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPrivateKey(#[from] AsymmetricPrivateKeyError),
+  AsymmetricPrivateKey(
+    #[from]
+    #[inherit]
+    AsymmetricPrivateKeyError,
+  ),
+  #[class(type)]
   #[error("invalid x509 certificate")]
   InvalidX509Certificate,
+  #[class(generic)]
   #[error(transparent)]
   X509(#[from] x509_parser::nom::Err<X509Error>),
+  #[class(inherit)]
   #[error(transparent)]
-  X509PublicKey(#[from] X509PublicKeyError),
+  X509PublicKey(
+    #[from]
+    #[inherit]
+    X509PublicKeyError,
+  ),
+  #[class(type)]
   #[error("unsupported PEM label: {0}")]
   UnsupportedPemLabel(String),
+  #[class(type)]
   #[error("invalid SPKI public key")]
   InvalidSpkiPublicKey,
+  #[class(type)]
   #[error("unsupported key type: {0}")]
   UnsupportedKeyType(String),
+  #[class(type)]
   #[error("unsupported key format: {0}")]
   UnsupportedKeyFormat(String),
+  #[class(generic)]
   #[error(transparent)]
   Spki(#[from] spki::Error),
+  #[class(generic)]
   #[error(transparent)]
   Pkcs1(#[from] rsa::pkcs1::Error),
+  #[class(inherit)]
   #[error(transparent)]
-  RsaPssParamsParse(#[from] RsaPssParamsParseError),
+  RsaPssParamsParse(
+    #[from]
+    #[inherit]
+    RsaPssParamsParseError,
+  ),
+  #[class(type)]
   #[error("malformed DSS public key")]
   MalformedDssPublicKey,
+  #[class(type)]
   #[error("malformed or missing named curve in ec parameters")]
   MalformedOrMissingNamedCurveInEcParameters,
+  #[class(type)]
   #[error("malformed or missing public key in ec spki")]
   MalformedOrMissingPublicKeyInEcSpki,
+  #[class(generic)]
   #[error(transparent)]
   Ec(#[from] elliptic_curve::Error),
+  #[class(type)]
   #[error("unsupported ec named curve")]
   UnsupportedEcNamedCurve,
+  #[class(type)]
   #[error("malformed or missing public key in x25519 spki")]
   MalformedOrMissingPublicKeyInX25519Spki,
+  #[class(type)]
   #[error("x25519 public key is too short")]
   X25519PublicKeyIsTooShort,
+  #[class(type)]
   #[error("invalid Ed25519 public key")]
   InvalidEd25519PublicKey,
+  #[class(type)]
   #[error("missing dh parameters")]
   MissingDhParameters,
+  #[class(type)]
   #[error("malformed dh parameters")]
   MalformedDhParameters,
+  #[class(type)]
   #[error("malformed or missing public key in dh spki")]
   MalformedOrMissingPublicKeyInDhSpki,
+  #[class(type)]
   #[error("unsupported private key oid")]
   UnsupportedPrivateKeyOid,
 }
@@ -1032,7 +1103,8 @@ impl KeyObjectHandle {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum RsaPssParamsParseError {
   #[error("malformed pss private key parameters")]
   MalformedPssPrivateKeyParameters,
@@ -1107,7 +1179,19 @@ fn bytes_to_b64(bytes: &[u8]) -> String {
   BASE64_URL_SAFE_NO_PAD.encode(bytes)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+pub enum AsymmetricPrivateKeyJwkError {
+  #[error("key is not an asymmetric private key")]
+  KeyIsNotAsymmetricPrivateKey,
+  #[error("Unsupported JWK EC curve: P224")]
+  UnsupportedJwkEcCurveP224,
+  #[error("jwk export not implemented for this key type")]
+  JwkExportNotImplementedForKeyType,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPublicKeyJwkError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1117,7 +1201,8 @@ pub enum AsymmetricPublicKeyJwkError {
   JwkExportNotImplementedForKeyType,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPublicKeyDerError {
   #[error("key is not an asymmetric public key")]
   KeyIsNotAsymmetricPublicKey,
@@ -1302,7 +1387,8 @@ impl AsymmetricPublicKey {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum AsymmetricPrivateKeyDerError {
   #[error("key is not an asymmetric private key")]
   KeyIsNotAsymmetricPrivateKey,
@@ -1314,6 +1400,7 @@ pub enum AsymmetricPrivateKeyDerError {
   InvalidEcPrivateKey,
   #[error("exporting non-EC private key as SEC1 is not supported")]
   ExportingNonEcPrivateKeyAsSec1Unsupported,
+  #[class(type)]
   #[error("exporting RSA-PSS private key as PKCS#8 is not supported yet")]
   ExportingNonRsaPssPrivateKeyAsPkcs8Unsupported,
   #[error("invalid DSA private key")]
@@ -1328,7 +1415,73 @@ pub enum AsymmetricPrivateKeyDerError {
   UnsupportedKeyType(String),
 }
 
+// https://datatracker.ietf.org/doc/html/rfc7518#section-6.3.2
+fn rsa_private_to_jwk(key: &RsaPrivateKey) -> deno_core::serde_json::Value {
+  let n = key.n();
+  let e = key.e();
+  let d = key.d();
+  let p = &key.primes()[0];
+  let q = &key.primes()[1];
+  let dp = key.dp();
+  let dq = key.dq();
+  let qi = key.crt_coefficient();
+  let oth = &key.primes()[2..];
+
+  let mut obj = deno_core::serde_json::json!({
+      "kty": "RSA",
+      "n": bytes_to_b64(&n.to_bytes_be()),
+      "e": bytes_to_b64(&e.to_bytes_be()),
+      "d": bytes_to_b64(&d.to_bytes_be()),
+      "p": bytes_to_b64(&p.to_bytes_be()),
+      "q": bytes_to_b64(&q.to_bytes_be()),
+      "dp": dp.map(|dp| bytes_to_b64(&dp.to_bytes_be())),
+      "dq": dq.map(|dq| bytes_to_b64(&dq.to_bytes_be())),
+      "qi": qi.map(|qi| bytes_to_b64(&qi.to_bytes_be())),
+  });
+
+  if !oth.is_empty() {
+    obj["oth"] = deno_core::serde_json::json!(oth
+      .iter()
+      .map(|o| o.to_bytes_be())
+      .collect::<Vec<_>>());
+  }
+
+  obj
+}
+
 impl AsymmetricPrivateKey {
+  fn export_jwk(
+    &self,
+  ) -> Result<deno_core::serde_json::Value, AsymmetricPrivateKeyJwkError> {
+    match self {
+      AsymmetricPrivateKey::Rsa(key) => Ok(rsa_private_to_jwk(key)),
+      AsymmetricPrivateKey::RsaPss(key) => Ok(rsa_private_to_jwk(&key.key)),
+      AsymmetricPrivateKey::Ec(key) => {
+        let jwk = key.to_jwk()?;
+        Ok(deno_core::serde_json::json!(jwk))
+      }
+      AsymmetricPrivateKey::X25519(static_secret) => {
+        let bytes = static_secret.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "X25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      AsymmetricPrivateKey::Ed25519(key) => {
+        let bytes = key.to_bytes();
+
+        Ok(deno_core::serde_json::json!({
+            "kty": "OKP",
+            "crv": "Ed25519",
+            "d": bytes_to_b64(&bytes),
+        }))
+      }
+      _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),
+    }
+  }
+
   fn export_der(
     &self,
     typ: &str,
@@ -1528,7 +1681,7 @@ pub fn op_node_create_secret_key(
 #[string]
 pub fn op_node_get_asymmetric_key_type(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<&'static str, deno_core::error::AnyError> {
+) -> Result<&'static str, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Rsa(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Rsa(_)) => {
@@ -1554,9 +1707,9 @@ pub fn op_node_get_asymmetric_key_type(
     }
     KeyObjectHandle::AsymmetricPrivate(AsymmetricPrivateKey::Dh(_))
     | KeyObjectHandle::AsymmetricPublic(AsymmetricPublicKey::Dh(_)) => Ok("dh"),
-    KeyObjectHandle::Secret(_) => {
-      Err(type_error("symmetric key is not an asymmetric key"))
-    }
+    KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
+      "symmetric key is not an asymmetric key",
+    )),
   }
 }
 
@@ -1599,7 +1752,7 @@ pub enum AsymmetricKeyDetails {
 #[serde]
 pub fn op_node_get_asymmetric_key_details(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<AsymmetricKeyDetails, deno_core::error::AnyError> {
+) -> Result<AsymmetricKeyDetails, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(private_key) => match private_key {
       AsymmetricPrivateKey::Rsa(key) => {
@@ -1707,9 +1860,9 @@ pub fn op_node_get_asymmetric_key_details(
       AsymmetricPublicKey::Ed25519(_) => Ok(AsymmetricKeyDetails::Ed25519),
       AsymmetricPublicKey::Dh(_) => Ok(AsymmetricKeyDetails::Dh),
     },
-    KeyObjectHandle::Secret(_) => {
-      Err(type_error("symmetric key is not an asymmetric key"))
-    }
+    KeyObjectHandle::Secret(_) => Err(JsErrorBox::type_error(
+      "symmetric key is not an asymmetric key",
+    )),
   }
 }
 
@@ -1717,12 +1870,12 @@ pub fn op_node_get_asymmetric_key_details(
 #[smi]
 pub fn op_node_get_symmetric_key_size(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<usize, deno_core::error::AnyError> {
+) -> Result<usize, JsErrorBox> {
   match handle {
     KeyObjectHandle::AsymmetricPrivate(_)
-    | KeyObjectHandle::AsymmetricPublic(_) => {
-      Err(type_error("asymmetric key is not a symmetric key"))
-    }
+    | KeyObjectHandle::AsymmetricPublic(_) => Err(JsErrorBox::type_error(
+      "asymmetric key is not a symmetric key",
+    )),
     KeyObjectHandle::Secret(key) => Ok(key.len() * 8),
   }
 }
@@ -1825,7 +1978,8 @@ pub async fn op_node_generate_rsa_key_async(
     .unwrap()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 #[error("digest not allowed for RSA-PSS keys{}", .0.as_ref().map(|digest| format!(": {digest}")).unwrap_or_default())]
 pub struct GenerateRsaPssError(Option<String>);
 
@@ -1929,7 +2083,7 @@ pub async fn op_node_generate_rsa_pss_key_async(
 fn dsa_generate(
   modulus_length: usize,
   divisor_length: usize,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let mut rng = rand::thread_rng();
   use dsa::Components;
   use dsa::KeySize;
@@ -1942,7 +2096,7 @@ fn dsa_generate(
     (2048, 256) => KeySize::DSA_2048_256,
     (3072, 256) => KeySize::DSA_3072_256,
     _ => {
-      return Err(type_error(
+      return Err(JsErrorBox::type_error(
         "Invalid modulusLength+divisorLength combination",
       ))
     }
@@ -1960,7 +2114,7 @@ fn dsa_generate(
 pub fn op_node_generate_dsa_key(
   #[smi] modulus_length: usize,
   #[smi] divisor_length: usize,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   dsa_generate(modulus_length, divisor_length)
 }
 
@@ -1969,15 +2123,13 @@ pub fn op_node_generate_dsa_key(
 pub async fn op_node_generate_dsa_key_async(
   #[smi] modulus_length: usize,
   #[smi] divisor_length: usize,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || dsa_generate(modulus_length, divisor_length))
     .await
     .unwrap()
 }
 
-fn ec_generate(
-  named_curve: &str,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+fn ec_generate(named_curve: &str) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let mut rng = rand::thread_rng();
   // TODO(@littledivy): Support public key point encoding.
   // Default is uncompressed.
@@ -1995,7 +2147,7 @@ fn ec_generate(
       AsymmetricPrivateKey::Ec(EcPrivateKey::P384(key))
     }
     _ => {
-      return Err(type_error(format!(
+      return Err(JsErrorBox::type_error(format!(
         "unsupported named curve: {}",
         named_curve
       )))
@@ -2009,7 +2161,7 @@ fn ec_generate(
 #[cppgc]
 pub fn op_node_generate_ec_key(
   #[string] named_curve: &str,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   ec_generate(named_curve)
 }
 
@@ -2017,7 +2169,7 @@ pub fn op_node_generate_ec_key(
 #[cppgc]
 pub async fn op_node_generate_ec_key_async(
   #[string] named_curve: String,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || ec_generate(&named_curve))
     .await
     .unwrap()
@@ -2073,7 +2225,7 @@ fn u32_slice_to_u8_slice(slice: &[u32]) -> &[u8] {
 
 fn dh_group_generate(
   group_name: &str,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   let (dh, prime, generator) = match group_name {
     "modp5" => (
       dh::DiffieHellman::group::<dh::Modp1536>(),
@@ -2105,7 +2257,7 @@ fn dh_group_generate(
       dh::Modp8192::MODULUS,
       dh::Modp8192::GENERATOR,
     ),
-    _ => return Err(type_error("Unsupported group name")),
+    _ => return Err(JsErrorBox::type_error("Unsupported group name")),
   };
   let params = DhParameter {
     prime: asn1::Int::new(u32_slice_to_u8_slice(prime)).unwrap(),
@@ -2128,7 +2280,7 @@ fn dh_group_generate(
 #[cppgc]
 pub fn op_node_generate_dh_group_key(
   #[string] group_name: &str,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   dh_group_generate(group_name)
 }
 
@@ -2136,7 +2288,7 @@ pub fn op_node_generate_dh_group_key(
 #[cppgc]
 pub async fn op_node_generate_dh_group_key_async(
   #[string] group_name: String,
-) -> Result<KeyObjectHandlePair, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandlePair, JsErrorBox> {
   spawn_blocking(move || dh_group_generate(&group_name))
     .await
     .unwrap()
@@ -2210,10 +2362,10 @@ pub fn op_node_dh_keys_generate_and_export(
 #[buffer]
 pub fn op_node_export_secret_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<Box<[u8]>, deno_core::error::AnyError> {
+) -> Result<Box<[u8]>, JsErrorBox> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
   Ok(key.to_vec().into_boxed_slice())
 }
 
@@ -2221,10 +2373,10 @@ pub fn op_node_export_secret_key(
 #[string]
 pub fn op_node_export_secret_key_b64url(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<String, deno_core::error::AnyError> {
+) -> Result<String, JsErrorBox> {
   let key = handle
     .as_secret_key()
-    .ok_or_else(|| type_error("key is not a secret key"))?;
+    .ok_or_else(|| JsErrorBox::type_error("key is not a secret key"))?;
   Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(key))
 }
 
@@ -2240,12 +2392,19 @@ pub fn op_node_export_public_key_jwk(
   public_key.export_jwk()
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPublicKeyPemError {
+  #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPublicKeyDer(#[from] AsymmetricPublicKeyDerError),
+  AsymmetricPublicKeyDer(
+    #[from]
+    #[inherit]
+    AsymmetricPublicKeyDerError,
+  ),
+  #[class(type)]
   #[error("very large data")]
   VeryLargeData,
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
 }
@@ -2290,12 +2449,19 @@ pub fn op_node_export_public_key_der(
   public_key.export_der(typ)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportPrivateKeyPemError {
+  #[class(inherit)]
   #[error(transparent)]
-  AsymmetricPublicKeyDer(#[from] AsymmetricPrivateKeyDerError),
+  AsymmetricPublicKeyDer(
+    #[from]
+    #[inherit]
+    AsymmetricPrivateKeyDerError,
+  ),
+  #[class(type)]
   #[error("very large data")]
   VeryLargeData,
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] der::Error),
 }
@@ -2329,6 +2495,31 @@ pub fn op_node_export_private_key_pem(
   Ok(String::from_utf8(out).expect("invalid pem is not possible"))
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ExportPrivateKeyJwkError {
+  #[class(inherit)]
+  #[error(transparent)]
+  AsymmetricPublicKeyJwk(#[from] AsymmetricPrivateKeyJwkError),
+  #[class(type)]
+  #[error("very large data")]
+  VeryLargeData,
+  #[class(generic)]
+  #[error(transparent)]
+  Der(#[from] der::Error),
+}
+
+#[op2]
+#[serde]
+pub fn op_node_export_private_key_jwk(
+  #[cppgc] handle: &KeyObjectHandle,
+) -> Result<deno_core::serde_json::Value, ExportPrivateKeyJwkError> {
+  let private_key = handle
+    .as_private_key()
+    .ok_or(AsymmetricPrivateKeyJwkError::KeyIsNotAsymmetricPrivateKey)?;
+
+  Ok(private_key.export_jwk()?)
+}
+
 #[op2]
 #[buffer]
 pub fn op_node_export_private_key_der(
@@ -2355,9 +2546,9 @@ pub fn op_node_key_type(#[cppgc] handle: &KeyObjectHandle) -> &'static str {
 #[cppgc]
 pub fn op_node_derive_public_key_from_private_key(
   #[cppgc] handle: &KeyObjectHandle,
-) -> Result<KeyObjectHandle, deno_core::error::AnyError> {
+) -> Result<KeyObjectHandle, JsErrorBox> {
   let Some(private_key) = handle.as_private_key() else {
-    return Err(type_error("expected private key"));
+    return Err(JsErrorBox::type_error("expected private key"));
   };
 
   Ok(KeyObjectHandle::AsymmetricPublic(

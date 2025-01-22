@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
@@ -13,6 +13,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 const {
+  BadResourcePrototype,
   isAnyArrayBuffer,
   isArrayBuffer,
   isStringObject,
@@ -26,6 +27,7 @@ const {
   JSONParse,
   ObjectDefineProperties,
   ObjectPrototypeIsPrototypeOf,
+  PromisePrototypeCatch,
   TypedArrayPrototypeGetBuffer,
   TypedArrayPrototypeGetByteLength,
   TypedArrayPrototypeGetByteOffset,
@@ -160,7 +162,18 @@ class InnerBody {
       )
     ) {
       readableStreamThrowIfErrored(this.stream);
-      return readableStreamCollectIntoUint8Array(this.stream);
+      return PromisePrototypeCatch(
+        readableStreamCollectIntoUint8Array(this.stream),
+        (e) => {
+          if (ObjectPrototypeIsPrototypeOf(BadResourcePrototype, e)) {
+            // TODO(kt3k): We probably like to pass e as `cause` if BadResource supports it.
+            throw new e.constructor(
+              "Cannot read body as underlying resource unavailable",
+            );
+          }
+          throw e;
+        },
+      );
     } else {
       this.streamOrStatic.consumed = true;
       return this.streamOrStatic.body;

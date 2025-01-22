@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file formatting utilities using
 //! [`dprint-plugin-typescript`](https://github.com/dprint/dprint-plugin-typescript).
@@ -7,36 +7,6 @@
 //! the future it can be easily extended to provide
 //! the same functions as ops available in JS runtime.
 
-use crate::args::CliOptions;
-use crate::args::Flags;
-use crate::args::FmtFlags;
-use crate::args::FmtOptions;
-use crate::args::FmtOptionsConfig;
-use crate::args::ProseWrap;
-use crate::args::UnstableFmtOptions;
-use crate::cache::Caches;
-use crate::colors;
-use crate::factory::CliFactory;
-use crate::util::diff::diff;
-use crate::util::file_watcher;
-use crate::util::fs::canonicalize_path;
-use crate::util::path::get_extension;
-use async_trait::async_trait;
-use deno_ast::ParsedSource;
-use deno_config::glob::FileCollector;
-use deno_config::glob::FilePatterns;
-use deno_core::anyhow::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::futures;
-use deno_core::parking_lot::Mutex;
-use deno_core::unsync::spawn_blocking;
-use deno_core::url::Url;
-use log::debug;
-use log::info;
-use log::warn;
 use std::borrow::Cow;
 use std::fs;
 use std::io::stdin;
@@ -49,7 +19,39 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use deno_ast::ParsedSource;
+use deno_config::glob::FileCollector;
+use deno_config::glob::FilePatterns;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::futures;
+use deno_core::parking_lot::Mutex;
+use deno_core::unsync::spawn_blocking;
+use deno_core::url::Url;
+use log::debug;
+use log::info;
+use log::warn;
+
+use crate::args::CliOptions;
+use crate::args::Flags;
+use crate::args::FmtFlags;
+use crate::args::FmtOptions;
+use crate::args::FmtOptionsConfig;
+use crate::args::ProseWrap;
+use crate::args::UnstableFmtOptions;
+use crate::cache::CacheDBHash;
+use crate::cache::Caches;
 use crate::cache::IncrementalCache;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::sys::CliSys;
+use crate::util::diff::diff;
+use crate::util::file_watcher;
+use crate::util::fs::canonicalize_path;
+use crate::util::path::get_extension;
 
 /// Format JavaScript/TypeScript files.
 pub async fn format(
@@ -57,7 +59,7 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
-    let cli_options = CliOptions::from_flags(flags)?;
+    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -164,7 +166,7 @@ fn resolve_paths_with_options_batches(
     Vec::with_capacity(members_fmt_options.len());
   for (_ctx, member_fmt_options) in members_fmt_options {
     let files =
-      collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
+      collect_fmt_files(cli_options, member_fmt_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         base: member_fmt_options.files.base.clone(),
@@ -174,7 +176,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
 }
@@ -200,7 +202,7 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      &(&fmt_options.options, &fmt_options.unstable), // cache key
+      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
       &paths,
     ));
     formatter
@@ -221,7 +223,7 @@ async fn format_files(
 fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_supported_ext_fmt(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
@@ -230,7 +232,7 @@ fn collect_fmt_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&CliSys::default(), files)
 }
 
 /// Formats markdown (using <https://github.com/dprint/dprint-plugin-markdown>) and its code blocks
@@ -481,7 +483,7 @@ pub fn format_html(
       }
 
       if let Some(error_msg) = inner(&error, file_path) {
-        AnyError::from(generic_error(error_msg))
+        AnyError::msg(error_msg)
       } else {
         AnyError::from(error)
       }
@@ -729,9 +731,9 @@ impl Formatter for CheckFormatter {
       Ok(())
     } else {
       let not_formatted_files_str = files_str(not_formatted_files_count);
-      Err(generic_error(format!(
+      Err(anyhow!(
         "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
-      )))
+      ))
     }
   }
 }

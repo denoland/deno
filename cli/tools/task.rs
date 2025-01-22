@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -25,7 +25,6 @@ use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::url::Url;
 use deno_path_util::normalize_path;
-use deno_runtime::deno_node::NodeResolver;
 use deno_task_shell::KillSignal;
 use deno_task_shell::ShellCommand;
 use indexmap::IndexMap;
@@ -36,6 +35,9 @@ use crate::args::Flags;
 use crate::args::TaskFlags;
 use crate::colors;
 use crate::factory::CliFactory;
+use crate::node::CliNodeResolver;
+use crate::npm::installer::NpmInstaller;
+use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
 use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
@@ -94,7 +96,7 @@ pub async fn execute_script(
       return Ok(0);
     };
 
-    let task_regex = arg_to_regex(task_name)?;
+    let task_name_filter = arg_to_task_name_filter(task_name)?;
     let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
     for folder in workspace.config_folders() {
@@ -137,10 +139,18 @@ pub async fn execute_script(
 
       // Match tasks in deno.json
       for name in tasks_config.task_names() {
-        if task_regex.is_match(name) && !visited.contains(name) {
+        let matches_filter = match &task_name_filter {
+          TaskNameFilter::Exact(n) => *n == name,
+          TaskNameFilter::Regex(re) => re.is_match(name),
+        };
+        if matches_filter && !visited.contains(name) {
           matched.insert(name.to_string());
           visit_task(&tasks_config, &mut visited, name);
         }
+      }
+
+      if matched.is_empty() {
+        continue;
       }
 
       packages_task_info.push(PackageTaskInfo {
@@ -195,6 +205,7 @@ pub async fn execute_script(
     }]
   };
 
+  let npm_installer = factory.npm_installer_if_managed()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();
@@ -208,7 +219,8 @@ pub async fn execute_script(
 
   let task_runner = TaskRunner {
     task_flags: &task_flags,
-    npm_resolver: npm_resolver.as_ref(),
+    npm_installer: npm_installer.map(|n| n.as_ref()),
+    npm_resolver,
     node_resolver: node_resolver.as_ref(),
     env_vars,
     cli_options,
@@ -223,7 +235,7 @@ pub async fn execute_script(
           &Url::from_directory_path(cli_options.initial_cwd()).unwrap(),
           "",
           &TaskDefinition {
-            command: task_flags.task.as_ref().unwrap().to_string(),
+            command: Some(task_flags.task.as_ref().unwrap().to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -258,8 +270,9 @@ struct RunSingleOptions<'a> {
 
 struct TaskRunner<'a> {
   task_flags: &'a TaskFlags,
-  npm_resolver: &'a dyn CliNpmResolver,
-  node_resolver: &'a NodeResolver,
+  npm_installer: Option<&'a NpmInstaller>,
+  npm_resolver: &'a CliNpmResolver,
+  node_resolver: &'a CliNodeResolver,
   env_vars: HashMap<String, String>,
   cli_options: &'a CliOptions,
   concurrency: usize,
@@ -440,6 +453,23 @@ impl<'a> TaskRunner<'a> {
     kill_signal: KillSignal,
     argv: &'a [String],
   ) -> Result<i32, deno_core::anyhow::Error> {
+    let Some(command) = &definition.command else {
+      log::info!(
+        "{} {} {}",
+        colors::green("Task"),
+        colors::cyan(task_name),
+        colors::gray("(no command)")
+      );
+      return Ok(0);
+    };
+
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
+    }
+
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
         .context("failed canonicalizing --cwd")?,
@@ -450,10 +480,11 @@ impl<'a> TaskRunner<'a> {
       self.npm_resolver,
       self.node_resolver,
     )?;
+
     self
       .run_single(RunSingleOptions {
         task_name,
-        script: &definition.command,
+        script: command,
         cwd: &cwd,
         custom_commands,
         kill_signal,
@@ -471,8 +502,11 @@ impl<'a> TaskRunner<'a> {
     argv: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_resolver) = self.npm_resolver.as_managed() {
-      npm_resolver.ensure_top_level_package_json_install().await?;
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
     }
 
     let cwd = match &self.task_flags.cwd {
@@ -492,6 +526,7 @@ impl<'a> TaskRunner<'a> {
       self.npm_resolver,
       self.node_resolver,
     )?;
+
     for task_name in &task_names {
       if let Some(script) = scripts.get(task_name) {
         let exit_code = self
@@ -817,7 +852,7 @@ fn print_available_tasks(
           is_deno: false,
           name: name.to_string(),
           task: deno_config::deno_json::TaskDefinition {
-            command: script.to_string(),
+            command: Some(script.to_string()),
             dependencies: vec![],
             description: None,
           },
@@ -853,11 +888,13 @@ fn print_available_tasks(
         )?;
       }
     }
-    writeln!(
-      writer,
-      "    {}",
-      strip_ansi_codes_and_escape_control_chars(&desc.task.command)
-    )?;
+    if let Some(command) = &desc.task.command {
+      writeln!(
+        writer,
+        "    {}",
+        strip_ansi_codes_and_escape_control_chars(command)
+      )?;
+    };
     if !desc.task.dependencies.is_empty() {
       let dependencies = desc
         .task
@@ -889,4 +926,42 @@ fn strip_ansi_codes_and_escape_control_chars(s: &str) -> String {
       c => c.to_string(),
     })
     .collect()
+}
+
+fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
+  if !input.contains("*") {
+    return Ok(TaskNameFilter::Exact(input));
+  }
+
+  let mut regex_str = regex::escape(input);
+  regex_str = regex_str.replace("\\*", ".*");
+  let re = Regex::new(&regex_str)?;
+  Ok(TaskNameFilter::Regex(re))
+}
+
+#[derive(Debug)]
+enum TaskNameFilter<'s> {
+  Exact(&'s str),
+  Regex(regex::Regex),
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_arg_to_task_name_filter() {
+    assert!(matches!(
+      arg_to_task_name_filter("test").unwrap(),
+      TaskNameFilter::Exact("test")
+    ));
+    assert!(matches!(
+      arg_to_task_name_filter("test-").unwrap(),
+      TaskNameFilter::Exact("test-")
+    ));
+    assert!(matches!(
+      arg_to_task_name_filter("test*").unwrap(),
+      TaskNameFilter::Regex(_)
+    ));
+  }
 }

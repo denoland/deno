@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use test_util::itest;
 use url::Url;

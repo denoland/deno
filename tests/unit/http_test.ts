@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
 // deno-lint-ignore-file no-deprecated-deno-api

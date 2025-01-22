@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // NOTE to all: use **cached** prepared statements when interfacing with SQLite.
 
@@ -7,20 +7,23 @@ use std::path::PathBuf;
 use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
+pub use rusqlite;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 
-pub use rusqlite;
-
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebStorageError {
+  #[class("DOMExceptionNotSupportedError")]
   #[error("LocalStorage is not supported in this context.")]
   ContextNotSupported,
+  #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Io(std::io::Error),
+  #[class("DOMExceptionQuotaExceededError")]
   #[error("Exceeded maximum storage size")]
   StorageExceeded,
 }

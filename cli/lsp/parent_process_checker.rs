@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::time::Duration;
 
@@ -52,9 +52,11 @@ fn is_process_active(process_id: u32) -> bool {
 
 #[cfg(test)]
 mod test {
-  use super::is_process_active;
   use std::process::Command;
+
   use test_util::deno_exe_path;
+
+  use super::is_process_active;
 
   #[test]
   fn process_active() {

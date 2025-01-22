@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod dns;
 mod fs_fetch_handler;
@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
+use std::future;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -18,6 +19,10 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 
+use bytes::Bytes;
+// Re-export data_url
+pub use data_url;
+use data_url::DataUrl;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -41,6 +46,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_path_util::url_from_file_path;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
@@ -50,9 +56,7 @@ use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKey;
 use deno_tls::TlsKeys;
 use deno_tls::TlsKeysHolder;
-
-use bytes::Bytes;
-use data_url::DataUrl;
+pub use fs_fetch_handler::FsFetchHandler;
 use http::header::HeaderName;
 use http::header::HeaderValue;
 use http::header::ACCEPT;
@@ -66,6 +70,7 @@ use http::header::USER_AGENT;
 use http::Extensions;
 use http::Method;
 use http::Uri;
+use http_body_util::combinators::BoxBody;
 use http_body_util::BodyExt;
 use hyper::body::Frame;
 use hyper_util::client::legacy::connect::HttpConnector;
@@ -73,16 +78,12 @@ use hyper_util::client::legacy::connect::HttpInfo;
 use hyper_util::client::legacy::Builder as HyperClientBuilder;
 use hyper_util::rt::TokioExecutor;
 use hyper_util::rt::TokioTimer;
+pub use proxy::basic_auth;
 use serde::Deserialize;
 use serde::Serialize;
+use tower::retry;
 use tower::ServiceExt;
 use tower_http::decompression::Decompression;
-
-// Re-export data_url
-pub use data_url;
-pub use proxy::basic_auth;
-
-pub use fs_fetch_handler::FsFetchHandler;
 
 #[derive(Clone)]
 pub struct Options {
@@ -100,9 +101,8 @@ pub struct Options {
   /// For more info on what can be configured, see [`hyper_util::client::legacy::Builder`].
   pub client_builder_hook: Option<fn(HyperClientBuilder) -> HyperClientBuilder>,
   #[allow(clippy::type_complexity)]
-  pub request_builder_hook: Option<
-    fn(&mut http::Request<ReqBody>) -> Result<(), deno_core::error::AnyError>,
-  >,
+  pub request_builder_hook:
+    Option<fn(&mut http::Request<ReqBody>) -> Result<(), JsErrorBox>>,
   pub unsafely_ignore_certificate_errors: Option<Vec<String>>,
   pub client_cert_chain_and_key: TlsKeys,
   pub file_fetch_handler: Rc<dyn FetchHandler>,
@@ -110,9 +110,7 @@ pub struct Options {
 }
 
 impl Options {
-  pub fn root_cert_store(
-    &self,
-  ) -> Result<Option<RootCertStore>, deno_core::error::AnyError> {
+  pub fn root_cert_store(&self) -> Result<Option<RootCertStore>, JsErrorBox> {
     Ok(match &self.root_cert_store_provider {
       Some(provider) => Some(provider.get_or_try_init()?.clone()),
       None => None,
@@ -164,51 +162,71 @@ deno_core::extension!(deno_fetch,
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FetchError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(type)]
   #[error("NetworkError when attempting to fetch resource")]
   NetworkError,
+  #[class(type)]
   #[error("Fetching files only supports the GET method: received {0}")]
   FsNotGet(Method),
+  #[class(inherit)]
   #[error(transparent)]
   PathToUrl(#[from] PathToUrlError),
+  #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[class(type)]
   #[error("{0:?}")]
   DataUrl(data_url::DataUrlError),
+  #[class(type)]
   #[error("{0:?}")]
   Base64(data_url::forgiving_base64::InvalidBase64),
+  #[class(type)]
   #[error("Blob for the given URL not found.")]
   BlobNotFound,
+  #[class(type)]
   #[error("Url scheme '{0}' not supported")]
   SchemeNotSupported(String),
+  #[class(type)]
   #[error("Request was cancelled")]
   RequestCanceled,
+  #[class(generic)]
   #[error(transparent)]
   Http(#[from] http::Error),
+  #[class(inherit)]
   #[error(transparent)]
   ClientCreate(#[from] HttpClientCreateError),
+  #[class(inherit)]
   #[error(transparent)]
   Url(#[from] url::ParseError),
+  #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
+  #[class(inherit)]
   #[error(transparent)]
   ClientSend(#[from] ClientSendError),
+  #[class(inherit)]
   #[error(transparent)]
-  RequestBuilderHook(deno_core::error::AnyError),
+  RequestBuilderHook(JsErrorBox),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
-  // Only used for node upgrade
+  #[class(generic)]
   #[error(transparent)]
-  Hyper(#[from] hyper::Error),
+  Dns(hickory_resolver::ResolveError),
 }
 
 pub type CancelableResponseFuture =
@@ -297,9 +315,7 @@ pub fn create_client_from_options(
 #[allow(clippy::type_complexity)]
 pub struct ResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<
-    Pin<Box<dyn Future<Output = Result<BufView, deno_core::error::AnyError>>>>,
-  >,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
 );
 
 impl ResourceToBodyAdapter {
@@ -315,7 +331,7 @@ unsafe impl Send for ResourceToBodyAdapter {}
 unsafe impl Sync for ResourceToBodyAdapter {}
 
 impl Stream for ResourceToBodyAdapter {
-  type Item = Result<Bytes, deno_core::error::AnyError>;
+  type Item = Result<Bytes, JsErrorBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -345,7 +361,7 @@ impl Stream for ResourceToBodyAdapter {
 
 impl hyper::body::Body for ResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = deno_core::error::AnyError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,
@@ -420,10 +436,7 @@ where
   FP: FetchPermissions + 'static,
 {
   let (client, allow_host) = if let Some(rid) = client_rid {
-    let r = state
-      .resource_table
-      .get::<HttpClientResource>(rid)
-      .map_err(FetchError::Resource)?;
+    let r = state.resource_table.get::<HttpClientResource>(rid)?;
     (r.client.clone(), r.allow_host)
   } else {
     (get_or_create_client_from_state(state)?, false)
@@ -479,22 +492,17 @@ where
             // If a body is passed, we use it, and don't return a body for streaming.
             con_len = Some(data.len() as u64);
 
-            http_body_util::Full::new(data.to_vec().into())
-              .map_err(|never| match never {})
-              .boxed()
+            ReqBody::full(data.to_vec().into())
           }
           (_, Some(resource)) => {
-            let resource = state
-              .resource_table
-              .take_any(resource)
-              .map_err(FetchError::Resource)?;
+            let resource = state.resource_table.take_any(resource)?;
             match resource.size_hint() {
               (body_size, Some(n)) if body_size == n && body_size > 0 => {
                 con_len = Some(body_size);
               }
               _ => {}
             }
-            ReqBody::new(ResourceToBodyAdapter::new(resource))
+            ReqBody::streaming(ResourceToBodyAdapter::new(resource))
           }
           (None, None) => unreachable!(),
         }
@@ -504,9 +512,7 @@ where
         if matches!(method, Method::POST | Method::PUT) {
           con_len = Some(0);
         }
-        http_body_util::Empty::new()
-          .map_err(|never| match never {})
-          .boxed()
+        ReqBody::empty()
       };
 
       let mut request = http::Request::new(body);
@@ -631,8 +637,7 @@ pub async fn op_fetch_send(
   let request = state
     .borrow_mut()
     .resource_table
-    .take::<FetchRequestResource>(rid)
-    .map_err(FetchError::Resource)?;
+    .take::<FetchRequestResource>(rid)?;
 
   let request = Rc::try_unwrap(request)
     .ok()
@@ -811,9 +816,7 @@ impl Resource for FetchResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => {
-                break Err(deno_core::error::type_error(err.to_string()))
-              }
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -821,7 +824,10 @@ impl Resource for FetchResponseResource {
       };
 
       let cancel_handle = RcRef::map(self, |r| &r.cancel);
-      fut.try_or_cancel(cancel_handle).await
+      fut
+        .try_or_cancel(cancel_handle)
+        .await
+        .map_err(JsErrorBox::from_err)
     })
   }
 
@@ -904,9 +910,7 @@ where
       ca_certs,
       proxy: args.proxy,
       dns_resolver: if args.use_hickory_resolver {
-        dns::Resolver::hickory()
-          .map_err(deno_core::error::AnyError::new)
-          .map_err(FetchError::Resource)?
+        dns::Resolver::hickory().map_err(FetchError::Dns)?
       } else {
         dns::Resolver::default()
       },
@@ -970,7 +974,8 @@ impl Default for CreateHttpClientOptions {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum HttpClientCreateError {
   #[error(transparent)]
   Tls(deno_tls::TlsError),
@@ -980,8 +985,9 @@ pub enum HttpClientCreateError {
   InvalidProxyUrl,
   #[error("Cannot create Http Client: either `http1` or `http2` needs to be set to true")]
   HttpVersionSelectionInvalid,
+  #[class(inherit)]
   #[error(transparent)]
-  RootCertStore(deno_core::error::AnyError),
+  RootCertStore(JsErrorBox),
 }
 
 /// Create new instance of async Client. This client supports
@@ -1069,7 +1075,8 @@ pub fn create_http_client(
   }
 
   let pooled_client = builder.build(connector);
-  let decompress = Decompression::new(pooled_client).gzip(true).br(true);
+  let retry_client = retry::Retry::new(FetchRetry, pooled_client);
+  let decompress = Decompression::new(retry_client).gzip(true).br(true);
 
   Ok(Client {
     inner: decompress,
@@ -1086,7 +1093,12 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
 
 #[derive(Clone, Debug)]
 pub struct Client {
-  inner: Decompression<hyper_util::client::legacy::Client<Connector, ReqBody>>,
+  inner: Decompression<
+    retry::Retry<
+      FetchRetry,
+      hyper_util::client::legacy::Client<Connector, ReqBody>,
+    >,
+  >,
   // Used to check whether to include a proxy-authorization header
   proxies: Arc<proxy::Proxies>,
   user_agent: HeaderValue,
@@ -1098,7 +1110,8 @@ type Connector = proxy::ProxyConnector<HttpConnector<dns::Resolver>>;
 #[allow(clippy::declare_interior_mutable_const)]
 const STAR_STAR: HeaderValue = HeaderValue::from_static("*/*");
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(type)]
 pub struct ClientSendError {
   uri: Uri,
   pub source: hyper_util::client::legacy::Error,
@@ -1173,14 +1186,74 @@ impl Client {
       .oneshot(req)
       .await
       .map_err(|e| ClientSendError { uri, source: e })?;
-    Ok(resp.map(|b| b.map_err(|e| deno_core::anyhow::anyhow!(e)).boxed()))
+    Ok(resp.map(|b| b.map_err(|e| JsErrorBox::generic(e.to_string())).boxed()))
   }
 }
 
-pub type ReqBody =
-  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
-pub type ResBody =
-  http_body_util::combinators::BoxBody<Bytes, deno_core::error::AnyError>;
+// This is a custom enum to allow the retry policy to clone the variants that could be retried.
+pub enum ReqBody {
+  Full(http_body_util::Full<Bytes>),
+  Empty(http_body_util::Empty<Bytes>),
+  Streaming(BoxBody<Bytes, JsErrorBox>),
+}
+
+pub type ResBody = BoxBody<Bytes, JsErrorBox>;
+
+impl ReqBody {
+  pub fn full(bytes: Bytes) -> Self {
+    ReqBody::Full(http_body_util::Full::new(bytes))
+  }
+
+  pub fn empty() -> Self {
+    ReqBody::Empty(http_body_util::Empty::new())
+  }
+
+  pub fn streaming<B>(body: B) -> Self
+  where
+    B: hyper::body::Body<Data = Bytes, Error = JsErrorBox>
+      + Send
+      + Sync
+      + 'static,
+  {
+    ReqBody::Streaming(BoxBody::new(body))
+  }
+}
+
+impl hyper::body::Body for ReqBody {
+  type Data = Bytes;
+  type Error = JsErrorBox;
+
+  fn poll_frame(
+    mut self: Pin<&mut Self>,
+    cx: &mut Context<'_>,
+  ) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+    match &mut *self {
+      ReqBody::Full(ref mut b) => {
+        Pin::new(b).poll_frame(cx).map_err(|never| match never {})
+      }
+      ReqBody::Empty(ref mut b) => {
+        Pin::new(b).poll_frame(cx).map_err(|never| match never {})
+      }
+      ReqBody::Streaming(ref mut b) => Pin::new(b).poll_frame(cx),
+    }
+  }
+
+  fn is_end_stream(&self) -> bool {
+    match self {
+      ReqBody::Full(ref b) => b.is_end_stream(),
+      ReqBody::Empty(ref b) => b.is_end_stream(),
+      ReqBody::Streaming(ref b) => b.is_end_stream(),
+    }
+  }
+
+  fn size_hint(&self) -> hyper::body::SizeHint {
+    match self {
+      ReqBody::Full(ref b) => b.size_hint(),
+      ReqBody::Empty(ref b) => b.size_hint(),
+      ReqBody::Streaming(ref b) => b.size_hint(),
+    }
+  }
+}
 
 /// Copied from https://github.com/seanmonstar/reqwest/blob/b9d62a0323d96f11672a61a17bf8849baec00275/src/async_impl/request.rs#L572
 /// Check the request URL for a "username:password" type authority, and if
@@ -1216,4 +1289,103 @@ pub fn extract_authority(url: &mut Url) -> Option<(String, Option<String>)> {
 #[op2(fast)]
 fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
   promise.state() != v8::PromiseState::Pending
+}
+
+/// Deno.fetch's retry policy.
+#[derive(Clone, Debug)]
+struct FetchRetry;
+
+/// Marker extension that a request has been retried once.
+#[derive(Clone, Debug)]
+struct Retried;
+
+impl<ResBody, E>
+  retry::Policy<http::Request<ReqBody>, http::Response<ResBody>, E>
+  for FetchRetry
+where
+  E: std::error::Error + 'static,
+{
+  /// Don't delay retries.
+  type Future = future::Ready<()>;
+
+  fn retry(
+    &mut self,
+    req: &mut http::Request<ReqBody>,
+    result: &mut Result<http::Response<ResBody>, E>,
+  ) -> Option<Self::Future> {
+    if req.extensions().get::<Retried>().is_some() {
+      // only retry once
+      return None;
+    }
+
+    match result {
+      Ok(..) => {
+        // never retry a Response
+        None
+      }
+      Err(err) => {
+        if is_error_retryable(&*err) {
+          req.extensions_mut().insert(Retried);
+          Some(future::ready(()))
+        } else {
+          None
+        }
+      }
+    }
+  }
+
+  fn clone_request(
+    &mut self,
+    req: &http::Request<ReqBody>,
+  ) -> Option<http::Request<ReqBody>> {
+    let body = match req.body() {
+      ReqBody::Full(b) => ReqBody::Full(b.clone()),
+      ReqBody::Empty(b) => ReqBody::Empty(*b),
+      ReqBody::Streaming(..) => return None,
+    };
+
+    let mut clone = http::Request::new(body);
+    *clone.method_mut() = req.method().clone();
+    *clone.uri_mut() = req.uri().clone();
+    *clone.headers_mut() = req.headers().clone();
+    *clone.extensions_mut() = req.extensions().clone();
+    Some(clone)
+  }
+}
+
+fn is_error_retryable(err: &(dyn std::error::Error + 'static)) -> bool {
+  // Note: hyper doesn't promise it will always be this h2 version. Keep up to date.
+  if let Some(err) = find_source::<h2::Error>(err) {
+    // They sent us a graceful shutdown, try with a new connection!
+    if err.is_go_away()
+      && err.is_remote()
+      && err.reason() == Some(h2::Reason::NO_ERROR)
+    {
+      return true;
+    }
+
+    // REFUSED_STREAM was sent from the server, which is safe to retry.
+    // https://www.rfc-editor.org/rfc/rfc9113.html#section-8.7-3.2
+    if err.is_reset()
+      && err.is_remote()
+      && err.reason() == Some(h2::Reason::REFUSED_STREAM)
+    {
+      return true;
+    }
+  }
+
+  false
+}
+
+fn find_source<'a, E: std::error::Error + 'static>(
+  err: &'a (dyn std::error::Error + 'static),
+) -> Option<&'a E> {
+  let mut err = Some(err);
+  while let Some(src) = err {
+    if let Some(found) = src.downcast_ref::<E>() {
+      return Some(found);
+    }
+    err = src.source();
+  }
+  None
 }
