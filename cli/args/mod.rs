@@ -1384,7 +1384,7 @@ fn resolve_import_map_specifier(
       if config_file.json.import_map.is_some() {
         log::warn!(
           "{} the configuration file \"{}\" contains an entry for \"importMap\" that is being ignored.",
-          deno_terminal::colors::yellow("Warning"),
+          colors::yellow("Warning"),
           config_file.specifier,
         );
       }
@@ -1470,36 +1470,6 @@ mod test {
   use super::*;
 
   #[test]
-  fn jsr_urls() {
-    let reg_url = jsr_url();
-    assert!(reg_url.as_str().ends_with('/'));
-    let reg_api_url = jsr_api_url();
-    assert!(reg_api_url.as_str().ends_with('/'));
-  }
-
-  #[test]
-  fn test_allow_import_host_from_url() {
-    fn parse(text: &str) -> Option<String> {
-      allow_import_host_from_url(&Url::parse(text).unwrap())
-    }
-
-    assert_eq!(
-      parse("http://127.0.0.1:4250"),
-      Some("127.0.0.1:4250".to_string())
-    );
-    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
-    assert_eq!(
-      parse("https://example.com"),
-      Some("example.com:443".to_string())
-    );
-    assert_eq!(
-      parse("http://example.com"),
-      Some("example.com:80".to_string())
-    );
-    assert_eq!(parse("file:///example.com"), None);
-  }
-
-  #[test]
   fn resolve_import_map_flags_take_precedence() {
     let config_text = r#"{
       "importMap": "import_map.json"
@@ -1541,5 +1511,35 @@ mod test {
     assert!(actual.is_ok());
     let actual = actual.unwrap();
     assert_eq!(actual, None);
+  }
+
+  #[test]
+  fn jsr_urls() {
+    let reg_url = jsr_url();
+    assert!(reg_url.as_str().ends_with('/'));
+    let reg_api_url = jsr_api_url();
+    assert!(reg_api_url.as_str().ends_with('/'));
+  }
+
+  #[test]
+  fn test_allow_import_host_from_url() {
+    fn parse(text: &str) -> Option<String> {
+      allow_import_host_from_url(&Url::parse(text).unwrap())
+    }
+
+    assert_eq!(
+      parse("http://127.0.0.1:4250"),
+      Some("127.0.0.1:4250".to_string())
+    );
+    assert_eq!(parse("http://jsr.io"), Some("jsr.io:80".to_string()));
+    assert_eq!(
+      parse("https://example.com"),
+      Some("example.com:443".to_string())
+    );
+    assert_eq!(
+      parse("http://example.com"),
+      Some("example.com:80".to_string())
+    );
+    assert_eq!(parse("file:///example.com"), None);
   }
 }

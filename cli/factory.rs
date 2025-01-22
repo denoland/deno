@@ -697,7 +697,6 @@ impl CliFactory {
   pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
     self.services.resolver_factory.get_or_try_init(|| {
       Ok(Arc::new(CliResolverFactory::new(
-        self.sys(),
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
           no_sloppy_imports_cache: false,
