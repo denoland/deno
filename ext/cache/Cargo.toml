@@ -14,11 +14,22 @@ description = "Implementation of Cache API for Deno"
 path = "lib.rs"
 
 [dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
 async-trait.workspace = true
+base64.workspace = true
+bytes.workspace = true
+chrono.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+futures.workspace = true
+http.workspace = true
+hyper.workspace = true
+reqwest.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 sha2.workspace = true
+slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
