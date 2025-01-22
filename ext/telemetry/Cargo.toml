@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_telemetry"
-version = "0.8.0"
+version = "0.9.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,8 +17,10 @@ path = "lib.rs"
 async-trait.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_tls.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
+hyper-rustls.workspace = true
 hyper-util.workspace = true
 log.workspace = true
 once_cell.workspace = true
