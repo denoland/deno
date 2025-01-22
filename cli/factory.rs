@@ -37,7 +37,6 @@ use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::npm::NpmReqResolverOptions;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
@@ -85,13 +84,10 @@ use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::NpmResolutionInstaller;
-use crate::npm::CliByonmNpmResolverCreateOptions;
-use crate::npm::CliManagedNpmResolverCreateOptions;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmCacheHttpClient;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::CliNpmResolver;
-use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmResolutionInitializer;
@@ -110,7 +106,6 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::worker::CliMainWorkerFactory;
@@ -290,11 +285,8 @@ struct CliFactoryServices {
   npm_graph_resolver: Deferred<Arc<CliNpmGraphResolver>>,
   npm_installer: Deferred<Arc<NpmInstaller>>,
   npm_registry_info_provider: Deferred<Arc<CliNpmRegistryInfoProvider>>,
-  npm_req_resolver: Deferred<Arc<CliNpmReqResolver>>,
-  npm_resolution: Arc<NpmResolutionCell>,
   npm_resolution_initializer: Deferred<Arc<NpmResolutionInitializer>>,
   npm_resolution_installer: Deferred<Arc<NpmResolutionInstaller>>,
-  npm_resolver: Deferred<CliNpmResolver>,
   npm_tarball_cache: Deferred<Arc<CliNpmTarballCache>>,
   parsed_source_cache: Deferred<Arc<ParsedSourceCache>>,
   permission_desc_parser:
@@ -357,16 +349,12 @@ impl CliFactory {
     self.services.cli_options.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory()?;
       let workspace_directory = workspace_factory.workspace_directory()?;
-      let node_modules_dir = workspace_factory
-        .node_modules_dir_path()?
-        .map(|p| p.to_path_buf());
       let maybe_external_import_map =
         self.workspace_external_import_map_loader()?.get_or_load()?;
       CliOptions::from_flags(
         &self.sys(),
         self.flags.clone(),
         workspace_factory.initial_cwd().clone(),
-        node_modules_dir,
         maybe_external_import_map,
         workspace_directory.clone(),
       )
@@ -545,19 +533,22 @@ impl CliFactory {
   pub fn npm_installer(&self) -> Result<&Arc<NpmInstaller>, AnyError> {
     self.services.npm_installer.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
+      let workspace_factory = self.workspace_factory()?;
       Ok(Arc::new(NpmInstaller::new(
         self.npm_cache()?.clone(),
         Arc::new(NpmInstallDepsProvider::from_workspace(
           cli_options.workspace(),
         )),
-        self.npm_resolution().clone(),
+        self.npm_resolution()?.clone(),
         self.npm_resolution_initializer()?.clone(),
         self.npm_resolution_installer()?.clone(),
         self.text_only_progress_bar(),
         self.sys(),
         self.npm_tarball_cache()?.clone(),
         cli_options.maybe_lockfile().cloned(),
-        cli_options.node_modules_dir_path().cloned(),
+        workspace_factory
+          .node_modules_dir_path()?
+          .map(|p| p.to_path_buf()),
         cli_options.lifecycle_scripts_config(),
         cli_options.npm_system_info(),
       )))
@@ -579,8 +570,8 @@ impl CliFactory {
       })
   }
 
-  pub fn npm_resolution(&self) -> &Arc<NpmResolutionCell> {
-    &self.services.npm_resolution
+  pub fn npm_resolution(&self) -> Result<&Arc<NpmResolutionCell>, AnyError> {
+    Ok(self.resolver_factory()?.npm_resolution())
   }
 
   pub fn npm_resolution_initializer(
@@ -593,7 +584,7 @@ impl CliFactory {
         let cli_options = self.cli_options()?;
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
-          self.npm_resolution().clone(),
+          self.npm_resolution()?.clone(),
           match resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -618,63 +609,15 @@ impl CliFactory {
       let cli_options = self.cli_options()?;
       Ok(Arc::new(NpmResolutionInstaller::new(
         self.npm_registry_info_provider()?.clone(),
-        self.npm_resolution().clone(),
+        self.npm_resolution()?.clone(),
         cli_options.maybe_lockfile().cloned(),
       )))
     })
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
-    self
-      .services
-      .npm_resolver
-      .get_or_try_init_async(
-        async {
-          let cli_options = self.cli_options()?;
-          Ok(CliNpmResolver::new(
-            if self.resolver_factory()?.use_byonm()? {
-              CliNpmResolverCreateOptions::Byonm(
-                CliByonmNpmResolverCreateOptions {
-                  sys: self.sys(),
-                  pkg_json_resolver: self.pkg_json_resolver()?.clone(),
-                  root_node_modules_dir: Some(
-                    match cli_options.node_modules_dir_path() {
-                      Some(node_modules_path) => {
-                        node_modules_path.to_path_buf()
-                      }
-                      // path needs to be canonicalized for node resolution
-                      // (node_modules_dir_path above is already canonicalized)
-                      None => canonicalize_path_maybe_not_exists(
-                        cli_options.initial_cwd(),
-                      )?
-                      .join("node_modules"),
-                    },
-                  ),
-                },
-              )
-            } else {
-              self
-                .npm_resolution_initializer()?
-                .ensure_initialized()
-                .await?;
-              CliNpmResolverCreateOptions::Managed(
-                CliManagedNpmResolverCreateOptions {
-                  sys: self.sys(),
-                  npm_resolution: self.npm_resolution().clone(),
-                  npm_cache_dir: self.npm_cache_dir()?.clone(),
-                  maybe_node_modules_path: cli_options
-                    .node_modules_dir_path()
-                    .cloned(),
-                  npm_system_info: cli_options.npm_system_info(),
-                  npmrc: self.npmrc()?.clone(),
-                },
-              )
-            },
-          ))
-        }
-        .boxed_local(),
-      )
-      .await
+    self.initialize_npm_resolution_if_managed().await?;
+    self.resolver_factory()?.npm_resolver()
   }
 
   pub fn npm_tarball_cache(
@@ -904,19 +847,7 @@ impl CliFactory {
   pub async fn npm_req_resolver(
     &self,
   ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
-    self
-      .services
-      .npm_req_resolver
-      .get_or_try_init_async(async {
-        let npm_resolver = self.npm_resolver().await?;
-        Ok(Arc::new(CliNpmReqResolver::new(NpmReqResolverOptions {
-          sys: self.sys(),
-          in_npm_pkg_checker: self.in_npm_pkg_checker()?.clone(),
-          node_resolver: self.node_resolver().await?.clone(),
-          npm_resolver: npm_resolver.clone(),
-        })))
-      })
-      .await
+    self.resolver_factory()?.npm_req_resolver()
   }
 
   pub fn pkg_json_resolver(
@@ -1149,12 +1080,16 @@ impl CliFactory {
     let cjs_tracker = self.cjs_tracker()?.clone();
     let pkg_json_resolver = self.pkg_json_resolver()?.clone();
     let npm_req_resolver = self.npm_req_resolver().await?;
+    let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
       let mode = if self.resolver_factory()?.use_byonm()? {
         NpmRegistryReadPermissionCheckerMode::Byonm
-      } else if let Some(node_modules_dir) = cli_options.node_modules_dir_path()
+      } else if let Some(node_modules_dir) =
+        workspace_factory.node_modules_dir_path()?
       {
-        NpmRegistryReadPermissionCheckerMode::Local(node_modules_dir.clone())
+        NpmRegistryReadPermissionCheckerMode::Local(
+          node_modules_dir.to_path_buf(),
+        )
       } else {
         NpmRegistryReadPermissionCheckerMode::Global(
           self.npm_cache_dir()?.root_dir().to_path_buf(),
@@ -1226,6 +1161,7 @@ impl CliFactory {
     &self,
   ) -> Result<LibMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
+    let workspace_factory = self.workspace_factory()?;
     Ok(LibMainWorkerOptions {
       argv: cli_options.argv().clone(),
       // This optimization is only available for "run" subcommand
@@ -1235,7 +1171,9 @@ impl CliFactory {
       log_level: cli_options.log_level().unwrap_or(log::Level::Info).into(),
       enable_op_summary_metrics: cli_options.enable_op_summary_metrics(),
       enable_testing_features: cli_options.enable_testing_features(),
-      has_node_modules_dir: cli_options.has_node_modules_dir(),
+      has_node_modules_dir: workspace_factory
+        .node_modules_dir_path()?
+        .is_some(),
       inspect_brk: cli_options.inspect_brk().is_some(),
       inspect_wait: cli_options.inspect_wait().is_some(),
       strace_ops: cli_options.strace_ops().clone(),
@@ -1327,22 +1265,19 @@ fn new_workspace_factory_options(
       ConfigFlag::Disabled => ConfigDiscoveryOption::Disabled,
     },
     deno_dir_path_provider: Some(deno_dir_path_provider),
-    no_npm: flags.no_npm,
-    node_modules_dir: match flags.node_modules_dir {
-      Some(value) => Some(value),
-      None => match &flags.subcommand {
-        // For `deno install/add/remove/init` we want to force the managed
-        // resolver so it can set up `node_modules/` directory.
-        DenoSubcommand::Install(_)
+    // For `deno install/add/remove/init` we want to force the managed
+    // resolver so it can set up the `node_modules/` directory.
+    is_package_manager_subcommand: matches!(
+      flags.subcommand,
+      DenoSubcommand::Install(_)
         | DenoSubcommand::Add(_)
         | DenoSubcommand::Remove(_)
         | DenoSubcommand::Init(_)
-        | DenoSubcommand::Outdated(_) => {
-          Some(deno_config::deno_json::NodeModulesDirMode::Auto)
-        }
-        _ => None,
-      },
-    },
+        | DenoSubcommand::Outdated(_)
+    ),
+    no_npm: flags.no_npm,
+    node_modules_dir: flags.node_modules_dir,
+
     npm_process_state: NPM_PROCESS_STATE.as_ref().map(|s| {
       NpmProcessStateOptions {
         node_modules_dir: s

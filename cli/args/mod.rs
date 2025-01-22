@@ -492,7 +492,6 @@ pub struct CliOptions {
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
-  maybe_node_modules_folder: Option<PathBuf>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
@@ -503,7 +502,6 @@ impl CliOptions {
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    maybe_node_modules_folder: Option<PathBuf>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -528,7 +526,6 @@ impl CliOptions {
       initial_cwd,
       maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
-      maybe_node_modules_folder,
       start_dir,
     })
   }
@@ -537,7 +534,6 @@ impl CliOptions {
     sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_node_modules_folder: Option<PathBuf>,
     maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
@@ -554,13 +550,7 @@ impl CliOptions {
 
     log::debug!("Finished config loading.");
 
-    Self::new(
-      flags,
-      initial_cwd,
-      maybe_lock_file.map(Arc::new),
-      maybe_node_modules_folder,
-      start_dir,
-    )
+    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
   }
 
   #[inline(always)]
@@ -743,14 +733,6 @@ impl CliOptions {
   // on this functionality.
   pub fn is_node_main(&self) -> bool {
     NPM_PROCESS_STATE.is_some()
-  }
-
-  pub fn has_node_modules_dir(&self) -> bool {
-    self.maybe_node_modules_folder.is_some()
-  }
-
-  pub fn node_modules_dir_path(&self) -> Option<&PathBuf> {
-    self.maybe_node_modules_folder.as_ref()
   }
 
   pub fn node_modules_dir(

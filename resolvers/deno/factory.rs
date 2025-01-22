@@ -235,6 +235,7 @@ pub struct WorkspaceFactoryOptions<
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
   pub deno_dir_path_provider: Option<DenoDirPathProviderRc<TSys>>,
+  pub is_package_manager_subcommand: bool,
   pub node_modules_dir: Option<NodeModulesDirMode>,
   pub no_npm: bool,
   /// The process sate if using ext/node and the current process was "forked".
@@ -376,7 +377,13 @@ impl<
 
         let workspace = &self.workspace_directory()?.workspace;
         if workspace.root_pkg_json().is_some() {
-          return Ok(NodeModulesDirMode::Manual);
+          if self.options.is_package_manager_subcommand {
+            // force using the managed resolver for package management
+            // sub commands so that it sets up the node_modules directory
+            return Ok(NodeModulesDirMode::Auto);
+          } else {
+            return Ok(NodeModulesDirMode::Manual);
+          }
         }
 
         // use the global cache
