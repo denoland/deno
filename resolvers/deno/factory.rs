@@ -469,7 +469,7 @@ impl<
         let workspace = &self.workspace_directory()?.workspace;
         let root_folder = workspace.root_folder_configs();
         let use_node_modules_dir = self
-          .resolved_node_modules_dir()?
+          .specified_node_modules_dir()?
           .map(|v| v.uses_node_modules_dir());
         let path = if use_node_modules_dir == Some(false) {
           return Ok(None);
