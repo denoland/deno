@@ -50,7 +50,6 @@ function debuglogImpl(
     if (enabled) {
       emitWarningIfNeeded(set);
       debugImpls[set] = function debug(msg, ...args: unknown[]) {
-        args = args.map((arg) => inspect(arg, { colors: true }));
         // deno-lint-ignore no-console
         console.error("%s %s: " + msg, set, String(Deno.pid), ...args);
       };
