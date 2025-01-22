@@ -844,9 +844,7 @@ impl CliFactory {
     ))
   }
 
-  pub async fn npm_req_resolver(
-    &self,
-  ) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
+  pub fn npm_req_resolver(&self) -> Result<&Arc<CliNpmReqResolver>, AnyError> {
     self.resolver_factory()?.npm_req_resolver()
   }
 
@@ -1079,7 +1077,7 @@ impl CliFactory {
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
     let pkg_json_resolver = self.pkg_json_resolver()?.clone();
-    let npm_req_resolver = self.npm_req_resolver().await?;
+    let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
       let mode = if self.resolver_factory()?.use_byonm()? {
