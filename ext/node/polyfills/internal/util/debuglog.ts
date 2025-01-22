@@ -49,10 +49,10 @@ function debuglogImpl(
   if (debugImpls[set] === undefined) {
     if (enabled) {
       emitWarningIfNeeded(set);
-      debugImpls[set] = function debug(...args: unknown[]) {
-        const msg = args.map((arg) => inspect(arg)).join(" ");
+      debugImpls[set] = function debug(msg, ...args: unknown[]) {
+        args = args.map((arg) => inspect(arg, { colors: true }));
         // deno-lint-ignore no-console
-        console.error("%s %s: %s", set, String(Deno.pid), msg);
+        console.error("%s %s: " + msg, set, String(Deno.pid), ...args);
       };
     } else {
       debugImpls[set] = noop;
