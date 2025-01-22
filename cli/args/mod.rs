@@ -8,10 +8,10 @@ mod lockfile;
 mod package_json;
 
 use std::borrow::Cow;
-use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -214,6 +214,22 @@ pub fn ts_config_to_transpile_and_emit_options(
   ))
 }
 
+pub struct WorkspaceBenchOptions {
+  pub filter: Option<String>,
+  pub json: bool,
+  pub no_run: bool,
+}
+
+impl WorkspaceBenchOptions {
+  pub fn resolve(bench_flags: &BenchFlags) -> Self {
+    Self {
+      filter: bench_flags.filter.clone(),
+      json: bench_flags.json,
+      no_run: bench_flags.no_run,
+    }
+  }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BenchOptions {
   pub files: FilePatterns,
@@ -307,6 +323,41 @@ fn resolve_fmt_options(
   }
 
   options
+}
+
+#[derive(Clone, Debug)]
+pub struct WorkspaceTestOptions {
+  pub doc: bool,
+  pub no_run: bool,
+  pub fail_fast: Option<NonZeroUsize>,
+  pub permit_no_files: bool,
+  pub filter: Option<String>,
+  pub shuffle: Option<u64>,
+  pub concurrent_jobs: NonZeroUsize,
+  pub trace_leaks: bool,
+  pub reporter: TestReporterConfig,
+  pub junit_path: Option<String>,
+  pub hide_stacktraces: bool,
+}
+
+impl WorkspaceTestOptions {
+  pub fn resolve(test_flags: &TestFlags) -> Self {
+    Self {
+      permit_no_files: test_flags.permit_no_files,
+      concurrent_jobs: test_flags
+        .concurrent_jobs
+        .unwrap_or_else(|| NonZeroUsize::new(1).unwrap()),
+      doc: test_flags.doc,
+      fail_fast: test_flags.fail_fast,
+      filter: test_flags.filter.clone(),
+      no_run: test_flags.no_run,
+      shuffle: test_flags.shuffle,
+      trace_leaks: test_flags.trace_leaks,
+      reporter: test_flags.reporter,
+      junit_path: test_flags.junit_path.clone(),
+      hide_stacktraces: test_flags.hide_stacktraces,
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -557,21 +608,6 @@ struct CliOptionOverrides {
   import_map_specifier: Option<Option<ModuleSpecifier>>,
 }
 
-fn load_external_import_map(
-  deno_json: &ConfigFile,
-) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
-  if !deno_json.is_an_import_map() {
-    if let Some(path) = deno_json.to_import_map_path()? {
-      let contents = std::fs::read_to_string(&path).with_context(|| {
-        format!("Unable to read import map at '{}'", path.display())
-      })?;
-      let map = serde_json::from_str(&contents)?;
-      return Ok(Some((path, map)));
-    }
-  }
-  Ok(None)
-}
-
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
 pub struct CliOptions {
@@ -586,7 +622,6 @@ pub struct CliOptions {
   maybe_external_import_map: Option<(PathBuf, serde_json::Value)>,
   overrides: CliOptionOverrides,
   pub start_dir: Arc<WorkspaceDirectory>,
-  pub all_dirs: BTreeMap<Arc<Url>, Arc<WorkspaceDirectory>>,
   pub deno_dir_provider: Arc<DenoDirProvider>,
 }
 
@@ -632,9 +667,6 @@ impl CliOptions {
 
     load_env_variables_from_env_file(flags.env_file.as_ref());
 
-    let all_dirs = [(start_dir.dir_url().clone(), start_dir.clone())]
-      .into_iter()
-      .collect();
     Ok(Self {
       flags,
       initial_cwd,
@@ -645,7 +677,6 @@ impl CliOptions {
       main_module_cell: std::sync::OnceLock::new(),
       maybe_external_import_map,
       start_dir,
-      all_dirs,
       deno_dir_provider,
     })
   }
@@ -718,6 +749,21 @@ impl CliOptions {
 
     let (npmrc, _) = discover_npmrc_from_workspace(&start_dir.workspace)?;
 
+    fn load_external_import_map(
+      deno_json: &ConfigFile,
+    ) -> Result<Option<(PathBuf, serde_json::Value)>, AnyError> {
+      if !deno_json.is_an_import_map() {
+        if let Some(path) = deno_json.to_import_map_path()? {
+          let contents = std::fs::read_to_string(&path).with_context(|| {
+            format!("Unable to read import map at '{}'", path.display())
+          })?;
+          let map = serde_json::from_str(&contents)?;
+          return Ok(Some((path, map)));
+        }
+      }
+      Ok(None)
+    }
+
     let external_import_map =
       if let Some(deno_json) = start_dir.workspace.root_deno_json() {
         load_external_import_map(deno_json)?
@@ -744,17 +790,6 @@ impl CliOptions {
       false,
       external_import_map,
     )
-  }
-
-  pub fn with_all_dirs(
-    self,
-    all_dirs: impl IntoIterator<Item = Arc<WorkspaceDirectory>>,
-  ) -> Self {
-    let all_dirs = all_dirs
-      .into_iter()
-      .map(|d| (d.dir_url().clone(), d))
-      .collect();
-    Self { all_dirs, ..self }
   }
 
   /// This method is purposefully verbose to disourage its use. Do not use it
@@ -1092,6 +1127,8 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, ConfigFileError> {
+    // todo(THIS PR): this seems wrong. For example, for linting shouldn't it collect
+    // this with the lint options per directory?
     self.start_dir.to_ts_config_for_emit(config_type)
   }
 
@@ -1121,6 +1158,9 @@ impl CliOptions {
   pub fn to_compiler_option_types(
     &self,
   ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
+    // todo(THIS PR): this seems wrong. I think we should supply the
+    // types for all imports to the graph and then get a subset of
+    // the graph that only contains the specific types
     self
       .start_dir
       .to_compiler_option_types()
@@ -1142,22 +1182,12 @@ impl CliOptions {
   pub fn resolve_fmt_options_for_members(
     &self,
     fmt_flags: &FmtFlags,
-  ) -> Result<Vec<(Arc<WorkspaceDirectory>, FmtOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, FmtOptions)>, AnyError> {
     let cli_arg_patterns =
       fmt_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_configs = if self.flags.is_discovered_config() {
-      self
-        .workspace()
-        .resolve_fmt_config_for_members(&cli_arg_patterns)?
-        .into_iter()
-        .map(|(d, c)| (Arc::new(d), c))
-        .collect::<Vec<_>>()
-    } else {
-      vec![(
-        self.start_dir.clone(),
-        self.start_dir.to_fmt_config(cli_arg_patterns)?,
-      )]
-    };
+    let member_configs = self
+      .workspace()
+      .resolve_fmt_config_for_members(&cli_arg_patterns)?;
     let unstable = self.resolve_config_unstable_fmt_options();
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
@@ -1183,46 +1213,15 @@ impl CliOptions {
     WorkspaceLintOptions::resolve(&lint_config, lint_flags)
   }
 
-  pub fn resolve_file_flags_for_members(
-    &self,
-    file_flags: &FileFlags,
-  ) -> Result<Vec<(Arc<WorkspaceDirectory>, FilePatterns)>, AnyError> {
-    let cli_arg_patterns = file_flags.as_file_patterns(self.initial_cwd())?;
-    let member_patterns = if self.flags.is_discovered_config() {
-      self
-        .workspace()
-        .resolve_file_patterns_for_members(&cli_arg_patterns)?
-        .into_iter()
-        .map(|(d, p)| (Arc::new(d), p))
-        .collect::<Vec<_>>()
-    } else {
-      vec![(
-        self.start_dir.clone(),
-        self.start_dir.to_resolved_file_patterns(cli_arg_patterns)?,
-      )]
-    };
-    Ok(member_patterns)
-  }
-
   pub fn resolve_lint_options_for_members(
     &self,
     lint_flags: &LintFlags,
-  ) -> Result<Vec<(Arc<WorkspaceDirectory>, LintOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, LintOptions)>, AnyError> {
     let cli_arg_patterns =
       lint_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_configs = if self.flags.is_discovered_config() {
-      self
-        .workspace()
-        .resolve_lint_config_for_members(&cli_arg_patterns)?
-        .into_iter()
-        .map(|(d, c)| (Arc::new(d), c))
-        .collect::<Vec<_>>()
-    } else {
-      vec![(
-        self.start_dir.clone(),
-        self.start_dir.to_lint_config(cli_arg_patterns)?,
-      )]
-    };
+    let member_configs = self
+      .workspace()
+      .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
       let options = LintOptions::resolve(config, lint_flags);
@@ -1248,54 +1247,52 @@ impl CliOptions {
     })
   }
 
+  pub fn resolve_workspace_test_options(
+    &self,
+    test_flags: &TestFlags,
+  ) -> WorkspaceTestOptions {
+    WorkspaceTestOptions::resolve(test_flags)
+  }
+
   pub fn resolve_test_options_for_members(
     &self,
     test_flags: &TestFlags,
-  ) -> Result<Vec<(Arc<WorkspaceDirectory>, TestOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, TestOptions)>, AnyError> {
     let cli_arg_patterns =
       test_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_options = if self.flags.is_discovered_config() {
-      self
-        .workspace()
-        .resolve_test_config_for_members(&cli_arg_patterns)?
-        .into_iter()
-        .map(|(d, c)| (Arc::new(d), TestOptions::resolve(c, test_flags)))
-        .collect::<Vec<_>>()
-    } else {
-      vec![(
-        self.start_dir.clone(),
-        TestOptions::resolve(
-          self.start_dir.to_test_config(cli_arg_patterns)?,
-          test_flags,
-        ),
-      )]
-    };
-    Ok(member_options)
+    let workspace_dir_configs = self
+      .workspace()
+      .resolve_test_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(workspace_dir_configs.len());
+    for (member_dir, config) in workspace_dir_configs {
+      let options = TestOptions::resolve(config, test_flags);
+      result.push((member_dir, options));
+    }
+    Ok(result)
+  }
+
+  pub fn resolve_workspace_bench_options(
+    &self,
+    bench_flags: &BenchFlags,
+  ) -> WorkspaceBenchOptions {
+    WorkspaceBenchOptions::resolve(bench_flags)
   }
 
   pub fn resolve_bench_options_for_members(
     &self,
     bench_flags: &BenchFlags,
-  ) -> Result<Vec<(Arc<WorkspaceDirectory>, BenchOptions)>, AnyError> {
+  ) -> Result<Vec<(WorkspaceDirectory, BenchOptions)>, AnyError> {
     let cli_arg_patterns =
       bench_flags.files.as_file_patterns(self.initial_cwd())?;
-    let member_options = if self.flags.is_discovered_config() {
-      self
-        .workspace()
-        .resolve_bench_config_for_members(&cli_arg_patterns)?
-        .into_iter()
-        .map(|(d, c)| (Arc::new(d), BenchOptions::resolve(c, bench_flags)))
-        .collect::<Vec<_>>()
-    } else {
-      vec![(
-        self.start_dir.clone(),
-        BenchOptions::resolve(
-          self.start_dir.to_bench_config(cli_arg_patterns)?,
-          bench_flags,
-        ),
-      )]
-    };
-    Ok(member_options)
+    let workspace_dir_configs = self
+      .workspace()
+      .resolve_bench_config_for_members(&cli_arg_patterns)?;
+    let mut result = Vec::with_capacity(workspace_dir_configs.len());
+    for (member_dir, config) in workspace_dir_configs {
+      let options = BenchOptions::resolve(config, bench_flags);
+      result.push((member_dir, options));
+    }
+    Ok(result)
   }
 
   /// Vector of user script CLI arguments.
@@ -1312,6 +1309,8 @@ impl CliOptions {
   }
 
   pub fn check_js(&self) -> bool {
+    // todo(THIS PR): seems wrong. This behaviour should be based
+    // on the compiler options for the member
     self.start_dir.check_js()
   }
 

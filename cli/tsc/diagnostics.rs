@@ -322,7 +322,7 @@ impl fmt::Display for Diagnostic {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
-pub struct Diagnostics(pub Vec<Diagnostic>);
+pub struct Diagnostics(Vec<Diagnostic>);
 
 impl Diagnostics {
   #[cfg(test)]
@@ -341,12 +341,16 @@ impl Diagnostics {
     });
   }
 
-  pub fn push(&mut self, diagnostic: Diagnostic) {
-    self.0.push(diagnostic);
+  pub fn into_iter(self) -> impl Iterator<Item = Diagnostic> {
+    self.0.into_iter()
   }
 
-  pub fn extend(&mut self, diagnostic: Diagnostics) {
-    self.0.extend(diagnostic.0);
+  pub fn iter(&self) -> impl Iterator<Item = &Diagnostic> {
+    self.0.iter()
+  }
+
+  pub fn push(&mut self, diagnostic: Diagnostic) {
+    self.0.push(diagnostic);
   }
 
   /// Return a set of diagnostics where only the values where the predicate

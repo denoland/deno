@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,7 +12,6 @@ use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
-use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::serde_v8;
 use deno_core::unsync::spawn;
@@ -24,6 +22,7 @@ use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
+use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use deno_runtime::WorkerExecutionMode;
 use indexmap::IndexMap;
@@ -38,9 +37,10 @@ use crate::args::BenchFlags;
 use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
-use crate::factory::CliFactoryWithWorkspaceFiles;
-use crate::factory::SpecifierInfo;
+use crate::factory::CliFactory;
+use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
+use crate::sys::CliSys;
 use crate::tools::test::format_test_error;
 use crate::tools::test::TestFilter;
 use crate::util::file_watcher;
@@ -282,31 +282,20 @@ async fn bench_specifier_inner(
 
 /// Test a collection of specifiers with test modes concurrently.
 async fn bench_specifiers(
-  factory: &CliFactoryWithWorkspaceFiles,
-  changed_paths: Option<&HashSet<PathBuf>>,
+  worker_factory: Arc<CliMainWorkerFactory>,
+  permissions: &Permissions,
+  permissions_desc_parser: &Arc<RuntimePermissionDescriptorParser<CliSys>>,
+  specifiers: Vec<ModuleSpecifier>,
   options: BenchSpecifierOptions,
 ) -> Result<(), AnyError> {
-  let specifiers = if let Some(changed_paths) = changed_paths {
-    factory.dependent_specifiers(changed_paths).await?
-  } else {
-    factory.specifiers().collect()
-  };
-  let worker_factory =
-    Arc::new(factory.inner.create_cli_main_worker_factory().await?);
-  let permission_desc_parser = factory.inner.permission_desc_parser()?;
-  let permissions = Permissions::from_options(
-    permission_desc_parser.as_ref(),
-    &factory.cli_options.permissions_options(),
-  )?;
-
   let (sender, mut receiver) = unbounded_channel::<BenchEvent>();
   let log_level = options.log_level;
   let option_for_handles = options.clone();
 
-  let join_handles = specifiers.into_iter().cloned().map(move |specifier| {
+  let join_handles = specifiers.into_iter().map(move |specifier| {
     let worker_factory = worker_factory.clone();
     let permissions_container = PermissionsContainer::new(
-      permission_desc_parser.clone(),
+      permissions_desc_parser.clone(),
       permissions.clone(),
     );
     let sender = sender.clone();
@@ -438,53 +427,59 @@ pub async fn run_benchmarks(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
-  let log_level = flags.log_level;
-  let factory = CliFactoryWithWorkspaceFiles::from_flags(
-    flags,
-    |cli_options| {
-      Ok(
-        cli_options
-          .resolve_bench_options_for_members(&bench_flags)?
-          .into_iter()
-          .map(|(d, o)| (d, o.files))
-          .collect(),
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let workspace_bench_options =
+    cli_options.resolve_workspace_bench_options(&bench_flags);
+  // Various bench files should not share the same permissions in terms of
+  // `PermissionsContainer` - otherwise granting/revoking permissions in one
+  // file would have impact on other files, which is undesirable.
+  let permission_desc_parser = factory.permission_desc_parser()?.clone();
+  let permissions = Permissions::from_options(
+    permission_desc_parser.as_ref(),
+    &cli_options.permissions_options(),
+  )?;
+
+  let members_with_bench_options =
+    cli_options.resolve_bench_options_for_members(&bench_flags)?;
+  let specifiers = members_with_bench_options
+    .iter()
+    .map(|(_, bench_options)| {
+      collect_specifiers(
+        bench_options.files.clone(),
+        cli_options.vendor_dir_path().map(ToOwned::to_owned),
+        is_supported_bench_path,
       )
-    },
-    |patterns, cli_options, _| {
-      async move {
-        let info = SpecifierInfo {
-          include: true,
-          include_doc: false,
-        };
-        collect_specifiers(
-          patterns,
-          cli_options.vendor_dir_path().map(ToOwned::to_owned),
-          is_supported_bench_path,
-        )
-        .map(|s| s.into_iter().map(|s| (s, info)).collect())
-      }
-      .boxed_local()
-    },
-    None,
-    None,
-  )
-  .await?;
-  if !factory.found_specifiers() {
-    return Err(anyhow!("No test modules found"));
+    })
+    .collect::<Result<Vec<_>, _>>()?
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+
+  if specifiers.is_empty() {
+    return Err(anyhow!("No bench modules found"));
   }
 
-  factory.check().await?;
+  let main_graph_container = factory.main_module_graph_container().await?;
+  main_graph_container
+    .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+    .await?;
 
-  if bench_flags.no_run {
+  if workspace_bench_options.no_run {
     return Ok(());
   }
 
+  let log_level = cli_options.log_level();
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
   bench_specifiers(
-    &factory,
-    None,
+    worker_factory,
+    &permissions,
+    &permission_desc_parser,
+    specifiers,
     BenchSpecifierOptions {
-      filter: TestFilter::from_flag(&bench_flags.filter),
-      json: bench_flags.json,
+      filter: TestFilter::from_flag(&workspace_bench_options.filter),
+      json: workspace_bench_options.json,
       log_level,
     },
   )
@@ -493,6 +488,7 @@ pub async fn run_benchmarks(
   Ok(())
 }
 
+// TODO(bartlomieju): heavy duplication of code with `cli/tools/test.rs`
 pub async fn run_benchmarks_with_watch(
   flags: Arc<Flags>,
   bench_flags: BenchFlags,
@@ -511,50 +507,110 @@ pub async fn run_benchmarks_with_watch(
       let bench_flags = bench_flags.clone();
       watcher_communicator.show_path_changed(changed_paths.clone());
       Ok(async move {
-        let log_level: Option<Level> = flags.log_level;
-        let factory = CliFactoryWithWorkspaceFiles::from_flags(
+        let factory = CliFactory::from_flags_for_watcher(
           flags,
-          |cli_options| {
-            Ok(
-              cli_options
-                .resolve_bench_options_for_members(&bench_flags)?
-                .into_iter()
-                .map(|(d, o)| (d, o.files))
-                .collect(),
+          watcher_communicator.clone(),
+        );
+        let cli_options = factory.cli_options()?;
+        let workspace_bench_options =
+          cli_options.resolve_workspace_bench_options(&bench_flags);
+
+        let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
+
+        let graph_kind = cli_options.type_check_mode().as_graph_kind();
+        let module_graph_creator = factory.module_graph_creator().await?;
+        let members_with_bench_options =
+          cli_options.resolve_bench_options_for_members(&bench_flags)?;
+        let watch_paths = members_with_bench_options
+          .iter()
+          .filter_map(|(_, bench_options)| {
+            bench_options
+              .files
+              .include
+              .as_ref()
+              .map(|set| set.base_paths())
+          })
+          .flatten()
+          .collect::<Vec<_>>();
+        let _ = watcher_communicator.watch_paths(watch_paths);
+        let collected_bench_modules = members_with_bench_options
+          .iter()
+          .map(|(_, bench_options)| {
+            collect_specifiers(
+              bench_options.files.clone(),
+              cli_options.vendor_dir_path().map(ToOwned::to_owned),
+              is_supported_bench_path,
             )
-          },
-          |patterns, cli_options, _| {
-            async move {
-              let info = SpecifierInfo {
-                include: true,
-                include_doc: false,
-              };
-              collect_specifiers(
-                patterns,
-                cli_options.vendor_dir_path().map(ToOwned::to_owned),
-                is_supported_bench_path,
-              )
-              .map(|s| s.into_iter().map(|s| (s, info)).collect())
+          })
+          .collect::<Result<Vec<_>, _>>()?
+          .into_iter()
+          .flatten()
+          .collect::<Vec<_>>();
+
+        // Various bench files should not share the same permissions in terms of
+        // `PermissionsContainer` - otherwise granting/revoking permissions in one
+        // file would have impact on other files, which is undesirable.
+        let permission_desc_parser = factory.permission_desc_parser()?.clone();
+        let permissions = Permissions::from_options(
+          permission_desc_parser.as_ref(),
+          &cli_options.permissions_options(),
+        )?;
+
+        let graph = module_graph_creator
+          .create_graph(
+            graph_kind,
+            collected_bench_modules.clone(),
+            crate::graph_util::NpmCachingStrategy::Eager,
+          )
+          .await?;
+        module_graph_creator.graph_valid(&graph)?;
+        let bench_modules = &graph.roots;
+
+        let bench_modules_to_reload = if let Some(changed_paths) = changed_paths
+        {
+          let changed_paths = changed_paths.into_iter().collect::<HashSet<_>>();
+          let mut result = IndexSet::with_capacity(bench_modules.len());
+          for bench_module_specifier in bench_modules {
+            if has_graph_root_local_dependent_changed(
+              &graph,
+              bench_module_specifier,
+              &changed_paths,
+            ) {
+              result.insert(bench_module_specifier.clone());
             }
-            .boxed_local()
-          },
-          None,
-          Some(&watcher_communicator),
-        )
-        .await?;
+          }
+          result
+        } else {
+          bench_modules.clone()
+        };
 
-        factory.check().await?;
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
-        if bench_flags.no_run {
+        let specifiers = collected_bench_modules
+          .into_iter()
+          .filter(|specifier| bench_modules_to_reload.contains(specifier))
+          .collect::<Vec<ModuleSpecifier>>();
+
+        factory
+          .main_module_graph_container()
+          .await?
+          .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+          .await?;
+
+        if workspace_bench_options.no_run {
           return Ok(());
         }
 
+        let log_level = cli_options.log_level();
         bench_specifiers(
-          &factory,
-          changed_paths.map(|p| p.into_iter().collect()).as_ref(),
+          worker_factory,
+          &permissions,
+          &permission_desc_parser,
+          specifiers,
           BenchSpecifierOptions {
-            filter: TestFilter::from_flag(&bench_flags.filter),
-            json: bench_flags.json,
+            filter: TestFilter::from_flag(&workspace_bench_options.filter),
+            json: workspace_bench_options.json,
             log_level,
           },
         )

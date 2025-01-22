@@ -1,16 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_ast::ModuleSpecifier;
-use deno_cache_dir::file_fetcher::File;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::glob::FilePatterns;
 use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -25,7 +20,6 @@ use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::worker::LibMainWorkerFactory;
 use deno_lib::worker::LibMainWorkerOptions;
 use deno_npm_cache::NpmCacheSetting;
-use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
@@ -106,7 +100,6 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
 use crate::util::file_watcher::WatcherCommunicator;
-use crate::util::fs::canonicalize_path;
 use crate::util::fs::canonicalize_path_maybe_not_exists;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -282,14 +275,6 @@ impl CliFactory {
       flags,
       services: Default::default(),
     }
-  }
-
-  pub fn with_watcher_communicator(
-    mut self,
-    watcher_communicator: Option<Arc<WatcherCommunicator>>,
-  ) -> Self {
-    self.watcher_communicator = watcher_communicator;
-    self
   }
 
   pub fn cli_options(&self) -> Result<&Arc<CliOptions>, AnyError> {
@@ -1236,186 +1221,5 @@ impl CliFactory {
       create_coverage_collector,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
     })
-  }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct SpecifierInfo {
-  /// Include as an ES module.
-  pub include: bool,
-  /// Type check virtual modules from doc snippets. If this is set but `check`
-  /// is not, this may be a markdown file for example.
-  pub include_doc: bool,
-}
-
-struct WorkspaceFile {
-  specifier: ModuleSpecifier,
-  doc_snippet_specifiers: Vec<ModuleSpecifier>,
-  doc_only: bool,
-}
-
-pub struct CliFactoryWithWorkspaceFiles {
-  pub inner: CliFactory,
-  pub cli_options: Arc<CliOptions>,
-  workspace_files: Vec<WorkspaceFile>,
-}
-
-impl CliFactoryWithWorkspaceFiles {
-  #[allow(clippy::type_complexity)]
-  pub async fn from_flags(
-    flags: Arc<Flags>,
-    get_dirs_with_files: impl FnOnce(
-      &CliOptions,
-    ) -> Result<
-      Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
-      AnyError,
-    >,
-    collect_specifiers: impl Fn(
-      FilePatterns,
-      Arc<CliOptions>,
-      Arc<CliFileFetcher>,
-    ) -> std::pin::Pin<
-      Box<
-        dyn Future<
-          Output = Result<Vec<(ModuleSpecifier, SpecifierInfo)>, AnyError>,
-        >,
-      >,
-    >,
-    extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
-    watcher_communicator: Option<&Arc<WatcherCommunicator>>,
-  ) -> Result<Self, AnyError> {
-    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
-    let mut workspace_dirs_with_files = get_dirs_with_files(&cli_options)?;
-    workspace_dirs_with_files.sort_by_cached_key(|(d, _)| d.dir_url().clone());
-    let cli_options =
-      Arc::new(cli_options.with_all_dirs(
-        workspace_dirs_with_files.iter().map(|(d, _)| d.clone()),
-      ));
-    let factory = CliFactory::from_cli_options(cli_options.clone())
-      .with_watcher_communicator(watcher_communicator.cloned());
-    if let Some(watcher_communicator) = watcher_communicator {
-      let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-    }
-    let mut workspace_files = Vec::new();
-    for (_, files) in workspace_dirs_with_files {
-      if let Some(watcher_communicator) = watcher_communicator {
-        let _ = watcher_communicator.watch_paths(
-          files
-            .include
-            .iter()
-            .flat_map(|set| set.base_paths())
-            .collect(),
-        );
-      }
-      let file_fetcher = factory.file_fetcher()?;
-      let specifiers =
-        collect_specifiers(files, cli_options.clone(), file_fetcher.clone())
-          .await?;
-      workspace_files.reserve_exact(specifiers.len());
-      for (specifier, info) in &specifiers {
-        let mut doc_snippet_specifiers = Vec::new();
-        if info.include_doc {
-          if let Some(extract_doc_files) = extract_doc_files {
-            let root_permissions = factory.root_permissions_container()?;
-            let file = file_fetcher.fetch(specifier, root_permissions).await?;
-            let snippet_files = extract_doc_files(file)?;
-            for snippet_file in snippet_files {
-              doc_snippet_specifiers.push(snippet_file.url.clone());
-              file_fetcher.insert_memory_files(snippet_file);
-            }
-          }
-        }
-        workspace_files.push(WorkspaceFile {
-          specifier: specifier.clone(),
-          doc_snippet_specifiers,
-          doc_only: !info.include,
-        })
-      }
-    }
-    Ok(Self {
-      inner: factory,
-      cli_options,
-      workspace_files,
-    })
-  }
-
-  pub fn found_specifiers(&self) -> bool {
-    !self.workspace_files.is_empty()
-  }
-
-  pub fn specifiers(&self) -> impl Iterator<Item = &ModuleSpecifier> {
-    self.workspace_files.iter().flat_map(|f| {
-      std::iter::once(&f.specifier)
-        .filter(|_| !f.doc_only)
-        .chain(f.doc_snippet_specifiers.iter())
-    })
-  }
-
-  pub async fn dependent_specifiers(
-    &self,
-    canonicalized_dep_paths: &HashSet<PathBuf>,
-  ) -> Result<Vec<&ModuleSpecifier>, AnyError> {
-    let graph_kind =
-      self.inner.cli_options()?.type_check_mode().as_graph_kind();
-    let module_graph_creator = self.inner.module_graph_creator().await?;
-    let graph = module_graph_creator
-      .create_graph(
-        graph_kind,
-        self
-          .workspace_files
-          .iter()
-          .map(|f| f.specifier.clone())
-          .collect(),
-        crate::graph_util::NpmCachingStrategy::Eager,
-      )
-      .await?;
-    module_graph_creator.graph_valid(&graph)?;
-    let dependent_specifiers = self
-      .workspace_files
-      .iter()
-      .filter(|f| {
-        let mut dependency_specifiers = graph.walk(
-          std::iter::once(&f.specifier),
-          deno_graph::WalkOptions {
-            follow_dynamic: true,
-            kind: deno_graph::GraphKind::All,
-            prefer_fast_check_graph: true,
-            check_js: true,
-          },
-        );
-        while let Some((s, _)) = dependency_specifiers.next() {
-          if let Ok(path) = url_to_file_path(s) {
-            if let Ok(path) = canonicalize_path(&path) {
-              if canonicalized_dep_paths.contains(&path) {
-                return true;
-              }
-            }
-          } else {
-            // skip walking this remote module's dependencies
-            dependency_specifiers.skip_previous_dependencies();
-          }
-        }
-        false
-      })
-      .flat_map(|f| {
-        std::iter::once(&f.specifier)
-          .filter(|_| !f.doc_only)
-          .chain(f.doc_snippet_specifiers.iter())
-      })
-      .collect();
-    Ok(dependent_specifiers)
-  }
-
-  pub async fn check(&self) -> Result<(), AnyError> {
-    let main_graph_container =
-      self.inner.main_module_graph_container().await?.clone();
-    let specifiers = self.specifiers().cloned().collect::<Vec<_>>();
-    if specifiers.is_empty() {
-      return Ok(());
-    }
-    let ext_flag = self.cli_options.ext_flag().as_ref();
-    main_graph_container
-      .check_specifiers(&specifiers, ext_flag)
-      .await
   }
 }

@@ -206,7 +206,7 @@ async fn lint_with_watch(
 }
 
 struct PathsWithOptions {
-  dir: Arc<WorkspaceDirectory>,
+  dir: WorkspaceDirectory,
   paths: Vec<PathBuf>,
   options: LintOptions,
 }
@@ -276,7 +276,7 @@ impl WorkspaceLinter {
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
     lint_config: DenoLintConfig,
-    member_dir: Arc<WorkspaceDirectory>,
+    member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
     self.file_count += paths.len();
