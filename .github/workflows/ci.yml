@@ -307,9 +307,7 @@ jobs:
           #      to build because the object formats are not compatible.
           echo "
           CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_BENCH_LTO=false
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-19
@@ -333,7 +331,6 @@ jobs:
             $RUSTFLAGS
           __1
           CC=/usr/bin/clang-19
-          CFLAGS=-flto=thin $CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-

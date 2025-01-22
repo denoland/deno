@@ -130,9 +130,7 @@ cat /sysroot/.env
 #      to build because the object formats are not compatible.
 echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
-CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
-CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
@@ -156,7 +154,6 @@ RUSTDOCFLAGS<<__1
   $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin $CFLAGS
 " > $GITHUB_ENV`,
 };
 
