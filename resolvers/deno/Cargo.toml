@@ -18,6 +18,7 @@ sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/
 
 [dependencies]
 anyhow.workspace = true
+async-once-cell.workspace = true
 async-trait.workspace = true
 base32.workspace = true
 boxed_error.workspace = true

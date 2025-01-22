@@ -107,6 +107,7 @@ node_resolver = { version = "0.25.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
+async-once-cell = "0.5.4"
 async-trait = "0.1.73"
 base32 = "=0.5.1"
 base64 = "0.21.7"

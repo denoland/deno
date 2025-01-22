@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
-use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -104,24 +103,6 @@ impl<T> Deferred<T> {
   #[inline(always)]
   pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
     self.0.get_or_init(create)
-  }
-
-  // todo(THIS PR): make an async ok DeferredAsync
-  pub async fn get_or_try_init_async(
-    &self,
-    // some futures passed here are boxed because it was discovered
-    // that they were called a lot, causing other futures to get
-    // really big causing stack overflows on Windows
-    create: impl Future<Output = Result<T, anyhow::Error>>,
-  ) -> Result<&T, anyhow::Error> {
-    if self.0.get().is_none() {
-      // todo(dsherret): it would be more ideal if this enforced a
-      // single executor and then we could make some initialization
-      // concurrent
-      let val = create.await?;
-      _ = self.0.set(val);
-    }
-    Ok(self.0.get().unwrap())
   }
 }
 
@@ -629,7 +610,7 @@ pub struct ResolverFactory<
     + 'static,
 > {
   options: ResolverFactoryOptions,
-  deno_resolver: Deferred<DefaultDenoResolverRc<TSys>>,
+  deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -653,7 +634,7 @@ pub struct ResolverFactory<
   sloppy_imports_resolver:
     Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
-  workspace_resolver: Deferred<WorkspaceResolverRc>,
+  workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc>,
 }
 
 impl<
@@ -703,7 +684,7 @@ impl<
   ) -> Result<&DefaultDenoResolverRc<TSys>, anyhow::Error> {
     self
       .deno_resolver
-      .get_or_try_init_async(async {
+      .get_or_try_init(async {
         Ok(new_rc(DenoResolver::new(DenoResolverOptions {
           in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
           node_and_req_resolver: if self.workspace_factory.no_npm() {
@@ -875,7 +856,7 @@ impl<
   ) -> Result<&WorkspaceResolverRc, anyhow::Error> {
     self
       .workspace_resolver
-      .get_or_try_init_async(async {
+      .get_or_try_init(async {
         let directory = self.workspace_factory.workspace_directory()?;
         let workspace = &directory.workspace;
         let specified_import_map = match &self.options.specified_import_map {
