@@ -1,11 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
+use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::cppgc::SameObject;
-use deno_core::op2;
+use deno_core::{op2, OpState};
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -95,10 +96,11 @@ impl GPUAdapter {
     false
   }
 
-  #[async_method]
+  #[async_method(fake)]
   #[global]
-  async fn request_device(
+  fn request_device(
     &self,
+    state: &mut OpState,
     scope: &mut v8::HandleScope,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
@@ -158,25 +160,34 @@ impl GPUAdapter {
     let key = v8::String::new(scope, "dispatchEvent").unwrap();
     let val = device.get(scope, key.into()).unwrap();
     let func = v8::Global::new(scope, val.try_cast::<v8::Function>().unwrap());
-    let device = v8::Global::<v8::Value>::new(scope, device.into());
+    let device = v8::Global::new(scope, device.cast::<v8::Value>());
+    let error_event_class = state.borrow::<crate::ErrorEventClass>().0.clone();
 
-    let mut isolate = ***scope;
+    let context = scope.get_current_context();
+    let context = v8::Global::new(scope, context);
+    let isolate_ptr = scope.deref_mut().deref_mut() as *mut v8::Isolate;
 
     let task_device = device.clone();
-    tokio::task::spawn(async move {
+    deno_unsync::spawn(async move {
       loop {
         // TODO(@crowlKats): check for is_closed instead once tokio is upgraded
         let Some(error) = uncaptured_receiver.recv().await else {
           break;
         };
 
-        let scope = &mut v8::HandleScope::new(&mut isolate);
+        // SAFETY: eh, it's safe
+        let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
+        let scope = &mut v8::HandleScope::with_context(isolate, context.clone());
         let error = deno_core::error::to_v8_error(scope, &error);
 
-        // TODO: create GPUUncapturedErrorEvent instead of passing the error directly
-        
+        let error_event_class = v8::Local::new(scope, error_event_class.clone());
+        let constructor = v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
+        let kind = v8::String::new(scope, "uncapturederror").unwrap();
+
+        let event = constructor.new_instance(scope, &[kind.into(), error]).unwrap();
+
         let recv = v8::Local::new(scope, task_device.clone());
-        func.open(scope).call(scope, recv, &[error]);
+        func.open(scope).call(scope, recv, &[event.into()]);
       }
     });
 

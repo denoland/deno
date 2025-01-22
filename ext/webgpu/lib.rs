@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::cppgc::SameObject;
-use deno_core::op2;
+use deno_core::{op2, v8};
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 pub use wgpu_core;
@@ -63,7 +63,7 @@ pub type Instance = Arc<wgpu_core::global::Global>;
 deno_core::extension!(
   deno_webgpu,
   deps = [deno_webidl, deno_web],
-  ops = [create_gpu],
+  ops = [op_create_gpu],
   objects = [
     GPU,
     adapter::GPUAdapter,
@@ -99,9 +99,12 @@ deno_core::extension!(
 
 #[op2]
 #[cppgc]
-pub fn create_gpu() -> GPU {
+pub fn op_create_gpu(state: &mut OpState, scope: &mut v8::HandleScope, error_event_class: v8::Local<v8::Value>) -> GPU {
+  state.put(ErrorEventClass(v8::Global::new(scope, error_event_class)));
   GPU
 }
+
+struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
 

@@ -8,7 +8,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  create_gpu,
+  op_create_gpu,
   GPU,
   GPUAdapter,
   GPUAdapterInfo,
@@ -727,7 +727,7 @@ webidl.converters["GPUUncapturedErrorEventInit"] = webidl
 let gpu;
 function initGPU() {
   if (!gpu) {
-    gpu = create_gpu();
+    gpu = op_create_gpu(GPUUncapturedErrorEvent);
   }
 }
 

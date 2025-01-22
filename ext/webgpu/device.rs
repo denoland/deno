@@ -1,6 +1,5 @@
 use std::borrow::Cow;
-use std::cell::{OnceCell, RefCell};
-use std::future::Future;
+use std::cell::{RefCell};
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
@@ -65,7 +64,7 @@ impl WebIdlInterfaceConverter for GPUDevice {
 
 impl GarbageCollected for GPUDevice {}
 
-// TODO: extend EventTarget
+// EventTarget is extended in JS
 // TODO: setEventTargetData on instance
 #[op2]
 impl GPUDevice {
@@ -606,21 +605,22 @@ impl GPUDevice {
       .push((filter, vec![]));
   }
 
-  #[async_method]
-  async fn pop_error_scope<'a>(
+  #[async_method(fake)]
+  #[global]
+  fn pop_error_scope(
     &self,
-    //scope: &mut v8::HandleScope<'a>,
-  ) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
-    unreachable!();
-    /*if self.error_handler.is_lost.get().is_some() {
-      return std::future::ready(Ok(v8::null(scope).into()));
+    scope: &mut v8::HandleScope,
+  ) -> Result<v8::Global<v8::Value>, JsErrorBox> {
+    if self.error_handler.is_lost.get().is_some() {
+      let val = v8::null(scope).cast::<v8::Value>();
+      return Ok(v8::Global::new(scope, val));
     }
 
     let Some((_, errors)) = self.error_handler.scopes.lock().unwrap().pop() else {
-      return std::future::ready(Err(JsErrorBox::new(
+      return Err(JsErrorBox::new(
         "DOMExceptionOperationError",
         "There are no error scopes on the error scope stack",
-      )));
+      ));
     };
 
     let val = if let Some(err) = errors.into_iter().next() {
@@ -629,7 +629,7 @@ impl GPUDevice {
       v8::null(scope).into()
     };
 
-    std::future::ready(Ok(val))*/
+    Ok(v8::Global::new(scope, val))
   }
 }
 
