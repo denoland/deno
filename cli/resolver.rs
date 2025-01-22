@@ -32,9 +32,9 @@ use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
 
 pub type CliCjsTracker =
-  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker>;
 pub type CliIsCjsResolver =
-  deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
+  deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker>;
 pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<CliSloppyImportsCachedFs>;

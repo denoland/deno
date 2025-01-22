@@ -34,6 +34,7 @@ use deno_semver::Version;
 use import_map::ImportMap;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::PackageJsonResolver;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
