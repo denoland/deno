@@ -268,6 +268,7 @@ impl InNpmPackageChecker for ManagedInNpmPackageChecker {
   }
 }
 
+#[derive(Debug)]
 pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
   pub root_cache_dir_url: &'a Url,
   pub maybe_node_modules_path: Option<&'a Path>,

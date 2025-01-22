@@ -230,7 +230,7 @@ pub struct NpmProcessStateOptions {
 
 #[derive(Debug, Default)]
 pub struct WorkspaceFactoryOptions<
-  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
+  TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir + FsCanonicalize,
 > {
   pub additional_config_file_names: &'static [&'static str],
   pub config_discovery: ConfigDiscoveryOption,
@@ -357,37 +357,58 @@ impl<
     self
       .node_modules_dir_mode
       .get_or_try_init(|| {
-        if let Some(process_state) = &self.options.npm_process_state {
-          if process_state.is_byonm {
+        let raw_resolve = || -> Result<_, anyhow::Error> {
+          if let Some(process_state) = &self.options.npm_process_state {
+            if process_state.is_byonm {
+              return Ok(NodeModulesDirMode::Manual);
+            }
+            if process_state.node_modules_dir.is_some() {
+              return Ok(NodeModulesDirMode::Auto);
+            } else {
+              return Ok(NodeModulesDirMode::None);
+            }
+          }
+          if let Some(flag) = self.options.node_modules_dir {
+            return Ok(flag);
+          }
+          let workspace = &self.workspace_directory()?.workspace;
+          if let Some(mode) = workspace.node_modules_dir()? {
+            return Ok(mode);
+          }
+
+          let workspace = &self.workspace_directory()?.workspace;
+
+          if let Some(pkg_json) = workspace.root_pkg_json() {
+            if let Ok(deno_dir) = self.deno_dir_path() {
+              // `deno_dir` can be symlink in macOS or on the CI
+              if let Ok(deno_dir) =
+                canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
+              {
+                if pkg_json.path.starts_with(deno_dir) {
+                  // if the package.json is in deno_dir, then do not use node_modules
+                  // next to it as local node_modules dir
+                  return Ok(NodeModulesDirMode::None);
+                }
+              }
+            }
+
             return Ok(NodeModulesDirMode::Manual);
           }
-          if process_state.node_modules_dir.is_some() {
-            return Ok(NodeModulesDirMode::Auto);
-          } else {
-            return Ok(NodeModulesDirMode::None);
-          }
-        }
-        if let Some(flag) = self.options.node_modules_dir {
-          return Ok(flag);
-        }
-        let workspace = &self.workspace_directory()?.workspace;
-        if let Some(mode) = workspace.node_modules_dir()? {
-          return Ok(mode);
-        }
 
-        let workspace = &self.workspace_directory()?.workspace;
-        if workspace.root_pkg_json().is_some() {
-          if self.options.is_package_manager_subcommand {
-            // force using the managed resolver for package management
-            // sub commands so that it sets up the node_modules directory
-            return Ok(NodeModulesDirMode::Auto);
-          } else {
-            return Ok(NodeModulesDirMode::Manual);
-          }
-        }
+          // use the global cache
+          Ok(NodeModulesDirMode::None)
+        };
 
-        // use the global cache
-        Ok(NodeModulesDirMode::None)
+        let mode = raw_resolve()?;
+        if mode == NodeModulesDirMode::Manual
+          && self.options.is_package_manager_subcommand
+        {
+          // force using the managed resolver for package management
+          // sub commands so that it sets up the node_modules directory
+          Ok(NodeModulesDirMode::Auto)
+        } else {
+          Ok(mode)
+        }
       })
       .copied()
   }
@@ -430,21 +451,6 @@ impl<
 
         let node_modules_dir =
           resolve_from_root(root_folder, &self.initial_cwd);
-
-        if root_folder.pkg_json.is_some() {
-          if let Ok(deno_dir) = self.deno_dir_path() {
-            // `deno_dir.root` can be symlink in macOS
-            if let Ok(root) =
-              canonicalize_path_maybe_not_exists(&self.sys, deno_dir)
-            {
-              if node_modules_dir.starts_with(root) {
-                // if the package.json is in deno_dir, then do not use node_modules
-                // next to it as local node_modules dir
-                return Ok(None);
-              }
-            }
-          }
-        }
 
         Ok(Some(canonicalize_path_maybe_not_exists(
           &self.sys,
