@@ -57,7 +57,6 @@ pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
 pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
 use deno_error::JsErrorBox;

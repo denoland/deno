@@ -7,11 +7,9 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
 use crate::args::Flags;
-use crate::cache::DenoDir;
 use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
-use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;

@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
@@ -36,14 +35,9 @@ use deno_resolver::factory::DenoDirPathProviderOptions;
 use deno_resolver::factory::NpmProcessStateOptions;
 use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
-use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
-use deno_resolver::DenoResolverOptions;
-use deno_resolver::NodeAndNpmReqResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
@@ -53,9 +47,7 @@ use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
-use log::warn;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
@@ -207,13 +199,13 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
         }))
       }
       None => {
-        if let Some((path, import_map)) =
+        if let Some(import_map) =
           self.workspace_external_import_map_loader.get_or_load()?
         {
-          let path_url = deno_path_util::url_from_file_path(path)?;
+          let path_url = deno_path_util::url_from_file_path(&import_map.path)?;
           Ok(Some(deno_config::workspace::SpecifiedImportMap {
             base_url: path_url,
-            value: import_map.clone(),
+            value: import_map.value.clone(),
           }))
         } else {
           Ok(None)
@@ -238,10 +230,6 @@ impl<T> Default for Deferred<T> {
 }
 
 impl<T> Deferred<T> {
-  pub fn from_value(value: T) -> Self {
-    Self(once_cell::unsync::OnceCell::from(value))
-  }
-
   #[inline(always)]
   pub fn get_or_try_init(
     &self,
@@ -1319,7 +1307,7 @@ fn new_workspace_factory_options(
     },
     config_discovery: match &flags.config_flag {
       ConfigFlag::Discover => {
-        if let Some(start_paths) = flags.config_path_args(&initial_cwd) {
+        if let Some(start_paths) = flags.config_path_args(initial_cwd) {
           ConfigDiscoveryOption::Discover { start_paths }
         } else {
           ConfigDiscoveryOption::Disabled

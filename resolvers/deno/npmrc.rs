@@ -28,6 +28,8 @@ pub enum NpmRcDiscoverErrorKind {
   Parse(#[from] NpmRcParseError),
   #[error(transparent)]
   Resolve(#[from] NpmRcOptionsResolveError),
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
 }
 
 #[derive(Debug, Error)]
@@ -54,10 +56,10 @@ pub struct NpmRcOptionsResolveError {
   source: deno_npm::npm_rc::ResolveError,
 }
 
-/// Discover `.npmrc` file - currently we only support it next to `package.json`
-/// or next to `deno.json`.
+/// Discover `.npmrc` file - currently we only support it next to `package.json`,
+/// next to `deno.json`, or in the user's home directory.
 ///
-/// In the future we will need to support it in user directory or global directory
+/// In the future we will need to support it in the global directory
 /// as per https://docs.npmjs.com/cli/v10/configuring-npm/npmrc#files.
 pub fn discover_npmrc_from_workspace<TSys: EnvVar + EnvHomeDir + FsRead>(
   sys: &TSys,
@@ -67,13 +69,12 @@ pub fn discover_npmrc_from_workspace<TSys: EnvVar + EnvHomeDir + FsRead>(
   discover_npmrc(
     sys,
     root_folder.pkg_json.as_ref().map(|p| p.path.clone()),
-    root_folder.deno_json.as_ref().and_then(|cf| {
-      if cf.specifier.scheme() == "file" {
-        Some(cf.specifier.to_file_path().unwrap())
-      } else {
-        None
+    match &root_folder.deno_json {
+      Some(cf) if cf.specifier.scheme() == "file" => {
+        Some(deno_path_util::url_to_file_path(&cf.specifier)?)
       }
-    }),
+      _ => None,
+    },
   )
 }
 
@@ -103,7 +104,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     source: &str,
     path: &Path,
   ) -> Result<ResolvedNpmRc, NpmRcDiscoverError> {
-    let npmrc = NpmRc::parse(&source, &|name| sys.env_var(name).ok()).map_err(
+    let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
       |source| {
         NpmRcParseError {
           path: path.to_path_buf(),

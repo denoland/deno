@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::borrow::Cow;
 use std::future::Future;
 use std::path::Path;
@@ -62,12 +64,11 @@ use crate::sloppy_imports::SloppyImportsCachedFs;
 use crate::sloppy_imports::SloppyImportsResolver;
 use crate::sloppy_imports::SloppyImportsResolverRc;
 use crate::sync::new_rc;
-use crate::sync::MaybeArc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::DefaultDenoResolverRc;
 use crate::DenoResolver;
 use crate::DenoResolverOptions;
-use crate::DenoResolverRc;
 use crate::NodeAndNpmReqResolver;
 use crate::NpmCacheDirRc;
 use crate::WorkspaceResolverRc;
@@ -124,7 +125,8 @@ impl<T> Deferred<T> {
   }
 }
 
-type WorkspaceDirectoryRc = MaybeArc<WorkspaceDirectory>;
+#[allow(clippy::disallowed_types)]
+type WorkspaceDirectoryRc = crate::sync::MaybeArc<WorkspaceDirectory>;
 
 #[derive(Debug, Boxed)]
 pub struct HttpCacheCreateError(pub Box<HttpCacheCreateErrorKind>);
@@ -439,7 +441,7 @@ impl<
           )
         }
       })
-      .map(|v| v.clone())
+      .copied()
   }
 
   /// Resolves the path to use for a local node_modules folder.
@@ -605,7 +607,7 @@ impl<
         ConfigDiscoveryOption::Discover { start_paths } => {
           WorkspaceDirectory::discover(
             &self.sys,
-            WorkspaceDiscoverStart::Paths(&start_paths),
+            WorkspaceDiscoverStart::Paths(start_paths),
             &resolve_workspace_discover_options(),
           )?
         }
@@ -666,15 +668,7 @@ pub struct ResolverFactory<
 > {
   options: ResolverFactoryOptions,
   sys: TSys,
-  deno_resolver: Deferred<
-    DenoResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      SloppyImportsCachedFs<TSys>,
-      TSys,
-    >,
-  >,
+  deno_resolver: Deferred<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
     NodeResolverRc<
@@ -747,16 +741,7 @@ impl<
 
   pub async fn deno_resolver(
     &self,
-  ) -> Result<
-    &DenoResolverRc<
-      DenoInNpmPackageChecker,
-      DenoIsBuiltInNodeModuleChecker,
-      NpmResolver<TSys>,
-      SloppyImportsCachedFs<TSys>,
-      TSys,
-    >,
-    anyhow::Error,
-  > {
+  ) -> Result<&DefaultDenoResolverRc<TSys>, anyhow::Error> {
     self
       .deno_resolver
       .get_or_try_init_async(async {

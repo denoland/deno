@@ -13,7 +13,6 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -147,6 +146,7 @@ pub struct DenoResolverOptions<
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
 
+#[allow(clippy::disallowed_types)]
 pub type DenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
@@ -161,6 +161,16 @@ pub type DenoResolverRc<
     TSloppyImportResolverFs,
     TSys,
   >,
+>;
+
+/// Helper type for a DenoResolverRc that has the implementations
+/// used by the Deno CLI.
+pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+  npm::DenoInNpmPackageChecker,
+  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  npm::NpmResolver<TSys>,
+  sloppy_imports::SloppyImportsCachedFs<TSys>,
+  TSys,
 >;
 
 /// A resolver that takes care of resolution, taking into account loaded

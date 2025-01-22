@@ -53,12 +53,10 @@ impl DenoDir {
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
-    let deno_dir = Self {
+    Self {
       root,
       gen_cache: DiskCache::new(sys, gen_path),
-    };
-
-    deno_dir
+    }
   }
 
   /// The root directory of the DENO_DIR for display purposes only.
