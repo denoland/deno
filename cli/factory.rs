@@ -1254,7 +1254,7 @@ pub struct CliFactoryWithWorkspaceFiles {
 
 impl CliFactoryWithWorkspaceFiles {
   #[allow(clippy::type_complexity)]
-  pub async fn from_flags<T: Clone>(
+  pub async fn from_flags(
     flags: Arc<Flags>,
     get_dirs_with_files: impl FnOnce(
       &CliOptions,
@@ -1262,11 +1262,10 @@ impl CliFactoryWithWorkspaceFiles {
       Vec<(Arc<WorkspaceDirectory>, FilePatterns)>,
       AnyError,
     >,
-    collect_specifiers: fn(
+    collect_specifiers: impl Fn(
       FilePatterns,
       Arc<CliOptions>,
       Arc<CliFileFetcher>,
-      T,
     ) -> std::pin::Pin<
       Box<
         dyn Future<
@@ -1274,7 +1273,6 @@ impl CliFactoryWithWorkspaceFiles {
         >,
       >,
     >,
-    collect_specifiers_args: T,
     extract_doc_files: Option<fn(File) -> Result<Vec<File>, AnyError>>,
     watcher_communicator: Option<&Arc<WatcherCommunicator>>,
   ) -> Result<Self, AnyError> {
@@ -1302,13 +1300,9 @@ impl CliFactoryWithWorkspaceFiles {
         );
       }
       let file_fetcher = factory.file_fetcher()?;
-      let specifiers = collect_specifiers(
-        files,
-        cli_options.clone(),
-        file_fetcher.clone(),
-        collect_specifiers_args.clone(),
-      )
-      .await?;
+      let specifiers =
+        collect_specifiers(files, cli_options.clone(), file_fetcher.clone())
+          .await?;
       workspace_files.reserve_exact(specifiers.len());
       for (specifier, info) in &specifiers {
         let mut doc_snippet_specifiers = Vec::new();

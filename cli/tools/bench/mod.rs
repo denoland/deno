@@ -450,7 +450,7 @@ pub async fn run_benchmarks(
           .collect(),
       )
     },
-    |patterns, cli_options, _, _| {
+    |patterns, cli_options, _| {
       async move {
         let info = SpecifierInfo {
           include: true,
@@ -465,7 +465,6 @@ pub async fn run_benchmarks(
       }
       .boxed_local()
     },
-    (),
     None,
     None,
   )
@@ -524,7 +523,7 @@ pub async fn run_benchmarks_with_watch(
                 .collect(),
             )
           },
-          |patterns, cli_options, _, _| {
+          |patterns, cli_options, _| {
             async move {
               let info = SpecifierInfo {
                 include: true,
@@ -539,7 +538,6 @@ pub async fn run_benchmarks_with_watch(
             }
             .boxed_local()
           },
-          (),
           None,
           Some(&watcher_communicator),
         )

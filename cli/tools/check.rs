@@ -63,11 +63,11 @@ pub async fn check(
   let factory = CliFactoryWithWorkspaceFiles::from_flags(
     flags,
     |cli_options| cli_options.resolve_file_flags_for_members(&file_flags),
-    |patterns, cli_options, _, (doc, doc_only)| {
+    |patterns, cli_options, _| {
       async move {
         let info = SpecifierInfo {
-          include: !doc_only,
-          include_doc: doc || doc_only,
+          include: !check_flags.doc_only,
+          include_doc: check_flags.doc || check_flags.doc_only,
         };
         collect_specifiers(
           patterns,
@@ -78,7 +78,6 @@ pub async fn check(
       }
       .boxed_local()
     },
-    (check_flags.doc, check_flags.doc_only),
     Some(extract_snippet_files),
     None,
   )

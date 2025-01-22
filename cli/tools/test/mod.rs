@@ -1509,11 +1509,15 @@ pub async fn run_tests(
           .collect(),
       )
     },
-    |patterns, cli_options, file_fetcher, doc| {
-      collect_specifiers_for_tests(patterns, cli_options, file_fetcher, doc)
-        .boxed_local()
+    |patterns, cli_options, file_fetcher| {
+      collect_specifiers_for_tests(
+        patterns,
+        cli_options,
+        file_fetcher,
+        test_flags.doc,
+      )
+      .boxed_local()
     },
-    test_flags.doc,
     Some(extract_doc_tests),
     None,
   )
@@ -1604,16 +1608,15 @@ pub async fn run_tests_with_watch(
                 .collect(),
             )
           },
-          |patterns, cli_options, file_fetcher, doc| {
+          |patterns, cli_options, file_fetcher| {
             collect_specifiers_for_tests(
               patterns,
               cli_options,
               file_fetcher,
-              doc,
+              test_flags.doc,
             )
             .boxed_local()
           },
-          test_flags.doc,
           Some(extract_doc_tests),
           Some(&watcher_communicator),
         )
