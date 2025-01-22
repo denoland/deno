@@ -1756,10 +1756,11 @@ fn bytes_to_content(
     // we use the dts representation for Wasm modules
     Ok(deno_graph::source::wasm::wasm_module_to_dts(&bytes)?)
   } else {
-    Ok(deno_graph::source::decode_owned_source(
-      specifier,
-      bytes,
-      maybe_charset,
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(specifier, &bytes)
+    });
+    Ok(deno_media_type::encoding::decode_owned_source(
+      charset, bytes,
     )?)
   }
 }
