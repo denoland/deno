@@ -324,9 +324,15 @@ converters.short = createIntegerConversion(16, { unsigned: false });
 converters["unsigned short"] = createIntegerConversion(16, {
   unsigned: true,
 });
+converters["unsigned short?"] = createNullableConverter(
+  converters["unsigned short"],
+);
 
 converters.long = createIntegerConversion(32, { unsigned: false });
 converters["unsigned long"] = createIntegerConversion(32, { unsigned: true });
+converters["unsigned long?"] = createNullableConverter(
+  converters["unsigned long"],
+);
 
 converters["long long"] = createLongLongConversion(64, { unsigned: false });
 converters["unsigned long long"] = createLongLongConversion(64, {
@@ -397,6 +403,10 @@ converters["unrestricted double"] = (V, _prefix, _context, _opts) => {
 
   return x;
 };
+
+converters["unrestricted double?"] = createNullableConverter(
+  converters["unrestricted double"],
+);
 
 converters.DOMString = function (
   V,

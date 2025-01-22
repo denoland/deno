@@ -1481,9 +1481,15 @@ delete Object.prototype.__proto__;
     options: SNAPSHOT_COMPILE_OPTIONS,
     host,
   });
+  const errors = ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM);
   assert(
-    ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
-    "lib.d.ts files have errors",
+    errors.length === 0,
+    `lib.d.ts files have errors:\n${
+      ts.formatDiagnosticsWithColorAndContext(
+        errors,
+        host,
+      )
+    }`,
   );
 
   // remove this now that we don't need it anymore for warming up tsc

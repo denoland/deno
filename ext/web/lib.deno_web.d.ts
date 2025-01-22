@@ -1378,3 +1378,221 @@ declare var ImageData: {
     settings?: ImageDataSettings,
   ): ImageData;
 };
+
+/** @category Platform */
+interface WebTransportCloseInfo {
+  closeCode?: number;
+  reason?: string;
+}
+
+/** @category Platform */
+interface WebTransportErrorOptions {
+  source?: WebTransportErrorSource;
+  streamErrorCode?: number | null;
+}
+
+/** @category Platform */
+interface WebTransportHash {
+  algorithm?: string;
+  value?: BufferSource;
+}
+
+/** @category Platform */
+interface WebTransportOptions {
+  allowPooling?: boolean;
+  congestionControl?: WebTransportCongestionControl;
+  requireUnreliable?: boolean;
+  serverCertificateHashes?: WebTransportHash[];
+}
+
+/** @category Platform */
+interface WebTransportSendStreamOptions {
+  sendGroup?: WebTransportSendGroup;
+  sendOrder?: number;
+  waitUntilAvailable?: boolean;
+}
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport)
+ * @category Platform
+ */
+interface WebTransport {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/closed) */
+  readonly closed: Promise<WebTransportCloseInfo>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/datagrams) */
+  readonly datagrams: WebTransportDatagramDuplexStream;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingBidirectionalStreams) */
+  readonly incomingBidirectionalStreams: ReadableStream<
+    WebTransportBidirectionalStream
+  >;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/incomingUnidirectionalStreams) */
+  readonly incomingUnidirectionalStreams: ReadableStream<
+    WebTransportReceiveStream
+  >;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/ready) */
+  readonly ready: Promise<undefined>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/close) */
+  close(closeInfo?: WebTransportCloseInfo): void;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createBidirectionalStream) */
+  createBidirectionalStream(
+    options?: WebTransportSendStreamOptions,
+  ): Promise<WebTransportBidirectionalStream>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createUnidirectionalStream) */
+  createUnidirectionalStream(
+    options?: WebTransportSendStreamOptions,
+  ): Promise<WebTransportSendStream>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransport/createSendGroup) */
+  createSendGroup(): WebTransportSendGroup;
+}
+
+/** @category Platform */
+declare var WebTransport: {
+  prototype: WebTransport;
+  new (url: string | URL, options?: WebTransportOptions): WebTransport;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream)
+ * @category Platform
+ */
+interface WebTransportBidirectionalStream {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream/readable) */
+  readonly readable: WebTransportReceiveStream;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportBidirectionalStream/writable) */
+  readonly writable: WebTransportSendStream;
+}
+
+/** @category Platform */
+declare var WebTransportBidirectionalStream: {
+  prototype: WebTransportBidirectionalStream;
+  new (): WebTransportBidirectionalStream;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream)
+ * @category Platform
+ */
+interface WebTransportDatagramDuplexStream {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/incomingHighWaterMark) */
+  incomingHighWaterMark: number;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/incomingMaxAge) */
+  incomingMaxAge: number | null;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/maxDatagramSize) */
+  readonly maxDatagramSize: number;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/outgoingHighWaterMark) */
+  outgoingHighWaterMark: number;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/outgoingMaxAge) */
+  outgoingMaxAge: number | null;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/readable) */
+  readonly readable: WebTransportReceiveStream;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportDatagramDuplexStream/writable) */
+  readonly writable: WebTransportSendStream;
+}
+
+/** @category Platform */
+declare var WebTransportDatagramDuplexStream: {
+  prototype: WebTransportDatagramDuplexStream;
+  new (): WebTransportDatagramDuplexStream;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendStream)
+ * @category Platform
+ */
+interface WebTransportSendStream extends WritableStream<Uint8Array> {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendStream/sendOrder) */
+  sendOrder: number;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendStream/sendGroup) */
+  sendGroup?: WebTransportSendGroup;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendStream/getStats) */
+  getStats(): Promise<WebTransportSendStreamStats>;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendStream/getWriter) */
+  getWriter(): WebTransportWriter;
+}
+
+/** @category Platform */
+declare var WebTransportSendStream: {
+  prototype: WebTransportSendStream;
+  new (): WebTransportSendStream;
+};
+
+/** @category Platform */
+interface WebTransportSendStreamStats {
+  bytesWritten: number;
+  bytesSent: number;
+  bytesAcknowledged: number;
+}
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportWriter)
+ * @category Platform
+ */
+interface WebTransportWriter extends WritableStreamDefaultWriter<Uint8Array> {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportWriter/atomicWrite) */
+  atomicWrite(chunk: any): Promise<undefined>;
+}
+
+/** @category Platform */
+declare var WebTransportWriter: {
+  prototype: WebTransportWriter;
+  new (): WebTransportWriter;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportReceiveStream)
+ * @category Platform
+ */
+interface WebTransportReceiveStream extends ReadableStream<Uint8Array> {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportReceiveStream/getStats) */
+  getStats(): Promise<WebTransportReceiveStreamStats>;
+}
+
+/** @category Platform */
+declare var WebTransportReceiveStream: {
+  prototype: WebTransportReceiveStream;
+  new (): WebTransportReceiveStream;
+};
+
+/** @category Platform */
+interface WebTransportReceiveStreamStats {
+  bytesReceived: number;
+  bytesRead: number;
+}
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendGroup)
+ * @category Platform
+ */
+interface WebTransportSendGroup {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportSendGroup/getStats) */
+  getStats(): Promise<WebTransportSendStreamStats>;
+}
+
+/** @category Platform */
+declare var WebTransportSendGroup: {
+  prototype: WebTransportSendGroup;
+  new (): WebTransportSendGroup;
+};
+
+/**
+ * [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError)
+ * @category Platform
+ */
+interface WebTransportError extends DOMException {
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/source) */
+  readonly source: WebTransportErrorSource;
+  /** [MDN Reference](https://developer.mozilla.org/docs/Web/API/WebTransportError/streamErrorCode) */
+  readonly streamErrorCode: number | null;
+}
+
+/** @category Platform */
+declare var WebTransportError: {
+  prototype: WebTransportError;
+  new (message?: string, options?: WebTransportErrorOptions): WebTransportError;
+};
+
+/** @category Platform */
+type WebTransportCongestionControl = "default" | "low-latency" | "throughput";
+
+/** @category Platform */
+type WebTransportErrorSource = "session" | "stream";
