@@ -477,10 +477,17 @@ mod hyper_client {
   use std::task::Poll;
   use std::task::{self};
 
+  use deno_tls::create_client_config;
+  use deno_tls::load_certs;
+  use deno_tls::load_private_keys;
+  use deno_tls::SocketUse;
+  use deno_tls::TlsKey;
+  use deno_tls::TlsKeys;
   use http_body_util::BodyExt;
   use http_body_util::Full;
   use hyper::body::Body as HttpBody;
   use hyper::body::Frame;
+  use hyper_rustls::HttpsConnector;
   use hyper_util::client::legacy::connect::HttpConnector;
   use hyper_util::client::legacy::Client;
   use opentelemetry_http::Bytes;
@@ -494,14 +501,41 @@ mod hyper_client {
   // same as opentelemetry_http::HyperClient except it uses OtelSharedRuntime
   #[derive(Debug, Clone)]
   pub struct HyperClient {
-    inner: Client<HttpConnector, Body>,
+    inner: Client<HttpsConnector<HttpConnector>, Body>,
   }
 
   impl HyperClient {
-    pub fn new() -> Self {
-      Self {
-        inner: Client::builder(OtelSharedRuntime).build(HttpConnector::new()),
-      }
+    pub fn new() -> deno_core::anyhow::Result<Self> {
+      let ca_certs = match std::env::var("OTEL_EXPORTER_OTLP_CERTIFICATE") {
+        Ok(path) => vec![std::fs::read(path)?],
+        _ => vec![],
+      };
+
+      let keys = match (
+        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_KEY"),
+        std::env::var("OTEL_EXPORTER_OTLP_CLIENT_CERTIFICATE"),
+      ) {
+        (Ok(key_path), Ok(cert_path)) => {
+          let key = std::fs::read(key_path)?;
+          let cert = std::fs::read(cert_path)?;
+
+          let certs = load_certs(&mut std::io::Cursor::new(cert))?;
+          let key = load_private_keys(&key)?.into_iter().next().unwrap();
+
+          TlsKeys::Static(TlsKey(certs, key))
+        }
+        _ => TlsKeys::Null,
+      };
+
+      let tls_config =
+        create_client_config(None, ca_certs, None, keys, SocketUse::Http)?;
+      let mut http_connector = HttpConnector::new();
+      http_connector.enforce_http(false);
+      let connector = HttpsConnector::from((http_connector, tls_config));
+
+      Ok(Self {
+        inner: Client::builder(OtelSharedRuntime).build(connector),
+      })
     }
   }
 
@@ -628,7 +662,7 @@ pub fn init(
   // `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Additional headers can
   // be specified using `OTEL_EXPORTER_OTLP_HEADERS`.
 
-  let client = hyper_client::HyperClient::new();
+  let client = hyper_client::HyperClient::new()?;
 
   let span_exporter = HttpExporterBuilder::default()
     .with_http_client(client.clone())
