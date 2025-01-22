@@ -154,6 +154,7 @@ RUSTDOCFLAGS<<__1
   $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
+CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 

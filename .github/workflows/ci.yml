@@ -331,6 +331,7 @@ jobs:
             $RUSTFLAGS
           __1
           CC=/usr/bin/clang-19
+          CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-
