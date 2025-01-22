@@ -41,6 +41,7 @@ itest!(require_resolve_url_paths {
   cwd: Some("npm/require_resolve_url/"),
   copy_temp_dir: Some("npm/require_resolve_url/"),
 });
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(

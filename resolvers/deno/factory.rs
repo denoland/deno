@@ -161,36 +161,6 @@ pub enum NpmRcCreateErrorKind {
   NpmRcDiscover(#[from] NpmRcDiscoverError),
 }
 
-#[derive(Debug, Boxed)]
-pub struct NodeModulesModeResolveError(
-  pub Box<NodeModulesModeResolveErrorKind>,
-);
-
-#[derive(Debug, Error)]
-pub enum NodeModulesModeResolveErrorKind {
-  #[error(transparent)]
-  NodeModulesDirParse(#[from] deno_config::deno_json::NodeModulesDirParseError),
-  #[error(transparent)]
-  WorkspaceDiscover(#[from] WorkspaceDiscoverError),
-}
-
-#[derive(Debug, Boxed)]
-pub struct NodeModulesFolderResolveError(
-  pub Box<NodeModulesFolderResolveErrorKind>,
-);
-
-#[derive(Debug, Error)]
-pub enum NodeModulesFolderResolveErrorKind {
-  #[error(transparent)]
-  NodeModulesDirParse(#[from] deno_config::deno_json::NodeModulesDirParseError),
-  #[error(transparent)]
-  Io(#[from] std::io::Error),
-  #[error(transparent)]
-  NodeModulesModeResolve(#[from] NodeModulesModeResolveError),
-  #[error(transparent)]
-  Workspace(#[from] WorkspaceDiscoverError),
-}
-
 #[derive(Debug, Default)]
 pub enum ConfigDiscoveryOption {
   #[default]
@@ -308,7 +278,6 @@ pub struct WorkspaceFactory<
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
   resolved_node_modules_dir: Deferred<NodeModulesDirMode>,
-  specified_node_modules_dir: Deferred<Option<NodeModulesDirMode>>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
@@ -360,7 +329,6 @@ impl<
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
       resolved_node_modules_dir: Default::default(),
-      specified_node_modules_dir: Default::default(),
       workspace_directory: Default::default(),
       initial_cwd,
       options,
@@ -388,66 +356,37 @@ impl<
     self
       .resolved_node_modules_dir
       .get_or_try_init(|| {
-        if let Some(specified) = self.specified_node_modules_dir()? {
-          return Ok(specified);
+        if let Some(process_state) = &self.options.npm_process_state {
+          if process_state.is_byonm {
+            return Ok(NodeModulesDirMode::Manual);
+          }
+          if process_state.node_modules_dir.is_some() {
+            return Ok(NodeModulesDirMode::Auto);
+          } else {
+            return Ok(NodeModulesDirMode::None);
+          }
+        }
+        if let Some(flag) = self.options.node_modules_dir {
+          return Ok(flag);
         }
         let workspace = &self.workspace_directory()?.workspace;
-        let node_modules_dir_path = self.node_modules_dir_path()?;
-        let is_byonm = node_modules_dir_path.is_some()
-          && workspace
-            .config_folders()
-            .values()
-            .any(|f| f.pkg_json.is_some());
-        if is_byonm {
-          Ok(NodeModulesDirMode::Manual)
-        } else {
-          Ok(NodeModulesDirMode::None)
+        if let Some(mode) = workspace.node_modules_dir()? {
+          return Ok(mode);
         }
-      })
-      .copied()
-  }
 
-  fn specified_node_modules_dir(
-    &self,
-  ) -> Result<Option<NodeModulesDirMode>, NodeModulesModeResolveError> {
-    self
-      .specified_node_modules_dir
-      .get_or_try_init(|| match self.options.node_modules_dir {
-        Some(flag) => Ok(Some(flag)),
-        None => {
-          if let Some(process_state) = &self.options.npm_process_state {
-            if process_state.is_byonm {
-              return Ok(Some(NodeModulesDirMode::Manual));
-            }
-          }
-
-          let workspace = &self.workspace_directory()?.workspace;
-          Ok(
-            workspace.node_modules_dir()?.or(
-              self
-                .options
-                .vendor
-                .or_else(|| {
-                  workspace.root_deno_json().and_then(|c| c.json.vendor)
-                })
-                .map(|vendor| {
-                  if vendor {
-                    NodeModulesDirMode::Auto
-                  } else {
-                    NodeModulesDirMode::None
-                  }
-                }),
-            ),
-          )
+        let workspace = &self.workspace_directory()?.workspace;
+        if workspace.root_pkg_json().is_some() {
+          return Ok(NodeModulesDirMode::Manual);
         }
+
+        // use the global cache
+        Ok(NodeModulesDirMode::None)
       })
       .copied()
   }
 
   /// Resolves the path to use for a local node_modules folder.
-  pub fn node_modules_dir_path(
-    &self,
-  ) -> Result<Option<&Path>, NodeModulesFolderResolveError> {
+  pub fn node_modules_dir_path(&self) -> Result<Option<&Path>, anyhow::Error> {
     fn resolve_from_root(root_folder: &FolderConfigs, cwd: &Path) -> PathBuf {
       root_folder
         .deno_json
@@ -466,23 +405,26 @@ impl<
     self
       .node_modules_dir_path
       .get_or_try_init(|| {
-        let workspace = &self.workspace_directory()?.workspace;
-        let root_folder = workspace.root_folder_configs();
-        let use_node_modules_dir = self
-          .specified_node_modules_dir()?
-          .map(|v| v.uses_node_modules_dir());
-        let path = if use_node_modules_dir == Some(false) {
-          return Ok(None);
-        } else if let Some(process_state) = &self.options.npm_process_state {
+        if let Some(process_state) = &self.options.npm_process_state {
           return Ok(
             process_state
               .node_modules_dir
               .as_ref()
               .map(|p| PathBuf::from(p.as_ref())),
           );
-        } else if root_folder.pkg_json.is_some() {
-          let node_modules_dir =
-            resolve_from_root(root_folder, &self.initial_cwd);
+        }
+
+        let mode = self.resolved_node_modules_dir()?;
+        let workspace = &self.workspace_directory()?.workspace;
+        let root_folder = workspace.root_folder_configs();
+        if mode.uses_node_modules_dir() {
+          return Ok(None);
+        }
+
+        let node_modules_dir =
+          resolve_from_root(root_folder, &self.initial_cwd);
+
+        if root_folder.pkg_json.is_some() {
           if let Ok(deno_dir) = self.deno_dir_path() {
             // `deno_dir.root` can be symlink in macOS
             if let Ok(root) =
@@ -495,13 +437,12 @@ impl<
               }
             }
           }
-          node_modules_dir
-        } else if use_node_modules_dir.is_none() {
-          return Ok(None);
-        } else {
-          resolve_from_root(root_folder, &self.initial_cwd)
-        };
-        Ok(Some(canonicalize_path_maybe_not_exists(&self.sys, &path)?))
+        }
+
+        Ok(Some(canonicalize_path_maybe_not_exists(
+          &self.sys,
+          &node_modules_dir,
+        )?))
       })
       .map(|p| p.as_deref())
   }
