@@ -392,11 +392,13 @@ impl<
               }
             }
 
-            return Ok(NodeModulesDirMode::Manual);
+            Ok(NodeModulesDirMode::Manual)
+          } else if workspace.vendor_dir_path().is_some() {
+            Ok(NodeModulesDirMode::Auto)
+          } else {
+            // use the global cache
+            Ok(NodeModulesDirMode::None)
           }
-
-          // use the global cache
-          Ok(NodeModulesDirMode::None)
         };
 
         let mode = raw_resolve()?;
