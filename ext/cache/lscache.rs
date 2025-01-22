@@ -139,7 +139,7 @@ impl LscBackend {
     };
     let (body_tx, body_rx) = futures::channel::mpsc::channel(4);
     spawn(body.map(Ok::<Result<_, CacheError>, _>).forward(body_tx));
-    let body = reqwest::Body::wrap_stream(body_rx);
+    let body = http_body_util::BodyDataStream::new(body_rx);
     shard.put_object(&object_key, headers, body).await?;
     Ok(())
   }
