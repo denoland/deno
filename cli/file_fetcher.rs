@@ -60,11 +60,10 @@ impl TextDecodedFile {
         file.maybe_headers.as_ref(),
       );
     let specifier = file.url;
-    match deno_graph::source::decode_source(
-      &specifier,
-      file.source,
-      maybe_charset,
-    ) {
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(&specifier, &file.source)
+    });
+    match deno_media_type::encoding::decode_arc_source(charset, file.source) {
       Ok(source) => Ok(TextDecodedFile {
         media_type,
         specifier,
