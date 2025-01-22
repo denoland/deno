@@ -1275,6 +1275,7 @@ dependencies = [
  "deno_lib",
  "deno_lint",
  "deno_lockfile",
+ "deno_media_type",
  "deno_npm",
  "deno_npm_cache",
  "deno_package_json",

@@ -936,7 +936,7 @@ impl FileSystemDocuments {
         file_referrer.cloned(),
       )
     } else if specifier.scheme() == "data" {
-      let source = deno_graph::source::RawDataUrl::parse(specifier)
+      let source = deno_media_type::data_url::RawDataUrl::parse(specifier)
         .ok()?
         .decode()
         .ok()?;
