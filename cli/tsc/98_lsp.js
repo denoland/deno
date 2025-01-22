@@ -194,7 +194,7 @@ const documentRegistry = {
       SOURCE_REF_COUNTS.delete(path);
       // We call `cleanupSemanticCache` for other purposes, don't bust the
       // source cache in this case.
-      if (LAST_REQUEST_METHOD != "cleanupSemanticCache") {
+      if (LAST_REQUEST_METHOD.get() != "cleanupSemanticCache") {
         const mapKey = path + key;
         documentRegistrySourceFileCache.delete(mapKey);
         SCRIPT_SNAPSHOT_CACHE.delete(path);
@@ -379,7 +379,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
       /** @type { typeof languageServiceEntries.byScope } */
       const newByScope = new Map();
       for (const [scope, config] of newConfigsByScope) {
-        LAST_REQUEST_SCOPE = scope;
+        LAST_REQUEST_SCOPE.set(scope);
         const oldEntry = languageServiceEntries.byScope.get(scope);
         const ls = oldEntry
           ? oldEntry.ls
@@ -394,7 +394,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
       languageServiceEntries.byScope = newByScope;
     }
 
-    PROJECT_VERSION_CACHE = newProjectVersion;
+    PROJECT_VERSION_CACHE.set(newProjectVersion);
 
     let opened = false;
     let closed = false;
@@ -419,8 +419,8 @@ function serverRequest(id, method, args, scope, maybeChange) {
   if (scope?.startsWith(ASSETS_URL_PREFIX)) {
     scope = ASSET_SCOPES.get(scope) ?? null;
   }
-  LAST_REQUEST_METHOD = method;
-  LAST_REQUEST_SCOPE = scope;
+  LAST_REQUEST_METHOD.set(method);
+  LAST_REQUEST_SCOPE.set(scope);
   const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??
     languageServiceEntries.unscoped.ls;
   switch (method) {
@@ -439,7 +439,8 @@ function serverRequest(id, method, args, scope, maybeChange) {
       // but the diagnostic server queues a `$getDiagnostics` request
       // with a stale project version. in that case, treat it as cancelled
       // (it's about to be invalidated anyway).
-      if (PROJECT_VERSION_CACHE && projectVersion !== PROJECT_VERSION_CACHE) {
+      const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
+      if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
         return respond(id, {});
       }
       try {

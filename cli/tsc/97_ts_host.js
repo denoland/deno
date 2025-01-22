@@ -136,13 +136,31 @@ export const IS_NODE_SOURCE_FILE_CACHE = new Map();
 export const ASSET_SCOPES = new Map();
 
 /** @type {number | null} */
-export let PROJECT_VERSION_CACHE = null;
+let projectVersionCache = null;
+export const PROJECT_VERSION_CACHE = {
+  get: () => projectVersionCache,
+  set: (version) => {
+    projectVersionCache = version;
+  },
+};
 
 /** @type {string | null} */
-export let LAST_REQUEST_METHOD = null;
+let lastRequestMethod = null;
+export const LAST_REQUEST_METHOD = {
+  get: () => lastRequestMethod,
+  set: (method) => {
+    lastRequestMethod = method;
+  },
+};
 
 /** @type {string | null} */
-export let LAST_REQUEST_SCOPE = null;
+let lastRequestScope = null;
+export const LAST_REQUEST_SCOPE = {
+  get: () => lastRequestScope,
+  set: (scope) => {
+    lastRequestScope = scope;
+  },
+};
 
 ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
   const fileName = sourceFile.fileName;
@@ -312,16 +330,6 @@ const IGNORED_DIAGNOSTICS = [
   7016,
 ];
 
-const SNAPSHOT_COMPILE_OPTIONS = {
-  esModuleInterop: true,
-  jsx: ts.JsxEmit.React,
-  module: ts.ModuleKind.ESNext,
-  noEmit: true,
-  strict: true,
-  target: ts.ScriptTarget.ESNext,
-  lib: ["lib.deno.window.d.ts"],
-};
-
 // todo(dsherret): can we remove this and just use ts.OperationCanceledException?
 /** Error thrown on cancellation. */
 export class OperationCanceledError extends Error {
@@ -383,15 +391,16 @@ export const host = {
     return new CancellationToken();
   },
   getProjectVersion() {
+    const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
     if (
-      PROJECT_VERSION_CACHE
+      cachedProjectVersion
     ) {
-      debug(`getProjectVersion cache hit : ${PROJECT_VERSION_CACHE}`);
-      return PROJECT_VERSION_CACHE;
+      debug(`getProjectVersion cache hit : ${cachedProjectVersion}`);
+      return cachedProjectVersion;
     }
     const projectVersion = ops.op_project_version();
-    PROJECT_VERSION_CACHE = projectVersion;
-    debug(`getProjectVersion cache miss : ${PROJECT_VERSION_CACHE}`);
+    PROJECT_VERSION_CACHE.set(projectVersion);
+    debug(`getProjectVersion cache miss : ${projectVersion}`);
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
@@ -632,8 +641,10 @@ export const host = {
     if (logDebug) {
       debug("host.getCompilationSettings()");
     }
-    return (LAST_REQUEST_SCOPE
-      ? languageServiceEntries.byScope.get(LAST_REQUEST_SCOPE)?.compilerOptions
+    const lastRequestScope = LAST_REQUEST_SCOPE.get();
+    return (lastRequestScope
+      ? languageServiceEntries.byScope.get(lastRequestScope)
+        ?.compilerOptions
       : null) ?? languageServiceEntries.unscoped.compilerOptions;
   },
   getScriptFileNames() {
@@ -647,8 +658,9 @@ export const host = {
         byScope: new Map(Object.entries(byScope)),
       };
     }
-    return (LAST_REQUEST_SCOPE
-      ? scriptNamesCache.byScope.get(LAST_REQUEST_SCOPE)
+    const lastRequestScope = LAST_REQUEST_SCOPE.get();
+    return (lastRequestScope
+      ? scriptNamesCache.byScope.get(lastRequestScope)
       : null) ?? scriptNamesCache.unscoped;
   },
   getScriptVersion(specifier) {
@@ -678,7 +690,7 @@ export const host = {
       );
       if (sourceFile) {
         if (!ASSET_SCOPES.has(specifier)) {
-          ASSET_SCOPES.set(specifier, LAST_REQUEST_SCOPE);
+          ASSET_SCOPES.set(specifier, LAST_REQUEST_SCOPE.get());
         }
         // This case only occurs for assets.
         return ts.ScriptSnapshot.fromString(sourceFile.text);
