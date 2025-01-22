@@ -277,7 +277,7 @@ pub struct WorkspaceFactory<
   node_modules_dir_path: Deferred<Option<PathBuf>>,
   npm_cache_dir: Deferred<NpmCacheDirRc>,
   npmrc: Deferred<ResolvedNpmRcRc>,
-  resolved_node_modules_dir: Deferred<NodeModulesDirMode>,
+  node_modules_dir_mode: Deferred<NodeModulesDirMode>,
   workspace_directory: Deferred<WorkspaceDirectoryRc>,
   initial_cwd: PathBuf,
   options: WorkspaceFactoryOptions<TSys>,
@@ -328,7 +328,7 @@ impl<
       node_modules_dir_path: Default::default(),
       npm_cache_dir: Default::default(),
       npmrc: Default::default(),
-      resolved_node_modules_dir: Default::default(),
+      node_modules_dir_mode: Default::default(),
       workspace_directory: Default::default(),
       initial_cwd,
       options,
@@ -350,11 +350,11 @@ impl<
     self.options.no_npm
   }
 
-  pub fn resolved_node_modules_dir(
+  pub fn node_modules_dir_mode(
     &self,
   ) -> Result<NodeModulesDirMode, anyhow::Error> {
     self
-      .resolved_node_modules_dir
+      .node_modules_dir_mode
       .get_or_try_init(|| {
         if let Some(process_state) = &self.options.npm_process_state {
           if process_state.is_byonm {
@@ -414,10 +414,10 @@ impl<
           );
         }
 
-        let mode = self.resolved_node_modules_dir()?;
+        let mode = self.node_modules_dir_mode()?;
         let workspace = &self.workspace_directory()?.workspace;
         let root_folder = workspace.root_folder_configs();
-        if mode.uses_node_modules_dir() {
+        if !mode.uses_node_modules_dir() {
           return Ok(None);
         }
 
@@ -874,7 +874,7 @@ impl<
           {
             Some(value) => value,
             None => {
-              match self.workspace_factory.resolved_node_modules_dir()? {
+              match self.workspace_factory.node_modules_dir_mode()? {
                 NodeModulesDirMode::Manual => {
                   PackageJsonDepResolution::Disabled
                 }
@@ -909,7 +909,7 @@ impl<
 
   pub fn use_byonm(&self) -> Result<bool, anyhow::Error> {
     Ok(
-      self.workspace_factory.resolved_node_modules_dir()?
+      self.workspace_factory.node_modules_dir_mode()?
         == NodeModulesDirMode::Manual,
     )
   }
