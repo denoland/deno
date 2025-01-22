@@ -1291,7 +1291,7 @@ impl CliFactoryWithWorkspaceFiles {
       Arc::new(cli_options.with_all_dirs(
         workspace_dirs_with_files.iter().map(|(d, _)| d.clone()),
       ));
-    let mut factory = CliFactory::from_cli_options(cli_options.clone())
+    let factory = CliFactory::from_cli_options(cli_options.clone())
       .with_watcher_communicator(watcher_communicator.cloned());
     if let Some(watcher_communicator) = watcher_communicator {
       let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
