@@ -6,5 +6,5 @@ Usage: deno bundle [OPTIONS]
 
 Options:
   -q, --quiet     Suppress diagnostic output
-      --unstable  The `--unstable` flag has been removed in Deno 2.0. Use granular `--unstable-*` flags instead
+      --unstable  The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
                     To view the list of individual unstable feature flags, run this command again with --help=unstable
