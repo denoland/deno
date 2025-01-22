@@ -4264,7 +4264,7 @@ impl CommandExt for Command {
     let mut cmd = self.arg(
       Arg::new("unstable")
       .long("unstable")
-      .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      .help(cstr!("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
       .action(ArgAction::SetTrue)
       .hide(matches!(cfg, UnstableArgsConfig::None))
