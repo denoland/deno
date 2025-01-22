@@ -125,6 +125,8 @@ mod ts {
     esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
     esm = [
       dir "tsc",
+      "97_ts_host.js",
+      "98_lsp.js",
       "99_main_compiler.js",
     ],
     js = [
