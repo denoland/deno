@@ -3594,16 +3594,13 @@
         "DOMException-constructor-behavior.any.html": true,
         "DOMException-constructor-behavior.any.worker.html": true,
         "DOMException-custom-bindings.any.html": true,
-        "DOMException-custom-bindings.any.worker.html": true
+        "DOMException-custom-bindings.any.worker.html": true,
+        "exceptions.html": false
       },
       "class-string-interface.any.html": true,
       "class-string-interface.any.worker.html": true,
-      "class-string-iterator-prototype-object.any.html": [
-        "Object.prototype.toString applied after deleting @@toStringTag"
-      ],
-      "class-string-iterator-prototype-object.any.worker.html": [
-        "Object.prototype.toString applied after deleting @@toStringTag"
-      ],
+      "class-string-iterator-prototype-object.any.html": true,
+      "class-string-iterator-prototype-object.any.worker.html": true,
       "class-string-named-properties-object.window.html": false,
       "global-immutable-prototype.any.html": [
         "Setting to a different prototype"
@@ -4569,7 +4566,11 @@
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
-      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased"
+      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
+      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
+      "URL: Setting <non-spec:/>.pathname = '/..//p'",
+      "URL: Setting <non-spec:/>.pathname = '//p'",
+      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
     ],
     "url-setters.any.html?include=file": [
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
@@ -4583,7 +4584,11 @@
       "URL: Setting <http://example.net:8080/path>.hostname = 'example.com:' : delimiter invalidates entire value",
       "URL: Setting <non-spec:/.//p>.hostname = 'h' Drop /. from path",
       "URL: Setting <non-spec:/.//p>.hostname = ''",
-      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased"
+      "URL: Setting <foo:///some/path>.pathname = '' Non-special URLs with an empty host can have their paths erased",
+      "URL: Setting <non-spec:/>.pathname = '/.//p' Serialize /. in path",
+      "URL: Setting <non-spec:/>.pathname = '/..//p'",
+      "URL: Setting <non-spec:/>.pathname = '//p'",
+      "URL: Setting <non-spec:/.//>.pathname = 'p' Drop /. from path"
     ],
     "url-setters.any.worker.html?include=file": [
       "URL: Setting <file://monkey/>.pathname = '\\\\' File URLs and (back)slashes",
@@ -9754,7 +9759,6 @@
         "structured-cloning-error-stack-optional.sub.window.html": [
           "page-created Error (cross-site iframe)",
           "page-created Error (same-origin iframe)",
-          "page-created DOMException (structuredClone())",
           "page-created DOMException (cross-site iframe)",
           "page-created DOMException (same-origin iframe)",
           "JS-engine-created TypeError (cross-site iframe)",
@@ -9762,8 +9766,7 @@
           "web API-created TypeError (cross-site iframe)",
           "web API-created TypeError (same-origin iframe)",
           "web API-created DOMException (cross-site iframe)",
-          "web API-created DOMException (same-origin iframe)",
-          "page-created DOMException (worker)"
+          "web API-created DOMException (same-origin iframe)"
         ],
         "transfer-errors.window.html": false,
         "window-postmessage.window.html": false

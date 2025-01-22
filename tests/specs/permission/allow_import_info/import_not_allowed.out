@@ -1,0 +1,7 @@
+local: [WILDLINE]
+type: TypeScript
+dependencies: [WILDLINE]
+size: [WILDLINE]
+
+file:///[WILDLINE]/allow_import_info/main.ts ([WILDLINE])
+└── http://localhost:4545/welcome.ts (not capable, requires --allow-import)

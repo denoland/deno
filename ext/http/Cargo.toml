@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_http"
-version = "0.179.0"
+version = "0.185.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -28,6 +28,7 @@ brotli.workspace = true
 bytes.workspace = true
 cache_control.workspace = true
 deno_core.workspace = true
+deno_error.workspace = true
 deno_net.workspace = true
 deno_websocket.workspace = true
 flate2.workspace = true

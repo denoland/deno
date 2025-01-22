@@ -1,12 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::symbol::NativeType;
-use deno_core::v8;
-use libffi::middle::Arg;
 use std::ffi::c_void;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error)]
+use deno_core::v8;
+use libffi::middle::Arg;
+
+use crate::symbol::NativeType;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum IRError {
   #[error("Invalid FFI u8 type, expected boolean")]
   InvalidU8ExpectedBoolean,

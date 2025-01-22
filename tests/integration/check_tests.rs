@@ -1,24 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::itest;
 use util::TestContext;
 use util::TestContextBuilder;
-
-itest!(check_all {
-  args: "check --allow-import --quiet --all check/all/check_all.ts",
-  output: "check/all/check_all.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_all_local {
-  args: "check --allow-import --quiet check/all/check_all.ts",
-  output_str: Some(""),
-  http_server: true,
-});
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -232,7 +218,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "1.0.0".to_string(),
+    "1.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -250,7 +236,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "2.0.0".to_string(),
+    "2.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
 

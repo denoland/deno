@@ -1,13 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -66,12 +65,11 @@ fn fast_check_cache() {
   // ensure cache works
   let output = check_debug_cmd.run();
   assert_contains!(output.combined_output(), "Already type checked.");
-  let building_fast_check_msg = "Building fast check graph";
-  assert_not_contains!(output.combined_output(), building_fast_check_msg);
 
   // now validated
   type_check_cache_path.remove_file();
   let output = check_debug_cmd.run();
+  let building_fast_check_msg = "Building fast check graph";
   assert_contains!(output.combined_output(), building_fast_check_msg);
   assert_contains!(
     output.combined_output(),
@@ -159,7 +157,7 @@ console.log(version);"#,
     .get_mut(
       &JsrDepPackageReq::from_str("jsr:@denotest/no-module-graph@0.1").unwrap(),
     )
-    .unwrap() = "0.1.0".to_string();
+    .unwrap() = "0.1.0".into();
   lockfile_path.write(lockfile.as_json_string());
 
   test_context
@@ -191,8 +189,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
       Url::parse(&format!("http://127.0.0.1:4250/{}/meta.json", package))
         .unwrap();
     let cache = deno_cache_dir::GlobalHttpCache::new(
+      sys_traits::impls::RealSys,
       deno_dir.path().join("remote").to_path_buf(),
-      deno_cache_dir::TestRealDenoCacheEnv,
     );
     let entry = cache
       .get(&cache.cache_item_key(&specifier).unwrap(), None)

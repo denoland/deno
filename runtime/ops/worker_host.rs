@@ -1,15 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::ops::TestingFeaturesEnabled;
-use crate::web_worker::run_web_worker;
-use crate::web_worker::SendableWebWorkerHandle;
-use crate::web_worker::WebWorker;
-use crate::web_worker::WebWorkerHandle;
-use crate::web_worker::WebWorkerType;
-use crate::web_worker::WorkerControlEvent;
-use crate::web_worker::WorkerId;
-use crate::web_worker::WorkerMetadata;
-use crate::worker::FormatJsErrorFn;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::CancelFuture;
@@ -22,10 +17,17 @@ use deno_web::deserialize_js_transferables;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
 use log::debug;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::ops::TestingFeaturesEnabled;
+use crate::web_worker::run_web_worker;
+use crate::web_worker::SendableWebWorkerHandle;
+use crate::web_worker::WebWorker;
+use crate::web_worker::WebWorkerHandle;
+use crate::web_worker::WebWorkerType;
+use crate::web_worker::WorkerControlEvent;
+use crate::web_worker::WorkerId;
+use crate::web_worker::WorkerMetadata;
+use crate::worker::FormatJsErrorFn;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "worker-options";
 
@@ -118,16 +120,21 @@ pub struct CreateWorkerArgs {
   close_on_idle: bool,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CreateWorkerError {
+  #[class("DOMExceptionNotSupportedError")]
   #[error("Classic workers are not supported.")]
   ClassicWorkers,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(deno_permissions::ChildPermissionError),
+  #[class(inherit)]
   #[error(transparent)]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
+  #[class(inherit)]
   #[error(transparent)]
   MessagePort(#[from] MessagePortError),
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
 }

@@ -6,6 +6,144 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.7 / 2025.01.21
+
+- fix(deps): update yanked crates (#27512)
+- fix(ext/node): GCM auth tag check on DechiperIv#final (#27733)
+- fix(ext/node): add FileHandle#sync (#27677)
+- fix(ext/node): propagate socket error to client request object (#27678)
+- fix(ext/node): tls.connect regression (#27707)
+- fix(ext/os): pass SignalState to web worker (#27741)
+- fix(install/global): remove importMap field from specified config file
+  (#27744)
+- fix: use 'getrandom' feature for 'sys_traits' crate
+- perf(compile): remove swc from denort (#27721)
+
+### 2.1.6 / 2025.01.16
+
+- fix(check/lsp): correctly resolve compilerOptions.types (#27686)
+- fix(check/lsp): fix bugs with tsc type resolution, allow npm packages to
+  augment `ImportMeta` (#27690)
+- fix(compile): store embedded fs case sensitivity (#27653)
+- fix(compile/windows): better handling of deno_dir on different drive letter
+  than code (#27654)
+- fix(ext/console): change Temporal color (#27684)
+- fix(ext/node): add `writev` method to `FileHandle` (#27563)
+- fix(ext/node): add chown method to FileHandle class (#27638)
+- fix(ext/node): apply `@npmcli/agent` workaround to `npm-check-updates`
+  (#27639)
+- fix(ext/node): fix playwright http client (#27662)
+- fix(ext/node): show bare-node-builtin hint when using an import map (#27632)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs_common.ts` (#27589)
+- fix(lsp): handle pathless untitled URIs (#27637)
+- fix(lsp/check): don't resolve unknown media types to a `.js` extension
+  (#27631)
+- fix(node): Prevent node:child_process from always inheriting the parent
+  environment (#27343) (#27340)
+- fix(node/fs): add utimes method to the FileHandle class (#27582)
+- fix(outdated): Use `latest` tag even when it's the same as the current version
+  (#27699)
+- fix(outdated): retain strict semver specifier when updating (#27701)
+
+### 2.1.5 / 2025.01.09
+
+- feat(unstable): implement QUIC (#21942)
+- feat(unstable): add JS linting plugin infrastructure (#27416)
+- feat(unstable): add OTEL MeterProvider (#27240)
+- feat(unstable): no config npm:@opentelemetry/api integration (#27541)
+- feat(unstable): replace SpanExporter with TracerProvider (#27473)
+- feat(unstable): support selectors in JS lint plugins (#27452)
+- fix(check): line-break between diagnostic message chain entries (#27543)
+- fix(check): move module not found errors to typescript diagnostics (#27533)
+- fix(compile): analyze modules in directory specified in --include (#27296)
+- fix(compile): be more deterministic when compiling the same code in different
+  directories (#27395)
+- fix(compile): display embedded file sizes and total (#27360)
+- fix(compile): output contents of embedded file system (#27302)
+- fix(ext/fetch): better error message when body resource is unavailable
+  (#27429)
+- fix(ext/fetch): retry some http/2 errors (#27417)
+- fix(ext/fs): do not throw for bigint ctime/mtime/atime (#27453)
+- fix(ext/http): improve error message when underlying resource of request body
+  unavailable (#27463)
+- fix(ext/net): update moka cache to avoid potential panic in `Deno.resolveDns`
+  on some laptops with Ryzen CPU (#27572)
+- fix(ext/node): fix `fs.access`/`fs.promises.access` with `X_OK` mode parameter
+  on Windows (#27407)
+- fix(ext/node): fix `os.cpus()` on Linux (#27592)
+- fix(ext/node): RangeError timingSafeEqual with different byteLength (#27470)
+- fix(ext/node): add `truncate` method to the `FileHandle` class (#27389)
+- fix(ext/node): add support of any length IV for aes-(128|256)-gcm ciphers
+  (#27476)
+- fix(ext/node): convert brotli chunks with proper byte offset (#27455)
+- fix(ext/node): do not exit worker thread when there is pending async op
+  (#27378)
+- fix(ext/node): have `process` global available in Node context (#27562)
+- fix(ext/node): make getCiphers return supported ciphers (#27466)
+- fix(ext/node): sort list of built-in modules alphabetically (#27410)
+- fix(ext/node): support createConnection option in node:http.request() (#25470)
+- fix(ext/node): support private key export in JWK format (#27325)
+- fix(ext/web): add `[[ErrorData]]` slot to `DOMException` (#27342)
+- fix(ext/websocket): Fix close code without reason (#27578)
+- fix(jsr): Wasm imports fail to load (#27594)
+- fix(kv): improve backoff error message and inline documentation (#27537)
+- fix(lint): fix single char selectors being ignored (#27576)
+- fix(lockfile): include dependencies listed in external import map in lockfile
+  (#27337)
+- fix(lsp): css preprocessor formatting (#27526)
+- fix(lsp): don't skip dirs with enabled subdirs (#27580)
+- fix(lsp): include "node:" prefix for node builtin auto-imports (#27404)
+- fix(lsp): respect "typescript.suggestionActions.enabled" setting (#27373)
+- fix(lsp): rewrite imports for 'Move to a new file' action (#27427)
+- fix(lsp): sql and component file formatting (#27350)
+- fix(lsp): use verbatim specifier for URL auto-imports (#27605)
+- fix(no-slow-types): handle rest param with internal assignments (#27581)
+- fix(node/fs): add a chmod method to the FileHandle class (#27522)
+- fix(node): add missing `inspector/promises` (#27491)
+- fix(node): handle cjs exports with escaped chars (#27438)
+- fix(npm): deterministically output tags to initialized file (#27514)
+- fix(npm): search node_modules folder for package matching npm specifier
+  (#27345)
+- fix(outdated): ensure "Latest" version is greater than "Update" version
+  (#27390)
+- fix(outdated): support updating dependencies in external import maps (#27339)
+- fix(permissions): implicit `--allow-import` when using `--cached-only`
+  (#27530)
+- fix(publish): infer literal types in const contexts (#27425)
+- fix(task): properly handle task name wildcards with --recursive (#27396)
+- fix(task): support tasks without commands (#27191)
+- fix(unstable): don't error on non-existing attrs or type attr (#27456)
+- fix: FastString v8_string() should error when cannot allocated (#27375)
+- fix: deno_resolver crate without 'sync' feature (#27403)
+- fix: incorrect memory info free/available bytes on mac (#27460)
+- fix: upgrade deno_doc to 0.161.3 (#27377)
+- perf(fs/windows): stat - only open file once (#27487)
+- perf(node/fs/copy): reduce metadata lookups copying directory (#27495)
+- perf: don't store duplicate info for ops in the snapshot (#27430)
+- perf: remove now needless canonicalization getting closest package.json
+  (#27437)
+- perf: upgrade to deno_semver 0.7 (#27426)
+
+### 2.1.4 / 2024.12.11
+
+- feat(unstable): support caching npm dependencies only as they're needed
+  (#27300)
+- fix(compile): correct read length for transpiled typescript files (#27301)
+- fix(ext/node): accept file descriptor in fs.readFile(Sync) (#27252)
+- fix(ext/node): handle Float16Array in node:v8 module (#27285)
+- fix(lint): do not error providing --allow-import (#27321)
+- fix(node): update list of builtin node modules, add missing export to
+  _http_common (#27294)
+- fix(outdated): error when there are no config files (#27306)
+- fix(outdated): respect --quiet flag for hints (#27317)
+- fix(outdated): show a suggestion for updating (#27304)
+- fix(task): do not always kill child on ctrl+c on windows (#27269)
+- fix(unstable): don't unwrap optional state in otel (#27292)
+- fix: do not error when subpath has an @ symbol (#27290)
+- fix: do not panic when fetching invalid file url on Windows (#27259)
+- fix: replace the @deno-types with @ts-types (#27310)
+- perf(compile): improve FileBackedVfsFile (#27299)
+
 ### 2.1.3 / 2024.12.05
 
 - feat(unstable): add metrics to otel (#27143)
