@@ -563,6 +563,10 @@ impl<
     })
   }
 
+  pub fn sys(&self) -> &TSys {
+    &self.sys
+  }
+
   pub fn workspace_directory(
     &self,
   ) -> Result<&WorkspaceDirectoryRc, WorkspaceDiscoverError> {
@@ -667,7 +671,6 @@ pub struct ResolverFactory<
     + 'static,
 > {
   options: ResolverFactoryOptions,
-  sys: TSys,
   deno_resolver: Deferred<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -719,13 +722,11 @@ impl<
   > ResolverFactory<TSys>
 {
   pub fn new(
-    sys: TSys,
     workspace_factory: WorkspaceFactoryRc<TSys>,
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
       options,
-      sys,
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -807,7 +808,7 @@ impl<
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.sys.clone(),
+        self.workspace_factory.sys.clone(),
         // todo(THIS PR): move to options
         ConditionsFromResolutionMode::default(),
       )))
@@ -834,7 +835,7 @@ impl<
         in_npm_pkg_checker: self.in_npm_package_checker()?.clone(),
         node_resolver: self.node_resolver()?.clone(),
         npm_resolver: self.npm_resolver()?.clone(),
-        sys: self.sys.clone(),
+        sys: self.workspace_factory.sys.clone(),
       })))
     })
   }
@@ -843,7 +844,7 @@ impl<
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.sys.clone(),
+          sys: self.workspace_factory.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {
@@ -851,7 +852,7 @@ impl<
               // path needs to be canonicalized for node resolution
               // (node_modules_dir_path above is already canonicalized)
               None => canonicalize_path_maybe_not_exists(
-                &self.sys,
+                &self.workspace_factory.sys,
                 self.workspace_factory.initial_cwd(),
               )?
               .join("node_modules"),
@@ -860,7 +861,7 @@ impl<
         })
       } else {
         NpmResolverCreateOptions::Managed(ManagedNpmResolverCreateOptions {
-          sys: self.sys.clone(),
+          sys: self.workspace_factory.sys.clone(),
           npm_resolution: self.npm_resolution().clone(),
           npm_cache_dir: self.workspace_factory.npm_cache_dir()?.clone(),
           maybe_node_modules_path: self
@@ -875,9 +876,9 @@ impl<
   }
 
   pub fn pkg_json_resolver(&self) -> &PackageJsonResolverRc<TSys> {
-    self
-      .pkg_json_resolver
-      .get_or_init(|| new_rc(PackageJsonResolver::new(self.sys.clone())))
+    self.pkg_json_resolver.get_or_init(|| {
+      new_rc(PackageJsonResolver::new(self.workspace_factory.sys.clone()))
+    })
   }
 
   pub fn sloppy_imports_resolver(
@@ -898,9 +899,11 @@ impl<
         if enabled {
           Ok(Some(new_rc(SloppyImportsResolver::new(
             if self.options.no_sloppy_imports_cache {
-              SloppyImportsCachedFs::new_without_stat_cache(self.sys.clone())
+              SloppyImportsCachedFs::new_without_stat_cache(
+                self.workspace_factory.sys.clone(),
+              )
             } else {
-              SloppyImportsCachedFs::new(self.sys.clone())
+              SloppyImportsCachedFs::new(self.workspace_factory.sys.clone())
             },
           ))))
         } else {
@@ -935,7 +938,8 @@ impl<
           },
           specified_import_map,
         };
-        let resolver = workspace.create_resolver(&self.sys, options)?;
+        let resolver =
+          workspace.create_resolver(&self.workspace_factory.sys, options)?;
         if !resolver.diagnostics().is_empty() {
           // todo(dsherret): do not log this in this crate... that should be
           // a CLI responsibility
