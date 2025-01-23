@@ -54,11 +54,11 @@ deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.331.0" }
 
 deno_bench_util = { version = "0.181.0", path = "./bench_util" }
-deno_config = { version = "=0.45.0", features = ["workspace", "sync"] }
+deno_config = { version = "=0.45.0", features = ["workspace"] }
 deno_lockfile = "=0.24.0"
 deno_media_type = { version = "=0.2.5", features = ["module_specifier"] }
 deno_npm = "=0.27.2"
-deno_path_util = "=0.3.0"
+deno_path_util = "=0.3.1"
 deno_permissions = { version = "0.46.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.195.0", path = "./runtime" }
 deno_semver = "=0.7.1"
@@ -107,6 +107,7 @@ node_resolver = { version = "0.25.0", path = "./resolvers/node" }
 
 aes = "=0.8.3"
 anyhow = "1.0.57"
+async-once-cell = "0.5.4"
 async-trait = "0.1.73"
 base32 = "=0.5.1"
 base64 = "0.21.7"
@@ -125,7 +126,7 @@ console_static_text = "=0.8.1"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-deno_cache_dir = "=0.16.0"
+deno_cache_dir = "=0.17.0"
 deno_error = "=0.5.5"
 deno_package_json = { version = "0.4.0", default-features = false }
 deno_unsync = "0.4.2"

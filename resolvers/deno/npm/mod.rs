@@ -50,6 +50,7 @@ mod byonm;
 mod local;
 pub mod managed;
 
+#[derive(Debug)]
 pub enum CreateInNpmPkgCheckerOptions<'a> {
   Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
   Byonm,
