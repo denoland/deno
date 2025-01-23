@@ -138,6 +138,8 @@ declare namespace Deno {
 
     readonly readable: ReadableStream<Uint8Array>;
     readonly writable: WritableStream<Uint8Array>;
+
+    readonly fd: number;
   }
 
   /** @category Network */
