@@ -465,33 +465,23 @@ fn op_create_hash_inner(s: &mut OpState, text: &str) -> String {
   get_hash(text, state.hash_data)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct EmitArgs {
-  /// The text data/contents of the file.
-  data: String,
-  /// The _internal_ filename for the file.  This will be used to determine how
-  /// the file is cached and stored.
-  file_name: String,
-}
-
 #[op2(fast)]
 fn op_emit(
   state: &mut OpState,
   #[string] data: String,
-  #[string] file_name: String,
+  #[string] file_name: &str,
 ) -> bool {
-  op_emit_inner(state, EmitArgs { data, file_name })
+  op_emit_inner(state, data, file_name)
 }
 
 #[inline]
-fn op_emit_inner(state: &mut OpState, args: EmitArgs) -> bool {
+fn op_emit_inner(state: &mut OpState, data: String, file_name: &str) -> bool {
   let state = state.borrow_mut::<State>();
-  match args.file_name.as_ref() {
-    "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(args.data),
+  match file_name {
+    "internal:///.tsbuildinfo" => state.maybe_tsbuildinfo = Some(data),
     _ => {
       if cfg!(debug_assertions) {
-        panic!("Unhandled emit write: {}", args.file_name);
+        panic!("Unhandled emit write: {}", file_name);
       }
     }
   }
@@ -1107,13 +1097,14 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
 
   deno_core::extension!(deno_cli_tsc,
     ops = [
-      op_create_hash,
-      op_emit,
-      op_is_node_file,
-      op_load,
-      op_remap_specifier,
       op_resolve,
       op_respond,
+      op_is_node_file,
+      op_load,
+
+      op_create_hash,
+      op_emit,
+      op_remap_specifier,
     ],
     options = {
       request: Request,
@@ -1344,10 +1335,8 @@ mod tests {
     let mut state = setup(None, None, None).await;
     let actual = op_emit_inner(
       &mut state,
-      EmitArgs {
-        data: "some file content".to_string(),
-        file_name: "internal:///.tsbuildinfo".to_string(),
-      },
+      "some file content".to_string(),
+      "internal:///.tsbuildinfo",
     );
     assert!(actual);
     let state = state.borrow::<State>();
