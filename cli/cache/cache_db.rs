@@ -378,19 +378,22 @@ fn open_connection(
     Err(err) => err,
   };
 
-  // handle failure mode immediately and don't bother logging
-  // if on a readonly file system
-  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
-    if ffi_err.code == rusqlite::ErrorCode::ReadOnly {
-      return handle_failure_mode(config, err, open_connection_and_init);
-    }
-  }
-
   let Some(path) = path.as_ref() else {
     // If an in-memory DB fails, that's game over
     log::error!("Failed to initialize in-memory cache database.");
     return Err(err.into());
   };
+
+  // reduce logging for readonly file system
+  if let rusqlite::Error::SqliteFailure(ffi_err, _) = &err {
+    if ffi_err.code == rusqlite::ErrorCode::ReadOnly {
+      log::debug!(
+        "Failed creating cache db. Folder readonly: {}",
+        path.display()
+      );
+      return handle_failure_mode(config, err, open_connection_and_init);
+    }
+  }
 
   // ensure the parent directory exists
   if let Some(parent) = path.parent() {
