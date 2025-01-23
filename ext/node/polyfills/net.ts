@@ -90,6 +90,7 @@ import {
   validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
+import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
   constants as TCPConstants,
   TCP,
@@ -1165,6 +1166,7 @@ function _emitCloseNT(s: Socket | Server) {
 
 // The packages that need socket initialization workaround
 const pkgsNeedsSockInitWorkaround = [
+  "node:http",
   "@npmcli/agent",
   "npm-check-updates",
   "playwright-core",
@@ -1249,9 +1251,9 @@ export class Socket extends Duplex {
     // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
-      errorStack?.includes(pkg)
-    );
+    this._needsSockInitWorkaround =
+      options.handle?.provider !== providerType.TCPSERVERWRAP &&
+      pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
     if (this._needsSockInitWorkaround) {
       this.pause();
     }
