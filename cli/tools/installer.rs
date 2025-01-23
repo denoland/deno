@@ -306,9 +306,7 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_installer) = factory.npm_installer_if_managed()? {
-        npm_installer.ensure_no_pkg_json_dep_errors()?;
-      }
+      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
@@ -375,7 +373,7 @@ async fn install_global(
     log::Level::Trace,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
+  let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));

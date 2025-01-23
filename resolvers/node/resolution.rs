@@ -47,6 +47,7 @@ use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
 use crate::InNpmPackageChecker;
+use crate::IsBuiltInNodeModuleChecker;
 use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
@@ -55,11 +56,12 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-type ConditionsFromResolutionModeFn = Box<
+#[allow(clippy::disallowed_types)]
+type ConditionsFromResolutionModeFn = crate::sync::MaybeArc<
   dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
 >;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConditionsFromResolutionMode(Option<ConditionsFromResolutionModeFn>);
 
 impl Debug for ConditionsFromResolutionMode {
@@ -130,10 +132,6 @@ impl NodeResolution {
       }
     }
   }
-}
-
-pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
-  fn is_builtin_node_module(&self, specifier: &str) -> bool;
 }
 
 #[allow(clippy::disallowed_types)]
