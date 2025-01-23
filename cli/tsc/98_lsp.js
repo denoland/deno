@@ -3,6 +3,7 @@
 import {
   ASSET_SCOPES,
   ASSETS_URL_PREFIX,
+  clearScriptNamesCache,
   debug,
   error,
   filterMapDiagnostic,
@@ -11,6 +12,7 @@ import {
   getCreateSourceFileOptions,
   host,
   IS_NODE_SOURCE_FILE_CACHE,
+  LANGUAGE_SERVICE_ENTRIES,
   LAST_REQUEST_METHOD,
   LAST_REQUEST_SCOPE,
   OperationCanceledError,
@@ -210,17 +212,6 @@ const documentRegistry = {
   },
 };
 
-/** @typedef {{
- *    ls: ts.LanguageService & { [k:string]: any },
- *    compilerOptions: ts.CompilerOptions,
- *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
-const languageServiceEntries = {
-  // @ts-ignore Will be set later.
-  unscoped: null,
-  byScope: new Map(),
-};
-
 /** @param {Record<string, unknown>} config */
 function normalizeConfig(config) {
   // the typescript compiler doesn't know about the precompile
@@ -297,7 +288,7 @@ export async function serverMainLoop(enableDebugLogging) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
-  languageServiceEntries.unscoped = {
+  LANGUAGE_SERVICE_ENTRIES.unscoped = {
     ls: ts.createLanguageService(
       host,
       documentRegistry,
@@ -376,22 +367,22 @@ function serverRequest(id, method, args, scope, maybeChange) {
     if (newConfigsByScope) {
       IS_NODE_SOURCE_FILE_CACHE.clear();
       ASSET_SCOPES.clear();
-      /** @type { typeof languageServiceEntries.byScope } */
+      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
       const newByScope = new Map();
       for (const [scope, config] of newConfigsByScope) {
         LAST_REQUEST_SCOPE.set(scope);
-        const oldEntry = languageServiceEntries.byScope.get(scope);
+        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
         const ls = oldEntry
           ? oldEntry.ls
           : ts.createLanguageService(host, documentRegistry);
         const compilerOptions = lspTsConfigToCompilerOptions(config);
         newByScope.set(scope, { ls, compilerOptions });
-        languageServiceEntries.byScope.delete(scope);
+        LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
       }
-      for (const oldEntry of languageServiceEntries.byScope.values()) {
+      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
         oldEntry.ls.dispose();
       }
-      languageServiceEntries.byScope = newByScope;
+      LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
     }
 
     PROJECT_VERSION_CACHE.set(newProjectVersion);
@@ -409,7 +400,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
     }
 
     if (newConfigsByScope || opened || closed) {
-      scriptNamesCache = null;
+      clearScriptNamesCache();
     }
   }
 
@@ -421,8 +412,8 @@ function serverRequest(id, method, args, scope, maybeChange) {
   }
   LAST_REQUEST_METHOD.set(method);
   LAST_REQUEST_SCOPE.set(scope);
-  const ls = (scope ? languageServiceEntries.byScope.get(scope)?.ls : null) ??
-    languageServiceEntries.unscoped.ls;
+  const ls = (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
+    LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
   switch (method) {
     case "$getSupportedCodeFixes": {
       return respond(

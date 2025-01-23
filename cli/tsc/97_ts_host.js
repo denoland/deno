@@ -357,14 +357,18 @@ class CancellationToken {
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
 /** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
-const languageServiceEntries = {
+export const LANGUAGE_SERVICE_ENTRIES = {
   // @ts-ignore Will be set later.
   unscoped: null,
   byScope: new Map(),
 };
 
 /** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
-let scriptNamesCache = null;
+let SCRIPT_NAMES_CACHE = null;
+
+export function clearScriptNamesCache() {
+  SCRIPT_NAMES_CACHE = null;
+}
 
 /** An object literal of the incremental compiler host, which provides the
  * specific "bindings" to the Deno environment that tsc needs to work.
@@ -643,25 +647,25 @@ export const host = {
     }
     const lastRequestScope = LAST_REQUEST_SCOPE.get();
     return (lastRequestScope
-      ? languageServiceEntries.byScope.get(lastRequestScope)
+      ? LANGUAGE_SERVICE_ENTRIES.byScope.get(lastRequestScope)
         ?.compilerOptions
-      : null) ?? languageServiceEntries.unscoped.compilerOptions;
+      : null) ?? LANGUAGE_SERVICE_ENTRIES.unscoped.compilerOptions;
   },
   getScriptFileNames() {
     if (logDebug) {
       debug("host.getScriptFileNames()");
     }
-    if (!scriptNamesCache) {
+    if (!SCRIPT_NAMES_CACHE) {
       const { unscoped, byScope } = ops.op_script_names();
-      scriptNamesCache = {
+      SCRIPT_NAMES_CACHE = {
         unscoped,
         byScope: new Map(Object.entries(byScope)),
       };
     }
     const lastRequestScope = LAST_REQUEST_SCOPE.get();
     return (lastRequestScope
-      ? scriptNamesCache.byScope.get(lastRequestScope)
-      : null) ?? scriptNamesCache.unscoped;
+      ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+      : null) ?? SCRIPT_NAMES_CACHE.unscoped;
   },
   getScriptVersion(specifier) {
     if (logDebug) {
