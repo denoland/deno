@@ -1249,9 +1249,8 @@ export class Socket extends Duplex {
     // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
-      errorStack?.includes(pkg) && options.handle?.ipc !== true
-    );
+    this._needsSockInitWorkaround = options.handle?.ipc !== true &&
+      pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
     if (this._needsSockInitWorkaround) {
       this.pause();
     }
