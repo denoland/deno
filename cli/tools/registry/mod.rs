@@ -381,7 +381,7 @@ impl PublishPreparer {
         // not having function body implementations
         let check_diagnostics =
           check_diagnostics.filter(|d| d.include_when_remote());
-        if !check_diagnostics.is_empty() {
+        if check_diagnostics.has_diagnostic() {
           bail!(
             concat!(
             "Failed ensuring public API type output is valid.\n\n",

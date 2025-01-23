@@ -127,7 +127,7 @@ pub struct TypeChecker {
 pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
-  Diagnostics(#[from] Diagnostics),
+  Diagnostics(#[from] tsc::DiagnosticsByConfigFolder),
   #[class(inherit)]
   #[error(transparent)]
   ConfigFile(#[from] deno_json::ConfigFileError),
@@ -183,10 +183,10 @@ impl TypeChecker {
     let (graph, mut diagnostics) =
       self.check_diagnostics(graph, options).await?;
     diagnostics.emit_warnings();
-    if diagnostics.is_empty() {
-      Ok(graph)
-    } else {
+    if diagnostics.has_diagnostic() {
       Err(diagnostics.into())
+    } else {
+      Ok(graph)
     }
   }
 
@@ -198,7 +198,8 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
+  ) -> Result<(Arc<ModuleGraph>, tsc::DiagnosticsByConfigFolder), CheckError>
+  {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
         CliNpmResolver::Byonm(_) => {
@@ -254,6 +255,14 @@ impl TypeChecker {
         log_ignored_options: options.log_ignored_options,
       },
     )?;
+    let mut diagnostics_by_folder =
+      tsc::DiagnosticsByConfigFolder::with_capacity(
+        tsconfig_resolver.folder_count(),
+      );
+    // setup the order we want to use to display diagnostics
+    for folder in tsconfig_resolver.folders() {
+      diagnostics_by_folder.ensure_folder(folder.dir.dir_url().clone());
+    }
 
     // collect the tsc roots
     let mut graph_walker = GraphWalker {
@@ -280,6 +289,15 @@ impl TypeChecker {
     let mut missing_diagnostics = missing_diagnostics
       .filter(|d| self.should_include_diagnostic(options.type_check_mode, d));
     missing_diagnostics.apply_fast_check_source_maps(&graph);
+    for diagnostic in missing_diagnostics.into_iter() {
+      let folder = match &diagnostic.file_name {
+        Some(specifier) => {
+          tsconfig_resolver.folder_for_specifier_str(specifier)
+        }
+        None => tsconfig_resolver.root(),
+      };
+      diagnostics_by_folder.add(folder.dir.dir_url().clone(), diagnostic);
+    }
 
     // group every root into a folder
     struct FolderInfo<'a> {
@@ -303,7 +321,6 @@ impl TypeChecker {
 
     let type_check_cache =
       TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let mut diagnostics = missing_diagnostics;
     let logged_check_roots = deno_core::unsync::Flag::lowered();
     let log_check_roots = || {
       if logged_check_roots.raise() {
@@ -318,7 +335,7 @@ impl TypeChecker {
       }
     };
 
-    if !diagnostics.is_empty() {
+    if diagnostics_by_folder.has_diagnostic() {
       log_check_roots();
     }
 
@@ -336,26 +353,11 @@ impl TypeChecker {
         &options,
         &log_check_roots,
       )?;
-      for diagnostic in current_diagnostics.into_iter() {
-        if let Some(file_name) = &diagnostic.file_name {
-          let folder = tsconfig_resolver.folder_for_specifier_str(file_name);
-          if folder.dir.dir_url() != folder_url {
-            continue; // not the diagnostic for this folder
-          }
-        }
-        // ensure we don't insert a duplicate
-        if !diagnostics.iter().any(|d| {
-          d.code == diagnostic.code
-            && d.file_name == diagnostic.file_name
-            && d.start == diagnostic.start
-            && d.end == diagnostic.end
-        }) {
-          diagnostics.push(diagnostic);
-        }
-      }
+      diagnostics_by_folder
+        .extend(folder_url.clone(), current_diagnostics.into_iter());
     }
 
-    Ok((graph, diagnostics))
+    Ok((graph, diagnostics_by_folder))
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -449,7 +451,7 @@ impl TypeChecker {
       type_check_cache.set_tsbuildinfo(&first_root, &tsbuildinfo);
     }
 
-    if diagnostics.is_empty() {
+    if !diagnostics.has_diagnostic() {
       if let Some(check_hash) = maybe_check_hash {
         type_check_cache.add_check_hash(check_hash);
       }
@@ -550,6 +552,10 @@ impl<'a> TsConfigResolver<'a> {
     &self.unscoped
   }
 
+  pub fn folders(&self) -> impl Iterator<Item = &TsConfigFolderInfo> {
+    std::iter::once(&self.unscoped).chain(self.folders_by_tsconfig.values())
+  }
+
   pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
     let folder = self.folder_for_specifier(specifier);
     folder.tsconfig.get_check_js()
@@ -569,6 +575,11 @@ impl<'a> TsConfigResolver<'a> {
       .rfind(|(s, _)| specifier.starts_with(s.as_str()))
       .map(|(_, v)| v)
       .unwrap_or(&self.unscoped)
+  }
+
+  pub fn folder_count(&self) -> usize {
+    // + 1 for root
+    self.folders_by_tsconfig.len() + 1
   }
 }
 

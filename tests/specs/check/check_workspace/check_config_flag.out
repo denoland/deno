@@ -1,11 +1,19 @@
-error: TS2304 [ERROR]: Cannot find name 'onmessage'.
+error: Failed check from file:///[WILDLINE]/check_workspace/
+
+TS2304 [ERROR]: Cannot find name 'onmessage'.
 onmessage;
 ~~~~~~~~~
-    at file:///[WILDCARD]/main.ts:8:1
+    at file:///[WILDLINE]/check_workspace/main.ts:8:1
+
+Found 2 errors for file:///[WILDLINE]/check_workspace/
+
+
+
+Failed check from file:///[WILDLINE]/check_workspace/member/
 
 TS2304 [ERROR]: Cannot find name 'localStorage'.
 localStorage;
 ~~~~~~~~~~~~
-    at file:///[WILDCARD]/member/mod.ts:2:1
+    at file:///[WILDLINE]/check_workspace/member/mod.ts:2:1
 
-Found 2 errors.
+Found 2 errors for file:///[WILDLINE]/check_workspace/member/

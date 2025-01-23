@@ -2,6 +2,7 @@
 
 use std::error::Error;
 use std::fmt;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_core::serde::Deserialize;
@@ -9,8 +10,10 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
+use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_terminal::colors;
+use indexmap::IndexMap;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -322,6 +325,99 @@ impl fmt::Display for Diagnostic {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
 #[class(generic)]
+pub struct DiagnosticsByConfigFolder(IndexMap<Arc<Url>, Diagnostics>);
+
+impl DiagnosticsByConfigFolder {
+  pub fn with_capacity(size: usize) -> Self {
+    Self(IndexMap::with_capacity(size))
+  }
+
+  pub fn has_diagnostic(&self) -> bool {
+    self.0.values().any(|s| s.has_diagnostic())
+  }
+
+  pub fn emit_warnings(&mut self) {
+    for diagnostics in self.0.values_mut() {
+      diagnostics.emit_warnings();
+    }
+  }
+
+  // Return a set of diagnostics where only the values where the predicate
+  /// returns `true` are included.
+  pub fn filter<P>(mut self, mut predicate: P) -> Self
+  where
+    P: FnMut(&Diagnostic) -> bool,
+  {
+    for diagnostics in self.0.values_mut() {
+      *diagnostics =
+        Diagnostics(diagnostics.0.drain(..).filter(&mut predicate).collect());
+    }
+    Self(self.0)
+  }
+
+  pub fn add(&mut self, folder_url: Arc<Url>, diagnostic: Diagnostic) {
+    self.extend(folder_url, std::iter::once(diagnostic))
+  }
+
+  pub fn extend(
+    &mut self,
+    folder_url: Arc<Url>,
+    diagnostics_to_add: impl Iterator<Item = Diagnostic>,
+  ) {
+    let diagnostics = self.0.entry(folder_url).or_default();
+    // ensure we don't insert a duplicate for this folder
+    for diagnostic in diagnostics_to_add {
+      if !diagnostics.iter().any(|d| {
+        d.code == diagnostic.code
+          && d.file_name == diagnostic.file_name
+          && d.start == diagnostic.start
+          && d.end == diagnostic.end
+      }) {
+        diagnostics.push(diagnostic);
+      }
+    }
+  }
+
+  pub fn ensure_folder(&mut self, folder_url: Arc<Url>) {
+    self.0.entry(folder_url).or_default();
+  }
+}
+
+impl fmt::Display for DiagnosticsByConfigFolder {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    if self.0.len() == 1 {
+      write!(f, "{}", self.0.first().unwrap().1)?;
+    } else {
+      for (i, (folder_url, diagnostics)) in self
+        .0
+        .iter()
+        .filter(|(_, d)| d.has_diagnostic())
+        .enumerate()
+      {
+        if i > 0 {
+          write!(f, "\n\n\n\n")?;
+        }
+        write!(f, "Failed check from {}\n\n", folder_url)?;
+        // always display the number of errors here because it helps
+        // create some spacing between the errors for each folder
+        display_diagnostics(f, diagnostics)?;
+        write!(
+          f,
+          "\n\nFound {} error{} for {}",
+          self.0.len(),
+          if self.0.len() == 1 { "" } else { "s" },
+          folder_url
+        )?;
+      }
+    }
+    Ok(())
+  }
+}
+
+impl Error for DiagnosticsByConfigFolder {}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
+#[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
 
 impl Diagnostics {
@@ -367,8 +463,8 @@ impl Diagnostics {
     Self(diagnostics)
   }
 
-  pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
+  pub fn has_diagnostic(&self) -> bool {
+    !self.0.is_empty()
   }
 
   /// Modifies all the diagnostics to have their display positions
@@ -438,21 +534,25 @@ impl Serialize for Diagnostics {
 
 impl fmt::Display for Diagnostics {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut i = 0;
-    for item in &self.0 {
-      if i > 0 {
-        write!(f, "\n\n")?;
-      }
-      write!(f, "{item}")?;
-      i += 1;
+    display_diagnostics(f, self)?;
+    if self.0.len() > 1 {
+      write!(f, "\n\nFound {} errors.", self.0.len())?;
     }
-
-    if i > 1 {
-      write!(f, "\n\nFound {i} errors.")?;
-    }
-
     Ok(())
   }
+}
+
+fn display_diagnostics(
+  f: &mut fmt::Formatter,
+  diagnostics: &Diagnostics,
+) -> fmt::Result {
+  for (i, item) in diagnostics.0.iter().enumerate() {
+    if i > 0 {
+      write!(f, "\n\n")?;
+    }
+    write!(f, "{item}")?;
+  }
+  Ok(())
 }
 
 impl Error for Diagnostics {}

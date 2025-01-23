@@ -57,6 +57,7 @@ mod diagnostics;
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
+pub use self::diagnostics::DiagnosticsByConfigFolder;
 pub use self::diagnostics::Position;
 
 pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
@@ -1517,7 +1518,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1528,7 +1529,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1539,6 +1540,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
   }
 }
