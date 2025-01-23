@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
@@ -9,12 +9,12 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::error::AnyError;
 use deno_core::futures::ready;
 use deno_core::futures::FutureExt;
 use deno_core::AsyncResult;
 use deno_core::BufView;
 use deno_core::Resource;
+use deno_error::JsErrorBox;
 use flate2::write::GzEncoder;
 use hyper::body::Frame;
 use hyper::body::SizeHint;
@@ -32,10 +32,10 @@ pub enum ResponseStreamResult {
   /// will only be returned from compression streams that require additional buffering.
   NoData,
   /// Stream failed.
-  Error(AnyError),
+  Error(JsErrorBox),
 }
 
-impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, AnyError>> {
+impl From<ResponseStreamResult> for Option<Result<Frame<BufView>, JsErrorBox>> {
   fn from(value: ResponseStreamResult) -> Self {
     match value {
       ResponseStreamResult::EndOfStream => None,
@@ -411,7 +411,9 @@ impl PollFrame for GZipResponseStream {
     };
     let len = stm.total_out() - start_out;
     let res = match res {
-      Err(err) => ResponseStreamResult::Error(err.into()),
+      Err(err) => {
+        ResponseStreamResult::Error(JsErrorBox::generic(err.to_string()))
+      }
       Ok(flate2::Status::BufError) => {
         // This should not happen
         unreachable!("old={orig_state:?} new={state:?} buf_len={}", buf.len());
@@ -573,11 +575,13 @@ impl PollFrame for BrotliResponseStream {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use deno_core::futures::future::poll_fn;
   use std::hash::Hasher;
   use std::io::Read;
   use std::io::Write;
+
+  use deno_core::futures::future::poll_fn;
+
+  use super::*;
 
   fn zeros() -> Vec<u8> {
     vec![0; 1024 * 1024]

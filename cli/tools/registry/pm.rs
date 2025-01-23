@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -415,6 +415,7 @@ pub async fn add(
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
+    cli_factory.sys(),
     Default::default(),
     None,
     true,
@@ -860,10 +861,8 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
-  let npm_resolver = cli_factory.npm_resolver().await?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_no_pkg_json_dep_errors()?;
-  }
+  let npm_installer = cli_factory.npm_installer()?;
+  npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 

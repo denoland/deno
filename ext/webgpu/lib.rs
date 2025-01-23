@@ -1,23 +1,42 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 #![cfg(not(target_arch = "wasm32"))]
 #![warn(unsafe_op_in_unsafe_fn)]
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use error::WebGpuResult;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::rc::Rc;
 pub use wgpu_core;
 pub use wgpu_types;
 
-use error::WebGpuResult;
-
 pub const UNSTABLE_FEATURE_NAME: &str = "webgpu";
+
+#[allow(clippy::print_stdout)]
+pub fn print_linker_flags(name: &str) {
+  if cfg!(windows) {
+    // these dls load slowly, so delay loading them
+    let dlls = [
+      // webgpu
+      "d3dcompiler_47",
+      "OPENGL32",
+      // network related functions
+      "iphlpapi",
+    ];
+    for dll in dlls {
+      println!("cargo:rustc-link-arg-bin={name}=/delayload:{dll}.dll");
+    }
+    // enable delay loading
+    println!("cargo:rustc-link-arg-bin={name}=delayimp.lib");
+  }
+}
 
 #[macro_use]
 mod macros {
@@ -83,14 +102,22 @@ pub mod shader;
 pub mod surface;
 pub mod texture;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum InitError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(generic)]
   #[error(transparent)]
   InvalidAdapter(wgpu_core::instance::InvalidAdapter),
+  #[class("DOMExceptionOperationError")]
   #[error(transparent)]
   RequestDevice(wgpu_core::instance::RequestDeviceError),
+  #[class(generic)]
   #[error(transparent)]
   InvalidDevice(wgpu_core::device::InvalidDevice),
 }
@@ -676,10 +703,8 @@ pub fn op_webgpu_request_device(
   #[serde] required_limits: Option<wgpu_types::Limits>,
 ) -> Result<GpuDeviceRes, InitError> {
   let mut state = state.borrow_mut();
-  let adapter_resource = state
-    .resource_table
-    .take::<WebGpuAdapter>(adapter_rid)
-    .map_err(InitError::Resource)?;
+  let adapter_resource =
+    state.resource_table.take::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -738,10 +763,8 @@ pub fn op_webgpu_request_adapter_info(
   #[smi] adapter_rid: ResourceId,
 ) -> Result<GPUAdapterInfo, InitError> {
   let state = state.borrow_mut();
-  let adapter_resource = state
-    .resource_table
-    .get::<WebGpuAdapter>(adapter_rid)
-    .map_err(InitError::Resource)?;
+  let adapter_resource =
+    state.resource_table.get::<WebGpuAdapter>(adapter_rid)?;
   let adapter = adapter_resource.1;
   let instance = state.borrow::<Instance>();
 
@@ -788,10 +811,8 @@ pub fn op_webgpu_create_query_set(
   state: &mut OpState,
   #[serde] args: CreateQuerySetArgs,
 ) -> Result<WebGpuResult, InitError> {
-  let device_resource = state
-    .resource_table
-    .get::<WebGpuDevice>(args.device_rid)
-    .map_err(InitError::Resource)?;
+  let device_resource =
+    state.resource_table.get::<WebGpuDevice>(args.device_rid)?;
   let device = device_resource.1;
   let instance = state.borrow::<Instance>();
 

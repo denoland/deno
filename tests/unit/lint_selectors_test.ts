@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assertEquals } from "@std/assert/equals";
 import {
@@ -20,6 +20,9 @@ import {
 import { assertThrows } from "@std/assert";
 
 Deno.test("splitSelectors", () => {
+  assertEquals(splitSelectors("*"), ["*"]);
+  assertEquals(splitSelectors("*,*"), ["*", "*"]);
+  assertEquals(splitSelectors("*,*     "), ["*", "*"]);
   assertEquals(splitSelectors("foo"), ["foo"]);
   assertEquals(splitSelectors("foo, bar"), ["foo", "bar"]);
   assertEquals(splitSelectors("foo:f(bar, baz)"), ["foo:f(bar, baz)"]);

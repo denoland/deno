@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -73,11 +73,10 @@ pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
-use super::check::TypeChecker;
-
 use self::graph::GraphDiagnosticsCollector;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
+use super::check::TypeChecker;
 
 pub async fn publish(
   flags: Arc<Flags>,
@@ -1281,14 +1280,14 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
-  use deno_ast::ModuleSpecifier;
+  use std::collections::HashMap;
 
-  use crate::tools::registry::has_license_file;
+  use deno_ast::ModuleSpecifier;
 
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
-  use std::collections::HashMap;
+  use crate::tools::registry::has_license_file;
 
   #[test]
   fn test_verify_version_manifest() {

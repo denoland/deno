@@ -1,4 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::env;
+use std::fmt::Write as _;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
@@ -16,6 +27,10 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_lib::args::get_root_cert_store;
+use deno_lib::args::has_flag_env_var;
+use deno_lib::args::CaData;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -27,16 +42,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::env;
-use std::fmt::Write as _;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -93,9 +98,6 @@ use super::urls;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::create_default_npmrc;
-use crate::args::get_root_cert_store;
-use crate::args::has_flag_env_var;
-use crate::args::CaData;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
@@ -108,6 +110,7 @@ use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
+use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -120,7 +123,7 @@ use crate::util::sync::AsyncFlag;
 struct LspRootCertStoreProvider(RootCertStore);
 
 impl RootCertStoreProvider for LspRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, deno_error::JsErrorBox> {
     Ok(&self.0)
   }
 }
@@ -279,7 +282,7 @@ impl LanguageServer {
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs(),
+        &CliSys::default(),
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
@@ -701,7 +704,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::DENO_VERSION_INFO.deno,
+      DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -961,6 +964,7 @@ impl Inner {
     let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
       self.http_client_provider.clone(),
+      CliSys::default(),
       Default::default(),
       None,
       true,
@@ -1416,18 +1420,16 @@ impl Inner {
             // the file path is only used to determine what formatter should
             // be used to format the file, so give the filepath an extension
             // that matches what the user selected as the language
-            let file_path = document
+            let ext = document
               .maybe_language_id()
-              .and_then(|id| id.as_extension())
-              .map(|ext| file_path.with_extension(ext))
-              .unwrap_or(file_path);
+              .and_then(|id| id.as_extension().map(|s| s.to_string()));
             // it's not a js/ts file, so attempt to format its contents
             format_file(
               &file_path,
               document.content(),
               &fmt_options,
               &unstable_options,
-              None,
+              ext,
             )
           }
         };
@@ -1882,7 +1884,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let mut refactor_edit_info = self
+      let refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -1903,19 +1905,34 @@ impl Inner {
           )),
           asset_or_doc.scope().cloned(),
         )
-        .await?;
-      if kind_suffix == ".rewrite.function.returnType"
-        || kind_suffix == ".move.newFile"
-      {
-        refactor_edit_info.edits =
-          fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
-            |err| {
-              error!("Unable to remap changes: {:#}", err);
-              LspError::internal_error()
-            },
-          )?
+        .await;
+
+      match refactor_edit_info {
+        Ok(mut refactor_edit_info) => {
+          if kind_suffix == ".rewrite.function.returnType"
+            || kind_suffix == ".move.newFile"
+          {
+            refactor_edit_info.edits =
+              fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+                |err| {
+                  error!("Unable to remap changes: {:#}", err);
+                  LspError::internal_error()
+                },
+              )?
+          }
+          code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
+        }
+        Err(err) => {
+          // TODO(nayeemrmn): Investigate cause for
+          // https://github.com/denoland/deno/issues/27778. Prevent popups for
+          // this error for now.
+          if kind_suffix == ".move.newFile" {
+            lsp_warn!("{:#}", err);
+          } else {
+            return Err(err);
+          }
+        }
       }
-      code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -3612,16 +3629,14 @@ impl Inner {
     let workspace = match config_data {
       Some(d) => d.member_dir.clone(),
       None => Arc::new(WorkspaceDirectory::discover(
+        &CliSys::default(),
         deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
           initial_cwd.clone()
         ]),
         &WorkspaceDiscoverOptions {
-          fs: Default::default(), // use real fs,
           deno_json_cache: None,
           pkg_json_cache: None,
           workspace_cache: None,
-          config_parse_options:
-            deno_config::deno_json::ConfigParseOptions::default(),
           additional_config_file_names: &[],
           discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
           maybe_vendor_override: if force_global_cache {
@@ -3633,6 +3648,7 @@ impl Inner {
       )?),
     };
     let cli_options = CliOptions::new(
+      &CliSys::default(),
       Arc::new(Flags {
         internal: InternalFlags {
           cache_path: Some(self.cache.deno_dir().root.clone()),
@@ -3960,9 +3976,10 @@ impl Inner {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_walk_workspace() {
@@ -4000,12 +4017,14 @@ mod tests {
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/folder2/inner_folder");
     temp_dir.create_dir_all("root2/sub_folder");
     temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
     temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/folder2/inner_folder/main.ts", ""); // yes, enabled (regression test for https://github.com/denoland/vscode_deno/issues/1239)
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
@@ -4046,6 +4065,7 @@ mod tests {
             enable_paths: Some(vec![
               "file1.ts".to_string(),
               "folder".to_string(),
+              "folder2/inner_folder".to_string(),
             ]),
             disable_paths: vec!["folder/other.ts".to_string()],
             ..Default::default()
@@ -4096,6 +4116,10 @@ mod tests {
         temp_dir.url().join("root1/folder/mod.ts").unwrap(),
         temp_dir.url().join("root2/folder/main.ts").unwrap(),
         temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir
+          .url()
+          .join("root2/folder2/inner_folder/main.ts")
+          .unwrap(),
       ])
     );
   }

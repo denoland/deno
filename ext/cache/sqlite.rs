@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::borrow::Cow;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -8,8 +8,6 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use async_trait::async_trait;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot::Mutex;
 use deno_core::unsync::spawn_blocking;
@@ -45,14 +43,12 @@ pub struct SqliteBackedCache {
 impl SqliteBackedCache {
   pub fn new(cache_storage_dir: PathBuf) -> Result<Self, CacheError> {
     {
-      std::fs::create_dir_all(&cache_storage_dir)
-        .with_context(|| {
-          format!(
-            "Failed to create cache storage directory {}",
-            cache_storage_dir.display()
-          )
-        })
-        .map_err(CacheError::Other)?;
+      std::fs::create_dir_all(&cache_storage_dir).map_err(|source| {
+        CacheError::CacheStorageDirectory {
+          dir: cache_storage_dir.clone(),
+          source,
+        }
+      })?;
       let path = cache_storage_dir.join("cache_metadata.db");
       let connection = rusqlite::Connection::open(&path).unwrap_or_else(|_| {
         panic!("failed to open cache db at {}", path.display())
@@ -385,7 +381,10 @@ impl CacheResponseResource {
     }
   }
 
-  async fn read(self: Rc<Self>, data: &mut [u8]) -> Result<usize, AnyError> {
+  async fn read(
+    self: Rc<Self>,
+    data: &mut [u8],
+  ) -> Result<usize, std::io::Error> {
     let resource = deno_core::RcRef::map(&self, |r| &r.file);
     let mut file = resource.borrow_mut().await;
     let nread = file.read(data).await?;

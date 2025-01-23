@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::fmt::Display;
 
@@ -14,9 +14,14 @@ pub enum PropFlags {
   Ref,
   RefArr,
   String,
+  Number,
   Bool,
   Null,
   Undefined,
+  Object,
+  Regex,
+  BigInt,
+  Array,
 }
 
 impl From<PropFlags> for u8 {
@@ -33,21 +38,29 @@ impl TryFrom<u8> for PropFlags {
       0 => Ok(PropFlags::Ref),
       1 => Ok(PropFlags::RefArr),
       2 => Ok(PropFlags::String),
-      3 => Ok(PropFlags::Bool),
-      4 => Ok(PropFlags::Null),
-      5 => Ok(PropFlags::Undefined),
+      3 => Ok(PropFlags::Number),
+      4 => Ok(PropFlags::Bool),
+      5 => Ok(PropFlags::Null),
+      6 => Ok(PropFlags::Undefined),
+      7 => Ok(PropFlags::Object),
+      8 => Ok(PropFlags::Regex),
+      9 => Ok(PropFlags::BigInt),
+      10 => Ok(PropFlags::Array),
       _ => Err("Unknown Prop flag"),
     }
   }
 }
 
+pub type Index = u32;
+
+const GROUP_KIND: u8 = 1;
 const MASK_U32_1: u32 = 0b11111111_00000000_00000000_00000000;
 const MASK_U32_2: u32 = 0b00000000_11111111_00000000_00000000;
 const MASK_U32_3: u32 = 0b00000000_00000000_11111111_00000000;
 const MASK_U32_4: u32 = 0b00000000_00000000_00000000_11111111;
 
-// TODO: There is probably a native Rust function to do this.
-pub fn append_u32(result: &mut Vec<u8>, value: u32) {
+#[inline]
+fn append_u32(result: &mut Vec<u8>, value: u32) {
   let v1: u8 = ((value & MASK_U32_1) >> 24) as u8;
   let v2: u8 = ((value & MASK_U32_2) >> 16) as u8;
   let v3: u8 = ((value & MASK_U32_3) >> 8) as u8;
@@ -59,23 +72,9 @@ pub fn append_u32(result: &mut Vec<u8>, value: u32) {
   result.push(v4);
 }
 
-pub fn append_usize(result: &mut Vec<u8>, value: usize) {
+fn append_usize(result: &mut Vec<u8>, value: usize) {
   let raw = u32::try_from(value).unwrap();
   append_u32(result, raw);
-}
-
-pub fn write_usize(result: &mut [u8], value: usize, idx: usize) {
-  let raw = u32::try_from(value).unwrap();
-
-  let v1: u8 = ((raw & MASK_U32_1) >> 24) as u8;
-  let v2: u8 = ((raw & MASK_U32_2) >> 16) as u8;
-  let v3: u8 = ((raw & MASK_U32_3) >> 8) as u8;
-  let v4: u8 = (raw & MASK_U32_4) as u8;
-
-  result[idx] = v1;
-  result[idx + 1] = v2;
-  result[idx + 2] = v3;
-  result[idx + 3] = v4;
 }
 
 #[derive(Debug)]
@@ -119,70 +118,47 @@ impl StringTable {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct NodeRef(pub usize);
+pub struct NodeRef(pub Index);
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PendingRef(pub Index);
 
-#[derive(Debug)]
-pub struct BoolPos(pub usize);
-#[derive(Debug)]
-pub struct FieldPos(pub usize);
-#[derive(Debug)]
-pub struct FieldArrPos(pub usize);
-#[derive(Debug)]
-pub struct StrPos(pub usize);
-#[derive(Debug)]
-pub struct UndefPos(pub usize);
-#[derive(Debug)]
-pub struct NullPos(pub usize);
-
-#[derive(Debug)]
-pub enum NodePos {
-  Bool(BoolPos),
-  #[allow(dead_code)]
-  Field(FieldPos),
-  #[allow(dead_code)]
-  FieldArr(FieldArrPos),
-  Str(StrPos),
-  Undef(UndefPos),
-  #[allow(dead_code)]
-  Null(NullPos),
+pub trait AstBufSerializer {
+  fn serialize(&mut self) -> Vec<u8>;
 }
 
-pub trait AstBufSerializer<K, P>
-where
-  K: Into<u8> + Display,
-  P: Into<u8> + Display,
-{
-  fn header(
-    &mut self,
-    kind: K,
-    parent: NodeRef,
-    span: &Span,
-    prop_count: usize,
-  ) -> NodeRef;
-  fn ref_field(&mut self, prop: P) -> FieldPos;
-  fn ref_vec_field(&mut self, prop: P, len: usize) -> FieldArrPos;
-  fn str_field(&mut self, prop: P) -> StrPos;
-  fn bool_field(&mut self, prop: P) -> BoolPos;
-  fn undefined_field(&mut self, prop: P) -> UndefPos;
-  #[allow(dead_code)]
-  fn null_field(&mut self, prop: P) -> NullPos;
-
-  fn write_ref(&mut self, pos: FieldPos, value: NodeRef);
-  fn write_maybe_ref(&mut self, pos: FieldPos, value: Option<NodeRef>);
-  fn write_refs(&mut self, pos: FieldArrPos, value: Vec<NodeRef>);
-  fn write_str(&mut self, pos: StrPos, value: &str);
-  fn write_bool(&mut self, pos: BoolPos, value: bool);
-
-  fn serialize(&mut self) -> Vec<u8>;
+/// <type u8>
+/// <prop offset u32>
+/// <child idx u32>
+/// <next idx u32>
+/// <parent idx u32>
+#[derive(Debug)]
+struct Node {
+  kind: u8,
+  prop_offset: u32,
+  child: u32,
+  next: u32,
+  parent: u32,
 }
 
 #[derive(Debug)]
 pub struct SerializeCtx {
-  buf: Vec<u8>,
-  start_buf: NodeRef,
+  root_idx: Index,
+
+  nodes: Vec<Node>,
+  prop_stack: Vec<Vec<u8>>,
+  field_count: Vec<usize>,
+  field_buf: Vec<u8>,
+  prev_sibling_stack: Vec<Index>,
+
+  /// Vec of spans
+  spans: Vec<u32>,
+
+  /// Maps string id to the actual string
   str_table: StringTable,
-  kind_map: Vec<usize>,
-  prop_map: Vec<usize>,
+  /// Maps kind id to string id
+  kind_name_map: Vec<usize>,
+  /// Maps prop id to string id
+  prop_name_map: Vec<usize>,
 }
 
 /// This is the internal context used to allocate and fill the buffer. The point
@@ -197,19 +173,24 @@ impl SerializeCtx {
     let kind_size = kind_len as usize;
     let prop_size = prop_len as usize;
     let mut ctx = Self {
-      start_buf: NodeRef(0),
-      buf: vec![],
+      spans: Vec::with_capacity(512),
+      root_idx: 0,
+      nodes: Vec::with_capacity(512),
+      prop_stack: vec![vec![]],
+      prev_sibling_stack: vec![0],
+      field_count: vec![0],
+      field_buf: Vec::with_capacity(1024),
       str_table: StringTable::new(),
-      kind_map: vec![0; kind_size + 1],
-      prop_map: vec![0; prop_size + 1],
+      kind_name_map: vec![0; kind_size],
+      prop_name_map: vec![0; prop_size],
     };
 
-    ctx.str_table.insert("");
+    let empty_str = ctx.str_table.insert("");
 
     // Placeholder node is always 0
-    ctx.append_node(0, NodeRef(0), &DUMMY_SP, 0);
-    ctx.kind_map[0] = 0;
-    ctx.start_buf = NodeRef(ctx.buf.len());
+    ctx.append_node(0, &DUMMY_SP);
+    ctx.kind_name_map[0] = empty_str;
+    ctx.kind_name_map[1] = empty_str;
 
     // Insert default props that are always present
     let type_str = ctx.str_table.insert("type");
@@ -218,242 +199,306 @@ impl SerializeCtx {
     let length_str = ctx.str_table.insert("length");
 
     // These values are expected to be in this order on the JS side
-    ctx.prop_map[0] = type_str;
-    ctx.prop_map[1] = parent_str;
-    ctx.prop_map[2] = range_str;
-    ctx.prop_map[3] = length_str;
+    ctx.prop_name_map[0] = empty_str;
+    ctx.prop_name_map[1] = type_str;
+    ctx.prop_name_map[2] = parent_str;
+    ctx.prop_name_map[3] = range_str;
+    ctx.prop_name_map[4] = length_str;
 
     ctx
   }
 
+  pub fn set_root_idx(&mut self, idx: Index) {
+    self.root_idx = idx;
+  }
+
   /// Allocate a node's header
-  fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
+  fn field_header<P>(&mut self, prop: P, prop_flags: PropFlags)
   where
     P: Into<u8> + Display + Clone,
   {
-    let offset = self.buf.len();
-
+    let flags: u8 = prop_flags.into();
     let n: u8 = prop.clone().into();
-    self.buf.push(n);
 
-    if let Some(v) = self.prop_map.get::<usize>(n.into()) {
+    if let Some(v) = self.prop_name_map.get::<usize>(n.into()) {
       if *v == 0 {
         let id = self.str_table.insert(&format!("{prop}"));
-        self.prop_map[n as usize] = id;
+        self.prop_name_map[n as usize] = id;
       }
     }
 
-    let flags: u8 = prop_flags.into();
-    self.buf.push(flags);
+    // Increment field counter
+    let idx = self.field_count.len() - 1;
+    let count = self.field_count[idx];
+    self.field_count[idx] = count + 1;
 
-    offset
+    let buf = self.prop_stack.last_mut().unwrap();
+    buf.push(n);
+    buf.push(flags);
   }
 
-  /// Allocate a property pointing to another node.
-  fn field<P>(&mut self, prop: P, prop_flags: PropFlags) -> usize
+  fn get_node(&mut self, id: Index) -> &mut Node {
+    self.nodes.get_mut(id as usize).unwrap()
+  }
+
+  fn set_parent(&mut self, child_id: Index, parent_id: Index) {
+    let child = self.get_node(child_id);
+    child.parent = parent_id;
+  }
+
+  fn set_child(&mut self, parent_id: Index, child_id: Index) {
+    let parent = self.get_node(parent_id);
+    parent.child = child_id;
+  }
+
+  fn set_next(&mut self, node_id: Index, next_id: Index) {
+    let node = self.get_node(node_id);
+    node.next = next_id;
+  }
+
+  fn update_ref_links(&mut self, parent_id: Index, child_id: Index) {
+    let last_idx = self.prev_sibling_stack.len() - 1;
+    let parent = self.get_node(parent_id);
+    if parent.child == 0 {
+      parent.child = child_id;
+    } else {
+      let prev_id = self.prev_sibling_stack[last_idx];
+      self.set_next(prev_id, child_id);
+    }
+
+    self.prev_sibling_stack[last_idx] = child_id;
+    self.set_parent(child_id, parent_id);
+  }
+
+  pub fn append_node<K>(&mut self, kind: K, span: &Span) -> PendingRef
   where
-    P: Into<u8> + Display + Clone,
+    K: Into<u8> + Display + Clone,
   {
-    let offset = self.field_header(prop, prop_flags);
-
-    append_usize(&mut self.buf, 0);
-
-    offset
+    self.append_inner(kind, span.lo.0, span.hi.0)
   }
 
-  fn append_node(
+  pub fn append_inner<K>(
     &mut self,
-    kind: u8,
-    parent: NodeRef,
-    span: &Span,
-    prop_count: usize,
-  ) -> NodeRef {
-    let offset = self.buf.len();
-
-    // Node type fits in a u8
-    self.buf.push(kind);
-
-    // Offset to the parent node. Will be 0 if none exists
-    append_usize(&mut self.buf, parent.0);
-
-    // Span, the start and end location of this node
-    append_u32(&mut self.buf, span.lo.0);
-    append_u32(&mut self.buf, span.hi.0);
-
-    // No node has more than <10 properties
-    debug_assert!(prop_count < 10);
-    self.buf.push(prop_count as u8);
-
-    NodeRef(offset)
-  }
-
-  /// Allocate the node header. It's always the same for every node.
-  ///   <type u8>
-  ///   <parent offset u32>
-  ///   <span lo u32>
-  ///   <span high u32>
-  ///   <property count u8> (There is no node with more than 10 properties)
-  pub fn header<N>(
-    &mut self,
-    kind: N,
-    parent: NodeRef,
-    span: &Span,
-    prop_count: usize,
-  ) -> NodeRef
+    kind: K,
+    span_lo: u32,
+    span_hi: u32,
+  ) -> PendingRef
   where
-    N: Into<u8> + Display + Clone,
+    K: Into<u8> + Display + Clone,
   {
-    let n: u8 = kind.clone().into();
+    let kind_u8: u8 = kind.clone().into();
 
-    if let Some(v) = self.kind_map.get::<usize>(n.into()) {
+    let id: Index = self.nodes.len() as u32;
+
+    self.nodes.push(Node {
+      kind: kind_u8,
+      prop_offset: 0,
+      child: 0,
+      next: 0,
+      parent: 0,
+    });
+
+    if let Some(v) = self.kind_name_map.get::<usize>(kind_u8.into()) {
       if *v == 0 {
-        let id = self.str_table.insert(&format!("{kind}"));
-        self.kind_map[n as usize] = id;
+        let s_id = self.str_table.insert(&format!("{kind}"));
+        self.kind_name_map[kind_u8 as usize] = s_id;
       }
     }
 
-    self.append_node(n, parent, span, prop_count)
+    self.field_count.push(0);
+    self.prop_stack.push(vec![]);
+    self.prev_sibling_stack.push(0);
+
+    // write spans
+    self.spans.push(span_lo);
+    self.spans.push(span_hi);
+
+    PendingRef(id)
   }
 
-  /// Allocate a reference property that will hold the offset of
-  /// another node.
-  pub fn ref_field<P>(&mut self, prop: P) -> usize
+  pub fn commit_node(&mut self, id: PendingRef) -> NodeRef {
+    let mut buf = self.prop_stack.pop().unwrap();
+    let count = self.field_count.pop().unwrap();
+    let offset = self.field_buf.len();
+
+    // All nodes have <10 fields
+    self.field_buf.push(count as u8);
+    self.field_buf.append(&mut buf);
+
+    let node = self.nodes.get_mut(id.0 as usize).unwrap();
+    node.prop_offset = offset as u32;
+
+    self.prev_sibling_stack.pop();
+
+    NodeRef(id.0)
+  }
+
+  // Allocate an object field
+  pub fn open_obj(&mut self) {
+    self.field_count.push(0);
+    self.prop_stack.push(vec![]);
+  }
+
+  pub fn commit_obj<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field(prop, PropFlags::Ref)
+    let mut buf = self.prop_stack.pop().unwrap();
+    let count = self.field_count.pop().unwrap();
+    let offset = self.field_buf.len();
+    append_usize(&mut self.field_buf, count);
+    self.field_buf.append(&mut buf);
+
+    self.field_header(prop, PropFlags::Object);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, offset);
   }
 
-  /// Allocate a property that is a vec of node offsets pointing to other
-  /// nodes.
-  pub fn ref_vec_field<P>(&mut self, prop: P, len: usize) -> usize
+  /// Allocate an null field
+  pub fn write_null<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
   {
-    let offset = self.field(prop, PropFlags::RefArr);
+    self.field_header(prop, PropFlags::Null);
 
-    for _ in 0..len {
-      append_u32(&mut self.buf, 0);
-    }
-
-    offset
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, 0);
   }
 
-  // Allocate a property representing a string. Strings are deduplicated
-  // in the message and the property will only contain the string id.
-  pub fn str_field<P>(&mut self, prop: P) -> usize
+  /// Allocate an null field
+  pub fn write_undefined<P>(&mut self, prop: P)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field(prop, PropFlags::String)
+    self.field_header(prop, PropFlags::Undefined);
+
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, 0);
   }
 
-  /// Allocate a bool field
-  pub fn bool_field<P>(&mut self, prop: P) -> usize
+  /// Allocate a number field
+  pub fn write_num<P>(&mut self, prop: P, value: &str)
   where
     P: Into<u8> + Display + Clone,
   {
-    let offset = self.field_header(prop, PropFlags::Bool);
-    self.buf.push(0);
-    offset
+    self.field_header(prop, PropFlags::Number);
+
+    let id = self.str_table.insert(value);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
-  /// Allocate an undefined field
-  pub fn undefined_field<P>(&mut self, prop: P) -> usize
+  /// Allocate a bigint field
+  pub fn write_bigint<P>(&mut self, prop: P, value: &str)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field_header(prop, PropFlags::Undefined)
+    self.field_header(prop, PropFlags::BigInt);
+
+    let id = self.str_table.insert(value);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
-  /// Allocate an undefined field
-  #[allow(dead_code)]
-  pub fn null_field<P>(&mut self, prop: P) -> usize
+  /// Allocate a RegExp field
+  pub fn write_regex<P>(&mut self, prop: P, value: &str)
   where
     P: Into<u8> + Display + Clone,
   {
-    self.field_header(prop, PropFlags::Null)
-  }
+    self.field_header(prop, PropFlags::Regex);
 
-  /// Replace the placeholder of a reference field with the actual offset
-  /// to the node we want to point to.
-  pub fn write_ref(&mut self, field_offset: usize, value: NodeRef) {
-    #[cfg(debug_assertions)]
-    {
-      let value_kind = self.buf[field_offset + 1];
-      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
-        panic!("Trying to write a ref into a non-ref field")
-      }
-    }
-
-    write_usize(&mut self.buf, value.0, field_offset + 2);
-  }
-
-  /// Helper for writing optional node offsets
-  pub fn write_maybe_ref(
-    &mut self,
-    field_offset: usize,
-    value: Option<NodeRef>,
-  ) {
-    #[cfg(debug_assertions)]
-    {
-      let value_kind = self.buf[field_offset + 1];
-      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Ref {
-        panic!("Trying to write a ref into a non-ref field")
-      }
-    }
-
-    let ref_value = if let Some(v) = value { v } else { NodeRef(0) };
-    write_usize(&mut self.buf, ref_value.0, field_offset + 2);
-  }
-
-  /// Write a vec of node offsets into the property. The necessary space
-  /// has been reserved earlier.
-  pub fn write_refs(&mut self, field_offset: usize, value: Vec<NodeRef>) {
-    #[cfg(debug_assertions)]
-    {
-      let value_kind = self.buf[field_offset + 1];
-      if PropFlags::try_from(value_kind).unwrap() != PropFlags::RefArr {
-        panic!("Trying to write a ref into a non-ref array field")
-      }
-    }
-
-    let mut offset = field_offset + 2;
-    write_usize(&mut self.buf, value.len(), offset);
-    offset += 4;
-
-    for item in value {
-      write_usize(&mut self.buf, item.0, offset);
-      offset += 4;
-    }
+    let id = self.str_table.insert(value);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Store the string in our string table and save the id of the string
   /// in the current field.
-  pub fn write_str(&mut self, field_offset: usize, value: &str) {
-    #[cfg(debug_assertions)]
-    {
-      let value_kind = self.buf[field_offset + 1];
-      if PropFlags::try_from(value_kind).unwrap() != PropFlags::String {
-        panic!("Trying to write a ref into a non-string field")
-      }
-    }
+  pub fn write_str<P>(&mut self, prop: P, value: &str)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::String);
 
     let id = self.str_table.insert(value);
-    write_usize(&mut self.buf, id, field_offset + 2);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_usize(buf, id);
   }
 
   /// Write a bool to a field.
-  pub fn write_bool(&mut self, field_offset: usize, value: bool) {
-    #[cfg(debug_assertions)]
-    {
-      let value_kind = self.buf[field_offset + 1];
-      if PropFlags::try_from(value_kind).unwrap() != PropFlags::Bool {
-        panic!("Trying to write a ref into a non-bool field")
-      }
-    }
+  pub fn write_bool<P>(&mut self, prop: P, value: bool)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Bool);
 
-    self.buf[field_offset + 2] = if value { 1 } else { 0 };
+    let n = if value { 1 } else { 0 };
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, n);
+  }
+
+  /// Replace the placeholder of a reference field with the actual offset
+  /// to the node we want to point to.
+  pub fn write_ref<P>(&mut self, prop: P, parent: &PendingRef, value: NodeRef)
+  where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::Ref);
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, value.0);
+
+    if parent.0 > 0 {
+      self.update_ref_links(parent.0, value.0);
+    }
+  }
+
+  /// Helper for writing optional node offsets
+  pub fn write_maybe_ref<P>(
+    &mut self,
+    prop: P,
+    parent: &PendingRef,
+    value: Option<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    if let Some(v) = value {
+      self.write_ref(prop, parent, v);
+    } else {
+      self.write_null(prop);
+    };
+  }
+
+  /// Write a vec of node offsets into the property. The necessary space
+  /// has been reserved earlier.
+  pub fn write_ref_vec<P>(
+    &mut self,
+    prop: P,
+    parent_ref: &PendingRef,
+    value: Vec<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    self.field_header(prop, PropFlags::RefArr);
+    let group_id = self.append_node(GROUP_KIND, &DUMMY_SP);
+    let group_id = self.commit_node(group_id).0;
+
+    let buf = self.prop_stack.last_mut().unwrap();
+    append_u32(buf, group_id);
+
+    self.update_ref_links(parent_ref.0, group_id);
+
+    let mut prev_id = 0;
+    for (i, item) in value.iter().enumerate() {
+      self.set_parent(item.0, group_id);
+
+      if i == 0 {
+        self.set_child(group_id, item.0);
+      } else {
+        self.set_next(prev_id, item.0);
+      }
+
+      prev_id = item.0;
+    }
   }
 
   /// Serialize all information we have into a buffer that can be sent to JS.
@@ -463,6 +508,8 @@ impl SerializeCtx {
   ///   <string table>
   ///   <node kind map>  <- node kind id maps to string id
   ///   <node prop map> <- node property id maps to string id
+  ///   <spans> <- List of spans, rarely needed
+  ///   <offset spans>
   ///   <offset kind map>
   ///   <offset prop map>
   ///   <offset str table>
@@ -472,7 +519,13 @@ impl SerializeCtx {
     // The buffer starts with the serialized AST first, because that
     // contains absolute offsets. By butting this at the start of the
     // message we don't have to waste time updating any offsets.
-    buf.append(&mut self.buf);
+    for node in &self.nodes {
+      buf.push(node.kind);
+      append_u32(&mut buf, node.prop_offset);
+      append_u32(&mut buf, node.child);
+      append_u32(&mut buf, node.next);
+      append_u32(&mut buf, node.parent);
+    }
 
     // Next follows the string table. We'll keep track of the offset
     // in the message of where the string table begins
@@ -489,8 +542,8 @@ impl SerializeCtx {
 
     // Write the total number of entries in the kind -> str mapping table
     // TODO: make this a u8
-    append_usize(&mut buf, self.kind_map.len());
-    for v in &self.kind_map {
+    append_usize(&mut buf, self.kind_name_map.len());
+    for v in &self.kind_name_map {
       append_usize(&mut buf, *v);
     }
 
@@ -499,19 +552,35 @@ impl SerializeCtx {
     // as u8.
     let offset_prop_map = buf.len();
     // Write the total number of entries in the kind -> str mapping table
-    append_usize(&mut buf, self.prop_map.len());
-    for v in &self.prop_map {
+    append_usize(&mut buf, self.prop_name_map.len());
+    for v in &self.prop_name_map {
       append_usize(&mut buf, *v);
     }
+
+    // Spans are rarely needed, so they're stored in a separate array.
+    // They're indexed by the node id.
+    let offset_spans = buf.len();
+    for v in &self.spans {
+      append_u32(&mut buf, *v);
+    }
+
+    // The field value table. They're detached from nodes as they're not
+    // as frequently needed as the nodes themselves. The most common
+    // operation is traversal and we can traverse nodes without knowing
+    // about the fields.
+    let offset_props = buf.len();
+    buf.append(&mut self.field_buf);
 
     // Putting offsets of relevant parts of the buffer at the end. This
     // allows us to hop to the relevant part by merely looking at the last
     // for values in the message. Each value represents an offset into the
     // buffer.
+    append_usize(&mut buf, offset_props);
+    append_usize(&mut buf, offset_spans);
     append_usize(&mut buf, offset_kind_map);
     append_usize(&mut buf, offset_prop_map);
     append_usize(&mut buf, offset_str_table);
-    append_usize(&mut buf, self.start_buf.0);
+    append_u32(&mut buf, self.root_idx);
 
     buf
   }

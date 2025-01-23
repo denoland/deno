@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
+
 use test_util as util;
 
 util::unit_test_factory!(
