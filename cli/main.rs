@@ -347,19 +347,22 @@ fn download_debug_info(url: &str) -> Result<(), AnyError> {
   let dest = std::env::current_exe()?;
   let dest = dest.parent().unwrap();
 
-  if dest.join("deno.dSYM").exists() {
+  let debug_file_name = tools::upgrade::debug_info_file_name()?;
+
+  if dest.join(debug_file_name).exists() {
     return Ok(());
   }
 
   let mut data = Vec::new();
   reader.read_to_end(&mut data)?;
 
-  crate::util::archive::unpack_dir_into_dir("deno.dSYM", dest, &data)?;
+  crate::util::archive::unpack_dir_into_dir(debug_file_name, dest, &data)?;
   Ok(())
 }
 
 #[allow(clippy::print_stderr)]
 fn setup_panic_hook() {
+  use deno_lib::version::DENO_VERSION_INFO;
   // This function does two things inside of the panic hook:
   // - Tokio does not exit the process when a task panics, so we define a custom
   //   panic hook to implement this behaviour.
@@ -375,16 +378,32 @@ fn setup_panic_hook() {
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
+    eprintln!("Version: {}", DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
 
-    match download_debug_info("http://localhost:8008") {
-      Ok(_) => {
-        eprintln!("Debug info: downloaded");
-      }
-      Err(e) => {
-        eprintln!("Failed to download debug info: {}", e);
+    if std::env::var("RUST_BACKTRACE").is_ok_and(|s| s == "1" || s == "full") {
+      let url =
+        std::env::var("DENO_DEBUG_INFO_DOWNLOAD_URL")
+          .ok()
+          .or_else(|| {
+            tools::upgrade::get_download_url(
+              &DENO_VERSION_INFO.deno,
+              DENO_VERSION_INFO.release_channel,
+              &format!("deno-debuginfo-{}", env!("TARGET")),
+            )
+            .ok()
+            .map(|u| u.to_string())
+          });
+      if let Some(url) = url {
+        match download_debug_info(&url) {
+          Ok(_) => {
+            eprintln!("Downloaded debug info");
+          }
+          Err(e) => {
+            eprintln!("Failed to download debug info: {}", e);
+          }
+        }
       }
     }
     orig_hook(panic_info);

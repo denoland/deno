@@ -721,6 +721,33 @@ const ci = {
           ].join("\n"),
         },
         {
+          name: "Strip and separate debug info (linux)",
+          if: [
+            "matrix.os == 'linux' &&",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          run: [
+            "objcopy --only-keep-debug target/release/deno target/release/deno.debug",
+            "objcopy --add-gnu-debuglink target/release/deno.debug target/release/deno",
+            "strip -s target/release/deno",
+          ],
+        },
+        {
+          name: "Strip and separate debug info (mac)",
+          if: [
+            "matrix.os == 'macos' &&",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          run: [
+            "dsymutil target/release/deno",
+            "strip -s target/release/deno",
+          ],
+        },
+        {
           // Run a minimal check to ensure that binary is not corrupted, regardless
           // of our build mode
           name: "Check deno binary",
@@ -766,6 +793,8 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
+            "zip -r deno-debuginfo-${{ matrix.arch}}-unknown-linux-gnu.zip deno.debug",
+            "shasum -a 256 deno-debuginfo-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-debuginfo-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
@@ -794,6 +823,8 @@ const ci = {
             "cd target/release",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
+            "zip -r deno-debuginfo-${{ matrix.arch }}-apple-darwin.zip deno.dSYM",
+            "shasum -a 256 deno-debuginfo-${{ matrix.arch }}-apple-darwin.zip > deno-debuginfo-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
@@ -812,6 +843,8 @@ const ci = {
           run: [
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.exe -DestinationPath target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
+            "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/deno.pdb -DestinationPath target/release/deno-debuginfo-${{ matrix.arch }}-pc-windows-msvc.zip",
+            "Get-FileHash target/release/deno-debuginfo-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/deno-debuginfo-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
             "Compress-Archive -CompressionLevel Optimal -Force -Path target/release/denort.exe -DestinationPath target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip",
             "Get-FileHash target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip -Algorithm SHA256 | Format-List > target/release/denort-${{ matrix.arch }}-pc-windows-msvc.zip.sha256sum",
           ].join("\n"),

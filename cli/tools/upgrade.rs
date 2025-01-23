@@ -537,6 +537,7 @@ pub async fn upgrade(
   let download_url = get_download_url(
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
+    &*&ARCHIVE_NAME,
   )?;
   log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
   let Some(archive_data) = download_package(&client, download_url).await?
@@ -586,6 +587,17 @@ pub async fn upgrade(
   kill_running_deno_lsp_processes();
 
   let output_result = if *output_exe_path == current_exe_path {
+    if let Ok(debug_info_name) = debug_info_file_name() {
+      let debug_info_path =
+        current_exe_path.parent().unwrap().join(debug_info_name);
+      if fs::exists(&debug_info_path).unwrap_or(false) {
+        if cfg!(target_vendor = "apple") {
+          fs::remove_dir_all(debug_info_path)?
+        } else {
+          fs::remove_file(debug_info_path)?
+        }
+      }
+    }
     replace_exe(&new_exe_path, output_exe_path)
   } else {
     fs::rename(&new_exe_path, output_exe_path)
@@ -883,22 +895,23 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
-fn get_download_url(
+pub fn get_download_url(
   version: &str,
   release_channel: ReleaseChannel,
+  archive_name: &str,
 ) -> Result<Url, AnyError> {
   let download_url = match release_channel {
     ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("{}/download/v{}/{}", RELEASE_URL, version, archive_name)
     }
     ReleaseChannel::Rc => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, archive_name)
     }
     ReleaseChannel::Canary => {
-      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+      format!("{}/{}/{}", CANARY_URL, version, archive_name)
     }
     ReleaseChannel::Lts => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, archive_name)
     }
   };
 
@@ -908,6 +921,18 @@ fn get_download_url(
       download_url
     )
   })
+}
+
+pub fn debug_info_file_name() -> Result<&'static str, AnyError> {
+  if cfg!(target_vendor = "apple") {
+    Ok("deno.dSYM")
+  } else if cfg!(unix) {
+    Ok("deno.debug")
+  } else if cfg!(windows) {
+    Ok("deno.pdb")
+  } else {
+    Err(deno_core::anyhow::anyhow!("unknown target debug format"))
+  }
 }
 
 async fn download_package(
