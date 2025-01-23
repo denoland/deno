@@ -216,7 +216,7 @@ const styles = {
   regexp: "red",
   module: "underline",
   internalError: "red",
-  temporal: "magenta",
+  temporal: "cyan",
 };
 
 const defaultFG = 39;

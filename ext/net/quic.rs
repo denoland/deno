@@ -99,9 +99,6 @@ pub enum QuicError {
   #[class(range)]
   #[error("Connection has reached the maximum number of concurrent outgoing {0} streams")]
   MaxStreams(&'static str),
-  #[class(generic)]
-  #[error("{0}")]
-  Core(#[from] deno_core::error::AnyError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),

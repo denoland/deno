@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -45,8 +46,8 @@ use crate::errors::TypesNotFoundError;
 use crate::errors::TypesNotFoundErrorData;
 use crate::errors::UnsupportedDirImportError;
 use crate::errors::UnsupportedEsmUrlSchemeError;
-use crate::npm::InNpmPackageCheckerRc;
-use crate::NpmPackageFolderResolverRc;
+use crate::InNpmPackageChecker;
+use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 
@@ -54,12 +55,32 @@ pub static DEFAULT_CONDITIONS: &[&str] = &["deno", "node", "import"];
 pub static REQUIRE_CONDITIONS: &[&str] = &["require", "node"];
 static TYPES_ONLY_CONDITIONS: &[&str] = &["types"];
 
-fn conditions_from_resolution_mode(
-  resolution_mode: ResolutionMode,
-) -> &'static [&'static str] {
-  match resolution_mode {
-    ResolutionMode::Import => DEFAULT_CONDITIONS,
-    ResolutionMode::Require => REQUIRE_CONDITIONS,
+type ConditionsFromResolutionModeFn = Box<
+  dyn Fn(ResolutionMode) -> &'static [&'static str] + Send + Sync + 'static,
+>;
+
+#[derive(Default)]
+pub struct ConditionsFromResolutionMode(Option<ConditionsFromResolutionModeFn>);
+
+impl Debug for ConditionsFromResolutionMode {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("ConditionsFromResolutionMode").finish()
+  }
+}
+
+impl ConditionsFromResolutionMode {
+  pub fn new(func: ConditionsFromResolutionModeFn) -> Self {
+    Self(Some(func))
+  }
+
+  fn resolve(
+    &self,
+    resolution_mode: ResolutionMode,
+  ) -> &'static [&'static str] {
+    match &self.0 {
+      Some(func) => func(ResolutionMode::Import),
+      None => resolution_mode.default_conditions(),
+    }
   }
 }
 
@@ -67,6 +88,15 @@ fn conditions_from_resolution_mode(
 pub enum ResolutionMode {
   Import,
   Require,
+}
+
+impl ResolutionMode {
+  pub fn default_conditions(&self) -> &'static [&'static str] {
+    match self {
+      ResolutionMode::Import => DEFAULT_CONDITIONS,
+      ResolutionMode::Require => REQUIRE_CONDITIONS,
+    }
+  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,32 +137,55 @@ pub trait IsBuiltInNodeModuleChecker: std::fmt::Debug {
 }
 
 #[allow(clippy::disallowed_types)]
-pub type NodeResolverRc<TIsBuiltInNodeModuleChecker, TSys> =
-  crate::sync::MaybeArc<NodeResolver<TIsBuiltInNodeModuleChecker, TSys>>;
+pub type NodeResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  NodeResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
 
 #[derive(Debug)]
 pub struct NodeResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
+  in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
-  npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+  npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: TSys,
+  conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
 
 impl<
+    TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: FsCanonicalize + FsMetadata + FsRead,
-  > NodeResolver<TIsBuiltInNodeModuleChecker, TSys>
+  >
+  NodeResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
 {
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
-    npm_pkg_folder_resolver: NpmPackageFolderResolverRc,
+    npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: TSys,
+    conditions_from_resolution_mode: ConditionsFromResolutionMode,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -140,6 +193,7 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
+      conditions_from_resolution_mode,
     }
   }
 
@@ -197,11 +251,14 @@ impl<
       }
     }
 
+    let conditions = self
+      .conditions_from_resolution_mode
+      .resolve(resolution_mode);
     let url = self.module_resolve(
       specifier,
       referrer,
       resolution_mode,
-      conditions_from_resolution_mode(resolution_mode),
+      conditions,
       resolution_kind,
     )?;
 
@@ -211,6 +268,7 @@ impl<
         &file_path,
         Some(referrer),
         resolution_mode,
+        conditions,
       )?
     } else {
       url
@@ -343,7 +401,9 @@ impl<
       &package_subpath,
       maybe_referrer,
       resolution_mode,
-      conditions_from_resolution_mode(resolution_mode),
+      self
+        .conditions_from_resolution_mode
+        .resolve(resolution_mode),
       resolution_kind,
     )?;
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
@@ -405,12 +465,24 @@ impl<
     Ok(url)
   }
 
+  /// Resolves an npm package folder path from the specified referrer.
+  pub fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+  ) -> Result<PathBuf, errors::PackageFolderResolveError> {
+    self
+      .npm_pkg_folder_resolver
+      .resolve_package_folder_from_package(specifier, referrer)
+  }
+
   /// Checks if the resolved file has a corresponding declaration file.
   fn path_to_declaration_url(
     &self,
     path: &Path,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
   ) -> Result<Url, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
       sys: &TSys,
@@ -474,7 +546,7 @@ impl<
         /* sub path */ ".",
         maybe_referrer,
         resolution_mode,
-        conditions_from_resolution_mode(resolution_mode),
+        conditions,
         NodeResolutionKind::Types,
       );
       if let Ok(resolution) = resolution_result {
@@ -855,6 +927,7 @@ impl<
           &path,
           maybe_referrer,
           resolution_mode,
+          conditions,
         )?));
       } else {
         return Ok(Some(url));
@@ -1212,6 +1285,7 @@ impl<
           package_subpath,
           maybe_referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| {
@@ -1249,6 +1323,7 @@ impl<
                 package_json,
                 referrer,
                 resolution_mode,
+                conditions,
                 resolution_kind,
               )
               .map_err(|err| {
@@ -1268,6 +1343,7 @@ impl<
           package_json,
           referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| {
@@ -1281,6 +1357,7 @@ impl<
         package_subpath,
         referrer,
         resolution_mode,
+        conditions,
         resolution_kind,
       )
       .map_err(|err| {
@@ -1294,12 +1371,18 @@ impl<
     package_subpath: &str,
     referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
     let file_path = directory.join(package_subpath);
     if resolution_kind.is_types() {
-      Ok(self.path_to_declaration_url(&file_path, referrer, resolution_mode)?)
+      Ok(self.path_to_declaration_url(
+        &file_path,
+        referrer,
+        resolution_mode,
+        conditions,
+      )?)
     } else {
       Ok(url_from_file_path(&file_path).unwrap())
     }
@@ -1311,6 +1394,7 @@ impl<
     package_subpath: &str,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, LegacyResolveError> {
     if package_subpath == "." {
@@ -1327,6 +1411,7 @@ impl<
           package_subpath,
           maybe_referrer,
           resolution_mode,
+          conditions,
           resolution_kind,
         )
         .map_err(|err| err.into())
@@ -1338,6 +1423,7 @@ impl<
     package_json: &PackageJson,
     maybe_referrer: Option<&Url>,
     resolution_mode: ResolutionMode,
+    conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, LegacyResolveError> {
     let pkg_json_kind = match resolution_mode {
@@ -1356,6 +1442,7 @@ impl<
               &main,
               maybe_referrer,
               resolution_mode,
+              conditions,
             );
             // don't surface errors, fallback to checking the index now
             if let Ok(url) = decl_url_result {

@@ -500,6 +500,11 @@ impl Decipher {
     auth_tag: &[u8],
   ) -> Result<(), DecipherError> {
     use Decipher::*;
+
+    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+      return Ok(());
+    }
+
     match (self, auto_pad) {
       (Aes128Cbc(decryptor), true) => {
         assert!(input.len() == 16);

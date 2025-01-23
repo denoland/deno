@@ -41,7 +41,8 @@ use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
-use deno_error::JsErrorBox;
+use deno_lib::args::has_flag_env_var;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
@@ -56,13 +57,11 @@ use super::logging::lsp_log;
 use super::lsp_custom;
 use super::urls::url_to_uri;
 use crate::args::discover_npmrc_from_workspace;
-use crate::args::has_flag_env_var;
 use crate::args::CliLockfile;
 use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
-use crate::cache::FastInsecureHasher;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::resolver::CliSloppyImportsResolver;
@@ -1247,7 +1246,6 @@ impl ConfigData {
             pkg_json_cache: Some(pkg_json_cache),
             workspace_cache: Some(workspace_cache),
             discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
-            config_parse_options: Default::default(),
             maybe_vendor_override: None,
           },
         )
@@ -1572,11 +1570,11 @@ impl ConfigData {
     let resolver = member_dir
       .workspace
       .create_resolver(
+        &CliSys::default(),
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
         },
-        |path| std::fs::read_to_string(path).map_err(JsErrorBox::from_err),
       )
       .inspect_err(|err| {
         lsp_warn!(
@@ -2078,7 +2076,6 @@ impl deno_config::workspace::WorkspaceCache for WorkspaceMemCache {
 
 #[cfg(test)]
 mod tests {
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::resolve_url;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
@@ -2352,12 +2349,7 @@ mod tests {
     config
       .tree
       .inject_config_file(
-        ConfigFile::new(
-          "{}",
-          root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
-        )
-        .unwrap(),
+        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
       )
       .await;
     assert!(config.specifier_enabled(&root_uri));
@@ -2413,7 +2405,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2439,7 +2430,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )
@@ -2457,7 +2447,6 @@ mod tests {
           })
           .to_string(),
           root_uri.join("deno.json").unwrap(),
-          &ConfigParseOptions::default(),
         )
         .unwrap(),
       )

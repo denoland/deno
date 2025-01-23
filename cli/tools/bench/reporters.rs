@@ -1,10 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_lib::version::DENO_VERSION_INFO;
 use serde::Serialize;
 
 use super::*;
 use crate::tools::test::TestFailureFormatOptions;
-use crate::version;
 
 pub trait BenchReporter {
   fn report_group_summary(&mut self);
@@ -31,11 +31,7 @@ impl Default for JsonReporterOutput {
   fn default() -> Self {
     Self {
       version: JSON_SCHEMA_VERSION,
-      runtime: format!(
-        "{} {}",
-        version::DENO_VERSION_INFO.user_agent,
-        env!("TARGET")
-      ),
+      runtime: format!("{} {}", DENO_VERSION_INFO.user_agent, env!("TARGET")),
       cpu: mitata::cpu::name(),
       benches: vec![],
     }
@@ -163,7 +159,7 @@ impl BenchReporter for ConsoleReporter {
         "{}\n",
         colors::gray(format!(
           "Runtime | Deno {} ({})",
-          crate::version::DENO_VERSION_INFO.deno,
+          DENO_VERSION_INFO.deno,
           env!("TARGET")
         ))
       );
