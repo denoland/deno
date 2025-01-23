@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+mod interactive;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
