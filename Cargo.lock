@@ -285,6 +285,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-once-cell"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4288f83726785267c6f2ef073a3d83dc3f9b81464e9f99898240cced85fce35a"
+
+[[package]]
 name = "async-recursion"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1460,9 +1466,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.16.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e73ed17f285731a23df9779ca1e0e721de866db6776ed919ebd9235e0a107c4c"
+checksum = "27429da4d0e601baaa41415a43468d49a586645d13497f12e8a9346f9f6b1347"
 dependencies = [
  "async-trait",
  "base32",
@@ -2219,9 +2225,9 @@ dependencies = [
 
 [[package]]
 name = "deno_path_util"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "420e8211aaba7fde83ccaa9a5dad855c3b940ed988d70c95159acd600a70dc87"
+checksum = "c87b8996966ae1b13ee9c20219b1d10fc53905b9570faae6adfa34614fd15224"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2282,6 +2288,7 @@ name = "deno_resolver"
 version = "0.18.0"
 dependencies = [
  "anyhow",
+ "async-once-cell",
  "async-trait",
  "base32",
  "boxed_error",
@@ -2294,8 +2301,11 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
+ "deno_terminal 0.2.0",
+ "futures",
  "log",
  "node_resolver",
+ "once_cell",
  "parking_lot",
  "sys_traits",
  "test_server",
