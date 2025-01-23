@@ -192,7 +192,7 @@ pub struct NodeExtInitServices<
   pub node_require_loader: NodeRequireLoaderRc,
   pub node_resolver:
     NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
-  pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pub pkg_json_resolver: PackageJsonResolverRc,
   pub sys: TSys,
 }
 

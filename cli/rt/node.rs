@@ -20,7 +20,7 @@ use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
 
 pub type DenoRtCjsTracker =
-  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, DenoRtSys>;
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker>;
 pub type DenoRtNpmResolver = deno_resolver::npm::NpmResolver<DenoRtSys>;
 pub type DenoRtNpmModuleLoader = NpmModuleLoader<
   CjsCodeAnalyzer,

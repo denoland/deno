@@ -161,7 +161,7 @@ pub struct NodeResolver<
   in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
   npm_pkg_folder_resolver: TNpmPackageFolderResolver,
-  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pkg_json_resolver: PackageJsonResolverRc,
   sys: TSys,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
@@ -183,7 +183,7 @@ impl<
     in_npm_pkg_checker: TInNpmPackageChecker,
     is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
     npm_pkg_folder_resolver: TNpmPackageFolderResolver,
-    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    pkg_json_resolver: PackageJsonResolverRc,
     sys: TSys,
     conditions_from_resolution_mode: ConditionsFromResolutionMode,
   ) -> Self {

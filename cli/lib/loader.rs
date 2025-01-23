@@ -101,7 +101,7 @@ pub struct NpmModuleLoader<
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
   TSys: DenoLibSys,
 > {
-  cjs_tracker: Arc<CjsTracker<DenoInNpmPackageChecker, TSys>>,
+  cjs_tracker: Arc<CjsTracker<DenoInNpmPackageChecker>>,
   sys: TSys,
   node_code_translator: Arc<
     NodeCodeTranslator<
@@ -130,7 +130,7 @@ impl<
   >
 {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker<DenoInNpmPackageChecker, TSys>>,
+    cjs_tracker: Arc<CjsTracker<DenoInNpmPackageChecker>>,
     node_code_translator: Arc<
       NodeCodeTranslator<
         TCjsCodeAnalyzer,

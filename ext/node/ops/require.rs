@@ -485,7 +485,7 @@ pub fn op_require_try_self<
     return Ok(None);
   }
 
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let pkg = pkg_json_resolver
     .get_closest_package_json_from_file_path(&PathBuf::from(
       parent_path.unwrap(),
@@ -598,7 +598,7 @@ pub fn op_require_resolve_exports<
     TNpmPackageFolderResolver,
     TSys,
   >>();
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
 
   let modules_path = PathBuf::from(&modules_path_str);
   let modules_specifier = deno_path_util::url_from_file_path(&modules_path)?;
@@ -673,7 +673,7 @@ pub fn op_require_read_package_scope<
   state: &mut OpState,
   #[string] package_json_path: String,
 ) -> Option<PackageJsonRc> {
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let package_json_path = PathBuf::from(package_json_path);
   if package_json_path.file_name() != Some("package.json".as_ref()) {
     // permissions: do not allow reading a non-package.json file
@@ -700,7 +700,7 @@ pub fn op_require_package_imports_resolve<
   let referrer_path = PathBuf::from(&referrer_filename);
   let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
     .map_err(RequireErrorKind::Permission)?;
-  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
+  let pkg_json_resolver = state.borrow::<PackageJsonResolverRc>();
   let Some(pkg) = pkg_json_resolver
     .get_closest_package_json_from_file_path(&referrer_path)?
   else {

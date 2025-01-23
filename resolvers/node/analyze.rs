@@ -98,7 +98,7 @@ pub struct NodeCodeTranslator<
     TSys,
   >,
   npm_resolver: TNpmPackageFolderResolver,
-  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  pkg_json_resolver: PackageJsonResolverRc,
   sys: TSys,
 }
 
@@ -127,7 +127,7 @@ impl<
       TSys,
     >,
     npm_resolver: TNpmPackageFolderResolver,
-    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    pkg_json_resolver: PackageJsonResolverRc,
     sys: TSys,
   ) -> Self {
     Self {
