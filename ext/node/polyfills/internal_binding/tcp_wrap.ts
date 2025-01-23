@@ -100,6 +100,7 @@ export class TCP extends ConnectionWrap {
 
   #closed = false;
   #acceptBackoffDelay?: number;
+  fd = -1;
 
   /**
    * Creates a new TCP class instance.
@@ -126,6 +127,10 @@ export class TCP extends ConnectionWrap {
     }
 
     super(provider, conn);
+
+    if (conn?.fd) {
+      this.fd = conn.fd;
+    }
 
     // TODO(cmorten): the handling of new connections and construction feels
     // a little off. Suspect duplicating in some fashion.

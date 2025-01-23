@@ -99,8 +99,9 @@ class Conn {
 
   #readable;
   #writable;
+  #fd = -1;
 
-  constructor(rid, remoteAddr, localAddr) {
+  constructor(rid, remoteAddr, localAddr, fd) {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -109,10 +110,15 @@ class Conn {
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
+    this.#fd = fd;
   }
 
   get remoteAddr() {
     return this.#remoteAddr;
+  }
+
+  get fd() {
+    return this.#fd;
   }
 
   get localAddr() {
@@ -211,8 +217,8 @@ class UpgradedConn extends Conn {
 class TcpConn extends Conn {
   #rid = 0;
 
-  constructor(rid, remoteAddr, localAddr) {
-    super(rid, remoteAddr, localAddr);
+  constructor(rid, remoteAddr, localAddr, fd) {
+    super(rid, remoteAddr, localAddr, fd);
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
@@ -278,12 +284,12 @@ class Listener {
     }
     this.#promise = promise;
     if (this.#unref) core.unrefOpPromise(promise);
-    const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
+    const { 0: rid, 1: localAddr, 2: remoteAddr, 3: fd } = await promise;
     this.#promise = null;
     if (this.addr.transport == "tcp") {
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
-      return new TcpConn(rid, remoteAddr, localAddr);
+      return new TcpConn(rid, remoteAddr, localAddr, fd);
     } else if (this.addr.transport == "unix") {
       return new UnixConn(
         rid,
