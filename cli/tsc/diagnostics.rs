@@ -353,6 +353,10 @@ impl Diagnostics {
     self.0.push(diagnostic);
   }
 
+  pub fn extend(&mut self, diagnostic: Diagnostics) {
+    self.0.extend(diagnostic.0);
+  }
+
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
   pub fn filter<P>(self, predicate: P) -> Self

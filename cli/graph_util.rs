@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::deno_json;
+use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
@@ -475,6 +476,9 @@ pub struct BuildFastCheckGraphOptions<'a> {
 pub enum BuildGraphWithNpmResolutionError {
   #[class(inherit)]
   #[error(transparent)]
+  CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
+  #[class(inherit)]
+  #[error(transparent)]
   SerdeJson(#[from] serde_json::Error),
   #[class(inherit)]
   #[error(transparent)]
@@ -864,7 +868,6 @@ impl ModuleGraphBuilder {
       .to_maybe_jsx_import_source_config()?;
     let mut jsx_import_source_config_by_scope = BTreeMap::default();
     for (dir_url, _) in self.cli_options.workspace().config_folders() {
-      // todo(THIS PR): seems weird to have to resolve this if we already have the folder
       let dir = self.cli_options.workspace().resolve_member_dir(dir_url);
       let jsx_import_source_config_unscoped =
         dir.to_maybe_jsx_import_source_config()?;
@@ -1243,19 +1246,27 @@ struct CliGraphResolver<'a> {
     BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
 }
 
-impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
-  // todo(THIS PR): we can consolidate the logic here for getting the JsxImportSourceConfig
-  // across these three methods
-  fn default_jsx_import_source(
+impl<'a> CliGraphResolver<'a> {
+  fn resolve_jsx_import_source_config(
     &self,
     referrer: &ModuleSpecifier,
-  ) -> Option<String> {
+  ) -> Option<&JsxImportSourceConfig> {
     self
       .jsx_import_source_config_by_scope
       .iter()
       .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
       .map(|(_, c)| c.as_ref())
       .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
+  }
+}
+
+impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
+  fn default_jsx_import_source(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
+    self
+      .resolve_jsx_import_source_config(referrer)
       .and_then(|c| c.default_specifier.clone())
   }
 
@@ -1264,21 +1275,13 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
     referrer: &ModuleSpecifier,
   ) -> Option<String> {
     self
-      .jsx_import_source_config_by_scope
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, c)| c.as_ref())
-      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
+      .resolve_jsx_import_source_config(referrer)
       .and_then(|c| c.default_types_specifier.clone())
   }
 
   fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {
     self
-      .jsx_import_source_config_by_scope
-      .iter()
-      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
-      .map(|(_, c)| c.as_ref())
-      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
+      .resolve_jsx_import_source_config(referrer)
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }

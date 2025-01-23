@@ -21,6 +21,7 @@ use deno_ast::ModuleSpecifier;
 use deno_ast::SourceMapOption;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
+use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
 use deno_config::deno_json::FmtConfig;
@@ -1127,7 +1128,7 @@ impl CliOptions {
     &self,
     config_type: TsConfigType,
   ) -> Result<TsConfigForEmit, ConfigFileError> {
-    // todo(THIS PR): this seems wrong. For example, for linting shouldn't it collect
+    // todo(THIS PR): this is wrong. For example, for linting shouldn't it collect
     // this with the lint options per directory?
     self.start_dir.to_ts_config_for_emit(config_type)
   }
@@ -1157,22 +1158,21 @@ impl CliOptions {
 
   pub fn to_compiler_option_types(
     &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
-    // todo(THIS PR): this seems wrong. I think we should supply the
-    // types for all imports to the graph and then get a subset of
-    // the graph that only contains the specific types
-    self
-      .start_dir
-      .to_compiler_option_types()
-      .map(|maybe_imports| {
-        maybe_imports
-          .into_iter()
-          .map(|(referrer, imports)| deno_graph::ReferrerImports {
-            referrer,
-            imports,
-          })
-          .collect()
-      })
+  ) -> Result<
+    Vec<deno_graph::ReferrerImports>,
+    CompilerOptionTypesDeserializeError,
+  > {
+    // Resolve all the imports from every deno.json. We'll separate
+    // them later based on the folder we're type checking.
+    let mut imports = Vec::new();
+    let workspace = self.workspace();
+    for deno_json in workspace.deno_jsons() {
+      let maybe_imports = deno_json.to_compiler_option_types()?;
+      imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
+        deno_graph::ReferrerImports { referrer, imports }
+      }));
+    }
+    Ok(imports)
   }
 
   pub fn npmrc(&self) -> &Arc<ResolvedNpmRc> {
