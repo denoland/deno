@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::BufRead;
 use std::io::BufReader;
 use std::time::Duration;
 use std::time::Instant;
+
 use test_util as util;
 
 util::unit_test_factory!(
@@ -52,6 +53,7 @@ util::unit_test_factory!(
     kv_queue_test,
     kv_queue_undelivered_test,
     link_test,
+    lint_selectors_test,
     lint_plugin_test,
     make_temp_test,
     message_channel_test,

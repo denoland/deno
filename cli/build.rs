@@ -1,23 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::env;
 use std::path::PathBuf;
 
 use deno_core::snapshot::*;
 use deno_runtime::*;
-mod shared;
 
 mod ts {
-  use super::*;
-  use deno_core::error::custom_error;
-  use deno_core::error::AnyError;
-  use deno_core::op2;
-  use deno_core::OpState;
-  use serde::Serialize;
   use std::collections::HashMap;
   use std::io::Write;
   use std::path::Path;
   use std::path::PathBuf;
+
+  use deno_core::op2;
+  use deno_core::OpState;
+  use deno_error::JsErrorBox;
+  use serde::Serialize;
+
+  use super::*;
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
@@ -51,7 +51,7 @@ mod ts {
   fn op_script_version(
     _state: &mut OpState,
     #[string] _arg: &str,
-  ) -> Result<Option<String>, AnyError> {
+  ) -> Result<Option<String>, JsErrorBox> {
     Ok(Some("1".to_string()))
   }
 
@@ -70,7 +70,7 @@ mod ts {
   fn op_load(
     state: &mut OpState,
     #[string] load_specifier: &str,
-  ) -> Result<LoadResponse, AnyError> {
+  ) -> Result<LoadResponse, JsErrorBox> {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
@@ -91,12 +91,15 @@ mod ts {
         // if it comes from an op crate, we were supplied with the path to the
         // file.
         let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-          PathBuf::from(op_crate_lib).canonicalize()?
+          PathBuf::from(op_crate_lib)
+            .canonicalize()
+            .map_err(JsErrorBox::from_err)?
           // otherwise we will generate the path ourself
         } else {
           path_dts.join(format!("lib.{lib}.d.ts"))
         };
-        let data = std::fs::read_to_string(path)?;
+        let data =
+          std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
         Ok(LoadResponse {
           data,
           version: "1".to_string(),
@@ -104,13 +107,13 @@ mod ts {
           script_kind: 3,
         })
       } else {
-        Err(custom_error(
+        Err(JsErrorBox::new(
           "InvalidSpecifier",
           format!("An invalid specifier was requested: {}", load_specifier),
         ))
       }
     } else {
-      Err(custom_error(
+      Err(JsErrorBox::new(
         "InvalidSpecifier",
         format!("An invalid specifier was requested: {}", load_specifier),
       ))
@@ -119,10 +122,16 @@ mod ts {
 
   deno_core::extension!(deno_tsc,
     ops = [op_build_info, op_is_node_file, op_load, op_script_version],
+    esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
+    esm = [
+      dir "tsc",
+      "97_ts_host.js",
+      "98_lsp.js",
+      "99_main_compiler.js",
+    ],
     js = [
       dir "tsc",
       "00_typescript.js",
-      "99_main_compiler.js",
     ],
     options = {
       op_crate_libs: HashMap<&'static str, PathBuf>,
@@ -306,57 +315,6 @@ mod ts {
       println!("cargo:rerun-if-changed={}", path.display());
     }
   }
-
-  pub(crate) fn version() -> String {
-    let file_text = std::fs::read_to_string("tsc/00_typescript.js").unwrap();
-    let version_text = " version = \"";
-    for line in file_text.lines() {
-      if let Some(index) = line.find(version_text) {
-        let remaining_line = &line[index + version_text.len()..];
-        return remaining_line[..remaining_line.find('"').unwrap()].to_string();
-      }
-    }
-    panic!("Could not find ts version.")
-  }
-}
-
-#[cfg(not(feature = "hmr"))]
-fn create_cli_snapshot(snapshot_path: PathBuf) {
-  use deno_runtime::ops::bootstrap::SnapshotOptions;
-
-  let snapshot_options = SnapshotOptions {
-    ts_version: ts::version(),
-    v8_version: deno_core::v8::VERSION_STRING,
-    target: std::env::var("TARGET").unwrap(),
-  };
-
-  deno_runtime::snapshot::create_runtime_snapshot(
-    snapshot_path,
-    snapshot_options,
-    vec![],
-  );
-}
-
-fn git_commit_hash() -> String {
-  if let Ok(output) = std::process::Command::new("git")
-    .arg("rev-list")
-    .arg("-1")
-    .arg("HEAD")
-    .output()
-  {
-    if output.status.success() {
-      std::str::from_utf8(&output.stdout[..40])
-        .unwrap()
-        .to_string()
-    } else {
-      // When not in git repository
-      // (e.g. when the user install by `cargo install deno`)
-      "UNKNOWN".to_string()
-    }
-  } else {
-    // When there is no git command for some reason
-    "UNKNOWN".to_string()
-  }
 }
 
 fn main() {
@@ -366,7 +324,7 @@ fn main() {
   }
 
   deno_napi::print_linker_flags("deno");
-  deno_napi::print_linker_flags("denort");
+  deno_webgpu::print_linker_flags("deno");
 
   // Host snapshots won't work when cross compiling.
   let target = env::var("TARGET").unwrap();
@@ -385,50 +343,14 @@ fn main() {
   }
   println!("cargo:rerun-if-env-changed=DENO_CANARY");
 
-  println!("cargo:rustc-env=GIT_COMMIT_HASH={}", git_commit_hash());
-  println!("cargo:rerun-if-env-changed=GIT_COMMIT_HASH");
-  println!(
-    "cargo:rustc-env=GIT_COMMIT_HASH_SHORT={}",
-    &git_commit_hash()[..7]
-  );
-
-  let ts_version = ts::version();
-  debug_assert_eq!(ts_version, "5.6.2"); // bump this assertion when it changes
-  println!("cargo:rustc-env=TS_VERSION={}", ts_version);
-  println!("cargo:rerun-if-env-changed=TS_VERSION");
-
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-
-  if cfg!(windows) {
-    // these dls load slowly, so delay loading them
-    let dlls = [
-      // webgpu
-      "d3dcompiler_47",
-      "OPENGL32",
-      // network related functions
-      "iphlpapi",
-    ];
-    for dll in dlls {
-      println!("cargo:rustc-link-arg-bin=deno=/delayload:{dll}.dll");
-      println!("cargo:rustc-link-arg-bin=denort=/delayload:{dll}.dll");
-    }
-    // enable delay loading
-    println!("cargo:rustc-link-arg-bin=deno=delayimp.lib");
-    println!("cargo:rustc-link-arg-bin=denort=delayimp.lib");
-  }
 
   let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
   let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
   let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
   ts::create_compiler_snapshot(compiler_snapshot_path, &c);
-
-  #[cfg(not(feature = "hmr"))]
-  {
-    let cli_snapshot_path = o.join("CLI_SNAPSHOT.bin");
-    create_cli_snapshot(cli_snapshot_path);
-  }
 
   #[cfg(target_os = "windows")]
   {

@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::custom_error;
+use std::collections::HashMap;
+
 use deno_core::error::AnyError;
+use deno_error::JsErrorBox;
 use dissimilar::diff;
 use dissimilar::Chunk;
-use std::collections::HashMap;
 use text_size::TextRange;
 use text_size::TextSize;
 use tower_lsp::jsonrpc;
@@ -136,7 +137,7 @@ impl LineIndex {
     if let Some(line_offset) = self.utf8_offsets.get(position.line as usize) {
       Ok(line_offset + col)
     } else {
-      Err(custom_error("OutOfRange", "The position is out of range."))
+      Err(JsErrorBox::new("OutOfRange", "The position is out of range.").into())
     }
   }
 
@@ -156,7 +157,7 @@ impl LineIndex {
     if let Some(line_offset) = self.utf16_offsets.get(position.line as usize) {
       Ok(line_offset + TextSize::from(position.character))
     } else {
-      Err(custom_error("OutOfRange", "The position is out of range."))
+      Err(JsErrorBox::new("OutOfRange", "The position is out of range.").into())
     }
   }
 

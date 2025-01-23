@@ -1,14 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::os::raw::c_char;
+use std::os::raw::c_void;
+use std::ptr;
+
+use napi_sys::Status::napi_ok;
+use napi_sys::ValueType::napi_function;
+use napi_sys::*;
 
 use crate::assert_napi_ok;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::Status::napi_ok;
-use napi_sys::ValueType::napi_function;
-use napi_sys::*;
-use std::os::raw::c_char;
-use std::os::raw::c_void;
-use std::ptr;
 
 pub struct Baton {
   called: bool,

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -20,12 +20,19 @@ use spki::AlgorithmIdentifierOwned;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ExportKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
+  #[class("DOMExceptionNotSupportedError")]
   #[error("Unsupported named curve")]
   UnsupportedNamedCurve,
 }

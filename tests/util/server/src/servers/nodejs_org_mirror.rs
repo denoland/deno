@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! Server for NodeJS header tarballs, used by `node-gyp` in tests to download headers
 //!

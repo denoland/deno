@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
@@ -8,14 +10,12 @@ use deno_npm::npm_rc::NpmRc;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::sync::Arc;
 
+use super::search::PackageSearchApi;
 use crate::args::npm_registry_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 use crate::npm::NpmFetchResolver;
-
-use super::search::PackageSearchApi;
 
 #[derive(Debug)]
 pub struct CliNpmSearchApi {

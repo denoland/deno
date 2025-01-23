@@ -1,14 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use async_trait::async_trait;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
@@ -18,41 +15,24 @@ use deno_unsync::sync::MultiRuntimeAsyncValueCreator;
 use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use parking_lot::Mutex;
-use thiserror::Error;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::NpmCache;
-use crate::NpmCacheEnv;
+use crate::NpmCacheHttpClient;
 use crate::NpmCacheSetting;
 
-type LoadResult = Result<FutureResult, Arc<AnyError>>;
+type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
-
-#[derive(Debug, Error)]
-#[error(transparent)]
-pub struct AnyhowJsError(pub AnyError);
-
-impl deno_error::JsErrorClass for AnyhowJsError {
-  fn get_class(&self) -> &'static str {
-    "generic"
-  }
-
-  fn get_message(&self) -> std::borrow::Cow<'static, str> {
-    self.0.to_string().into()
-  }
-
-  fn get_additional_properties(
-    &self,
-  ) -> Option<
-    Vec<(
-      std::borrow::Cow<'static, str>,
-      std::borrow::Cow<'static, str>,
-    )>,
-  > {
-    None
-  }
-}
 
 #[derive(Debug, Clone)]
 enum FutureResult {
@@ -71,7 +51,7 @@ enum MemoryCacheItem {
   FsCached,
   /// An item is memory cached when it fails saving to the file system cache
   /// or the package does not exist.
-  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<AnyError>>),
+  MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsErrorBox>>),
 }
 
 #[derive(Debug, Default)]
@@ -116,31 +96,93 @@ impl MemoryCache {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+pub enum LoadFileCachedPackageInfoError {
+  #[error("Previously saved '{name}' from the npm cache, but now it fails to load: {err}")]
+  LoadPackageInfo {
+    err: serde_json::Error,
+    name: String,
+  },
+  #[error("The package '{0}' previously saved its registry information to the file system cache, but that file no longer exists.")]
+  FileMissing(String),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(inherit)]
+#[error("Failed loading {url} for package \"{name}\"")]
+pub struct LoadPackageInfoError {
+  url: Url,
+  name: String,
+  #[inherit]
+  #[source]
+  inner: LoadPackageInfoInnerError,
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum LoadPackageInfoInnerError {
+  #[class(inherit)]
+  #[error("{0}")]
+  LoadFileCachedPackageInfo(LoadFileCachedPackageInfoError),
+  #[class(inherit)]
+  #[error("{0}")]
+  Other(Arc<JsErrorBox>),
+}
+
 // todo(#27198): refactor to store this only in the http cache
 
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct RegistryInfoProvider<TEnv: NpmCacheEnv> {
+pub struct RegistryInfoProvider<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+> {
   // todo(#27198): remove this
-  cache: Arc<NpmCache<TEnv>>,
-  env: Arc<TEnv>,
+  cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<THttpClient>,
   npmrc: Arc<ResolvedNpmRc>,
   force_reload_flag: AtomicFlag,
   memory_cache: Mutex<MemoryCache>,
   previously_loaded_packages: Mutex<HashSet<String>>,
 }
 
-impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > RegistryInfoProvider<THttpClient, TSys>
+{
   pub fn new(
-    cache: Arc<NpmCache<TEnv>>,
-    env: Arc<TEnv>,
+    cache: Arc<NpmCache<TSys>>,
+    http_client: Arc<THttpClient>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache,
-      env,
+      http_client,
       npmrc,
       force_reload_flag: AtomicFlag::lowered(),
       memory_cache: Default::default(),
@@ -170,7 +212,9 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     }
   }
 
-  pub fn as_npm_registry_api(self: &Arc<Self>) -> NpmRegistryApiAdapter<TEnv> {
+  pub fn as_npm_registry_api(
+    self: &Arc<Self>,
+  ) -> NpmRegistryApiAdapter<THttpClient, TSys> {
     NpmRegistryApiAdapter(self.clone())
   }
 
@@ -184,7 +228,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
         package_name: name.to_string(),
       }),
       Err(err) => Err(NpmRegistryPackageInfoLoadError::LoadError(Arc::new(
-        AnyhowJsError(err),
+        JsErrorBox::from_err(err),
       ))),
     }
   }
@@ -192,20 +236,20 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
   pub async fn maybe_package_info(
     self: &Arc<Self>,
     name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
-    self.load_package_info_inner(name).await.with_context(|| {
-      format!(
-        "Failed loading {} for package \"{}\"",
-        get_package_url(&self.npmrc, name),
-        name
-      )
+  ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoError> {
+    self.load_package_info_inner(name).await.map_err(|err| {
+      LoadPackageInfoError {
+        url: get_package_url(&self.npmrc, name),
+        name: name.to_string(),
+        inner: err,
+      }
     })
   }
 
   async fn load_package_info_inner(
     self: &Arc<Self>,
     name: &str,
-  ) -> Result<Option<Arc<NpmPackageInfo>>, AnyError> {
+  ) -> Result<Option<Arc<NpmPackageInfo>>, LoadPackageInfoInnerError> {
     let (cache_item, clear_id) = {
       let mut mem_cache = self.memory_cache.lock();
       let cache_item = if let Some(cache_item) = mem_cache.get(name) {
@@ -230,9 +274,10 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
           .load_file_cached_package_info(name)
           .await
           .map(|info| Some(Arc::new(info)))
+          .map_err(LoadPackageInfoInnerError::LoadFileCachedPackageInfo)
       }
       MemoryCacheItem::MemoryCached(maybe_info) => {
-        maybe_info.clone().map_err(|e| anyhow!("{}", e))
+        maybe_info.clone().map_err(LoadPackageInfoInnerError::Other)
       }
       MemoryCacheItem::Pending(value_creator) => {
         match value_creator.get().await {
@@ -264,13 +309,13 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
             Ok(None)
           }
           Err(err) => {
-            let return_err = anyhow!("{:#}", err);
+            let return_err = err.clone();
             self.memory_cache.lock().try_insert(
               clear_id,
               name,
               MemoryCacheItem::MemoryCached(Err(err)),
             );
-            Err(return_err)
+            Err(LoadPackageInfoInnerError::Other(return_err))
           }
         }
       }
@@ -280,7 +325,7 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
   async fn load_file_cached_package_info(
     &self,
     name: &str,
-  ) -> Result<NpmPackageInfo, AnyError> {
+  ) -> Result<NpmPackageInfo, LoadFileCachedPackageInfoError> {
     // this scenario failing should be exceptionally rare so let's
     // deal with improving it only when anyone runs into an issue
     let maybe_package_info = deno_unsync::spawn_blocking({
@@ -290,17 +335,15 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
     })
     .await
     .unwrap()
-    .with_context(|| {
-      format!(
-        "Previously saved '{}' from the npm cache, but now it fails to load.",
-        name
-      )
+    .map_err(|err| LoadFileCachedPackageInfoError::LoadPackageInfo {
+      err,
+      name: name.to_string(),
     })?;
     match maybe_package_info {
       Some(package_info) => Ok(package_info),
-      None => {
-        bail!("The package '{}' previously saved its registry information to the file system cache, but that file no longer exists.", name)
-      }
+      None => Err(LoadFileCachedPackageInfoError::FileMissing(
+        name.to_string(),
+      )),
     }
   }
 
@@ -312,7 +355,8 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       match maybe_auth_header_for_npm_registry(registry_config) {
         Ok(maybe_auth_header) => maybe_auth_header,
         Err(err) => {
-          return std::future::ready(Err(Arc::new(err))).boxed_local()
+          return std::future::ready(Err(Arc::new(JsErrorBox::from_err(err))))
+            .boxed_local()
         }
       };
     let name = name.to_string();
@@ -323,14 +367,14 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
         || downloader.previously_loaded_packages.lock().contains(&name)
       {
         // attempt to load from the file cache
-        if let Some(info) = downloader.cache.load_package_info(&name)? {
+        if let Some(info) = downloader.cache.load_package_info(&name).map_err(JsErrorBox::from_err)? {
           let result = Arc::new(info);
           return Ok(FutureResult::SavedFsCache(result));
         }
       }
 
       if *downloader.cache.cache_setting() == NpmCacheSetting::Only {
-        return Err(deno_core::error::custom_error(
+        return Err(JsErrorBox::new(
           "NotCached",
           format!(
             "npm package not found in cache: \"{name}\", --cached-only is specified."
@@ -341,17 +385,17 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
       downloader.previously_loaded_packages.lock().insert(name.to_string());
 
       let maybe_bytes = downloader
-        .env
+        .http_client
         .download_with_retries_on_any_tokio_runtime(
           package_url,
           maybe_auth_header,
         )
-        .await?;
+        .await.map_err(JsErrorBox::from_err)?;
       match maybe_bytes {
         Some(bytes) => {
           let future_result = deno_unsync::spawn_blocking(
-            move || -> Result<FutureResult, AnyError> {
-              let package_info = serde_json::from_slice(&bytes)?;
+            move || -> Result<FutureResult, JsErrorBox> {
+              let package_info = serde_json::from_slice(&bytes).map_err(JsErrorBox::from_err)?;
               match downloader.cache.save_package_info(&name, &package_info) {
                 Ok(()) => {
                   Ok(FutureResult::SavedFsCache(Arc::new(package_info)))
@@ -367,7 +411,8 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
               }
             },
           )
-          .await??;
+          .await
+          .map_err(JsErrorBox::from_err)??;
           Ok(future_result)
         }
         None => Ok(FutureResult::PackageNotExists),
@@ -378,12 +423,39 @@ impl<TEnv: NpmCacheEnv> RegistryInfoProvider<TEnv> {
   }
 }
 
-pub struct NpmRegistryApiAdapter<TEnv: NpmCacheEnv>(
-  Arc<RegistryInfoProvider<TEnv>>,
-);
+pub struct NpmRegistryApiAdapter<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+>(Arc<RegistryInfoProvider<THttpClient, TSys>>);
 
 #[async_trait(?Send)]
-impl<TEnv: NpmCacheEnv> NpmRegistryApi for NpmRegistryApiAdapter<TEnv> {
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > NpmRegistryApi for NpmRegistryApiAdapter<THttpClient, TSys>
+{
   async fn package_info(
     &self,
     name: &str,

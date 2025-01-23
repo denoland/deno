@@ -1,4 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::convert::Infallible;
+use std::io;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::result::Result;
 
 use bytes::Bytes;
 use futures::Future;
@@ -10,11 +16,6 @@ use http::Request;
 use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper_util::rt::TokioIo;
-use std::convert::Infallible;
-use std::io;
-use std::net::SocketAddr;
-use std::pin::Pin;
-use std::result::Result;
 use tokio::net::TcpListener;
 
 #[derive(Debug, Clone, Copy)]

@@ -1,12 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub use impl_::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PriorityError {
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
   #[cfg(windows)]
+  #[class(type)]
   #[error("Invalid priority")]
   InvalidPriority,
 }

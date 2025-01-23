@@ -2,6 +2,7 @@
   "ignore": {
     "common": ["index.js", "internet.js"],
     "fixtures": [
+      "baz.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
@@ -368,9 +369,11 @@
       "test-dgram-send-callback-multi-buffer.js",
       "test-dgram-send-callback-recursive.js",
       "test-dgram-send-default-host.js",
-      "test-dgram-send-empty-array.js",
-      "test-dgram-send-empty-buffer.js",
-      "test-dgram-send-empty-packet.js",
+      // TODO(kt3k): These tests are flaky on macOS CI.
+      // https://github.com/denoland/deno/issues/27316
+      // "test-dgram-send-empty-array.js",
+      // "test-dgram-send-empty-buffer.js",
+      // "test-dgram-send-empty-packet.js",
       "test-dgram-send-error.js",
       "test-dgram-send-invalid-msg-type.js",
       "test-dgram-send-multi-buffer-copy.js",
@@ -478,6 +481,7 @@
       "test-fs-opendir.js",
       "test-fs-promises-exists.js",
       "test-fs-promises-file-handle-stat.js",
+      "test-fs-promises-file-handle-sync.js",
       "test-fs-promises-file-handle-write.js",
       "test-fs-promises-readfile-empty.js",
       "test-fs-promises-readfile-with-fd.js",

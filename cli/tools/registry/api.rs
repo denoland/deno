@@ -1,12 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::http_util;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_runtime::deno_fetch;
 use serde::de::DeserializeOwned;
 
+use crate::http_util;
 use crate::http_util::HttpClient;
 
 #[derive(serde::Deserialize)]

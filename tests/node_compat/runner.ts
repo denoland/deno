@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import "./polyfill_globals.js";
 import { createRequire } from "node:module";
 import { toFileUrl } from "@std/path/to-file-url";
