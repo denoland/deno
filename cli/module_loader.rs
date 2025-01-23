@@ -606,12 +606,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else if referrer == "." {
       // main module, use the initial cwd
       deno_core::resolve_path(referrer, &self.shared.initial_cwd)
-        .map_err(|e| e.into())
+        .map_err(|e| JsErrorBox::from_err(e).into())
     } else {
       // this cwd check is slow, so try to avoid it
       let cwd = std::env::current_dir()
         .map_err(|e| JsErrorBox::from_err(UnableToGetCwdError(e)))?;
-      deno_core::resolve_path(referrer, &cwd).map_err(|e| e.into())
+      deno_core::resolve_path(referrer, &cwd)
+        .map_err(|e| JsErrorBox::from_err(e).into())
     }
   }
 

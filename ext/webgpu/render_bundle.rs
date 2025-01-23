@@ -77,6 +77,8 @@ impl GPURenderBundleEncoder {
     })?;
 
     let label = std::ffi::CString::new(group_label).unwrap();
+    // SAFETY: the string the raw pointer points to lives longer than the below
+    // function invocation.
     unsafe {
       wgpu_core::command::bundle_ffi::wgpu_render_bundle_push_debug_group(
         encoder,
@@ -108,6 +110,8 @@ impl GPURenderBundleEncoder {
 
     let label = std::ffi::CString::new(marker_label).unwrap();
 
+    // SAFETY: the string the raw pointer points to lives longer than the below
+    // function invocation.
     unsafe {
       wgpu_core::command::bundle_ffi::wgpu_render_bundle_insert_debug_marker(
         encoder,

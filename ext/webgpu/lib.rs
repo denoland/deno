@@ -7,7 +7,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::cppgc::SameObject;
-use deno_core::{op2, v8};
+use deno_core::op2;
+use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 pub use wgpu_core;
@@ -99,11 +100,25 @@ deno_core::extension!(
 
 #[op2]
 #[cppgc]
-pub fn op_create_gpu(state: &mut OpState, scope: &mut v8::HandleScope, error_event_class: v8::Local<v8::Value>) -> GPU {
+pub fn op_create_gpu(
+  state: &mut OpState,
+  scope: &mut v8::HandleScope,
+  webidl_brand: v8::Local<v8::Value>,
+  set_event_target_data: v8::Local<v8::Value>,
+  error_event_class: v8::Local<v8::Value>,
+) -> GPU {
+  state.put(EventTargetSetup {
+    brand: v8::Global::new(scope, webidl_brand),
+    set_event_target_data: v8::Global::new(scope, set_event_target_data),
+  });
   state.put(ErrorEventClass(v8::Global::new(scope, error_event_class)));
   GPU
 }
 
+struct EventTargetSetup {
+  brand: v8::Global<v8::Value>,
+  set_event_target_data: v8::Global<v8::Value>,
+}
 struct ErrorEventClass(v8::Global<v8::Value>);
 
 pub struct GPU;
@@ -123,18 +138,22 @@ impl GPU {
 
     let backends = std::env::var("DENO_WEBGPU_BACKEND").map_or_else(
       |_| wgpu_types::Backends::all(),
-      |s| wgpu_core::instance::parse_backends_from_comma_list(&s),
+      |s| wgpu_types::Backends::from_comma_list(&s),
     );
     let instance = if let Some(instance) = state.try_borrow::<Instance>() {
       instance
     } else {
       state.put(Arc::new(wgpu_core::global::Global::new(
         "webgpu",
-        wgpu_types::InstanceDescriptor {
+        &wgpu_types::InstanceDescriptor {
           backends,
           flags: wgpu_types::InstanceFlags::from_build_config(),
-          dx12_shader_compiler: wgpu_types::Dx12Compiler::Fxc,
-          gles_minor_version: wgpu_types::Gles3MinorVersion::default(),
+          backend_options: wgpu_types::BackendOptions {
+            dx12: wgpu_types::Dx12BackendOptions {
+              shader_compiler: wgpu_types::Dx12Compiler::Fxc,
+            },
+            gl: wgpu_types::GlBackendOptions::default(),
+          },
         },
       )));
       state.borrow::<Instance>()

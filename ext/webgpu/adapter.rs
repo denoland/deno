@@ -6,9 +6,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::cppgc::SameObject;
-use deno_core::{op2, OpState};
+use deno_core::op2;
 use deno_core::v8;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
 use deno_core::WebIDL;
 use tokio::sync::Mutex;
 
@@ -141,7 +142,8 @@ impl GPUAdapter {
     )?;
 
     let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
-    let (uncaptured_sender, mut uncaptured_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let (uncaptured_sender, mut uncaptured_receiver) =
+      tokio::sync::mpsc::unbounded_channel();
 
     let device = GPUDevice {
       instance: self.instance.clone(),
@@ -150,13 +152,25 @@ impl GPUAdapter {
       label: descriptor.label,
       queue_obj: SameObject::new(),
       adapter_info: self.info.clone(),
-      error_handler: Arc::new(super::error::DeviceErrorHandler::new(lost_sender, uncaptured_sender)),
+      error_handler: Arc::new(super::error::DeviceErrorHandler::new(
+        lost_sender,
+        uncaptured_sender,
+      )),
       adapter: self.id,
       lost_receiver: Mutex::new(Some(lost_receiver)),
       limits: SameObject::new(),
       features: SameObject::new(),
     };
     let device = deno_core::cppgc::make_cppgc_object(scope, device);
+    let event_target_setup = state.borrow::<crate::EventTargetSetup>();
+    let webidl_brand = v8::Local::new(scope, event_target_setup.brand.clone());
+    device.set(scope, webidl_brand, webidl_brand);
+    let set_event_target_data =
+      v8::Local::new(scope, event_target_setup.set_event_target_data.clone())
+        .cast::<v8::Function>();
+    let null = v8::null(scope);
+    set_event_target_data.call(scope, null.into(), &[device.into()]);
+
     let key = v8::String::new(scope, "dispatchEvent").unwrap();
     let val = device.get(scope, key.into()).unwrap();
     let func = v8::Global::new(scope, val.try_cast::<v8::Function>().unwrap());
@@ -177,14 +191,23 @@ impl GPUAdapter {
 
         // SAFETY: eh, it's safe
         let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope = &mut v8::HandleScope::with_context(isolate, context.clone());
+        let scope =
+          &mut v8::HandleScope::with_context(isolate, context.clone());
         let error = deno_core::error::to_v8_error(scope, &error);
 
-        let error_event_class = v8::Local::new(scope, error_event_class.clone());
-        let constructor = v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
+        let error_event_class =
+          v8::Local::new(scope, error_event_class.clone());
+        let constructor =
+          v8::Local::<v8::Function>::try_from(error_event_class).unwrap();
         let kind = v8::String::new(scope, "uncapturederror").unwrap();
 
-        let event = constructor.new_instance(scope, &[kind.into(), error]).unwrap();
+        let obj = v8::Object::new(scope);
+        let key = v8::String::new(scope, "error").unwrap();
+        obj.set(scope, key.into(), error);
+
+        let event = constructor
+          .new_instance(scope, &[kind.into(), obj.into()])
+          .unwrap();
 
         let recv = v8::Local::new(scope, task_device.clone());
         func.open(scope).call(scope, recv, &[event.into()]);

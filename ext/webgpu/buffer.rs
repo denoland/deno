@@ -12,7 +12,6 @@ use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use wgpu_core::device::HostMap as MapMode;
-use wgpu_core::resource::BufferMapCallback;
 
 use crate::Instance;
 
@@ -146,7 +145,7 @@ impl GPUBuffer {
           size,
           wgpu_core::resource::BufferMapOperation {
             host: mode,
-            callback: Some(BufferMapCallback::from_rust(callback)),
+            callback: Some(callback),
           },
         )
         .err();

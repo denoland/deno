@@ -36,14 +36,17 @@ pub type ErrorHandler = std::sync::Arc<DeviceErrorHandler>;
 pub struct DeviceErrorHandler {
   pub is_lost: OnceLock<()>,
   lost_sender: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-  
+
   pub uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>,
 
   pub scopes: Mutex<Vec<(GPUErrorFilter, Vec<GPUError>)>>,
 }
 
 impl DeviceErrorHandler {
-  pub fn new(lost_sender: tokio::sync::oneshot::Sender<()>, uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>) -> Self {
+  pub fn new(
+    lost_sender: tokio::sync::oneshot::Sender<()>,
+    uncaptured_sender: tokio::sync::mpsc::UnboundedSender<GPUError>,
+  ) -> Self {
     Self {
       is_lost: Default::default(),
       lost_sender: Mutex::new(Some(lost_sender)),

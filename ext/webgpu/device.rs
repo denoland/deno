@@ -1,5 +1,7 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::borrow::Cow;
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
@@ -160,7 +162,11 @@ impl GPUDevice {
       } else {
         "unmapped"
       }),
-      map_mode: RefCell::new(None),
+      map_mode: RefCell::new(if descriptor.mapped_at_creation {
+        Some(wgpu_core::device::HostMap::Read)
+      } else {
+        None
+      }),
       mapped_js_buffers: RefCell::new(vec![]),
     })
   }
@@ -420,7 +426,7 @@ impl GPUDevice {
   ) -> GPUShaderModule {
     let wgpu_descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
       label: Some(Cow::Owned(descriptor.label.clone())),
-      shader_bound_checks: wgpu_types::ShaderBoundChecks::default(),
+      runtime_checks: wgpu_types::ShaderRuntimeChecks::default(),
     };
 
     let (id, err) = self.instance.device_create_shader_module(
@@ -479,14 +485,16 @@ impl GPUDevice {
     self.new_render_pipeline(descriptor)
   }
 
-  #[required(1)]
   #[cppgc]
   fn create_command_encoder(
     &self,
-    #[webidl] descriptor: super::command_encoder::GPUCommandEncoderDescriptor,
+    #[webidl] descriptor: Option<
+      super::command_encoder::GPUCommandEncoderDescriptor,
+    >,
   ) -> GPUCommandEncoder {
+    let label = descriptor.map(|d| d.label).unwrap_or_default();
     let wgpu_descriptor = wgpu_types::CommandEncoderDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: Some(Cow::Owned(label.clone())),
     };
 
     let (id, err) = self.instance.device_create_command_encoder(
@@ -501,7 +509,7 @@ impl GPUDevice {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
       id,
-      label: descriptor.label,
+      label,
     }
   }
 
@@ -616,7 +624,8 @@ impl GPUDevice {
       return Ok(v8::Global::new(scope, val));
     }
 
-    let Some((_, errors)) = self.error_handler.scopes.lock().unwrap().pop() else {
+    let Some((_, errors)) = self.error_handler.scopes.lock().unwrap().pop()
+    else {
       return Err(JsErrorBox::new(
         "DOMExceptionOperationError",
         "There are no error scopes on the error scope stack",

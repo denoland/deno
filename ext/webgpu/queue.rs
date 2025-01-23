@@ -45,17 +45,31 @@ impl GPUQueue {
   }
 
   #[required(1)]
-  fn submit(&self, #[webidl] command_buffers: Vec<Ptr<GPUCommandBuffer>>) {
+  fn submit(
+    &self,
+    #[webidl] command_buffers: Vec<Ptr<GPUCommandBuffer>>,
+  ) -> Result<(), JsErrorBox> {
     let ids = command_buffers
       .into_iter()
-      .map(|cb| cb.id)
-      .collect::<Vec<_>>();
+      .enumerate()
+      .map(|(i, cb)| {
+        if let Err(_) = cb.consumed.set(()) {
+          Err(JsErrorBox::type_error(format!(
+            "The command buffer at position {i} has already been submitted."
+          )))
+        } else {
+          Ok(cb.id)
+        }
+      })
+      .collect::<Result<Vec<_>, _>>()?;
 
     let err = self.instance.queue_submit(self.id, &ids).err();
 
     if let Some((_, err)) = err {
       self.error_handler.push_error(Some(err));
     }
+
+    Ok(())
   }
 
   #[async_method]
@@ -97,14 +111,14 @@ impl GPUQueue {
     #[webidl] data_layout: GPUTexelCopyBufferLayout,
     #[webidl] size: GPUExtent3D,
   ) {
-    let destination = wgpu_core::command::ImageCopyTexture {
+    let destination = wgpu_core::command::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),
       aspect: destination.aspect.into(),
     };
 
-    let data_layout = wgpu_types::ImageDataLayout {
+    let data_layout = wgpu_types::TexelCopyBufferLayout {
       offset: data_layout.offset,
       bytes_per_row: data_layout.bytes_per_row,
       rows_per_image: data_layout.rows_per_image,
@@ -129,6 +143,7 @@ impl GPUQueue {
 #[webidl(dictionary)]
 pub(crate) struct GPUTexelCopyTextureInfo {
   pub texture: Ptr<GPUTexture>,
+  #[webidl(default = 0)]
   #[options(enforce_range = true)]
   pub mip_level: u32,
   #[webidl(default = Default::default())]

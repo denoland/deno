@@ -47,7 +47,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
         value,
         prefix,
         context.borrowed(),
-        &options,
+        options,
       )?));
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
@@ -64,7 +64,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
               enforce_range: true,
             },
           )?;
-          if !(conv.len() > 1 && conv.len() < 3) {
+          if !(conv.len() > 1 && conv.len() <= 3) {
             return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUExtent3D must have between 1 and 3 elements, received {} elements", conv.len()))));
           }
 
@@ -78,7 +78,7 @@ impl<'a> WebIdlConverter<'a> for GPUExtent3D {
       }
 
       return Ok(GPUExtent3D::Dict(GPUExtent3DDict::convert(
-        scope, value, prefix, context, &options,
+        scope, value, prefix, context, options,
       )?));
     }
 
@@ -150,7 +150,7 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
         value,
         prefix,
         context.borrowed(),
-        &options,
+        options,
       )?));
     }
     if let Ok(obj) = value.try_cast::<v8::Object>() {
@@ -167,13 +167,13 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
               enforce_range: true,
             },
           )?;
-          if !(conv.len() > 1 && conv.len() < 3) {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUOrigin3D must have between 1 and 3 elements, received {} elements", conv.len()))));
+          if conv.len() > 3 {
+            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUOrigin3D must have at most 3 elements, received {} elements", conv.len()))));
           }
 
           let mut iter = conv.into_iter();
           return Ok(GPUOrigin3D::Sequence((
-            iter.next().unwrap(),
+            iter.next().unwrap_or(0),
             iter.next().unwrap_or(0),
             iter.next().unwrap_or(0),
           )));
@@ -181,7 +181,7 @@ impl<'a> WebIdlConverter<'a> for GPUOrigin3D {
       }
 
       return Ok(GPUOrigin3D::Dict(GPUOrigin3DDict::convert(
-        scope, value, prefix, context, &options,
+        scope, value, prefix, context, options,
       )?));
     }
 
@@ -253,7 +253,7 @@ impl<'a> WebIdlConverter<'a> for GPUColor {
             options,
           )?;
           if conv.len() != 4 {
-            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUColor must have 4 elements, received {} elements", conv.len()))));
+            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUColor must have exactly 4 elements, received {} elements", conv.len()))));
           }
 
           let mut iter = conv.into_iter();

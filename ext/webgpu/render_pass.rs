@@ -444,11 +444,23 @@ pub(crate) enum GPULoadOp {
   Load,
   Clear,
 }
-impl From<GPULoadOp> for wgpu_core::command::LoadOp {
-  fn from(value: GPULoadOp) -> Self {
-    match value {
-      GPULoadOp::Load => Self::Load,
-      GPULoadOp::Clear => Self::Clear,
+impl GPULoadOp {
+  pub fn with_default_value<V: Default>(
+    self,
+    val: Option<V>,
+  ) -> wgpu_core::command::LoadOp<V> {
+    match self {
+      GPULoadOp::Load => wgpu_core::command::LoadOp::Load,
+      GPULoadOp::Clear => {
+        wgpu_core::command::LoadOp::Clear(val.unwrap_or_default())
+      }
+    }
+  }
+
+  pub fn with_value<V>(self, val: V) -> wgpu_core::command::LoadOp<V> {
+    match self {
+      GPULoadOp::Load => wgpu_core::command::LoadOp::Load,
+      GPULoadOp::Clear => wgpu_core::command::LoadOp::Clear(val),
     }
   }
 }

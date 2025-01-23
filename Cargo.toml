@@ -51,14 +51,14 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.331.0" }
+deno_core = { version = "0.332.0" }
 
 deno_bench_util = { version = "0.181.0", path = "./bench_util" }
 deno_config = { version = "=0.45.0", features = ["workspace", "sync"] }
 deno_lockfile = "=0.24.0"
 deno_media_type = { version = "0.2.4", features = ["module_specifier"] }
 deno_npm = "=0.27.2"
-deno_path_util = "=0.3.0"
+deno_path_util = "=0.3.1"
 deno_permissions = { version = "0.46.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.195.0", path = "./runtime" }
 deno_semver = "=0.7.1"
@@ -237,8 +237,8 @@ rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "23.0.1"
-wgpu-types = "23.0.0"
+wgpu-core = "24.0.0"
+wgpu-types = "24.0.0"
 
 # macros
 quote = "1"

@@ -131,6 +131,10 @@ impl GPUTexture {
       label: Some(Cow::Owned(descriptor.label.clone())),
       format: descriptor.format.map(Into::into),
       dimension: descriptor.dimension.map(Into::into),
+      usage: Some(
+        wgpu_types::TextureUsages::from_bits(descriptor.usage)
+          .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?,
+      ),
       range: wgpu_types::ImageSubresourceRange {
         aspect: descriptor.aspect.into(),
         base_mip_level: descriptor.base_mip_level,
@@ -163,6 +167,9 @@ struct GPUTextureViewDescriptor {
 
   format: Option<GPUTextureFormat>,
   dimension: Option<GPUTextureViewDimension>,
+  #[webidl(default = 0)]
+  #[options(enforce_range = true)]
+  usage: u32,
   #[webidl(default = GPUTextureAspect::All)]
   aspect: GPUTextureAspect,
   #[webidl(default = 0)]

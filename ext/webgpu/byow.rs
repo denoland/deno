@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::cell::RefCell;
 use std::ffi::c_void;
 #[cfg(any(
@@ -132,13 +134,18 @@ impl UnsafeWindowSurface {
   }
 
   #[global]
-  fn get_context(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+  fn get_context(
+    &self,
+    #[this] this: v8::Global<v8::Object>,
+    scope: &mut v8::HandleScope,
+  ) -> v8::Global<v8::Object> {
     self.context.get(scope, |_| GPUCanvasContext {
       surface_id: self.id,
       width: self.width.clone(),
       height: self.height.clone(),
       config: RefCell::new(None),
       texture: RefCell::new(None),
+      canvas: this,
     })
   }
 

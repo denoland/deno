@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::cell::RefCell;
 
 use deno_core::op2;
@@ -39,6 +41,8 @@ pub struct GPUCanvasContext {
 
   pub config: RefCell<Option<Configuration>>,
   pub texture: RefCell<Option<v8::Global<v8::Object>>>,
+
+  pub canvas: v8::Global<v8::Object>,
 }
 
 impl GarbageCollected for GPUCanvasContext {}
@@ -47,8 +51,8 @@ impl GarbageCollected for GPUCanvasContext {}
 impl GPUCanvasContext {
   #[getter]
   #[global]
-  fn canvas(&self) -> v8::Global<v8::Value> {
-    todo!()
+  fn canvas(&self) -> v8::Global<v8::Object> {
+    self.canvas.clone()
   }
 
   fn configure(

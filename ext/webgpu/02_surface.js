@@ -16,6 +16,7 @@ const {
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 
 ObjectDefineProperty(GPUCanvasContext, SymbolFor("Deno.privateCustomInspect"), {
+  __proto__: null,
   value(inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({

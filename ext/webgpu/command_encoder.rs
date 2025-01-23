@@ -8,8 +8,8 @@ use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
-use wgpu_core::command::ImageCopyBuffer;
 use wgpu_core::command::PassChannel;
+use wgpu_types::TexelCopyBufferInfo;
 
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
@@ -17,7 +17,6 @@ use crate::compute_pass::GPUComputePassEncoder;
 use crate::queue::GPUTexelCopyTextureInfo;
 use crate::render_pass::GPULoadOp;
 use crate::render_pass::GPURenderPassEncoder;
-use crate::render_pass::GPUStoreOp;
 use crate::webidl::GPUExtent3D;
 use crate::Instance;
 
@@ -65,15 +64,10 @@ impl GPUCommandEncoder {
             wgpu_core::command::RenderPassColorAttachment {
               view: attachment.view.id,
               resolve_target: attachment.resolve_target.map(|target| target.id),
-              channel: PassChannel {
-                load_op: attachment.load_op.into(),
-                store_op: attachment.store_op.into(),
-                clear_value: attachment
-                  .clear_value
-                  .map(Into::into)
-                  .unwrap_or_default(),
-                read_only: false,
-              },
+              load_op: attachment
+                .load_op
+                .with_default_value(attachment.clear_value.map(Into::into)),
+              store_op: attachment.store_op.into(),
             }
           })
         })
@@ -89,24 +83,13 @@ impl GPUCommandEncoder {
         Ok(wgpu_core::command::RenderPassDepthStencilAttachment {
           view: attachment.view.id,
           depth: PassChannel {
-            load_op: attachment.depth_load_op.unwrap_or(GPULoadOp::Load).into(),
-            store_op: attachment
-              .depth_store_op
-              .unwrap_or(GPUStoreOp::Store)
-              .into(),
-            clear_value: attachment.depth_clear_value.unwrap_or_default(),
+            load_op: attachment.depth_load_op.map(|load_op| load_op.with_value(attachment.depth_clear_value)),
+            store_op: attachment.depth_store_op.map(Into::into),
             read_only: attachment.depth_read_only,
           },
           stencil: PassChannel {
-            load_op: attachment
-              .stencil_load_op
-              .unwrap_or(GPULoadOp::Load)
-              .into(),
-            store_op: attachment
-              .stencil_store_op
-              .unwrap_or(GPUStoreOp::Store)
-              .into(),
-            clear_value: attachment.stencil_clear_value,
+            load_op: attachment.stencil_load_op.map(|load_op| load_op.with_value(Some(attachment.stencil_clear_value))),
+            store_op: attachment.stencil_store_op.map(Into::into),
             read_only: attachment.stencil_read_only,
           },
         })
@@ -211,15 +194,15 @@ impl GPUCommandEncoder {
     #[webidl] destination: GPUTexelCopyTextureInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) {
-    let source = ImageCopyBuffer {
+    let source = TexelCopyBufferInfo {
       buffer: source.buffer.id,
-      layout: wgpu_types::ImageDataLayout {
+      layout: wgpu_types::TexelCopyBufferLayout {
         offset: source.offset,
         bytes_per_row: source.bytes_per_row,
         rows_per_image: source.rows_per_image,
       },
     };
-    let destination = wgpu_types::ImageCopyTexture {
+    let destination = wgpu_types::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),
@@ -246,15 +229,15 @@ impl GPUCommandEncoder {
     #[webidl] destination: GPUTexelCopyBufferInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) {
-    let source = wgpu_types::ImageCopyTexture {
+    let source = wgpu_types::TexelCopyTextureInfo {
       texture: source.texture.id,
       mip_level: source.mip_level,
       origin: source.origin.into(),
       aspect: source.aspect.into(),
     };
-    let destination = ImageCopyBuffer {
+    let destination = TexelCopyBufferInfo {
       buffer: destination.buffer.id,
-      layout: wgpu_types::ImageDataLayout {
+      layout: wgpu_types::TexelCopyBufferLayout {
         offset: destination.offset,
         bytes_per_row: destination.bytes_per_row,
         rows_per_image: destination.rows_per_image,
@@ -281,13 +264,13 @@ impl GPUCommandEncoder {
     #[webidl] destination: GPUTexelCopyTextureInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) {
-    let source = wgpu_types::ImageCopyTexture {
+    let source = wgpu_types::TexelCopyTextureInfo {
       texture: source.texture.id,
       mip_level: source.mip_level,
       origin: source.origin.into(),
       aspect: source.aspect.into(),
     };
-    let destination = wgpu_types::ImageCopyTexture {
+    let destination = wgpu_types::TexelCopyTextureInfo {
       texture: destination.texture.id,
       mip_level: destination.mip_level,
       origin: destination.origin.into(),
@@ -364,6 +347,7 @@ impl GPUCommandEncoder {
       instance: self.instance.clone(),
       id,
       label: descriptor.label,
+      consumed: Default::default(),
     }
   }
 
