@@ -17,7 +17,7 @@
       ],
       "dist": {
         "shasum": "8a526f78b8fdf4623b709e0b975c52c24c02fd1a",
-        "tarball": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.2.tgz",
+        "tarball": "http://localhost:4260/fsevents/fsevents-2.3.2.tgz",
         "fileCount": 6,
         "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
         "unpackedSize": 156422
