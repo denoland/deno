@@ -1020,7 +1020,6 @@ Warning Failed resolving symlink. Ignoring.
 Embedded Files
 
 [WILDCARD]
-
 "#,
   );
 
