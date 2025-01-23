@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -7,13 +8,16 @@ use std::sync::Arc;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_path_util::url_from_directory_path;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
@@ -22,6 +26,7 @@ use regex::Regex;
 use crate::args::check_warn_tsconfig;
 use crate::args::CheckFlags;
 use crate::args::CliOptions;
+use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::args::TsConfig;
 use crate::args::TsConfigType;
@@ -30,7 +35,8 @@ use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::TypeCheckCache;
-use crate::factory::CliFactory;
+use crate::factory::CliFactoryWithWorkspaceFiles;
+use crate::factory::SpecifierInfo;
 use crate::graph_util::maybe_additional_sloppy_imports_message;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
@@ -41,50 +47,45 @@ use crate::sys::CliSys;
 use crate::tsc;
 use crate::tsc::Diagnostics;
 use crate::tsc::TypeCheckingCjsTracker;
-use crate::util::extract;
+use crate::util::extract::extract_snippet_files;
+use crate::util::fs::collect_specifiers;
+use crate::util::path::is_script_ext;
 use crate::util::path::to_percent_decoded_str;
 
 pub async fn check(
   flags: Arc<Flags>,
   check_flags: CheckFlags,
 ) -> Result<(), AnyError> {
-  let factory = CliFactory::from_flags(flags);
-
-  let main_graph_container = factory.main_module_graph_container().await?;
-
-  let specifiers =
-    main_graph_container.collect_specifiers(&check_flags.files)?;
-  if specifiers.is_empty() {
+  let file_flags = FileFlags {
+    ignore: Default::default(),
+    include: check_flags.files,
+  };
+  let factory = CliFactoryWithWorkspaceFiles::from_flags(
+    flags,
+    |cli_options| cli_options.resolve_file_flags_for_members(&file_flags),
+    |patterns, cli_options, _| {
+      async move {
+        let info = SpecifierInfo {
+          include: !check_flags.doc_only,
+          include_doc: check_flags.doc || check_flags.doc_only,
+        };
+        collect_specifiers(
+          patterns,
+          cli_options.vendor_dir_path().map(ToOwned::to_owned),
+          |e| is_script_ext(e.path),
+        )
+        .map(|s| s.into_iter().map(|s| (s, info)).collect())
+      }
+      .boxed_local()
+    },
+    Some(extract_snippet_files),
+    None,
+  )
+  .await?;
+  if !factory.found_specifiers() {
     log::warn!("{} No matching files found.", colors::yellow("Warning"));
   }
-
-  let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
-    let file_fetcher = factory.file_fetcher()?;
-    let root_permissions = factory.root_permissions_container()?;
-
-    let mut specifiers_for_typecheck = if check_flags.doc {
-      specifiers.clone()
-    } else {
-      vec![]
-    };
-
-    for s in specifiers {
-      let file = file_fetcher.fetch(&s, root_permissions).await?;
-      let snippet_files = extract::extract_snippet_files(file)?;
-      for snippet_file in snippet_files {
-        specifiers_for_typecheck.push(snippet_file.url.clone());
-        file_fetcher.insert_memory_files(snippet_file);
-      }
-    }
-
-    specifiers_for_typecheck
-  } else {
-    specifiers
-  };
-
-  main_graph_container
-    .check_specifiers(&specifiers_for_typecheck, None)
-    .await
+  factory.check().await
 }
 
 /// Options for performing a check of a module graph. Note that the decision to
@@ -227,17 +228,6 @@ impl TypeChecker {
     }
 
     log::debug!("Type checking.");
-    let ts_config_result = self
-      .cli_options
-      .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
-    if options.log_ignored_options {
-      check_warn_tsconfig(&ts_config_result);
-    }
-
-    let type_check_mode = options.type_check_mode;
-    let ts_config = ts_config_result.ts_config;
-    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let check_js = ts_config.get_check_js();
 
     // add fast check to the graph before getting the roots
     if options.build_fast_check_graph {
@@ -249,102 +239,158 @@ impl TypeChecker {
       )?;
     }
 
-    let filter_remote_diagnostics = |d: &tsc::Diagnostic| {
-      if self.is_remote_diagnostic(d) {
-        type_check_mode == TypeCheckMode::All && d.include_when_remote()
-      } else {
-        true
+    let graph = Arc::new(graph);
+
+    let mut all_dirs = self.cli_options.all_dirs.clone();
+    let initial_cwd_url =
+      url_from_directory_path(self.cli_options.initial_cwd())
+        .map_err(JsErrorBox::from_err)?;
+    let initial_workspace_dir_url = all_dirs
+      .keys()
+      .rfind(|s| initial_cwd_url.as_str().starts_with(s.as_str()))
+      .cloned()
+      .unwrap_or_else(|| {
+        all_dirs.insert(
+          self.cli_options.start_dir.dir_url().clone(),
+          self.cli_options.start_dir.clone(),
+        );
+        self.cli_options.start_dir.dir_url().clone()
+      });
+    let is_scoped = all_dirs.len() > 1;
+
+    let mut diagnostics = Diagnostics::default();
+
+    for (dir_url, workspace_dir) in &all_dirs {
+      let is_initial_workspace_dir = *dir_url == initial_workspace_dir_url;
+      let ts_config_result = workspace_dir
+        .to_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
+      if options.log_ignored_options {
+        check_warn_tsconfig(&ts_config_result);
       }
-    };
-    let TscRoots {
-      roots: root_names,
-      missing_diagnostics,
-      maybe_check_hash,
-    } = get_tsc_roots(
-      &self.sys,
-      &self.npm_resolver,
-      &self.node_resolver,
-      &graph,
-      check_js,
-      check_state_hash(&self.npm_resolver),
-      type_check_mode,
-      &ts_config,
-    );
+      let type_check_mode = options.type_check_mode;
+      let ts_config = ts_config_result.ts_config;
+      let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
+      let check_js = ts_config.get_check_js();
 
-    let missing_diagnostics =
-      missing_diagnostics.filter(filter_remote_diagnostics);
+      let is_visible_diagnostic = |d: &tsc::Diagnostic| {
+        if self.is_remote_diagnostic(d) {
+          return type_check_mode == TypeCheckMode::All
+            && d.include_when_remote()
+            && !is_scoped;
+        }
+        let Some(specifier) = d
+          .file_name
+          .as_ref()
+          .and_then(|s| ModuleSpecifier::parse(s).ok())
+        else {
+          return true;
+        };
+        if specifier.scheme() != "file" {
+          return true;
+        }
+        let scope = all_dirs
+          .keys()
+          .rfind(|s| specifier.as_str().starts_with(s.as_str()));
+        scope
+          .map(|s| s == dir_url)
+          .unwrap_or(is_initial_workspace_dir)
+      };
+      let TscRoots {
+        roots: root_names,
+        display_roots,
+        missing_diagnostics,
+        maybe_check_hash,
+      } = get_tsc_roots(
+        &self.sys,
+        &self.npm_resolver,
+        &self.node_resolver,
+        &graph,
+        check_js,
+        check_state_hash(&self.npm_resolver),
+        type_check_mode,
+        &ts_config,
+        &all_dirs,
+        &initial_workspace_dir_url,
+        is_scoped.then_some(dir_url.as_ref()),
+      );
 
-    if root_names.is_empty() && missing_diagnostics.is_empty() {
-      return Ok((graph.into(), Default::default()));
-    }
-    if !options.reload {
-      // do not type check if we know this is type checked
-      if let Some(check_hash) = maybe_check_hash {
-        if cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked.");
-          return Ok((graph.into(), Default::default()));
+      let missing_diagnostics =
+        missing_diagnostics.filter(is_visible_diagnostic);
+      let has_missing_diagnostics = !missing_diagnostics.is_empty();
+      diagnostics.extend(missing_diagnostics);
+
+      if root_names.is_empty() {
+        continue;
+      }
+
+      if !options.reload {
+        // do not type check if we know this is type checked
+        if let Some(check_hash) = maybe_check_hash {
+          if cache.has_check_hash(check_hash) {
+            log::debug!("Already type checked.");
+            continue;
+          }
         }
       }
+
+      for root in &display_roots {
+        let root_str = root.as_str();
+        log::info!(
+          "{} {}",
+          colors::green("Check"),
+          to_percent_decoded_str(root_str)
+        );
+      }
+
+      // while there might be multiple roots, we can't "merge" the build info, so we
+      // try to retrieve the build info for first root, which is the most common use
+      // case.
+      let first_root = root_names[0].0.clone();
+      let maybe_tsbuildinfo = if options.reload {
+        None
+      } else {
+        cache.get_tsbuildinfo(&first_root)
+      };
+      // to make tsc build info work, we need to consistently hash modules, so that
+      // tsc can better determine if an emit is still valid or not, so we provide
+      // that data here.
+      let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
+        .write(&ts_config.as_bytes())
+        .finish();
+      let response = tsc::exec(tsc::Request {
+        config: ts_config,
+        debug: self.cli_options.log_level() == Some(log::Level::Debug),
+        graph: graph.clone(),
+        hash_data: tsconfig_hash_data,
+        maybe_npm: Some(tsc::RequestNpmState {
+          cjs_tracker: self.cjs_tracker.clone(),
+          node_resolver: self.node_resolver.clone(),
+          npm_resolver: self.npm_resolver.clone(),
+        }),
+        maybe_tsbuildinfo,
+        root_names,
+        check_mode: type_check_mode,
+      })?;
+
+      let response_diagnostics =
+        response.diagnostics.filter(is_visible_diagnostic);
+
+      if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
+        cache.set_tsbuildinfo(&first_root, &tsbuildinfo);
+      }
+
+      if !has_missing_diagnostics && response_diagnostics.is_empty() {
+        if let Some(check_hash) = maybe_check_hash {
+          cache.add_check_hash(check_hash);
+        }
+      }
+
+      diagnostics.extend(response_diagnostics);
+
+      log::debug!("{}", response.stats);
     }
-
-    for root in &graph.roots {
-      let root_str = root.as_str();
-      log::info!(
-        "{} {}",
-        colors::green("Check"),
-        to_percent_decoded_str(root_str)
-      );
-    }
-
-    // while there might be multiple roots, we can't "merge" the build info, so we
-    // try to retrieve the build info for first root, which is the most common use
-    // case.
-    let maybe_tsbuildinfo = if options.reload {
-      None
-    } else {
-      cache.get_tsbuildinfo(&graph.roots[0])
-    };
-    // to make tsc build info work, we need to consistently hash modules, so that
-    // tsc can better determine if an emit is still valid or not, so we provide
-    // that data here.
-    let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write(&ts_config.as_bytes())
-      .finish();
-    let graph = Arc::new(graph);
-    let response = tsc::exec(tsc::Request {
-      config: ts_config,
-      debug: self.cli_options.log_level() == Some(log::Level::Debug),
-      graph: graph.clone(),
-      hash_data: tsconfig_hash_data,
-      maybe_npm: Some(tsc::RequestNpmState {
-        cjs_tracker: self.cjs_tracker.clone(),
-        node_resolver: self.node_resolver.clone(),
-        npm_resolver: self.npm_resolver.clone(),
-      }),
-      maybe_tsbuildinfo,
-      root_names,
-      check_mode: type_check_mode,
-    })?;
-
-    let response_diagnostics =
-      response.diagnostics.filter(filter_remote_diagnostics);
-
-    let mut diagnostics = missing_diagnostics;
-    diagnostics.extend(response_diagnostics);
 
     diagnostics.apply_fast_check_source_maps(&graph);
-
-    if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
-      cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
-    }
-
-    if diagnostics.is_empty() {
-      if let Some(check_hash) = maybe_check_hash {
-        cache.add_check_hash(check_hash);
-      }
-    }
-
-    log::debug!("{}", response.stats);
 
     Ok((graph, diagnostics))
   }
@@ -366,6 +412,7 @@ impl TypeChecker {
 
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
+  display_roots: Vec<ModuleSpecifier>,
   missing_diagnostics: tsc::Diagnostics,
   maybe_check_hash: Option<CacheDBHash>,
 }
@@ -386,6 +433,9 @@ fn get_tsc_roots(
   npm_cache_state_hash: Option<u64>,
   type_check_mode: TypeCheckMode,
   ts_config: &TsConfig,
+  all_dirs: &BTreeMap<Arc<ModuleSpecifier>, Arc<WorkspaceDirectory>>,
+  initial_workspace_dir_url: &ModuleSpecifier,
+  current_workspace_dir_url: Option<&ModuleSpecifier>,
 ) -> TscRoots {
   fn maybe_get_check_entry(
     module: &deno_graph::Module,
@@ -471,6 +521,7 @@ fn get_tsc_roots(
 
   let mut result = TscRoots {
     roots: Vec::with_capacity(graph.specifiers_count()),
+    display_roots: Vec::with_capacity(graph.roots.len()),
     missing_diagnostics: Default::default(),
     maybe_check_hash: None,
   };
@@ -501,6 +552,16 @@ fn get_tsc_roots(
 
   // put in the global types first so that they're resolved before anything else
   for (referrer, import) in graph.imports.iter() {
+    if let Some(current_workspace_dir_url) = current_workspace_dir_url {
+      let scope = all_dirs
+        .keys()
+        .rfind(|s| referrer.as_str().starts_with(s.as_str()))
+        .map(|s| s.as_ref())
+        .unwrap_or(initial_workspace_dir_url);
+      if scope != current_workspace_dir_url {
+        continue;
+      }
+    }
     for specifier in import
       .dependencies
       .values()
@@ -532,6 +593,17 @@ fn get_tsc_roots(
 
   // then the roots
   for root in &graph.roots {
+    if let Some(current_workspace_dir_url) = current_workspace_dir_url {
+      let scope = all_dirs
+        .keys()
+        .rfind(|s| root.as_str().starts_with(s.as_str()))
+        .map(|s| s.as_ref())
+        .unwrap_or(initial_workspace_dir_url);
+      if scope != current_workspace_dir_url {
+        continue;
+      }
+    }
+    result.display_roots.push(root.clone());
     let specifier = graph.resolve(root);
     if seen.insert(specifier) {
       pending.push_back((specifier, false));
