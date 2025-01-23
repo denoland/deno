@@ -38,7 +38,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
   ),
   on_version_change: "DELETE FROM moduleinfocache;",
   preheat_queries: &[SELECT_MODULE_INFO],
-  on_failure: CacheFailure::InMemory,
+  on_failure: CacheFailure::Blackhole,
 };
 
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
