@@ -2,13 +2,14 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::cell::UnsafeCell;
 use std::mem;
 use std::path::PathBuf;
-use std::ptr;
 use std::slice;
 
+use deno_core::cppgc;
+use deno_core::cppgc::SameObject;
 use deno_core::op2;
+use deno_core::v8;
 use deno_core::webidl;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -280,12 +281,11 @@ pub struct DOMQuadInit {
   p4: DOMPointInit,
 }
 
-#[derive(Debug)]
 pub struct DOMQuadInner {
-  p1: UnsafeCell<DOMPointInner>,
-  p2: UnsafeCell<DOMPointInner>,
-  p3: UnsafeCell<DOMPointInner>,
-  p4: UnsafeCell<DOMPointInner>,
+  p1: SameObject<DOMPointInner>,
+  p2: SameObject<DOMPointInner>,
+  p3: SameObject<DOMPointInner>,
+  p4: SameObject<DOMPointInner>,
 }
 
 impl GarbageCollected for DOMQuadInner {}
@@ -296,32 +296,56 @@ impl DOMQuadInner {
   #[reentrant]
   #[cppgc]
   pub fn constructor(
+    scope: &mut v8::HandleScope,
     #[webidl] p1: DOMPointInit,
     #[webidl] p2: DOMPointInit,
     #[webidl] p3: DOMPointInit,
     #[webidl] p4: DOMPointInit,
   ) -> DOMQuadInner {
     #[inline]
-    fn from_point(point: DOMPointInit) -> DOMPointInner {
-      DOMPointInner {
+    fn from_point(
+      scope: &mut v8::HandleScope,
+      point: DOMPointInit,
+    ) -> SameObject<DOMPointInner> {
+      let obj = SameObject::new();
+      obj.get(scope, |_| DOMPointInner {
         inner: RefCell::new(Vector4::new(
           *point.x, *point.y, *point.z, *point.w,
         )),
-      }
+      });
+      obj
     }
 
     DOMQuadInner {
-      p1: UnsafeCell::new(from_point(p1)),
-      p2: UnsafeCell::new(from_point(p2)),
-      p3: UnsafeCell::new(from_point(p3)),
-      p4: UnsafeCell::new(from_point(p4)),
+      p1: from_point(scope, p1),
+      p2: from_point(scope, p2),
+      p3: from_point(scope, p3),
+      p4: from_point(scope, p4),
     }
   }
 
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_rect(#[webidl] rect: DOMRectInit) -> DOMQuadInner {
+  pub fn from_rect(
+    scope: &mut v8::HandleScope,
+    #[webidl] rect: DOMRectInit,
+  ) -> DOMQuadInner {
+    #[inline]
+    fn create_point(
+      scope: &mut v8::HandleScope,
+      x: f64,
+      y: f64,
+      z: f64,
+      w: f64,
+    ) -> SameObject<DOMPointInner> {
+      let obj = SameObject::new();
+      obj.get(scope, |_| DOMPointInner {
+        inner: RefCell::new(Vector4::new(x, y, z, w)),
+      });
+      obj
+    }
+
     let DOMRectInit {
       x,
       y,
@@ -329,84 +353,88 @@ impl DOMQuadInner {
       height,
     } = rect;
     DOMQuadInner {
-      p1: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(*x, *y, 0.0, 1.0)),
-      }),
-      p2: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(*x + *width, *y, 0.0, 1.0)),
-      }),
-      p3: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(*x + *width, *y + *height, 0.0, 1.0)),
-      }),
-      p4: UnsafeCell::new(DOMPointInner {
-        inner: RefCell::new(Vector4::new(*x, *y + *height, 0.0, 1.0)),
-      }),
+      p1: create_point(scope, *x, *y, 0.0, 1.0),
+      p2: create_point(scope, *x + *width, *y, 0.0, 1.0),
+      p3: create_point(scope, *x + *width, *y + *height, 0.0, 1.0),
+      p4: create_point(scope, *x, *y + *height, 0.0, 1.0),
     }
   }
 
   #[reentrant]
   #[static_method]
   #[cppgc]
-  pub fn from_quad(#[webidl] quad: DOMQuadInit) -> DOMQuadInner {
+  pub fn from_quad(
+    scope: &mut v8::HandleScope,
+    #[webidl] quad: DOMQuadInit,
+  ) -> DOMQuadInner {
     #[inline]
-    fn from_point(point: DOMPointInit) -> DOMPointInner {
-      DOMPointInner {
+    fn from_point(
+      scope: &mut v8::HandleScope,
+      point: DOMPointInit,
+    ) -> SameObject<DOMPointInner> {
+      let obj = SameObject::new();
+      obj.get(scope, |_| DOMPointInner {
         inner: RefCell::new(Vector4::new(
           *point.x, *point.y, *point.z, *point.w,
         )),
-      }
+      });
+      obj
     }
 
     DOMQuadInner {
-      p1: UnsafeCell::new(from_point(quad.p1)),
-      p2: UnsafeCell::new(from_point(quad.p2)),
-      p3: UnsafeCell::new(from_point(quad.p3)),
-      p4: UnsafeCell::new(from_point(quad.p4)),
+      p1: from_point(scope, quad.p1),
+      p2: from_point(scope, quad.p2),
+      p3: from_point(scope, quad.p3),
+      p4: from_point(scope, quad.p4),
     }
   }
 
-  #[cppgc]
   #[getter]
-  pub fn p1(&self) -> DOMPointInner {
-    // SAFETY: ptr is alive
-    unsafe { ptr::read(self.p1.get()) }
+  #[global]
+  pub fn p1(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.p1.get(scope, |_| unreachable!())
+  }
+
+  #[getter]
+  #[global]
+  pub fn p2(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.p2.get(scope, |_| unreachable!())
+  }
+
+  #[getter]
+  #[global]
+  pub fn p3(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.p3.get(scope, |_| unreachable!())
+  }
+
+  #[getter]
+  #[global]
+  pub fn p4(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
+    self.p4.get(scope, |_| unreachable!())
   }
 
   #[cppgc]
-  #[getter]
-  pub fn p2(&self) -> DOMPointInner {
-    // SAFETY: ptr is alive
-    unsafe { ptr::read(self.p2.get()) }
-  }
-
-  #[cppgc]
-  #[getter]
-  pub fn p3(&self) -> DOMPointInner {
-    // SAFETY: ptr is alive
-    unsafe { ptr::read(self.p3.get()) }
-  }
-
-  #[cppgc]
-  #[getter]
-  pub fn p4(&self) -> DOMPointInner {
-    // SAFETY: ptr is alive
-    unsafe { ptr::read(self.p4.get()) }
-  }
-
-  #[cppgc]
-  pub fn get_bounds(&self) -> DOMRectInner {
-    // SAFETY: ptr is alive
-    let p1 = unsafe { ptr::read(self.p1.get()) };
-    // SAFETY: ptr is alive
-    let p2 = unsafe { ptr::read(self.p2.get()) };
-    // SAFETY: ptr is alive
-    let p3 = unsafe { ptr::read(self.p3.get()) };
-    // SAFETY: ptr is alive
-    let p4 = unsafe { ptr::read(self.p4.get()) };
-    let p1 = p1.inner.borrow();
-    let p2 = p2.inner.borrow();
-    let p3 = p3.inner.borrow();
-    let p4 = p4.inner.borrow();
+  pub fn get_bounds(&self, scope: &mut v8::HandleScope) -> DOMRectInner {
+    let p1 = self.p1.get(scope, |_| unreachable!());
+    let p2 = self.p2.get(scope, |_| unreachable!());
+    let p3 = self.p3.get(scope, |_| unreachable!());
+    let p4 = self.p4.get(scope, |_| unreachable!());
+    let p1 = v8::Local::new(scope, p1);
+    let p2 = v8::Local::new(scope, p2);
+    let p3 = v8::Local::new(scope, p3);
+    let p4 = v8::Local::new(scope, p4);
+    let p1 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p1.cast())
+      .unwrap();
+    let p2 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p2.cast())
+      .unwrap();
+    let p3 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p3.cast())
+      .unwrap();
+    let p4 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p4.cast())
+      .unwrap();
+    let p1 = *p1.inner.borrow();
+    let p2 = *p2.inner.borrow();
+    let p3 = *p3.inner.borrow();
+    let p4 = *p4.inner.borrow();
     let left = minimum(minimum(p1.x, p2.x), minimum(p3.x, p4.x));
     let top = minimum(minimum(p1.y, p2.y), minimum(p3.y, p4.y));
     let right = maximum(maximum(p1.x, p2.x), maximum(p3.x, p4.x));
