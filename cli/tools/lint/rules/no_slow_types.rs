@@ -27,9 +27,10 @@ impl PackageLintRule for NoSlowTypesRule {
     &[tags::JSR]
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_slow_types.md")
-  }
+  // TODO(bartlomieju): these docs need to be hosted somewhere.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_slow_types.md")
+  // }
 
   fn help_docs_url(&self) -> Cow<'static, str> {
     Cow::Borrowed("https://jsr.io/docs/about-slow-types")

@@ -122,10 +122,16 @@ mod ts {
 
   deno_core::extension!(deno_tsc,
     ops = [op_build_info, op_is_node_file, op_load, op_script_version],
+    esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
+    esm = [
+      dir "tsc",
+      "97_ts_host.js",
+      "98_lsp.js",
+      "99_main_compiler.js",
+    ],
     js = [
       dir "tsc",
       "00_typescript.js",
-      "99_main_compiler.js",
     ],
     options = {
       op_crate_libs: HashMap<&'static str, PathBuf>,

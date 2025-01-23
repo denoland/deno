@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.1.6"
+version = "2.1.7"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -74,8 +74,9 @@ deno_doc = { version = "=0.164.0", features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { version = "=0.87.0" }
 deno_lib.workspace = true
-deno_lint = { version = "0.69.0", features = ["docs"] }
+deno_lint = { version = "0.69.0" }
 deno_lockfile.workspace = true
+deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json.workspace = true
