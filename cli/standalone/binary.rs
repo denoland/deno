@@ -1000,11 +1000,14 @@ fn serialize_binary_data_section(
     builder.append(MAGIC_BYTES);
   })?;
 
-  Ok((bytes, BinaryDataSectionSizes {
-    metadata: metadata_len.get(),
-    remote_modules: remote_modules_len.get(),
-    vfs: vfs_len.get(),
-  }))
+  Ok((
+    bytes,
+    BinaryDataSectionSizes {
+      metadata: metadata_len.get(),
+      remote_modules: remote_modules_len.get(),
+      vfs: vfs_len.get(),
+    },
+  ))
 }
 
 fn serialize_npm_snapshot(
