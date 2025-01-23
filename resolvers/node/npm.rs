@@ -9,16 +9,8 @@ use url::Url;
 
 use crate::errors;
 use crate::path::PathClean;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
-#[allow(clippy::disallowed_types)]
-pub type NpmPackageFolderResolverRc =
-  crate::sync::MaybeArc<dyn NpmPackageFolderResolver>;
-
-pub trait NpmPackageFolderResolver:
-  std::fmt::Debug + MaybeSend + MaybeSync
-{
+pub trait NpmPackageFolderResolver {
   /// Resolves an npm package folder path from the specified referrer.
   fn resolve_package_folder_from_package(
     &self,
@@ -27,11 +19,8 @@ pub trait NpmPackageFolderResolver:
   ) -> Result<PathBuf, errors::PackageFolderResolveError>;
 }
 
-#[allow(clippy::disallowed_types)]
-pub type InNpmPackageCheckerRc = crate::sync::MaybeArc<dyn InNpmPackageChecker>;
-
 /// Checks if a provided specifier is in an npm package.
-pub trait InNpmPackageChecker: std::fmt::Debug + MaybeSend + MaybeSync {
+pub trait InNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool;
 
   fn in_npm_package_at_dir_path(&self, path: &Path) -> bool {

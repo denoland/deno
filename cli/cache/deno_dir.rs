@@ -4,7 +4,6 @@ use std::env;
 use std::path::PathBuf;
 
 use deno_cache_dir::DenoDirResolutionError;
-use once_cell::sync::OnceCell;
 
 use super::DiskCache;
 use crate::sys::CliSys;
@@ -14,7 +13,7 @@ use crate::sys::CliSys;
 pub struct DenoDirProvider {
   sys: CliSys,
   maybe_custom_root: Option<PathBuf>,
-  deno_dir: OnceCell<Result<DenoDir, DenoDirResolutionError>>,
+  deno_dir: std::sync::OnceLock<Result<DenoDir, DenoDirResolutionError>>,
 }
 
 impl DenoDirProvider {

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.1.5"
+version = "2.1.7"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -14,11 +14,6 @@ description = "Provides the deno executable"
 [[bin]]
 name = "deno"
 path = "main.rs"
-doc = false
-
-[[bin]]
-name = "denort"
-path = "mainrt.rs"
 doc = false
 
 [[test]]
@@ -49,7 +44,7 @@ dhat-heap = ["dhat"]
 upgrade = []
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-hmr = ["deno_runtime/hmr"]
+hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
 
@@ -60,9 +55,11 @@ lazy-regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true
-glibc_version = "0.1.2"
 flate2 = { workspace = true, features = ["default"] }
 deno_error.workspace = true
+
+[target.'cfg(unix)'.build-dependencies]
+glibc_version = "0.1.2"
 
 [target.'cfg(windows)'.build-dependencies]
 winapi.workspace = true
@@ -76,8 +73,10 @@ deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"]
 deno_doc = { version = "=0.164.0", features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { version = "=0.87.0" }
-deno_lint = { version = "=0.68.2", features = ["docs"] }
+deno_lib.workspace = true
+deno_lint = { version = "=0.68.2" }
 deno_lockfile.workspace = true
+deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json.workspace = true
@@ -85,10 +84,11 @@ deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_semver.workspace = true
+deno_snapshots = { workspace = true }
 deno_task_shell = "=0.20.2"
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
-libsui = "0.5.0"
+libsui.workspace = true
 node_resolver.workspace = true
 
 anstream = "0.6.14"
@@ -114,7 +114,6 @@ dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
 dprint-plugin-typescript = "=0.93.3"
-env_logger = "=0.10.0"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
 # If you disable the default __vendored_zlib_ng feature above, you _must_ be able to link against `-lz`.
@@ -155,7 +154,6 @@ rustyline-derive = "=0.7.0"
 serde.workspace = true
 serde_repr.workspace = true
 sha2.workspace = true
-shell-escape = "=0.1.5"
 spki = { version = "0.7", features = ["pem"] }
 sqlformat = "=0.3.2"
 strsim = "0.11.1"
@@ -184,6 +182,7 @@ winapi = { workspace = true, features = ["knownfolders", "mswsock", "objbase", "
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true
+shell-escape = "=0.1.5"
 
 [dev-dependencies]
 deno_bench_util.workspace = true

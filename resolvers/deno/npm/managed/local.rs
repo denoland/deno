@@ -19,31 +19,24 @@ use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
 
-use super::resolution::NpmResolutionRc;
-use super::NpmPackageFsResolver;
+use super::resolution::NpmResolutionCellRc;
 use crate::npm::local::get_package_folder_id_folder_name_from_parts;
 use crate::npm::local::get_package_folder_id_from_folder_name;
-use crate::sync::MaybeSend;
-use crate::sync::MaybeSync;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
 #[derive(Debug)]
-pub struct LocalNpmPackageResolver<
-  TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync,
-> {
-  resolution: NpmResolutionRc,
+pub struct LocalNpmPackageResolver<TSys: FsCanonicalize + FsMetadata> {
+  resolution: NpmResolutionCellRc,
   sys: TSys,
   root_node_modules_path: PathBuf,
   root_node_modules_url: Url,
 }
 
-impl<TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync>
-  LocalNpmPackageResolver<TSys>
-{
+impl<TSys: FsCanonicalize + FsMetadata> LocalNpmPackageResolver<TSys> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    resolution: NpmResolutionRc,
+    resolution: NpmResolutionCellRc,
     sys: TSys,
     node_modules_folder: PathBuf,
   ) -> Self {
@@ -54,6 +47,55 @@ impl<TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync>
         .unwrap(),
       root_node_modules_path: node_modules_folder,
     }
+  }
+
+  pub fn node_modules_path(&self) -> Option<&Path> {
+    Some(self.root_node_modules_path.as_ref())
+  }
+
+  pub fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
+    let folder_copy_index = self
+      .resolution
+      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
+    // package is stored at:
+    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
+    Some(
+      self
+        .root_node_modules_path
+        .join(".deno")
+        .join(get_package_folder_id_folder_name_from_parts(
+          &id.nv,
+          folder_copy_index,
+        ))
+        .join("node_modules")
+        .join(&id.nv.name),
+    )
+  }
+
+  pub fn resolve_package_cache_folder_id_from_specifier(
+    &self,
+    specifier: &Url,
+  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
+    let Some(folder_path) =
+      self.resolve_package_folder_from_specifier(specifier)?
+    else {
+      return Ok(None);
+    };
+    // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
+    let Some(node_modules_ancestor) = folder_path
+      .ancestors()
+      .find(|ancestor| ancestor.ends_with("node_modules"))
+    else {
+      return Ok(None);
+    };
+    let Some(folder_name) =
+      node_modules_ancestor.parent().and_then(|p| p.file_name())
+    else {
+      return Ok(None);
+    };
+    Ok(get_package_folder_id_from_folder_name(
+      &folder_name.to_string_lossy(),
+    ))
   }
 
   fn resolve_package_root(&self, path: &Path) -> PathBuf {
@@ -101,9 +143,8 @@ impl<TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync>
   }
 }
 
-impl<
-    TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync + std::fmt::Debug,
-  > NpmPackageFolderResolver for LocalNpmPackageResolver<TSys>
+impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
+  for LocalNpmPackageResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
@@ -160,60 +201,6 @@ impl<
       }
       .into(),
     )
-  }
-}
-
-impl<
-    TSys: FsCanonicalize + FsMetadata + MaybeSend + MaybeSync + std::fmt::Debug,
-  > NpmPackageFsResolver for LocalNpmPackageResolver<TSys>
-{
-  fn node_modules_path(&self) -> Option<&Path> {
-    Some(self.root_node_modules_path.as_ref())
-  }
-
-  fn maybe_package_folder(&self, id: &NpmPackageId) -> Option<PathBuf> {
-    let folder_copy_index = self
-      .resolution
-      .resolve_pkg_cache_folder_copy_index_from_pkg_id(id)?;
-    // package is stored at:
-    // node_modules/.deno/<package_cache_folder_id_folder_name>/node_modules/<package_name>
-    Some(
-      self
-        .root_node_modules_path
-        .join(".deno")
-        .join(get_package_folder_id_folder_name_from_parts(
-          &id.nv,
-          folder_copy_index,
-        ))
-        .join("node_modules")
-        .join(&id.nv.name),
-    )
-  }
-
-  fn resolve_package_cache_folder_id_from_specifier(
-    &self,
-    specifier: &Url,
-  ) -> Result<Option<NpmPackageCacheFolderId>, std::io::Error> {
-    let Some(folder_path) =
-      self.resolve_package_folder_from_specifier(specifier)?
-    else {
-      return Ok(None);
-    };
-    // ex. project/node_modules/.deno/preact@10.24.3/node_modules/preact/
-    let Some(node_modules_ancestor) = folder_path
-      .ancestors()
-      .find(|ancestor| ancestor.ends_with("node_modules"))
-    else {
-      return Ok(None);
-    };
-    let Some(folder_name) =
-      node_modules_ancestor.parent().and_then(|p| p.file_name())
-    else {
-      return Ok(None);
-    };
-    Ok(get_package_folder_id_from_folder_name(
-      &folder_name.to_string_lossy(),
-    ))
   }
 }
 

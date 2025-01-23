@@ -20,6 +20,7 @@ use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
+use deno_lib::version::DENO_VERSION_INFO;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
@@ -280,7 +281,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
     if self.deno_ns.contains_key(symbol) {
       Some(format!(
         "https://deno.land/api@v{}?s={}",
-        env!("CARGO_PKG_VERSION"),
+        DENO_VERSION_INFO.deno,
         symbol.join(".")
       ))
     } else {

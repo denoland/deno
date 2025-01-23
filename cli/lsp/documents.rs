@@ -480,7 +480,7 @@ impl Document {
       let is_cjs_resolver =
         resolver.as_is_cjs_resolver(self.file_referrer.as_ref());
       let npm_resolver =
-        resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
+        resolver.as_graph_npm_resolver(self.file_referrer.as_ref());
       let config_data = resolver.as_config_data(self.file_referrer.as_ref());
       let jsx_import_source_config =
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
@@ -503,7 +503,7 @@ impl Document {
                 s,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(&npm_resolver),
+                Some(npm_resolver.as_ref()),
               ),
             )
           })
@@ -513,7 +513,7 @@ impl Document {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
           Some(&resolver),
-          Some(&npm_resolver),
+          Some(npm_resolver.as_ref()),
         ))
       });
       is_script = self.is_script;
@@ -936,7 +936,7 @@ impl FileSystemDocuments {
         file_referrer.cloned(),
       )
     } else if specifier.scheme() == "data" {
-      let source = deno_graph::source::RawDataUrl::parse(specifier)
+      let source = deno_media_type::data_url::RawDataUrl::parse(specifier)
         .ok()?
         .decode()
         .ok()?;
@@ -1702,7 +1702,7 @@ fn analyze_module(
 ) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
+      let npm_resolver = resolver.as_graph_npm_resolver(file_referrer);
       let cli_resolver = resolver.as_cli_resolver(file_referrer);
       let is_cjs_resolver = resolver.as_is_cjs_resolver(file_referrer);
       let config_data = resolver.as_config_data(file_referrer);
@@ -1731,7 +1731,7 @@ fn analyze_module(
             file_system: &deno_graph::source::NullFileSystem,
             jsr_url_provider: &CliJsrUrlProvider,
             maybe_resolver: Some(&resolver),
-            maybe_npm_resolver: Some(&npm_resolver),
+            maybe_npm_resolver: Some(npm_resolver.as_ref()),
           },
         )),
         module_resolution_mode,
@@ -1756,10 +1756,11 @@ fn bytes_to_content(
     // we use the dts representation for Wasm modules
     Ok(deno_graph::source::wasm::wasm_module_to_dts(&bytes)?)
   } else {
-    Ok(deno_graph::source::decode_owned_source(
-      specifier,
-      bytes,
-      maybe_charset,
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(specifier, &bytes)
+    });
+    Ok(deno_media_type::encoding::decode_owned_source(
+      charset, bytes,
     )?)
   }
 }
@@ -1767,7 +1768,6 @@ fn bytes_to_content(
 #[cfg(test)]
 mod tests {
   use deno_config::deno_json::ConfigFile;
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
@@ -1924,7 +1924,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1968,7 +1967,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )

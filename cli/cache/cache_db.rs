@@ -9,13 +9,12 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::unsync::spawn_blocking;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_runtime::deno_webstorage::rusqlite;
 use deno_runtime::deno_webstorage::rusqlite::Connection;
 use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
-
-use super::FastInsecureHasher;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct CacheDBHash(u64);

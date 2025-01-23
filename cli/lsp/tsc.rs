@@ -39,6 +39,8 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_lib::util::result::InfallibleResultExt;
+use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
 use deno_runtime::inspector_server::InspectorServer;
@@ -72,6 +74,7 @@ use super::documents::Document;
 use super::documents::DocumentsFilter;
 use super::language_server;
 use super::language_server::StateSnapshot;
+use super::logging::lsp_log;
 use super::performance::Performance;
 use super::performance::PerformanceMark;
 use super::refactor::RefactorCodeActionData;
@@ -94,9 +97,7 @@ use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
-use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
-use crate::worker::create_isolate_create_params;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
   lazy_regex!(r#"^\[['"](.+)[\['"]\]$"#);
@@ -4340,7 +4341,9 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
-    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
+    let specifier_str = original
+      .replace(".d.ts.d.ts", ".d.ts")
+      .replace("$node_modules", "node_modules");
     let specifier = match ModuleSpecifier::parse(&specifier_str) {
       Ok(s) => s,
       Err(err) => return Err(err),
@@ -4695,7 +4698,24 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .graph_imports_by_referrer(scope)
     {
       for specifier in specifiers {
-        script_names.insert(specifier.to_string());
+        if let Ok(req_ref) =
+          deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
+        {
+          let Some((resolved, _)) =
+            state.state_snapshot.resolver.npm_to_file_url(
+              &req_ref,
+              scope,
+              ResolutionMode::Import,
+              Some(scope),
+            )
+          else {
+            lsp_log!("failed to resolve {req_ref} to file URL");
+            continue;
+          };
+          script_names.insert(resolved.to_string());
+        } else {
+          script_names.insert(specifier.to_string());
+        }
       }
     }
   }
@@ -5589,7 +5609,6 @@ mod tests {
           })
           .to_string(),
           temp_dir.url().join("deno.json").unwrap(),
-          &Default::default(),
         )
         .unwrap(),
       )
@@ -6246,7 +6265,40 @@ mod tests {
             "kind": "keyword"
           }
         ],
-        "documentation": []
+        "documentation": [
+          {
+            "text": "Outputs a message to the console",
+            "kind": "text",
+          },
+        ],
+        "tags": [
+          {
+            "name": "param",
+            "text": [
+              {
+                "text": "data",
+                "kind": "parameterName",
+              },
+              {
+                "text": " ",
+                "kind": "space",
+              },
+              {
+                "text": "Values to be printed to the console",
+                "kind": "text",
+              },
+            ],
+          },
+          {
+            "name": "example",
+            "text": [
+              {
+                "text": "```ts\nconsole.log('Hello', 'World', 123);\n```",
+                "kind": "text",
+              },
+            ],
+          },
+        ]
       })
     );
   }
