@@ -285,12 +285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-once-cell"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288f83726785267c6f2ef073a3d83dc3f9b81464e9f99898240cced85fce35a"
-
-[[package]]
 name = "async-recursion"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1281,6 +1275,7 @@ dependencies = [
  "deno_lib",
  "deno_lint",
  "deno_lockfile",
+ "deno_media_type",
  "deno_npm",
  "deno_npm_cache",
  "deno_package_json",
@@ -1465,9 +1460,9 @@ dependencies = [
 
 [[package]]
 name = "deno_cache_dir"
-version = "0.17.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27429da4d0e601baaa41415a43468d49a586645d13497f12e8a9346f9f6b1347"
+checksum = "e73ed17f285731a23df9779ca1e0e721de866db6776ed919ebd9235e0a107c4c"
 dependencies = [
  "async-trait",
  "base32",
@@ -1966,9 +1961,9 @@ dependencies = [
 
 [[package]]
 name = "deno_media_type"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "577fe2bbe04f3e9b1b7c6fac6a75101a9fbd611c50a6b68789e69f4d63dcb2b4"
+checksum = "600222d059ab31ff31182b3e12615df2134a9e01605836b78ad8df91ba39eab3"
 dependencies = [
  "data-url",
  "encoding_rs",
@@ -2224,9 +2219,9 @@ dependencies = [
 
 [[package]]
 name = "deno_path_util"
-version = "0.3.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c87b8996966ae1b13ee9c20219b1d10fc53905b9570faae6adfa34614fd15224"
+checksum = "420e8211aaba7fde83ccaa9a5dad855c3b940ed988d70c95159acd600a70dc87"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2287,7 +2282,6 @@ name = "deno_resolver"
 version = "0.18.0"
 dependencies = [
  "anyhow",
- "async-once-cell",
  "async-trait",
  "base32",
  "boxed_error",
@@ -2300,11 +2294,8 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
- "deno_terminal 0.2.0",
- "futures",
  "log",
  "node_resolver",
- "once_cell",
  "parking_lot",
  "sys_traits",
  "test_server",
