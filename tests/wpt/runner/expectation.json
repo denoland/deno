@@ -14239,6 +14239,7 @@
     "eventsource-constructor-stringify.window.html": false,
     "eventsource-cross-origin.window.html": false,
     "eventsource-reconnect.window.html": false,
+    "request-status-error.window.html": false,
     "eventsource-constructor-empty-url.any.serviceworker.html": false,
     "eventsource-constructor-empty-url.any.sharedworker.html": false,
     "eventsource-constructor-url-bogus.any.serviceworker.html": false,
