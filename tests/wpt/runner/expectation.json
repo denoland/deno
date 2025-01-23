@@ -14447,7 +14447,8 @@
         "DOMMatrix clone: non-initial values (2d)",
         "DOMMatrix clone: non-initial values (3d)",
         "DOMRectList clone"
-      ]
+      ],
+      "DOMMatrix-invertSelf.html": true
     }
   }
 }
