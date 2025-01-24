@@ -1509,7 +1509,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.45.0"
-source = "git+https://github.com/dsherret/deno_config?rev=89f85e01536c546c9795eb63c726dad74f8f8f16#89f85e01536c546c9795eb63c726dad74f8f8f16"
+source = "git+https://github.com/nayeemrmn/deno_config?rev=e095bf9769c50efd033714b56d6016553ed83091#e095bf9769c50efd033714b56d6016553ed83091"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",

@@ -6,8 +6,8 @@ use std::sync::Arc;
 use deno_ast::SourceMapOption;
 use deno_config::deno_json::CompilerOptionsParseError;
 use deno_config::deno_json::TsConfig;
-use deno_config::deno_json::TsConfigForEmit;
 use deno_config::deno_json::TsConfigType;
+use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::deno_json::TsTypeLib;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
@@ -117,8 +117,8 @@ fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
   }
 }
 
-fn check_warn_tsconfig(ts_config: &TsConfigForEmit) {
-  if let Some(ignored_options) = &ts_config.maybe_ignored_options {
+fn check_warn_tsconfig(ts_config: &TsConfigWithIgnoredOptions) {
+  for ignored_options in &ts_config.ignored_options {
     log::warn!("{}", ignored_options);
   }
   let serde_json::Value::Object(obj) = &ts_config.ts_config.0 else {
@@ -167,7 +167,7 @@ impl TsConfigFolderInfo {
     cell.get_or_try_init(|| {
       let tsconfig_result = self
         .dir
-        .to_ts_config_for_emit(TsConfigType::Check { lib })?;
+        .to_resolved_ts_config(TsConfigType::Check { lib })?;
       check_warn_tsconfig(&tsconfig_result);
       Ok(Arc::new(tsconfig_result.ts_config))
     })
@@ -178,7 +178,7 @@ impl TsConfigFolderInfo {
   ) -> Result<&Arc<TsConfig>, CompilerOptionsParseError> {
     self.memoized.emit_tsconfig.get_or_try_init(|| {
       let tsconfig_result =
-        self.dir.to_ts_config_for_emit(TsConfigType::Emit)?;
+        self.dir.to_resolved_ts_config(TsConfigType::Emit)?;
       check_warn_tsconfig(&tsconfig_result);
       Ok(Arc::new(tsconfig_result.ts_config))
     })
@@ -250,11 +250,7 @@ impl TsConfigResolver {
   }
 
   pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
-    let folder = self.folder_for_specifier(specifier);
-    match folder.dir.maybe_deno_json() {
-      Some(deno_json) => deno_json.get_check_js(),
-      None => false,
-    }
+    self.folder_for_specifier(specifier).dir.check_js()
   }
 
   pub fn deno_lint_config(
