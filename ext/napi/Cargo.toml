@@ -27,4 +27,4 @@ thiserror.workspace = true
 windows-sys.workspace = true
 
 [dev-dependencies]
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = { version = "=1.48.3", features = ["dyn-symbols"] }
