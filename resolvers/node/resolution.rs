@@ -1780,7 +1780,7 @@ pub fn parse_npm_pkg_name<'a>(
 
   let (package_name, subpath) = if let Some(index) = separator_index {
     let (package_name, subpath) = specifier.split_at(index);
-    (package_name, Cow::Owned(format!("./{}", subpath)))
+    (package_name, Cow::Owned(format!(".{}", subpath)))
   } else {
     (specifier, Cow::Borrowed("."))
   };
