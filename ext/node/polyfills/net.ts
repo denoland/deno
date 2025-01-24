@@ -90,7 +90,6 @@ import {
   validatePort,
   validateString,
 } from "ext:deno_node/internal/validators.mjs";
-import { providerType } from "ext:deno_node/internal_binding/async_wrap.ts";
 import {
   constants as TCPConstants,
   TCP,
@@ -1166,7 +1165,6 @@ function _emitCloseNT(s: Socket | Server) {
 
 // The packages that need socket initialization workaround
 const pkgsNeedsSockInitWorkaround = [
-  "node:http:",
   "@npmcli/agent",
   "npm-check-updates",
   "playwright-core",
@@ -1251,9 +1249,13 @@ export class Socket extends Duplex {
     // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    this._needsSockInitWorkaround =
-      options.handle?.provider === providerType.TCPWRAP &&
-      pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
+    if (pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg))) {
+      this._needsSockInitWorkaround = true;
+    } else if (errorStack?.includes("new ClientRequest")) {
+      // If the stack include `new ClientRequest` then the socket is for http connection,
+      // and we should apply the workaround (This covers the npm:ws and npm:mqtt)
+      this._needsSockInitWorkaround = true;
+    }
     if (this._needsSockInitWorkaround) {
       this.pause();
     }
