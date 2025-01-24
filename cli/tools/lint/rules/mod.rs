@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 
 use crate::resolver::CliSloppyImportsResolver;
 
@@ -25,7 +26,7 @@ pub use no_slow_types::collect_no_slow_type_diagnostics;
 pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
   fn code(&self) -> &'static str;
 
-  fn tags(&self) -> &'static [&'static str] {
+  fn tags(&self) -> tags::Tags {
     &[]
   }
 
@@ -78,7 +79,7 @@ impl CliLintRule {
     }
   }
 
-  pub fn tags(&self) -> &'static [&'static str] {
+  pub fn tags(&self) -> tags::Tags {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => rule.tags(),
@@ -91,7 +92,7 @@ impl CliLintRule {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => {
-        Cow::Owned(format!("https://lint.deno.land/rules/{}", rule.code()))
+        Cow::Owned(format!("https://docs.deno.com/lint/rules/{}", rule.code()))
       }
       Extended(rule) => rule.help_docs_url(),
       Package(rule) => rule.help_docs_url(),
@@ -284,7 +285,7 @@ mod test {
       .resolve_lint_rules(Default::default(), None)
       .rules
       .into_iter()
-      .filter(|r| r.tags().iter().any(|t| *t == "recommended"))
+      .filter(|r| r.tags().iter().any(|t| *t == tags::RECOMMENDED))
       .map(|r| r.code().to_string())
       .filter(|n| n != "no-debugger")
       .collect::<Vec<_>>();
