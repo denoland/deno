@@ -1168,7 +1168,7 @@ impl<
     }
 
     self.resolve_package_subpath_for_package(
-      &package_name,
+      package_name,
       &package_subpath,
       referrer,
       resolution_mode,
