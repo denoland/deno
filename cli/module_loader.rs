@@ -38,8 +38,8 @@ use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NotSupportedKindInNpmError;
 use deno_lib::loader::NpmModuleLoadError;
+use deno_lib::loader::StrippingTypesNodeModulesError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -1257,8 +1257,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Err(JsErrorBox::from_err(NotSupportedKindInNpmError {
-          media_type,
+        return Err(JsErrorBox::from_err(StrippingTypesNodeModulesError {
           specifier,
         }));
       }
