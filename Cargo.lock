@@ -880,6 +880,7 @@ dependencies = [
  "tokio",
  "url",
  "uuid",
+ "walkdir",
  "zeromq",
 ]
 
