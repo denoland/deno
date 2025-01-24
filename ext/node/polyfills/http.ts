@@ -413,12 +413,12 @@ class ClientRequest extends OutgoingMessage {
             optsWithoutSignal,
             oncreate,
           );
-          // If socket is created by createConnection option
-          // we apply sock-init-workaround
-          // This covers npm:ws and npm:mqtt
-          // https://github.com/denoland/deno/issues/27694
-          newSocket._needsSockInitWorkaround = true;
           if (newSocket) {
+            // If socket is created by createConnection option
+            // we apply sock-init-workaround
+            // This covers npm:ws and npm:mqtt
+            // https://github.com/denoland/deno/issues/27694
+            newSocket._needsSockInitWorkaround = true;
             oncreate(null, newSocket);
           }
         } catch (err) {
