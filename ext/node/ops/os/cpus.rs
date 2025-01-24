@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::serde::Serialize;
 
@@ -73,12 +73,17 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
       cpu_speed = 2_400_000_000;
     }
 
+    extern "C" {
+      fn mach_host_self() -> std::ffi::c_uint;
+      static mut mach_task_self_: std::ffi::c_uint;
+    }
+
     let mut num_cpus: libc::natural_t = 0;
     let mut info: *mut libc::processor_cpu_load_info_data_t =
       std::ptr::null_mut();
     let mut msg_type: libc::mach_msg_type_number_t = 0;
     if libc::host_processor_info(
-      libc::mach_host_self(),
+      mach_host_self(),
       libc::PROCESSOR_CPU_LOAD_INFO,
       &mut num_cpus,
       &mut info as *mut _ as *mut libc::processor_info_array_t,
@@ -111,7 +116,7 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     }
 
     libc::vm_deallocate(
-      libc::mach_task_self(),
+      mach_task_self_,
       info.as_ptr() as libc::vm_address_t,
       msg_type as _,
     );
@@ -122,12 +127,12 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
 
 #[cfg(target_os = "windows")]
 pub fn cpu_info() -> Option<Vec<CpuInfo>> {
+  use std::os::windows::ffi::OsStrExt;
+  use std::os::windows::ffi::OsStringExt;
+
   use windows_sys::Wdk::System::SystemInformation::NtQuerySystemInformation;
   use windows_sys::Wdk::System::SystemInformation::SystemProcessorPerformanceInformation;
   use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
-
-  use std::os::windows::ffi::OsStrExt;
-  use std::os::windows::ffi::OsStringExt;
 
   fn encode_wide(s: &str) -> Vec<u16> {
     std::ffi::OsString::from(s)
@@ -259,13 +264,16 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     let nice = fields.next()?.parse::<u64>().ok()?;
     let sys = fields.next()?.parse::<u64>().ok()?;
     let idle = fields.next()?.parse::<u64>().ok()?;
+    let _iowait = fields.next()?.parse::<u64>().ok()?;
     let irq = fields.next()?.parse::<u64>().ok()?;
 
-    cpus[i].times.user = user;
-    cpus[i].times.nice = nice;
-    cpus[i].times.sys = sys;
-    cpus[i].times.idle = idle;
-    cpus[i].times.irq = irq;
+    // sysconf(_SC_CLK_TCK) is fixed at 100 Hz, therefore the
+    // multiplier is always 1000/100 = 10
+    cpus[i].times.user = user * 10;
+    cpus[i].times.nice = nice * 10;
+    cpus[i].times.sys = sys * 10;
+    cpus[i].times.idle = idle * 10;
+    cpus[i].times.irq = irq * 10;
   }
 
   let fp = std::fs::File::open("/proc/cpuinfo").ok()?;
@@ -282,6 +290,18 @@ pub fn cpu_info() -> Option<Vec<CpuInfo>> {
     let model = fields.next()?.trim();
 
     cpus[j].model = model.to_string();
+
+    if let Ok(fp) = std::fs::File::open(format!(
+      "/sys/devices/system/cpu/cpu{}/cpufreq/scaling_cur_freq",
+      j
+    )) {
+      let mut reader = std::io::BufReader::new(fp);
+      let mut speed = String::new();
+      reader.read_line(&mut speed).ok()?;
+
+      cpus[j].speed = speed.trim().parse::<u64>().ok()? / 1000;
+    }
+
     j += 1;
   }
 

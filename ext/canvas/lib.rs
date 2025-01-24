@@ -1,4 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::path::PathBuf;
 
 use deno_core::op2;
 use deno_core::ToJsBuffer;
@@ -9,12 +11,13 @@ use image::Pixel;
 use image::RgbaImage;
 use serde::Deserialize;
 use serde::Serialize;
-use std::path::PathBuf;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
+  #[class(type)]
   #[error("Color type '{0:?}' not supported")]
   UnsupportedColorType(ColorType),
+  #[class(generic)]
   #[error(transparent)]
   Image(#[from] image::ImageError),
 }

@@ -1,12 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
@@ -15,16 +12,25 @@ use futures::future::LocalBoxFuture;
 use futures::FutureExt;
 use http::StatusCode;
 use parking_lot::Mutex;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 use url::Url;
 
 use crate::remote::maybe_auth_header_for_npm_registry;
 use crate::tarball_extract::verify_and_extract_tarball;
 use crate::tarball_extract::TarballExtractionMode;
 use crate::NpmCache;
-use crate::NpmCacheEnv;
+use crate::NpmCacheHttpClient;
 use crate::NpmCacheSetting;
 
-type LoadResult = Result<(), Arc<AnyError>>;
+type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Clone)]
@@ -32,7 +38,7 @@ enum MemoryCacheItem {
   /// The cache item hasn't finished yet.
   Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
   /// The result errored.
-  Errored(Arc<AnyError>),
+  Errored(Arc<JsErrorBox>),
   /// This package has already been cached.
   Cached,
 }
@@ -42,22 +48,62 @@ enum MemoryCacheItem {
 ///
 /// This is shared amongst all the workers.
 #[derive(Debug)]
-pub struct TarballCache<TEnv: NpmCacheEnv> {
-  cache: Arc<NpmCache<TEnv>>,
-  env: Arc<TEnv>,
+pub struct TarballCache<
+  THttpClient: NpmCacheHttpClient,
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsRemoveFile
+    + FsReadDir
+    + FsRename
+    + ThreadSleep
+    + SystemRandom
+    + Send
+    + Sync
+    + 'static,
+> {
+  cache: Arc<NpmCache<TSys>>,
+  http_client: Arc<THttpClient>,
+  sys: TSys,
   npmrc: Arc<ResolvedNpmRc>,
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
 }
 
-impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Failed caching npm package '{package_nv}'")]
+pub struct EnsurePackageError {
+  package_nv: Box<PackageNv>,
+  #[source]
+  source: Arc<JsErrorBox>,
+}
+impl<
+    THttpClient: NpmCacheHttpClient,
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsReadDir
+      + FsRename
+      + ThreadSleep
+      + SystemRandom
+      + Send
+      + Sync
+      + 'static,
+  > TarballCache<THttpClient, TSys>
+{
   pub fn new(
-    cache: Arc<NpmCache<TEnv>>,
-    env: Arc<TEnv>,
+    cache: Arc<NpmCache<TSys>>,
+    http_client: Arc<THttpClient>,
+    sys: TSys,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache,
-      env,
+      http_client,
+      sys,
       npmrc,
       memory_cache: Default::default(),
     }
@@ -65,20 +111,23 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
 
   pub async fn ensure_package(
     self: &Arc<Self>,
-    package: &PackageNv,
+    package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), EnsurePackageError> {
     self
-      .ensure_package_inner(package, dist)
+      .ensure_package_inner(package_nv, dist)
       .await
-      .with_context(|| format!("Failed caching npm package '{}'.", package))
+      .map_err(|source| EnsurePackageError {
+        package_nv: Box::new(package_nv.clone()),
+        source,
+      })
   }
 
   async fn ensure_package_inner(
     self: &Arc<Self>,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Arc<JsErrorBox>> {
     let cache_item = {
       let mut mem_cache = self.memory_cache.lock();
       if let Some(cache_item) = mem_cache.get(package_nv) {
@@ -100,7 +149,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
 
     match cache_item {
       MemoryCacheItem::Cached => Ok(()),
-      MemoryCacheItem::Errored(err) => Err(anyhow!("{}", err)),
+      MemoryCacheItem::Errored(err) => Err(err),
       MemoryCacheItem::Pending(creator) => {
         let result = creator.get().await;
         match result {
@@ -110,10 +159,9 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
             Ok(())
           }
           Err(err) => {
-            let result_err = anyhow!("{}", err);
             *self.memory_cache.lock().get_mut(package_nv).unwrap() =
-              MemoryCacheItem::Errored(err);
-            Err(result_err)
+              MemoryCacheItem::Errored(err.clone());
+            Err(err)
           }
         }
       }
@@ -131,14 +179,14 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       let package_folder =
         tarball_cache.cache.package_folder_for_nv_and_url(&package_nv, registry_url);
       let should_use_cache = tarball_cache.cache.should_use_cache_for_package(&package_nv);
-      let package_folder_exists = tarball_cache.env.exists(&package_folder);
+      let package_folder_exists = tarball_cache.sys.fs_exists_no_err(&package_folder);
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
-        return Err(deno_core::error::custom_error(
+        return Err(JsErrorBox::new(
           "NotCached",
           format!(
-            "An npm specifier not found in cache: \"{}\", --cached-only is specified.",
+            "npm package not found in cache: \"{}\", --cached-only is specified.",
             &package_nv.name
           )
         )
@@ -146,17 +194,17 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
       }
 
       if dist.tarball.is_empty() {
-        bail!("Tarball URL was empty.");
+        return Err(JsErrorBox::generic("Tarball URL was empty."));
       }
 
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
-      let tarball_uri = Url::parse(&dist.tarball)?;
+      let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
 
-      let result = tarball_cache.env
+      let result = tarball_cache.http_client
         .download_with_retries_on_any_tokio_runtime(tarball_uri, maybe_auth_header)
         .await;
       let maybe_bytes = match result {
@@ -166,7 +214,7 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
             && maybe_registry_config.is_none()
             && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
           {
-            bail!(
+            return Err(JsErrorBox::generic(format!(
               concat!(
                 "No auth for tarball URI, but present for scoped registry.\n\n",
                 "Tarball URI: {}\n",
@@ -175,9 +223,9 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
               ),
               dist.tarball,
               registry_url,
-            )
+            )));
           }
-          return Err(err.into())
+          return Err(JsErrorBox::from_err(err))
         },
       };
       match maybe_bytes {
@@ -206,10 +254,10 @@ impl<TEnv: NpmCacheEnv> TarballCache<TEnv> {
               extraction_mode,
             )
           })
-          .await?
+          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
         }
         None => {
-          bail!("Could not find npm package tarball at: {}", dist.tarball);
+          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
         }
       }
     }

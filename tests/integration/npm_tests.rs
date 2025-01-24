@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use pretty_assertions::assert_eq;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use test_util::itest;
 use url::Url;
@@ -43,6 +41,7 @@ itest!(require_resolve_url_paths {
   cwd: Some("npm/require_resolve_url/"),
   copy_temp_dir: Some("npm/require_resolve_url/"),
 });
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -102,7 +101,7 @@ fn cached_only_after_first_run() {
   let stdout = String::from_utf8_lossy(&output.stdout);
   assert_contains!(
     stderr,
-    "An npm specifier not found in cache: \"ansi-styles\", --cached-only is specified."
+    "npm package not found in cache: \"ansi-styles\", --cached-only is specified."
   );
   assert!(stdout.is_empty());
   assert!(!output.status.success());

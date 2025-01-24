@@ -48,7 +48,7 @@ jobs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
     runs-on: '${{ matrix.runner }}'
-    timeout-minutes: 180
+    timeout-minutes: 240
     defaults:
       run:
         shell: bash
@@ -68,12 +68,12 @@ jobs:
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
           - os: macos
             arch: aarch64
-            runner: '${{ github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
+            runner: macos-14
             job: test
             profile: debug
           - os: macos
             arch: aarch64
-            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && startsWith(github.ref, ''refs/tags/'') && ''self-hosted'' || ''macos-14'' }}'
+            runner: '${{ (!contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'')) && ''ubuntu-24.04'' || github.repository == ''denoland/deno'' && (github.ref == ''refs/heads/main'' || startsWith(github.ref, ''refs/tags/'')) && ''ghcr.io/cirruslabs/macos-runner:sonoma'' || ''macos-14'' }}'
             job: test
             profile: release
             skip: '${{ !contains(github.event.pull_request.labels.*.name, ''ci-full'') && (github.event_name == ''pull_request'') }}'
@@ -174,13 +174,26 @@ jobs:
           mkdir -p target/release
           tar --exclude=".git*" --exclude=target --exclude=third_party/prebuilt \
               -czvf target/release/deno_src.tar.gz -C .. deno
+      - name: Cache Cargo home
+        uses: cirruslabs/cache@v4
+        with:
+          path: |-
+            ~/.cargo/.crates.toml
+            ~/.cargo/.crates2.json
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: '37-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '37-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+        if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - if: '!(matrix.skip) && (matrix.job == ''lint'' || matrix.job == ''test'' || matrix.job == ''bench'')'
         name: Install Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.x
       - name: Install Python
         uses: actions/setup-python@v5
         with:
@@ -294,9 +307,7 @@ jobs:
           #      to build because the object formats are not compatible.
           echo "
           CARGO_PROFILE_BENCH_INCREMENTAL=false
-          CARGO_PROFILE_BENCH_LTO=false
           CARGO_PROFILE_RELEASE_INCREMENTAL=false
-          CARGO_PROFILE_RELEASE_LTO=false
           RUSTFLAGS<<__1
             -C linker-plugin-lto=true
             -C linker=clang-19
@@ -320,7 +331,7 @@ jobs:
             $RUSTFLAGS
           __1
           CC=/usr/bin/clang-19
-          CFLAGS=-flto=thin $CFLAGS
+          CFLAGS=$CFLAGS
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-
@@ -355,15 +366,6 @@ jobs:
       - name: Install benchmark tools
         if: '!(matrix.skip) && (matrix.job == ''bench'')'
         run: ./tools/install_prebuilt.js wrk hyperfine
-      - name: Cache Cargo home
-        uses: actions/cache@v4
-        with:
-          path: |-
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-          key: '28-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '28-cargo-home-${{ matrix.os }}-${{ matrix.arch }}'
-        if: '!(matrix.skip)'
       - name: Restore cache build output (PR)
         uses: actions/cache/restore@v4
         if: '!(matrix.skip) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
@@ -375,7 +377,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '28-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '37-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -682,10 +684,10 @@ jobs:
           path: |-
             ./target
             !./target/*/gn_out
+            !./target/*/gn_root
             !./target/*/*.zip
-            !./target/*/*.sha256sum
             !./target/*/*.tar.gz
-          key: '28-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '37-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-24.04

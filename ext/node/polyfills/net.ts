@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -377,6 +377,12 @@ function _afterConnect(
 
     socket.emit("connect");
     socket.emit("ready");
+
+    // Deno specific: run tls handshake if it's from a tls socket
+    // This swaps the handle[kStreamBaseField] from TcpConn to TlsConn
+    if (typeof handle.afterConnectTls === "function") {
+      handle.afterConnectTls();
+    }
 
     // Start the first read, or get an immediate EOF.
     // this doesn't actually consume any bytes, because len=0.
@@ -986,16 +992,20 @@ function _lookupAndConnect(
         } else {
           self._unrefTimer();
 
-          defaultTriggerAsyncIdScope(
-            self[asyncIdSymbol],
-            _internalConnect,
-            self,
-            ip,
-            port,
-            addressType,
-            localAddress,
-            localPort,
-          );
+          defaultTriggerAsyncIdScope(self[asyncIdSymbol], nextTick, () => {
+            if (self.connecting) {
+              defaultTriggerAsyncIdScope(
+                self[asyncIdSymbol],
+                _internalConnect,
+                self,
+                ip,
+                port,
+                addressType,
+                localAddress,
+                localPort,
+              );
+            }
+          });
         }
       },
     );
@@ -1153,6 +1163,13 @@ function _emitCloseNT(s: Socket | Server) {
   s.emit("close");
 }
 
+// The packages that need socket initialization workaround
+const pkgsNeedsSockInitWorkaround = [
+  "@npmcli/agent",
+  "npm-check-updates",
+  "playwright-core",
+];
+
 /**
  * This class is an abstraction of a TCP socket or a streaming `IPC` endpoint
  * (uses named pipes on Windows, and Unix domain sockets otherwise). It is also
@@ -1197,6 +1214,11 @@ export class Socket extends Duplex {
   _host: string | null = null;
   // deno-lint-ignore no-explicit-any
   _parent: any = null;
+  // Skip some initialization (initial read and tls handshake if it's tls socket).
+  // If this flag is true, it's used as connection for http(s) request, and
+  // the reading and TLS handshake is done by the http client.
+  // See discussions in https://github.com/denoland/deno/pull/25470 for more details.
+  _needsSockInitWorkaround = false;
   autoSelectFamilyAttemptedAddresses: AddressInfo[] | undefined = undefined;
 
   constructor(options: SocketOptions | number) {
@@ -1216,6 +1238,23 @@ export class Socket extends Duplex {
     options.decodeStrings = false;
 
     super(options);
+
+    // Note: If the socket is created from one of `pkgNeedsSockInitWorkaround`,
+    // the 'socket' event on ClientRequest object happens after 'connect' event on Socket object.
+    // That swaps the sequence of op_node_http_request_with_conn() call and
+    // initial socket read. That causes op_node_http_request_with_conn() not
+    // working.
+    // To avoid the above situation, we detect the socket created from
+    // one of those packages using stack trace and pause the socket
+    // (and also skips the startTls call if it's TLSSocket)
+    // TODO(kt3k): Remove this workaround
+    const errorStack = new Error().stack;
+    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
+      errorStack?.includes(pkg)
+    );
+    if (this._needsSockInitWorkaround) {
+      this.pause();
+    }
 
     if (options.handle) {
       this._handle = options.handle;

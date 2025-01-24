@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::sync::Arc;
@@ -23,6 +23,7 @@ use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
 use deno_graph::ParserModuleAnalyzer;
+use deno_graph::StaticDependencyKind;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
@@ -214,11 +215,12 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
+    resolution_kind: SloppyImportsResolutionKind,
     text_info: &SourceTextInfo,
     range: &deno_graph::PositionRange,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) -> Option<String> {
-    match self.unfurl_specifier(referrer, specifier) {
+    match self.unfurl_specifier(referrer, specifier, resolution_kind) {
       Ok(maybe_unfurled) => maybe_unfurled,
       Err(diagnostic) => match diagnostic {
         UnfurlSpecifierError::Workspace {
@@ -248,6 +250,7 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
+    resolution_kind: SloppyImportsResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
     let resolved = if let Ok(resolved) =
       self.workspace_resolver.resolve(specifier, referrer)
@@ -395,7 +398,7 @@ impl SpecifierUnfurler {
     let resolved =
       if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
         sloppy_imports_resolver
-          .resolve(&resolved, SloppyImportsResolutionKind::Execution)
+          .resolve(&resolved, resolution_kind)
           .map(|res| res.into_specifier())
           .unwrap_or(resolved)
       } else {
@@ -458,6 +461,7 @@ impl SpecifierUnfurler {
         let maybe_unfurled = self.unfurl_specifier_reporting_diagnostic(
           module_url,
           specifier,
+          SloppyImportsResolutionKind::Execution, // dynamic imports are always execution
           text_info,
           &dep.argument_range,
           diagnostic_reporter,
@@ -485,6 +489,7 @@ impl SpecifierUnfurler {
           let unfurled = self.unfurl_specifier_reporting_diagnostic(
             module_url,
             specifier,
+            SloppyImportsResolutionKind::Execution, // dynamic imports are always execution
             text_info,
             &dep.argument_range,
             diagnostic_reporter,
@@ -530,11 +535,13 @@ impl SpecifierUnfurler {
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
+       resolution_kind: SloppyImportsResolutionKind,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
         if let Some(unfurled) = self.unfurl_specifier_reporting_diagnostic(
           url,
           specifier,
+          resolution_kind,
           text_info,
           range,
           diagnostic_reporter,
@@ -548,9 +555,27 @@ impl SpecifierUnfurler {
     for dep in &module_info.dependencies {
       match dep {
         DependencyDescriptor::Static(dep) => {
+          let resolution_kind = if parsed_source.media_type().is_declaration() {
+            SloppyImportsResolutionKind::Types
+          } else {
+            match dep.kind {
+              StaticDependencyKind::Export
+              | StaticDependencyKind::Import
+              | StaticDependencyKind::ExportEquals
+              | StaticDependencyKind::ImportEquals => {
+                SloppyImportsResolutionKind::Execution
+              }
+              StaticDependencyKind::ExportType
+              | StaticDependencyKind::ImportType => {
+                SloppyImportsResolutionKind::Types
+              }
+            }
+          };
+
           analyze_specifier(
             &dep.specifier,
             &dep.specifier_range,
+            resolution_kind,
             &mut text_changes,
             diagnostic_reporter,
           );
@@ -588,6 +613,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
+        SloppyImportsResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -596,6 +622,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &jsdoc.specifier.text,
         &jsdoc.specifier.range,
+        SloppyImportsResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -604,6 +631,16 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
+        SloppyImportsResolutionKind::Execution,
+        &mut text_changes,
+        diagnostic_reporter,
+      );
+    }
+    if let Some(specifier_with_range) = &module_info.jsx_import_source_types {
+      analyze_specifier(
+        &specifier_with_range.text,
+        &specifier_with_range.range,
+        SloppyImportsResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -655,21 +692,21 @@ fn to_range(
 mod tests {
   use std::sync::Arc;
 
-  use crate::resolver::SloppyImportsCachedFs;
-
-  use super::*;
   use deno_ast::MediaType;
   use deno_ast::ModuleSpecifier;
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_runtime::deno_fs::RealFs;
+  use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
   use indexmap::IndexMap;
   use pretty_assertions::assert_eq;
   use test_util::testdata_path;
+
+  use super::*;
+  use crate::sys::CliSys;
 
   fn parse_ast(specifier: &Url, source_code: &str) -> ParsedSource {
     let media_type = MediaType::from_specifier(specifier);
@@ -722,10 +759,9 @@ mod tests {
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(fs),
+        SloppyImportsCachedFs::new(CliSys::default()),
       ))),
       Arc::new(workspace_resolver),
       true,
@@ -742,6 +778,8 @@ import baz from "./baz";
 import b from "./b.js";
 import b2 from "./b";
 import "./mod.ts";
+import { } from "./c";
+import type { } from "./c";
 import url from "url";
 import "@denotest/example";
 // TODO: unfurl these to jsr
@@ -792,6 +830,8 @@ import baz from "./baz/index.js";
 import b from "./b.ts";
 import b2 from "./b.ts";
 import "./mod.ts";
+import { } from "./c.js";
+import type { } from "./c.d.ts";
 import url from "node:url";
 import "jsr:@denotest/example@^1.0.0";
 // TODO: unfurl these to jsr
@@ -809,6 +849,24 @@ const test6 = await import(`./lib/something.ts`);
 // will warn
 const warn1 = await import(`lib${expr}`);
 const warn2 = await import(`${expr}`);
+"#;
+      assert_eq!(unfurled_source, expected_source);
+    }
+
+    // Unfurling .d.ts file should use types resolution.
+    {
+      let source_code = r#"import express from "express";"
+export type * from "./c";
+"#;
+      let specifier =
+        ModuleSpecifier::from_file_path(cwd.join("mod.d.ts")).unwrap();
+      let source = parse_ast(&specifier, source_code);
+      let mut d = Vec::new();
+      let mut reporter = |diagnostic| d.push(diagnostic);
+      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      assert_eq!(d.len(), 0);
+      let expected_source = r#"import express from "npm:express@5";"
+export type * from "./c.d.ts";
 "#;
       assert_eq!(unfurled_source, expected_source);
     }
@@ -863,10 +921,10 @@ const warn2 = await import(`${expr}`);
       ],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
     );
-    let fs = Arc::new(RealFs);
+    let sys = CliSys::default();
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(fs),
+        SloppyImportsCachedFs::new(sys),
       ))),
       Arc::new(workspace_resolver),
       true,

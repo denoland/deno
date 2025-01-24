@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
@@ -37,6 +37,7 @@ const {
   ObjectHasOwn,
   ObjectKeys,
   ObjectGetOwnPropertyDescriptor,
+  ObjectGetOwnPropertyDescriptors,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
   PromisePrototypeThen,
@@ -45,6 +46,7 @@ const {
   Symbol,
   SymbolIterator,
   TypeError,
+  uncurryThis,
 } = primordials;
 const {
   isNativeError,
@@ -53,7 +55,7 @@ import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
   getDefaultInspectOptions,
@@ -168,12 +170,14 @@ function postMessage(message, transferOrOptions = { __proto__: null }) {
 
 let isClosing = false;
 let globalDispatchEvent;
+let closeOnIdle;
 
 function hasMessageEventListener() {
   // the function name is kind of a misnomer, but we want to behave
   // as if we have message event listeners if a node message port is explicitly
   // refed (and the inverse as well)
-  return event.listenerCount(globalThis, "message") > 0 ||
+  return (event.listenerCount(globalThis, "message") > 0 &&
+    !globalThis[messagePort.unrefParentPort]) ||
     messagePort.refedMessagePortsCount > 0;
 }
 
@@ -186,7 +190,10 @@ async function pollForMessages() {
   }
   while (!isClosing) {
     const recvMessage = op_worker_recv_message();
-    if (globalThis[messagePort.unrefPollForMessages] === true) {
+    // In a Node.js worker, unref() the op promise to prevent it from
+    // keeping the event loop alive. This avoids the need to explicitly
+    // call self.close() or worker.terminate().
+    if (closeOnIdle) {
       core.unrefOpPromise(recvMessage);
     }
     const data = await recvMessage;
@@ -459,6 +466,51 @@ function exposeUnstableFeaturesForWindowOrWorkerGlobalScope(unstableFeatures) {
   }
 }
 
+function shimTemporalDurationToLocaleString() {
+  const DurationFormat = Intl.DurationFormat;
+  if (!DurationFormat) {
+    // Intl.DurationFormat can be disabled with --v8-flags=--no-harmony-intl-duration-format
+    return;
+  }
+  const DurationFormatPrototype = DurationFormat.prototype;
+  const formatDuration = uncurryThis(DurationFormatPrototype.format);
+
+  const Duration = Temporal.Duration;
+  const DurationPrototype = Duration.prototype;
+  const desc = ObjectGetOwnPropertyDescriptors(DurationPrototype);
+  const assertDuration = uncurryThis(desc.toLocaleString.value);
+  const getYears = uncurryThis(desc.years.get);
+  const getMonths = uncurryThis(desc.months.get);
+  const getWeeks = uncurryThis(desc.weeks.get);
+  const getDays = uncurryThis(desc.days.get);
+  const getHours = uncurryThis(desc.hours.get);
+  const getMinutes = uncurryThis(desc.minutes.get);
+  const getSeconds = uncurryThis(desc.seconds.get);
+  const getMilliseconds = uncurryThis(desc.milliseconds.get);
+  const getMicroseconds = uncurryThis(desc.microseconds.get);
+  const getNanoseconds = uncurryThis(desc.nanoseconds.get);
+
+  ObjectAssign(DurationPrototype, {
+    toLocaleString(locales = undefined, options) {
+      assertDuration(this);
+      const durationFormat = new DurationFormat(locales, options);
+      const duration = {
+        years: getYears(this),
+        months: getMonths(this),
+        weeks: getWeeks(this),
+        days: getDays(this),
+        hours: getHours(this),
+        minutes: getMinutes(this),
+        seconds: getSeconds(this),
+        milliseconds: getMilliseconds(this),
+        microseconds: getMicroseconds(this),
+        nanoseconds: getNanoseconds(this),
+      };
+      return formatDuration(durationFormat, duration);
+    },
+  });
+}
+
 // NOTE(bartlomieju): remove all the ops that have already been imported using
 // "virtual op module" (`ext:core/ops`).
 const NOT_IMPORTED_OPS = [
@@ -473,6 +525,9 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_input",
   // Used in jupyter API
   "op_base64_encode",
+
+  // Used in the lint API
+  "op_lint_create_serialized_ast",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -821,6 +876,12 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
         });
         delete globalThis.Temporal.Now.timeZone;
       }
+
+      // deno-lint-ignore prefer-primordials
+      if (new Temporal.Duration().toLocaleString("en-US") !== "PT0S") {
+        throw "V8 supports Temporal.Duration.prototype.toLocaleString now, no need to shim it";
+      }
+      shimTemporalDurationToLocaleString();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global
@@ -862,6 +923,7 @@ function bootstrapWorkerRuntime(
       6: argv0,
       7: nodeDebug,
       13: otelConfig,
+      14: closeOnIdle_,
     } = runtimeOptions;
 
     performance.setTimeOrigin();
@@ -914,6 +976,7 @@ function bootstrapWorkerRuntime(
 
     globalThis.pollForMessages = pollForMessages;
     globalThis.hasMessageEventListener = hasMessageEventListener;
+    closeOnIdle = closeOnIdle_;
 
     for (let i = 0; i <= unstableFeatures.length; i++) {
       const id = unstableFeatures[i];
@@ -1024,6 +1087,8 @@ function bootstrapWorkerRuntime(
         });
         delete globalThis.Temporal.Now.timeZone;
       }
+
+      shimTemporalDurationToLocaleString();
     }
 
     // Setup `Deno` global - we're actually overriding already existing global

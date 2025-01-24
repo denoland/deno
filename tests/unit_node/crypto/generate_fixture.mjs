@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Run this file with `node` to regenerate the testdata/crypto_digest_fixtures.json file.
 
 import { readFileSync, writeFileSync } from "node:fs";

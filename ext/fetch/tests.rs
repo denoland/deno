@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::net::SocketAddr;
 use std::sync::atomic::AtomicUsize;
@@ -12,10 +12,9 @@ use http_body_util::BodyExt;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 
-use crate::dns;
-
 use super::create_http_client;
 use super::CreateHttpClientOptions;
+use crate::dns;
 
 static EXAMPLE_CRT: &[u8] = include_bytes!("../tls/testdata/example1_cert.der");
 static EXAMPLE_KEY: &[u8] =
@@ -41,7 +40,7 @@ fn test_userspace_resolver() {
     // use `localhost` to ensure dns step happens.
     let addr = format!("localhost:{}", src_addr.port());
 
-    let hickory = hickory_resolver::AsyncResolver::tokio(
+    let hickory = hickory_resolver::Resolver::tokio(
       Default::default(),
       Default::default(),
     );
@@ -52,7 +51,7 @@ fn test_userspace_resolver() {
       addr.clone(),
       "https",
       http::Version::HTTP_2,
-      dns::Resolver::hickory_from_async_resolver(hickory),
+      dns::Resolver::hickory_from_resolver(hickory),
     )
     .await;
     assert_eq!(thread_counter.load(SeqCst), 0, "userspace resolver shouldn't spawn new threads.");
@@ -133,11 +132,7 @@ async fn rust_test_client_with_resolver(
 
   let req = http::Request::builder()
     .uri(format!("https://{}/foo", src_addr))
-    .body(
-      http_body_util::Empty::new()
-        .map_err(|err| match err {})
-        .boxed(),
-    )
+    .body(crate::ReqBody::empty())
     .unwrap();
   let resp = client.send(req).await.unwrap();
   assert_eq!(resp.status(), http::StatusCode::OK);

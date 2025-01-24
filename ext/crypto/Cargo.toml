@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_crypto"
-version = "0.194.0"
+version = "0.201.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -23,6 +23,7 @@ const-oid = "0.9.0"
 ctr = "0.9.1"
 curve25519-dalek = "4.1.3"
 deno_core.workspace = true
+deno_error.workspace = true
 deno_web.workspace = true
 ed448-goldilocks = { version = "0.8.3", features = ["zeroize"] }
 elliptic-curve = { version = "0.13.1", features = ["std", "pem"] }

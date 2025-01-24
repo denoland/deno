@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::io::ErrorKind;
@@ -6,43 +6,56 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::NpmPackageCacheFolderId;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_semver::package::PackageNv;
+use deno_semver::StackString;
 use deno_semver::Version;
 use http::HeaderName;
 use http::HeaderValue;
 use http::StatusCode;
 use parking_lot::Mutex;
+use sys_traits::FsCreateDirAll;
+use sys_traits::FsHardLink;
+use sys_traits::FsMetadata;
+use sys_traits::FsOpen;
+use sys_traits::FsReadDir;
+use sys_traits::FsRemoveFile;
+use sys_traits::FsRename;
+use sys_traits::SystemRandom;
+use sys_traits::ThreadSleep;
 use url::Url;
 
+mod fs_util;
 mod registry_info;
 mod remote;
 mod tarball;
 mod tarball_extract;
 
-pub use registry_info::RegistryInfoProvider;
-pub use tarball::TarballCache;
-
+pub use fs_util::hard_link_dir_recursive;
 // todo(#27198): make both of these private and get the rest of the code
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
+pub use registry_info::RegistryInfoProvider;
 pub use remote::maybe_auth_header_for_npm_registry;
+pub use tarball::EnsurePackageError;
+pub use tarball::TarballCache;
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(generic)]
 pub struct DownloadError {
   pub status_code: Option<StatusCode>,
-  pub error: AnyError,
+  pub error: JsErrorBox,
 }
 
 impl std::error::Error for DownloadError {
   fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-    Some(self.error.as_ref())
+    self.error.source()
   }
 }
 
@@ -53,18 +66,7 @@ impl std::fmt::Display for DownloadError {
 }
 
 #[async_trait::async_trait(?Send)]
-pub trait NpmCacheEnv: Send + Sync + 'static {
-  fn exists(&self, path: &Path) -> bool;
-  fn hard_link_dir_recursive(
-    &self,
-    from: &Path,
-    to: &Path,
-  ) -> Result<(), AnyError>;
-  fn atomic_write_file_with_retries(
-    &self,
-    file_path: &Path,
-    data: &[u8],
-  ) -> std::io::Result<()>;
+pub trait NpmCacheHttpClient: Send + Sync + 'static {
   async fn download_with_retries_on_any_tokio_runtime(
     &self,
     url: Url,
@@ -90,6 +92,27 @@ pub enum NpmCacheSetting {
 }
 
 impl NpmCacheSetting {
+  pub fn from_cache_setting(cache_setting: &CacheSetting) -> NpmCacheSetting {
+    match cache_setting {
+      CacheSetting::Only => NpmCacheSetting::Only,
+      CacheSetting::ReloadAll => NpmCacheSetting::ReloadAll,
+      CacheSetting::ReloadSome(values) => {
+        if values.iter().any(|v| v == "npm:") {
+          NpmCacheSetting::ReloadAll
+        } else {
+          NpmCacheSetting::ReloadSome {
+            npm_package_names: values
+              .iter()
+              .filter_map(|v| v.strip_prefix("npm:"))
+              .map(|n| n.to_string())
+              .collect(),
+          }
+        }
+      }
+      CacheSetting::RespectHeaders => panic!("not supported"),
+      CacheSetting::Use => NpmCacheSetting::Use,
+    }
+  }
   pub fn should_use_for_npm_package(&self, package_name: &str) -> bool {
     match self {
       NpmCacheSetting::ReloadAll => false,
@@ -103,27 +126,48 @@ impl NpmCacheSetting {
 
 /// Stores a single copy of npm packages in a cache.
 #[derive(Debug)]
-pub struct NpmCache<TEnv: NpmCacheEnv> {
-  env: Arc<TEnv>,
+pub struct NpmCache<
+  TSys: FsCreateDirAll
+    + FsHardLink
+    + FsMetadata
+    + FsOpen
+    + FsReadDir
+    + FsRemoveFile
+    + FsRename
+    + ThreadSleep
+    + SystemRandom,
+> {
   cache_dir: Arc<NpmCacheDir>,
+  sys: TSys,
   cache_setting: NpmCacheSetting,
   npmrc: Arc<ResolvedNpmRc>,
   previously_reloaded_packages: Mutex<HashSet<PackageNv>>,
 }
 
-impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
+impl<
+    TSys: FsCreateDirAll
+      + FsHardLink
+      + FsMetadata
+      + FsOpen
+      + FsReadDir
+      + FsRemoveFile
+      + FsRename
+      + ThreadSleep
+      + SystemRandom,
+  > NpmCache<TSys>
+{
   pub fn new(
     cache_dir: Arc<NpmCacheDir>,
+    sys: TSys,
     cache_setting: NpmCacheSetting,
-    env: Arc<TEnv>,
     npmrc: Arc<ResolvedNpmRc>,
   ) -> Self {
     Self {
       cache_dir,
+      sys,
       cache_setting,
-      env,
-      previously_reloaded_packages: Default::default(),
       npmrc,
+      previously_reloaded_packages: Default::default(),
     }
   }
 
@@ -159,7 +203,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   pub fn ensure_copy_package(
     &self,
     folder_id: &NpmPackageCacheFolderId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), WithFolderSyncLockError> {
     let registry_url = self.npmrc.get_registry_url(&folder_id.nv.name);
     assert_ne!(folder_id.copy_index, 0);
     let package_folder = self.cache_dir.package_folder_for_id(
@@ -188,9 +232,12 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
     // it seems Windows does an "AccessDenied" error when moving a
     // directory with hard links, so that's why this solution is done
     with_folder_sync_lock(&folder_id.nv, &package_folder, || {
-      self
-        .env
-        .hard_link_dir_recursive(&original_package_folder, &package_folder)
+      hard_link_dir_recursive(
+        &self.sys,
+        &original_package_folder,
+        &package_folder,
+      )
+      .map_err(JsErrorBox::from_err)
     })?;
     Ok(())
   }
@@ -238,7 +285,7 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
       .and_then(|cache_id| {
         Some(NpmPackageCacheFolderId {
           nv: PackageNv {
-            name: cache_id.name,
+            name: StackString::from_string(cache_id.name),
             version: Version::parse_from_npm(&cache_id.version).ok()?,
           },
           copy_index: cache_id.copy_index,
@@ -249,27 +296,32 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
   pub fn load_package_info(
     &self,
     name: &str,
-  ) -> Result<Option<NpmPackageInfo>, AnyError> {
+  ) -> Result<Option<NpmPackageInfo>, serde_json::Error> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
 
     let file_text = match std::fs::read_to_string(file_cache_path) {
       Ok(file_text) => file_text,
       Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-      Err(err) => return Err(err.into()),
+      Err(err) => return Err(serde_json::Error::io(err)),
     };
-    Ok(serde_json::from_str(&file_text)?)
+    serde_json::from_str(&file_text)
   }
 
   pub fn save_package_info(
     &self,
     name: &str,
     package_info: &NpmPackageInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), JsErrorBox> {
     let file_cache_path = self.get_registry_package_info_file_cache_path(name);
-    let file_text = serde_json::to_string(&package_info)?;
-    self
-      .env
-      .atomic_write_file_with_retries(&file_cache_path, file_text.as_bytes())?;
+    let file_text =
+      serde_json::to_string(&package_info).map_err(JsErrorBox::from_err)?;
+    atomic_write_file_with_retries(
+      &self.sys,
+      &file_cache_path,
+      file_text.as_bytes(),
+      0o644,
+    )
+    .map_err(JsErrorBox::from_err)?;
     Ok(())
   }
 
@@ -281,17 +333,52 @@ impl<TEnv: NpmCacheEnv> NpmCache<TEnv> {
 
 const NPM_PACKAGE_SYNC_LOCK_FILENAME: &str = ".deno_sync_lock";
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum WithFolderSyncLockError {
+  #[class(inherit)]
+  #[error("Error creating '{path}'")]
+  CreateDir {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error("Error creating package sync lock file at '{path}'. Maybe try manually deleting this folder.")]
+  CreateLockFile {
+    path: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
+  #[error(transparent)]
+  Action(#[from] JsErrorBox),
+  #[class(generic)]
+  #[error("Failed setting up package cache directory for {package}, then failed cleaning it up.\n\nOriginal error:\n\n{error}\n\nRemove error:\n\n{remove_error}\n\nPlease manually delete this folder or you will run into issues using this package in the future:\n\n{output_folder}")]
+  SetUpPackageCacheDir {
+    package: Box<PackageNv>,
+    error: Box<WithFolderSyncLockError>,
+    remove_error: std::io::Error,
+    output_folder: PathBuf,
+  },
+}
+
+// todo(dsherret): use `sys` here instead of `std::fs`.
 fn with_folder_sync_lock(
   package: &PackageNv,
   output_folder: &Path,
-  action: impl FnOnce() -> Result<(), AnyError>,
-) -> Result<(), AnyError> {
+  action: impl FnOnce() -> Result<(), JsErrorBox>,
+) -> Result<(), WithFolderSyncLockError> {
   fn inner(
     output_folder: &Path,
-    action: impl FnOnce() -> Result<(), AnyError>,
-  ) -> Result<(), AnyError> {
-    std::fs::create_dir_all(output_folder).with_context(|| {
-      format!("Error creating '{}'.", output_folder.display())
+    action: impl FnOnce() -> Result<(), JsErrorBox>,
+  ) -> Result<(), WithFolderSyncLockError> {
+    std::fs::create_dir_all(output_folder).map_err(|source| {
+      WithFolderSyncLockError::CreateDir {
+        path: output_folder.to_path_buf(),
+        source,
+      }
     })?;
 
     // This sync lock file is a way to ensure that partially created
@@ -315,16 +402,10 @@ fn with_folder_sync_lock(
         let _ignore = std::fs::remove_file(&sync_lock_path);
         Ok(())
       }
-      Err(err) => {
-        bail!(
-          concat!(
-            "Error creating package sync lock file at '{}'. ",
-            "Maybe try manually deleting this folder.\n\n{:#}",
-          ),
-          output_folder.display(),
-          err
-        );
-      }
+      Err(err) => Err(WithFolderSyncLockError::CreateLockFile {
+        path: output_folder.to_path_buf(),
+        source: err,
+      }),
     }
   }
 
@@ -333,19 +414,12 @@ fn with_folder_sync_lock(
     Err(err) => {
       if let Err(remove_err) = std::fs::remove_dir_all(output_folder) {
         if remove_err.kind() != std::io::ErrorKind::NotFound {
-          bail!(
-            concat!(
-              "Failed setting up package cache directory for {}, then ",
-              "failed cleaning it up.\n\nOriginal error:\n\n{}\n\n",
-              "Remove error:\n\n{}\n\nPlease manually ",
-              "delete this folder or you will run into issues using this ",
-              "package in the future:\n\n{}"
-            ),
-            package,
-            err,
-            remove_err,
-            output_folder.display(),
-          );
+          return Err(WithFolderSyncLockError::SetUpPackageCacheDir {
+            package: Box::new(package.clone()),
+            error: Box::new(err),
+            remove_error: remove_err,
+            output_folder: output_folder.to_path_buf(),
+          });
         }
       }
       Err(err)

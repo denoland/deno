@@ -1,8 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::env;
+use std::fmt::Write as _;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
 
 use deno_ast::MediaType;
-use deno_config::workspace::WorkspaceDirectory;
-use deno_config::workspace::WorkspaceDiscoverOptions;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
@@ -15,6 +25,9 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
+use deno_lib::args::get_root_cert_store;
+use deno_lib::args::CaData;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
@@ -26,16 +39,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use serde::Deserialize;
 use serde_json::from_value;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::env;
-use std::fmt::Write as _;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
@@ -91,23 +94,18 @@ use super::tsc::TsServer;
 use super::urls;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use crate::args::create_default_npmrc;
-use crate::args::get_root_cert_store;
-use crate::args::has_flag_env_var;
-use crate::args::CaData;
-use crate::args::CacheSetting;
-use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
 use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
+use crate::file_fetcher::CliFileFetcher;
 use crate::graph_util;
 use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
 use crate::lsp::urls::LspUrlKind;
+use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
 use crate::tools::upgrade::check_for_upgrades_for_lsp;
@@ -120,7 +118,7 @@ use crate::util::sync::AsyncFlag;
 struct LspRootCertStoreProvider(RootCertStore);
 
 impl RootCertStoreProvider for LspRootCertStoreProvider {
-  fn get_or_try_init(&self) -> Result<&RootCertStore, AnyError> {
+  fn get_or_try_init(&self) -> Result<&RootCertStore, deno_error::JsErrorBox> {
     Ok(&self.0)
   }
 }
@@ -252,7 +250,7 @@ impl LanguageServer {
     force_global_cache: bool,
   ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
-      cli_options: CliOptions,
+      factory: CliFactory,
       roots: Vec<ModuleSpecifier>,
       open_docs: Vec<Arc<Document>>,
     ) -> Result<(), AnyError> {
@@ -260,8 +258,6 @@ impl LanguageServer {
         .into_iter()
         .map(|d| (d.specifier().clone(), d))
         .collect::<HashMap<_, _>>();
-      let cli_options = Arc::new(cli_options);
-      let factory = CliFactory::from_cli_options(cli_options.clone());
       let module_graph_builder = factory.module_graph_builder().await?;
       let module_graph_creator = factory.module_graph_creator().await?;
       let mut inner_loader = module_graph_builder.create_graph_loader();
@@ -270,11 +266,16 @@ impl LanguageServer {
         open_docs: &open_docs,
       };
       let graph = module_graph_creator
-        .create_graph_with_loader(GraphKind::All, roots.clone(), &mut loader)
+        .create_graph_with_loader(
+          GraphKind::All,
+          roots.clone(),
+          &mut loader,
+          graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
       graph_util::graph_valid(
         &graph,
-        factory.fs(),
+        &CliSys::default(),
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
@@ -285,9 +286,11 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Some(lockfile) = cli_options.maybe_lockfile() {
-        if let Err(err) = &lockfile.write_if_changed() {
-          lsp_warn!("{:#}", err);
+      if let Ok(cli_options) = factory.cli_options() {
+        if let Some(lockfile) = cli_options.maybe_lockfile() {
+          if let Err(err) = &lockfile.write_if_changed() {
+            lsp_warn!("{:#}", err);
+          }
         }
       }
 
@@ -311,11 +314,11 @@ impl LanguageServer {
     match prepare_cache_result {
       Ok(result) => {
         // cache outside the lock
-        let cli_options = result.cli_options;
+        let cli_factory = result.cli_factory;
         let roots = result.roots;
         let open_docs = result.open_docs;
         let handle = spawn(async move {
-          create_graph_for_caching(cli_options, roots, open_docs).await
+          create_graph_for_caching(cli_factory, roots, open_docs).await
         });
 
         if let Err(err) = handle.await.unwrap() {
@@ -696,7 +699,7 @@ impl Inner {
 
     let version = format!(
       "{} ({}, {})",
-      crate::version::DENO_VERSION_INFO.deno,
+      DENO_VERSION_INFO.deno,
       env!("PROFILE"),
       env!("TARGET")
     );
@@ -953,15 +956,16 @@ impl Inner {
   }
 
   async fn refresh_config_tree(&mut self) {
-    let mut file_fetcher = FileFetcher::new(
+    let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
-      CacheSetting::RespectHeaders,
-      true,
       self.http_client_provider.clone(),
+      CliSys::default(),
       Default::default(),
       None,
+      true,
+      CacheSetting::RespectHeaders,
+      super::logging::lsp_log_level(),
     );
-    file_fetcher.set_download_log_level(super::logging::lsp_log_level());
     let file_fetcher = Arc::new(file_fetcher);
     self
       .config
@@ -1411,18 +1415,16 @@ impl Inner {
             // the file path is only used to determine what formatter should
             // be used to format the file, so give the filepath an extension
             // that matches what the user selected as the language
-            let file_path = document
+            let ext = document
               .maybe_language_id()
-              .and_then(|id| id.as_extension())
-              .map(|ext| file_path.with_extension(ext))
-              .unwrap_or(file_path);
+              .and_then(|id| id.as_extension().map(|s| s.to_string()));
             // it's not a js/ts file, so attempt to format its contents
             format_file(
               &file_path,
               document.content(),
               &fmt_options,
               &unstable_options,
-              None,
+              ext,
             )
           }
         };
@@ -1850,20 +1852,12 @@ impl Inner {
       }
 
       let changes = if code_action_data.fix_id == "fixMissingImport" {
-        fix_ts_import_changes(
-          &code_action_data.specifier,
-          maybe_asset_or_doc
-            .as_ref()
-            .and_then(|d| d.document())
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &combined_code_actions.changes,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+        fix_ts_import_changes(&combined_code_actions.changes, self).map_err(
+          |err| {
+            error!("Unable to remap changes: {:#}", err);
+            LspError::internal_error()
+          },
+        )?
       } else {
         combined_code_actions.changes
       };
@@ -1885,7 +1879,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let mut refactor_edit_info = self
+      let refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -1906,23 +1900,34 @@ impl Inner {
           )),
           asset_or_doc.scope().cloned(),
         )
-        .await?;
-      if kind_suffix == ".rewrite.function.returnType" {
-        refactor_edit_info.edits = fix_ts_import_changes(
-          &action_data.specifier,
-          asset_or_doc
-            .document()
-            .map(|d| d.resolution_mode())
-            .unwrap_or(ResolutionMode::Import),
-          &refactor_edit_info.edits,
-          self,
-        )
-        .map_err(|err| {
-          error!("Unable to remap changes: {:#}", err);
-          LspError::internal_error()
-        })?
+        .await;
+
+      match refactor_edit_info {
+        Ok(mut refactor_edit_info) => {
+          if kind_suffix == ".rewrite.function.returnType"
+            || kind_suffix == ".move.newFile"
+          {
+            refactor_edit_info.edits =
+              fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+                |err| {
+                  error!("Unable to remap changes: {:#}", err);
+                  LspError::internal_error()
+                },
+              )?
+          }
+          code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
+        }
+        Err(err) => {
+          // TODO(nayeemrmn): Investigate cause for
+          // https://github.com/denoland/deno/issues/27778. Prevent popups for
+          // this error for now.
+          if kind_suffix == ".move.newFile" {
+            lsp_warn!("{:#}", err);
+          } else {
+            return Err(err);
+          }
+        }
       }
-      code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -3482,7 +3487,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 }
 
 struct PrepareCacheResult {
-  cli_options: CliOptions,
+  cli_factory: CliFactory,
   roots: Vec<ModuleSpecifier>,
   open_docs: Vec<Arc<Document>>,
 }
@@ -3616,66 +3621,44 @@ impl Inner {
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
-    let workspace = match config_data {
-      Some(d) => d.member_dir.clone(),
-      None => Arc::new(WorkspaceDirectory::discover(
-        deno_config::workspace::WorkspaceDiscoverStart::Paths(&[
-          initial_cwd.clone()
-        ]),
-        &WorkspaceDiscoverOptions {
-          fs: Default::default(), // use real fs,
-          deno_json_cache: None,
-          pkg_json_cache: None,
-          workspace_cache: None,
-          config_parse_options:
-            deno_config::deno_json::ConfigParseOptions::default(),
-          additional_config_file_names: &[],
-          discover_pkg_json: !has_flag_env_var("DENO_NO_PACKAGE_JSON"),
-          maybe_vendor_override: if force_global_cache {
-            Some(deno_config::workspace::VendorEnablement::Disable)
-          } else {
-            None
-          },
-        },
-      )?),
-    };
-    let cli_options = CliOptions::new(
-      Arc::new(Flags {
-        internal: InternalFlags {
-          cache_path: Some(self.cache.deno_dir().root.clone()),
-          ..Default::default()
-        },
-        ca_stores: workspace_settings.certificate_stores.clone(),
-        ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
-        unsafely_ignore_certificate_errors: workspace_settings
-          .unsafely_ignore_certificate_errors
-          .clone(),
-        import_map_path: config_data.and_then(|d| {
-          d.import_map_from_settings
-            .as_ref()
-            .map(|url| url.to_string())
-        }),
-        // bit of a hack to force the lsp to cache the @types/node package
-        type_check_mode: crate::args::TypeCheckMode::Local,
-        permissions: crate::args::PermissionFlags {
-          // allow remote import permissions in the lsp for now
-          allow_import: Some(vec![]),
-          ..Default::default()
-        },
+    let mut cli_factory = CliFactory::from_flags(Arc::new(Flags {
+      internal: InternalFlags {
+        cache_path: Some(self.cache.deno_dir().root.clone()),
         ..Default::default()
+      },
+      ca_stores: workspace_settings.certificate_stores.clone(),
+      ca_data: workspace_settings.tls_certificate.clone().map(CaData::File),
+      unsafely_ignore_certificate_errors: workspace_settings
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      import_map_path: config_data.and_then(|d| {
+        d.import_map_from_settings
+          .as_ref()
+          .map(|url| url.to_string())
       }),
-      initial_cwd,
-      config_data.and_then(|d| d.lockfile.clone()),
-      config_data
-        .and_then(|d| d.npmrc.clone())
-        .unwrap_or_else(create_default_npmrc),
-      workspace,
-      force_global_cache,
-    )?;
+      // bit of a hack to force the lsp to cache the @types/node package
+      type_check_mode: crate::args::TypeCheckMode::Local,
+      permissions: crate::args::PermissionFlags {
+        // allow remote import permissions in the lsp for now
+        allow_import: Some(vec![]),
+        ..Default::default()
+      },
+      vendor: if force_global_cache {
+        Some(false)
+      } else {
+        None
+      },
+      no_lock: force_global_cache,
+      ..Default::default()
+    }));
+    cli_factory.set_initial_cwd(initial_cwd);
+    if let Some(d) = &config_data {
+      cli_factory.set_workspace_dir(d.member_dir.clone());
+    };
 
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(PrepareCacheResult {
-      cli_options,
+      cli_factory,
       open_docs,
       roots,
     })
@@ -3787,7 +3770,7 @@ impl Inner {
         for (name, command) in scripts {
           result.push(TaskDefinition {
             name: name.clone(),
-            command: command.clone(),
+            command: Some(command.clone()),
             source_uri: url_to_uri(&package_json.specifier())
               .map_err(|_| LspError::internal_error())?,
           });
@@ -3966,9 +3949,10 @@ impl Inner {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
 
   #[test]
   fn test_walk_workspace() {
@@ -4006,12 +3990,14 @@ mod tests {
     temp_dir.write("root1/target/main.ts", ""); // no, because there is a Cargo.toml in the root directory
 
     temp_dir.create_dir_all("root2/folder");
+    temp_dir.create_dir_all("root2/folder2/inner_folder");
     temp_dir.create_dir_all("root2/sub_folder");
     temp_dir.create_dir_all("root2/root2.1");
     temp_dir.write("root2/file1.ts", ""); // yes, enabled
     temp_dir.write("root2/file2.ts", ""); // no, not enabled
     temp_dir.write("root2/folder/main.ts", ""); // yes, enabled
     temp_dir.write("root2/folder/other.ts", ""); // no, disabled
+    temp_dir.write("root2/folder2/inner_folder/main.ts", ""); // yes, enabled (regression test for https://github.com/denoland/vscode_deno/issues/1239)
     temp_dir.write("root2/sub_folder/a.js", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/b.ts", ""); // no, not enabled
     temp_dir.write("root2/sub_folder/c.js", ""); // no, not enabled
@@ -4052,6 +4038,7 @@ mod tests {
             enable_paths: Some(vec![
               "file1.ts".to_string(),
               "folder".to_string(),
+              "folder2/inner_folder".to_string(),
             ]),
             disable_paths: vec!["folder/other.ts".to_string()],
             ..Default::default()
@@ -4102,6 +4089,10 @@ mod tests {
         temp_dir.url().join("root1/folder/mod.ts").unwrap(),
         temp_dir.url().join("root2/folder/main.ts").unwrap(),
         temp_dir.url().join("root2/root2.1/main.ts").unwrap(),
+        temp_dir
+          .url()
+          .join("root2/folder2/inner_folder/main.ts")
+          .unwrap(),
       ])
     );
   }

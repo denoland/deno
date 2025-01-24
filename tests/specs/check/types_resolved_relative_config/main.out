@@ -1,3 +1,4 @@
 [# It should be resolving relative the config in sub_dir instead of the cwd]
-error: Module not found "file:///[WILDLINE]/sub_dir/a.d.ts".
+Check file:///[WILDLINE]/main.ts
+error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/sub_dir/a.d.ts'.
     at file:///[WILDLINE]/sub_dir/deno.json:1:1

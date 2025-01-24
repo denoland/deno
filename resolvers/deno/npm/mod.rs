@@ -1,13 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::fmt::Debug;
+use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use boxed_error::Boxed;
+use deno_error::JsError;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
-use node_resolver::env::NodeResolverEnv;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::NodeResolveErrorKind;
 use node_resolver::errors::PackageFolderResolveErrorKind;
@@ -16,115 +16,312 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::InNpmPackageChecker;
+use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
 use node_resolver::NodeResolutionKind;
-use node_resolver::NodeResolver;
+use node_resolver::NodeResolverRc;
+use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
-use crate::fs::DenoResolverFs;
-
-pub use byonm::ByonmInNpmPackageChecker;
-pub use byonm::ByonmNpmResolver;
-pub use byonm::ByonmNpmResolverCreateOptions;
-pub use byonm::ByonmResolvePkgFolderFromDenoReqError;
-pub use local::normalize_pkg_name_for_node_modules_deno_folder;
+pub use self::byonm::ByonmInNpmPackageChecker;
+pub use self::byonm::ByonmNpmResolver;
+pub use self::byonm::ByonmNpmResolverCreateOptions;
+pub use self::byonm::ByonmNpmResolverRc;
+pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
+pub use self::local::get_package_folder_id_folder_name;
+pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+use self::managed::create_managed_in_npm_pkg_checker;
+use self::managed::ManagedInNpmPackageChecker;
+use self::managed::ManagedInNpmPkgCheckerCreateOptions;
+pub use self::managed::ManagedNpmResolver;
+use self::managed::ManagedNpmResolverCreateOptions;
+pub use self::managed::ManagedNpmResolverRc;
+use crate::sync::new_rc;
+use crate::sync::MaybeSend;
+use crate::sync::MaybeSync;
 
 mod byonm;
 mod local;
+pub mod managed;
 
-#[derive(Debug, Error)]
+#[derive(Debug)]
+pub enum CreateInNpmPkgCheckerOptions<'a> {
+  Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
+  Byonm,
+}
+
+#[derive(Debug, Clone)]
+pub enum DenoInNpmPackageChecker {
+  Managed(ManagedInNpmPackageChecker),
+  Byonm(ByonmInNpmPackageChecker),
+}
+
+impl DenoInNpmPackageChecker {
+  pub fn new(options: CreateInNpmPkgCheckerOptions) -> Self {
+    match options {
+      CreateInNpmPkgCheckerOptions::Managed(options) => {
+        DenoInNpmPackageChecker::Managed(create_managed_in_npm_pkg_checker(
+          options,
+        ))
+      }
+      CreateInNpmPkgCheckerOptions::Byonm => {
+        DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker)
+      }
+    }
+  }
+}
+
+impl InNpmPackageChecker for DenoInNpmPackageChecker {
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    match self {
+      DenoInNpmPackageChecker::Managed(c) => c.in_npm_package(specifier),
+      DenoInNpmPackageChecker::Byonm(c) => c.in_npm_package(specifier),
+    }
+  }
+}
+
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not resolve \"{}\", but found it in a package.json. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", specifier)]
 pub struct NodeModulesOutOfDateError {
   pub specifier: String,
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(generic)]
 #[error("Could not find '{}'. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", package_json_path.display())]
 pub struct MissingPackageNodeModulesFolderError {
   pub package_json_path: PathBuf,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveIfForNpmPackageError(
   pub Box<ResolveIfForNpmPackageErrorKind>,
 );
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveIfForNpmPackageErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   NodeResolve(#[from] NodeResolveError),
+  #[class(inherit)]
   #[error(transparent)]
   NodeModulesOutOfDate(#[from] NodeModulesOutOfDateError),
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct ResolveReqWithSubPathError(pub Box<ResolveReqWithSubPathErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolveReqWithSubPathErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
   MissingPackageNodeModulesFolder(#[from] MissingPackageNodeModulesFolderError),
+  #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum ResolvePkgFolderFromDenoReqError {
-  // todo(dsherret): don't use anyhow here
+  #[class(inherit)]
   #[error(transparent)]
-  Managed(anyhow::Error),
+  Managed(managed::ManagedResolvePkgFolderFromDenoReqError),
+  #[class(inherit)]
   #[error(transparent)]
-  Byonm(#[from] ByonmResolvePkgFolderFromDenoReqError),
+  Byonm(byonm::ByonmResolvePkgFolderFromDenoReqError),
 }
 
-// todo(dsherret): a temporary trait until we extract
-// out the CLI npm resolver into here
-pub trait CliNpmReqResolver: Debug + Send + Sync {
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
-}
-
-pub struct NpmReqResolverOptions<
-  Fs: DenoResolverFs,
-  TNodeResolverEnv: NodeResolverEnv,
+pub enum NpmResolverCreateOptions<
+  TSys: FsRead
+    + FsCanonicalize
+    + FsMetadata
+    + std::fmt::Debug
+    + MaybeSend
+    + MaybeSync
+    + Clone
+    + 'static,
 > {
+  Managed(ManagedNpmResolverCreateOptions<TSys>),
+  Byonm(ByonmNpmResolverCreateOptions<TSys>),
+}
+
+#[derive(Debug, Clone)]
+pub enum NpmResolver<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> {
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
   /// uses what already exists on the file system.
-  pub byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
-  pub fs: Fs,
-  pub in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  pub node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  pub npm_req_resolver: Arc<dyn CliNpmReqResolver>,
+  Byonm(ByonmNpmResolverRc<TSys>),
+  Managed(ManagedNpmResolverRc<TSys>),
 }
+
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> NpmResolver<TSys> {
+  pub fn new<
+    TCreateSys: FsCanonicalize
+      + FsMetadata
+      + FsRead
+      + FsReadDir
+      + std::fmt::Debug
+      + MaybeSend
+      + MaybeSync
+      + Clone
+      + 'static,
+  >(
+    options: NpmResolverCreateOptions<TCreateSys>,
+  ) -> NpmResolver<TCreateSys> {
+    match options {
+      NpmResolverCreateOptions::Managed(options) => {
+        NpmResolver::Managed(new_rc(ManagedNpmResolver::<TCreateSys>::new::<
+          TCreateSys,
+        >(options)))
+      }
+      NpmResolverCreateOptions::Byonm(options) => {
+        NpmResolver::Byonm(new_rc(ByonmNpmResolver::new(options)))
+      }
+    }
+  }
+
+  pub fn is_byonm(&self) -> bool {
+    matches!(self, NpmResolver::Byonm(_))
+  }
+
+  pub fn is_managed(&self) -> bool {
+    matches!(self, NpmResolver::Managed(_))
+  }
+
+  pub fn as_managed(&self) -> Option<&ManagedNpmResolver<TSys>> {
+    match self {
+      NpmResolver::Managed(resolver) => Some(resolver),
+      NpmResolver::Byonm(_) => None,
+    }
+  }
+
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
+    match self {
+      NpmResolver::Byonm(resolver) => resolver.root_node_modules_path(),
+      NpmResolver::Managed(resolver) => resolver.root_node_modules_path(),
+    }
+  }
+
+  pub fn resolve_pkg_folder_from_deno_module_req(
+    &self,
+    req: &PackageReq,
+    referrer: &Url,
+  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => byonm_resolver
+        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .map_err(ResolvePkgFolderFromDenoReqError::Byonm),
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_pkg_folder_from_deno_module_req(req, referrer)
+        .map_err(ResolvePkgFolderFromDenoReqError::Managed),
+    }
+  }
+}
+
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  NpmPackageFolderResolver for NpmResolver<TSys>
+{
+  fn resolve_package_folder_from_package(
+    &self,
+    specifier: &str,
+    referrer: &Url,
+  ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
+    match self {
+      NpmResolver::Byonm(byonm_resolver) => {
+        byonm_resolver.resolve_package_folder_from_package(specifier, referrer)
+      }
+      NpmResolver::Managed(managed_resolver) => managed_resolver
+        .resolve_package_folder_from_package(specifier, referrer),
+    }
+  }
+}
+
+pub struct NpmReqResolverOptions<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+> {
+  pub in_npm_pkg_checker: TInNpmPackageChecker,
+  pub node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  pub npm_resolver: NpmResolver<TSys>,
+  pub sys: TSys,
+}
+
+#[allow(clippy::disallowed_types)]
+pub type NpmReqResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  NpmReqResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
 
 #[derive(Debug)]
-pub struct NpmReqResolver<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
-{
-  byonm_resolver: Option<Arc<ByonmNpmResolver<Fs, TNodeResolverEnv>>>,
-  fs: Fs,
-  in_npm_pkg_checker: Arc<dyn InNpmPackageChecker>,
-  node_resolver: Arc<NodeResolver<TNodeResolverEnv>>,
-  npm_resolver: Arc<dyn CliNpmReqResolver>,
+pub struct NpmReqResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+> {
+  sys: TSys,
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  npm_resolver: NpmResolver<TSys>,
 }
 
-impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
-  NpmReqResolver<Fs, TNodeResolverEnv>
+impl<
+    TInNpmPackageChecker: InNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
+    TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
+  >
+  NpmReqResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
 {
-  pub fn new(options: NpmReqResolverOptions<Fs, TNodeResolverEnv>) -> Self {
+  pub fn new(
+    options: NpmReqResolverOptions<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  ) -> Self {
     Self {
-      byonm_resolver: options.byonm_resolver,
-      fs: options.fs,
+      sys: options.sys,
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_resolver: options.node_resolver,
-      npm_resolver: options.npm_req_resolver,
+      npm_resolver: options.npm_resolver,
     }
   }
 
@@ -166,9 +363,9 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if self.byonm_resolver.is_some() {
+        if matches!(self.npm_resolver, NpmResolver::Byonm(_)) {
           let package_json_path = package_folder.join("package.json");
-          if !self.fs.exists_sync(&package_json_path) {
+          if !self.sys.fs_exists_no_err(&package_json_path) {
             return Err(
               MissingPackageNodeModulesFolderError { package_json_path }.into(),
             );
@@ -234,7 +431,9 @@ impl<Fs: DenoResolverFs, TNodeResolverEnv: NodeResolverEnv>
                         .into_box(),
                       );
                     }
-                    if let Some(byonm_npm_resolver) = &self.byonm_resolver {
+                    if let NpmResolver::Byonm(byonm_npm_resolver) =
+                      &self.npm_resolver
+                    {
                       if byonm_npm_resolver
                         .find_ancestor_package_json_with_dep(
                           package_name,

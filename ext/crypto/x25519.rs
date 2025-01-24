@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use curve25519_dalek::montgomery::MontgomeryPoint;
 use deno_core::op2;
@@ -11,10 +11,12 @@ use spki::der::asn1::BitString;
 use spki::der::Decode;
 use spki::der::Encode;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum X25519Error {
+  #[class("DOMExceptionOperationError")]
   #[error("Failed to export key")]
   FailedExport,
+  #[class(generic)]
   #[error(transparent)]
   Der(#[from] spki::der::Error),
 }

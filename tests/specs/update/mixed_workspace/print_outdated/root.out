@@ -3,3 +3,6 @@
 ├────────────────────────┼─────────┼────────┼────────┤
 │ jsr:@denotest/subtract │ 0.2.0   │ 0.2.0  │ 1.0.0  │
 └────────────────────────┴─────────┴────────┴────────┘
+
+Run deno outdated --update --latest to update to the latest available versions,
+or deno outdated --help for more information.
