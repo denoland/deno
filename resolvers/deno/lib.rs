@@ -13,7 +13,6 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -43,15 +42,14 @@ use thiserror::Error;
 use url::Url;
 
 pub mod cjs;
+pub mod factory;
 pub mod npm;
+pub mod npmrc;
 pub mod sloppy_imports;
 mod sync;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
-
-#[allow(clippy::disallowed_types)]
-pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
 
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
@@ -147,6 +145,33 @@ pub struct DenoResolverOptions<
   pub is_byonm: bool,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
+
+#[allow(clippy::disallowed_types)]
+pub type DenoResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSloppyImportResolverFs,
+  TSys,
+> = crate::sync::MaybeArc<
+  DenoResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSloppyImportResolverFs,
+    TSys,
+  >,
+>;
+
+/// Helper type for a DenoResolverRc that has the implementations
+/// used by the Deno CLI.
+pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+  npm::DenoInNpmPackageChecker,
+  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  npm::NpmResolver<TSys>,
+  sloppy_imports::SloppyImportsCachedFs<TSys>,
+  TSys,
+>;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.

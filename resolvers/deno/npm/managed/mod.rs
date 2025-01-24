@@ -28,8 +28,8 @@ use self::global::GlobalNpmPackageResolver;
 use self::local::LocalNpmPackageResolver;
 pub use self::resolution::NpmResolutionCell;
 pub use self::resolution::NpmResolutionCellRc;
+use crate::npmrc::ResolvedNpmRcRc;
 use crate::NpmCacheDirRc;
-use crate::ResolvedNpmRcRc;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolvePkgFolderFromDenoModuleError {
@@ -268,6 +268,7 @@ impl InNpmPackageChecker for ManagedInNpmPackageChecker {
   }
 }
 
+#[derive(Debug)]
 pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
   pub root_cache_dir_url: &'a Url,
   pub maybe_node_modules_path: Option<&'a Path>,
