@@ -115,7 +115,6 @@ const SUGGESTED_SIZE = 64 * 1024;
 export class LibuvStreamWrap extends HandleWrap {
   [kStreamBaseField]?: Reader & Writer & Closer & Ref;
 
-  reading!: boolean;
   #reading = false;
   destroyed = false;
   writeQueueSize = 0;
@@ -146,12 +145,26 @@ export class LibuvStreamWrap extends HandleWrap {
     return 0;
   }
 
+  get reading() {
+    return this.#reading;
+  }
+
+  set reading(value) {
+    // no-op
+  }
+
   /**
    * Stop the reading of the stream.
    * @return An error status code.
    */
   readStop(): number {
     this.#reading = false;
+
+    // Unref any reads that are pending until this point.
+    if (this.unref) {
+      this.unref();
+      this.ref();
+    }
 
     return 0;
   }
