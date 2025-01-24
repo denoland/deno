@@ -415,22 +415,21 @@ impl DOMQuadInner {
 
   #[cppgc]
   pub fn get_bounds(&self, scope: &mut v8::HandleScope) -> DOMRectInner {
-    let p1 = self.p1.get(scope, |_| unreachable!());
-    let p2 = self.p2.get(scope, |_| unreachable!());
-    let p3 = self.p3.get(scope, |_| unreachable!());
-    let p4 = self.p4.get(scope, |_| unreachable!());
-    let p1 = v8::Local::new(scope, p1);
-    let p2 = v8::Local::new(scope, p2);
-    let p3 = v8::Local::new(scope, p3);
-    let p4 = v8::Local::new(scope, p4);
-    let p1 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p1.cast())
-      .unwrap();
-    let p2 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p2.cast())
-      .unwrap();
-    let p3 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p3.cast())
-      .unwrap();
-    let p4 = cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, p4.cast())
-      .unwrap();
+    #[inline]
+    fn get_ptr(
+      scope: &mut v8::HandleScope,
+      value: &SameObject<DOMPointInner>,
+    ) -> cppgc::Ptr<DOMPointInner> {
+      let value = value.get(scope, |_| unreachable!());
+      let value = v8::Local::new(scope, value);
+      cppgc::try_unwrap_cppgc_object::<DOMPointInner>(scope, value.cast())
+        .unwrap()
+    }
+
+    let p1 = get_ptr(scope, &self.p1);
+    let p2 = get_ptr(scope, &self.p2);
+    let p3 = get_ptr(scope, &self.p3);
+    let p4 = get_ptr(scope, &self.p4);
     let p1 = *p1.inner.borrow();
     let p2 = *p2.inner.borrow();
     let p3 = *p3.inner.borrow();
