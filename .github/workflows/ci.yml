@@ -435,7 +435,7 @@ jobs:
           github.repository == 'denoland/deno'))
         run:
           - dsymutil target/release/deno
-          - strip -s target/release/deno
+          - strip target/release/deno
       - name: Check deno binary
         if: '!(matrix.skip) && (matrix.job == ''test'')'
         run: 'target/${{ matrix.profile }}/deno eval "console.log(1+2)" | grep 3'

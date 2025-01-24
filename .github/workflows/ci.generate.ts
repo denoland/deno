@@ -744,7 +744,7 @@ const ci = {
           ].join("\n"),
           run: [
             "dsymutil target/release/deno",
-            "strip -s target/release/deno",
+            "strip target/release/deno",
           ],
         },
         {
