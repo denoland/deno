@@ -356,7 +356,7 @@ fn download_debug_info(url: &str) -> Result<(), AnyError> {
   let mut data = Vec::new();
   reader.read_to_end(&mut data)?;
 
-  crate::util::archive::unpack_dir_into_dir(debug_file_name, dest, &data)?;
+  crate::util::archive::unpack_zip_into_dir(debug_file_name, dest, &data)?;
   Ok(())
 }
 

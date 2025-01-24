@@ -555,7 +555,7 @@ pub async fn upgrade(
   );
 
   let temp_dir = tempfile::TempDir::new()?;
-  let new_exe_path = archive::unpack_into_dir(archive::UnpackArgs {
+  let new_exe_path = archive::unpack_binary_into_dir(archive::UnpackArgs {
     exe_name: "deno",
     archive_name: &ARCHIVE_NAME,
     archive_data: &archive_data,

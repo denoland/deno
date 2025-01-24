@@ -79,7 +79,7 @@ pub struct UnpackArgs<'a> {
   pub dest_path: &'a Path,
 }
 
-pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
+pub fn unpack_binary_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   let UnpackArgs {
     exe_name,
     archive_name,
@@ -90,7 +90,6 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   let exe_ext = if is_windows { "exe" } else { "" };
   let archive_path = dest_path.join(exe_name).with_extension("zip");
   let exe_path = dest_path.join(exe_name).with_extension(exe_ext);
-  dbg!(&exe_path);
   assert!(!exe_path.exists());
 
   let archive_ext = Path::new(archive_name)
@@ -118,7 +117,7 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   Ok(exe_path)
 }
 
-pub fn unpack_dir_into_dir(
+pub fn unpack_zip_into_dir(
   out_name: &str,
   dest_path: &Path,
   archive_data: &[u8],
@@ -130,11 +129,14 @@ pub fn unpack_dir_into_dir(
       .unwrap_or_else(|| "zip".to_string()),
   );
 
-  unzip(
+  if let Err(e) = unzip(
     archive_path.file_name().unwrap().to_str().unwrap(),
     archive_data,
     dest_path,
-  )?;
+  ) {
+    log::warn!("unpacking via zip crate failed: {e}");
+    unzip_with_shell(&archive_path, archive_data, dest_path)?;
+  }
 
   Ok(())
 }
