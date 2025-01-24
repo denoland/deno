@@ -1166,7 +1166,7 @@ function _emitCloseNT(s: Socket | Server) {
 
 // The packages that need socket initialization workaround
 const pkgsNeedsSockInitWorkaround = [
-  "node:http",
+  "node:http:",
   "@npmcli/agent",
   "npm-check-updates",
   "playwright-core",
