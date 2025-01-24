@@ -13,6 +13,7 @@ use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::unsync::sync::AtomicFlag;
 use deno_core::url::Url;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
@@ -117,18 +118,30 @@ fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
   }
 }
 
-fn check_warn_tsconfig(ts_config: &TsConfigWithIgnoredOptions) {
+fn check_warn_tsconfig(
+  ts_config: &TsConfigWithIgnoredOptions,
+  logged_warnings: &LoggedWarnings,
+) {
   for ignored_options in &ts_config.ignored_options {
-    log::warn!("{}", ignored_options);
+    if ignored_options
+      .maybe_specifier
+      .as_ref()
+      .map(|s| logged_warnings.folders.insert(s.clone()))
+      .unwrap_or(true)
+    {
+      log::warn!("{}", ignored_options);
+    }
   }
   let serde_json::Value::Object(obj) = &ts_config.ts_config.0 else {
     return;
   };
-  if obj.get("experimentalDecorators") == Some(&serde_json::Value::Bool(true)) {
+  if obj.get("experimentalDecorators") == Some(&serde_json::Value::Bool(true))
+    && logged_warnings.experimental_decorators.raise()
+  {
     log::warn!(
-      "{} experimentalDecorators compiler option is deprecated and may be removed at any time",
-      deno_runtime::colors::yellow("Warning"),
-    );
+        "{} experimentalDecorators compiler option is deprecated and may be removed at any time",
+        deno_runtime::colors::yellow("Warning"),
+      );
   }
 }
 
@@ -138,6 +151,12 @@ pub struct TranspileAndEmitOptions {
   pub emit: deno_ast::EmitOptions,
   // stored ahead of time so we don't have to recompute this a lot
   pub pre_computed_hash: u64,
+}
+
+#[derive(Debug, Default)]
+struct LoggedWarnings {
+  experimental_decorators: AtomicFlag,
+  folders: dashmap::DashSet<Url>,
 }
 
 #[derive(Default, Debug)]
@@ -151,6 +170,7 @@ struct MemoizedValues {
 #[derive(Debug)]
 pub struct TsConfigFolderInfo {
   pub dir: WorkspaceDirectory,
+  logged_warnings: Arc<LoggedWarnings>,
   memoized: MemoizedValues,
 }
 
@@ -168,7 +188,7 @@ impl TsConfigFolderInfo {
       let tsconfig_result = self
         .dir
         .to_resolved_ts_config(TsConfigType::Check { lib })?;
-      check_warn_tsconfig(&tsconfig_result);
+      check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
       Ok(Arc::new(tsconfig_result.ts_config))
     })
   }
@@ -179,7 +199,7 @@ impl TsConfigFolderInfo {
     self.memoized.emit_tsconfig.get_or_try_init(|| {
       let tsconfig_result =
         self.dir.to_resolved_ts_config(TsConfigType::Emit)?;
-      check_warn_tsconfig(&tsconfig_result);
+      check_warn_tsconfig(&tsconfig_result, &self.logged_warnings);
       Ok(Arc::new(tsconfig_result.ts_config))
     })
   }
@@ -217,8 +237,10 @@ impl TsConfigResolver {
   pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
     // separate the workspace into directories that have a tsconfig
     let root_dir = workspace.resolve_member_dir(workspace.root_dir());
+    let logged_warnings = Arc::new(LoggedWarnings::default());
     let mut map = FolderScopedMap::new(TsConfigFolderInfo {
       dir: root_dir,
+      logged_warnings: logged_warnings.clone(),
       memoized: Default::default(),
     });
     for (url, folder) in workspace.config_folders() {
@@ -233,6 +255,7 @@ impl TsConfigResolver {
           url.clone(),
           TsConfigFolderInfo {
             dir,
+            logged_warnings: logged_warnings.clone(),
             memoized: Default::default(),
           },
         );
