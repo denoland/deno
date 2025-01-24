@@ -170,7 +170,7 @@ tracing = { version = "0.1", features = ["log", "default"] }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
-walkdir = "=2.3.2"
+walkdir.workspace = true
 which.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
