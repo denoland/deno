@@ -653,6 +653,9 @@ impl CliFactory {
               .clone(),
           })),
           unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          package_json_cache: Some(Arc::new(
+            node_resolver::PackageJsonThreadLocalCache,
+          )),
           package_json_dep_resolution: match &self.flags.subcommand {
             DenoSubcommand::Publish(_) => {
               // the node_modules directory is not published to jsr, so resolve
