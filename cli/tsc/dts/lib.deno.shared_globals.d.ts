@@ -11,6 +11,7 @@
 /// <reference lib="deno.webgpu" />
 /// <reference lib="deno.canvas" />
 /// <reference lib="deno.fetch" />
+/// <reference lib="deno.geometry" />
 /// <reference lib="deno.websocket" />
 /// <reference lib="deno.crypto" />
 /// <reference lib="deno.ns" />
