@@ -22,7 +22,6 @@ import {
   getAssets,
   host,
   setLogDebug,
-  SOURCE_FILE_CACHE,
 } from "./97_ts_host.js";
 import { serverMainLoop } from "./98_lsp.js";
 
@@ -38,16 +37,6 @@ const ops = core.ops;
 // See: https://github.com/denoland/deno/issues/9277#issuecomment-769653834
 /** @type {Map<string, string>} */
 const normalizedToOriginalMap = new Map();
-
-const SNAPSHOT_COMPILE_OPTIONS = {
-  esModuleInterop: true,
-  jsx: ts.JsxEmit.React,
-  module: ts.ModuleKind.ESNext,
-  noEmit: true,
-  strict: true,
-  target: ts.ScriptTarget.ESNext,
-  lib: ["lib.deno.window.d.ts"],
-};
 
 /** @type {Array<[string, number]>} */
 const stats = [];
@@ -245,22 +234,6 @@ globalThis.snapshot = function (libs) {
     );
   }
 };
-
-// this helps ensure as much as possible is in memory that is re-usable
-// before the snapshotting is done, which helps unsure fast "startup" for
-// subsequent uses of tsc in Deno.
-// const TS_SNAPSHOT_PROGRAM = ts.createProgram({
-//   rootNames: [buildSpecifier],
-//   options: SNAPSHOT_COMPILE_OPTIONS,
-//   host,
-// });
-// assert(
-//   ts.getPreEmitDiagnostics(TS_SNAPSHOT_PROGRAM).length === 0,
-//   "lib.d.ts files have errors",
-// );
-
-// remove this now that we don't need it anymore for warming up tsc
-// SOURCE_FILE_CACHE.delete(buildSpecifier);
 
 // exposes the functions that are called by `tsc::exec()` when type
 // checking TypeScript.

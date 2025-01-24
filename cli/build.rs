@@ -20,45 +20,6 @@ mod ts {
 
   use super::*;
 
-  // #[derive(Debug, Serialize)]
-  // #[serde(rename_all = "camelCase")]
-  // struct BuildInfoResponse {
-  //   build_specifier: String,
-  //   libs: Vec<String>,
-  // }
-
-  // #[op2]
-  // #[serde]
-  // fn op_build_info(state: &mut OpState) -> BuildInfoResponse {
-  //   eprintln!("op_build_info");
-  //   let build_specifier = "asset:///bootstrap.ts".to_string();
-  //   let build_libs = state
-  //     .borrow::<Vec<&str>>()
-  //     .iter()
-  //     .map(|s| s.to_string())
-  //     .collect();
-  //   BuildInfoResponse {
-  //     build_specifier,
-  //     libs: build_libs,
-  //   }
-  // }
-
-  // #[op2(fast)]
-  // fn op_is_node_file() -> bool {
-  //   eprintln!("op_is_node_file");
-  //   false
-  // }
-
-  // #[op2]
-  // #[string]
-  // fn op_script_version(
-  //   _state: &mut OpState,
-  //   #[string] _arg: &str,
-  // ) -> Result<Option<String>, JsErrorBox> {
-  //   eprintln!("op_script_version");
-  //   Ok(Some("1".to_string()))
-  // }
-
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
   struct LoadResponse {
@@ -75,22 +36,9 @@ mod ts {
     state: &mut OpState,
     #[string] load_specifier: &str,
   ) -> Result<LoadResponse, JsErrorBox> {
-    eprintln!("op_load {}", load_specifier);
-    //
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
-    // let build_specifier = "asset:///bootstrap.ts";
-
-    // we need a basic file to send to tsc to warm it up.
-    // if load_specifier == build_specifier {
-    //   return Ok(LoadResponse {
-    //     data: r#"Deno.writeTextFile("hello.txt", "hello deno!");"#.to_string(),
-    //     version: "1".to_string(),
-    //     // this corresponds to `ts.ScriptKind.TypeScript`
-    //     script_kind: 3,
-    //   });
-    // }
 
     // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
     // parse out just the name so we can lookup the asset.
@@ -108,32 +56,24 @@ mod ts {
         };
         let data =
           std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
-        Ok(LoadResponse {
+        return Ok(LoadResponse {
           data,
           version: "1".to_string(),
           // this corresponds to `ts.ScriptKind.TypeScript`
           script_kind: 3,
-        })
-      } else {
-        Err(JsErrorBox::new(
-          "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", load_specifier),
-        ))
+        });
       }
-    } else {
-      Err(JsErrorBox::new(
-        "InvalidSpecifier",
-        format!("An invalid specifier was requested: {}", load_specifier),
-      ))
     }
+
+    Err(JsErrorBox::new(
+      "InvalidSpecifier",
+      format!("An invalid specifier was requested: {}", load_specifier),
+    ))
   }
 
   deno_core::extension!(deno_tsc,
     ops = [
-      // op_build_info,
-      // op_is_node_file,
       op_load,
-      // op_script_version
     ],
     esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
     esm = [
@@ -290,7 +230,28 @@ mod ts {
     )
     .unwrap();
 
+    // Leak to satisfy type-checker. It's okay since it's only run once for a build script.
     let build_libs_ = Box::leak(Box::new(build_libs.clone()));
+    let runtime_cb = Box::new(|rt: &mut deno_core::JsRuntimeForSnapshot| {
+      let scope = &mut rt.handle_scope();
+
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+
+      let name = v8::String::new(scope, "snapshot").unwrap();
+      let snapshot_fn_val = global.get(scope, name.into()).unwrap();
+      let snapshot_fn: v8::Local<v8::Function> =
+        snapshot_fn_val.try_into().unwrap();
+      let undefined = v8::undefined(scope);
+      let build_libs = build_libs_.clone();
+      let build_libs_v8 =
+        deno_core::serde_v8::to_v8(scope, build_libs).unwrap();
+
+      snapshot_fn
+        .call(scope, undefined.into(), &[build_libs_v8])
+        .unwrap();
+    });
+
     let output = create_snapshot(
       CreateSnapshotOptions {
         cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -301,25 +262,7 @@ mod ts {
           path_dts,
         )],
         extension_transpiler: None,
-        with_runtime_cb: Some(Box::new(|rt| {
-          let scope = &mut rt.handle_scope();
-
-          let context = scope.get_current_context();
-          let global = context.global(scope);
-
-          let name = v8::String::new(scope, "snapshot").unwrap();
-          let snapshot_fn_val = global.get(scope, name.into()).unwrap();
-          let snapshot_fn: v8::Local<v8::Function> =
-            snapshot_fn_val.try_into().unwrap();
-          let undefined = v8::undefined(scope);
-          let build_libs = build_libs_.clone();
-          let build_libs_v8 =
-            deno_core::serde_v8::to_v8(scope, build_libs).unwrap();
-
-          snapshot_fn
-            .call(scope, undefined.into(), &[build_libs_v8])
-            .unwrap();
-        })),
+        with_runtime_cb: Some(runtime_cb),
         skip_op_registration: false,
       },
       None,
