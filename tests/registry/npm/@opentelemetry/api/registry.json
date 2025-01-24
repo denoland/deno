@@ -1,96 +1,121 @@
 {
-  "_id": "@opentelemetry/api",
-  "_rev": "85-64e171afc119bdc7344f39430efa3542",
   "name": "@opentelemetry/api",
   "description": "Public API for OpenTelemetry",
   "dist-tags": {
-    "canary": "0.17.1-alpha.21",
-    "rc": "1.0.0-rc.1",
-    "next": "1.3.0",
     "latest": "1.9.0"
   },
-  "versions": {},
-  "time": {
-    "created": "2020-02-05T23:02:44.976Z",
-    "modified": "2024-06-05T17:15:25.222Z",
-    "0.4.0": "2020-02-05T23:02:45.340Z",
-    "0.5.0": "2020-03-16T22:02:14.091Z",
-    "0.5.1": "2020-03-20T00:42:45.891Z",
-    "0.5.2": "2020-03-27T18:03:53.660Z",
-    "0.6.0": "2020-04-02T17:24:58.636Z",
-    "0.6.1": "2020-04-08T18:37:25.733Z",
-    "0.7.0": "2020-04-24T18:13:59.797Z",
-    "0.8.0": "2020-05-12T16:35:56.062Z",
-    "0.8.1": "2020-05-18T19:37:27.242Z",
-    "0.8.2": "2020-05-21T19:29:48.190Z",
-    "0.8.3": "2020-05-28T20:19:26.388Z",
-    "0.9.0": "2020-06-18T21:22:44.283Z",
-    "0.10.0": "2020-07-27T20:59:01.199Z",
-    "0.10.1": "2020-07-28T15:12:26.157Z",
-    "0.10.2": "2020-08-03T23:25:31.312Z",
-    "0.10.3-canary.0": "2020-08-07T16:47:12.678Z",
-    "0.10.3-alpha.34": "2020-08-24T16:44:18.427Z",
-    "0.10.3-alpha.35": "2020-08-24T22:45:12.368Z",
-    "0.10.3-alpha.41": "2020-08-27T16:08:29.919Z",
-    "0.11.1-alpha.48": "2020-09-01T19:24:08.534Z",
-    "0.11.0": "2020-09-01T19:32:13.111Z",
-    "0.11.1-alpha.15": "2020-09-21T03:29:48.431Z",
-    "0.11.1-alpha.35": "2020-09-30T12:22:02.007Z",
-    "0.11.1-alpha.36": "2020-09-30T12:38:30.482Z",
-    "0.11.1-alpha.44": "2020-10-07T19:54:51.348Z",
-    "0.11.1-alpha.53": "2020-10-19T11:48:00.073Z",
-    "0.12.1-alpha.54": "2020-10-19T12:49:47.053Z",
-    "0.12.0": "2020-10-19T12:53:38.822Z",
-    "0.12.1-alpha.7": "2020-10-26T21:11:54.261Z",
-    "0.13.0": "2020-12-04T21:26:13.852Z",
-    "0.14.0": "2020-12-17T20:52:45.526Z",
-    "0.15.0": "2021-01-21T22:19:53.305Z",
-    "0.16.0": "2021-02-01T22:33:16.096Z",
-    "0.16.1-alpha.11": "2021-02-08T16:17:43.097Z",
-    "0.16.1-alpha.14": "2021-02-10T16:05:46.188Z",
-    "0.16.1-alpha.15": "2021-02-10T22:17:54.101Z",
-    "0.16.1-alpha.20": "2021-02-17T20:51:41.455Z",
-    "0.17.0": "2021-02-17T21:15:57.208Z",
-    "0.17.1-alpha.21": "2021-02-17T21:16:33.009Z",
-    "0.18.0": "2021-02-26T20:57:03.958Z",
-    "0.18.1": "2021-03-05T20:35:52.779Z",
-    "1.0.0-rc.0": "2021-03-12T17:13:29.772Z",
-    "1.0.0-rc.1": "2021-05-18T19:04:51.277Z",
-    "1.0.0-rc.2": "2021-05-19T12:17:49.656Z",
-    "1.0.0-rc.3": "2021-05-19T13:39:19.389Z",
-    "0.19.0": "2021-05-19T14:11:20.752Z",
-    "0.20.0": "2021-05-24T12:04:37.904Z",
-    "0.21.0": "2021-06-04T17:11:07.532Z",
-    "1.0.0": "2021-06-10T15:52:40.045Z",
-    "1.0.1": "2021-06-25T20:39:59.941Z",
-    "1.0.2": "2021-07-29T12:41:03.206Z",
-    "1.0.3": "2021-08-31T11:59:36.249Z",
-    "1.0.4": "2021-12-22T16:03:20.539Z",
-    "1.1.0": "2022-01-27T16:28:17.262Z",
-    "1.2.0": "2022-08-18T19:13:42.093Z",
-    "1.3.0": "2022-11-09T18:35:26.526Z",
-    "1.4.0": "2023-01-11T21:46:10.460Z",
-    "1.4.1": "2023-03-13T15:53:31.460Z",
-    "1.5.0": "2023-09-11T12:14:22.702Z",
-    "1.6.0": "2023-09-12T13:12:25.750Z",
-    "1.7.0": "2023-11-07T10:44:40.760Z",
-    "1.8.0": "2024-02-29T09:18:05.040Z",
-    "1.9.0": "2024-06-05T17:15:25.003Z"
-  },
-  "maintainers": [
-    {
-      "name": "pichlermarc",
-      "email": "marc.pichler@dynatrace.com"
-    },
-    {
-      "name": "bogdandrutu",
-      "email": "bogdandrutu@gmail.com"
-    },
-    {
-      "name": "dyladan",
-      "email": "dyladan@gmail.com"
+  "versions": {
+    "1.9.0": {
+      "name": "@opentelemetry/api",
+      "version": "1.9.0",
+      "description": "Public API for OpenTelemetry",
+      "main": "build/src/index.js",
+      "module": "build/esm/index.js",
+      "esnext": "build/esnext/index.js",
+      "types": "build/src/index.d.ts",
+      "browser": {
+        "./src/platform/index.ts": "./src/platform/browser/index.ts",
+        "./build/esm/platform/index.js": "./build/esm/platform/browser/index.js",
+        "./build/esnext/platform/index.js": "./build/esnext/platform/browser/index.js",
+        "./build/src/platform/index.js": "./build/src/platform/browser/index.js"
+      },
+      "exports": {
+        ".": {
+          "module": "./build/esm/index.js",
+          "esnext": "./build/esnext/index.js",
+          "types": "./build/src/index.d.ts",
+          "default": "./build/src/index.js"
+        },
+        "./experimental": {
+          "module": "./build/esm/experimental/index.js",
+          "esnext": "./build/esnext/experimental/index.js",
+          "types": "./build/src/experimental/index.d.ts",
+          "default": "./build/src/experimental/index.js"
+        }
+      },
+      "repository": {
+        "type": "git",
+        "url": "git+https://github.com/open-telemetry/opentelemetry-js.git"
+      },
+      "scripts": {
+        "clean": "tsc --build --clean tsconfig.json tsconfig.esm.json tsconfig.esnext.json",
+        "codecov:browser": "nyc report --reporter=json && codecov -f coverage/*.json -p ../",
+        "codecov:webworker": "nyc report --reporter=json && codecov -f coverage/*.json -p ../",
+        "codecov": "nyc report --reporter=json && codecov -f coverage/*.json -p ../",
+        "precompile": "cross-var lerna run version --scope $npm_package_name --include-dependencies",
+        "compile": "tsc --build tsconfig.json tsconfig.esm.json tsconfig.esnext.json",
+        "docs": "typedoc",
+        "docs:deploy": "gh-pages --dist docs/out",
+        "docs:test": "linkinator docs/out --silent && linkinator docs/*.md *.md --markdown --silent",
+        "lint:fix": "eslint . --ext .ts --fix",
+        "lint": "eslint . --ext .ts",
+        "test:browser": "karma start --single-run",
+        "test": "nyc ts-mocha -p tsconfig.json 'test/**/*.test.ts'",
+        "test:eol": "ts-mocha -p tsconfig.json 'test/**/*.test.ts'",
+        "test:webworker": "karma start karma.worker.js --single-run",
+        "cycle-check": "dpdm --exit-code circular:1 src/index.ts",
+        "version": "node ../scripts/version-update.js",
+        "prewatch": "npm run precompile",
+        "watch": "tsc --build --watch tsconfig.json tsconfig.esm.json tsconfig.esnext.json",
+        "peer-api-check": "node ../scripts/peer-api-check.js"
+      },
+      "author": {
+        "name": "OpenTelemetry Authors"
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "node": ">=8.0.0"
+      },
+      "publishConfig": {
+        "access": "public"
+      },
+      "devDependencies": {
+        "@types/mocha": "10.0.6",
+        "@types/node": "18.6.5",
+        "@types/sinon": "17.0.3",
+        "@types/webpack": "5.28.5",
+        "@types/webpack-env": "1.16.3",
+        "babel-plugin-istanbul": "6.1.1",
+        "codecov": "3.8.3",
+        "cross-var": "1.1.0",
+        "dpdm": "3.13.1",
+        "karma": "6.4.3",
+        "karma-chrome-launcher": "3.1.0",
+        "karma-coverage": "2.2.1",
+        "karma-mocha": "2.0.1",
+        "karma-mocha-webworker": "1.3.0",
+        "karma-spec-reporter": "0.0.36",
+        "karma-webpack": "5.0.1",
+        "lerna": "6.6.2",
+        "memfs": "3.5.3",
+        "mocha": "10.2.0",
+        "nyc": "15.1.0",
+        "sinon": "15.1.2",
+        "ts-loader": "9.5.1",
+        "ts-mocha": "10.0.0",
+        "typescript": "4.4.4",
+        "unionfs": "4.5.4",
+        "webpack": "5.89.0"
+      },
+      "sideEffects": false,
+      "gitHead": "c4d3351b6b3f5593c8d7cbfec97b45cea9fe1511",
+      "bugs": {
+        "url": "https://github.com/open-telemetry/opentelemetry-js/issues"
+      },
+      "_id": "@opentelemetry/api@1.9.0",
+      "_nodeVersion": "18.19.0",
+      "_npmVersion": "lerna/6.6.2/node@v18.19.0+x64 (linux)",
+      "dist": {
+        "integrity": "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==",
+        "shasum": "d03eba68273dc0f7509e2a3d5cba21eae10379fe",
+        "tarball": "http://localhost:4260/@opentelemetry/api/api-1.9.0.tgz",
+        "fileCount": 642,
+        "unpackedSize": 1218213
+      },
+      "directories": {},
+      "_hasShrinkwrap": false
     }
-  ],
+  },
   "author": {
     "name": "OpenTelemetry Authors"
   },
@@ -98,15 +123,6 @@
     "type": "git",
     "url": "git+https://github.com/open-telemetry/opentelemetry-js.git"
   },
-  "keywords": [
-    "opentelemetry",
-    "nodejs",
-    "browser",
-    "tracing",
-    "profiling",
-    "stats",
-    "monitoring"
-  ],
   "license": "Apache-2.0",
   "homepage": "https://github.com/open-telemetry/opentelemetry-js/tree/main/api",
   "bugs": {
