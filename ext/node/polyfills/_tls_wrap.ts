@@ -158,6 +158,7 @@ export class TLSSocket extends net.Socket {
           // onSocket handler of ClientRequest object.
           tlssock.emit("secure");
           tlssock.removeListener("end", onConnectEnd);
+          return;
         }
 
         try {
