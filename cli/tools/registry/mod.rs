@@ -371,7 +371,6 @@ impl PublishPreparer {
             CheckOptions {
               build_fast_check_graph: false, // already built
               lib: self.cli_options.ts_type_lib_window(),
-              log_ignored_options: false,
               reload: self.cli_options.reload_flag(),
               type_check_mode: self.cli_options.type_check_mode(),
             },

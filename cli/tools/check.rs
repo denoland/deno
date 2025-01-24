@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -9,8 +8,6 @@ use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
-use deno_config::workspace::Workspace;
-use deno_config::workspace::WorkspaceDirectory;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -25,12 +22,11 @@ use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::args::check_warn_tsconfig;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CheckFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfig;
-use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
@@ -103,8 +99,6 @@ pub struct CheckOptions {
   pub build_fast_check_graph: bool,
   /// Default type library to type check with.
   pub lib: TsTypeLib,
-  /// Whether to log about any ignored compiler options.
-  pub log_ignored_options: bool,
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
@@ -121,6 +115,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -128,9 +123,6 @@ pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
   Diagnostics(#[from] tsc::DiagnosticsByConfigFolder),
-  #[class(inherit)]
-  #[error(transparent)]
-  ConfigFile(#[from] deno_json::ConfigFileError),
   #[class(inherit)]
   #[error(transparent)]
   ToMaybeJsxImportSourceConfig(
@@ -142,6 +134,9 @@ pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
   CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
+  #[class(inherit)]
+  #[error(transparent)]
+  CompilerOptionsParse(#[from] deno_json::CompilerOptionsParseError),
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
@@ -158,6 +153,7 @@ impl TypeChecker {
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -168,6 +164,7 @@ impl TypeChecker {
       npm_installer,
       npm_resolver,
       sys,
+      tsconfig_resolver,
     }
   }
 
@@ -248,19 +245,12 @@ impl TypeChecker {
 
     let graph = Arc::new(graph);
 
-    let tsconfig_resolver = TsConfigResolver::from_workspace(
-      self.cli_options.workspace(),
-      options.lib,
-      TsConfigResolverOptions {
-        log_ignored_options: options.log_ignored_options,
-      },
-    )?;
     let mut diagnostics_by_folder =
       tsc::DiagnosticsByConfigFolder::with_capacity(
-        tsconfig_resolver.folder_count(),
+        self.tsconfig_resolver.folder_count(),
       );
     // setup the order we want to use to display diagnostics
-    for folder in tsconfig_resolver.folders() {
+    for folder in self.tsconfig_resolver.folders() {
       diagnostics_by_folder.ensure_folder(folder.dir.dir_url().clone());
     }
 
@@ -269,7 +259,7 @@ impl TypeChecker {
       sys: &self.sys,
       node_resolver: &self.node_resolver,
       npm_resolver: &self.npm_resolver,
-      tsconfig_resolver: &tsconfig_resolver,
+      tsconfig_resolver: &self.tsconfig_resolver,
       seen: HashSet::with_capacity(
         graph.imports.len() + graph.specifiers_count(),
       ),
@@ -292,9 +282,9 @@ impl TypeChecker {
     for diagnostic in missing_diagnostics.into_iter() {
       let folder = match &diagnostic.file_name {
         Some(specifier) => {
-          tsconfig_resolver.folder_for_specifier_str(specifier)
+          self.tsconfig_resolver.folder_for_specifier_str(specifier)
         }
-        None => tsconfig_resolver.root(),
+        None => self.tsconfig_resolver.root(),
       };
       diagnostics_by_folder.add(folder.dir.dir_url().clone(), diagnostic);
     }
@@ -308,14 +298,18 @@ impl TypeChecker {
 
     let mut root_names_by_config = IndexMap::new();
     for (url, media_type) in root_names {
-      let folder = tsconfig_resolver.folder_for_specifier(&url);
-      let entry = root_names_by_config
-        .entry(folder.dir.dir_url())
-        .or_insert_with(|| FolderInfo {
-          roots: Vec::new(),
-          tsconfig: &folder.tsconfig,
-          maybe_deno_json: folder.dir.maybe_deno_json(),
-        });
+      let folder = self.tsconfig_resolver.folder_for_specifier(&url);
+      let entry = root_names_by_config.entry(folder.dir.dir_url());
+      let entry = match entry {
+        indexmap::map::Entry::Occupied(value) => value.into_mut(),
+        indexmap::map::Entry::Vacant(vacant_entry) => {
+          vacant_entry.insert(FolderInfo {
+            roots: Vec::new(),
+            tsconfig: folder.lib_tsconfig(options.lib)?,
+            maybe_deno_json: folder.dir.maybe_deno_json(),
+          })
+        }
+      };
       entry.roots.push((url, media_type));
     }
 
@@ -489,100 +483,6 @@ impl TypeChecker {
   }
 }
 
-struct TsConfigFolderInfo {
-  dir: WorkspaceDirectory,
-  tsconfig: TsConfig,
-}
-
-struct TsConfigResolverOptions {
-  log_ignored_options: bool,
-}
-
-struct TsConfigResolver<'a> {
-  unscoped: TsConfigFolderInfo,
-  folders_by_tsconfig: BTreeMap<&'a Arc<Url>, TsConfigFolderInfo>,
-}
-
-impl<'a> TsConfigResolver<'a> {
-  pub fn from_workspace(
-    workspace: &'a Arc<Workspace>,
-    lib: TsTypeLib,
-    options: TsConfigResolverOptions,
-  ) -> Result<Self, CheckError> {
-    // separate the workspace into directories that have a tsconfig
-    let mut folders_by_tsconfig = BTreeMap::new();
-    for (url, folder) in workspace.config_folders() {
-      let folder_has_compiler_options = folder
-        .deno_json
-        .as_ref()
-        .map(|d| d.json.compiler_options.is_some())
-        .unwrap_or(false);
-      if url != workspace.root_dir() && folder_has_compiler_options {
-        let dir = workspace.resolve_member_dir(url);
-        let tsconfig_result =
-          dir.to_ts_config_for_emit(TsConfigType::Check { lib })?;
-        if options.log_ignored_options {
-          check_warn_tsconfig(&tsconfig_result);
-        }
-        folders_by_tsconfig.insert(
-          url,
-          TsConfigFolderInfo {
-            tsconfig: tsconfig_result.ts_config,
-            dir,
-          },
-        );
-      }
-    }
-    let root_dir = workspace.resolve_member_dir(workspace.root_dir());
-    let tsconfig_result =
-      root_dir.to_ts_config_for_emit(TsConfigType::Check { lib })?;
-    if options.log_ignored_options {
-      check_warn_tsconfig(&tsconfig_result);
-    }
-    Ok(Self {
-      unscoped: TsConfigFolderInfo {
-        tsconfig: tsconfig_result.ts_config,
-        dir: root_dir,
-      },
-      folders_by_tsconfig,
-    })
-  }
-
-  pub fn root(&self) -> &TsConfigFolderInfo {
-    &self.unscoped
-  }
-
-  pub fn folders(&self) -> impl Iterator<Item = &TsConfigFolderInfo> {
-    std::iter::once(&self.unscoped).chain(self.folders_by_tsconfig.values())
-  }
-
-  pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
-    let folder = self.folder_for_specifier(specifier);
-    folder.tsconfig.get_check_js()
-  }
-
-  pub fn folder_for_specifier(&self, specifier: &Url) -> &TsConfigFolderInfo {
-    self.folder_for_specifier_str(specifier.as_str())
-  }
-
-  pub fn folder_for_specifier_str(
-    &self,
-    specifier: &str,
-  ) -> &TsConfigFolderInfo {
-    self
-      .folders_by_tsconfig
-      .iter()
-      .rfind(|(s, _)| specifier.starts_with(s.as_str()))
-      .map(|(_, v)| v)
-      .unwrap_or(&self.unscoped)
-  }
-
-  pub fn folder_count(&self) -> usize {
-    // + 1 for root
-    self.folders_by_tsconfig.len() + 1
-  }
-}
-
 struct TscRoots {
   roots: Vec<(ModuleSpecifier, MediaType)>,
   missing_diagnostics: tsc::Diagnostics,
@@ -664,7 +564,7 @@ struct GraphWalker<'a> {
   sys: &'a CliSys,
   node_resolver: &'a CliNodeResolver,
   npm_resolver: &'a CliNpmResolver,
-  tsconfig_resolver: &'a TsConfigResolver<'a>,
+  tsconfig_resolver: &'a TsConfigResolver,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
 }

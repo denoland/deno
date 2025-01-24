@@ -168,6 +168,7 @@ pub async fn run(
   let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -190,6 +191,7 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
+    tsconfig_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,

@@ -21,6 +21,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
+use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
@@ -42,6 +43,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 
 use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
@@ -69,8 +71,8 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone)]
-pub struct GraphValidOptions {
-  pub check_js: bool,
+pub struct GraphValidOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
   /// Whether to exit the process for integrity check errors such as
   /// lockfile checksum mismatches and JSR integrity failures.
@@ -138,8 +140,8 @@ pub fn fill_graph_from_lockfile(
 }
 
 #[derive(Clone)]
-pub struct GraphWalkErrorsOptions {
-  pub check_js: bool,
+pub struct GraphWalkErrorsOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
 }
 
@@ -149,7 +151,7 @@ pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
-  options: GraphWalkErrorsOptions,
+  options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
   graph
     .walk(
@@ -457,7 +459,6 @@ impl ModuleGraphCreator {
         check::CheckOptions {
           build_fast_check_graph: true,
           lib: self.options.ts_type_lib_window(),
-          log_ignored_options: true,
           reload: self.options.reload_flag(),
           type_check_mode: self.options.type_check_mode(),
         },
@@ -513,6 +514,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -534,6 +536,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -552,6 +555,7 @@ impl ModuleGraphBuilder {
       resolver,
       root_permissions_container,
       sys,
+      tsconfig_resolver,
     }
   }
 
@@ -636,7 +640,16 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = if options.graph_kind.include_types() {
-      self.cli_options.to_compiler_option_types()?
+      // Resolve all the imports from every deno.json. We'll separate
+      // them later based on the folder we're type checking.
+      let mut imports = Vec::new();
+      for deno_json in self.cli_options.workspace().deno_jsons() {
+        let maybe_imports = deno_json.to_compiler_option_types()?;
+        imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
+          deno_graph::ReferrerImports { referrer, imports }
+        }));
+      }
+      imports
     } else {
       Vec::new()
     };
@@ -852,7 +865,7 @@ impl ModuleGraphBuilder {
         } else {
           GraphKind::CodeOnly
         },
-        check_js: self.cli_options.check_js(),
+        check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
       },
     )
@@ -1114,7 +1127,7 @@ pub fn has_graph_root_local_dependent_changed(
       follow_dynamic: true,
       kind: GraphKind::All,
       prefer_fast_check_graph: true,
-      check_js: true,
+      check_js: CheckJsOption::True,
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
