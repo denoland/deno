@@ -264,6 +264,7 @@ impl TypeChecker {
         graph.imports.len() + graph.specifiers_count(),
       ),
       pending: VecDeque::new(),
+      has_seen_node_builtin: false,
     };
     let TscRoots {
       roots: root_names,
@@ -519,16 +520,6 @@ fn get_tsc_roots<'a>(
     hasher
   });
 
-  // todo(THIS PR): this should only be inserted when the graph walker
-  // encounters a node: specifier
-  if graph.has_node_specifier {
-    // inject a specifier that will resolve node types
-    result.roots.push((
-      ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-      MediaType::Dts,
-    ));
-  }
-
   // add any imports at the root of the workspace since that's
   // shared by all the folders
   if let Some(deno_json) =
@@ -567,6 +558,7 @@ struct GraphWalker<'a> {
   tsconfig_resolver: &'a TsConfigResolver,
   seen: HashSet<&'a Url>,
   pending: VecDeque<(&'a Url, bool)>,
+  has_seen_node_builtin: bool,
 }
 
 impl<'a> GraphWalker<'a> {
@@ -684,15 +676,29 @@ impl<'a> GraphWalker<'a> {
 
       let mut maybe_module_dependencies = None;
       let mut maybe_types_dependency = None;
-      if let Module::Js(module) = module {
-        maybe_module_dependencies =
-          Some(module.dependencies_prefer_fast_check());
-        maybe_types_dependency = module
-          .maybe_types_dependency
-          .as_ref()
-          .and_then(|d| d.dependency.ok());
-      } else if let Module::Wasm(module) = module {
-        maybe_module_dependencies = Some(&module.dependencies);
+      match module {
+        Module::Js(module) => {
+          maybe_module_dependencies =
+            Some(module.dependencies_prefer_fast_check());
+          maybe_types_dependency = module
+            .maybe_types_dependency
+            .as_ref()
+            .and_then(|d| d.dependency.ok());
+        }
+        Module::Wasm(module) => {
+          maybe_module_dependencies = Some(&module.dependencies);
+        }
+        Module::Json(_) | Module::Npm(_) | Module::External(_) => {}
+        Module::Node(_) => {
+          if !self.has_seen_node_builtin {
+            self.has_seen_node_builtin = true;
+            // inject a specifier that will resolve node types
+            discovered_roots.push((
+              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
+              MediaType::Dts,
+            ));
+          }
+        }
       }
 
       if let Some(deps) = maybe_module_dependencies {
