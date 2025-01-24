@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::ffi::OsStr;
-use std::fs;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -10,26 +9,24 @@ use std::str;
 
 use deno_cache_dir::url_to_filename;
 use deno_cache_dir::CACHE_PERM;
+use deno_core::url::Host;
+use deno_core::url::Url;
 use deno_path_util::fs::atomic_write_file_with_retries;
-use url::Host;
-use url::Url;
+use sys_traits::FsRead;
 
-use crate::sys::DenoLibSys;
+use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
-pub struct DiskCache<TSys: DenoLibSys> {
-  sys: TSys,
+pub struct DiskCache {
+  sys: CliSys,
   pub location: PathBuf,
 }
 
-impl<TSys: DenoLibSys> DiskCache<TSys> {
+impl DiskCache {
   /// `location` must be an absolute path.
-  pub fn new(sys: TSys, location: &Path) -> Self {
+  pub fn new(sys: CliSys, location: PathBuf) -> Self {
     assert!(location.is_absolute());
-    Self {
-      sys,
-      location: location.to_owned(),
-    }
+    Self { sys, location }
   }
 
   fn get_cache_filename(&self, url: &Url) -> Option<PathBuf> {
@@ -119,7 +116,7 @@ impl<TSys: DenoLibSys> DiskCache<TSys> {
 
   pub fn get(&self, filename: &Path) -> std::io::Result<Vec<u8>> {
     let path = self.location.join(filename);
-    fs::read(path)
+    Ok(self.sys.fs_read(path)?.into_owned())
   }
 
   pub fn set(&self, filename: &Path, data: &[u8]) -> std::io::Result<()> {
@@ -141,7 +138,7 @@ mod tests {
   fn test_set_get_cache_file() {
     let temp_dir = TempDir::new();
     let sub_dir = temp_dir.path().join("sub_dir");
-    let cache = DiskCache::new(RealSys, &sub_dir.to_path_buf());
+    let cache = DiskCache::new(RealSys, sub_dir.to_path_buf());
     let path = PathBuf::from("foo/bar.txt");
     cache.set(&path, b"hello").unwrap();
     assert_eq!(cache.get(&path).unwrap(), b"hello");
@@ -155,7 +152,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(RealSys, &cache_location);
+    let cache = DiskCache::new(RealSys, cache_location);
 
     let mut test_cases = vec![
       (
@@ -211,7 +208,7 @@ mod tests {
     } else {
       "/foo"
     };
-    let cache = DiskCache::new(RealSys, &PathBuf::from(p));
+    let cache = DiskCache::new(RealSys, PathBuf::from(p));
 
     let mut test_cases = vec![
       (
@@ -259,7 +256,7 @@ mod tests {
       PathBuf::from("/deno_dir/")
     };
 
-    let cache = DiskCache::new(RealSys, &cache_location);
+    let cache = DiskCache::new(RealSys, cache_location);
 
     let mut test_cases = vec!["unknown://localhost/test.ts"];
 

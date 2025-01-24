@@ -45,6 +45,7 @@ import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
 import { op_zlib_crc32 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 const {
   Uint8Array,
   TypedArrayPrototypeGetBuffer,

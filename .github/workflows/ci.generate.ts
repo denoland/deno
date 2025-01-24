@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 36;
+const cacheVersion = 37;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -130,9 +130,7 @@ cat /sysroot/.env
 #      to build because the object formats are not compatible.
 echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
-CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
-CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
@@ -156,7 +154,7 @@ RUSTDOCFLAGS<<__1
   $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin $CFLAGS
+CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 

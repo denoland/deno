@@ -15,6 +15,7 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -25,23 +26,24 @@ extern crate libz_sys as zlib;
 
 mod global;
 pub mod ops;
-mod polyfill;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
+pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use polyfill::is_builtin_node_module;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
+
+pub fn is_builtin_node_module(module_name: &str) -> bool {
+  DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
+}
 
 pub trait NodePermissions {
   fn check_net_url(
@@ -226,7 +228,6 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_take,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -817,16 +818,6 @@ deno_core::extension!(deno_node,
   },
 );
 
-#[derive(Debug)]
-pub struct RealIsBuiltInNodeModuleChecker;
-
-impl IsBuiltInNodeModuleChecker for RealIsBuiltInNodeModuleChecker {
-  #[inline]
-  fn is_builtin_node_module(&self, specifier: &str) -> bool {
-    is_builtin_node_module(specifier)
-  }
-}
-
 pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
@@ -841,7 +832,7 @@ impl ExtNodeSys for sys_traits::impls::RealSys {}
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<
     TInNpmPackageChecker,
-    RealIsBuiltInNodeModuleChecker,
+    DenoIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
     TSys,
   >;

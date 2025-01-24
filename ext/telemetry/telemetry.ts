@@ -15,6 +15,7 @@ import {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
+  op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
@@ -186,7 +187,6 @@ interface OtelSpan {
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
   dropEvent(): void;
-  dropLink(): void;
   end(endTime: number): void;
 }
 
@@ -359,14 +359,24 @@ class Span {
     return this;
   }
 
-  addLink(_link: Link): Span {
-    this.#otelSpan?.dropLink();
+  addLink(link: Link): Span {
+    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
+      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+    const valid = op_otel_span_add_link(
+      this.#otelSpan,
+      link.context.traceId,
+      link.context.spanId,
+      link.context.traceFlags,
+      link.context.isRemote ?? false,
+      droppedAttributeCount,
+    );
+    if (!valid) return this;
     return this;
   }
 
   addLinks(links: Link[]): Span {
     for (let i = 0; i < links.length; i++) {
-      this.#otelSpan?.dropLink();
+      this.addLink(links[i]);
     }
     return this;
   }

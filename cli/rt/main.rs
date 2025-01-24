@@ -1,46 +1,27 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// Allow unused code warnings because we share
-// code between the two bin targets.
-#![allow(dead_code)]
-#![allow(unused_imports)]
-
-mod standalone;
-
-mod args;
-mod cache;
-mod emit;
-mod file_fetcher;
-mod http_util;
-mod js;
-mod node;
-mod npm;
-mod resolver;
-mod shared;
-mod sys;
-mod task_runner;
-mod util;
-mod version;
-mod worker;
-
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::env;
-use std::env::current_exe;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_core::error::CoreError;
-use deno_core::error::JsError;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_lib::version::otel_runtime_config;
+use deno_runtime::deno_telemetry::OtelConfig;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
-pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use deno_terminal::colors;
 use indexmap::IndexMap;
-use standalone::DenoCompileFileSystem;
 
-use crate::args::Flags;
-use crate::util::result::any_and_jserrorbox_downcast_ref;
+use self::binary::extract_standalone;
+use self::file_system::DenoRtSys;
+
+mod binary;
+mod code_cache;
+mod file_system;
+mod node;
+mod run;
 
 pub(crate) fn unstable_exit_cb(feature: &str, api_name: &str) {
   log::error!(
@@ -87,31 +68,42 @@ fn load_env_vars(env_vars: &IndexMap<String, String>) {
 fn main() {
   deno_runtime::deno_permissions::mark_standalone();
   let args: Vec<_> = env::args_os().collect();
-  let standalone = standalone::extract_standalone(Cow::Owned(args));
+  let standalone = extract_standalone(Cow::Owned(args));
   let future = async move {
     match standalone {
       Ok(Some(data)) => {
-        deno_telemetry::init(
-          crate::args::otel_runtime_config(),
+        deno_runtime::deno_telemetry::init(
+          otel_runtime_config(),
           &data.metadata.otel_config,
         )?;
-        util::logger::init(
+        init_logging(
           data.metadata.log_level,
           Some(data.metadata.otel_config.clone()),
         );
         load_env_vars(&data.metadata.env_vars_from_env_file);
-        let fs = DenoCompileFileSystem::new(data.vfs.clone());
-        let sys = crate::sys::CliSys::DenoCompile(fs.clone());
-        let exit_code = standalone::run(Arc::new(fs), sys, data).await?;
+        let sys = DenoRtSys::new(data.vfs.clone());
+        let exit_code = run::run(Arc::new(sys.clone()), sys, data).await?;
         deno_runtime::exit(exit_code);
       }
       Ok(None) => Ok(()),
       Err(err) => {
-        util::logger::init(None, None);
+        init_logging(None, None);
         Err(err)
       }
     }
   };
 
   unwrap_or_exit(create_and_run_current_thread_with_maybe_metrics(future));
+}
+
+fn init_logging(
+  maybe_level: Option<log::Level>,
+  otel_config: Option<OtelConfig>,
+) {
+  deno_lib::util::logger::init(deno_lib::util::logger::InitLoggingOptions {
+    maybe_level,
+    otel_config,
+    on_log_start: || {},
+    on_log_end: || {},
+  })
 }

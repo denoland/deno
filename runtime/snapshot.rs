@@ -19,7 +19,6 @@ use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 
 #[derive(Clone)]
@@ -339,7 +338,7 @@ pub fn create_runtime_snapshot(
       startup_snapshot: None,
       extensions,
       extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
+        crate::transpile::maybe_transpile_source(specifier, source)
       })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();

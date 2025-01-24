@@ -32,6 +32,7 @@ use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -402,18 +403,16 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match crate::util::result::any_and_jserrorbox_downcast_ref::<
-            deno_ast::ParseDiagnostic,
-          >(&err)
-          {
+          match any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(
+            &err,
+          ) {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
             None => {
-              match crate::util::result::any_and_jserrorbox_downcast_ref::<
-                ParseDiagnosticsError,
-              >(&err)
-              {
+              match any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(
+                &err,
+              ) {
                 Some(diagnostics) => Ok(EvaluationOutput::Error(
                   diagnostics
                     .0

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.124.0"
+version = "0.125.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,7 +33,6 @@ deno_error.workspace = true
 deno_fetch.workspace = true
 deno_fs.workspace = true
 deno_io.workspace = true
-deno_media_type.workspace = true
 deno_net.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
@@ -47,7 +46,6 @@ ecb.workspace = true
 ecdsa = "0.16.9"
 ed25519-dalek = { version = "2.1.1", features = ["digest", "pkcs8", "rand_core", "signature"] }
 elliptic-curve.workspace = true
-errno = "0.2.8"
 faster-hex.workspace = true
 h2.workspace = true
 hkdf.workspace = true
@@ -105,6 +103,9 @@ winapi.workspace = true
 x25519-dalek = { version = "2.0.0", features = ["static_secrets"] }
 x509-parser = "0.15.0"
 yoke.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+errno = "0.3.8"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true

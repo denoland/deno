@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod byonm;
 pub mod installer;
 mod managed;
 
@@ -10,15 +9,15 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_runtime::deno_process::NpmProcessStateProviderRc;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
 
-pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
@@ -37,6 +36,8 @@ pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolverCreateOptions =
+  ByonmNpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -53,19 +54,6 @@ impl CliNpmCacheHttpClient {
       http_client_provider,
       progress_bar,
     }
-  }
-}
-
-pub fn create_npm_process_state_provider(
-  npm_resolver: &CliNpmResolver,
-) -> NpmProcessStateProviderRc {
-  match npm_resolver {
-    CliNpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
-      byonm::CliByonmNpmProcessStateProvider(byonm_npm_resolver.clone()),
-    ),
-    CliNpmResolver::Managed(managed_npm_resolver) => Arc::new(
-      managed::CliManagedNpmProcessStateProvider(managed_npm_resolver.clone()),
-    ),
   }
 }
 
@@ -195,8 +183,8 @@ pub const NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
 pub fn get_npm_config_user_agent() -> String {
   format!(
     "deno/{} npm/? deno/{} {} {}",
-    env!("CARGO_PKG_VERSION"),
-    env!("CARGO_PKG_VERSION"),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.deno,
     std::env::consts::OS,
     std::env::consts::ARCH
   )

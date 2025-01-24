@@ -3,13 +3,10 @@
 use std::fs;
 use std::str::FromStr;
 
-use deno_ast::ModuleSpecifier;
-use deno_core::serde::Deserialize;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use pretty_assertions::assert_eq;
+use serde::Deserialize;
+use serde_json::json;
+use serde_json::Value;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
@@ -20,6 +17,7 @@ use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
+use url::Url;
 
 #[test]
 fn lsp_startup_shutdown() {
@@ -13150,7 +13148,7 @@ fn lsp_lint_exclude_with_config() {
   let diagnostics = client.did_open(
     json!({
       "textDocument": {
-        "uri": ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
+        "uri": Url::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
         "languageId": "typescript",
         "version": 1,
         "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
@@ -14134,10 +14132,7 @@ fn lsp_node_modules_dir() {
     .unwrap();
   // canonicalize for mac
   let path = temp_dir.path().join("node_modules").canonicalize();
-  assert_starts_with!(
-    uri,
-    ModuleSpecifier::from_file_path(&path).unwrap().as_str()
-  );
+  assert_starts_with!(uri, Url::from_file_path(&path).unwrap().as_str());
 
   client.shutdown();
 }

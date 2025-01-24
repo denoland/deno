@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json::json;
+use serde_json::json;
 use test_util::assert_contains;
 use test_util::env_vars_for_jsr_npm_tests;
 use test_util::TestContextBuilder;

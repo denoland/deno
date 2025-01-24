@@ -13,6 +13,7 @@ use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 
 use crate::resolver::CliSloppyImportsResolver;
 
@@ -25,11 +26,9 @@ pub use no_slow_types::collect_no_slow_type_diagnostics;
 pub trait PackageLintRule: std::fmt::Debug + Send + Sync {
   fn code(&self) -> &'static str;
 
-  fn tags(&self) -> &'static [&'static str] {
+  fn tags(&self) -> tags::Tags {
     &[]
   }
-
-  fn docs(&self) -> &'static str;
 
   fn help_docs_url(&self) -> Cow<'static, str>;
 
@@ -64,6 +63,12 @@ enum CliLintRuleKind {
 #[derive(Debug)]
 pub struct CliLintRule(CliLintRuleKind);
 
+impl PartialEq for CliLintRule {
+  fn eq(&self, other: &Self) -> bool {
+    self.code() == other.code()
+  }
+}
+
 impl CliLintRule {
   pub fn code(&self) -> &'static str {
     use CliLintRuleKind::*;
@@ -74,7 +79,7 @@ impl CliLintRule {
     }
   }
 
-  pub fn tags(&self) -> &'static [&'static str] {
+  pub fn tags(&self) -> tags::Tags {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => rule.tags(),
@@ -83,20 +88,11 @@ impl CliLintRule {
     }
   }
 
-  pub fn docs(&self) -> &'static str {
-    use CliLintRuleKind::*;
-    match &self.0 {
-      DenoLint(rule) => rule.docs(),
-      Extended(rule) => rule.docs(),
-      Package(rule) => rule.docs(),
-    }
-  }
-
   pub fn help_docs_url(&self) -> Cow<'static, str> {
     use CliLintRuleKind::*;
     match &self.0 {
       DenoLint(rule) => {
-        Cow::Owned(format!("https://lint.deno.land/rules/{}", rule.code()))
+        Cow::Owned(format!("https://docs.deno.com/lint/rules/{}", rule.code()))
       }
       Extended(rule) => rule.help_docs_url(),
       Package(rule) => rule.help_docs_url(),
@@ -171,11 +167,7 @@ impl LintRuleProvider {
     Ok(lint_rules)
   }
 
-  pub fn resolve_lint_rules(
-    &self,
-    rules: LintRulesConfig,
-    maybe_config_file: Option<&ConfigFile>,
-  ) -> ConfiguredRules {
+  pub fn all_rules(&self) -> Vec<CliLintRule> {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
     let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
       Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
@@ -186,19 +178,26 @@ impl LintRuleProvider {
     let cli_graph_rules = vec![CliLintRule(CliLintRuleKind::Package(
       Box::new(no_slow_types::NoSlowTypesRule),
     ))];
-    let mut all_rule_names = HashSet::with_capacity(
-      deno_lint_rules.len() + cli_lint_rules.len() + cli_graph_rules.len(),
-    );
-    let all_rules = deno_lint_rules
+    deno_lint_rules
       .into_iter()
       .map(|rule| CliLintRule(CliLintRuleKind::DenoLint(rule)))
       .chain(cli_lint_rules)
       .chain(cli_graph_rules)
-      .inspect(|rule| {
-        all_rule_names.insert(rule.code());
-      });
+      .collect()
+  }
+
+  pub fn resolve_lint_rules(
+    &self,
+    rules: LintRulesConfig,
+    maybe_config_file: Option<&ConfigFile>,
+  ) -> ConfiguredRules {
+    let all_rules = self.all_rules();
+    let mut all_rule_names = HashSet::with_capacity(all_rules.len());
+    for rule in &all_rules {
+      all_rule_names.insert(rule.code());
+    }
     let rules = filtered_rules(
-      all_rules,
+      all_rules.into_iter(),
       rules
         .tags
         .or_else(|| Some(get_default_tags(maybe_config_file))),
@@ -286,7 +285,7 @@ mod test {
       .resolve_lint_rules(Default::default(), None)
       .rules
       .into_iter()
-      .filter(|r| r.tags().iter().any(|t| *t == "recommended"))
+      .filter(|r| r.tags().iter().any(|t| *t == tags::RECOMMENDED))
       .map(|r| r.code().to_string())
       .filter(|n| n != "no-debugger")
       .collect::<Vec<_>>();
