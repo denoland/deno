@@ -1249,13 +1249,9 @@ export class Socket extends Duplex {
     // (and also skips the startTls call if it's TLSSocket)
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
-    if (pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg))) {
-      this._needsSockInitWorkaround = true;
-    } else if (errorStack?.includes("new ClientRequest")) {
-      // If the stack include `new ClientRequest` then the socket is for http connection,
-      // and we should apply the workaround (This covers the npm:ws and npm:mqtt)
-      this._needsSockInitWorkaround = true;
-    }
+    this._needsSockInitWorkaround = pkgsNeedsSockInitWorkaround.some((pkg) =>
+      errorStack?.includes(pkg)
+    );
     if (this._needsSockInitWorkaround) {
       this.pause();
     }
