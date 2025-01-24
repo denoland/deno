@@ -50,6 +50,26 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
   }
 
+  /// Mark a file as being known CJS or ESM.
+  pub fn set_is_known_script(&self, specifier: &Url, is_script: bool) {
+    let new_value = if is_script {
+      ResolutionMode::Require
+    } else {
+      ResolutionMode::Import
+    };
+    // block to really ensure dashmap is not borrowed while trying to insert
+    {
+      if let Some(value) = self.known.get(specifier) {
+        // you shouldn't be insert a value in here that's
+        // already known and is a different value than what
+        // was previously determined
+        debug_assert_eq!(*value, new_value);
+        return;
+      }
+    }
+    self.known.insert(specifier.clone(), new_value);
+  }
+
   /// Gets whether the file is CJS. If true, this is for sure
   /// cjs because `is_script` is provided.
   ///
@@ -233,7 +253,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
           }
         } else if is_script == Some(false) {
           // we know this is esm
-            known_cache.insert(specifier.clone(), ResolutionMode::Import);
+          known_cache.insert(specifier.clone(), ResolutionMode::Import);
           Some(ResolutionMode::Import)
         } else {
           None

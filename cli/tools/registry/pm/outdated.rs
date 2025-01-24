@@ -194,7 +194,7 @@ pub async fn outdated(
   let file_fetcher = Arc::new(file_fetcher);
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
-    cli_options.npmrc().clone(),
+    factory.npmrc()?.clone(),
   ));
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));

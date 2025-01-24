@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import {
   brotliCompress,
@@ -229,4 +229,6 @@ Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
 
 Deno.test("crc32()", () => {
   assertEquals(crc32("hello world"), 222957957);
+  // @ts-expect-error: passing an object
+  assertThrows(() => crc32({}), TypeError);
 });

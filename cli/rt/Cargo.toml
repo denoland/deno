@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.1.5"
+version = "2.1.7"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -26,18 +26,14 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
-# todo(dsherret): remove deno_cache_dir
-deno_cache_dir.workspace = true
-deno_config.workspace = true
+deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_error.workspace = true
-# todo(dsherret): remove deno_graph
-deno_graph = { version = "=0.87.0" }
 deno_lib.workspace = true
-deno_media_type.workspace = true
+deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
 deno_npm.workspace = true
-deno_package_json.workspace = true
+deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -48,11 +44,14 @@ libsui = "0.5.0"
 node_resolver.workspace = true
 
 async-trait.workspace = true
+bincode = "=1.3.3"
 import_map = { version = "=0.21.0", features = ["ext"] }
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }
 serde.workspace = true
+serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
+thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 twox-hash.workspace = true

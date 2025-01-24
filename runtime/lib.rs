@@ -36,8 +36,11 @@ pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
+#[cfg(feature = "snapshot")]
 pub mod snapshot;
 pub mod tokio_util;
+#[cfg(feature = "transpile")]
+pub mod transpile;
 pub mod web_worker;
 pub mod worker;
 

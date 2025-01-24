@@ -30,11 +30,7 @@ pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   let display_tree = vfs_as_display_tree(vfs, executable_name);
   display_tree.print(&mut text).unwrap(); // unwrap ok because it's writing to a string
   log::info!("\n{}\n", deno_terminal::colors::bold("Embedded Files"));
-  log::info!("{}\n", text.trim());
-  log::info!(
-    "Size: {}\n",
-    human_size(vfs.files.iter().map(|f| f.len() as f64).sum())
-  );
+  log::info!("{}", text.trim());
 }
 
 fn vfs_as_display_tree(
@@ -204,8 +200,13 @@ fn vfs_as_display_tree(
 
     let mut size = Size::default();
     add_offset_to_size(file.offset, &mut size, seen_offsets);
-    if file.module_graph_offset.offset != file.offset.offset {
-      add_offset_to_size(file.module_graph_offset, &mut size, seen_offsets);
+    let maybe_offsets = [
+      file.transpiled_offset,
+      file.source_map_offset,
+      file.cjs_export_analysis_offset,
+    ];
+    for offset in maybe_offsets.into_iter().flatten() {
+      add_offset_to_size(offset, &mut size, seen_offsets);
     }
     size
   }
