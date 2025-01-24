@@ -118,22 +118,13 @@ pub fn unpack_binary_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
 }
 
 pub fn unpack_zip_into_dir(
-  out_name: &str,
+  archive_name: &str,
   dest_path: &Path,
   archive_data: &[u8],
 ) -> Result<(), AnyError> {
-  let ext = out_name.rsplit_once('.').map(|(_, ext)| ext);
-  let archive_path = dest_path.join(out_name).with_extension(
-    ext
-      .map(|s| format!("{s}.zip"))
-      .unwrap_or_else(|| "zip".to_string()),
-  );
+  let archive_path = dest_path.join(archive_name);
 
-  if let Err(e) = unzip(
-    archive_path.file_name().unwrap().to_str().unwrap(),
-    archive_data,
-    dest_path,
-  ) {
+  if let Err(e) = unzip(archive_name, archive_data, dest_path) {
     log::warn!("unpacking via zip crate failed: {e}");
     unzip_with_shell(&archive_path, archive_data, dest_path)?;
   }

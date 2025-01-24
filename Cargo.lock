@@ -2103,7 +2103,6 @@ dependencies = [
  "sha3",
  "signature",
  "simd-json",
- "simdutf",
  "sm3",
  "spki",
  "stable_deref_trait",
@@ -7143,16 +7142,6 @@ dependencies = [
  "serde_json",
  "simdutf8",
  "value-trait",
-]
-
-[[package]]
-name = "simdutf"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80b4b772d0e139c8a272c79b6a98af14053c13f05be5ed86d54ee42111f7dc0a"
-dependencies = [
- "bitflags 2.8.0",
- "cc",
 ]
 
 [[package]]
