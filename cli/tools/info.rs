@@ -50,7 +50,7 @@ pub async fn info(
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
     let resolver = factory.workspace_resolver().await?.clone();
-    let npmrc = cli_options.npmrc();
+    let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
@@ -185,7 +185,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
-  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
+  let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();

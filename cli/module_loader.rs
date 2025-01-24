@@ -49,10 +49,10 @@ use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -91,7 +91,7 @@ use crate::util::text_encoding::source_map_from_code;
 pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSys,
 >;

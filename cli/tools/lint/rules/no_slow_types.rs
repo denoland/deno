@@ -9,6 +9,7 @@ use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::tags;
 
 use super::PackageLintRule;
 
@@ -22,8 +23,8 @@ impl PackageLintRule for NoSlowTypesRule {
     CODE
   }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["jsr"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::JSR]
   }
 
   // TODO(bartlomieju): these docs need to be hosted somewhere.
