@@ -1,32 +1,37 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::OnceCell;
+
 use deno_core::op2;
-use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 
 use crate::Instance;
 
-pub struct GPUShaderModule {
+pub struct GPUCommandBuffer {
   pub instance: Instance,
-  pub id: wgpu_core::id::ShaderModuleId,
+  pub id: wgpu_core::id::CommandBufferId,
   pub label: String,
+
+  pub consumed: OnceCell<()>,
 }
 
-impl Drop for GPUShaderModule {
+impl Drop for GPUCommandBuffer {
   fn drop(&mut self) {
-    self.instance.shader_module_drop(self.id);
+    if self.consumed.get().is_none() {
+      self.instance.command_buffer_drop(self.id);
+    }
   }
 }
 
-impl WebIdlInterfaceConverter for GPUShaderModule {
-  const NAME: &'static str = "GPUShaderModule";
+impl deno_core::webidl::WebIdlInterfaceConverter for GPUCommandBuffer {
+  const NAME: &'static str = "GPUCommandBuffer";
 }
 
-impl GarbageCollected for GPUShaderModule {}
+impl GarbageCollected for GPUCommandBuffer {}
 
 #[op2]
-impl GPUShaderModule {
+impl GPUCommandBuffer {
   #[getter]
   #[string]
   fn label(&self) -> String {
@@ -41,9 +46,7 @@ impl GPUShaderModule {
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
-pub(crate) struct GPUShaderModuleDescriptor {
+pub(crate) struct GPUCommandBufferDescriptor {
   #[webidl(default = String::new())]
   pub label: String,
-
-  pub code: String,
 }

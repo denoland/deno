@@ -51,7 +51,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.331.0" }
+deno_core = { version = "0.332.0" }
 
 deno_bench_util = { version = "0.181.0", path = "./bench_util" }
 deno_config = { version = "=0.45.0", features = ["workspace"] }
@@ -239,8 +239,8 @@ rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "0.21.1"
-wgpu-types = "0.20"
+wgpu-core = "24.0.0"
+wgpu-types = "24.0.0"
 
 # macros
 quote = "1"
@@ -352,3 +352,8 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_core = { path = "../deno_core/core" }
+deno_ops = { path = "../deno_core/ops" }
+serde_v8 = { path = "../deno_core/serde_v8" }
