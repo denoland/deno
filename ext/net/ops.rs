@@ -646,7 +646,7 @@ where
     cancel_rid,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
+  let (config, mut opts) = if let Some(name_server) =
     options.as_ref().and_then(|o| o.name_server.as_ref())
   {
     let group = NameServerConfigGroup::from_ips_clear(
@@ -661,6 +661,8 @@ where
   } else {
     system_conf::read_system_conf()?
   };
+
+  opts.edns0 = true;
 
   {
     let mut s = state.borrow_mut();
