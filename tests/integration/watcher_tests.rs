@@ -969,11 +969,13 @@ async fn test_watch_basic() {
   bar_test.write("import bar from './bar.js'; Deno.test('bar', bar);");
 
   assert_eq!(next_line(&mut stdout_lines).await.unwrap(), "");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
   );
   assert_contains!(next_line(&mut stdout_lines).await.unwrap(), "foo", "bar");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
@@ -988,6 +990,7 @@ async fn test_watch_basic() {
   foo_test.write("import foo from './foo.js'; Deno.test('foobar', foo);");
 
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
@@ -1002,6 +1005,7 @@ async fn test_watch_basic() {
   let another_test = t.path().join("new_test.js");
   another_test.write("Deno.test('another one', () => 3 + 3)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
@@ -1015,6 +1019,7 @@ async fn test_watch_basic() {
   // Confirm that restarting occurs when a new file is updated
   another_test.write("Deno.test('another one', () => 3 + 3); Deno.test('another another one', () => 4 + 4)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 2 tests"
@@ -1047,6 +1052,7 @@ async fn test_watch_basic() {
   // Then restore the file
   another_test.write("Deno.test('another one', () => 3 + 3)");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
@@ -1062,6 +1068,7 @@ async fn test_watch_basic() {
   foo_file
     .write("export default function foo() { throw new Error('Whoops!'); }");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
@@ -1074,6 +1081,7 @@ async fn test_watch_basic() {
   // Then restore the file
   foo_file.write("export default function foo() { 1 + 1 }");
   assert_contains!(next_line(&mut stderr_lines).await.unwrap(), "Restarting");
+  next_line(&mut stdout_lines).await;
   assert_contains!(
     next_line(&mut stdout_lines).await.unwrap(),
     "running 1 test"
