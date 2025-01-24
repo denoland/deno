@@ -2049,7 +2049,7 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {

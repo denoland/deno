@@ -38,6 +38,7 @@ use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
 
 use super::cache::LspCache;
@@ -675,7 +676,11 @@ struct ResolverFactory<'a> {
 impl<'a> ResolverFactory<'a> {
   pub fn new(config_data: Option<&'a Arc<ConfigData>>) -> Self {
     let sys = CliSys::default();
-    let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
+    let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(
+      sys.clone(),
+      // this should be ok because we handle clearing this cache often in the LSP
+      Some(Arc::new(PackageJsonThreadLocalCache)),
+    ));
     Self {
       config_data,
       pkg_json_resolver,
