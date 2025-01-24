@@ -1,0 +1,90 @@
+#!/bin/bash
+
+is_debian_based() {
+    if [ -f /etc/os-release ]; then
+        source /etc/os-release
+        if [[ "$ID_LIKE" == *debian* || "$ID" == *debian* ]]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+if ! is_debian_based; then
+    echo "Only works on debian based systems"
+    exit 1
+fi
+
+buildtools_folder="$(realpath $(dirname "$0"))"
+deno_root="$(realpath "$buildtools_folder/../..")"
+
+if command -v docker &> /dev/null
+then
+    echo "Docker is installed."
+    docker --version
+else
+    echo "Docker is not installed."
+    exit 1
+fi
+
+DOCKERFILE="$buildtools_folder/Dockerfile"
+IMAGE_NAME="denobuildtool"
+IMAGE_TAG="current"
+BUILD_TOOL_WORKING_DIR="$deno_root/.buildtool"
+STORED_DOCKER_FILE_CHECKSUM_FILE="$BUILD_TOOL_WORKING_DIR/dockerfile_check_sum"
+
+if [ ! -d "$BUILD_TOOL_WORKING_DIR" ]; then
+    mkdir -p "$BUILD_TOOL_WORKING_DIR"
+fi
+
+DOCKERFILE_CHECKSUM=$(sha256sum "$DOCKERFILE" | awk '{ print $1 }')
+
+run_with_docker() {
+    if [[ $# != 0 ]]; then
+        args=("$@")
+    else
+        args=(/bin/bash -i)
+    fi
+
+    docker_args=()
+    if [ "$PWD" != "$deno_root" ]; then
+        docker_args+=(-v "$deno_root:$deno_root")
+    fi
+
+    image="$IMAGE_NAME:$IMAGE_TAG"
+    docker_args+=(
+        --network host \
+        --privileged \
+        -v "$PWD:$PWD" \
+        -v /etc/localtime:/etc/localtime:ro \
+        --env CARGO_HOME \
+        -v "${CARGO_HOME}:${CARGO_HOME}" \
+        -w "$PWD" \
+        -e HOME="$HOME" \
+        "$image" \
+        "${args[@]}"
+    )
+
+    docker run --rm "${docker_args[@]}"
+}
+
+if [ -f "$STORED_DOCKER_FILE_CHECKSUM_FILE" ]; then
+    STORED_DOCKERFILE_CHECKSUM=$(cat "$STORED_DOCKER_FILE_CHECKSUM_FILE")
+
+    # Compare the current checksums with the stored checksums
+    if [ "$DOCKERFILE_CHECKSUM" == "$STORED_DOCKERFILE_CHECKSUM" ]; then
+        echo "Dockerfile not changed, no need to rebuild"
+        run_with_docker "$@"
+    else
+        echo "Dockerfile changed Proceeding with building docker image..."
+        docker buildx build -t "$IMAGE_NAME:$IMAGE_TAG" "$buildtools_folder" &&
+        echo "$DOCKERFILE_CHECKSUM" > "$STORED_DOCKER_FILE_CHECKSUM_FILE"
+    fi
+else
+    echo "No previous checksum found. Building the image..."
+    docker buildx build -t "$IMAGE_NAME:$IMAGE_TAG" "$buildtools_folder" &&
+    echo "$DOCKERFILE_CHECKSUM" > "$STORED_DOCKER_FILE_CHECKSUM_FILE"
+fi
+
+
+
