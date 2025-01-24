@@ -4919,14 +4919,12 @@ fn run_tsc_thread(
 
 deno_core::extension!(deno_tsc,
   ops = [
-    op_resolve,
-    op_respond,
-
+    op_is_cancelled,
     op_is_node_file,
     op_load,
-
-    op_is_cancelled,
     op_release,
+    op_resolve,
+    op_respond,
     op_script_names,
     op_script_version,
     op_project_version,
