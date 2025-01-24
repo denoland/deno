@@ -17,11 +17,23 @@ use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
 
+use super::minified_file;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
 use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
+
+pub enum LintResult {
+  /// File was linted and optionally produced diagnostics
+  Linted {
+    parsed_source: ParsedSource,
+    diagnostics: Vec<LintDiagnostic>,
+  },
+  /// File was not parsed and linted because, eg. it might have
+  /// been a minified file.
+  Skipped { reason: String },
+}
 
 pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
@@ -95,8 +107,15 @@ impl CliLinter {
     file_path: &Path,
     source_code: String,
     ext: Option<&str>,
-  ) -> Result<(ParsedSource, Vec<LintDiagnostic>), AnyError> {
+  ) -> Result<LintResult, AnyError> {
     let specifier = specifier_from_file_path(file_path)?;
+
+    if minified_file::is_likely_minified(&source_code) {
+      return Ok(LintResult::Skipped {
+        reason: "The file is minified".to_string(),
+      });
+    }
+
     let media_type = if let Some(ext) = ext {
       MediaType::from_str(&format!("placeholder.{ext}"))
     } else if file_path.extension().is_none() {
@@ -108,7 +127,7 @@ impl CliLinter {
     if self.fix {
       self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
     } else {
-      self
+      let (parsed_source, diagnostics) = self
         .linter
         .lint_file(LintFileOptions {
           specifier,
@@ -116,7 +135,11 @@ impl CliLinter {
           source_code,
           config: self.deno_lint_config.clone(),
         })
-        .map_err(AnyError::from)
+        .map_err(AnyError::from)?;
+      Ok(LintResult::Linted {
+        parsed_source,
+        diagnostics,
+      })
     }
   }
 
@@ -126,7 +149,7 @@ impl CliLinter {
     media_type: MediaType,
     source_code: String,
     file_path: &Path,
-  ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
+  ) -> Result<LintResult, deno_core::anyhow::Error> {
     // initial lint
     let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
       specifier: specifier.clone(),
@@ -184,7 +207,10 @@ impl CliLinter {
       .context("Failed writing fix to file.")?;
     }
 
-    Ok((source, diagnostics))
+    Ok(LintResult::Linted {
+      parsed_source: source,
+      diagnostics,
+    })
   }
 }
 
