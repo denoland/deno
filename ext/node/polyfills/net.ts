@@ -1252,7 +1252,7 @@ export class Socket extends Duplex {
     // TODO(kt3k): Remove this workaround
     const errorStack = new Error().stack;
     this._needsSockInitWorkaround =
-      options.handle?.provider !== providerType.TCPSERVERWRAP &&
+      options.handle?.provider === providerType.TCPWRAP &&
       pkgsNeedsSockInitWorkaround.some((pkg) => errorStack?.includes(pkg));
     if (this._needsSockInitWorkaround) {
       this.pause();
