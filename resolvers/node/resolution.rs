@@ -971,7 +971,7 @@ impl<
       }
       return Err(last_error.unwrap());
     } else if let Some(target_obj) = target.as_object() {
-      for key in target_obj.keys() {
+      for (key, condition_target) in target_obj {
         // TODO(bartlomieju): verify that keys are not numeric
         // return Err(errors::err_invalid_package_config(
         //   to_file_path_string(package_json_url),
@@ -983,8 +983,6 @@ impl<
           || conditions.contains(&key.as_str())
           || resolution_kind.is_types() && key.as_str() == "types"
         {
-          let condition_target = target_obj.get(key).unwrap();
-
           let resolved = self.resolve_package_target(
             package_json_path,
             condition_target,
@@ -1032,77 +1030,77 @@ impl<
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<Url, PackageExportsResolveError> {
-    if package_exports.contains_key(package_subpath)
-      && package_subpath.find('*').is_none()
-      && !package_subpath.ends_with('/')
-    {
-      let target = package_exports.get(package_subpath).unwrap();
-      let resolved = self.resolve_package_target(
-        package_json_path,
-        target,
-        "",
-        package_subpath,
-        maybe_referrer,
-        resolution_mode,
-        false,
-        false,
-        conditions,
-        resolution_kind,
-      )?;
-      return match resolved {
-        Some(resolved) => Ok(resolved),
-        None => Err(
-          PackagePathNotExportedError {
-            pkg_json_path: package_json_path.to_path_buf(),
-            subpath: package_subpath.to_string(),
-            maybe_referrer: maybe_referrer.map(ToOwned::to_owned),
-            resolution_kind,
-          }
-          .into(),
-        ),
-      };
-    }
-
-    let mut best_match = "";
-    let mut best_match_subpath = None;
-    for key in package_exports.keys() {
-      let pattern_index = key.find('*');
-      if let Some(pattern_index) = pattern_index {
-        let key_sub = &key[0..pattern_index];
-        if package_subpath.starts_with(key_sub) {
-          // When this reaches EOL, this can throw at the top of the whole function:
-          //
-          // if (StringPrototypeEndsWith(packageSubpath, '/'))
-          //   throwInvalidSubpath(packageSubpath)
-          //
-          // To match "imports" and the spec.
-          if package_subpath.ends_with('/') {
-            // TODO(bartlomieju):
-            // emitTrailingSlashPatternDeprecation();
-          }
-          let pattern_trailer = &key[pattern_index + 1..];
-          if package_subpath.len() >= key.len()
-            && package_subpath.ends_with(&pattern_trailer)
-            && pattern_key_compare(best_match, key) == 1
-            && key.rfind('*') == Some(pattern_index)
-          {
-            best_match = key;
-            best_match_subpath = Some(
-              package_subpath[pattern_index
-                ..(package_subpath.len() - pattern_trailer.len())]
-                .to_string(),
-            );
-          }
-        }
+    if let Some(target) = package_exports.get(package_subpath) {
+      if package_subpath.find('*').is_none() && !package_subpath.ends_with('/')
+      {
+        let resolved = self.resolve_package_target(
+          package_json_path,
+          target,
+          "",
+          package_subpath,
+          maybe_referrer,
+          resolution_mode,
+          false,
+          false,
+          conditions,
+          resolution_kind,
+        )?;
+        return match resolved {
+          Some(resolved) => Ok(resolved),
+          None => Err(
+            PackagePathNotExportedError {
+              pkg_json_path: package_json_path.to_path_buf(),
+              subpath: package_subpath.to_string(),
+              maybe_referrer: maybe_referrer.map(ToOwned::to_owned),
+              resolution_kind,
+            }
+            .into(),
+          ),
+        };
       }
     }
 
-    if !best_match.is_empty() {
-      let target = package_exports.get(best_match).unwrap();
+    let mut best_match = "";
+    let mut best_match_data = None;
+    for (key, target) in package_exports {
+      let Some(pattern_index) = key.find('*') else {
+        continue;
+      };
+      let key_sub = &key[0..pattern_index];
+      if !package_subpath.starts_with(key_sub) {
+        continue;
+      }
+
+      // When this reaches EOL, this can throw at the top of the whole function:
+      //
+      // if (StringPrototypeEndsWith(packageSubpath, '/'))
+      //   throwInvalidSubpath(packageSubpath)
+      //
+      // To match "imports" and the spec.
+      if package_subpath.ends_with('/') {
+        // TODO(bartlomieju):
+        // emitTrailingSlashPatternDeprecation();
+      }
+      let pattern_trailer = &key[pattern_index + 1..];
+      if package_subpath.len() >= key.len()
+        && package_subpath.ends_with(&pattern_trailer)
+        && pattern_key_compare(best_match, key) == 1
+        && key.rfind('*') == Some(pattern_index)
+      {
+        best_match = key;
+        best_match_data = Some((
+          target,
+          &package_subpath
+            [pattern_index..(package_subpath.len() - pattern_trailer.len())],
+        ));
+      }
+    }
+
+    if let Some((target, subpath)) = best_match_data {
       let maybe_resolved = self.resolve_package_target(
         package_json_path,
         target,
-        &best_match_subpath.unwrap(),
+        subpath,
         best_match,
         maybe_referrer,
         resolution_mode,
@@ -1152,7 +1150,7 @@ impl<
       self.pkg_json_resolver.get_closest_package_json(referrer)?
     {
       // ResolveSelf
-      if package_config.name.as_ref() == Some(&package_name) {
+      if package_config.name.as_deref() == Some(package_name) {
         if let Some(exports) = &package_config.exports {
           return self
             .package_exports_resolve(
@@ -1760,10 +1758,10 @@ fn throw_invalid_subpath(
   }
 }
 
-pub fn parse_npm_pkg_name(
-  specifier: &str,
+pub fn parse_npm_pkg_name<'a>(
+  specifier: &'a str,
   referrer: &Url,
-) -> Result<(String, String, bool), InvalidModuleSpecifierError> {
+) -> Result<(&'a str, Cow<'static, str>, bool), InvalidModuleSpecifierError> {
   let mut separator_index = specifier.find('/');
   let mut valid_package_name = true;
   let mut is_scoped = false;
@@ -1780,10 +1778,11 @@ pub fn parse_npm_pkg_name(
     }
   }
 
-  let package_name = if let Some(index) = separator_index {
-    specifier[0..index].to_string()
+  let (package_name, subpath) = if let Some(index) = separator_index {
+    let (package_name, subpath) = specifier.split_at(index);
+    (package_name, Cow::Owned(format!("./{}", subpath)))
   } else {
-    specifier.to_string()
+    (specifier, Cow::Borrowed("."))
   };
 
   // Package name cannot have leading . and cannot have percent-encoding or separators.
@@ -1802,13 +1801,7 @@ pub fn parse_npm_pkg_name(
     });
   }
 
-  let package_subpath = if let Some(index) = separator_index {
-    format!(".{}", specifier.chars().skip(index).collect::<String>())
-  } else {
-    ".".to_string()
-  };
-
-  Ok((package_name, package_subpath, is_scoped))
+  Ok((package_name, subpath, is_scoped))
 }
 
 /// Resolves a specifier that is pointing into a node_modules folder.
@@ -2055,18 +2048,18 @@ mod tests {
 
     assert_eq!(
       parse_npm_pkg_name("fetch-blob", &dummy_referrer).unwrap(),
-      ("fetch-blob".to_string(), ".".to_string(), false)
+      ("fetch-blob", Cow::Borrowed("."), false)
     );
     assert_eq!(
       parse_npm_pkg_name("@vue/plugin-vue", &dummy_referrer).unwrap(),
-      ("@vue/plugin-vue".to_string(), ".".to_string(), true)
+      ("@vue/plugin-vue", Cow::Borrowed("."), true)
     );
     assert_eq!(
       parse_npm_pkg_name("@astrojs/prism/dist/highlighter", &dummy_referrer)
         .unwrap(),
       (
-        "@astrojs/prism".to_string(),
-        "./dist/highlighter".to_string(),
+        "@astrojs/prism",
+        Cow::Owned("./dist/highlighter".to_string()),
         true
       )
     );
