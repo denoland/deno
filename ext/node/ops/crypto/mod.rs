@@ -571,7 +571,7 @@ fn scrypt(
     parallelization,
     keylen as usize,
   )
-  .unwrap();
+  .map_err(|_| JsErrorBox::generic("scrypt params construction failed"))?;
 
   // Call into scrypt
   let res = scrypt::scrypt(&password, &salt, &params, output_buffer);
