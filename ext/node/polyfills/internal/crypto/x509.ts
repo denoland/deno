@@ -7,6 +7,7 @@
 import {
   op_node_x509_ca,
   op_node_x509_check_email,
+  op_node_x509_check_host,
   op_node_x509_fingerprint,
   op_node_x509_fingerprint256,
   op_node_x509_fingerprint512,
@@ -90,8 +91,11 @@ export class X509Certificate {
     }
   }
 
-  checkHost(_name: string, _options?: X509CheckOptions): string | undefined {
-    notImplemented("crypto.X509Certificate.prototype.checkHost");
+  checkHost(name: string, _options?: X509CheckOptions): string | undefined {
+    validateString(name, "name");
+    if (op_node_x509_check_host(this.#handle, name)) {
+      return name;
+    }
   }
 
   checkIP(_ip: string): string | undefined {
