@@ -27,6 +27,8 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
+import { core } from "ext:core/mod.js";
+const { internalFdSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -131,8 +133,8 @@ export class TCP extends ConnectionWrap {
 
     super(provider, conn);
 
-    if (conn?.fd) {
-      this[fdSymbol] = conn.fd;
+    if (this[kStreamBaseField]) {
+      this[fdSymbol] = this[kStreamBaseField][internalFdSymbol];
     }
 
     // TODO(cmorten): the handling of new connections and construction feels
