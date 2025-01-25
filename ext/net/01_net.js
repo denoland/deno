@@ -5,6 +5,7 @@ const {
   BadResourcePrototype,
   InterruptedPrototype,
   internalRidSymbol,
+  internalFdSymbol,
   createCancelHandle,
 } = core;
 import {
@@ -99,26 +100,24 @@ class Conn {
 
   #readable;
   #writable;
-  #fd = -1;
-
   constructor(rid, remoteAddr, localAddr, fd) {
     ObjectDefineProperty(this, internalRidSymbol, {
       __proto__: null,
       enumerable: false,
       value: rid,
     });
+    ObjectDefineProperty(this, internalFdSymbol, {
+      _proto_: null,
+      enumerable: false,
+      value: fd,
+    });
     this.#rid = rid;
     this.#remoteAddr = remoteAddr;
     this.#localAddr = localAddr;
-    this.#fd = fd;
   }
 
   get remoteAddr() {
     return this.#remoteAddr;
-  }
-
-  get fd() {
-    return this.#fd;
   }
 
   get localAddr() {
