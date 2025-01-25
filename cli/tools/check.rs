@@ -400,6 +400,11 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     let mut diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
+    diagnostics.apply_fast_check_source_maps(&self.graph);
+
+    if root_names.is_empty() {
+      return Ok(diagnostics);
+    }
 
     if !self.options.reload {
       // do not type check if we know this is type checked
@@ -453,10 +458,11 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       check_mode: self.options.type_check_mode,
     })?;
 
-    diagnostics.extend(response.diagnostics.filter(|d| {
+    let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
-    }));
-    diagnostics.apply_fast_check_source_maps(&self.graph);
+    });
+    response_diagnostics.apply_fast_check_source_maps(&self.graph);
+    diagnostics.extend(response_diagnostics);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
       self
