@@ -39,22 +39,22 @@ Temporal.Instant.prototype
 ]
 Temporal.ZonedDateTime.prototype
 [
-  "add",               "calendarId",        "constructor",
-  "day",               "dayOfWeek",         "dayOfYear",
-  "daysInMonth",       "daysInWeek",        "daysInYear",
-  "epochMilliseconds", "epochNanoseconds",  "equals",
-  "era",               "eraYear",           "hour",
-  "hoursInDay",        "inLeapYear",        "microsecond",
-  "millisecond",       "minute",            "month",
-  "monthCode",         "monthsInYear",      "nanosecond",
-  "offset",            "offsetNanoseconds", "round",
-  "second",            "since",             "startOfDay",
-  "subtract",          "timeZoneId",        "toInstant",
-  "toJSON",            "toLocaleString",    "toPlainDate",
-  "toPlainDateTime",   "toPlainTime",       "toString",
-  "until",             "valueOf",           "weekOfYear",
-  "with",              "withCalendar",      "withPlainTime",
-  "withTimeZone",      "year"
+  "add",               "calendarId",       "constructor",
+  "day",               "dayOfWeek",        "dayOfYear",
+  "daysInMonth",       "daysInWeek",       "daysInYear",
+  "epochMilliseconds", "epochNanoseconds", "equals",
+  "era",               "eraYear",          "getTimeZoneTransition",
+  "hour",              "hoursInDay",       "inLeapYear",
+  "microsecond",       "millisecond",      "minute",
+  "month",             "monthCode",        "monthsInYear",
+  "nanosecond",        "offset",           "offsetNanoseconds",
+  "round",             "second",           "since",
+  "startOfDay",        "subtract",         "timeZoneId",
+  "toInstant",         "toJSON",           "toLocaleString",
+  "toPlainDate",       "toPlainDateTime",  "toPlainTime",
+  "toString",          "until",            "valueOf",
+  "weekOfYear",        "with",             "withCalendar",
+  "withPlainTime",     "withTimeZone",     "year"
 ]
 Temporal.PlainDate.prototype
 [
