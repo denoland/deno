@@ -1098,7 +1098,7 @@ const ci = {
       ]),
     },
     wasm: {
-      name: "check wasm",
+      name: "build wasm32-unknown-unknown",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1108,7 +1108,7 @@ const ci = {
         installRustStep,
         {
           name: "Install wasm target",
-          run: "rustup install wasm32-unknown-unknown",
+          run: "rustup target add wasm32-unknown-unknown",
         },
         {
           name: "Cargo build",

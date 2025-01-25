@@ -689,7 +689,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '37-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   wasm:
-    name: check wasm
+    name: build wasm32-unknown-unknown
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
@@ -710,7 +710,7 @@ jobs:
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
       - name: Install wasm target
-        run: rustup install wasm32-unknown-unknown
+        run: rustup target add wasm32-unknown-unknown
         if: '!(matrix.skip)'
       - name: Cargo build
         run: cargo build --target wasm32-unknown-unknown -p deno_resolver
