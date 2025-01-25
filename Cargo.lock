@@ -5265,7 +5265,6 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.3",
- "tokio",
  "url",
 ]
 

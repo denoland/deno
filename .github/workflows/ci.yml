@@ -689,7 +689,7 @@ jobs:
             !./target/*/*.tar.gz
           key: '37-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   wasm:
-    name: build wasm32-unknown-unknown
+    name: build wasm32
     needs:
       - pre_build
     if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'

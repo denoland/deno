@@ -1098,7 +1098,7 @@ const ci = {
       ]),
     },
     wasm: {
-      name: "build wasm32-unknown-unknown",
+      name: "build wasm32",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1112,6 +1112,7 @@ const ci = {
         },
         {
           name: "Cargo build",
+          // we want this crate to be wasm compatible
           run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
         },
       ]),
