@@ -369,6 +369,16 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     ts_config: &TsConfig,
     mut provided_roots: Vec<Url>,
   ) -> Result<Diagnostics, CheckError> {
+    fn log_provided_roots(provided_roots: &[Url]) {
+      for root in provided_roots {
+        log::info!(
+          "{} {}",
+          colors::green("Check"),
+          to_percent_decoded_str(root.as_str())
+        );
+      }
+    }
+
     // walk the graph
     let mut graph_walker = GraphWalker::new(
       &self.graph,
@@ -397,16 +407,19 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       maybe_check_hash,
     } = graph_walker.into_tsc_roots();
 
-    let mut diagnostics = missing_diagnostics.filter(|d| {
+    let mut missing_diagnostics = missing_diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
-    diagnostics.apply_fast_check_source_maps(&self.graph);
+    missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
     if root_names.is_empty() {
-      return Ok(diagnostics);
+      if missing_diagnostics.has_diagnostic() {
+        log_provided_roots(&provided_roots);
+      }
+      return Ok(missing_diagnostics);
     }
 
-    if !self.options.reload {
+    if !self.options.reload && !missing_diagnostics.has_diagnostic() {
       // do not type check if we know this is type checked
       if let Some(check_hash) = maybe_check_hash {
         if self.type_check_cache.has_check_hash(check_hash) {
@@ -417,13 +430,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     // log out the roots that we're checking
-    for root in &provided_roots {
-      log::info!(
-        "{} {}",
-        colors::green("Check"),
-        to_percent_decoded_str(root.as_str())
-      );
-    }
+    log_provided_roots(&provided_roots);
 
     // the first root will always either be the specifier that the user provided
     // or the first specifier in a directory
@@ -462,6 +469,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       self.should_include_diagnostic(self.options.type_check_mode, d)
     });
     response_diagnostics.apply_fast_check_source_maps(&self.graph);
+    let mut diagnostics = missing_diagnostics;
     diagnostics.extend(response_diagnostics);
 
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
