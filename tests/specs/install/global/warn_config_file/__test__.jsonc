@@ -1,0 +1,5 @@
+{
+  "tempDir": true,
+  "args": "install --root ./bins -g --name my-cli main.js",
+  "output": "install.out"
+}
