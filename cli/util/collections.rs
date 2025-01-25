@@ -49,14 +49,6 @@ impl<TValue> FolderScopedMap<TValue> {
     self.scoped.len() + 1
   }
 
-  pub fn unscoped(&self) -> &TValue {
-    &self.unscoped
-  }
-
-  pub fn values(&self) -> impl Iterator<Item = &TValue> {
-    std::iter::once(&self.unscoped).chain(self.scoped.values())
-  }
-
   pub fn get_for_specifier(&self, specifier: &Url) -> &TValue {
     self.get_for_specifier_str(specifier.as_str())
   }

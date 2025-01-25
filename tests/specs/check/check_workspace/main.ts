@@ -1,4 +1,4 @@
-// We shouldn't get diagnostics from this import under this check scope.
+// We should get diagnostics from this import under this check scope.
 import "./member/mod.ts";
 
 // Only defined for window.

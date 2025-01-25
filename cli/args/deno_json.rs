@@ -264,14 +264,6 @@ impl TsConfigResolver {
     Self { map }
   }
 
-  pub fn root(&self) -> &TsConfigFolderInfo {
-    self.map.unscoped()
-  }
-
-  pub fn folders(&self) -> impl Iterator<Item = &TsConfigFolderInfo> {
-    self.map.values()
-  }
-
   pub fn check_js_for_specifier(&self, specifier: &Url) -> bool {
     self.folder_for_specifier(specifier).dir.check_js()
   }

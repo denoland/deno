@@ -57,7 +57,6 @@ mod diagnostics;
 pub use self::diagnostics::Diagnostic;
 pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
-pub use self::diagnostics::DiagnosticsByConfigFolder;
 pub use self::diagnostics::Position;
 
 pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(

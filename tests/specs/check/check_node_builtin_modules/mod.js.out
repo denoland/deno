@@ -1,5 +1,7 @@
-error: TS2769 [ERROR]: No overload matches this call.
+TS2769 [ERROR]: No overload matches this call.
   [WILDCARD]
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
     at file:///[WILDCARD]/mod.js:3:52
+
+error: Type checking failed.

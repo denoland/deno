@@ -364,7 +364,7 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let (graph, check_diagnostics) = self
+        let mut diagnostics_by_folder = self
           .type_checker
           .check_diagnostics(
             graph,
@@ -378,20 +378,23 @@ impl PublishPreparer {
           .await?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
-        let check_diagnostics =
-          check_diagnostics.filter(|d| d.include_when_remote());
-        if check_diagnostics.has_diagnostic() {
-          bail!(
-            concat!(
-            "Failed ensuring public API type output is valid.\n\n",
-            "{:#}\n\n",
-            "You may have discovered a bug in Deno. Please open an issue at: ",
-            "https://github.com/denoland/deno/issues/"
-          ),
-            check_diagnostics
-          );
+        for result in diagnostics_by_folder.by_ref() {
+          let (_, check_diagnostics) = result?;
+          let check_diagnostics =
+            check_diagnostics.filter(|d| d.include_when_remote());
+          if check_diagnostics.has_diagnostic() {
+            bail!(
+              concat!(
+                "Failed ensuring public API type output is valid.\n\n",
+                "{:#}\n\n",
+                "You may have discovered a bug in Deno. Please open an issue at: ",
+                "https://github.com/denoland/deno/issues/"
+              ),
+              check_diagnostics
+            );
+          }
         }
-        Ok(graph)
+        Ok(diagnostics_by_folder.into_graph())
       }
     }
   }

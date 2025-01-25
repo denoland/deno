@@ -2156,7 +2156,7 @@ fn ts_dependency_recompilation() {
   let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
-  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  // TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());
