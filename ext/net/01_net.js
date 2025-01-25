@@ -107,7 +107,7 @@ class Conn {
       value: rid,
     });
     ObjectDefineProperty(this, internalFdSymbol, {
-      _proto_: null,
+      __proto__: null,
       enumerable: false,
       value: fd,
     });
