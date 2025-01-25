@@ -181,7 +181,6 @@ export function brotliCompress(
     callback = options;
     options = {};
   }
-
   const { quality, lgwin, mode } = oneOffCompressOptions(options);
   PromisePrototypeCatch(
     PromisePrototypeThen(
@@ -204,8 +203,13 @@ export function brotliCompressSync(
   return Buffer.from(TypedArrayPrototypeSubarray(output, 0, len));
 }
 
-export function brotliDecompress(input) {
+export function brotliDecompress(input, options, callback) {
   const buf = toU8(input);
+
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
   return PromisePrototypeCatch(
     PromisePrototypeThen(
       op_brotli_decompress_async(buf),
