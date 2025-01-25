@@ -1097,6 +1097,25 @@ const ci = {
         },
       ]),
     },
+    wasm: {
+      name: "check wasm",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          name: "Install wasm target",
+          run: "rustup install wasm32-unknown-unknown",
+        },
+        {
+          name: "Cargo build",
+          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+        },
+      ]),
+    },
     "publish-canary": {
       name: "publish canary",
       "runs-on": ubuntuX86Runner,
