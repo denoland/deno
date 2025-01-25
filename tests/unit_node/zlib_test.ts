@@ -36,7 +36,7 @@ Deno.test("brotli compression async", async () => {
     })
   );
   assertEquals(compressed instanceof Buffer, true);
-  const decompressed = await new Promise((resolve) =>
+  const decompressed: Buffer = await new Promise((resolve) =>
     brotliDecompress(compressed, (_, res) => {
       return resolve(res);
     })
