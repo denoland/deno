@@ -11,6 +11,18 @@ const ops = core.ops;
 let logDebug = false;
 let logSource = "JS";
 
+function spanned(name, f) {
+  if (!ops.op_make_span) {
+    return f();
+  }
+  const span = ops.op_make_span(name, false);
+  try {
+    return f();
+  } finally {
+    ops.op_exit_span(span);
+  }
+}
+
 // The map from the normalized specifier to the original.
 // TypeScript normalizes the specifier in its internal processing,
 // but the original specifier is needed when looking up the source from the runtime.
@@ -172,6 +184,8 @@ ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
   }
   return isNodeSourceFile;
 });
+
+ts.deno.setSpanned(spanned);
 
 /**
  * @param msg {string}
@@ -384,7 +398,7 @@ export function clearScriptNamesCache() {
  * specific "bindings" to the Deno environment that tsc needs to work.
  *
  * @type {ts.CompilerHost & ts.LanguageServiceHost} */
-export const host = {
+const hosty = {
   fileExists(specifier) {
     if (logDebug) {
       debug(`host.fileExists("${specifier}")`);
@@ -720,7 +734,33 @@ export const host = {
     }
     return scriptSnapshot;
   },
+  // getModuleResolutionCache() {
+  //   return resolutionCache;
+  // }
 };
+// resolutionCache = ts.createResolutionCache(host, host.getCurrentDirectory(), true);
+const excluded = new Set([
+  "getScriptVersion",
+  "fileExists",
+  "getScriptSnapshot",
+  "getCompilationSettings",
+  "getCurrentDirectory",
+  "useCaseSensitiveFileNames",
+  "getModuleSpecifierCache",
+  "getGlobalTypingsCacheLocation",
+  "getSourceFile",
+]);
+/** @type {typeof hosty} */
+export const host = {};
+for (const [key, value] of Object.entries(hosty)) {
+  if (typeof value === "function" && !excluded.has(key)) {
+    host[key] = (...args) => {
+      return spanned(key, () => value.bind(host)(...args));
+    };
+  } else {
+    host[key] = value;
+  }
+}
 
 // @ts-ignore Undocumented function.
 const exportMapCache = ts.createCacheableExportInfoMap(host);
