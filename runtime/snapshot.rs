@@ -58,6 +58,7 @@ impl deno_fetch::FetchPermissions for Permissions {
   }
 }
 
+#[cfg(feature = "ffi")]
 impl deno_ffi::FfiPermissions for Permissions {
   fn check_partial_no_path(&mut self) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -293,7 +294,10 @@ pub fn create_runtime_snapshot(
     deno_broadcast_channel::deno_broadcast_channel::init_ops_and_esm(
       deno_broadcast_channel::InMemoryBroadcastChannel::default(),
     ),
+    #[cfg(feature = "ffi")]
     deno_ffi::deno_ffi::init_ops_and_esm::<Permissions>(),
+    #[cfg(not(feature = "ffi"))]
+    crate::shared::deno_ffi::init_ops_and_esm(),
     deno_net::deno_net::init_ops_and_esm::<Permissions>(None, None),
     deno_tls::deno_tls::init_ops_and_esm(),
     deno_kv::deno_kv::init_ops_and_esm(

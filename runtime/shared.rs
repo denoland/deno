@@ -4,6 +4,9 @@
 use deno_core::extension;
 use deno_core::Extension;
 
+#[cfg(not(feature = "ffi"))]
+extension!(deno_ffi, esm = ["00_ffi.js"]);
+
 extension!(runtime,
   deps = [
     deno_webidl,
