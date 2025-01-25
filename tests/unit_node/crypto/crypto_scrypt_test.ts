@@ -194,7 +194,7 @@ Deno.test("log_n > 64 doesn't panic", async () => {
 
   scrypt("password", "salt", 128, (err) => {
     // log_n > 64 is not supported currently https://github.com/denoland/deno/issues/27716
-    err ? resolve({}) : reject({});
+    err ? resolve(true) : reject({});
   });
 
   await promise;
