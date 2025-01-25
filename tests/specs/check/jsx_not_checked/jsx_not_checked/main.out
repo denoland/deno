@@ -7,7 +7,9 @@ Download http://localhost:4260/loose-envify/loose-envify-1.4.0.tgz
 Download http://localhost:4260/js-tokens/js-tokens-4.0.0.tgz
 [UNORDERED_END]
 Check file:///[WILDCARD]/jsx_not_checked/main.jsx
-error: TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
+TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
 console.log(add("1", "2"));
                 ~~~
     at file:///[WILDCARD]/other.ts:5:17
+
+error: Type checking failed.

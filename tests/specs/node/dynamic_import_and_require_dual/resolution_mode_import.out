@@ -1,5 +1,7 @@
 Check file:///[WILDLINE]/resolution_mode_import.mts
-error: TS2322 [ERROR]: Type '"other"' is not assignable to type '"mjs"'.
+TS2322 [ERROR]: Type '"other"' is not assignable to type '"mjs"'.
 const test: typeof kind = "other";
       ~~~~
     at file:///[WILDLINE]/resolution_mode_import.mts:5:7
+
+error: Type checking failed.

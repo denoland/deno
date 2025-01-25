@@ -219,7 +219,6 @@ impl ModuleLoadPreparer {
           check::CheckOptions {
             build_fast_check_graph: true,
             lib,
-            log_ignored_options: false,
             reload: self.options.reload_flag(),
             type_check_mode: self.options.type_check_mode(),
           },

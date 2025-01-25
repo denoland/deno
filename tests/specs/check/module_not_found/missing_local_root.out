@@ -1,2 +1,4 @@
 Check file:///[WILDLINE]/non_existent.ts
-error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/non_existent.ts'.
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/non_existent.ts'.
+
+error: Type checking failed.

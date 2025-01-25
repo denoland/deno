@@ -20,7 +20,6 @@ use deno_terminal::colors;
 use rand::Rng;
 
 use super::installer::infer_name_from_url;
-use crate::args::check_warn_tsconfig;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -84,9 +83,6 @@ pub async fn compile(
     graph
   };
 
-  let ts_config_for_emit = cli_options
-    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-  check_warn_tsconfig(&ts_config_for_emit);
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),

@@ -17,11 +17,9 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
-use deno_ast::SourceMapOption;
 use deno_cache_dir::file_fetcher::CacheSetting;
 pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
-use deno_config::deno_json::ConfigFileError;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
 use deno_config::deno_json::LintConfig;
@@ -30,8 +28,6 @@ use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
 use deno_config::deno_json::TestConfig;
 pub use deno_config::deno_json::TsConfig;
-pub use deno_config::deno_json::TsConfigForEmit;
-pub use deno_config::deno_json::TsConfigType;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
@@ -44,14 +40,12 @@ use deno_core::resolve_url_or_path;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
-pub use deno_json::check_warn_tsconfig;
 use deno_lib::args::has_flag_env_var;
 use deno_lib::args::npm_pkg_req_ref_to_binary_command;
 use deno_lib::args::CaData;
 use deno_lib::args::NPM_PROCESS_STATE;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_lib::worker::StorageKeyResolver;
-use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::NpmSystemInfo;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::inspector_server::InspectorServer;
@@ -112,62 +106,6 @@ pub fn jsr_api_url() -> &'static Url {
   });
 
   &JSR_API_URL
-}
-
-pub fn ts_config_to_transpile_and_emit_options(
-  config: deno_config::deno_json::TsConfig,
-) -> Result<(deno_ast::TranspileOptions, deno_ast::EmitOptions), AnyError> {
-  let options: deno_config::deno_json::EmitConfigOptions =
-    serde_json::from_value(config.0)
-      .context("Failed to parse compilerOptions")?;
-  let imports_not_used_as_values =
-    match options.imports_not_used_as_values.as_str() {
-      "preserve" => deno_ast::ImportsNotUsedAsValues::Preserve,
-      "error" => deno_ast::ImportsNotUsedAsValues::Error,
-      _ => deno_ast::ImportsNotUsedAsValues::Remove,
-    };
-  let (transform_jsx, jsx_automatic, jsx_development, precompile_jsx) =
-    match options.jsx.as_str() {
-      "react" => (true, false, false, false),
-      "react-jsx" => (true, true, false, false),
-      "react-jsxdev" => (true, true, true, false),
-      "precompile" => (false, false, false, true),
-      _ => (false, false, false, false),
-    };
-  let source_map = if options.inline_source_map {
-    SourceMapOption::Inline
-  } else if options.source_map {
-    SourceMapOption::Separate
-  } else {
-    SourceMapOption::None
-  };
-  Ok((
-    deno_ast::TranspileOptions {
-      use_ts_decorators: options.experimental_decorators,
-      use_decorators_proposal: !options.experimental_decorators,
-      emit_metadata: options.emit_decorator_metadata,
-      imports_not_used_as_values,
-      jsx_automatic,
-      jsx_development,
-      jsx_factory: options.jsx_factory,
-      jsx_fragment_factory: options.jsx_fragment_factory,
-      jsx_import_source: options.jsx_import_source,
-      precompile_jsx,
-      precompile_jsx_skip_elements: options.jsx_precompile_skip_elements,
-      precompile_jsx_dynamic_props: None,
-      transform_jsx,
-      var_decl_imports: false,
-      // todo(dsherret): support verbatim_module_syntax here properly
-      verbatim_module_syntax: false,
-    },
-    deno_ast::EmitOptions {
-      inline_sources: options.inline_sources,
-      remove_comments: false,
-      source_map,
-      source_map_base: None,
-      source_map_file: None,
-    },
-  ))
 }
 
 #[derive(Debug, Clone)]
@@ -751,13 +689,6 @@ impl CliOptions {
     self.workspace().vendor_dir_path()
   }
 
-  pub fn resolve_ts_config_for_emit(
-    &self,
-    config_type: TsConfigType,
-  ) -> Result<TsConfigForEmit, ConfigFileError> {
-    self.workspace().resolve_ts_config_for_emit(config_type)
-  }
-
   pub fn resolve_inspector_server(
     &self,
   ) -> Result<Option<InspectorServer>, AnyError> {
@@ -779,23 +710,6 @@ impl CliOptions {
 
   pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
     self.maybe_lockfile.as_ref()
-  }
-
-  pub fn to_compiler_option_types(
-    &self,
-  ) -> Result<Vec<deno_graph::ReferrerImports>, serde_json::Error> {
-    self
-      .workspace()
-      .to_compiler_option_types()
-      .map(|maybe_imports| {
-        maybe_imports
-          .into_iter()
-          .map(|(referrer, imports)| deno_graph::ReferrerImports {
-            referrer,
-            imports,
-          })
-          .collect()
-      })
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -847,23 +761,6 @@ impl CliOptions {
       result.push((ctx, options));
     }
     Ok(result)
-  }
-
-  pub fn resolve_deno_lint_config(&self) -> Result<DenoLintConfig, AnyError> {
-    let ts_config_result =
-      self.resolve_ts_config_for_emit(TsConfigType::Emit)?;
-
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_result.ts_config,
-      )?;
-
-    Ok(DenoLintConfig {
-      default_jsx_factory: (!transpile_options.jsx_automatic)
-        .then_some(transpile_options.jsx_factory),
-      default_jsx_fragment_factory: (!transpile_options.jsx_automatic)
-        .then_some(transpile_options.jsx_fragment_factory),
-    })
   }
 
   pub fn resolve_workspace_test_options(
@@ -925,10 +822,6 @@ impl CliOptions {
 
   pub fn ca_stores(&self) -> &Option<Vec<String>> {
     &self.flags.ca_stores
-  }
-
-  pub fn check_js(&self) -> bool {
-    self.workspace().check_js()
   }
 
   pub fn coverage_dir(&self) -> Option<String> {

@@ -1,9 +1,11 @@
 Download http://localhost:4545/wasm/math_with_import.wasm
 Check file:///[WILDLINE]/main.js
-error: TS2305 [ERROR]: Module '"file:///[WILDLINE]/local_math.ts"' has no exported member '"add"'.
+TS2305 [ERROR]: Module '"file:///[WILDLINE]/local_math.ts"' has no exported member '"add"'.
     at http://localhost:4545/wasm/math_with_import.wasm:1:1
 
 TS2305 [ERROR]: Module '"file:///[WILDLINE]/local_math.ts"' has no exported member '"subtract"'.
     at http://localhost:4545/wasm/math_with_import.wasm:1:1
 
 Found 2 errors.
+
+error: Type checking failed.

@@ -2,6 +2,7 @@
 
 // Note: Only add code in this folder that has no application specific logic
 pub mod archive;
+pub mod collections;
 pub mod console;
 pub mod diff;
 pub mod display;

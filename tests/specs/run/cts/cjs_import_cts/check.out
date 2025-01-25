@@ -1,5 +1,5 @@
 Check file:///[WILDLINE]main.js
-error: TS2580 [ERROR]: Cannot find name 'module'.
+TS2580 [ERROR]: Cannot find name 'module'.
 module.exports.add = function (a, b) {
 ~~~~~~
     at file:///[WILDLINE]
@@ -15,3 +15,5 @@ module.exports.add = function (a, b) {
     at file:///[WILDLINE]
 
 Found 3 errors.
+
+error: Type checking failed.

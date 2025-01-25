@@ -12,12 +12,12 @@
     },
     "glob_star": {
       "args": "check **/*.ts",
-      "output": "Check [WILDLINE]main.ts\nCheck [WILDLINE]sub_dir/main.ts\nerror: TS2322[WILDCARD]",
+      "output": "Check [WILDLINE]main.ts\nCheck [WILDLINE]sub_dir/main.ts\nTS2322[WILDCARD]",
       "exitCode": 1
     },
     "sub_dir": {
       "args": "check sub_dir",
-      "output": "Check [WILDLINE]sub_dir/main.ts\nerror: TS2322[WILDCARD]",
+      "output": "Check [WILDLINE]sub_dir/main.ts\nTS2322[WILDCARD]",
       "exitCode": 1
     }
   }

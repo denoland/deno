@@ -1,4 +1,4 @@
-error: TS2769 [ERROR]: No overload matches this call.
+TS2769 [ERROR]: No overload matches this call.
   [WILDCARD]
 const _data = fs.readFileSync("./node_builtin.js", 123);
                                                    ~~~
@@ -11,3 +11,5 @@ const _testString: number[] = builtinModules;
     at file:///[WILDCARD]/mod.ts:9:7
 
 Found 2 errors.
+
+error: Type checking failed.

@@ -1,5 +1,7 @@
 Check file:///[WILDLINE]/mod.mts
-error: TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
+TS2345 [ERROR]: Argument of type 'string' is not assignable to parameter of type 'number'.
 console.log(add(1, "test"));
                    ~~~~~~
     at file:///[WILDLINE]/mod.mts:3:20
+
+error: Type checking failed.

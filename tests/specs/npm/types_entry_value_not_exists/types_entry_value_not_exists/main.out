@@ -1,7 +1,9 @@
 Download http://localhost:4260/@denotest%2ftypes-entry-value-not-exists
 Download http://localhost:4260/@denotest/types-entry-value-not-exists/1.0.0.tgz
 Check file://[WILDCARD]/types_entry_value_not_exists/main.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const result: string = getValue();
       ~~~~~~
     at file:///[WILDCARD]/main.ts:4:7
+
+error: Type checking failed.

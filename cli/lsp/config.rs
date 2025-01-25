@@ -18,6 +18,7 @@ use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
+use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CreateResolverOptions;
@@ -1168,14 +1169,13 @@ impl Default for LspTsConfig {
 }
 
 impl LspTsConfig {
-  pub fn new(config_file: Option<&ConfigFile>) -> Self {
-    let mut ts_config = Self::default();
-    match ts_config.inner.merge_tsconfig_from_config_file(config_file) {
-      Ok(Some(ignored_options)) => lsp_warn!("{}", ignored_options),
-      Err(err) => lsp_warn!("{}", err),
-      _ => {}
+  pub fn new(raw_ts_config: TsConfigWithIgnoredOptions) -> Self {
+    let mut base_ts_config = Self::default();
+    for ignored_options in &raw_ts_config.ignored_options {
+      lsp_warn!("{}", ignored_options)
     }
-    ts_config
+    base_ts_config.inner.merge_mut(raw_ts_config.ts_config);
+    base_ts_config
   }
 }
 
@@ -1425,9 +1425,10 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = LspTsConfig::new(
-      member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
-    );
+    let ts_config = member_dir
+      .to_raw_user_provided_tsconfig()
+      .map(LspTsConfig::new)
+      .unwrap_or_default();
 
     let deno_lint_config =
       if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")
@@ -1673,7 +1674,6 @@ impl ConfigData {
   ) -> Option<JsxImportSourceConfig> {
     self
       .member_dir
-      .workspace
       .to_maybe_jsx_import_source_config()
       .ok()
       .flatten()

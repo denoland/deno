@@ -3,6 +3,7 @@
 use std::hash::Hasher;
 
 /// A very fast insecure hasher that uses the xxHash algorithm.
+#[derive(Debug, Clone)]
 pub struct FastInsecureHasher(twox_hash::XxHash64);
 
 impl FastInsecureHasher {

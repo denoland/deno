@@ -64,7 +64,7 @@ fn fast_check_cache() {
 
   // ensure cache works
   let output = check_debug_cmd.run();
-  assert_contains!(output.combined_output(), "Already type checked.");
+  assert_contains!(output.combined_output(), "Already type checked");
 
   // now validated
   type_check_cache_path.remove_file();
@@ -97,10 +97,12 @@ fn fast_check_cache() {
     .run()
     .assert_matches_text(
       "Check file:///[WILDCARD]main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~
     at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+
+error: Type checking failed.
 ",
     )
     .assert_exit_code(1);

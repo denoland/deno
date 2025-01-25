@@ -1,5 +1,5 @@
 Check file:///[WILDLINE]/check.ts
-error: TS2322 [ERROR]: Type 'Function | null' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'Function | null' is not assignable to type 'number'.
   Type 'null' is not assignable to type 'number'.
 const value1: number = table.get(0);
       ~~~~~~
@@ -12,3 +12,5 @@ const value2: number = memory.buffer;
     at file:///[WILDLINE]/check.ts:3:7
 
 Found 2 errors.
+
+error: Type checking failed.

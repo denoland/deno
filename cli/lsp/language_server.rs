@@ -23,6 +23,7 @@ use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
@@ -279,7 +280,7 @@ impl LanguageServer {
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
-          check_js: false,
+          check_js: CheckJsOption::False,
           exit_integrity_errors: false,
         },
       )?;

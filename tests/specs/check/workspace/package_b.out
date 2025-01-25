@@ -1,5 +1,7 @@
 Check file:///[WILDLINE]/package-b/mod.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const test: string = add(1, 2);
       ~~~~
     at [WILDLINE]
+
+error: Type checking failed.
