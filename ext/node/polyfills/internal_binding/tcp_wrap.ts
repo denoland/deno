@@ -47,6 +47,8 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
+const fdSymbol: unique symbol = Symbol("fdSymbol");
+
 /** The type of TCP socket. */
 enum socketType {
   SOCKET,
@@ -100,7 +102,8 @@ export class TCP extends ConnectionWrap {
 
   #closed = false;
   #acceptBackoffDelay?: number;
-  fd = -1;
+
+  [fdSymbol]: number = -1;
 
   /**
    * Creates a new TCP class instance.
@@ -129,7 +132,7 @@ export class TCP extends ConnectionWrap {
     super(provider, conn);
 
     if (conn?.fd) {
-      this.fd = conn.fd;
+      this[fdSymbol] = conn.fd;
     }
 
     // TODO(cmorten): the handling of new connections and construction feels
@@ -144,6 +147,10 @@ export class TCP extends ConnectionWrap {
       this.#remotePort = remoteAddr.port;
       this.#remoteFamily = isIP(remoteAddr.hostname);
     }
+  }
+
+  get fd() {
+    return this[fdSymbol];
   }
 
   /**
