@@ -90,6 +90,7 @@ util::unit_test_factory!(
     querystring_test,
     readline_test,
     repl_test,
+    sqlite_test,
     stream_test,
     string_decoder_test,
     timers_test,
