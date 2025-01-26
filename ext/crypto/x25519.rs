@@ -50,7 +50,7 @@ pub fn op_crypto_x25519_public_key(#[buffer] private_key: &[u8]) -> String {
   let private_key: [u8; 32] =
     private_key.try_into().expect("Expected byteLength 32");
   BASE64_URL_SAFE_NO_PAD
-    .encode(&x25519_dalek::x25519(private_key, X25519_BASEPOINT_BYTES))
+    .encode(x25519_dalek::x25519(private_key, X25519_BASEPOINT_BYTES))
 }
 
 const MONTGOMERY_IDENTITY: MontgomeryPoint = MontgomeryPoint([0; 32]);
