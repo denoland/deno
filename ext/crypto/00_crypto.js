@@ -2987,8 +2987,8 @@ function importKeyAES(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3162,8 +3162,8 @@ function importKeyHMAC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3428,8 +3428,8 @@ function importKeyEC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3776,6 +3776,7 @@ function importKeyRSA(
     case "jwk": {
       // 1.
       const jwk = keyData;
+      console.log(jwk);
 
       // 2.
       if (jwk.d !== undefined) {
@@ -3842,8 +3843,8 @@ function importKeyRSA(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
