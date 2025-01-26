@@ -3686,8 +3686,7 @@ impl CompletionInfo {
     // A cache for costly resolution computations.
     // On a test project, it was found to speed up completion requests
     // by 10-20x and contained ~300 entries for 8000 completion items.
-    let mut cache = HashMap::with_capacity(4096);
-    let entries_count = self.entries.len();
+    let mut cache = HashMap::with_capacity(512);
     let items = self
       .entries
       .iter()
