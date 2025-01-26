@@ -3776,7 +3776,6 @@ function importKeyRSA(
     case "jwk": {
       // 1.
       const jwk = keyData;
-      console.log(jwk);
 
       // 2.
       if (jwk.d !== undefined) {
