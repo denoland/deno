@@ -1,0 +1,24 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "i",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated",
+      "output": "outdated.out"
+    },
+    {
+      "args": "outdated --update --latest",
+      "output": "update.out"
+    },
+    {
+      "args": [
+        "eval",
+        "console.log(Deno.readTextFileSync('import_map.json').trim())"
+      ],
+      "output": "import_map.json.out"
+    }
+  ]
+}

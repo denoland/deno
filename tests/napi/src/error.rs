@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ptr;
+
+use napi_sys::*;
 
 use crate::assert_napi_ok;
 use crate::cstr;
 use crate::napi_get_callback_info;
 use crate::napi_new_property;
-use napi_sys::*;
-use std::ptr;
 
 extern "C" fn check_error(
   env: napi_env,

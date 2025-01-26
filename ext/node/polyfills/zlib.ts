@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { zlib as constants } from "ext:deno_node/internal_binding/constants.ts";
 import {
@@ -45,6 +45,7 @@ import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
 import { op_zlib_crc32 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 const {
   Uint8Array,
   TypedArrayPrototypeGetBuffer,

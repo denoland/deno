@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -11,15 +11,9 @@ use std::path::PathBuf;
 use std::path::StripPrefixError;
 use std::rc::Rc;
 
-use crate::interface::AccessCheckFn;
-use crate::interface::FileSystemRc;
-use crate::interface::FsDirEntry;
-use crate::interface::FsFileType;
-use crate::FsPermissions;
-use crate::OpenOptions;
 use boxed_error::Boxed;
+use deno_core::error::ResourceError;
 use deno_core::op2;
-use deno_core::v8;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::FastString;
@@ -27,7 +21,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
-use deno_core::ToV8;
+use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -37,34 +31,53 @@ use rand::thread_rng;
 use rand::Rng;
 use serde::Serialize;
 
-#[derive(Debug, Boxed)]
+use crate::interface::AccessCheckFn;
+use crate::interface::FileSystemRc;
+use crate::interface::FsDirEntry;
+use crate::interface::FsFileType;
+use crate::FsPermissions;
+use crate::OpenOptions;
+
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsOpsErrorKind {
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[source] std::io::Error),
+  #[class(inherit)]
   #[error("{0}")]
   OperationError(#[source] OperationError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] ResourceError),
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(generic)]
   #[error("{0}")]
   StripPrefix(#[from] StripPrefixError),
+  #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
+  #[class(type)]
   #[error("Invalid seek mode: {0}")]
   InvalidSeekMode(i32),
+  #[class(generic)]
   #[error("Invalid control character in prefix or suffix: {0:?}")]
   InvalidControlCharacter(String),
+  #[class(generic)]
   #[error("Invalid character in prefix or suffix: {0:?}")]
   InvalidCharacter(String),
   #[cfg(windows)]
+  #[class(generic)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
+  #[class("NotCapable")]
   #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
   NotCapableAccess {
     // NotCapable
@@ -72,21 +85,21 @@ pub enum FsOpsErrorKind {
     err: &'static str,
     path: String,
   },
+  #[class("NotCapable")]
   #[error("permission denied: {0}")]
-  NotCapable(&'static str), // NotCapable
+  NotCapable(&'static str),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 impl From<FsError> for FsOpsError {
   fn from(err: FsError) -> Self {
     match err {
       FsError::Io(err) => FsOpsErrorKind::Io(err),
-      FsError::FileBusy => {
-        FsOpsErrorKind::Other(deno_core::error::resource_unavailable())
-      }
+      FsError::FileBusy => FsOpsErrorKind::Resource(ResourceError::Unavailable),
       FsError::NotSupported => {
-        FsOpsErrorKind::Other(deno_core::error::not_supported())
+        FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
     }
@@ -1381,57 +1394,12 @@ where
   Ok(buf.into_owned().into_boxed_slice().into())
 }
 
-// todo(https://github.com/denoland/deno_core/pull/986): remove
-// when upgrading deno_core
-#[derive(Debug)]
-pub struct FastStringV8AllocationError;
-
-impl std::error::Error for FastStringV8AllocationError {}
-
-impl std::fmt::Display for FastStringV8AllocationError {
-  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-    write!(
-      f,
-      "failed to allocate string; buffer exceeds maximum length"
-    )
-  }
-}
-
-/// Maintains a static reference to the string if possible.
-pub struct V8MaybeStaticStr(pub Cow<'static, str>);
-
-impl<'s> ToV8<'s> for V8MaybeStaticStr {
-  type Error = FastStringV8AllocationError;
-
-  #[inline]
-  fn to_v8(
-    self,
-    scope: &mut v8::HandleScope<'s>,
-  ) -> Result<v8::Local<'s, v8::Value>, Self::Error> {
-    // todo(https://github.com/denoland/deno_core/pull/986): remove this check
-    // when upgrading deno_core
-    const MAX_V8_STRING_LENGTH: usize = 536870888;
-    if self.0.len() > MAX_V8_STRING_LENGTH {
-      return Err(FastStringV8AllocationError);
-    }
-
-    Ok(
-      match self.0 {
-        Cow::Borrowed(text) => FastString::from_static(text),
-        Cow::Owned(value) => value.into(),
-      }
-      .v8_string(scope)
-      .into(),
-    )
-  }
-}
-
 #[op2(stack_trace)]
 #[to_v8]
 pub fn op_fs_read_file_text_sync<P>(
   state: &mut OpState,
   #[string] path: String,
-) -> Result<V8MaybeStaticStr, FsOpsError>
+) -> Result<FastString, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1443,7 +1411,10 @@ where
   let str = fs
     .read_text_file_lossy_sync(&path, Some(&mut access_check))
     .map_err(|error| map_permission_error("readfile", error, &path))?;
-  Ok(V8MaybeStaticStr(str))
+  Ok(match str {
+    Cow::Borrowed(text) => FastString::from_static(text),
+    Cow::Owned(value) => value.into(),
+  })
 }
 
 #[op2(async, stack_trace)]
@@ -1452,7 +1423,7 @@ pub async fn op_fs_read_file_text_async<P>(
   state: Rc<RefCell<OpState>>,
   #[string] path: String,
   #[smi] cancel_rid: Option<ResourceId>,
-) -> Result<V8MaybeStaticStr, FsOpsError>
+) -> Result<FastString, FsOpsError>
 where
   P: FsPermissions + 'static,
 {
@@ -1486,7 +1457,10 @@ where
       .map_err(|error| map_permission_error("readfile", error, &path))?
   };
 
-  Ok(V8MaybeStaticStr(str))
+  Ok(match str {
+    Cow::Borrowed(text) => FastString::from_static(text),
+    Cow::Owned(value) => value.into(),
+  })
 }
 
 fn to_seek_from(offset: i64, whence: i32) -> Result<SeekFrom, FsOpsError> {
@@ -1703,10 +1677,12 @@ pub async fn op_fs_futime_async(
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(inherit)]
 pub struct OperationError {
   operation: &'static str,
   kind: OperationErrorKind,
+  #[inherit]
   pub err: FsError,
 }
 

@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::v8;
 use std::mem::transmute;
 use std::ops::Deref;
 use std::os::raw::c_void;
 use std::ptr::NonNull;
+
+use deno_core::v8;
 
 /// An FFI-opaque, nullable wrapper around v8::Local<v8::Value>.
 /// rusty_v8 Local handle cannot be empty but napi_value can be.

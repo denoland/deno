@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -18,7 +18,6 @@ import {
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
-  op_node_decipheriv_take,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
@@ -352,14 +351,6 @@ export class Decipheriv extends Transform implements Cipher {
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
-      op_node_decipheriv_take(this.#context);
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
-    if (this.#cache.cache.byteLength != 16) {
-      throw new Error("Invalid final block size");
-    }
-
     let buf = new Buffer(16);
     op_node_decipheriv_final(
       this.#context,
@@ -368,6 +359,13 @@ export class Decipheriv extends Transform implements Cipher {
       buf,
       this.#authTag || NO_TAG,
     );
+
+    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    if (this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
     return encoding === "buffer" ? buf : buf.toString(encoding);

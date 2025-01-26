@@ -9,3 +9,6 @@ console.log(zoned.timeZoneId);
 console.log(zoned.calendar);
 // @ts-expect-error: undefined check
 console.log(zoned.timeZone);
+
+const duration = Temporal.Duration.from("P1DT6H30M");
+console.log(duration.toLocaleString("en-US"));
