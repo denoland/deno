@@ -458,7 +458,7 @@ fn collect_lint_files(
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None, None);
-  let all_rules = rule_provider.all_rules();
+  let mut all_rules = rule_provider.all_rules();
   let configured_rules = rule_provider.resolve_lint_rules(
     LintRulesConfig {
       tags: maybe_rules_tags.clone(),
@@ -467,6 +467,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     },
     None,
   );
+  all_rules.sort_by_cached_key(|rule| rule.code().to_string());
 
   if json {
     let json_output = serde_json::json!({
@@ -477,7 +478,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
           // TODO(bartlomieju): print if rule enabled
           serde_json::json!({
             "code": rule.code(),
-            "tags": rule.tags(),
+            "tags": rule.tags().iter().map(|t| t.display()).collect::<Vec<_>>(),
             "docs": rule.help_docs_url(),
           })
         })
@@ -493,7 +494,7 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       let enabled = if configured_rules.rules.contains(rule) {
         "✓"
       } else {
-        " "
+        ""
       };
       println!("- {} {}", rule.code(), colors::green(enabled),);
       println!(
@@ -505,7 +506,15 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
       } else {
         println!(
           "  {}",
-          colors::gray(format!("tags: {}", rule.tags().join(", ")))
+          colors::gray(format!(
+            "tags: {}",
+            rule
+              .tags()
+              .iter()
+              .map(|t| t.display())
+              .collect::<Vec<_>>()
+              .join(", ")
+          ))
         );
       }
       println!();
@@ -658,11 +667,14 @@ mod tests {
 
     std::fs::write(
       &rules_schema_path,
-      serde_json::to_string_pretty(&RulesSchema {
-        schema: schema.schema,
-        rules: all_rules,
-      })
-      .unwrap(),
+      format!(
+        "{}\n",
+        serde_json::to_string_pretty(&RulesSchema {
+          schema: schema.schema,
+          rules: all_rules,
+        })
+        .unwrap(),
+      ),
     )
     .unwrap();
   }
