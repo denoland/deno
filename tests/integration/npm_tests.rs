@@ -395,22 +395,24 @@ fn node_modules_dir_cache() {
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
   let registry_dir_path = util::tests_path().join("registry").join("npm");
-  for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
+  for entry in walkdir::WalkDir::new(&registry_dir_path).max_depth(2) {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
-      let registry_json_path = registry_dir_path
-        .join(entry.file_name())
-        .join("registry.json");
+      let registry_json_path = entry.path().join("registry.json");
 
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
         if file_text.contains(&format!(
           "https://registry.npmjs.org/{}/-/",
-          entry.file_name().to_string_lossy()
+          entry
+            .path()
+            .strip_prefix(&registry_dir_path)
+            .unwrap()
+            .to_string_lossy()
         )) {
           panic!(
             "file {} contained a reference to the npm registry",
-            registry_json_path
+            registry_json_path.display()
           );
         }
       }

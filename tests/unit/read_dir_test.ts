@@ -25,6 +25,14 @@ Deno.test({ permissions: { read: true } }, function readDirSyncSuccess() {
   assertSameContent(files);
 });
 
+Deno.test(
+  { permissions: { read: true } },
+  function readDirSyncResultHasIteratorHelperMethods() {
+    const iterator = Deno.readDirSync("tests/testdata");
+    assertEquals(typeof iterator.map, "function");
+  },
+);
+
 Deno.test({ permissions: { read: true } }, function readDirSyncWithUrl() {
   const files = [
     ...Deno.readDirSync(pathToAbsoluteFileUrl("tests/testdata")),
