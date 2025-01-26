@@ -22,6 +22,8 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolverRc;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -234,7 +236,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
   fn resolve_package_folder_from_package(
     &self,
     specifier: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, node_resolver::errors::PackageFolderResolveError> {
     match self {
       NpmResolver::Byonm(byonm_resolver) => {
@@ -331,7 +333,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Url, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
     self.resolve_req_with_sub_path(
       req_ref.req(),
       req_ref.sub_path(),
@@ -348,7 +350,7 @@ impl<
     referrer: &Url,
     resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Url, ResolveReqWithSubPathError> {
+  ) -> Result<UrlOrPath, ResolveReqWithSubPathError> {
     let package_folder = self
       .npm_resolver
       .resolve_pkg_folder_from_deno_module_req(req, referrer)?;
@@ -398,6 +400,8 @@ impl<
           | NodeResolveErrorKind::PackageImportsResolve(_)
           | NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
           | NodeResolveErrorKind::DataUrlReferrer(_)
+          | NodeResolveErrorKind::PathToUrl(_)
+          | NodeResolveErrorKind::UrlToFilePath(_)
           | NodeResolveErrorKind::TypesNotFound(_)
           | NodeResolveErrorKind::FinalizeResolution(_) => Err(
             ResolveIfForNpmPackageErrorKind::NodeResolve(err.into()).into_box(),
@@ -405,6 +409,12 @@ impl<
           NodeResolveErrorKind::PackageResolve(err) => {
             let err = err.into_kind();
             match err {
+              PackageResolveErrorKind::UrlToFilePath(err) => Err(
+                ResolveIfForNpmPackageErrorKind::NodeResolve(
+                  NodeResolveErrorKind::UrlToFilePath(err).into_box(),
+                )
+                .into_box(),
+              ),
               PackageResolveErrorKind::ClosestPkgJson(_)
               | PackageResolveErrorKind::InvalidModuleSpecifier(_)
               | PackageResolveErrorKind::ExportsResolve(_)
@@ -416,6 +426,14 @@ impl<
               ),
               PackageResolveErrorKind::PackageFolderResolve(err) => {
                 match err.as_kind() {
+                  PackageFolderResolveErrorKind::PathToUrl(err) => {
+                    return Err(
+                      ResolveIfForNpmPackageErrorKind::NodeResolve(
+                        NodeResolveErrorKind::PathToUrl(err.clone()).into_box(),
+                      )
+                      .into_box(),
+                    )
+                  }
                   PackageFolderResolveErrorKind::Io(
                     PackageFolderResolveIoError { package_name, .. },
                   )

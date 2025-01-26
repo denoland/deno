@@ -44,6 +44,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
 use node_resolver::errors::ResolvePkgJsonBinExportError;
+use node_resolver::UrlOrPath;
 use url::Url;
 
 use crate::args::has_trace_permissions_enabled;
@@ -153,7 +154,7 @@ pub enum ResolveNpmBinaryEntrypointFallbackError {
   PackageSubpathResolve(node_resolver::errors::PackageSubpathResolveError),
   #[class(generic)]
   #[error("Cannot find module '{0}'")]
-  ModuleNotFound(Url),
+  ModuleNotFound(UrlOrPath),
 }
 
 pub struct LibMainWorkerOptions {
@@ -525,7 +526,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(specifier) => Ok(specifier),
+      Ok(path) => Ok(path),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
@@ -551,7 +552,7 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
     &self,
     package_folder: &Path,
     sub_path: Option<&str>,
-  ) -> Result<Option<Url>, ResolveNpmBinaryEntrypointFallbackError> {
+  ) -> Result<Option<PathBuf>, ResolveNpmBinaryEntrypointFallbackError> {
     // only fallback if the user specified a sub path
     if sub_path.is_none() {
       // it's confusing to users if the package doesn't have any binary
@@ -573,14 +574,16 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .map_err(
         ResolveNpmBinaryEntrypointFallbackError::PackageSubpathResolve,
       )?;
-    if deno_path_util::url_to_file_path(&specifier)
-      .map(|p| self.shared.sys.fs_exists_no_err(p))
-      .unwrap_or(false)
-    {
-      Ok(Some(specifier))
-    } else {
+    let Ok(path) = specifier.into_path() else {
       Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
         specifier,
+      ))
+    };
+    if self.shared.sys.fs_exists_no_err(p) {
+      Ok(Some(path))
+    } else {
+      Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
+        UrlOrPath::Path(path),
       ))
     }
   }

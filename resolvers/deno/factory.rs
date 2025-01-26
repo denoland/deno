@@ -23,6 +23,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
+use node_resolver::cache::SysCache;
 use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -584,6 +585,7 @@ pub struct ResolverFactory<
     + 'static,
 > {
   options: ResolverFactoryOptions,
+  sys: SysCache<TSys>,
   deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -640,6 +642,7 @@ impl<
   ) -> Self {
     Self {
       options,
+      sys: SysCache::new(workspace_factory.sys.clone()),
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -725,7 +728,7 @@ impl<
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.workspace_factory.sys.clone(),
+        self.sys.clone(),
         self.options.conditions_from_resolution_mode.clone(),
       )))
     })
@@ -760,7 +763,7 @@ impl<
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {

@@ -80,19 +80,11 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
 
   pub fn get_closest_package_json(
     &self,
-    url: &Url,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
-      return Ok(None);
-    };
-    self.get_closest_package_json_from_file_path(&file_path)
-  }
-
-  pub fn get_closest_package_json_from_file_path(
-    &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let parent_dir = file_path.parent().unwrap();
+    let Some(parent_dir) = file_path.parent() else {
+      return Ok(None);
+    };
     for current_dir in parent_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {

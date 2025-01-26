@@ -5,6 +5,7 @@
 
 pub mod analyze;
 mod builtin_modules;
+pub mod cache;
 pub mod errors;
 mod npm;
 mod package_json;
@@ -24,6 +25,8 @@ pub use package_json::PackageJsonResolver;
 pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
+pub use path::UrlOrPath;
+pub use path::UrlOrPathRef;
 pub use resolution::parse_npm_pkg_name;
 pub use resolution::resolve_specifier_into_node_modules;
 pub use resolution::ConditionsFromResolutionMode;

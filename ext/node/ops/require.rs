@@ -23,6 +23,7 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPathRef;
 use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
@@ -281,7 +282,7 @@ pub fn op_require_resolve_deno_dir<
     resolver
       .resolve_package_folder_from_package(
         &request,
-        &url_from_file_path(&PathBuf::from(parent_filename))?,
+        &UrlOrPathRef::new_path(PathBuf::from(parent_filename))),
       )
       .ok()
       .map(|p| p.to_string_lossy().into_owned()),
@@ -487,7 +488,7 @@ pub fn op_require_try_self<
 
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json_from_file_path(&PathBuf::from(
+    .get_closest_package_json(&PathBuf::from(
       parent_path.unwrap(),
     ))
     .ok()
@@ -702,7 +703,7 @@ pub fn op_require_package_imports_resolve<
     .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let Some(pkg) = pkg_json_resolver
-    .get_closest_package_json_from_file_path(&referrer_path)?
+    .get_closest_package_json(&referrer_path)?
   else {
     return Ok(None);
   };
