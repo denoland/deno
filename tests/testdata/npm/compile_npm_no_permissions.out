@@ -1,0 +1,5 @@
+Hello in CLI with permissions
+Reading DENO_HELLO env var...
+error: Uncaught (in promise) NotCapable: Requires env access to "DENO_HELLO", specify the required permissions during compilation using `deno compile --allow-env`
+console.log(Deno.env.get("DENO_HELLO"));
+[WILDCARD]
