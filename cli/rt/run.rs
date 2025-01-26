@@ -165,7 +165,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
       }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)
-        .map_err(|err| JsErrorBox::from_err(err))?
+        .map_err(JsErrorBox::from_err)?
     } else {
       Url::parse(referrer).map_err(|err| {
         JsErrorBox::type_error(format!(
