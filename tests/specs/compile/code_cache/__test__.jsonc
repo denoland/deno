@@ -1,0 +1,35 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run -A cleanup.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "args": "compile --output using_code_cache --log-level=debug main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "unix",
+    "commandName": "./using_code_cache",
+    "args": [],
+    "output": "first_run.out"
+  }, {
+    "if": "unix",
+    "commandName": "./using_code_cache",
+    "args": [],
+    "output": "second_run.out"
+  }, {
+    "if": "windows",
+    "args": "compile --output using_code_cache.exe --log-level=debug main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "commandName": "./using_code_cache.exe",
+    "args": [],
+    "output": "first_run.out"
+  }, {
+    "if": "windows",
+    "commandName": "./using_code_cache.exe",
+    "args": [],
+    "output": "second_run.out"
+  }]
+}

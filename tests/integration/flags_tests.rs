@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util as util;
 use util::assert_contains;
@@ -24,7 +24,7 @@ fn help_output() {
     "Type-check the dependencies",
     "Compile the script into a self contained executable",
     "Print coverage reports",
-    "Genereate and show documentation for a module or built-ins",
+    "Generate and show documentation for a module or built-ins",
     "Format source files",
     "Show info about cache or info related to source file",
     "Deno kernel for Jupyter notebooks",

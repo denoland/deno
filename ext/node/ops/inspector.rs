@@ -1,8 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::NodePermissions;
-use deno_core::anyhow::Error;
-use deno_core::error::generic_error;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::futures::channel::mpsc;
 use deno_core::op2;
 use deno_core::v8;
@@ -11,8 +11,9 @@ use deno_core::InspectorSessionKind;
 use deno_core::InspectorSessionOptions;
 use deno_core::JsRuntimeInspector;
 use deno_core::OpState;
-use std::cell::RefCell;
-use std::rc::Rc;
+use deno_error::JsErrorBox;
+
+use crate::NodePermissions;
 
 #[op2(fast)]
 pub fn op_inspector_enabled() -> bool {
@@ -20,12 +21,12 @@ pub fn op_inspector_enabled() -> bool {
   false
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_inspector_open<P>(
   _state: &mut OpState,
   _port: Option<u16>,
   #[string] _host: Option<String>,
-) -> Result<(), Error>
+) -> Result<(), JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
@@ -85,7 +86,21 @@ struct JSInspectorSession {
 
 impl GarbageCollected for JSInspectorSession {}
 
-#[op2]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum InspectorConnectError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(
+    #[from]
+    #[inherit]
+    deno_permissions::PermissionCheckError,
+  ),
+  #[class(generic)]
+  #[error("connectToMainThread not supported")]
+  ConnectToMainThreadUnsupported,
+}
+
+#[op2(stack_trace)]
 #[cppgc]
 pub fn op_inspector_connect<'s, P>(
   isolate: *mut v8::Isolate,
@@ -93,7 +108,7 @@ pub fn op_inspector_connect<'s, P>(
   state: &mut OpState,
   connect_to_main_thread: bool,
   callback: v8::Local<'s, v8::Function>,
-) -> Result<JSInspectorSession, Error>
+) -> Result<JSInspectorSession, InspectorConnectError>
 where
   P: NodePermissions + 'static,
 {
@@ -102,7 +117,7 @@ where
     .check_sys("inspector", "inspector.Session.connect")?;
 
   if connect_to_main_thread {
-    return Err(generic_error("connectToMainThread not supported"));
+    return Err(InspectorConnectError::ConnectToMainThreadUnsupported);
   }
 
   let context = scope.get_current_context();

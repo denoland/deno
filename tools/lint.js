@@ -1,9 +1,18 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
-import { buildMode, getPrebuilt, getSources, join, ROOT_PATH } from "./util.js";
+import {
+  buildMode,
+  dirname,
+  getPrebuilt,
+  getSources,
+  join,
+  parseJSONC,
+  ROOT_PATH,
+  walk,
+} from "./util.js";
 import { checkCopyright } from "./copyright_checker.js";
 import * as ciFile from "../.github/workflows/ci.generate.ts";
 
@@ -25,6 +34,7 @@ if (js) {
   promises.push(dlintPreferPrimordials());
   promises.push(ensureCiYmlUpToDate());
   promises.push(ensureNoNewITests());
+  promises.push(ensureNoUnusedOutFiles());
 
   if (rs) {
     promises.push(checkCopyright());
@@ -51,6 +61,8 @@ async function dlint() {
     ":!:cli/bench/testdata/express-router.js",
     ":!:cli/bench/testdata/react-dom.js",
     ":!:cli/compilers/wasm_wrap.js",
+    ":!:cli/tools/doc/prism.css",
+    ":!:cli/tools/doc/prism.js",
     ":!:cli/tsc/dts/**",
     ":!:cli/tsc/*typescript.js",
     ":!:cli/tsc/compiler.d.ts",
@@ -199,7 +211,7 @@ async function ensureNoNewITests() {
     "bench_tests.rs": 0,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 2,
+    "check_tests.rs": 0,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,
@@ -247,5 +259,51 @@ async function ensureNoNewITests() {
           `Please update the count in tools/lint.js for this file to ${actualCount}.`,
       );
     }
+  }
+}
+
+async function ensureNoUnusedOutFiles() {
+  const specsDir = join(ROOT_PATH, "tests", "specs");
+  const outFilePaths = new Set(
+    (await Array.fromAsync(
+      walk(specsDir, { exts: [".out"] }),
+    )).map((entry) => entry.path),
+  );
+  const testFiles = (await Array.fromAsync(
+    walk(specsDir, { exts: [".jsonc"] }),
+  )).filter((entry) => {
+    return entry.path.endsWith("__test__.jsonc");
+  });
+
+  function checkObject(baseDirPath, obj) {
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === "object") {
+        checkObject(baseDirPath, value);
+      } else if (key === "output" && typeof value === "string") {
+        const outFilePath = join(baseDirPath, value);
+        outFilePaths.delete(outFilePath);
+      }
+    }
+  }
+
+  for (const testFile of testFiles) {
+    try {
+      const text = await Deno.readTextFile(testFile.path);
+      const data = parseJSONC(text);
+      checkObject(dirname(testFile.path), data);
+    } catch (err) {
+      throw new Error("Failed reading: " + testFile.path, {
+        cause: err,
+      });
+    }
+  }
+
+  const notFoundPaths = Array.from(outFilePaths);
+  if (notFoundPaths.length > 0) {
+    notFoundPaths.sort(); // be deterministic
+    for (const file of notFoundPaths) {
+      console.error(`Unreferenced .out file: ${file}`);
+    }
+    throw new Error(`${notFoundPaths.length} unreferenced .out files`);
   }
 }

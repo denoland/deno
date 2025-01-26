@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -7,7 +7,11 @@ use std::path::PathBuf;
 use deno_media_type::MediaType;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
+use sys_traits::FsMetadata;
+use sys_traits::FsMetadataValue;
 use url::Url;
+
+use crate::sync::MaybeDashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SloppyImportsFsEntry {
@@ -80,16 +84,16 @@ impl SloppyImportsResolution {
 
 /// The kind of resolution currently being done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SloppyImportsResolutionMode {
+pub enum SloppyImportsResolutionKind {
   /// Resolving for code that will be executed.
   Execution,
   /// Resolving for code that will be used for type information.
   Types,
 }
 
-impl SloppyImportsResolutionMode {
+impl SloppyImportsResolutionKind {
   pub fn is_types(&self) -> bool {
-    *self == SloppyImportsResolutionMode::Types
+    *self == SloppyImportsResolutionKind::Types
   }
 }
 
@@ -100,6 +104,10 @@ pub trait SloppyImportResolverFs {
     self.stat_sync(path) == Some(SloppyImportsFsEntry::File)
   }
 }
+
+#[allow(clippy::disallowed_types)]
+pub type SloppyImportsResolverRc<TSloppyImportResolverFs> =
+  crate::sync::MaybeArc<SloppyImportsResolver<TSloppyImportResolverFs>>;
 
 #[derive(Debug)]
 pub struct SloppyImportsResolver<Fs: SloppyImportResolverFs> {
@@ -114,7 +122,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
   pub fn resolve(
     &self,
     specifier: &Url,
-    mode: SloppyImportsResolutionMode,
+    resolution_kind: SloppyImportsResolutionKind,
   ) -> Option<SloppyImportsResolution> {
     fn path_without_ext(
       path: &Path,
@@ -167,7 +175,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
     let probe_paths: Vec<(PathBuf, SloppyImportsResolutionReason)> =
       match self.fs.stat_sync(&path) {
         Some(SloppyImportsFsEntry::File) => {
-          if mode.is_types() {
+          if resolution_kind.is_types() {
             let media_type = MediaType::from_specifier(specifier);
             // attempt to resolve the .d.ts file before the .js file
             let probe_media_type_types = match media_type {
@@ -197,7 +205,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
           let media_type = MediaType::from_specifier(specifier);
           let probe_media_type_types = match media_type {
             MediaType::JavaScript => (
-              if mode.is_types() {
+              if resolution_kind.is_types() {
                 vec![MediaType::TypeScript, MediaType::Tsx, MediaType::Dts]
               } else {
                 vec![MediaType::TypeScript, MediaType::Tsx]
@@ -208,7 +216,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
               (vec![MediaType::Tsx], SloppyImportsResolutionReason::JsToTs)
             }
             MediaType::Mjs => (
-              if mode.is_types() {
+              if resolution_kind.is_types() {
                 vec![MediaType::Mts, MediaType::Dmts, MediaType::Dts]
               } else {
                 vec![MediaType::Mts]
@@ -216,7 +224,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
               SloppyImportsResolutionReason::JsToTs,
             ),
             MediaType::Cjs => (
-              if mode.is_types() {
+              if resolution_kind.is_types() {
                 vec![MediaType::Cts, MediaType::Dcts, MediaType::Dts]
               } else {
                 vec![MediaType::Cts]
@@ -237,7 +245,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
               return None;
             }
             MediaType::Unknown => (
-              if mode.is_types() {
+              if resolution_kind.is_types() {
                 vec![
                   MediaType::TypeScript,
                   MediaType::Tsx,
@@ -274,7 +282,7 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
 
           if matches!(entry, Some(SloppyImportsFsEntry::Dir)) {
             // try to resolve at the index file
-            if mode.is_types() {
+            if resolution_kind.is_types() {
               probe_paths.push((
                 path.join("index.ts"),
                 SloppyImportsResolutionReason::Directory,
@@ -364,6 +372,50 @@ impl<Fs: SloppyImportResolverFs> SloppyImportsResolver<Fs> {
   }
 }
 
+#[derive(Debug)]
+pub struct SloppyImportsCachedFs<TSys: FsMetadata> {
+  sys: TSys,
+  cache: Option<MaybeDashMap<PathBuf, Option<SloppyImportsFsEntry>>>,
+}
+
+impl<TSys: FsMetadata> SloppyImportsCachedFs<TSys> {
+  pub fn new(sys: TSys) -> Self {
+    Self {
+      sys,
+      cache: Some(Default::default()),
+    }
+  }
+
+  pub fn new_without_stat_cache(sys: TSys) -> Self {
+    Self { sys, cache: None }
+  }
+}
+
+impl<TSys: FsMetadata> SloppyImportResolverFs for SloppyImportsCachedFs<TSys> {
+  fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry> {
+    if let Some(cache) = &self.cache {
+      if let Some(entry) = cache.get(path) {
+        return *entry;
+      }
+    }
+
+    let entry = self.sys.fs_metadata(path).ok().and_then(|stat| {
+      if stat.file_type().is_file() {
+        Some(SloppyImportsFsEntry::File)
+      } else if stat.file_type().is_dir() {
+        Some(SloppyImportsFsEntry::Dir)
+      } else {
+        None
+      }
+    });
+
+    if let Some(cache) = &self.cache {
+      cache.insert(path.to_owned(), entry);
+    }
+    entry
+  }
+}
+
 #[cfg(test)]
 mod test {
   use test_util::TestContext;
@@ -373,16 +425,22 @@ mod test {
   #[test]
   fn test_unstable_sloppy_imports() {
     fn resolve(specifier: &Url) -> Option<SloppyImportsResolution> {
-      resolve_with_mode(specifier, SloppyImportsResolutionMode::Execution)
+      resolve_with_resolution_kind(
+        specifier,
+        SloppyImportsResolutionKind::Execution,
+      )
     }
 
     fn resolve_types(specifier: &Url) -> Option<SloppyImportsResolution> {
-      resolve_with_mode(specifier, SloppyImportsResolutionMode::Types)
+      resolve_with_resolution_kind(
+        specifier,
+        SloppyImportsResolutionKind::Types,
+      )
     }
 
-    fn resolve_with_mode(
+    fn resolve_with_resolution_kind(
       specifier: &Url,
-      mode: SloppyImportsResolutionMode,
+      resolution_kind: SloppyImportsResolutionKind,
     ) -> Option<SloppyImportsResolution> {
       struct RealSloppyImportsResolverFs;
       impl SloppyImportResolverFs for RealSloppyImportsResolverFs {
@@ -400,7 +458,7 @@ mod test {
       }
 
       SloppyImportsResolver::new(RealSloppyImportsResolverFs)
-        .resolve(specifier, mode)
+        .resolve(specifier, resolution_kind)
     }
 
     let context = TestContext::default();

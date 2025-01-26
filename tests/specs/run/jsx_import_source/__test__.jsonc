@@ -1,0 +1,79 @@
+{
+  "tempDir": true,
+  "tests": {
+    "jsx_import_source_error": {
+      "args": "run --config jsx/deno-jsx-error.jsonc --check jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source_error.out",
+      "exitCode": 1
+    },
+    "jsx_import_source_precompile_import_map": {
+      "args": "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile.jsonc jsx_precompile/no_pragma.tsx",
+      "output": "jsx_precompile/no_pragma.out"
+    },
+    "jsx_import_source_precompile_import_map_skip_element": {
+      "args": "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile-skip.jsonc jsx_precompile/skip.tsx",
+      "output": "jsx_precompile/skip.out"
+    },
+    "jsx_import_source_pragma_with_dev_config": {
+      "args": "run --reload --allow-import --config jsx/deno-jsxdev.jsonc --no-lock jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source_dev.out"
+    },
+    "jsx_import_source_pragma_with_config_vendor_dir": {
+      "tempDir": true,
+      "args": "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --vendor jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_pragma_with_config_no_check": {
+      "args": "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --no-check jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_pragma_with_config": {
+      "args": "run --reload --allow-import --config jsx/deno-jsx.jsonc --no-lock jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_pragma_no_check": {
+      "args": "run --allow-import --reload --no-check jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_pragma_import_map_no_check": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json --no-check jsx_import_source_pragma_import_map.tsx",
+      "output": "jsx_import_source_import_map.out"
+    },
+    "jsx_import_source_pragma_import_map_dev": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_pragma_import_map.tsx",
+      "output": "jsx_import_source_import_map_dev.out"
+    },
+    "jsx_import_source_pragma_import_map": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json jsx_import_source_pragma_import_map.tsx",
+      "output": "jsx_import_source_import_map.out"
+    },
+    "jsx_import_source_pragma": {
+      "args": "run --reload --allow-import jsx_import_source_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_no_pragma_no_check": {
+      "args": "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock --no-check jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_no_pragma_dev": {
+      "args": "run --allow-import --reload --config jsx/deno-jsxdev.jsonc --no-lock jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source_dev.out"
+    },
+    "jsx_import_source_no_pragma": {
+      "args": "run --allow-import --reload --config jsx/deno-jsx.jsonc --no-lock jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source.out"
+    },
+    "jsx_import_source_import_map_no_check": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc --no-check jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source_import_map.out"
+    },
+    "jsx_import_source_import_map_dev": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsxdev-import-map.jsonc jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source_import_map_dev.out"
+    },
+    "jsx_import_source_import_map": {
+      "args": "run --allow-import --reload --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-import-map.jsonc jsx_import_source_no_pragma.tsx",
+      "output": "jsx_import_source_import_map.out"
+    }
+  }
+}

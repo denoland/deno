@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::jsr_api_url;
-use crate::args::jsr_url;
-use crate::file_fetcher::FileFetcher;
-use crate::jsr::partial_jsr_package_version_info_from_slice;
-use crate::jsr::JsrFetchResolver;
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
@@ -17,13 +15,18 @@ use deno_graph::ModuleSpecifier;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
 use deno_semver::Version;
 use serde::Deserialize;
-use std::collections::HashMap;
-use std::sync::Arc;
 
 use super::config::ConfigData;
 use super::search::PackageSearchApi;
+use crate::args::jsr_api_url;
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
+use crate::file_fetcher::TextDecodedFile;
+use crate::jsr::partial_jsr_package_version_info_from_slice;
+use crate::jsr::JsrFetchResolver;
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -32,8 +35,8 @@ pub struct JsrCacheResolver {
   /// The `module_graph` fields of the version infos should be forcibly absent.
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
-  info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
-  workspace_scope_by_name: HashMap<String, ModuleSpecifier>,
+  info_by_name: DashMap<StackString, Option<Arc<JsrPackageInfo>>>,
+  workspace_scope_by_name: HashMap<StackString, ModuleSpecifier>,
   cache: Arc<dyn HttpCache>,
 }
 
@@ -58,7 +61,7 @@ impl JsrCacheResolver {
           continue;
         };
         let nv = PackageNv {
-          name: jsr_pkg_config.name.clone(),
+          name: jsr_pkg_config.name.as_str().into(),
           version: version.clone(),
         };
         info_by_name.insert(
@@ -124,8 +127,8 @@ impl JsrCacheResolver {
       return nv.value().clone();
     }
     let maybe_get_nv = || {
-      let name = req.name.clone();
-      let package_info = self.package_info(&name)?;
+      let name = &req.name;
+      let package_info = self.package_info(name)?;
       // Find the first matching version of the package which is cached.
       let mut versions = package_info.versions.keys().collect::<Vec<_>>();
       versions.sort();
@@ -143,7 +146,10 @@ impl JsrCacheResolver {
           self.package_version_info(&nv).is_some()
         })
         .cloned()?;
-      Some(PackageNv { name, version })
+      Some(PackageNv {
+        name: name.clone(),
+        version,
+      })
     };
     let nv = maybe_get_nv();
     self.nv_by_req.insert(req.clone(), nv.clone());
@@ -215,7 +221,10 @@ impl JsrCacheResolver {
     None
   }
 
-  pub fn package_info(&self, name: &str) -> Option<Arc<JsrPackageInfo>> {
+  pub fn package_info(
+    &self,
+    name: &StackString,
+  ) -> Option<Arc<JsrPackageInfo>> {
     if let Some(info) = self.info_by_name.get(name) {
       return info.value().clone();
     }
@@ -225,7 +234,7 @@ impl JsrCacheResolver {
       serde_json::from_slice::<JsrPackageInfo>(&meta_bytes).ok()
     };
     let info = read_cached_package_info().map(Arc::new);
-    self.info_by_name.insert(name.to_string(), info.clone());
+    self.info_by_name.insert(name.clone(), info.clone());
     info
   }
 
@@ -262,12 +271,12 @@ fn read_cached_url(
   cache
     .get(&cache.cache_item_key(url).ok()?, None)
     .ok()?
-    .map(|f| f.content)
+    .map(|f| f.content.into_owned())
 }
 
 #[derive(Debug)]
 pub struct CliJsrSearchApi {
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
   resolver: JsrFetchResolver,
   search_cache: DashMap<String, Arc<Vec<String>>>,
   versions_cache: DashMap<String, Arc<Vec<Version>>>,
@@ -275,7 +284,7 @@ pub struct CliJsrSearchApi {
 }
 
 impl CliJsrSearchApi {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     let resolver = JsrFetchResolver::new(file_fetcher.clone());
     Self {
       file_fetcher,
@@ -309,10 +318,8 @@ impl PackageSearchApi for CliJsrSearchApi {
     let file_fetcher = self.file_fetcher.clone();
     // spawn due to the lsp's `Send` requirement
     let file = deno_core::unsync::spawn(async move {
-      file_fetcher
-        .fetch_bypass_permissions(&search_url)
-        .await?
-        .into_text_decoded()
+      let file = file_fetcher.fetch_bypass_permissions(&search_url).await?;
+      TextDecodedFile::decode(file)
     })
     .await??;
     let names = Arc::new(parse_jsr_search_response(&file.source)?);

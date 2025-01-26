@@ -1,6 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import {
   createECDH,
   createHmac,
@@ -676,4 +676,43 @@ Deno.test("generateKeyPair large pem", function () {
       passphrase,
     },
   });
+});
+
+Deno.test("generateKeyPair promisify", async () => {
+  const passphrase = "mypassphrase";
+  const cipher = "aes-256-cbc";
+  const modulusLength = 4096;
+
+  const { privateKey, publicKey } = await promisify(generateKeyPair)("rsa", {
+    modulusLength,
+    publicKeyEncoding: {
+      type: "spki",
+      format: "pem",
+    },
+    privateKeyEncoding: {
+      type: "pkcs8",
+      format: "pem",
+      cipher,
+      passphrase,
+    },
+  });
+
+  assert(publicKey.startsWith("-----BEGIN PUBLIC KEY-----"));
+  assert(privateKey.startsWith("-----BEGIN PRIVATE KEY-----"));
+});
+
+Deno.test("RSA export private JWK", function () {
+  // @ts-ignore @types/node broken
+  const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+    modulusLength: 4096,
+    publicKeyEncoding: {
+      format: "jwk",
+    },
+    privateKeyEncoding: {
+      format: "jwk",
+    },
+  });
+
+  assertEquals((privateKey as any).kty, "RSA");
+  assertEquals((privateKey as any).n, (publicKey as any).n);
 });

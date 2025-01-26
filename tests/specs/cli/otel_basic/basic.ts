@@ -1,10 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+import { trace } from "npm:@opentelemetry/api@1.9.0";
+
+const tracer = trace.getTracer("example-tracer");
 
 async function inner() {
-  using _span = new Deno.tracing.Span("inner span");
-  console.log("log 1");
-  await 1;
-  console.log("log 2");
+  await tracer.startActiveSpan("inner span", async (span) => {
+    console.log("log 1");
+    await 1;
+    console.log("log 2");
+    span.end();
+  });
 }
 
 const server = Deno.serve({
@@ -17,8 +23,11 @@ const server = Deno.serve({
     }
   },
   handler: async (_req) => {
-    using _span = new Deno.tracing.Span("outer span");
-    await inner();
-    return new Response(null, { status: 200 });
+    return await tracer.startActiveSpan("outer span", async (span) => {
+      await inner();
+      const resp = new Response(null, { status: 200 });
+      span.end();
+      return resp;
+    });
   },
 });

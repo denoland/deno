@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and Node.js contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -30,6 +30,7 @@ import {
 import { Buffer } from "node:buffer";
 import { KeyFormat, KeyType } from "ext:deno_node/internal/crypto/types.ts";
 import process from "node:process";
+import { promisify } from "node:util";
 
 import {
   op_node_generate_dh_group_key,
@@ -570,7 +571,15 @@ export function generateKeyPair(
     privateKey: any,
   ) => void,
 ) {
-  createJob(kAsync, type, options).then((pair) => {
+  _generateKeyPair(type, options)
+    .then(
+      (res) => callback(null, res.publicKey, res.privateKey),
+      (err) => callback(err, null, null),
+    );
+}
+
+function _generateKeyPair(type: string, options: unknown) {
+  return createJob(kAsync, type, options).then((pair) => {
     const privateKeyHandle = op_node_get_private_key_from_pair(pair);
     const publicKeyHandle = op_node_get_public_key_from_pair(pair);
 
@@ -589,11 +598,14 @@ export function generateKeyPair(
       }
     }
 
-    callback(null, publicKey, privateKey);
-  }).catch((err) => {
-    callback(err, null, null);
+    return { publicKey, privateKey };
   });
 }
+
+Object.defineProperty(generateKeyPair, promisify.custom, {
+  enumerable: false,
+  value: _generateKeyPair,
+});
 
 export interface KeyPairKeyObjectResult {
   publicKey: KeyObject;

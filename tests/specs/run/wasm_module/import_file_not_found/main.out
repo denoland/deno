@@ -1,0 +1,3 @@
+Download http://localhost:4545/wasm/math_with_import.wasm
+error: Module not found "file:///[WILDLINE]/local_math.ts".
+    at http://localhost:4545/wasm/math_with_import.wasm:1:87

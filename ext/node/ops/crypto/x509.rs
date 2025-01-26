@@ -1,7 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::ops::Deref;
 
 use deno_core::op2;
-
+use digest::Digest;
 use x509_parser::der_parser::asn1_rs::Any;
 use x509_parser::der_parser::asn1_rs::Tag;
 use x509_parser::der_parser::oid::Oid;
@@ -9,14 +11,10 @@ pub use x509_parser::error::X509Error;
 use x509_parser::extensions;
 use x509_parser::pem;
 use x509_parser::prelude::*;
-
-use super::KeyObjectHandle;
-
-use std::ops::Deref;
 use yoke::Yoke;
 use yoke::Yokeable;
 
-use digest::Digest;
+use super::KeyObjectHandle;
 
 enum CertificateSources {
   Der(Box<[u8]>),
@@ -61,11 +59,13 @@ impl<'a> Deref for CertificateView<'a> {
   }
 }
 
+deno_error::js_error_wrapper!(X509Error, JsX509Error, "Error");
+
 #[op2]
 #[cppgc]
 pub fn op_node_x509_parse(
   #[buffer] buf: &[u8],
-) -> Result<Certificate, X509Error> {
+) -> Result<Certificate, JsX509Error> {
   let source = match pem::parse_x509_pem(buf) {
     Ok((_, pem)) => CertificateSources::Pem(pem),
     Err(_) => CertificateSources::Der(buf.to_vec().into_boxed_slice()),
@@ -156,18 +156,18 @@ pub fn op_node_x509_fingerprint512(
 #[string]
 pub fn op_node_x509_get_issuer(
   #[cppgc] cert: &Certificate,
-) -> Result<String, X509Error> {
+) -> Result<String, JsX509Error> {
   let cert = cert.inner.get().deref();
-  x509name_to_string(cert.issuer(), oid_registry())
+  x509name_to_string(cert.issuer(), oid_registry()).map_err(Into::into)
 }
 
 #[op2]
 #[string]
 pub fn op_node_x509_get_subject(
   #[cppgc] cert: &Certificate,
-) -> Result<String, X509Error> {
+) -> Result<String, JsX509Error> {
   let cert = cert.inner.get().deref();
-  x509name_to_string(cert.subject(), oid_registry())
+  x509name_to_string(cert.subject(), oid_registry()).map_err(Into::into)
 }
 
 #[op2]

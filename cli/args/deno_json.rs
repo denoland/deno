@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 
@@ -8,60 +8,13 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
-#[cfg(test)] // happens to only be used by the tests at the moment
-pub struct DenoConfigFsAdapter<'a>(
-  pub &'a dyn deno_runtime::deno_fs::FileSystem,
-);
-
-#[cfg(test)]
-impl<'a> deno_config::fs::DenoConfigFs for DenoConfigFsAdapter<'a> {
-  fn read_to_string_lossy(
-    &self,
-    path: &std::path::Path,
-  ) -> Result<String, std::io::Error> {
-    self
-      .0
-      .read_text_file_lossy_sync(path, None)
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn stat_sync(
-    &self,
-    path: &std::path::Path,
-  ) -> Result<deno_config::fs::FsMetadata, std::io::Error> {
-    self
-      .0
-      .stat_sync(path)
-      .map(|stat| deno_config::fs::FsMetadata {
-        is_file: stat.is_file,
-        is_directory: stat.is_directory,
-        is_symlink: stat.is_symlink,
-      })
-      .map_err(|err| err.into_io_error())
-  }
-
-  fn read_dir(
-    &self,
-    path: &std::path::Path,
-  ) -> Result<Vec<deno_config::fs::FsDirEntry>, std::io::Error> {
-    self
-      .0
-      .read_dir_sync(path)
-      .map_err(|err| err.into_io_error())
-      .map(|entries| {
-        entries
-          .into_iter()
-          .map(|e| deno_config::fs::FsDirEntry {
-            path: path.join(e.name),
-            metadata: deno_config::fs::FsMetadata {
-              is_file: e.is_file,
-              is_directory: e.is_directory,
-              is_symlink: e.is_symlink,
-            },
-          })
-          .collect()
-      })
-  }
+pub fn import_map_deps(
+  import_map: &serde_json::Value,
+) -> HashSet<JsrDepPackageReq> {
+  let values = imports_values(import_map.get("imports"))
+    .into_iter()
+    .chain(scope_values(import_map.get("scopes")));
+  values_to_set(values)
 }
 
 pub fn deno_json_deps(
@@ -70,7 +23,41 @@ pub fn deno_json_deps(
   let values = imports_values(config.json.imports.as_ref())
     .into_iter()
     .chain(scope_values(config.json.scopes.as_ref()));
-  values_to_set(values)
+  let mut set = values_to_set(values);
+
+  if let Some(serde_json::Value::Object(compiler_options)) =
+    &config.json.compiler_options
+  {
+    // add jsxImportSource
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSource")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add jsxImportSourceTypes
+    if let Some(serde_json::Value::String(value)) =
+      compiler_options.get("jsxImportSourceTypes")
+    {
+      if let Some(dep_req) = value_to_dep_req(value) {
+        set.insert(dep_req);
+      }
+    }
+    // add the dependencies in the types array
+    if let Some(serde_json::Value::Array(types)) = compiler_options.get("types")
+    {
+      for value in types {
+        if let serde_json::Value::String(value) = value {
+          if let Some(dep_req) = value_to_dep_req(value) {
+            set.insert(dep_req);
+          }
+        }
+      }
+    }
+  }
+
+  set
 }
 
 fn imports_values(value: Option<&serde_json::Value>) -> Vec<&String> {
@@ -98,13 +85,21 @@ fn values_to_set<'a>(
 ) -> HashSet<JsrDepPackageReq> {
   let mut entries = HashSet::new();
   for value in values {
-    if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::jsr(req_ref.into_inner().req));
-    } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
-      entries.insert(JsrDepPackageReq::npm(req_ref.into_inner().req));
+    if let Some(dep_req) = value_to_dep_req(value) {
+      entries.insert(dep_req);
     }
   }
   entries
+}
+
+fn value_to_dep_req(value: &str) -> Option<JsrDepPackageReq> {
+  if let Ok(req_ref) = JsrPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::jsr(req_ref.into_inner().req))
+  } else if let Ok(req_ref) = NpmPackageReqReference::from_str(value) {
+    Some(JsrDepPackageReq::npm(req_ref.into_inner().req))
+  } else {
+    None
+  }
 }
 
 pub fn check_warn_tsconfig(ts_config: &TsConfigForEmit) {

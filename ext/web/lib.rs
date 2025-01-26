@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod blob;
 mod compression;
@@ -6,17 +6,6 @@ mod message_port;
 mod stream_resource;
 mod timers;
 
-use deno_core::op2;
-use deno_core::url::Url;
-use deno_core::v8;
-use deno_core::ByteString;
-use deno_core::ToJsBuffer;
-use deno_core::U16String;
-
-use encoding_rs::CoderResult;
-use encoding_rs::Decoder;
-use encoding_rs::DecoderResult;
-use encoding_rs::Encoding;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -24,6 +13,16 @@ use std::sync::Arc;
 
 pub use blob::BlobError;
 pub use compression::CompressionError;
+use deno_core::op2;
+use deno_core::url::Url;
+use deno_core::v8;
+use deno_core::ByteString;
+use deno_core::ToJsBuffer;
+use deno_core::U16String;
+use encoding_rs::CoderResult;
+use encoding_rs::Decoder;
+use encoding_rs::DecoderResult;
+use encoding_rs::Encoding;
 pub use message_port::MessagePortError;
 pub use stream_resource::StreamResourceError;
 
@@ -38,7 +37,6 @@ pub use crate::blob::Blob;
 pub use crate::blob::BlobPart;
 pub use crate::blob::BlobStore;
 pub use crate::blob::InMemoryBlobPart;
-
 pub use crate::message_port::create_entangled_message_port;
 pub use crate::message_port::deserialize_js_transferables;
 use crate::message_port::op_message_port_create_entangled;
@@ -49,7 +47,6 @@ pub use crate::message_port::serialize_transferables;
 pub use crate::message_port::JsMessageData;
 pub use crate::message_port::MessagePort;
 pub use crate::message_port::Transferable;
-
 use crate::timers::op_defer;
 use crate::timers::op_now;
 use crate::timers::op_time_origin;
@@ -129,20 +126,27 @@ deno_core::extension!(deno_web,
   }
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WebError {
+  #[class("DOMExceptionInvalidCharacterError")]
   #[error("Failed to decode base64")]
   Base64Decode,
+  #[class(range)]
   #[error("The encoding label provided ('{0}') is invalid.")]
   InvalidEncodingLabel(String),
+  #[class(type)]
   #[error("buffer exceeds maximum length")]
   BufferTooLong,
+  #[class(range)]
   #[error("Value too large to decode")]
   ValueTooLarge,
+  #[class(range)]
   #[error("Provided buffer too small")]
   BufferTooSmall,
+  #[class(type)]
   #[error("The encoded data is not valid")]
   DataInvalid,
+  #[class(generic)]
   #[error(transparent)]
   DataError(#[from] v8::DataError),
 }

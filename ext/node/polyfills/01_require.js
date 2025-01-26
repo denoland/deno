@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -946,7 +946,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1031,6 +1031,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1049,6 +1050,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1060,22 +1062,39 @@ Module.prototype._compile = function (content, filename, format) {
   return result;
 };
 
-Module._extensions[".js"] =
-  Module._extensions[".ts"] =
-  Module._extensions[".jsx"] =
-  Module._extensions[".tsx"] =
-    function (module, filename) {
-      const content = op_require_read_file(filename);
-      const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
-      module._compile(content, filename, format);
-    };
+Module._extensions[".js"] = function (module, filename) {
+  // We don't define everything on Module.extensions in
+  // order to prevent probing for these files
+  if (
+    StringPrototypeEndsWith(filename, ".js") ||
+    StringPrototypeEndsWith(filename, ".ts") ||
+    StringPrototypeEndsWith(filename, ".jsx") ||
+    StringPrototypeEndsWith(filename, ".tsx")
+  ) {
+    return loadMaybeCjs(module, filename);
+  } else if (StringPrototypeEndsWith(filename, ".mts")) {
+    return loadESMFromCJS(module, filename);
+  } else if (StringPrototypeEndsWith(filename, ".cts")) {
+    return loadCjs(module, filename);
+  } else {
+    return loadMaybeCjs(module, filename);
+  }
+};
 
-Module._extensions[".cjs"] =
-  Module._extensions[".cts"] =
-    function (module, filename) {
-      const content = op_require_read_file(filename);
-      module._compile(content, filename, "commonjs");
-    };
+Module._extensions[".cjs"] = loadCjs;
+Module._extensions[".mjs"] = loadESMFromCJS;
+Module._extensions[".wasm"] = loadESMFromCJS;
+
+function loadMaybeCjs(module, filename) {
+  const content = op_require_read_file(filename);
+  const format = op_require_is_maybe_cjs(filename) ? undefined : "module";
+  module._compile(content, filename, format);
+}
+
+function loadCjs(module, filename) {
+  const content = op_require_read_file(filename);
+  module._compile(content, filename, "commonjs");
+}
 
 function loadESMFromCJS(module, filename, code) {
   const namespace = op_import_sync(
@@ -1085,13 +1104,6 @@ function loadESMFromCJS(module, filename, code) {
 
   module.exports = namespace;
 }
-
-Module._extensions[".mjs"] = Module._extensions[".mts"] = function (
-  module,
-  filename,
-) {
-  loadESMFromCJS(module, filename);
-};
 
 function stripBOM(content) {
   if (StringPrototypeCharCodeAt(content, 0) === 0xfeff) {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, fail } from "@std/assert";
 import * as timers from "node:timers";
@@ -100,6 +100,16 @@ Deno.test("[node/timers refresh cancelled timer]", () => {
   p.refresh();
 });
 
+Deno.test("[node/timers] clearTimeout with number", () => {
+  const timer = +timers.setTimeout(() => fail(), 10);
+  timers.clearTimeout(timer);
+});
+
+Deno.test("[node/timers] clearInterval with number", () => {
+  const timer = +timers.setInterval(() => fail(), 10);
+  timers.clearInterval(timer);
+});
+
 Deno.test("[node/timers setImmediate returns Immediate object]", () => {
   const { clearImmediate, setImmediate } = timers;
 
@@ -118,7 +128,7 @@ Deno.test({
       expectedValue: 42,
       intervalMs: 100,
       iterations: 3,
-      tolerancePercent: 50,
+      tolerancePercent: Deno.env.get("CI") != null ? 75 : 50,
     };
 
     const { setInterval } = timersPromises;
@@ -200,6 +210,7 @@ Deno.test({
     const INTERVAL_MS = 500;
     const TOTAL_DURATION_MS = 3000;
     const TOLERANCE_MS = 500;
+    const DELTA_TOLERANCE_MS = Deno.env.get("CI") != null ? 100 : 50;
 
     const abortController = new AbortController();
     const { setInterval } = timersPromises;
@@ -247,14 +258,14 @@ Deno.test({
     );
 
     intervalDeltas.forEach((delta, i) => {
-      const isIntervalValid = delta >= (INTERVAL_MS - 50) &&
-        delta <= (INTERVAL_MS + 50);
+      const isIntervalValid = delta >= (INTERVAL_MS - DELTA_TOLERANCE_MS) &&
+        delta <= (INTERVAL_MS + DELTA_TOLERANCE_MS);
       assertEquals(
         isIntervalValid,
         true,
         `Interval ${
           i + 1
-        } duration (${delta}ms) should be within ±50ms of ${INTERVAL_MS}ms`,
+        } duration (${delta}ms) should be within ±${DELTA_TOLERANCE_MS}ms of ${INTERVAL_MS}ms`,
       );
     });
   },

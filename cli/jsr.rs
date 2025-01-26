@@ -1,14 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::jsr_url;
-use crate::file_fetcher::FileFetcher;
+use std::sync::Arc;
+
 use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageVersionInfo;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
-use std::sync::Arc;
+
+use crate::args::jsr_url;
+use crate::file_fetcher::CliFileFetcher;
 
 /// This is similar to a subset of `JsrCacheResolver` which fetches rather than
 /// just reads the cache. Keep in sync!
@@ -19,11 +21,11 @@ pub struct JsrFetchResolver {
   /// It can be large and we don't want to store it.
   info_by_nv: DashMap<PackageNv, Option<Arc<JsrPackageVersionInfo>>>,
   info_by_name: DashMap<String, Option<Arc<JsrPackageInfo>>>,
-  file_fetcher: Arc<FileFetcher>,
+  file_fetcher: Arc<CliFileFetcher>,
 }
 
 impl JsrFetchResolver {
-  pub fn new(file_fetcher: Arc<FileFetcher>) -> Self {
+  pub fn new(file_fetcher: Arc<CliFileFetcher>) -> Self {
     Self {
       nv_by_req: Default::default(),
       info_by_nv: Default::default(),

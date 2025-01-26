@@ -1,6 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { core } from "ext:core/mod.js";
+import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
@@ -21,15 +21,19 @@ import * as version from "ext:runtime/01_version.ts";
 import * as permissions from "ext:runtime/10_permissions.js";
 import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
-import * as process from "ext:runtime/40_process.js";
-import * as signals from "ext:runtime/40_signals.js";
+import * as process from "ext:deno_process/40_process.js";
+import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";
 import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
-import * as telemetry from "ext:runtime/telemetry.js";
+import * as telemetry from "ext:deno_telemetry/telemetry.ts";
+
+const { ObjectDefineProperties } = primordials;
+
+const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 
 const denoNs = {
   Process: process.Process,
@@ -176,6 +180,26 @@ denoNsUnstableById[unstableIds.net] = {
   ),
 };
 
+ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
+  connectQuic: core.propWritableLazyLoaded((q) => q.connectQuic, loadQuic),
+  QuicEndpoint: core.propWritableLazyLoaded((q) => q.QuicEndpoint, loadQuic),
+  QuicBidirectionalStream: core.propWritableLazyLoaded(
+    (q) => q.QuicBidirectionalStream,
+    loadQuic,
+  ),
+  QuicConn: core.propWritableLazyLoaded((q) => q.QuicConn, loadQuic),
+  QuicListener: core.propWritableLazyLoaded((q) => q.QuicListener, loadQuic),
+  QuicReceiveStream: core.propWritableLazyLoaded(
+    (q) => q.QuicReceiveStream,
+    loadQuic,
+  ),
+  QuicSendStream: core.propWritableLazyLoaded(
+    (q) => q.QuicSendStream,
+    loadQuic,
+  ),
+  QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+});
+
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.webgpu] = {
@@ -185,8 +209,7 @@ denoNsUnstableById[unstableIds.webgpu] = {
 // denoNsUnstableById[unstableIds.workerOptions] = { __proto__: null }
 
 denoNsUnstableById[unstableIds.otel] = {
-  tracing: telemetry.tracing,
-  metrics: telemetry.metrics,
+  telemetry: telemetry.telemetry,
 };
 
 export { denoNs, denoNsUnstableById, unstableIds };

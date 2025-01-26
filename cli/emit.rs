@@ -1,10 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::cache::EmitCache;
-use crate::cache::FastInsecureHasher;
-use crate::cache::ParsedSourceCache;
-use crate::resolver::CjsTracker;
+use std::sync::Arc;
 
+use deno_ast::EmittedSourceText;
 use deno_ast::ModuleKind;
 use deno_ast::SourceMapOption;
 use deno_ast::SourceRange;
@@ -13,18 +11,24 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::TranspileModuleOptions;
 use deno_ast::TranspileResult;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
 use deno_graph::MediaType;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
-use std::sync::Arc;
+use deno_lib::util::hash::FastInsecureHasher;
+
+use crate::cache::EmitCache;
+use crate::cache::ParsedSourceCache;
+use crate::resolver::CliCjsTracker;
 
 #[derive(Debug)]
 pub struct Emitter {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
   transpile_and_emit_options:
@@ -35,7 +39,7 @@ pub struct Emitter {
 
 impl Emitter {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
     transpile_options: deno_ast::TranspileOptions,
@@ -108,9 +112,9 @@ impl Emitter {
     &self,
     specifier: &ModuleSpecifier,
     media_type: MediaType,
-    module_kind: deno_ast::ModuleKind,
+    module_kind: ModuleKind,
     source: &Arc<str>,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, EmitParsedSourceHelperError> {
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, module_kind, source) {
@@ -122,7 +126,7 @@ impl Emitter {
         let transpiled_source = deno_core::unsync::spawn_blocking({
           let specifier = specifier.clone();
           let source = source.clone();
-          move || -> Result<_, AnyError> {
+          move || {
             EmitParsedSourceHelper::transpile(
               &parsed_source_cache,
               &specifier,
@@ -132,6 +136,7 @@ impl Emitter {
               &transpile_and_emit_options.0,
               &transpile_and_emit_options.1,
             )
+            .map(|r| r.text)
           }
         })
         .await
@@ -152,7 +157,7 @@ impl Emitter {
     media_type: MediaType,
     module_kind: deno_ast::ModuleKind,
     source: &Arc<str>,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, EmitParsedSourceHelperError> {
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
     match helper.pre_emit_parsed_source(specifier, module_kind, source) {
@@ -166,7 +171,8 @@ impl Emitter {
           source.clone(),
           &self.transpile_and_emit_options.0,
           &self.transpile_and_emit_options.1,
-        )?;
+        )?
+        .text;
         helper.post_emit_parsed_source(
           specifier,
           &transpiled_source,
@@ -177,11 +183,36 @@ impl Emitter {
     }
   }
 
+  pub fn emit_parsed_source_for_deno_compile(
+    &self,
+    specifier: &ModuleSpecifier,
+    media_type: MediaType,
+    module_kind: deno_ast::ModuleKind,
+    source: &Arc<str>,
+  ) -> Result<(String, String), AnyError> {
+    let mut emit_options = self.transpile_and_emit_options.1.clone();
+    emit_options.inline_sources = false;
+    emit_options.source_map = SourceMapOption::Separate;
+    // strip off the path to have more deterministic builds as we don't care
+    // about the source name because we manually provide the source map to v8
+    emit_options.source_map_base = Some(deno_path_util::url_parent(specifier));
+    let source = EmitParsedSourceHelper::transpile(
+      &self.parsed_source_cache,
+      specifier,
+      media_type,
+      module_kind,
+      source.clone(),
+      &self.transpile_and_emit_options.0,
+      &emit_options,
+    )?;
+    Ok((source.text, source.source_map.unwrap()))
+  }
+
   /// Expects a file URL, panics otherwise.
   pub async fn load_and_emit_for_hmr(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Result<String, AnyError> {
+  ) -> Result<String, CoreError> {
     let media_type = MediaType::from_specifier(specifier);
     let source_code = tokio::fs::read_to_string(
       ModuleSpecifier::to_file_path(specifier).unwrap(),
@@ -196,17 +227,21 @@ impl Emitter {
         let source_arc: Arc<str> = source_code.into();
         let parsed_source = self
           .parsed_source_cache
-          .remove_or_parse_module(specifier, source_arc, media_type)?;
+          .remove_or_parse_module(specifier, source_arc, media_type)
+          .map_err(JsErrorBox::from_err)?;
         // HMR doesn't work with embedded source maps for some reason, so set
         // the option to not use them (though you should test this out because
         // this statement is probably wrong)
         let mut options = self.transpile_and_emit_options.1.clone();
         options.source_map = SourceMapOption::None;
-        let is_cjs = self.cjs_tracker.is_cjs_with_known_is_script(
-          specifier,
-          media_type,
-          parsed_source.compute_is_script(),
-        )?;
+        let is_cjs = self
+          .cjs_tracker
+          .is_cjs_with_known_is_script(
+            specifier,
+            media_type,
+            parsed_source.compute_is_script(),
+          )
+          .map_err(JsErrorBox::from_err)?;
         let transpiled_source = parsed_source
           .transpile(
             &self.transpile_and_emit_options.0,
@@ -214,7 +249,8 @@ impl Emitter {
               module_kind: Some(ModuleKind::from_is_cjs(is_cjs)),
             },
             &options,
-          )?
+          )
+          .map_err(JsErrorBox::from_err)?
           .into_source();
         Ok(transpiled_source.text)
       }
@@ -253,6 +289,19 @@ enum PreEmitResult {
   NotCached { source_hash: u64 },
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum EmitParsedSourceHelperError {
+  #[class(inherit)]
+  #[error(transparent)]
+  ParseDiagnostic(#[from] deno_ast::ParseDiagnostic),
+  #[class(inherit)]
+  #[error(transparent)]
+  Transpile(#[from] deno_ast::TranspileError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 /// Helper to share code between async and sync emit_parsed_source methods.
 struct EmitParsedSourceHelper<'a>(&'a Emitter);
 
@@ -282,7 +331,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
     source: Arc<str>,
     transpile_options: &deno_ast::TranspileOptions,
     emit_options: &deno_ast::EmitOptions,
-  ) -> Result<String, AnyError> {
+  ) -> Result<EmittedSourceText, EmitParsedSourceHelperError> {
     // nothing else needs the parsed source at this point, so remove from
     // the cache in order to not transpile owned
     let parsed_source = parsed_source_cache
@@ -302,8 +351,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
         source
       }
     };
-    debug_assert!(transpiled_source.source_map.is_none());
-    Ok(transpiled_source.text)
+    Ok(transpiled_source)
   }
 
   pub fn post_emit_parsed_source(
@@ -323,7 +371,7 @@ impl<'a> EmitParsedSourceHelper<'a> {
 // todo(dsherret): this is a temporary measure until we have swc erroring for this
 fn ensure_no_import_assertion(
   parsed_source: &deno_ast::ParsedSource,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   fn has_import_assertion(text: &str) -> bool {
     // good enough
     text.contains(" assert ") && !text.contains(" with ")
@@ -332,7 +380,7 @@ fn ensure_no_import_assertion(
   fn create_err(
     parsed_source: &deno_ast::ParsedSource,
     range: SourceRange,
-  ) -> AnyError {
+  ) -> JsErrorBox {
     let text_info = parsed_source.text_info_lazy();
     let loc = text_info.line_and_column_display(range.start);
     let mut msg = "Import assertions are deprecated. Use `with` keyword, instead of 'assert' keyword.".to_string();
@@ -345,7 +393,7 @@ fn ensure_no_import_assertion(
       loc.line_number,
       loc.column_number,
     ));
-    deno_core::anyhow::anyhow!("{}", msg)
+    JsErrorBox::generic(msg)
   }
 
   let deno_ast::ProgramRef::Module(module) = parsed_source.program_ref() else {

@@ -1,11 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import * as perfHooks from "node:perf_hooks";
 import {
   monitorEventLoopDelay,
   performance,
   PerformanceObserver,
 } from "node:perf_hooks";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 Deno.test({
   name: "[perf_hooks] performance",
@@ -73,11 +73,16 @@ Deno.test("[perf_hooks]: eventLoopUtilization", () => {
   assertEquals(typeof obj.utilization, "number");
 });
 
-Deno.test("[perf_hooks]: monitorEventLoopDelay", () => {
-  const e = assertThrows(() => {
-    monitorEventLoopDelay({ resolution: 1 });
-  });
+Deno.test("[perf_hooks]: monitorEventLoopDelay", async () => {
+  const e = monitorEventLoopDelay();
+  assertEquals(e.count, 0);
+  e.enable();
 
-  // deno-lint-ignore no-explicit-any
-  assertEquals((e as any).code, "ERR_NOT_IMPLEMENTED");
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  assert(e.min > 0);
+  assert(e.minBigInt > 0n);
+  assert(e.count > 0);
+
+  e.disable();
 });

@@ -1,15 +1,31 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::InitFlags;
-use crate::colors;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::serde_json::json;
-use log::info;
+use std::io::IsTerminal;
 use std::io::Write;
 use std::path::Path;
 
-pub fn init_project(init_flags: InitFlags) -> Result<(), AnyError> {
+use color_print::cformat;
+use color_print::cstr;
+use deno_config::deno_json::NodeModulesDirMode;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::serde_json::json;
+use deno_runtime::WorkerExecutionMode;
+use log::info;
+
+use crate::args::DenoSubcommand;
+use crate::args::Flags;
+use crate::args::InitFlags;
+use crate::args::PackagesAllowedScripts;
+use crate::args::PermissionFlags;
+use crate::args::RunFlags;
+use crate::colors;
+
+pub async fn init_project(init_flags: InitFlags) -> Result<i32, AnyError> {
+  if let Some(package) = &init_flags.package {
+    return init_npm(package, init_flags.package_args).await;
+  }
+
   let cwd =
     std::env::current_dir().context("Can't read current working directory.")?;
   let dir = if let Some(dir) = &init_flags.dir {
@@ -235,7 +251,97 @@ Deno.test(function addTest() {
     info!("  {}", colors::gray("# Run the tests"));
     info!("  deno test");
   }
-  Ok(())
+  Ok(0)
+}
+
+fn npm_name_to_create_package(name: &str) -> String {
+  let mut s = "npm:".to_string();
+
+  let mut scoped = false;
+  let mut create = false;
+
+  for (i, ch) in name.char_indices() {
+    if i == 0 {
+      if ch == '@' {
+        scoped = true;
+      } else {
+        create = true;
+        s.push_str("create-");
+      }
+    } else if scoped {
+      if ch == '/' {
+        scoped = false;
+        create = true;
+        s.push_str("/create-");
+        continue;
+      } else if ch == '@' && !create {
+        scoped = false;
+        create = true;
+        s.push_str("/create@");
+        continue;
+      }
+    }
+
+    s.push(ch);
+  }
+
+  if !create {
+    s.push_str("/create");
+  }
+
+  s
+}
+
+async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
+  let script_name = npm_name_to_create_package(name);
+
+  fn print_manual_usage(script_name: &str, args: &[String]) -> i32 {
+    log::info!("{}", cformat!("You can initialize project manually by running <u>deno run {} {}</> and applying desired permissions.", script_name, args.join(" ")));
+    1
+  }
+
+  if std::io::stdin().is_terminal() {
+    log::info!(
+      cstr!("⚠️ Do you fully trust <y>{}</> package? Deno will invoke code from it with all permissions. Do you want to continue? <p(245)>[y/n]</>"),
+      script_name
+    );
+    loop {
+      let _ = std::io::stdout().write(b"> ")?;
+      std::io::stdout().flush()?;
+      let mut answer = String::new();
+      if std::io::stdin().read_line(&mut answer).is_ok() {
+        let answer = answer.trim().to_ascii_lowercase();
+        if answer != "y" {
+          return Ok(print_manual_usage(&script_name, &args));
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    return Ok(print_manual_usage(&script_name, &args));
+  }
+
+  let new_flags = Flags {
+    permissions: PermissionFlags {
+      allow_all: true,
+      ..Default::default()
+    },
+    allow_scripts: PackagesAllowedScripts::All,
+    argv: args,
+    node_modules_dir: Some(NodeModulesDirMode::Auto),
+    subcommand: DenoSubcommand::Run(RunFlags {
+      script: script_name,
+      ..Default::default()
+    }),
+    ..Default::default()
+  };
+  crate::tools::run::run_script(
+    WorkerExecutionMode::Run,
+    new_flags.into(),
+    None,
+  )
+  .await
 }
 
 fn create_json_file(
@@ -268,5 +374,39 @@ fn create_file(
       .with_context(|| format!("Failed to create {filename} file"))?;
     file.write_all(content.as_bytes())?;
     Ok(())
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::tools::init::npm_name_to_create_package;
+
+  #[test]
+  fn npm_name_to_create_package_test() {
+    // See https://docs.npmjs.com/cli/v8/commands/npm-init#description
+    assert_eq!(
+      npm_name_to_create_package("foo"),
+      "npm:create-foo".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("foo@1.0.0"),
+      "npm:create-foo@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo"),
+      "npm:@foo/create".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo@1.0.0"),
+      "npm:@foo/create@1.0.0".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar"),
+      "npm:@foo/create-bar".to_string()
+    );
+    assert_eq!(
+      npm_name_to_create_package("@foo/bar@1.0.0"),
+      "npm:@foo/create-bar@1.0.0".to_string()
+    );
   }
 }

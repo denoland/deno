@@ -1,0 +1,6 @@
+{
+  "tempDir": true,
+  "args": "init --npm vite my-project",
+  "output": "init.out",
+  "exitCode": 1
+}

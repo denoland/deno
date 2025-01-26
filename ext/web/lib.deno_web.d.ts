@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-explicit-any no-var
 
@@ -882,7 +882,7 @@ declare var ReadableStream: {
     strategy?: QueuingStrategy<R>,
   ): ReadableStream<R>;
   from<R>(
-    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>>,
+    asyncIterable: AsyncIterable<R> | Iterable<R | PromiseLike<R>> & object,
   ): ReadableStream<R>;
 };
 

@@ -1,11 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::util;
-use super::CoverageReport;
-use crate::args::CoverageType;
-use crate::colors;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
 use std::collections::HashMap;
 use std::fs;
 use std::fs::File;
@@ -14,6 +8,15 @@ use std::io::Write;
 use std::io::{self};
 use std::path::Path;
 use std::path::PathBuf;
+
+use deno_core::error::AnyError;
+use deno_core::url::Url;
+use deno_lib::version::DENO_VERSION_INFO;
+
+use super::util;
+use super::CoverageReport;
+use crate::args::CoverageType;
+use crate::colors;
 
 #[derive(Default)]
 pub struct CoverageStats<'a> {
@@ -557,7 +560,7 @@ impl HtmlCoverageReporter {
 
   /// Creates footer part of the contents for html report.
   pub fn create_html_footer(&self, now: &str) -> String {
-    let version = env!("CARGO_PKG_VERSION");
+    let version = DENO_VERSION_INFO.deno;
     format!(
       "
       <div class='footer quiet pad2 space-top1 center small'>

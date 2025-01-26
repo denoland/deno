@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <reference path="../../core/internal.d.ts" />
 
@@ -330,8 +330,12 @@ class WebSocket extends EventTarget {
     webidl.requiredArguments(arguments.length, 1, prefix);
     data = webidl.converters.WebSocketSend(data, prefix, "Argument 1");
 
-    if (this[_readyState] !== OPEN) {
+    if (this[_readyState] === CONNECTING) {
       throw new DOMException("'readyState' not OPEN", "InvalidStateError");
+    }
+
+    if (this[_readyState] !== OPEN) {
+      return;
     }
 
     if (this[_sendQueue].length === 0) {
