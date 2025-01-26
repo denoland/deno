@@ -13,6 +13,8 @@ use deno_graph::Module;
 use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
 use deno_graph::ModuleLoadError;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -27,7 +29,6 @@ use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
 use crate::cache::Caches;
-use crate::cache::FastInsecureHasher;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
 use crate::graph_util::maybe_additional_sloppy_imports_message;
@@ -112,7 +113,7 @@ pub struct TypeChecker {
   module_graph_builder: Arc<ModuleGraphBuilder>,
   npm_installer: Option<Arc<NpmInstaller>>,
   node_resolver: Arc<CliNodeResolver>,
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_resolver: CliNpmResolver,
   sys: CliSys,
 }
 
@@ -146,7 +147,7 @@ impl TypeChecker {
     module_graph_builder: Arc<ModuleGraphBuilder>,
     node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_resolver: CliNpmResolver,
     sys: CliSys,
   ) -> Self {
     Self {
@@ -189,6 +190,29 @@ impl TypeChecker {
     mut graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
+    fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
+      match resolver {
+        CliNpmResolver::Byonm(_) => {
+          // not feasible and probably slower to compute
+          None
+        }
+        CliNpmResolver::Managed(resolver) => {
+          // we should probably go further and check all the individual npm packages
+          let mut package_reqs = resolver.resolution().package_reqs();
+          package_reqs.sort_by(|a, b| a.0.cmp(&b.0)); // determinism
+          let mut hasher = FastInsecureHasher::new_without_deno_version();
+          // ensure the cache gets busted when turning nodeModulesDir on or off
+          // as this could cause changes in resolution
+          hasher.write_hashable(resolver.root_node_modules_path().is_some());
+          for (pkg_req, pkg_nv) in package_reqs {
+            hasher.write_hashable(&pkg_req);
+            hasher.write_hashable(&pkg_nv);
+          }
+          Some(hasher.finish())
+        }
+      }
+    }
+
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
       return Ok((graph.into(), Default::default()));
     }
@@ -238,9 +262,11 @@ impl TypeChecker {
       maybe_check_hash,
     } = get_tsc_roots(
       &self.sys,
+      &self.npm_resolver,
+      &self.node_resolver,
       &graph,
       check_js,
-      self.npm_resolver.check_state_hash(),
+      check_state_hash(&self.npm_resolver),
       type_check_mode,
       &ts_config,
     );
@@ -350,8 +376,11 @@ struct TscRoots {
 /// redirects resolved. We need to include all the emittable files in
 /// the roots, so they get type checked and optionally emitted,
 /// otherwise they would be ignored if only imported into JavaScript.
+#[allow(clippy::too_many_arguments)]
 fn get_tsc_roots(
   sys: &CliSys,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
   graph: &ModuleGraph,
   check_js: bool,
   npm_cache_state_hash: Option<u64>,
@@ -434,6 +463,7 @@ fn get_tsc_roots(
         if let Some(hasher) = hasher {
           hasher.write_str(module.specifier.as_str());
         }
+
         None
       }
     }
@@ -470,17 +500,33 @@ fn get_tsc_roots(
   let mut pending = VecDeque::new();
 
   // put in the global types first so that they're resolved before anything else
-  let get_import_specifiers = || {
-    graph
-      .imports
+  for (referrer, import) in graph.imports.iter() {
+    for specifier in import
+      .dependencies
       .values()
-      .flat_map(|i| i.dependencies.values())
       .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
-  };
-  for specifier in get_import_specifiers() {
-    let specifier = graph.resolve(specifier);
-    if seen.insert(specifier) {
-      pending.push_back((specifier, false));
+    {
+      let specifier = graph.resolve(specifier);
+      if seen.insert(specifier) {
+        if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
+          let Some(resolved) =
+            resolve_npm_nv_ref(npm_resolver, node_resolver, &nv_ref, referrer)
+          else {
+            result.missing_diagnostics.push(
+              tsc::Diagnostic::from_missing_error(
+                specifier,
+                None,
+                maybe_additional_sloppy_imports_message(sys, specifier),
+              ),
+            );
+            continue;
+          };
+          let mt = MediaType::from_specifier(&resolved);
+          result.roots.push((resolved, mt));
+        } else {
+          pending.push_back((specifier, false));
+        }
+      }
     }
   }
 
@@ -599,6 +645,29 @@ fn get_tsc_roots(
     maybe_hasher.map(|hasher| CacheDBHash::new(hasher.finish()));
 
   result
+}
+
+fn resolve_npm_nv_ref(
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
+  nv_ref: &NpmPackageNvReference,
+  referrer: &ModuleSpecifier,
+) -> Option<ModuleSpecifier> {
+  let pkg_dir = npm_resolver
+    .as_managed()
+    .unwrap()
+    .resolve_pkg_folder_from_deno_module(nv_ref.nv())
+    .ok()?;
+  let resolved = node_resolver
+    .resolve_package_subpath_from_deno_module(
+      &pkg_dir,
+      nv_ref.sub_path(),
+      Some(referrer),
+      node_resolver::ResolutionMode::Import,
+      node_resolver::NodeResolutionKind::Types,
+    )
+    .ok()?;
+  Some(resolved)
 }
 
 /// Matches the `@ts-check` pragma.

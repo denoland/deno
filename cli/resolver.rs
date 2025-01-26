@@ -1,17 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use dashmap::DashSet;
-use deno_ast::MediaType;
 use deno_config::workspace::MappedResolutionDiagnostic;
 use deno_config::workspace::MappedResolutionError;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::url::Url;
-use deno_core::ModuleSourceCode;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolveError;
@@ -19,150 +13,44 @@ use deno_graph::source::UnknownBuiltInNodeModuleError;
 use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
+use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
-use deno_runtime::deno_fs;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
-use thiserror::Error;
 
 use crate::args::NpmCachingStrategy;
 use crate::args::DENO_DISABLE_PEDANTIC_NODE_WARNINGS;
-use crate::node::CliNodeCodeTranslator;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
+use crate::npm::CliNpmResolver;
 use crate::sys::CliSys;
 use crate::util::sync::AtomicFlag;
-use crate::util::text_encoding::from_utf8_lossy_cow;
 
-pub type CjsTracker = deno_resolver::cjs::CjsTracker<CliSys>;
-pub type IsCjsResolver = deno_resolver::cjs::IsCjsResolver<CliSys>;
+pub type CliCjsTracker =
+  deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
+pub type CliIsCjsResolver =
+  deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
 pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
 pub type CliSloppyImportsResolver =
   SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
-  RealIsBuiltInNodeModuleChecker,
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
   CliSloppyImportsCachedFs,
   CliSys,
 >;
-pub type CliNpmReqResolver =
-  deno_resolver::npm::NpmReqResolver<RealIsBuiltInNodeModuleChecker, CliSys>;
-
-pub struct ModuleCodeStringSource {
-  pub code: ModuleSourceCode,
-  pub found_url: ModuleSpecifier,
-  pub media_type: MediaType,
-}
-
-#[derive(Debug, Error, deno_error::JsError)]
-#[class(type)]
-#[error("{media_type} files are not supported in npm packages: {specifier}")]
-pub struct NotSupportedKindInNpmError {
-  pub media_type: MediaType,
-  pub specifier: Url,
-}
-
-// todo(dsherret): move to module_loader.rs (it seems to be here due to use in standalone)
-#[derive(Clone)]
-pub struct NpmModuleLoader {
-  cjs_tracker: Arc<CjsTracker>,
-  fs: Arc<dyn deno_fs::FileSystem>,
-  node_code_translator: Arc<CliNodeCodeTranslator>,
-}
-
-impl NpmModuleLoader {
-  pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
-    fs: Arc<dyn deno_fs::FileSystem>,
-    node_code_translator: Arc<CliNodeCodeTranslator>,
-  ) -> Self {
-    Self {
-      cjs_tracker,
-      node_code_translator,
-      fs,
-    }
-  }
-
-  pub async fn load(
-    &self,
-    specifier: &ModuleSpecifier,
-    maybe_referrer: Option<&ModuleSpecifier>,
-  ) -> Result<ModuleCodeStringSource, AnyError> {
-    let file_path = specifier.to_file_path().unwrap();
-    let code = self
-      .fs
-      .read_file_async(file_path.clone(), None)
-      .await
-      .map_err(AnyError::from)
-      .with_context(|| {
-        if file_path.is_dir() {
-          // directory imports are not allowed when importing from an
-          // ES module, so provide the user with a helpful error message
-          let dir_path = file_path;
-          let mut msg = "Directory import ".to_string();
-          msg.push_str(&dir_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" is not supported resolving import from ");
-            msg.push_str(referrer.as_str());
-            let entrypoint_name = ["index.mjs", "index.js", "index.cjs"]
-              .iter()
-              .find(|e| dir_path.join(e).is_file());
-            if let Some(entrypoint_name) = entrypoint_name {
-              msg.push_str("\nDid you mean to import ");
-              msg.push_str(entrypoint_name);
-              msg.push_str(" within the directory?");
-            }
-          }
-          msg
-        } else {
-          let mut msg = "Unable to load ".to_string();
-          msg.push_str(&file_path.to_string_lossy());
-          if let Some(referrer) = &maybe_referrer {
-            msg.push_str(" imported from ");
-            msg.push_str(referrer.as_str());
-          }
-          msg
-        }
-      })?;
-
-    let media_type = MediaType::from_specifier(specifier);
-    if media_type.is_emittable() {
-      return Err(AnyError::from(NotSupportedKindInNpmError {
-        media_type,
-        specifier: specifier.clone(),
-      }));
-    }
-
-    let code = if self.cjs_tracker.is_maybe_cjs(specifier, media_type)? {
-      // translate cjs to esm if it's cjs and inject node globals
-      let code = from_utf8_lossy_cow(code);
-      ModuleSourceCode::String(
-        self
-          .node_code_translator
-          .translate_cjs_to_esm(specifier, Some(code))
-          .await?
-          .into_owned()
-          .into(),
-      )
-    } else {
-      // esm and json code is untouched
-      ModuleSourceCode::Bytes(match code {
-        Cow::Owned(bytes) => bytes.into_boxed_slice().into(),
-        Cow::Borrowed(bytes) => bytes.into(),
-      })
-    };
-
-    Ok(ModuleCodeStringSource {
-      code,
-      found_url: specifier.clone(),
-      media_type: MediaType::from_specifier(specifier),
-    })
-  }
-}
+pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
+  DenoInNpmPackageChecker,
+  DenoIsBuiltInNodeModuleChecker,
+  CliNpmResolver,
+  CliSys,
+>;
 
 #[derive(Debug, Default)]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);

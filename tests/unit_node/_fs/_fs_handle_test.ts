@@ -2,7 +2,7 @@
 import * as path from "@std/path";
 import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 
 const moduleDir = path.dirname(path.fromFileUrl(import.meta.url));
 const testData = path.resolve(moduleDir, "testdata", "hello.txt");
@@ -270,6 +270,50 @@ Deno.test({
     assertEquals(Deno.statSync(testData).atime!, atime);
     assertEquals(Deno.statSync(testData).mtime!, mtime);
 
+    await fileHandle.close();
+  },
+});
+
+Deno.test({
+  name: "[node/fs filehandle.chown] Change owner of the file",
+  ignore: Deno.build.os === "windows",
+  async fn() {
+    const fileHandle = await fs.open(testData);
+
+    const nobodyUid = 65534;
+    const nobodyGid = 65534;
+
+    await assertRejects(
+      async () => await fileHandle.chown(nobodyUid, nobodyGid),
+      Deno.errors.PermissionDenied,
+      "Operation not permitted",
+    );
+
+    const realUid = Deno.uid() || 1000;
+    const realGid = Deno.gid() || 1000;
+
+    await fileHandle.chown(realUid, realGid);
+
+    assertEquals(Deno.statSync(testData).uid, realUid);
+    assertEquals(Deno.statSync(testData).gid, realGid);
+
+    await fileHandle.close();
+  },
+});
+
+Deno.test({
+  name:
+    "[node/fs filehandle.sync] Request that all data for the open file descriptor is flushed to the storage device",
+  async fn() {
+    const fileHandle = await fs.open(testData, "r+");
+
+    await fileHandle.datasync();
+    await fileHandle.sync();
+    const buf = Buffer.from("hello world");
+    await fileHandle.write(buf);
+    const ret = await fileHandle.read(Buffer.alloc(11), 0, 11, 0);
+    assertEquals(ret.bytesRead, 11);
+    assertEquals(ret.buffer, buf);
     await fileHandle.close();
   },
 });

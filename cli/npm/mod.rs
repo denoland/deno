@@ -1,39 +1,27 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod byonm;
 pub mod installer;
 mod managed;
-mod permission_checker;
 
-use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_resolver::npm::ByonmNpmResolver;
-use deno_resolver::npm::ByonmOrManagedNpmResolver;
-use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
-use deno_runtime::ops::process::NpmProcessStateProvider;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
-use node_resolver::NpmPackageFolderResolver;
 
-pub use self::byonm::CliByonmNpmResolver;
-pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
-pub use self::managed::ManagedCliNpmResolver;
 pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolveSnapshotError;
-pub use self::permission_checker::NpmRegistryReadPermissionChecker;
-pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
@@ -44,6 +32,12 @@ pub type CliNpmTarballCache =
 pub type CliNpmCache = deno_npm_cache::NpmCache<CliSys>;
 pub type CliNpmRegistryInfoProvider =
   deno_npm_cache::RegistryInfoProvider<CliNpmCacheHttpClient, CliSys>;
+pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
+pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
+pub type CliNpmResolverCreateOptions =
+  deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolverCreateOptions =
+  ByonmNpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -102,70 +96,6 @@ impl deno_npm_cache::NpmCacheHttpClient for CliNpmCacheHttpClient {
         }
       })
   }
-}
-
-pub enum CliNpmResolverCreateOptions {
-  Managed(CliManagedNpmResolverCreateOptions),
-  Byonm(CliByonmNpmResolverCreateOptions),
-}
-
-pub fn create_cli_npm_resolver(
-  options: CliNpmResolverCreateOptions,
-) -> Arc<dyn CliNpmResolver> {
-  use CliNpmResolverCreateOptions::*;
-  match options {
-    Managed(options) => managed::create_managed_npm_resolver(options),
-    Byonm(options) => Arc::new(ByonmNpmResolver::new(options)),
-  }
-}
-
-pub enum InnerCliNpmResolverRef<'a> {
-  Managed(&'a ManagedCliNpmResolver),
-  #[allow(dead_code)]
-  Byonm(&'a CliByonmNpmResolver),
-}
-
-// todo(dsherret): replace with an enum
-pub trait CliNpmResolver: Send + Sync + std::fmt::Debug {
-  fn into_npm_pkg_folder_resolver(
-    self: Arc<Self>,
-  ) -> Arc<dyn NpmPackageFolderResolver>;
-  fn into_process_state_provider(
-    self: Arc<Self>,
-  ) -> Arc<dyn NpmProcessStateProvider>;
-  fn into_byonm_or_managed(
-    self: Arc<Self>,
-  ) -> ByonmOrManagedNpmResolver<CliSys>;
-
-  fn clone_snapshotted(&self) -> Arc<dyn CliNpmResolver>;
-
-  fn as_inner(&self) -> InnerCliNpmResolverRef;
-
-  fn as_managed(&self) -> Option<&ManagedCliNpmResolver> {
-    match self.as_inner() {
-      InnerCliNpmResolverRef::Managed(inner) => Some(inner),
-      InnerCliNpmResolverRef::Byonm(_) => None,
-    }
-  }
-
-  fn as_byonm(&self) -> Option<&CliByonmNpmResolver> {
-    match self.as_inner() {
-      InnerCliNpmResolverRef::Managed(_) => None,
-      InnerCliNpmResolverRef::Byonm(inner) => Some(inner),
-    }
-  }
-
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError>;
-
-  fn root_node_modules_path(&self) -> Option<&Path>;
-
-  /// Returns a hash returning the state of the npm resolver
-  /// or `None` if the state currently can't be determined.
-  fn check_state_hash(&self) -> Option<u64>;
 }
 
 #[derive(Debug)]
@@ -253,8 +183,8 @@ pub const NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
 pub fn get_npm_config_user_agent() -> String {
   format!(
     "deno/{} npm/? deno/{} {} {}",
-    env!("CARGO_PKG_VERSION"),
-    env!("CARGO_PKG_VERSION"),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.deno,
     std::env::consts::OS,
     std::env::consts::ARCH
   )

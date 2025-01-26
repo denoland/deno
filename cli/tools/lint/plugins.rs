@@ -300,15 +300,12 @@ impl PluginHost {
           maybe_token,
         } => {
           let start = std::time::Instant::now();
-          let r = match self
-            .run_plugins(
-              &file_path,
-              serialized_ast,
-              source_text_info,
-              maybe_token,
-            )
-            .await
-          {
+          let r = match self.run_plugins(
+            &file_path,
+            serialized_ast,
+            source_text_info,
+            maybe_token,
+          ) {
             Ok(()) => Ok(self.take_diagnostics()),
             Err(err) => Err(err),
           };
@@ -331,7 +328,7 @@ impl PluginHost {
     std::mem::take(&mut container.diagnostics)
   }
 
-  async fn run_plugins(
+  fn run_plugins(
     &mut self,
     file_path: &Path,
     serialized_ast: Vec<u8>,

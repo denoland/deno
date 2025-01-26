@@ -28,6 +28,9 @@ use deno_graph::GraphKind;
 use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
+use deno_lib::util::checksum;
+use deno_lib::util::hash::FastInsecureHasher;
+use deno_lib::worker::create_isolate_create_params;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -42,15 +45,12 @@ use thiserror::Error;
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
-use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
-use crate::resolver::CjsTracker;
+use crate::resolver::CliCjsTracker;
 use crate::sys::CliSys;
-use crate::util::checksum;
 use crate::util::path::mapped_specifier_for_tsc;
-use crate::worker::create_isolate_create_params;
 
 mod diagnostics;
 
@@ -300,13 +300,13 @@ pub fn into_specifier_and_media_type(
 
 #[derive(Debug)]
 pub struct TypeCheckingCjsTracker {
-  cjs_tracker: Arc<CjsTracker>,
+  cjs_tracker: Arc<CliCjsTracker>,
   module_info_cache: Arc<ModuleInfoCache>,
 }
 
 impl TypeCheckingCjsTracker {
   pub fn new(
-    cjs_tracker: Arc<CjsTracker>,
+    cjs_tracker: Arc<CliCjsTracker>,
     module_info_cache: Arc<ModuleInfoCache>,
   ) -> Self {
     Self {
@@ -358,7 +358,7 @@ impl TypeCheckingCjsTracker {
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
-  pub npm_resolver: Arc<dyn CliNpmResolver>,
+  pub npm_resolver: CliNpmResolver,
 }
 
 /// A structure representing a request to be sent to the tsc runtime.

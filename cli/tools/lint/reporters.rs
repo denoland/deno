@@ -55,11 +55,9 @@ impl LintReporter for PrettyLintReporter {
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     log::error!("Error linting: {file_path}");
-    if let Some(core_err) = err.downcast_ref::<CoreError>() {
-      if let CoreError::Js(js_error) = core_err {
-        log::error!("   {}", format_js_error(js_error));
-        return;
-      }
+    if let Some(CoreError::Js(js_error)) = err.downcast_ref::<CoreError>() {
+      log::error!("   {}", format_js_error(js_error));
+      return;
     }
     log::error!("   {err}");
   }
