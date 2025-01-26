@@ -142,7 +142,7 @@ flate2 = { version = "1.0.30", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
-h2 = "0.4.4"
+h2 = "0.4.6"
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
 http = "1.0"
 http-body = "1.0"
