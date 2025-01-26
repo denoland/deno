@@ -3903,6 +3903,7 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
@@ -3989,7 +3990,7 @@ impl CompletionEntry {
               .then(|| import_data.normalized.to_string())
           })
         {
-          cache.insert(
+          resolution_cache.insert(
             (import_data.normalized.clone(), specifier.clone()),
             new_specifier.clone(),
           );
