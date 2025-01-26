@@ -43,7 +43,8 @@ pub async fn serve(
 
   maybe_npm_install(&factory).await?;
 
-  let worker_factory = factory.create_cli_main_worker_factory().await?;
+  let worker_factory =
+    Arc::new(factory.create_cli_main_worker_factory().await?);
   let hmr = serve_flags
     .watch
     .map(|watch_flags| watch_flags.hmr)
@@ -58,7 +59,7 @@ pub async fn serve(
 }
 
 async fn do_serve(
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   worker_count: Option<usize>,
   hmr: bool,
@@ -73,7 +74,7 @@ async fn do_serve(
     )
     .await?;
   let worker_count = match worker_count {
-    None | Some(1) => return worker.run().await,
+    None | Some(1) => return worker.run().await.map_err(Into::into),
     Some(c) => c,
   };
 
@@ -116,7 +117,7 @@ async fn do_serve(
 
 async fn run_worker(
   worker_count: usize,
-  worker_factory: CliMainWorkerFactory,
+  worker_factory: Arc<CliMainWorkerFactory>,
   main_module: ModuleSpecifier,
   hmr: bool,
 ) -> Result<i32, AnyError> {
@@ -133,7 +134,7 @@ async fn run_worker(
     worker.run_for_watcher().await?;
     Ok(0)
   } else {
-    worker.run().await
+    worker.run().await.map_err(Into::into)
   }
 }
 
@@ -164,7 +165,8 @@ async fn serve_with_watch(
         maybe_npm_install(&factory).await?;
 
         let _ = watcher_communicator.watch_paths(cli_options.watch_paths());
-        let worker_factory = factory.create_cli_main_worker_factory().await?;
+        let worker_factory =
+          Arc::new(factory.create_cli_main_worker_factory().await?);
 
         do_serve(worker_factory, main_module.clone(), worker_count, hmr)
           .await?;

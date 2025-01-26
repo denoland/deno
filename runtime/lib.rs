@@ -16,7 +16,10 @@ pub use deno_kv;
 pub use deno_napi;
 pub use deno_net;
 pub use deno_node;
+pub use deno_os;
 pub use deno_permissions;
+pub use deno_process;
+pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
 pub use deno_url;
@@ -27,17 +30,17 @@ pub use deno_websocket;
 pub use deno_webstorage;
 
 pub mod code_cache;
-pub mod errors;
 pub mod fmt_errors;
 pub mod fs_util;
 pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
-pub mod signal;
+#[cfg(feature = "snapshot")]
 pub mod snapshot;
-pub mod sys_info;
 pub mod tokio_util;
+#[cfg(feature = "transpile")]
+pub mod transpile;
 pub mod web_worker;
 pub mod worker;
 
@@ -47,6 +50,7 @@ pub use worker_bootstrap::WorkerExecutionMode;
 pub use worker_bootstrap::WorkerLogLevel;
 
 pub mod shared;
+pub use deno_os::exit;
 pub use shared::runtime;
 
 pub struct UnstableGranularFlag {
@@ -115,7 +119,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
   // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
-    name: ops::process::UNSTABLE_FEATURE_NAME,
+    name: deno_process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
     show_in_help: false,
     id: 10,
@@ -147,12 +151,6 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     id: 14,
   },
 ];
-
-pub fn exit(code: i32) -> ! {
-  deno_telemetry::flush();
-  #[allow(clippy::disallowed_methods)]
-  std::process::exit(code);
-}
 
 #[cfg(test)]
 mod test {

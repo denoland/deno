@@ -13,8 +13,7 @@ use std::task::Poll;
 use deno_broadcast_channel::InMemoryBroadcastChannel;
 use deno_cache::CreateCache;
 use deno_cache::SqliteBackedCache;
-use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::future::poll_fn;
 use deno_core::futures::stream::StreamExt;
@@ -29,7 +28,6 @@ use deno_core::CompiledWasmModuleStore;
 use deno_core::DetachedBuffer;
 use deno_core::Extension;
 use deno_core::FeatureChecker;
-use deno_core::GetErrorClassFn;
 use deno_core::JsRuntime;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleId;
@@ -46,6 +44,7 @@ use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
 use deno_node::NodeExtInitServices;
 use deno_permissions::PermissionsContainer;
+use deno_process::NpmProcessStateProviderRc;
 use deno_terminal::colors;
 use deno_tls::RootCertStoreProvider;
 use deno_tls::TlsKeys;
@@ -56,11 +55,11 @@ use deno_web::JsMessageData;
 use deno_web::MessagePort;
 use deno_web::Transferable;
 use log::debug;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NpmPackageFolderResolver;
 
 use crate::inspector_server::InspectorServer;
 use crate::ops;
-use crate::ops::process::NpmProcessStateProviderRc;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 use crate::tokio_util::create_and_run_current_thread;
 use crate::worker::create_op_metrics;
@@ -105,8 +104,7 @@ pub enum WebWorkerType {
 /// Events that are sent to host from child
 /// worker.
 pub enum WorkerControlEvent {
-  Error(AnyError),
-  TerminalError(AnyError),
+  TerminalError(CoreError),
   Close,
 }
 
@@ -119,15 +117,13 @@ impl Serialize for WorkerControlEvent {
   {
     let type_id = match &self {
       WorkerControlEvent::TerminalError(_) => 1_i32,
-      WorkerControlEvent::Error(_) => 2_i32,
       WorkerControlEvent::Close => 3_i32,
     };
 
     match self {
-      WorkerControlEvent::TerminalError(error)
-      | WorkerControlEvent::Error(error) => {
-        let value = match error.downcast_ref::<JsError>() {
-          Some(js_error) => {
+      WorkerControlEvent::TerminalError(error) => {
+        let value = match error {
+          CoreError::Js(js_error) => {
             let frame = js_error.frames.iter().find(|f| match &f.file_name {
               Some(s) => !s.trim_start_matches('[').starts_with("ext:"),
               None => false,
@@ -139,7 +135,7 @@ impl Serialize for WorkerControlEvent {
               "columnNumber": frame.map(|f| f.column_number.as_ref()),
             })
           }
-          None => json!({
+          _ => json!({
             "message": error.to_string(),
           }),
         };
@@ -339,7 +335,11 @@ fn create_handles(
   (internal_handle, external_handle)
 }
 
-pub struct WebWorkerServiceOptions<TExtNodeSys: ExtNodeSys + 'static> {
+pub struct WebWorkerServiceOptions<
+  TInNpmPackageChecker: InNpmPackageChecker + 'static,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+  TExtNodeSys: ExtNodeSys + 'static,
+> {
   pub blob_store: Arc<BlobStore>,
   pub broadcast_channel: InMemoryBroadcastChannel,
   pub compiled_wasm_module_store: Option<CompiledWasmModuleStore>,
@@ -347,7 +347,13 @@ pub struct WebWorkerServiceOptions<TExtNodeSys: ExtNodeSys + 'static> {
   pub fs: Arc<dyn FileSystem>,
   pub maybe_inspector_server: Option<Arc<InspectorServer>>,
   pub module_loader: Rc<dyn ModuleLoader>,
-  pub node_services: Option<NodeExtInitServices<TExtNodeSys>>,
+  pub node_services: Option<
+    NodeExtInitServices<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
+  >,
   pub npm_process_state_provider: Option<NpmProcessStateProviderRc>,
   pub permissions: PermissionsContainer,
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -368,7 +374,6 @@ pub struct WebWorkerOptions {
   pub create_web_worker_cb: Arc<ops::worker_host::CreateWebWorkerCb>,
   pub format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
   pub worker_type: WebWorkerType,
-  pub get_error_class_fn: Option<GetErrorClassFn>,
   pub cache_storage_dir: Option<std::path::PathBuf>,
   pub stdio: Stdio,
   pub strace_ops: Option<Vec<String>>,
@@ -404,8 +409,16 @@ impl Drop for WebWorker {
 }
 
 impl WebWorker {
-  pub fn bootstrap_from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    services: WebWorkerServiceOptions<TExtNodeSys>,
+  pub fn bootstrap_from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    services: WebWorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle) {
     let (mut worker, handle, bootstrap_options) =
@@ -414,8 +427,16 @@ impl WebWorker {
     (worker, handle)
   }
 
-  fn from_options<TExtNodeSys: ExtNodeSys + 'static>(
-    services: WebWorkerServiceOptions<TExtNodeSys>,
+  fn from_options<
+    TInNpmPackageChecker: InNpmPackageChecker + 'static,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver + 'static,
+    TExtNodeSys: ExtNodeSys + 'static,
+  >(
+    services: WebWorkerServiceOptions<
+      TInNpmPackageChecker,
+      TNpmPackageFolderResolver,
+      TExtNodeSys,
+    >,
     mut options: WebWorkerOptions,
   ) -> (Self, SendableWebWorkerHandle, BootstrapOptions) {
     deno_core::extension!(deno_permissions_web_worker,
@@ -506,10 +527,16 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_node::deno_node::init_ops_and_esm::<PermissionsContainer, TExtNodeSys>(
-        services.node_services,
-        services.fs,
+      deno_os::deno_os_worker::init_ops_and_esm(),
+      deno_process::deno_process::init_ops_and_esm(
+        services.npm_process_state_provider,
       ),
+      deno_node::deno_node::init_ops_and_esm::<
+        PermissionsContainer,
+        TInNpmPackageChecker,
+        TNpmPackageFolderResolver,
+        TExtNodeSys,
+      >(services.node_services, services.fs),
       // Runtime ops that are always initialized for WebWorkers
       ops::runtime::deno_runtime::init_ops_and_esm(options.main_module.clone()),
       ops::worker_host::deno_worker_host::init_ops_and_esm(
@@ -517,12 +544,7 @@ impl WebWorker {
         options.format_js_error_fn,
       ),
       ops::fs_events::deno_fs_events::init_ops_and_esm(),
-      ops::os::deno_os_worker::init_ops_and_esm(),
       ops::permissions::deno_permissions::init_ops_and_esm(),
-      ops::process::deno_process::init_ops_and_esm(
-        services.npm_process_state_provider,
-      ),
-      ops::signal::deno_signal::init_ops_and_esm(),
       ops::tty::deno_tty::init_ops_and_esm(),
       ops::http::deno_http_runtime::init_ops_and_esm(),
       ops::bootstrap::deno_bootstrap::init_ops_and_esm(
@@ -569,13 +591,15 @@ impl WebWorker {
       module_loader: Some(services.module_loader),
       startup_snapshot: options.startup_snapshot,
       create_params: options.create_params,
-      get_error_class_fn: options.get_error_class_fn,
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
       extensions,
+      #[cfg(feature = "transpile")]
       extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
+        crate::transpile::maybe_transpile_source(specifier, source)
       })),
+      #[cfg(not(feature = "transpile"))]
+      extension_transpiler: None,
       inspector: true,
       feature_checker: Some(services.feature_checker),
       op_metrics_factory_fn,
@@ -737,7 +761,7 @@ impl WebWorker {
     &mut self,
     name: &'static str,
     source_code: ModuleCodeString,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     self.js_runtime.execute_script(name, source_code)?;
     Ok(())
   }
@@ -746,7 +770,7 @@ impl WebWorker {
   pub async fn preload_main_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, CoreError> {
     self.js_runtime.load_main_es_module(module_specifier).await
   }
 
@@ -754,7 +778,7 @@ impl WebWorker {
   pub async fn preload_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<ModuleId, AnyError> {
+  ) -> Result<ModuleId, CoreError> {
     self.js_runtime.load_side_es_module(module_specifier).await
   }
 
@@ -765,7 +789,7 @@ impl WebWorker {
   pub async fn execute_side_module(
     &mut self,
     module_specifier: &ModuleSpecifier,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let id = self.preload_side_module(module_specifier).await?;
     let mut receiver = self.js_runtime.mod_evaluate(id);
     tokio::select! {
@@ -789,7 +813,7 @@ impl WebWorker {
   pub async fn execute_main_module(
     &mut self,
     id: ModuleId,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let mut receiver = self.js_runtime.mod_evaluate(id);
     let poll_options = PollEventLoopOptions::default();
 
@@ -815,7 +839,7 @@ impl WebWorker {
     &mut self,
     cx: &mut Context,
     poll_options: PollEventLoopOptions,
-  ) -> Poll<Result<(), AnyError>> {
+  ) -> Poll<Result<(), CoreError>> {
     // If awakened because we are terminating, just return Ok
     if self.internal_handle.terminate_if_needed() {
       return Poll::Ready(Ok(()));
@@ -859,7 +883,7 @@ impl WebWorker {
   pub async fn run_event_loop(
     &mut self,
     poll_options: PollEventLoopOptions,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     poll_fn(|cx| self.poll_event_loop(cx, poll_options)).await
   }
 
@@ -893,14 +917,14 @@ impl WebWorker {
 }
 
 fn print_worker_error(
-  error: &AnyError,
+  error: &CoreError,
   name: &str,
   format_js_error_fn: Option<&FormatJsErrorFn>,
 ) {
   let error_str = match format_js_error_fn {
-    Some(format_js_error_fn) => match error.downcast_ref::<JsError>() {
-      Some(js_error) => format_js_error_fn(js_error),
-      None => error.to_string(),
+    Some(format_js_error_fn) => match error {
+      CoreError::Js(js_error) => format_js_error_fn(js_error),
+      _ => error.to_string(),
     },
     None => error.to_string(),
   };
@@ -919,7 +943,7 @@ pub fn run_web_worker(
   specifier: ModuleSpecifier,
   mut maybe_source_code: Option<String>,
   format_js_error_fn: Option<Arc<FormatJsErrorFn>>,
-) -> Result<(), AnyError> {
+) -> Result<(), CoreError> {
   let name = worker.name.to_string();
 
   // TODO(bartlomieju): run following block using "select!"

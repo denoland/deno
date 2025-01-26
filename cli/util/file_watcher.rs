@@ -10,10 +10,11 @@ use std::time::Duration;
 
 use deno_config::glob::PathOrPatternSet;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_runtime::fmt_errors::format_js_error;
 use log::info;
 use notify::event::Event as NotifyEvent;
@@ -23,7 +24,9 @@ use notify::RecommendedWatcher;
 use notify::RecursiveMode;
 use notify::Watcher;
 use tokio::select;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::time::sleep;
 
@@ -80,9 +83,10 @@ where
 {
   let result = watch_future.await;
   if let Err(err) = result {
-    let error_string = match err.downcast_ref::<JsError>() {
-      Some(e) => format_js_error(e),
-      None => format!("{err:?}"),
+    let error_string = match any_and_jserrorbox_downcast_ref::<CoreError>(&err)
+    {
+      Some(CoreError::Js(e)) => format_js_error(e),
+      _ => format!("{err:?}"),
     };
     log::error!(
       "{}: {}",
@@ -137,47 +141,87 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
+#[derive(Debug)]
+pub struct WatcherCommunicatorOptions {
+  /// Send a list of paths that should be watched for changes.
+  pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
+  /// Listen for a list of paths that were changed.
+  pub changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
+  pub changed_paths_tx: tokio::sync::broadcast::Sender<Option<Vec<PathBuf>>>,
+  /// Send a message to force a restart.
+  pub restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
+  pub restart_mode: WatcherRestartMode,
+  pub banner: String,
+}
+
 /// An interface to interact with Deno's CLI file watcher.
 #[derive(Debug)]
 pub struct WatcherCommunicator {
   /// Send a list of paths that should be watched for changes.
   paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
-
   /// Listen for a list of paths that were changed.
   changed_paths_rx: tokio::sync::broadcast::Receiver<Option<Vec<PathBuf>>>,
-
+  changed_paths_tx: tokio::sync::broadcast::Sender<Option<Vec<PathBuf>>>,
   /// Send a message to force a restart.
   restart_tx: tokio::sync::mpsc::UnboundedSender<()>,
-
   restart_mode: Mutex<WatcherRestartMode>,
-
   banner: String,
 }
 
 impl WatcherCommunicator {
-  pub fn watch_paths(&self, paths: Vec<PathBuf>) -> Result<(), AnyError> {
+  pub fn new(options: WatcherCommunicatorOptions) -> Self {
+    Self {
+      paths_to_watch_tx: options.paths_to_watch_tx,
+      changed_paths_rx: options.changed_paths_rx,
+      changed_paths_tx: options.changed_paths_tx,
+      restart_tx: options.restart_tx,
+      restart_mode: Mutex::new(options.restart_mode),
+      banner: options.banner,
+    }
+  }
+
+  pub fn watch_paths(
+    &self,
+    paths: Vec<PathBuf>,
+  ) -> Result<(), SendError<Vec<PathBuf>>> {
     if paths.is_empty() {
       return Ok(());
     }
-    self.paths_to_watch_tx.send(paths).map_err(AnyError::from)
+    self.paths_to_watch_tx.send(paths)
   }
 
-  pub fn force_restart(&self) -> Result<(), AnyError> {
+  pub fn force_restart(&self) -> Result<(), SendError<()>> {
     // Change back to automatic mode, so that HMR can set up watching
     // from scratch.
     *self.restart_mode.lock() = WatcherRestartMode::Automatic;
-    self.restart_tx.send(()).map_err(AnyError::from)
+    self.restart_tx.send(())
   }
 
   pub async fn watch_for_changed_paths(
     &self,
-  ) -> Result<Option<Vec<PathBuf>>, AnyError> {
+  ) -> Result<Option<Vec<PathBuf>>, RecvError> {
     let mut rx = self.changed_paths_rx.resubscribe();
-    rx.recv().await.map_err(AnyError::from)
+    rx.recv().await
   }
 
   pub fn change_restart_mode(&self, restart_mode: WatcherRestartMode) {
     *self.restart_mode.lock() = restart_mode;
+  }
+
+  pub fn send(
+    &self,
+    paths: Option<Vec<PathBuf>>,
+  ) -> Result<(), SendError<Option<Vec<PathBuf>>>> {
+    match *self.restart_mode.lock() {
+      WatcherRestartMode::Automatic => {
+        self.restart_tx.send(()).map_err(|_| SendError(None))
+      }
+      WatcherRestartMode::Manual => self
+        .changed_paths_tx
+        .send(paths)
+        .map(|_| ())
+        .map_err(|e| SendError(e.0)),
+    }
   }
 
   pub fn print(&self, msg: String) {
@@ -268,13 +312,15 @@ where
   } = print_config;
 
   let print_after_restart = create_print_after_restart_fn(clear_screen);
-  let watcher_communicator = Arc::new(WatcherCommunicator {
-    paths_to_watch_tx: paths_to_watch_tx.clone(),
-    changed_paths_rx: changed_paths_rx.resubscribe(),
-    restart_tx: restart_tx.clone(),
-    restart_mode: Mutex::new(restart_mode),
-    banner: colors::intense_blue(banner).to_string(),
-  });
+  let watcher_communicator =
+    Arc::new(WatcherCommunicator::new(WatcherCommunicatorOptions {
+      paths_to_watch_tx: paths_to_watch_tx.clone(),
+      changed_paths_rx: changed_paths_rx.resubscribe(),
+      changed_paths_tx,
+      restart_tx: restart_tx.clone(),
+      restart_mode,
+      banner: colors::intense_blue(banner).to_string(),
+    }));
   info!("{} {} started.", colors::intense_blue(banner), job_name);
 
   let changed_paths = Rc::new(RefCell::new(None));
@@ -288,15 +334,8 @@ where
         .borrow_mut()
         .clone_from(&received_changed_paths);
 
-      match *watcher_.restart_mode.lock() {
-        WatcherRestartMode::Automatic => {
-          let _ = restart_tx.send(());
-        }
-        WatcherRestartMode::Manual => {
-          // TODO(bartlomieju): should we fail on sending changed paths?
-          let _ = changed_paths_tx.send(received_changed_paths);
-        }
-      }
+      // TODO(bartlomieju): should we fail on sending changed paths?
+      let _ = watcher_.send(received_changed_paths);
     }
   });
 

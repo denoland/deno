@@ -9,15 +9,20 @@ use deno_core::op2;
 
 const PUNY_PREFIX: &str = "xn--";
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum IdnaError {
+  #[class(range)]
   #[error("Invalid input")]
   InvalidInput,
+  #[class(generic)]
   #[error("Input would take more than 63 characters to encode")]
   InputTooLong,
+  #[class(range)]
   #[error("Illegal input >= 0x80 (not a basic code point)")]
   IllegalInput,
 }
+
+deno_error::js_error_wrapper!(idna::Errors, JsIdnaErrors, "Error");
 
 /// map a domain by mapping each label with the given function
 fn map_domain(
@@ -113,8 +118,8 @@ pub fn op_node_idna_punycode_to_unicode(
 #[string]
 pub fn op_node_idna_domain_to_ascii(
   #[string] domain: String,
-) -> Result<String, idna::Errors> {
-  idna::domain_to_ascii(&domain)
+) -> Result<String, JsIdnaErrors> {
+  idna::domain_to_ascii(&domain).map_err(Into::into)
 }
 
 /// Converts a domain to Unicode as per the IDNA spec

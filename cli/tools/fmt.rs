@@ -26,7 +26,6 @@ use deno_config::glob::FilePatterns;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::parking_lot::Mutex;
@@ -43,6 +42,7 @@ use crate::args::FmtOptions;
 use crate::args::FmtOptionsConfig;
 use crate::args::ProseWrap;
 use crate::args::UnstableFmtOptions;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
@@ -59,7 +59,8 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
-    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -166,7 +167,7 @@ fn resolve_paths_with_options_batches(
     Vec::with_capacity(members_fmt_options.len());
   for (_ctx, member_fmt_options) in members_fmt_options {
     let files =
-      collect_fmt_files(cli_options, member_fmt_options.files.clone())?;
+      collect_fmt_files(cli_options, member_fmt_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         base: member_fmt_options.files.base.clone(),
@@ -176,7 +177,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
 }
@@ -202,7 +203,7 @@ async fn format_files(
     let paths = paths_with_options.paths;
     let incremental_cache = Arc::new(IncrementalCache::new(
       caches.fmt_incremental_cache_db(),
-      &(&fmt_options.options, &fmt_options.unstable), // cache key
+      CacheDBHash::from_hashable((&fmt_options.options, &fmt_options.unstable)),
       &paths,
     ));
     formatter
@@ -223,7 +224,7 @@ async fn format_files(
 fn collect_fmt_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_supported_ext_fmt(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
@@ -483,7 +484,7 @@ pub fn format_html(
       }
 
       if let Some(error_msg) = inner(&error, file_path) {
-        AnyError::from(generic_error(error_msg))
+        AnyError::msg(error_msg)
       } else {
         AnyError::from(error)
       }
@@ -731,9 +732,9 @@ impl Formatter for CheckFormatter {
       Ok(())
     } else {
       let not_formatted_files_str = files_str(not_formatted_files_count);
-      Err(generic_error(format!(
+      Err(anyhow!(
         "Found {not_formatted_files_count} not formatted {not_formatted_files_str} in {checked_files_str}",
-      )))
+      ))
     }
   }
 }
@@ -1179,10 +1180,13 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
   // will have the BOM stripped
-  let text = deno_graph::source::decode_owned_file_source(file_bytes)
-    .with_context(|| {
-      anyhow!("{} is not a valid UTF-8 file", file_path.display())
-    })?;
+  let charset =
+    deno_media_type::encoding::detect_charset_local_file(&file_bytes);
+  let text =
+    deno_media_type::encoding::decode_owned_source(charset, file_bytes)
+      .with_context(|| {
+        anyhow!("{} is not a valid UTF-8 file", file_path.display())
+      })?;
 
   Ok(FileContents { text, had_bom })
 }

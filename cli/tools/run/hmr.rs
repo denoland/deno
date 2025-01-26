@@ -4,13 +4,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json::json;
 use deno_core::serde_json::{self};
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_error::JsErrorBox;
 use deno_terminal::colors;
 use tokio::select;
 
@@ -66,19 +66,19 @@ pub struct HmrRunner {
 #[async_trait::async_trait(?Send)]
 impl crate::worker::HmrRunner for HmrRunner {
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn start(&mut self) -> Result<(), AnyError> {
+  async fn start(&mut self) -> Result<(), CoreError> {
     self.enable_debugger().await
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn stop(&mut self) -> Result<(), AnyError> {
+  async fn stop(&mut self) -> Result<(), CoreError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Automatic);
     self.disable_debugger().await
   }
 
-  async fn run(&mut self) -> Result<(), AnyError> {
+  async fn run(&mut self) -> Result<(), CoreError> {
     self
       .watcher_communicator
       .change_restart_mode(WatcherRestartMode::Manual);
@@ -87,13 +87,13 @@ impl crate::worker::HmrRunner for HmrRunner {
       select! {
         biased;
         Some(notification) = session_rx.next() => {
-          let notification = serde_json::from_value::<cdp::Notification>(notification)?;
+          let notification = serde_json::from_value::<cdp::Notification>(notification).map_err(JsErrorBox::from_err)?;
           if notification.method == "Runtime.exceptionThrown" {
-            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params)?;
+            let exception_thrown = serde_json::from_value::<cdp::ExceptionThrown>(notification.params).map_err(JsErrorBox::from_err)?;
             let (message, description) = exception_thrown.exception_details.get_message_and_description();
-            break Err(generic_error(format!("{} {}", message, description)));
+            break Err(JsErrorBox::generic(format!("{} {}", message, description)).into());
           } else if notification.method == "Debugger.scriptParsed" {
-            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params)?;
+            let params = serde_json::from_value::<cdp::ScriptParsed>(notification.params).map_err(JsErrorBox::from_err)?;
             if params.url.starts_with("file://") {
               let file_url = Url::parse(&params.url).unwrap();
               let file_path = file_url.to_file_path().unwrap();
@@ -105,7 +105,7 @@ impl crate::worker::HmrRunner for HmrRunner {
           }
         }
         changed_paths = self.watcher_communicator.watch_for_changed_paths() => {
-          let changed_paths = changed_paths?;
+          let changed_paths = changed_paths.map_err(JsErrorBox::from_err)?;
 
           let Some(changed_paths) = changed_paths else {
             let _ = self.watcher_communicator.force_restart();
@@ -187,7 +187,7 @@ impl HmrRunner {
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Debugger.enable", None)
@@ -200,7 +200,7 @@ impl HmrRunner {
   }
 
   // TODO(bartlomieju): this code is duplicated in `cli/tools/coverage/mod.rs`
-  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Debugger.disable", None)
@@ -216,7 +216,7 @@ impl HmrRunner {
     &mut self,
     script_id: &str,
     source: &str,
-  ) -> Result<cdp::SetScriptSourceResponse, AnyError> {
+  ) -> Result<cdp::SetScriptSourceResponse, CoreError> {
     let result = self
       .session
       .post_message(
@@ -229,15 +229,16 @@ impl HmrRunner {
       )
       .await?;
 
-    Ok(serde_json::from_value::<cdp::SetScriptSourceResponse>(
-      result,
-    )?)
+    Ok(
+      serde_json::from_value::<cdp::SetScriptSourceResponse>(result)
+        .map_err(JsErrorBox::from_err)?,
+    )
   }
 
   async fn dispatch_hmr_event(
     &mut self,
     script_id: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), CoreError> {
     let expr = format!(
       "dispatchEvent(new CustomEvent(\"hmr\", {{ detail: {{ path: \"{}\" }} }}));",
       script_id

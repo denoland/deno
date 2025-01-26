@@ -81,7 +81,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  crate::util::checksum::gen(&[file_name_str.as_bytes()])
+  deno_lib::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
 fn to_deno_uri(specifier: &Url) -> String {
@@ -219,7 +219,8 @@ impl LspUrlMap {
         let uri_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
-          let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
+          let data_url =
+            deno_media_type::data_url::RawDataUrl::parse(specifier)?;
           let media_type = data_url.media_type();
           let extension = if media_type == MediaType::Unknown {
             ""
@@ -282,24 +283,26 @@ impl LspUrlMap {
   }
 }
 
-/// Convert a e.g. `deno-notebook-cell:` specifier to a `file:` specifier.
+/// Convert a e.g. `vscode-notebook-cell:` specifier to a `file:` specifier.
 /// ```rust
 /// assert_eq!(
 ///   file_like_to_file_specifier(
-///     &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+///     &Url::parse("vscode-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
 ///   ),
-///   Some(Url::parse("file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc").unwrap()),
+///   Some(Url::parse("file:///path/to/file.ipynb?scheme=untitled#abc").unwrap()),
 /// );
 fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
-  if matches!(specifier.scheme(), "untitled" | "deno-notebook-cell") {
+  if matches!(
+    specifier.scheme(),
+    "untitled" | "vscode-notebook-cell" | "deno-notebook-cell"
+  ) {
     if let Ok(mut s) = ModuleSpecifier::parse(&format!(
-      "file://{}",
+      "file:///{}",
       &specifier.as_str()[deno_core::url::quirks::internal_components(specifier)
-        .host_end as usize..],
+        .host_end as usize..].trim_start_matches('/'),
     )) {
       s.query_pairs_mut()
         .append_pair("scheme", specifier.scheme());
-      s.set_path(&format!("{}.ts", s.path()));
       return Some(s);
     }
   }
@@ -432,11 +435,11 @@ mod tests {
   fn test_file_like_to_file_specifier() {
     assert_eq!(
       file_like_to_file_specifier(
-        &Url::parse("deno-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
+        &Url::parse("vscode-notebook-cell:/path/to/file.ipynb#abc").unwrap(),
       ),
       Some(
         Url::parse(
-          "file:///path/to/file.ipynb.ts?scheme=deno-notebook-cell#abc"
+          "file:///path/to/file.ipynb?scheme=vscode-notebook-cell#abc"
         )
         .unwrap()
       ),
@@ -446,8 +449,7 @@ mod tests {
         &Url::parse("untitled:/path/to/file.ipynb#123").unwrap(),
       ),
       Some(
-        Url::parse("file:///path/to/file.ipynb.ts?scheme=untitled#123")
-          .unwrap()
+        Url::parse("file:///path/to/file.ipynb?scheme=untitled#123").unwrap()
       ),
     );
   }

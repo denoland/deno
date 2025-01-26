@@ -47,12 +47,15 @@ pub struct DecipherContext {
   decipher: Rc<RefCell<Decipher>>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherContextError {
+  #[class(type)]
   #[error("Cipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Cipher(#[from] CipherError),
 }
@@ -94,12 +97,15 @@ impl CipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherContextError {
+  #[class(type)]
   #[error("Decipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Decipher(#[from] DecipherError),
 }
@@ -150,16 +156,21 @@ impl Resource for DecipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot pad the input data")]
   CannotPadInputData,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -352,22 +363,30 @@ impl Cipher {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot unpad the input data")]
   CannotUnpadInputData,
+  #[class(type)]
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
   SetAutoPaddingFalseAes128GcmUnsupported,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
   SetAutoPaddingFalseAes256GcmUnsupported,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -481,6 +500,11 @@ impl Decipher {
     auth_tag: &[u8],
   ) -> Result<(), DecipherError> {
     use Decipher::*;
+
+    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+      return Ok(());
+    }
+
     match (self, auto_pad) {
       (Aes128Cbc(decryptor), true) => {
         assert!(input.len() == 16);

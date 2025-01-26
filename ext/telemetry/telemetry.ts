@@ -2,19 +2,9 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
-  op_crypto_get_random_values,
-  op_otel_instrumentation_scope_create_and_enter,
-  op_otel_instrumentation_scope_enter,
-  op_otel_instrumentation_scope_enter_builtin,
   op_otel_log,
+  op_otel_log_foreign,
   op_otel_metric_attribute3,
-  op_otel_metric_create_counter,
-  op_otel_metric_create_gauge,
-  op_otel_metric_create_histogram,
-  op_otel_metric_create_observable_counter,
-  op_otel_metric_create_observable_gauge,
-  op_otel_metric_create_observable_up_down_counter,
-  op_otel_metric_create_up_down_counter,
   op_otel_metric_observable_record0,
   op_otel_metric_observable_record1,
   op_otel_metric_observable_record2,
@@ -25,45 +15,40 @@ import {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
-  op_otel_span_attribute,
+  op_otel_span_add_link,
+  op_otel_span_attribute1,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
-  op_otel_span_continue,
-  op_otel_span_flush,
-  op_otel_span_set_dropped,
-  op_otel_span_start,
+  op_otel_span_update_name,
+  OtelMeter,
+  OtelSpan,
+  OtelTracer,
 } from "ext:core/ops";
 import { Console } from "ext:deno_console/01_console.js";
-import { performance } from "ext:deno_web/15_performance.js";
 
 const {
-  Array,
+  ArrayIsArray,
   ArrayPrototypePush,
+  DatePrototype,
+  DatePrototypeGetTime,
   Error,
-  ObjectAssign,
   ObjectDefineProperty,
   ObjectEntries,
+  ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   ReflectApply,
   SafeIterator,
   SafeMap,
   SafePromiseAll,
   SafeSet,
-  SafeWeakMap,
-  SafeWeakRef,
   SafeWeakSet,
-  String,
-  StringPrototypePadStart,
   SymbolFor,
-  TypedArrayPrototypeSubarray,
-  Uint8Array,
-  WeakRefPrototypeDeref,
+  TypeError,
 } = primordials;
 const { AsyncVariable, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
-let DETERMINISTIC = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -90,8 +75,6 @@ interface SpanContext {
   traceState?: TraceState;
 }
 
-type HrTime = [number, number];
-
 enum SpanStatusCode {
   UNSET = 0,
   OK = 1,
@@ -103,7 +86,7 @@ interface SpanStatus {
   message?: string;
 }
 
-export type AttributeValue =
+type AttributeValue =
   | string
   | number
   | boolean
@@ -117,20 +100,18 @@ interface Attributes {
 
 type SpanAttributes = Attributes;
 
+type TimeInput = [number, number] | number | Date;
+
 interface SpanOptions {
-  attributes?: Attributes;
   kind?: SpanKind;
+  attributes?: Attributes;
+  links?: Link[];
+  startTime?: TimeInput;
+  root?: boolean;
 }
 
 interface Link {
   context: SpanContext;
-  attributes?: SpanAttributes;
-  droppedAttributesCount?: number;
-}
-
-interface TimedEvent {
-  time: HrTime;
-  name: string;
   attributes?: SpanAttributes;
   droppedAttributesCount?: number;
 }
@@ -157,482 +138,331 @@ interface IKeyValue {
   key: string;
   value: IAnyValue;
 }
-interface IResource {
-  attributes: IKeyValue[];
-  droppedAttributesCount: number;
-}
-
-interface InstrumentationLibrary {
-  readonly name: string;
-  readonly version?: string;
-  readonly schemaUrl?: string;
-}
-
-interface ReadableSpan {
-  readonly name: string;
-  readonly kind: SpanKind;
-  readonly spanContext: () => SpanContext;
-  readonly parentSpanId?: string;
-  readonly startTime: HrTime;
-  readonly endTime: HrTime;
-  readonly status: SpanStatus;
-  readonly attributes: SpanAttributes;
-  readonly links: Link[];
-  readonly events: TimedEvent[];
-  readonly duration: HrTime;
-  readonly ended: boolean;
-  readonly resource: IResource;
-  readonly instrumentationLibrary: InstrumentationLibrary;
-  readonly droppedAttributesCount: number;
-  readonly droppedEventsCount: number;
-  readonly droppedLinksCount: number;
-}
-
-enum ExportResultCode {
-  SUCCESS = 0,
-  FAILED = 1,
-}
-
-interface ExportResult {
-  code: ExportResultCode;
-  error?: Error;
-}
 
 function hrToSecs(hr: [number, number]): number {
-  return ((hr[0] * 1e3 + hr[1] / 1e6) / 1000);
+  return (hr[0] * 1e3 + hr[1] / 1e6) / 1000;
 }
 
-const TRACE_FLAG_SAMPLED = 1 << 0;
+export function enterSpan(span: Span): Context | undefined {
+  if (!span.isRecording()) return undefined;
+  const context = (CURRENT.get() || ROOT_CONTEXT).setValue(SPAN_KEY, span);
+  return CURRENT.enter(context);
+}
 
-const instrumentationScopes = new SafeWeakMap<
-  InstrumentationLibrary,
-  { __key: "instrumentation-library" }
->();
-let activeInstrumentationLibrary: WeakRef<InstrumentationLibrary> | null = null;
+export function restoreContext(context: Context): void {
+  setAsyncContext(context);
+}
 
-function activateInstrumentationLibrary(
-  instrumentationLibrary: InstrumentationLibrary,
-) {
-  if (
-    !activeInstrumentationLibrary ||
-    WeakRefPrototypeDeref(activeInstrumentationLibrary) !==
-      instrumentationLibrary
+function isDate(value: unknown): value is Date {
+  return ObjectPrototypeIsPrototypeOf(value, DatePrototype);
+}
+
+interface OtelTracer {
+  __key: "tracer";
+
+  // deno-lint-ignore no-misused-new
+  new (name: string, version?: string, schemaUrl?: string): OtelTracer;
+
+  startSpan(
+    parent: OtelSpan | undefined,
+    name: string,
+    spanKind: SpanKind,
+    startTime: number | undefined,
+    attributeCount: number,
+  ): OtelSpan;
+
+  startSpanForeign(
+    parentTraceId: string,
+    parentSpanId: string,
+    name: string,
+    spanKind: SpanKind,
+    startTime: number | undefined,
+    attributeCount: number,
+  ): OtelSpan;
+}
+
+interface OtelSpan {
+  __key: "span";
+
+  spanContext(): SpanContext;
+  setStatus(status: SpanStatusCode, errorDescription: string): void;
+  dropEvent(): void;
+  end(endTime: number): void;
+}
+
+interface TracerOptions {
+  schemaUrl?: string;
+}
+
+class TracerProvider {
+  constructor() {
+    throw new TypeError("TracerProvider can not be constructed");
+  }
+
+  static getTracer(
+    name: string,
+    version?: string,
+    options?: TracerOptions,
+  ): Tracer {
+    const tracer = new OtelTracer(name, version, options?.schemaUrl);
+    return new Tracer(tracer);
+  }
+}
+
+class Tracer {
+  #tracer: OtelTracer;
+
+  constructor(tracer: OtelTracer) {
+    this.#tracer = tracer;
+  }
+
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    options: SpanOptions,
+    context: Context,
+    fn: F,
+  ): ReturnType<F>;
+  startActiveSpan<F extends (span: Span) => unknown>(
+    name: string,
+    optionsOrFn: SpanOptions | F,
+    fnOrContext?: F | Context,
+    maybeFn?: F,
   ) {
-    activeInstrumentationLibrary = new SafeWeakRef(instrumentationLibrary);
-    if (instrumentationLibrary === BUILTIN_INSTRUMENTATION_LIBRARY) {
-      op_otel_instrumentation_scope_enter_builtin();
+    let options;
+    let context;
+    let fn;
+    if (typeof optionsOrFn === "function") {
+      options = undefined;
+      fn = optionsOrFn;
+    } else if (typeof fnOrContext === "function") {
+      options = optionsOrFn;
+      fn = fnOrContext;
+    } else if (typeof maybeFn === "function") {
+      options = optionsOrFn;
+      context = fnOrContext;
+      fn = maybeFn;
     } else {
-      let instrumentationScope = instrumentationScopes
-        .get(instrumentationLibrary);
-
-      if (instrumentationScope === undefined) {
-        instrumentationScope = op_otel_instrumentation_scope_create_and_enter(
-          instrumentationLibrary.name,
-          instrumentationLibrary.version,
-          instrumentationLibrary.schemaUrl,
-        ) as { __key: "instrumentation-library" };
-        instrumentationScopes.set(
-          instrumentationLibrary,
-          instrumentationScope,
-        );
-      } else {
-        op_otel_instrumentation_scope_enter(
-          instrumentationScope,
-        );
-      }
+      throw new Error("startActiveSpan requires a function argument");
     }
-  }
-}
-
-function submitSpan(
-  spanId: string | Uint8Array,
-  traceId: string | Uint8Array,
-  traceFlags: number,
-  parentSpanId: string | Uint8Array | null,
-  span: Omit<
-    ReadableSpan,
-    | "spanContext"
-    | "startTime"
-    | "endTime"
-    | "parentSpanId"
-    | "duration"
-    | "ended"
-    | "resource"
-  >,
-  startTime: number,
-  endTime: number,
-) {
-  if (!TRACING_ENABLED) return;
-  if (!(traceFlags & TRACE_FLAG_SAMPLED)) return;
-
-  // TODO(@lucacasonato): `resource` is ignored for now, should we implement it?
-
-  activateInstrumentationLibrary(span.instrumentationLibrary);
-
-  op_otel_span_start(
-    traceId,
-    spanId,
-    parentSpanId,
-    span.kind,
-    span.name,
-    startTime,
-    endTime,
-  );
-
-  const status = span.status;
-  if (status !== null && status.code !== 0) {
-    op_otel_span_continue(status.code, status.message ?? "");
-  }
-
-  const attributeKvs = ObjectEntries(span.attributes);
-  let i = 0;
-  while (i < attributeKvs.length) {
-    if (i + 2 < attributeKvs.length) {
-      op_otel_span_attribute3(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-        attributeKvs[i + 2][0],
-        attributeKvs[i + 2][1],
-      );
-      i += 3;
-    } else if (i + 1 < attributeKvs.length) {
-      op_otel_span_attribute2(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
-        attributeKvs[i + 1][0],
-        attributeKvs[i + 1][1],
-      );
-      i += 2;
+    if (options?.root) {
+      context = undefined;
     } else {
-      op_otel_span_attribute(
-        attributeKvs.length,
-        attributeKvs[i][0],
-        attributeKvs[i][1],
+      context = context ?? CURRENT.get();
+    }
+    const span = this.startSpan(name, options, context);
+    const ctx = CURRENT.enter(context.setValue(SPAN_KEY, span));
+    try {
+      return ReflectApply(fn, undefined, [span]);
+    } finally {
+      setAsyncContext(ctx);
+    }
+  }
+
+  startSpan(name: string, options?: SpanOptions, context?: Context): Span {
+    if (options?.root) {
+      context = undefined;
+    } else {
+      context = context ?? CURRENT.get();
+    }
+
+    let startTime = options?.startTime;
+    if (startTime && ArrayIsArray(startTime)) {
+      startTime = hrToSecs(startTime);
+    } else if (startTime && isDate(startTime)) {
+      startTime = DatePrototypeGetTime(startTime);
+    }
+
+    const parentSpan = context?.getValue(SPAN_KEY) as
+      | Span
+      | { spanContext(): SpanContext }
+      | undefined;
+    const attributesCount = options?.attributes
+      ? ObjectKeys(options.attributes).length
+      : 0;
+    const parentOtelSpan: OtelSpan | null | undefined = parentSpan !== undefined
+      ? getOtelSpan(parentSpan) ?? undefined
+      : undefined;
+    let otelSpan: OtelSpan;
+    if (parentOtelSpan || !parentSpan) {
+      otelSpan = this.#tracer.startSpan(
+        parentOtelSpan,
+        name,
+        options?.kind ?? 0,
+        startTime,
+        attributesCount,
       );
-      i += 1;
+    } else {
+      const spanContext = parentSpan.spanContext();
+      otelSpan = this.#tracer.startSpanForeign(
+        spanContext.traceId,
+        spanContext.spanId,
+        name,
+        options?.kind ?? 0,
+        startTime,
+        attributesCount,
+      );
     }
+    const span = new Span(otelSpan);
+    if (options?.links) span.addLinks(options?.links);
+    if (options?.attributes) span.setAttributes(options?.attributes);
+    return span;
   }
-
-  // TODO(@lucacasonato): implement links
-  // TODO(@lucacasonato): implement events
-
-  const droppedAttributesCount = span.droppedAttributesCount;
-  const droppedLinksCount = span.droppedLinksCount + span.links.length;
-  const droppedEventsCount = span.droppedEventsCount + span.events.length;
-  if (
-    droppedAttributesCount > 0 || droppedLinksCount > 0 ||
-    droppedEventsCount > 0
-  ) {
-    op_otel_span_set_dropped(
-      droppedAttributesCount,
-      droppedLinksCount,
-      droppedEventsCount,
-    );
-  }
-
-  op_otel_span_flush();
-}
-
-const now = () => (performance.timeOrigin + performance.now()) / 1000;
-
-const SPAN_ID_BYTES = 8;
-const TRACE_ID_BYTES = 16;
-
-const INVALID_TRACE_ID = new Uint8Array(TRACE_ID_BYTES);
-const INVALID_SPAN_ID = new Uint8Array(SPAN_ID_BYTES);
-
-const NO_ASYNC_CONTEXT = {};
-
-let otelLog: (message: string, level: number) => void;
-
-const hexSliceLookupTable = (function () {
-  const alphabet = "0123456789abcdef";
-  const table = new Array(256);
-  for (let i = 0; i < 16; ++i) {
-    const i16 = i * 16;
-    for (let j = 0; j < 16; ++j) {
-      table[i16 + j] = alphabet[i] + alphabet[j];
-    }
-  }
-  return table;
-})();
-
-function bytesToHex(bytes: Uint8Array): string {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 1) {
-    out += hexSliceLookupTable[bytes[i]];
-  }
-  return out;
 }
 
 const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
-const BUILTIN_INSTRUMENTATION_LIBRARY: InstrumentationLibrary = {} as never;
+let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 
-let COUNTER = 1;
-
-export let enterSpan: (span: Span) => void;
-export let exitSpan: (span: Span) => void;
-export let endSpan: (span: Span) => void;
-
-export class Span {
-  #traceId: string | Uint8Array;
-  #spanId: string | Uint8Array;
-  #traceFlags = TRACE_FLAG_SAMPLED;
-
-  #spanContext: SpanContext | null = null;
-
-  #parentSpanId: string | Uint8Array | null = null;
-  #parentSpanIdString: string | null = null;
-
-  #recording = TRACING_ENABLED;
-
-  #kind: number = SpanKind.INTERNAL;
-  #name: string;
-  #startTime: number;
-  #status: { code: number; message?: string } | null = null;
-  #attributes: Attributes = { __proto__: null } as never;
-
-  #droppedEventsCount = 0;
-  #droppedLinksCount = 0;
-
-  #asyncContext = NO_ASYNC_CONTEXT;
+class Span {
+  #otelSpan: OtelSpan | null;
+  #spanContext: SpanContext | undefined;
 
   static {
-    otelLog = function otelLog(message, level) {
-      let traceId = null;
-      let spanId = null;
-      let traceFlags = 0;
-      const span = CURRENT.get()?.getValue(SPAN_KEY);
-      if (span) {
-        // The lint is wrong, we can not use anything but `in` here because this
-        // is a private field.
-        // deno-lint-ignore prefer-primordials
-        if (#traceId in span) {
-          traceId = span.#traceId;
-          spanId = span.#spanId;
-          traceFlags = span.#traceFlags;
-        } else {
-          const context = span.spanContext();
-          traceId = context.traceId;
-          spanId = context.spanId;
-          traceFlags = context.traceFlags;
-        }
-      }
-      return op_otel_log(message, level, traceId, spanId, traceFlags);
-    };
-
-    enterSpan = (span: Span) => {
-      if (!span.#recording) return;
-      const context = (CURRENT.get() || ROOT_CONTEXT).setValue(SPAN_KEY, span);
-      span.#asyncContext = CURRENT.enter(context);
-    };
-
-    exitSpan = (span: Span) => {
-      if (!span.#recording) return;
-      if (span.#asyncContext === NO_ASYNC_CONTEXT) return;
-      setAsyncContext(span.#asyncContext);
-      span.#asyncContext = NO_ASYNC_CONTEXT;
-    };
-
-    endSpan = (span: Span) => {
-      const endTime = now();
-      submitSpan(
-        span.#spanId,
-        span.#traceId,
-        span.#traceFlags,
-        span.#parentSpanId,
-        {
-          name: span.#name,
-          kind: span.#kind,
-          status: span.#status ?? { code: 0 },
-          attributes: span.#attributes,
-          events: [],
-          links: [],
-          droppedAttributesCount: 0,
-          droppedEventsCount: span.#droppedEventsCount,
-          droppedLinksCount: span.#droppedLinksCount,
-          instrumentationLibrary: BUILTIN_INSTRUMENTATION_LIBRARY,
-        },
-        span.#startTime,
-        endTime,
-      );
-    };
+    // deno-lint-ignore prefer-primordials
+    getOtelSpan = (span) => (#otelSpan in span ? span.#otelSpan : undefined);
   }
 
-  constructor(
-    name: string,
-    options?: SpanOptions,
-  ) {
-    if (!this.isRecording) {
-      this.#name = "";
-      this.#startTime = 0;
-      this.#traceId = INVALID_TRACE_ID;
-      this.#spanId = INVALID_SPAN_ID;
-      this.#traceFlags = 0;
-      return;
-    }
-
-    this.#name = name;
-    this.#startTime = now();
-    this.#attributes = options?.attributes ?? { __proto__: null } as never;
-    this.#kind = options?.kind ?? SpanKind.INTERNAL;
-
-    const currentSpan: Span | {
-      spanContext(): { traceId: string; spanId: string };
-    } = CURRENT.get()?.getValue(SPAN_KEY);
-    if (currentSpan) {
-      if (DETERMINISTIC) {
-        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
-      } else {
-        this.#spanId = new Uint8Array(SPAN_ID_BYTES);
-        op_crypto_get_random_values(this.#spanId);
-      }
-      // deno-lint-ignore prefer-primordials
-      if (#traceId in currentSpan) {
-        this.#traceId = currentSpan.#traceId;
-        this.#parentSpanId = currentSpan.#spanId;
-      } else {
-        const context = currentSpan.spanContext();
-        this.#traceId = context.traceId;
-        this.#parentSpanId = context.spanId;
-      }
-    } else {
-      if (DETERMINISTIC) {
-        this.#traceId = StringPrototypePadStart(String(COUNTER++), 32, "0");
-        this.#spanId = StringPrototypePadStart(String(COUNTER++), 16, "0");
-      } else {
-        const buffer = new Uint8Array(TRACE_ID_BYTES + SPAN_ID_BYTES);
-        op_crypto_get_random_values(buffer);
-        this.#traceId = TypedArrayPrototypeSubarray(buffer, 0, TRACE_ID_BYTES);
-        this.#spanId = TypedArrayPrototypeSubarray(buffer, TRACE_ID_BYTES);
-      }
-    }
+  constructor(otelSpan: OtelSpan | null) {
+    this.#otelSpan = otelSpan;
   }
 
   spanContext() {
     if (!this.#spanContext) {
-      this.#spanContext = {
-        traceId: typeof this.#traceId === "string"
-          ? this.#traceId
-          : bytesToHex(this.#traceId),
-        spanId: typeof this.#spanId === "string"
-          ? this.#spanId
-          : bytesToHex(this.#spanId),
-        traceFlags: this.#traceFlags,
-      };
+      if (this.#otelSpan) {
+        this.#spanContext = this.#otelSpan.spanContext();
+      } else {
+        this.#spanContext = {
+          traceId: "00000000000000000000000000000000",
+          spanId: "0000000000000000",
+          traceFlags: 0,
+        };
+      }
     }
     return this.#spanContext;
   }
 
-  get parentSpanId() {
-    if (!this.#parentSpanIdString && this.#parentSpanId) {
-      if (typeof this.#parentSpanId === "string") {
-        this.#parentSpanIdString = this.#parentSpanId;
-      } else {
-        this.#parentSpanIdString = bytesToHex(this.#parentSpanId);
-      }
-    }
-    return this.#parentSpanIdString;
-  }
-
-  setAttribute(name: string, value: AttributeValue) {
-    if (this.#recording) this.#attributes[name] = value;
+  addEvent(
+    _name: string,
+    _attributesOrStartTime?: Attributes | TimeInput,
+    _startTime?: TimeInput,
+  ): Span {
+    this.#otelSpan?.dropEvent();
     return this;
   }
 
-  setAttributes(attributes: Attributes) {
-    if (this.#recording) ObjectAssign(this.#attributes, attributes);
+  addLink(link: Link): Span {
+    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
+      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+    const valid = op_otel_span_add_link(
+      this.#otelSpan,
+      link.context.traceId,
+      link.context.spanId,
+      link.context.traceFlags,
+      link.context.isRemote ?? false,
+      droppedAttributeCount,
+    );
+    if (!valid) return this;
     return this;
   }
 
-  setStatus(status: { code: number; message?: string }) {
-    if (this.#recording) {
-      if (status.code === 0) {
-        this.#status = null;
-      } else if (status.code > 2) {
-        throw new Error("Invalid status code");
-      } else {
-        this.#status = status;
-      }
+  addLinks(links: Link[]): Span {
+    for (let i = 0; i < links.length; i++) {
+      this.addLink(links[i]);
     }
     return this;
   }
 
-  updateName(name: string) {
-    if (this.#recording) this.#name = name;
+  end(endTime?: TimeInput): void {
+    if (endTime && ArrayIsArray(endTime)) {
+      endTime = hrToSecs(endTime);
+    } else if (endTime && isDate(endTime)) {
+      endTime = DatePrototypeGetTime(endTime);
+    }
+    this.#otelSpan?.end(endTime || NaN);
+  }
+
+  isRecording(): boolean {
+    return this.#otelSpan !== undefined;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  recordException(_exception: any, _time?: TimeInput): Span {
+    this.#otelSpan?.dropEvent();
     return this;
   }
 
-  addEvent(_name: never) {
-    // TODO(@lucacasonato): implement events
-    if (this.#recording) this.#droppedEventsCount += 1;
+  setAttribute(key: string, value: AttributeValue): Span {
+    if (!this.#otelSpan) return this;
+    op_otel_span_attribute1(this.#otelSpan, key, value);
     return this;
   }
 
-  addLink(_link: never) {
-    // TODO(@lucacasonato): implement links
-    if (this.#recording) this.#droppedLinksCount += 1;
-    return this;
-  }
-
-  addLinks(links: never[]) {
-    // TODO(@lucacasonato): implement links
-    if (this.#recording) this.#droppedLinksCount += links.length;
-    return this;
-  }
-
-  isRecording() {
-    return this.#recording;
-  }
-}
-
-// Exporter compatible with opentelemetry js library
-class SpanExporter {
-  export(
-    spans: ReadableSpan[],
-    resultCallback: (result: ExportResult) => void,
-  ) {
-    try {
-      for (let i = 0; i < spans.length; i += 1) {
-        const span = spans[i];
-        const context = span.spanContext();
-        submitSpan(
-          context.spanId,
-          context.traceId,
-          context.traceFlags,
-          span.parentSpanId ?? null,
-          span,
-          hrToSecs(span.startTime),
-          hrToSecs(span.endTime),
+  setAttributes(attributes: Attributes): Span {
+    if (!this.#otelSpan) return this;
+    const attributeKvs = ObjectEntries(attributes);
+    let i = 0;
+    while (i < attributeKvs.length) {
+      if (i + 2 < attributeKvs.length) {
+        op_otel_span_attribute3(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+          attributeKvs[i + 1][0],
+          attributeKvs[i + 1][1],
+          attributeKvs[i + 2][0],
+          attributeKvs[i + 2][1],
         );
+        i += 3;
+      } else if (i + 1 < attributeKvs.length) {
+        op_otel_span_attribute2(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+          attributeKvs[i + 1][0],
+          attributeKvs[i + 1][1],
+        );
+        i += 2;
+      } else {
+        op_otel_span_attribute1(
+          this.#otelSpan,
+          attributeKvs[i][0],
+          attributeKvs[i][1],
+        );
+        i += 1;
       }
-      resultCallback({ code: 0 });
-    } catch (error) {
-      resultCallback({
-        code: 1,
-        error: ObjectPrototypeIsPrototypeOf(error, Error)
-          ? error as Error
-          : new Error(String(error)),
-      });
     }
+    return this;
   }
 
-  async shutdown() {}
+  setStatus(status: SpanStatus): Span {
+    this.#otelSpan?.setStatus(status.code, status.message ?? "");
+    return this;
+  }
 
-  async forceFlush() {}
+  updateName(name: string): Span {
+    if (!this.#otelSpan) return this;
+    op_otel_span_update_name(this.#otelSpan, name);
+    return this;
+  }
 }
 
 const CURRENT = new AsyncVariable();
 
 class Context {
+  // @ts-ignore __proto__ is not supported in TypeScript
   #data: Record<symbol, unknown> = { __proto__: null };
 
   constructor(data?: Record<symbol, unknown> | null | undefined) {
+    // @ts-ignore __proto__ is not supported in TypeScript
     this.#data = { __proto__: null, ...data };
   }
 
@@ -658,11 +488,15 @@ const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
 class ContextManager {
-  active(): Context {
+  constructor() {
+    throw new TypeError("ContextManager can not be constructed");
+  }
+
+  static active(): Context {
     return CURRENT.get() ?? ROOT_CONTEXT;
   }
 
-  with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
+  static with<A extends unknown[], F extends (...args: A) => ReturnType<F>>(
     context: Context,
     fn: F,
     thisArg?: ThisParameterType<F>,
@@ -677,7 +511,7 @@ class ContextManager {
   }
 
   // deno-lint-ignore no-explicit-any
-  bind<T extends (...args: any[]) => any>(
+  static bind<T extends (...args: any[]) => any>(
     context: Context,
     target: T,
   ): T {
@@ -691,11 +525,11 @@ class ContextManager {
     }) as T;
   }
 
-  enable() {
+  static enable() {
     return this;
   }
 
-  disable() {
+  static disable() {
     return this;
   }
 }
@@ -729,9 +563,50 @@ interface MetricAdvice {
   explicitBucketBoundaries?: number[];
 }
 
-export class MeterProvider {
-  getMeter(name: string, version?: string, options?: MeterOptions): Meter {
-    return new Meter({ name, version, schemaUrl: options?.schemaUrl });
+interface OtelMeter {
+  __key: "meter";
+  createCounter(name: string, description?: string, unit?: string): Instrument;
+  createUpDownCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createGauge(name: string, description?: string, unit?: string): Instrument;
+  createHistogram(
+    name: string,
+    description?: string,
+    unit?: string,
+    explicitBucketBoundaries?: number[],
+  ): Instrument;
+  createObservableCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createObservableUpDownCounter(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+  createObservableGauge(
+    name: string,
+    description?: string,
+    unit?: string,
+  ): Instrument;
+}
+
+class MeterProvider {
+  constructor() {
+    throw new TypeError("MeterProvider can not be constructed");
+  }
+
+  static getMeter(
+    name: string,
+    version?: string,
+    options?: MeterOptions,
+  ): Meter {
+    const meter = new OtelMeter(name, version, options?.schemaUrl);
+    return new Meter(meter);
   }
 }
 
@@ -777,22 +652,18 @@ const BATCH_CALLBACKS = new SafeMap<
 const INDIVIDUAL_CALLBACKS = new SafeMap<Observable, Set<ObservableCallback>>();
 
 class Meter {
-  #instrumentationLibrary: InstrumentationLibrary;
+  #meter: OtelMeter;
 
-  constructor(instrumentationLibrary: InstrumentationLibrary) {
-    this.#instrumentationLibrary = instrumentationLibrary;
+  constructor(meter: OtelMeter) {
+    this.#meter = meter;
   }
 
-  createCounter(
-    name: string,
-    options?: MetricOptions,
-  ): Counter {
+  createCounter(name: string, options?: MetricOptions): Counter {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) return new Counter(null, false);
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_counter(
+    const instrument = this.#meter.createCounter(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
@@ -801,16 +672,12 @@ class Meter {
     return new Counter(instrument, false);
   }
 
-  createUpDownCounter(
-    name: string,
-    options?: MetricOptions,
-  ): Counter {
+  createUpDownCounter(name: string, options?: MetricOptions): Counter {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) return new Counter(null, true);
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_up_down_counter(
+    const instrument = this.#meter.createUpDownCounter(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
@@ -819,16 +686,12 @@ class Meter {
     return new Counter(instrument, true);
   }
 
-  createGauge(
-    name: string,
-    options?: MetricOptions,
-  ): Gauge {
+  createGauge(name: string, options?: MetricOptions): Gauge {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) return new Gauge(null);
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_gauge(
+    const instrument = this.#meter.createGauge(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
@@ -837,16 +700,12 @@ class Meter {
     return new Gauge(instrument);
   }
 
-  createHistogram(
-    name: string,
-    options?: MetricOptions,
-  ): Histogram {
+  createHistogram(name: string, options?: MetricOptions): Histogram {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) return new Histogram(null);
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_histogram(
+    const instrument = this.#meter.createHistogram(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
@@ -856,40 +715,18 @@ class Meter {
     return new Histogram(instrument);
   }
 
-  createObservableCounter(
-    name: string,
-    options?: MetricOptions,
-  ): Observable {
+  createObservableCounter(name: string, options?: MetricOptions): Observable {
     if (options?.valueType !== undefined && options?.valueType !== 1) {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) new Observable(new ObservableResult(null, true));
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_observable_counter(
+    const instrument = this.#meter.createObservableCounter(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
       options?.unit,
     ) as Instrument;
     return new Observable(new ObservableResult(instrument, true));
-  }
-
-  createObservableGauge(
-    name: string,
-    options?: MetricOptions,
-  ): Observable {
-    if (options?.valueType !== undefined && options?.valueType !== 1) {
-      throw new Error("Only valueType: DOUBLE is supported");
-    }
-    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_observable_gauge(
-      name,
-      // deno-lint-ignore prefer-primordials
-      options?.description,
-      options?.unit,
-    ) as Instrument;
-    return new Observable(new ObservableResult(instrument, false));
   }
 
   createObservableUpDownCounter(
@@ -900,8 +737,21 @@ class Meter {
       throw new Error("Only valueType: DOUBLE is supported");
     }
     if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
-    activateInstrumentationLibrary(this.#instrumentationLibrary);
-    const instrument = op_otel_metric_create_observable_up_down_counter(
+    const instrument = this.#meter.createObservableUpDownCounter(
+      name,
+      // deno-lint-ignore prefer-primordials
+      options?.description,
+      options?.unit,
+    ) as Instrument;
+    return new Observable(new ObservableResult(instrument, false));
+  }
+
+  createObservableGauge(name: string, options?: MetricOptions): Observable {
+    if (options?.valueType !== undefined && options?.valueType !== 1) {
+      throw new Error("Only valueType: DOUBLE is supported");
+    }
+    if (!METRICS_ENABLED) new Observable(new ObservableResult(null, false));
+    const instrument = this.#meter.createObservableGauge(
       name,
       // deno-lint-ignore prefer-primordials
       options?.description,
@@ -987,12 +837,7 @@ function record(
         );
         i += 2;
       } else if (remaining === 1) {
-        op_otel_metric_record1(
-          instrument,
-          value,
-          attrs[i][0],
-          attrs[i][1],
-        );
+        op_otel_metric_record1(instrument, value, attrs[i][0], attrs[i][1]);
         i += 1;
       }
     }
@@ -1212,24 +1057,51 @@ const otelConsoleConfig = {
   replace: 2,
 };
 
+function otelLog(message: string, level: number) {
+  const currentSpan = CURRENT.get()?.getValue(SPAN_KEY);
+  const otelSpan = currentSpan !== undefined
+    ? getOtelSpan(currentSpan)
+    : undefined;
+  if (otelSpan || currentSpan === undefined) {
+    op_otel_log(message, level, otelSpan);
+  } else {
+    const spanContext = currentSpan.spanContext();
+    op_otel_log_foreign(
+      message,
+      level,
+      spanContext.traceId,
+      spanContext.spanId,
+      spanContext.traceFlags,
+    );
+  }
+}
+
+let builtinTracerCache: Tracer;
+
+export function builtinTracer(): Tracer {
+  if (!builtinTracerCache) {
+    builtinTracerCache = new Tracer(OtelTracer.builtin());
+  }
+  return builtinTracerCache;
+}
+
+// We specify a very high version number, to allow any `@opentelemetry/api`
+// version to load this module. This does cause @opentelemetry/api to not be
+// able to register anything itself with the global registration methods.
+const OTEL_API_COMPAT_VERSION = "1.999.999";
+
 export function bootstrap(
   config: [
     0 | 1,
     0 | 1,
-    typeof otelConsoleConfig[keyof typeof otelConsoleConfig],
+    (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
     0 | 1,
   ],
 ): void {
-  const {
-    0: tracingEnabled,
-    1: metricsEnabled,
-    2: consoleConfig,
-    3: deterministic,
-  } = config;
+  const { 0: tracingEnabled, 1: metricsEnabled, 2: consoleConfig } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
-  DETERMINISTIC = deterministic === 1;
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:
@@ -1245,10 +1117,23 @@ export function bootstrap(
     default:
       break;
   }
+
+  if (TRACING_ENABLED || METRICS_ENABLED) {
+    const otel = globalThis[SymbolFor("opentelemetry.js.api.1")] ??= {
+      version: OTEL_API_COMPAT_VERSION,
+    };
+    if (TRACING_ENABLED) {
+      otel.trace = TracerProvider;
+      otel.context = ContextManager;
+    }
+    if (METRICS_ENABLED) {
+      otel.metrics = MeterProvider;
+    }
+  }
 }
 
 export const telemetry = {
-  SpanExporter,
-  ContextManager,
-  MeterProvider,
+  tracerProvider: TracerProvider,
+  contextManager: ContextManager,
+  meterProvider: MeterProvider,
 };

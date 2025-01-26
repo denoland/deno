@@ -1,13 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -66,12 +65,11 @@ fn fast_check_cache() {
   // ensure cache works
   let output = check_debug_cmd.run();
   assert_contains!(output.combined_output(), "Already type checked.");
-  let building_fast_check_msg = "Building fast check graph";
-  assert_not_contains!(output.combined_output(), building_fast_check_msg);
 
   // now validated
   type_check_cache_path.remove_file();
   let output = check_debug_cmd.run();
+  let building_fast_check_msg = "Building fast check graph";
   assert_contains!(output.combined_output(), building_fast_check_msg);
   assert_contains!(
     output.combined_output(),

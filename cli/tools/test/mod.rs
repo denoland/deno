@@ -25,10 +25,9 @@ use deno_cache_dir::file_fetcher::File;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::WalkEntry;
 use deno_core::anyhow;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context as _;
-use deno_core::error::generic_error;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::error::JsError;
 use deno_core::futures::future;
 use deno_core::futures::stream;
@@ -49,6 +48,7 @@ use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
 use deno_runtime::deno_io::Stdio;
 use deno_runtime::deno_io::StdioPipe;
 use deno_runtime::deno_permissions::Permissions;
@@ -87,6 +87,7 @@ use crate::util::path::is_script_ext;
 use crate::util::path::matches_pattern_or_exact_path;
 use crate::worker::CliMainWorkerFactory;
 use crate::worker::CoverageCollector;
+use crate::worker::CreateCustomWorkerError;
 
 mod channel;
 pub mod fmt;
@@ -105,6 +106,8 @@ use reporters::JunitTestReporter;
 use reporters::PrettyTestReporter;
 use reporters::TapTestReporter;
 use reporters::TestReporter;
+
+use crate::tools::test::channel::ChannelClosedError;
 
 /// How many times we're allowed to spin the event loop before considering something a leak.
 const MAX_SANITIZER_LOOP_SPINS: usize = 16;
@@ -612,7 +615,10 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
-) -> Result<(Option<Box<dyn CoverageCollector>>, MainWorker), anyhow::Error> {
+) -> Result<
+  (Option<Box<dyn CoverageCollector>>, MainWorker),
+  CreateCustomWorkerError,
+> {
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -640,21 +646,15 @@ async fn configure_main_worker(
   let mut worker = worker.into_main_worker();
   match res {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(CoreError::Js(err)) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+      )
+      .map_err(|e| CoreError::JsBox(JsErrorBox::from_err(e)))?;
+      Ok(())
     }
+    Err(err) => Err(err),
   }?;
   Ok((coverage_collector, worker))
 }
@@ -691,22 +691,25 @@ pub async fn test_specifier(
   .await
   {
     Ok(()) => Ok(()),
-    Err(error) => {
-      // TODO(mmastrac): It would be nice to avoid having this error pattern repeated
-      if error.is::<JsError>() {
-        send_test_event(
-          &worker.js_runtime.op_state(),
-          TestEvent::UncaughtError(
-            specifier.to_string(),
-            Box::new(error.downcast::<JsError>().unwrap()),
-          ),
-        )?;
-        Ok(())
-      } else {
-        Err(error)
-      }
+    Err(TestSpecifierError::Core(CoreError::Js(err))) => {
+      send_test_event(
+        &worker.js_runtime.op_state(),
+        TestEvent::UncaughtError(specifier.to_string(), Box::new(err)),
+      )?;
+      Ok(())
     }
+    Err(e) => Err(e.into()),
   }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TestSpecifierError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  RunTestsForWorker(#[from] RunTestsForWorkerErr),
 }
 
 /// Test a single specifier as documentation containing test programs, an executable test module or
@@ -718,19 +721,21 @@ async fn test_specifier_inner(
   specifier: ModuleSpecifier,
   fail_fast_tracker: FailFastTracker,
   options: TestSpecifierOptions,
-) -> Result<(), AnyError> {
+) -> Result<(), TestSpecifierError> {
   // Ensure that there are no pending exceptions before we start running tests
   worker.run_up_to_duration(Duration::from_millis(0)).await?;
 
-  worker.dispatch_load_event()?;
+  worker.dispatch_load_event().map_err(CoreError::Js)?;
 
   run_tests_for_worker(worker, &specifier, &options, &fail_fast_tracker)
     .await?;
 
   // Ignore `defaultPrevented` of the `beforeunload` event. We don't allow the
   // event loop to continue beyond what's needed to await results.
-  worker.dispatch_beforeunload_event()?;
-  worker.dispatch_unload_event()?;
+  worker
+    .dispatch_beforeunload_event()
+    .map_err(CoreError::Js)?;
+  worker.dispatch_unload_event().map_err(CoreError::Js)?;
 
   // Ensure all output has been flushed
   _ = worker
@@ -765,7 +770,7 @@ pub fn worker_has_tests(worker: &mut MainWorker) -> bool {
 /// Yields to tokio to allow async work to process, and then polls
 /// the event loop once.
 #[must_use = "The event loop result should be checked"]
-pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
+pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), CoreError> {
   // Allow any ops that to do work in the tokio event loop to do so
   tokio::task::yield_now().await;
   // Spin the event loop once
@@ -784,13 +789,24 @@ pub async fn poll_event_loop(worker: &mut MainWorker) -> Result<(), AnyError> {
 pub fn send_test_event(
   op_state: &RefCell<OpState>,
   event: TestEvent,
-) -> Result<(), AnyError> {
-  Ok(
-    op_state
-      .borrow_mut()
-      .borrow_mut::<TestEventSender>()
-      .send(event)?,
-  )
+) -> Result<(), ChannelClosedError> {
+  op_state
+    .borrow_mut()
+    .borrow_mut::<TestEventSender>()
+    .send(event)
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum RunTestsForWorkerErr {
+  #[class(inherit)]
+  #[error(transparent)]
+  ChannelClosed(#[from] ChannelClosedError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  SerdeV8(#[from] serde_v8::Error),
 }
 
 pub async fn run_tests_for_worker(
@@ -798,7 +814,7 @@ pub async fn run_tests_for_worker(
   specifier: &ModuleSpecifier,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let state_rc = worker.js_runtime.op_state();
   // Take whatever tests have been registered
   let TestContainer(tests, test_functions) =
@@ -827,7 +843,7 @@ async fn run_tests_for_worker_inner(
   test_functions: Vec<v8::Global<v8::Function>>,
   options: &TestSpecifierOptions,
   fail_fast_tracker: &FailFastTracker,
-) -> Result<(), AnyError> {
+) -> Result<(), RunTestsForWorkerErr> {
   let unfiltered = tests.len();
   let state_rc = worker.js_runtime.op_state();
 
@@ -986,13 +1002,10 @@ async fn run_tests_for_worker_inner(
     let result = match result {
       Ok(r) => r,
       Err(error) => {
-        if error.is::<JsError>() {
+        if let CoreError::Js(js_error) = error {
           send_test_event(
             &state_rc,
-            TestEvent::UncaughtError(
-              specifier.to_string(),
-              Box::new(error.downcast::<JsError>().unwrap()),
-            ),
+            TestEvent::UncaughtError(specifier.to_string(), Box::new(js_error)),
           )?;
           fail_fast_tracker.add_failure();
           send_test_event(
@@ -1002,7 +1015,7 @@ async fn run_tests_for_worker_inner(
           had_uncaught_error = true;
           continue;
         } else {
-          return Err(error);
+          return Err(error.into());
         }
       }
     };
@@ -1125,7 +1138,7 @@ async fn wait_for_activity_to_stabilize(
   before: RuntimeActivityStats,
   sanitize_ops: bool,
   sanitize_resources: bool,
-) -> Result<Option<RuntimeActivityDiff>, AnyError> {
+) -> Result<Option<RuntimeActivityDiff>, CoreError> {
   // First, check to see if there's any diff at all. If not, just continue.
   let after = stats.clone().capture(filter);
   let mut diff = RuntimeActivityStats::diff(&before, &after);
@@ -1374,25 +1387,20 @@ pub async fn report_tests(
   reporter.report_summary(&elapsed, &tests, &test_steps);
   if let Err(err) = reporter.flush_report(&elapsed, &tests, &test_steps) {
     return (
-      Err(generic_error(format!(
-        "Test reporter failed to flush: {}",
-        err
-      ))),
+      Err(anyhow!("Test reporter failed to flush: {}", err)),
       receiver,
     );
   }
 
   if used_only {
     return (
-      Err(generic_error(
-        "Test failed because the \"only\" option was used",
-      )),
+      Err(anyhow!("Test failed because the \"only\" option was used",)),
       receiver,
     );
   }
 
   if failed {
-    return (Err(generic_error("Test failed")), receiver);
+    return (Err(anyhow!("Test failed")), receiver);
   }
 
   (Ok(()), receiver)
@@ -1575,7 +1583,7 @@ pub async fn run_tests(
 
   if !workspace_test_options.permit_no_files && specifiers_with_mode.is_empty()
   {
-    return Err(generic_error("No test modules found"));
+    return Err(anyhow!("No test modules found"));
   }
 
   let doc_tests = get_doc_tests(&specifiers_with_mode, file_fetcher).await?;
@@ -1611,10 +1619,10 @@ pub async fn run_tests(
     TestSpecifiersOptions {
       cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
         |_| {
-          generic_error(format!(
+          anyhow!(
             "Unable to construct URL from the path of cwd: {}",
             cli_options.initial_cwd().to_string_lossy(),
-          ))
+          )
         },
       )?,
       concurrent_jobs: workspace_test_options.concurrent_jobs,
@@ -1793,10 +1801,10 @@ pub async fn run_tests_with_watch(
           TestSpecifiersOptions {
             cwd: Url::from_directory_path(cli_options.initial_cwd()).map_err(
               |_| {
-                generic_error(format!(
+                anyhow!(
                   "Unable to construct URL from the path of cwd: {}",
                   cli_options.initial_cwd().to_string_lossy(),
-                ))
+                )
               },
             )?,
             concurrent_jobs: workspace_test_options.concurrent_jobs,

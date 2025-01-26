@@ -3,13 +3,11 @@
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use deno_core::error::generic_error;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use deno_runtime::deno_permissions::ChildPermissionsArg;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_web::StartTime;
@@ -78,7 +76,7 @@ pub fn op_pledge_test_permissions(
 pub fn op_restore_test_permissions(
   state: &mut OpState,
   #[serde] token: Uuid,
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if let Some(permissions_holder) = state.try_take::<PermissionsHolder>() {
     if token != permissions_holder.0 {
       panic!("restore test permissions token does not match the stored token");
@@ -88,7 +86,7 @@ pub fn op_restore_test_permissions(
     state.put::<PermissionsContainer>(permissions);
     Ok(())
   } else {
-    Err(generic_error("no permissions to restore"))
+    Err(JsErrorBox::generic("no permissions to restore"))
   }
 }
 
@@ -106,9 +104,9 @@ fn op_register_bench(
   only: bool,
   warmup: bool,
   #[buffer] ret_buf: &mut [u8],
-) -> Result<(), AnyError> {
+) -> Result<(), JsErrorBox> {
   if ret_buf.len() != 4 {
-    return Err(type_error(format!(
+    return Err(JsErrorBox::type_error(format!(
       "Invalid ret_buf length: {}",
       ret_buf.len()
     )));

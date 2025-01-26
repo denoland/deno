@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::anyhow;
+use deno_error::JsErrorBox;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
@@ -16,6 +16,7 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
@@ -161,12 +162,13 @@ impl LintRule for NoSloppyImportsRule {
     CODE
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_sloppy_imports.md")
-  }
+  // TODO(bartlomieju): this document needs to be exposed to `https://lint.deno.land`.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_sloppy_imports.md")
+  // }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["recommended"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::RECOMMENDED]
   }
 }
 
@@ -187,7 +189,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
     let resolution = self
       .workspace_resolver
       .resolve(specifier_text, &referrer_range.specifier)
-      .map_err(|err| ResolveError::Other(err.into()))?;
+      .map_err(|err| ResolveError::Other(JsErrorBox::from_err(err)))?;
 
     match resolution {
       deno_config::workspace::MappedResolution::Normal {
@@ -220,7 +222,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
         // this error is ignored
-        Err(ResolveError::Other(anyhow!("")))
+        Err(ResolveError::Other(JsErrorBox::generic("")))
       }
     }
   }

@@ -1,8 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const {
+  StringPrototypeToLowerCase,
+  ArrayPrototypeIncludes,
+  ReflectApply,
+  Error,
+} = primordials;
 import {
   O_APPEND,
   O_CREAT,
@@ -85,8 +89,10 @@ export function getEncoding(
 export function checkEncoding(encoding: Encodings | null): Encodings | null {
   if (!encoding) return null;
 
-  encoding = encoding.toLowerCase() as Encodings;
-  if (["utf8", "hex", "base64", "ascii"].includes(encoding)) return encoding;
+  encoding = StringPrototypeToLowerCase(encoding) as Encodings;
+  if (ArrayPrototypeIncludes(["utf8", "hex", "base64", "ascii"], encoding)) {
+    return encoding;
+  }
 
   if (encoding === "utf-8") {
     return "utf8";
@@ -99,7 +105,7 @@ export function checkEncoding(encoding: Encodings | null): Encodings | null {
 
   const notImplementedEncodings = ["utf16le", "latin1", "ucs2"];
 
-  if (notImplementedEncodings.includes(encoding as string)) {
+  if (ArrayPrototypeIncludes(notImplementedEncodings, encoding as string)) {
     notImplemented(`"${encoding}" encoding`);
   }
 
@@ -241,5 +247,5 @@ export function makeCallback(
 ) {
   validateFunction(cb, "cb");
 
-  return (...args: unknown[]) => Reflect.apply(cb!, this, args);
+  return (...args: unknown[]) => ReflectApply(cb!, this, args);
 }

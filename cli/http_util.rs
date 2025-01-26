@@ -6,13 +6,15 @@ use std::thread::ThreadId;
 
 use boxed_error::Boxed;
 use deno_cache_dir::file_fetcher::RedirectHeaderParseError;
-use deno_core::error::custom_error;
 use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde;
 use deno_core::serde_json;
 use deno_core::url::Url;
+use deno_error::JsError;
+use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::deno_fetch;
 use deno_runtime::deno_fetch::create_http_client;
 use deno_runtime::deno_fetch::CreateHttpClientOptions;
@@ -27,7 +29,6 @@ use http_body_util::BodyExt;
 use thiserror::Error;
 
 use crate::util::progress_bar::UpdateGuard;
-use crate::version;
 
 #[derive(Debug, Error)]
 pub enum SendError {
@@ -69,7 +70,7 @@ impl HttpClientProvider {
     }
   }
 
-  pub fn get_or_create(&self) -> Result<HttpClient, AnyError> {
+  pub fn get_or_create(&self) -> Result<HttpClient, JsErrorBox> {
     use std::collections::hash_map::Entry;
     let thread_id = std::thread::current().id();
     let mut clients = self.clients_by_thread_id.lock();
@@ -78,7 +79,7 @@ impl HttpClientProvider {
       Entry::Occupied(entry) => Ok(HttpClient::new(entry.get().clone())),
       Entry::Vacant(entry) => {
         let client = create_http_client(
-          version::DENO_VERSION_INFO.user_agent,
+          DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions {
             root_cert_store: match &self.root_cert_store_provider {
               Some(provider) => Some(provider.get_or_try_init()?.clone()),
@@ -86,7 +87,8 @@ impl HttpClientProvider {
             },
             ..self.options.clone()
           },
-        )?;
+        )
+        .map_err(JsErrorBox::from_err)?;
         entry.insert(client.clone());
         Ok(HttpClient::new(client))
       }
@@ -94,34 +96,49 @@ impl HttpClientProvider {
   }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
+#[class(type)]
 #[error("Bad response: {:?}{}", .status_code, .response_text.as_ref().map(|s| format!("\n\n{}", s)).unwrap_or_else(String::new))]
 pub struct BadResponseError {
   pub status_code: StatusCode,
   pub response_text: Option<String>,
 }
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, JsError)]
 pub struct DownloadError(pub Box<DownloadErrorKind>);
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, JsError)]
 pub enum DownloadErrorKind {
+  #[class(inherit)]
   #[error(transparent)]
-  Fetch(AnyError),
+  Fetch(deno_fetch::ClientSendError),
+  #[class(inherit)]
   #[error(transparent)]
   UrlParse(#[from] deno_core::url::ParseError),
+  #[class(generic)]
   #[error(transparent)]
   HttpParse(#[from] http::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Json(#[from] serde_json::Error),
+  #[class(generic)]
   #[error(transparent)]
   ToStr(#[from] http::header::ToStrError),
+  #[class(inherit)]
   #[error(transparent)]
   RedirectHeaderParse(RedirectHeaderParseError),
+  #[class(type)]
   #[error("Too many redirects.")]
   TooManyRedirects,
+  #[class(inherit)]
   #[error(transparent)]
   BadResponse(#[from] BadResponseError),
+  #[class("Http")]
+  #[error("Not Found.")]
+  NotFound,
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(JsErrorBox),
 }
 
 #[derive(Debug)]
@@ -208,11 +225,11 @@ impl HttpClient {
     Ok(String::from_utf8(bytes)?)
   }
 
-  pub async fn download(&self, url: Url) -> Result<Vec<u8>, AnyError> {
+  pub async fn download(&self, url: Url) -> Result<Vec<u8>, DownloadError> {
     let maybe_bytes = self.download_inner(url, None, None).await?;
     match maybe_bytes {
       Some(bytes) => Ok(bytes),
-      None => Err(custom_error("Http", "Not found.")),
+      None => Err(DownloadErrorKind::NotFound.into_box()),
     }
   }
 
@@ -276,7 +293,7 @@ impl HttpClient {
     get_response_body_with_progress(response, progress_guard)
       .await
       .map(|(_, body)| Some(body))
-      .map_err(|err| DownloadErrorKind::Fetch(err).into_box())
+      .map_err(|err| DownloadErrorKind::Other(err).into_box())
   }
 
   async fn get_redirected_response(
@@ -293,7 +310,7 @@ impl HttpClient {
       .clone()
       .send(req)
       .await
-      .map_err(|e| DownloadErrorKind::Fetch(e.into()).into_box())?;
+      .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
     let status = response.status();
     if status.is_redirection() {
       for _ in 0..5 {
@@ -313,7 +330,7 @@ impl HttpClient {
           .clone()
           .send(req)
           .await
-          .map_err(|e| DownloadErrorKind::Fetch(e.into()).into_box())?;
+          .map_err(|e| DownloadErrorKind::Fetch(e).into_box())?;
         let status = new_response.status();
         if status.is_redirection() {
           response = new_response;
@@ -332,7 +349,7 @@ impl HttpClient {
 pub async fn get_response_body_with_progress(
   response: http::Response<deno_fetch::ResBody>,
   progress_guard: Option<&UpdateGuard>,
-) -> Result<(HeaderMap, Vec<u8>), AnyError> {
+) -> Result<(HeaderMap, Vec<u8>), JsErrorBox> {
   use http_body::Body as _;
   if let Some(progress_guard) = progress_guard {
     let mut total_size = response.body().size_hint().exact();
@@ -464,7 +481,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path().join("tls/RootCA.pem"),
@@ -508,7 +525,7 @@ mod test {
 
       let client = HttpClient::new(
         create_http_client(
-          version::DENO_VERSION_INFO.user_agent,
+          DENO_VERSION_INFO.user_agent,
           CreateHttpClientOptions::default(),
         )
         .unwrap(),
@@ -549,7 +566,7 @@ mod test {
 
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           root_cert_store: Some(root_cert_store),
           ..Default::default()
@@ -570,7 +587,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -603,7 +620,7 @@ mod test {
     let url = Url::parse("https://localhost:5545/etag_script.ts").unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()
@@ -644,7 +661,7 @@ mod test {
         .unwrap();
     let client = HttpClient::new(
       create_http_client(
-        version::DENO_VERSION_INFO.user_agent,
+        DENO_VERSION_INFO.user_agent,
         CreateHttpClientOptions {
           ca_certs: vec![std::fs::read(
             test_util::testdata_path()

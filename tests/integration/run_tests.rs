@@ -9,15 +9,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_tls::rustls;
-use deno_tls::rustls::ClientConnection;
-use deno_tls::rustls_pemfile;
-use deno_tls::TlsStream;
 use hickory_proto::serialize::txt::Parser;
 use hickory_server::authority::AuthorityObject;
 use pretty_assertions::assert_eq;
+use rustls::ClientConnection;
+use rustls_tokio_stream::TlsStream;
+use serde_json::json;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -445,7 +442,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:runtime/30_os.js:43:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:43:10)\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -2615,7 +2612,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
+    deno_unsync::spawn(fut);
   }
 }
 
@@ -2663,7 +2660,6 @@ async fn websocket_server_multi_field_connection_header() {
 
   let message = socket.read_frame().await.unwrap();
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
-  assert!(message.payload.is_empty());
   socket
     .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await

@@ -62,7 +62,7 @@ pub struct CreateTextureArgs {
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
   #[serde] args: CreateTextureArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, deno_core::error::ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -111,7 +111,7 @@ pub struct CreateTextureViewArgs {
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
   #[serde] args: CreateTextureViewArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, deno_core::error::ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table
