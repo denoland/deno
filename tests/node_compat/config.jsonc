@@ -852,6 +852,7 @@
       "test-process-dlopen-undefined-exports.js",
       "test-process-domain-segfault.js",
       "test-process-emitwarning.js",
+      "test-process-env-tz.js",
       "test-process-env-allowed-flags.js",
       "test-process-env-delete.js",
       "test-process-env-windows-error-reset.js",
