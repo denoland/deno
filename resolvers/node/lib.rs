@@ -19,6 +19,7 @@ pub use builtin_modules::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
 pub use deno_package_json::PackageJson;
 pub use npm::InNpmPackageChecker;
 pub use npm::NpmPackageFolderResolver;
+pub use package_json::PackageJsonCacheRc;
 pub use package_json::PackageJsonResolver;
 pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;

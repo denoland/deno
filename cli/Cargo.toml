@@ -74,7 +74,7 @@ deno_doc = { version = "=0.164.0", features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph = { version = "=0.87.0" }
 deno_lib.workspace = true
-deno_lint = { version = "=0.68.2" }
+deno_lint = { version = "0.69.0" }
 deno_lockfile.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding", "module_specifier"] }
 deno_npm.workspace = true
@@ -170,7 +170,7 @@ tracing = { version = "0.1", features = ["log", "default"] }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 uuid = { workspace = true, features = ["serde"] }
-walkdir = "=2.3.2"
+walkdir.workspace = true
 which.workspace = true
 zeromq.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
