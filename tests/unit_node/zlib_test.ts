@@ -5,6 +5,7 @@ import { fromFileUrl, relative } from "@std/path";
 import {
   brotliCompress,
   brotliCompressSync,
+  brotliDecompress,
   brotliDecompressSync,
   constants,
   crc32,
@@ -35,7 +36,11 @@ Deno.test("brotli compression async", async () => {
     })
   );
   assertEquals(compressed instanceof Buffer, true);
-  const decompressed = brotliDecompressSync(compressed);
+  const decompressed: Buffer = await new Promise((resolve) =>
+    brotliDecompress(compressed, (_, res) => {
+      return resolve(res);
+    })
+  );
   assertEquals(decompressed.toString(), "hello world");
 });
 
