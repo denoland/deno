@@ -820,14 +820,14 @@ fn compile_npm_cowsay_main() {
 #[test]
 fn compile_npm_no_permissions() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0",
+    input_specifier: "npm:@denotest/cli-with-permissions@1.0.0",
     copy_temp_dir: None,
-    compile_args: vec![],
+    compile_args: vec!["-o", "denotest"],
     run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowsay_no_permissions.out",
+    output_file: "npm/compile_npm_no_permissions.out",
     node_modules_local: false,
     input_name: None,
-    expected_name: "cowsay",
+    expected_name: "denotest",
     exit_code: 1,
   });
 }

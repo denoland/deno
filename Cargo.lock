@@ -348,6 +348,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-waker"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+
+[[package]]
 name = "auto_impl"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1541,9 +1547,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.331.0"
+version = "0.333.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce2d1779358cad2bc56d71176298767be628d707bb75585f6f8a4be2da8ccda1"
+checksum = "2e67f6f874401f3b8fb3e851743c40ee14014648db6685b233b34f783f6959e8"
 dependencies = [
  "anyhow",
  "az",
@@ -1556,6 +1562,7 @@ dependencies = [
  "deno_core_icudata",
  "deno_error",
  "deno_ops",
+ "deno_path_util",
  "deno_unsync",
  "futures",
  "indexmap 2.3.0",
@@ -1705,7 +1712,7 @@ dependencies = [
  "dyn-clone",
  "error_reporter",
  "fast-socks5",
- "h2 0.4.4",
+ "h2 0.4.7",
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
@@ -1936,9 +1943,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.69.0"
+version = "0.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "802583d3ca6c7063e14cafa02ddc206fb34e804e095d52032baf375c56a99515"
+checksum = "ac94db8d8597b96c92d30a68b11d4bec6822dcbb3e8675ab1e0136816a301a34"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2059,7 +2066,7 @@ dependencies = [
  "elliptic-curve",
  "errno",
  "faster-hex",
- "h2 0.4.4",
+ "h2 0.4.7",
  "hkdf",
  "http 1.1.0",
  "http-body-util",
@@ -2168,9 +2175,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.207.0"
+version = "0.209.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96f000a21f6969b4c945bc8e9e785aa439f11ca4fd3fbddcd5bebc102167eb37"
+checksum = "fbda741ba267a252bad86153d16c859c3a8e1b219b300a1b4f0a2632c0a465cf"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -2206,9 +2213,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a850e68d99edecd4ff3426dd14a3d44a33a6b2175f54d85db7b42e4a3844ed0b"
+checksum = "d07d26dbfcc01e636aef86f9baff7faf5338398e74d283d8fe01e39068f48049"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -2589,7 +2596,7 @@ dependencies = [
  "deno_permissions",
  "deno_tls",
  "fastwebsockets",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
@@ -3849,15 +3856,15 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.4"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "816ec7294445779408f36fe57bc5b7fc1cf59664059096c65f905c1c61f58069"
+checksum = "ccae279728d634d083c00f6099cb58f01cc99c145b84b8be2f6c74618d79922e"
 dependencies = [
+ "atomic-waker",
  "bytes",
  "fnv",
  "futures-core",
  "futures-sink",
- "futures-util",
  "http 1.1.0",
  "indexmap 2.3.0",
  "slab",
@@ -4229,7 +4236,7 @@ dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "httparse",
@@ -5263,7 +5270,6 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.3",
- "tokio",
  "url",
 ]
 
@@ -6441,7 +6447,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
@@ -6992,9 +6998,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.240.0"
+version = "0.242.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd0494d74c40ab94f53a19485de359ea6a55f05341b817b93440b673c1ce8ec6"
+checksum = "aa9d64ec1fdc3316cb65ca60ccbb5a3a914f014ccb0b5f71fc9280506fd28247"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -7982,7 +7988,7 @@ dependencies = [
  "flate2",
  "futures",
  "glob",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
  "hyper 1.4.1",
@@ -8276,7 +8282,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
