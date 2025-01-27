@@ -47,7 +47,6 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::analyze::NodeCodeTranslator;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
