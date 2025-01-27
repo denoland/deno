@@ -32,6 +32,8 @@ thread_local! {
   static FILE_TYPE_CACHE: RefCell<HashMap<PathBuf, Option<FileType>>> = RefCell::new(HashMap::new());
 }
 
+// We use thread local caches here because it's just more convenient
+// and easily allows workers to have separate caches.
 #[derive(Debug)]
 pub struct NodeResolutionThreadLocalCache;
 
