@@ -166,7 +166,7 @@ impl NodeJsErrorCoded for PackageFolderResolveError {
       PackageFolderResolveErrorKind::PackageNotFound(e) => e.code(),
       PackageFolderResolveErrorKind::ReferrerNotFound(e) => e.code(),
       PackageFolderResolveErrorKind::Io(e) => e.code(),
-      PackageFolderResolveErrorKind::PathToUrl(e) => {
+      PackageFolderResolveErrorKind::PathToUrl(_) => {
         NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
       }
     }

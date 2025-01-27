@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonRc;
 use sys_traits::FsRead;
-use url::Url;
 
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
@@ -51,17 +50,17 @@ pub struct PackageJsonThreadLocalCache;
 
 impl PackageJsonThreadLocalCache {
   pub fn clear() {
-    CACHE.with(|cache| cache.borrow_mut().clear());
+    CACHE.with_borrow_mut(|cache| cache.clear());
   }
 }
 
 impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-    CACHE.with(|cache| cache.borrow().get(path).cloned())
+    CACHE.with_borrow(|cache| cache.get(path).cloned())
   }
 
   fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
-    CACHE.with(|cache| cache.borrow_mut().insert(path, package_json));
+    CACHE.with_borrow_mut(|cache| cache.insert(path, package_json));
   }
 }
 

@@ -7,7 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
-use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
@@ -369,12 +368,12 @@ impl<
       todo!();
     }
 
-    let referrer = UrlOrPathRef::new_url(referrer);
+    let referrer = UrlOrPathRef::from_url(referrer);
     let referrer_path = referrer.path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path)
+          .file_extension_probe(parent.join(specifier), referrer_path)
           .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         todo!();
@@ -446,7 +445,7 @@ impl<
           return Ok(Some(UrlOrPath::Path(d.join("index.js").clean())));
         }
         return self
-          .file_extension_probe(d, &referrer_path)
+          .file_extension_probe(d, referrer_path)
           .map(|p| Some(UrlOrPath::Path(p)));
       } else if let Some(main) =
         package_json.main(deno_package_json::NodeModuleKind::Cjs)
@@ -468,13 +467,13 @@ impl<
       } else {
         parent.join("node_modules").join(specifier)
       };
-      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
+      if let Ok(path) = self.file_extension_probe(path, referrer_path) {
         return Ok(Some(UrlOrPath::Path(path)));
       }
       last = parent;
     }
 
-    Err(not_found(specifier, &referrer_path))
+    Err(not_found(specifier, referrer_path))
   }
 
   fn file_extension_probe(

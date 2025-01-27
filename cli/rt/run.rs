@@ -73,6 +73,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -224,7 +225,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?,
+          .map_err(JsErrorBox::from_err)
+          .and_then(|url_or_path| {
+            url_or_path.into_url().map_err(JsErrorBox::from_err)
+          })?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -235,17 +239,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::Req(req) => self
-          .shared
-          .npm_req_resolver
-          .resolve_req_with_sub_path(
-            req,
-            sub_path.as_deref(),
-            &referrer,
-            referrer_kind,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(|e| JsErrorBox::from_err(e).into()),
+        PackageJsonDepValue::Req(req) => Ok(
+          self
+            .shared
+            .npm_req_resolver
+            .resolve_req_with_sub_path(
+              req,
+              sub_path.as_deref(),
+              &referrer,
+              referrer_kind,
+              NodeResolutionKind::Execution,
+            )
+            .map_err(JsErrorBox::from_err)
+            .and_then(|url_or_path| {
+              url_or_path.into_url().map_err(JsErrorBox::from_err)
+            })?,
+        ),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -266,7 +275,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           )
         }
       },
@@ -285,7 +297,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           );
         }
 
@@ -674,6 +689,7 @@ pub async fn run(
     };
     NpmRegistryReadPermissionChecker::new(sys.clone(), mode)
   };
+  let node_resolution_sys = NodeResolutionSys::new(sys.clone(), None);
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -723,7 +739,7 @@ pub async fn run(
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
@@ -767,7 +783,7 @@ pub async fn run(
     DenoIsBuiltInNodeModuleChecker,
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
-    sys.clone(),
+    node_resolution_sys,
     node_resolver::ConditionsFromResolutionMode::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(

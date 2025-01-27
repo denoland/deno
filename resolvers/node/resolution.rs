@@ -8,7 +8,6 @@ use std::path::PathBuf;
 use anyhow::bail;
 use anyhow::Error as AnyError;
 use deno_package_json::PackageJson;
-use deno_path_util::url_from_file_path;
 use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
@@ -17,7 +16,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
-use crate::cache::SysCache;
+use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
@@ -162,7 +161,7 @@ pub struct NodeResolver<
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
   npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
-  sys: SysCache<TSys>,
+  sys: NodeResolutionSys<TSys>,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
 
@@ -184,7 +183,7 @@ impl<
     is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
     npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
-    sys: SysCache<TSys>,
+    sys: NodeResolutionSys<TSys>,
     conditions_from_resolution_mode: ConditionsFromResolutionMode,
   ) -> Self {
     Self {
@@ -254,7 +253,7 @@ impl<
     let conditions = self
       .conditions_from_resolution_mode
       .resolve(resolution_mode);
-    let referrer = UrlOrPathRef::new_url(referrer);
+    let referrer = UrlOrPathRef::from_url(referrer);
     let url = self.module_resolve(
       specifier,
       &referrer,
@@ -375,7 +374,7 @@ impl<
       path
     };
 
-    let maybe_file_type = self.sys.get(&path);
+    let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => Err(
         UnsupportedDirImportError {
@@ -409,7 +408,7 @@ impl<
     let package_subpath = package_subpath
       .map(|s| format!("./{s}"))
       .unwrap_or_else(|| ".".to_string());
-    let maybe_referrer = maybe_referrer.map(|r| UrlOrPathRef::new_url(r));
+    let maybe_referrer = maybe_referrer.map(UrlOrPathRef::from_url);
     let resolved_url = self.resolve_package_dir_subpath(
       package_dir,
       &package_subpath,
@@ -497,7 +496,7 @@ impl<
     conditions: &[&str],
   ) -> Result<UrlOrPath, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
-      sys: &SysCache<TSys>,
+      sys: &NodeResolutionSys<TSys>,
       path: &Path,
       lowercase_path: &str,
       resolution_mode: ResolutionMode,
@@ -579,7 +578,7 @@ impl<
       return Ok(UrlOrPath::Path(path));
     }
     Err(TypesNotFoundError(Box::new(TypesNotFoundErrorData {
-      code_specifier: UrlOrPathRef::new_path(&path).display(),
+      code_specifier: UrlOrPathRef::from_path(&path).display(),
       maybe_referrer: maybe_referrer.map(|r| r.display()),
     })))
   }
@@ -732,7 +731,7 @@ impl<
             };
             let result = match self.package_resolve(
               &export_target,
-              &UrlOrPathRef::new_path(package_json_path),
+              &UrlOrPathRef::from_path(package_json_path),
               resolution_mode,
               conditions,
               resolution_kind,
@@ -1545,7 +1544,7 @@ impl<
     if resolution_kind.is_types() {
       Err(
         TypesNotFoundError(Box::new(TypesNotFoundErrorData {
-          code_specifier: UrlOrPathRef::new_path(&directory.join("index.js"))
+          code_specifier: UrlOrPathRef::from_path(&directory.join("index.js"))
             .display(),
           maybe_referrer: maybe_referrer.map(|r| r.display()),
         }))
@@ -1573,8 +1572,7 @@ impl<
     {
       // Specifiers in the node_modules directory are canonicalized
       // so canoncalize then check if it's in the node_modules directory.
-      let specifier =
-        resolve_specifier_into_node_modules(self.sys.sys(), specifier);
+      let specifier = resolve_specifier_into_node_modules(&self.sys, specifier);
       return Some(specifier);
     }
 
@@ -2056,7 +2054,7 @@ mod tests {
   #[test]
   fn test_parse_package_name() {
     let dummy_referrer = Url::parse("http://example.com").unwrap();
-    let dummy_referrer = UrlOrPathRef::new_url(&dummy_referrer);
+    let dummy_referrer = UrlOrPathRef::from_url(&dummy_referrer);
 
     assert_eq!(
       parse_npm_pkg_name("fetch-blob", &dummy_referrer).unwrap(),

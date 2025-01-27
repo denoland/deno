@@ -43,6 +43,13 @@ impl UrlOrPath {
       UrlOrPath::Path(path) => deno_path_util::url_from_file_path(&path),
     }
   }
+
+  pub fn to_string_lossy(&self) -> Cow<str> {
+    match self {
+      UrlOrPath::Url(url) => Cow::Borrowed(url.as_str()),
+      UrlOrPath::Path(path) => path.to_string_lossy(),
+    }
+  }
 }
 
 impl std::fmt::Display for UrlOrPath {
@@ -51,7 +58,7 @@ impl std::fmt::Display for UrlOrPath {
       UrlOrPath::Url(url) => url.fmt(f),
       UrlOrPath::Path(path) => {
         // prefer displaying a url
-        match deno_path_util::url_from_file_path(&path) {
+        match deno_path_util::url_from_file_path(path) {
           Ok(url) => url.fmt(f),
           Err(_) => {
             write!(f, "{}", path.display())
@@ -68,14 +75,14 @@ pub struct UrlOrPathRef<'a> {
 }
 
 impl<'a> UrlOrPathRef<'a> {
-  pub fn new_path(path: &'a Path) -> Self {
+  pub fn from_path(path: &'a Path) -> Self {
     Self {
       url: Default::default(),
       path: once_cell::unsync::OnceCell::with_value(Cow::Borrowed(path)),
     }
   }
 
-  pub fn new_url(url: &'a Url) -> Self {
+  pub fn from_url(url: &'a Url) -> Self {
     Self {
       path: Default::default(),
       url: once_cell::unsync::OnceCell::with_value(Cow::Borrowed(url)),

@@ -19,7 +19,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
-use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;

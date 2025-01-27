@@ -2,6 +2,7 @@
 
 //! Code for local node_modules resolution.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -581,7 +582,7 @@ async fn sync_resolution_with_fs(
       symlink_package_dir(
         &local_registry_package_path,
         &join_package_name(
-          Cow::Owned(deno_node_modules_dir),
+          Cow::Borrowed(&deno_node_modules_dir),
           &package.id.nv.name,
         ),
       )?;

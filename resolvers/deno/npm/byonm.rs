@@ -11,7 +11,7 @@ use deno_path_util::url_to_file_path;
 use deno_semver::package::PackageReq;
 use deno_semver::StackString;
 use deno_semver::Version;
-use node_resolver::cache::SysCache;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::PackageFolderResolveError;
 use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageJsonLoadError;
@@ -49,7 +49,7 @@ pub enum ByonmResolvePkgFolderFromDenoReqError {
 pub struct ByonmNpmResolverCreateOptions<TSys: FsRead> {
   // todo(dsherret): investigate removing this
   pub root_node_modules_dir: Option<PathBuf>,
-  pub sys: SysCache<TSys>,
+  pub sys: NodeResolutionSys<TSys>,
   pub pkg_json_resolver: PackageJsonResolverRc<TSys>,
 }
 
@@ -61,7 +61,7 @@ pub type ByonmNpmResolverRc<TSys> =
 pub struct ByonmNpmResolver<
   TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir,
 > {
-  sys: SysCache<TSys>,
+  sys: NodeResolutionSys<TSys>,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   root_node_modules_dir: Option<PathBuf>,
 }
@@ -137,7 +137,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     referrer: &Url,
   ) -> Result<PathBuf, ByonmResolvePkgFolderFromDenoReqError> {
     fn node_resolve_dir<TSys: FsCanonicalize + FsMetadata>(
-      sys: &SysCache<TSys>,
+      sys: &NodeResolutionSys<TSys>,
       alias: &str,
       start_dir: &Path,
     ) -> std::io::Result<Option<PathBuf>> {
@@ -147,8 +147,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
         if sys.is_dir(&sub_dir) {
           return Ok(Some(
             deno_path_util::fs::canonicalize_path_maybe_not_exists(
-              sys.sys(),
-              &sub_dir,
+              sys, &sub_dir,
             )?,
           ));
         }
@@ -307,7 +306,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     // now check if node_modules/.deno/ matches this constraint
     let root_node_modules_dir = self.root_node_modules_dir.as_ref()?;
     let node_modules_deno_dir = root_node_modules_dir.join(".deno");
-    let Ok(entries) = self.sys.sys().fs_read_dir(&node_modules_deno_dir) else {
+    let Ok(entries) = self.sys.fs_read_dir(&node_modules_deno_dir) else {
       return None;
     };
     let search_prefix = format!(
@@ -344,8 +343,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
       if let Some(tag) = req.version_req.tag() {
         let initialized_file =
           node_modules_deno_dir.join(&entry_name).join(".initialized");
-        let Ok(contents) =
-          self.sys.sys().fs_read_to_string_lossy(&initialized_file)
+        let Ok(contents) = self.sys.fs_read_to_string_lossy(&initialized_file)
         else {
           continue;
         };
@@ -388,7 +386,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     fn inner<TSys: FsMetadata>(
-      sys: &SysCache<TSys>,
+      sys: &NodeResolutionSys<TSys>,
       name: &str,
       referrer: &UrlOrPathRef,
     ) -> Result<PathBuf, PackageFolderResolveError> {
@@ -422,7 +420,7 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
     }
 
     let path = inner(&self.sys, name, referrer)?;
-    self.sys.canonicalize(&path).map_err(|err| {
+    self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),
         referrer: referrer.display(),

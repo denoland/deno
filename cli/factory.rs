@@ -643,6 +643,8 @@ impl CliFactory {
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
           conditions_from_resolution_mode: Default::default(),
+          // todo(dsherret): configure a resolution cache
+          node_resolution_cache: None,
           no_sloppy_imports_cache: false,
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {

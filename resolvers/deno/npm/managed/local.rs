@@ -15,7 +15,6 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use node_resolver::NpmPackageFolderResolver;
-use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;

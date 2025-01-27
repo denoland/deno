@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use deno_core::error::JsError;
 use deno_node::NodeRequireLoaderRc;
+use deno_path_util::url_from_file_path;
+use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 use deno_runtime::colors;
@@ -136,6 +138,9 @@ pub fn create_isolate_create_params() -> Option<v8::CreateParams> {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum ResolveNpmBinaryEntrypointError {
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgJsonBinExport(ResolvePkgJsonBinExportError),
@@ -526,13 +531,13 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .node_resolver
       .resolve_binary_export(package_folder, sub_path)
     {
-      Ok(path) => Ok(path),
+      Ok(path) => Ok(url_from_file_path(&path)?),
       Err(original_err) => {
         // if the binary entrypoint was not found, fallback to regular node resolution
         let result =
           self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
         match result {
-          Ok(Some(specifier)) => Ok(specifier),
+          Ok(Some(path)) => Ok(url_from_file_path(&path)?),
           Ok(None) => {
             Err(ResolveNpmBinaryEntrypointError::ResolvePkgJsonBinExport(
               original_err,
@@ -574,12 +579,18 @@ impl<TSys: DenoLibSys> LibMainWorkerFactory<TSys> {
       .map_err(
         ResolveNpmBinaryEntrypointFallbackError::PackageSubpathResolve,
       )?;
-    let Ok(path) = specifier.into_path() else {
-      Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
-        specifier,
-      ))
+    let path = match specifier {
+      UrlOrPath::Url(ref url) => match url_to_file_path(url) {
+        Ok(path) => path,
+        Err(_) => {
+          return Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(
+            specifier,
+          ));
+        }
+      },
+      UrlOrPath::Path(path) => path,
     };
-    if self.shared.sys.fs_exists_no_err(p) {
+    if self.shared.sys.fs_exists_no_err(&path) {
       Ok(Some(path))
     } else {
       Err(ResolveNpmBinaryEntrypointFallbackError::ModuleNotFound(

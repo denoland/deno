@@ -49,6 +49,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -4626,6 +4627,7 @@ fn op_resolve_inner(
     })
     .collect();
   state.performance.measure(mark);
+  NodeResolutionThreadLocalCache::clear();
   Ok(specifiers)
 }
 

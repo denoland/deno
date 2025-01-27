@@ -426,14 +426,12 @@ impl<
               ),
               PackageResolveErrorKind::PackageFolderResolve(err) => {
                 match err.as_kind() {
-                  PackageFolderResolveErrorKind::PathToUrl(err) => {
-                    return Err(
-                      ResolveIfForNpmPackageErrorKind::NodeResolve(
-                        NodeResolveErrorKind::PathToUrl(err.clone()).into_box(),
-                      )
-                      .into_box(),
+                  PackageFolderResolveErrorKind::PathToUrl(err) => Err(
+                    ResolveIfForNpmPackageErrorKind::NodeResolve(
+                      NodeResolveErrorKind::PathToUrl(err.clone()).into_box(),
                     )
-                  }
+                    .into_box(),
+                  ),
                   PackageFolderResolveErrorKind::Io(
                     PackageFolderResolveIoError { package_name, .. },
                   )

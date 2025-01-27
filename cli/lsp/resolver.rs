@@ -36,6 +36,8 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use node_resolver::cache::NodeResolutionSys;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::PackageJsonThreadLocalCache;
@@ -207,6 +209,8 @@ impl LspScopeResolver {
                   NodeResolutionKind::Execution,
                 )
               })
+              .ok()?
+              .into_url()
               .ok()?,
           ))
           .0;
@@ -257,7 +261,7 @@ impl LspScopeResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
-                sys: CliSys::default(),
+                sys: factory.node_resolution_sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
             )
@@ -522,6 +526,8 @@ impl LspResolver {
           resolution_mode,
           NodeResolutionKind::Types,
         )
+        .ok()?
+        .into_url()
         .ok()?,
     )))
   }
@@ -669,6 +675,7 @@ struct ResolverFactoryServices {
 struct ResolverFactory<'a> {
   config_data: Option<&'a Arc<ConfigData>>,
   pkg_json_resolver: Arc<CliPackageJsonResolver>,
+  node_resolution_sys: NodeResolutionSys<CliSys>,
   sys: CliSys,
   services: ResolverFactoryServices,
 }
@@ -684,6 +691,10 @@ impl<'a> ResolverFactory<'a> {
     Self {
       config_data,
       pkg_json_resolver,
+      node_resolution_sys: NodeResolutionSys::new(
+        sys.clone(),
+        Some(Arc::new(NodeResolutionThreadLocalCache)),
+      ),
       sys,
       services: Default::default(),
     }
@@ -702,7 +713,7 @@ impl<'a> ResolverFactory<'a> {
     let sys = CliSys::default();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-        sys,
+        sys: self.node_resolution_sys.clone(),
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
           config_data.node_modules_dir.clone().or_else(|| {
@@ -926,7 +937,7 @@ impl<'a> ResolverFactory<'a> {
           DenoIsBuiltInNodeModuleChecker,
           npm_resolver.clone(),
           self.pkg_json_resolver.clone(),
-          self.sys.clone(),
+          self.node_resolution_sys.clone(),
           node_resolver::ConditionsFromResolutionMode::default(),
         )))
       })
