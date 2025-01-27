@@ -14,12 +14,33 @@ use url::Url;
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
-#[allow(clippy::disallowed_types)]
-pub type PackageJsonCacheRc = crate::sync::MaybeArc<
-  dyn deno_package_json::PackageJsonCache
+pub trait NodePackageJsonCache:
+  deno_package_json::PackageJsonCache
+  + std::fmt::Debug
+  + crate::sync::MaybeSend
+  + crate::sync::MaybeSync
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache;
+}
+
+impl<T> NodePackageJsonCache for T
+where
+  T: deno_package_json::PackageJsonCache
+    + std::fmt::Debug
     + crate::sync::MaybeSend
     + crate::sync::MaybeSync,
->;
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache {
+    self
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
 
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
@@ -93,7 +114,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       self
         .loader_cache
         .as_deref()
-        .map(|cache| cache as &dyn deno_package_json::PackageJsonCache),
+        .map(|cache| cache.as_deno_package_json_cache()),
       path,
     );
     match result {

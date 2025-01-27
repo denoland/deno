@@ -2215,9 +2215,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a850e68d99edecd4ff3426dd14a3d44a33a6b2175f54d85db7b42e4a3844ed0b"
+checksum = "d07d26dbfcc01e636aef86f9baff7faf5338398e74d283d8fe01e39068f48049"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -5272,7 +5272,6 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.3",
- "tokio",
  "url",
 ]
 
