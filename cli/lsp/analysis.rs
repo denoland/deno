@@ -449,9 +449,7 @@ impl<'a> TsResponseImportMapper<'a> {
       .pkg_json_resolver(specifier)
       // the specifier might have a closer package.json, but we
       // want the root of the package's package.json
-      .get_closest_package_json_from_file_path(
-        &package_root_folder.join("package.json"),
-      )
+      .get_closest_package_json(&package_root_folder.join("package.json"))
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;

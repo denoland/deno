@@ -667,7 +667,7 @@ fn resolve_npm_nv_ref(
       node_resolver::NodeResolutionKind::Types,
     )
     .ok()?;
-  Some(resolved)
+  resolved.into_url().ok()
 }
 
 /// Matches the `@ts-check` pragma.

@@ -207,6 +207,8 @@ impl LspScopeResolver {
                   NodeResolutionKind::Execution,
                 )
               })
+              .ok()?
+              .into_url()
               .ok()?,
           ))
           .0;
@@ -257,7 +259,7 @@ impl LspScopeResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
-                sys: CliSys::default(),
+                sys: factory.sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
             )
@@ -522,6 +524,8 @@ impl LspResolver {
           resolution_mode,
           NodeResolutionKind::Types,
         )
+        .ok()?
+        .into_url()
         .ok()?,
     )))
   }
@@ -702,7 +706,7 @@ impl<'a> ResolverFactory<'a> {
     let sys = CliSys::default();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-        sys,
+        sys: self.sys.clone(),
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
           config_data.node_modules_dir.clone().or_else(|| {

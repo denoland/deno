@@ -92,6 +92,9 @@ pub enum DenoResolveErrorKind {
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
   #[class(inherit)]
   #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
   #[class(inherit)]
   #[error(transparent)]
@@ -252,10 +255,12 @@ impl<
       {
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-          .map(|res| DenoResolution {
-            url: res.into_url(),
-            found_package_json_dep,
-            maybe_diagnostic,
+          .and_then(|res| {
+            Ok(DenoResolution {
+              url: res.into_url()?,
+              found_package_json_dep,
+              maybe_diagnostic,
+            })
           })
           .map_err(|e| e.into());
       }
@@ -318,7 +323,8 @@ impl<
             resolution_mode,
             resolution_kind,
           )
-          .map_err(|e| e.into()),
+          .map_err(DenoResolveError::from)
+          .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
           dep_result,
           alias,
@@ -372,7 +378,8 @@ impl<
                     .map_err(|e| {
                       DenoResolveErrorKind::PackageSubpathResolve(e).into_box()
                     })
-                }),
+                })
+                .and_then(|r| Ok(r.into_url()?)),
             })
         }
       },
@@ -425,12 +432,14 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map(|url| DenoResolution {
-                url,
-                maybe_diagnostic,
-                found_package_json_dep,
-              })
-              .map_err(|e| e.into());
+              .map_err(DenoResolveError::from)
+              .and_then(|url_or_path| {
+                Ok(DenoResolution {
+                  url: url_or_path.into_url()?,
+                  maybe_diagnostic,
+                  found_package_json_dep,
+                })
+              });
           }
 
           // do npm resolution for byonm
@@ -442,11 +451,6 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map(|url| DenoResolution {
-                url,
-                maybe_diagnostic,
-                found_package_json_dep,
-              })
               .map_err(|err| {
                 match err.into_kind() {
                   ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
@@ -459,7 +463,12 @@ impl<
                     err.into()
                   }
                 }
-              });
+              })
+              .and_then(|url_or_path| Ok(DenoResolution {
+                url: url_or_path.into_url()?,
+                maybe_diagnostic,
+                found_package_json_dep,
+              }));
           }
         }
 
@@ -491,9 +500,9 @@ impl<
             })?;
           if let Some(res) = maybe_resolution {
             match res {
-              NodeResolution::Module(url) => {
+              NodeResolution::Module(ref _url) => {
                 return Ok(DenoResolution {
-                  url,
+                  url: res.into_url()?,
                   maybe_diagnostic,
                   found_package_json_dep,
                 })

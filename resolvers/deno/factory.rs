@@ -639,7 +639,6 @@ impl<
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
-      options,
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -650,6 +649,7 @@ impl<
       sloppy_imports_resolver: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
+      options,
     }
   }
 

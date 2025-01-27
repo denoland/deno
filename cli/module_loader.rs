@@ -667,7 +667,12 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(|e| JsErrorBox::from_err(e).into());
+          .map_err(|e| JsErrorBox::from_err(e).into())
+          .and_then(|url_or_path| {
+            url_or_path
+              .into_url()
+              .map_err(|e| JsErrorBox::from_err(e).into())
+          });
       }
     }
 
@@ -696,6 +701,8 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             })
           })?
+          .into_url()
+          .map_err(JsErrorBox::from_err)?
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),

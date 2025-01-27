@@ -196,8 +196,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?
-          .into_url(),
+          .and_then(|res| res.into_url())
+          .map_err(JsErrorBox::from_err)?,
       );
     }
 
@@ -225,7 +225,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?,
+          .map_err(JsErrorBox::from_err)
+          .and_then(|url_or_path| {
+            url_or_path.into_url().map_err(JsErrorBox::from_err)
+          })?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -236,17 +239,22 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::Req(req) => self
-          .shared
-          .npm_req_resolver
-          .resolve_req_with_sub_path(
-            req,
-            sub_path.as_deref(),
-            &referrer,
-            referrer_kind,
-            NodeResolutionKind::Execution,
-          )
-          .map_err(|e| JsErrorBox::from_err(e).into()),
+        PackageJsonDepValue::Req(req) => Ok(
+          self
+            .shared
+            .npm_req_resolver
+            .resolve_req_with_sub_path(
+              req,
+              sub_path.as_deref(),
+              &referrer,
+              referrer_kind,
+              NodeResolutionKind::Execution,
+            )
+            .map_err(JsErrorBox::from_err)
+            .and_then(|url_or_path| {
+              url_or_path.into_url().map_err(JsErrorBox::from_err)
+            })?,
+        ),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -267,7 +275,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           )
         }
       },
@@ -286,7 +297,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           );
         }
 
@@ -323,7 +337,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
-          return Ok(res.into_url());
+          return Ok(res.into_url().map_err(JsErrorBox::from_err)?);
         }
         Err(JsErrorBox::from_err(err).into())
       }

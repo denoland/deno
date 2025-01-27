@@ -75,13 +75,17 @@ pub async fn info(
           target_pkg_json,
           sub_path,
           ..
-        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
-          target_pkg_json.clone().dir_path(),
-          sub_path.as_deref(),
-          Some(&cwd_url),
-          node_resolver::ResolutionMode::Import,
-          node_resolver::NodeResolutionKind::Execution,
-        )?),
+        } => Some(
+          node_resolver
+            .resolve_package_subpath_from_deno_module(
+              target_pkg_json.clone().dir_path(),
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?
+            .into_url()?,
+        ),
         deno_config::workspace::MappedResolution::PackageJson {
           alias,
           sub_path,
@@ -94,13 +98,17 @@ pub async fn info(
                 alias,
                 version_req,
               )?;
-            Some(node_resolver.resolve_package_subpath_from_deno_module(
-              pkg_folder,
-              sub_path.as_deref(),
-              Some(&cwd_url),
-              node_resolver::ResolutionMode::Import,
-              node_resolver::NodeResolutionKind::Execution,
-            )?)
+            Some(
+              node_resolver
+                .resolve_package_subpath_from_deno_module(
+                  pkg_folder,
+                  sub_path.as_deref(),
+                  Some(&cwd_url),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )?
+                .into_url()?,
+            )
           }
           deno_package_json::PackageJsonDepValue::Req(req) => {
             Some(ModuleSpecifier::parse(&format!(
