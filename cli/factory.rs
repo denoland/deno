@@ -706,7 +706,7 @@ impl CliFactory {
 
   pub async fn workspace_resolver(
     &self,
-  ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
+  ) -> Result<&Arc<WorkspaceResolver<CliSys>>, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.workspace_resolver().await
   }

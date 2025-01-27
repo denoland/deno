@@ -97,6 +97,17 @@ impl SloppyImportsResolutionKind {
   }
 }
 
+impl From<SloppyImportsResolutionKind>
+  for deno_config::workspace::ResolutionKind
+{
+  fn from(value: SloppyImportsResolutionKind) -> Self {
+    match value {
+      SloppyImportsResolutionKind::Execution => Self::Execution,
+      SloppyImportsResolutionKind::Types => Self::Types,
+    }
+  }
+}
+
 pub trait SloppyImportResolverFs {
   fn stat_sync(&self, path: &Path) -> Option<SloppyImportsFsEntry>;
 

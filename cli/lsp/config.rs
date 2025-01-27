@@ -1205,7 +1205,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver>,
+  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   pub unstable: BTreeSet<String>,
@@ -1571,7 +1571,7 @@ impl ConfigData {
     let resolver = member_dir
       .workspace
       .create_resolver(
-        &CliSys::default(),
+        CliSys::default(),
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
@@ -1592,6 +1592,9 @@ impl ConfigData {
           member_dir.workspace.resolver_jsr_pkgs().collect(),
           member_dir.workspace.package_jsons().cloned().collect(),
           pkg_json_dep_resolution,
+          Default::default(),
+          Default::default(),
+          CliSys::default(),
         )
       });
     if !resolver.diagnostics().is_empty() {

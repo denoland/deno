@@ -49,6 +49,9 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+[patch.crates-io]
+deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "22cd23bacd29f115c3f54a078acb51b72e73e46e" }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.333.0" }
@@ -202,7 +205,7 @@ slab = "0.4"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
 spki = "0.7.2"
-sys_traits = "=0.1.7"
+sys_traits = "=0.1.8"
 tar = "=0.4.40"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
