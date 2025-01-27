@@ -5260,6 +5260,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "boxed_error",
+ "dashmap",
  "deno_error",
  "deno_package_json",
  "deno_path_util",

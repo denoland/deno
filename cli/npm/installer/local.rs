@@ -2,6 +2,7 @@
 
 //! Code for local node_modules resolution.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
@@ -312,7 +313,7 @@ async fn sync_resolution_with_fs(
         );
         let sub_node_modules = folder_path.join("node_modules");
         let package_path =
-          join_package_name(&sub_node_modules, &package.id.nv.name);
+          join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
         let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
         deno_core::unsync::spawn_blocking({
@@ -350,7 +351,7 @@ async fn sync_resolution_with_fs(
 
     let sub_node_modules = folder_path.join("node_modules");
     let package_path =
-      join_package_name(&sub_node_modules, &package.id.nv.name);
+      join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
     lifecycle_scripts.add(package, package_path.into());
   }
 
@@ -367,14 +368,16 @@ async fn sync_resolution_with_fs(
     if !initialized_file.exists() {
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
-        join_package_name(&sub_node_modules, &package.id.nv.name);
+        join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
 
       let source_path = join_package_name(
-        &deno_local_registry_dir
-          .join(get_package_folder_id_folder_name(
-            &package_cache_folder_id.with_no_count(),
-          ))
-          .join("node_modules"),
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(get_package_folder_id_folder_name(
+              &package_cache_folder_id.with_no_count(),
+            ))
+            .join("node_modules"),
+        ),
         &package.id.nv.name,
       );
 
@@ -407,14 +410,16 @@ async fn sync_resolution_with_fs(
         get_package_folder_id_folder_name(&dep_cache_folder_id);
       if dep_setup_cache.insert(name, &dep_folder_name) {
         let dep_folder_path = join_package_name(
-          &deno_local_registry_dir
-            .join(dep_folder_name)
-            .join("node_modules"),
+          Cow::Owned(
+            deno_local_registry_dir
+              .join(dep_folder_name)
+              .join("node_modules"),
+          ),
           &dep_id.nv.name,
         );
         symlink_package_dir(
           &dep_folder_path,
-          &join_package_name(&sub_node_modules, name),
+          &join_package_name(Cow::Borrowed(&sub_node_modules), name),
         )?;
       }
     }
@@ -468,9 +473,11 @@ async fn sync_resolution_with_fs(
         &remote_pkg.get_package_cache_folder_id(),
       );
       let local_registry_package_path = join_package_name(
-        &deno_local_registry_dir
-          .join(&target_folder_name)
-          .join("node_modules"),
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(&target_folder_name)
+            .join("node_modules"),
+        ),
         &remote_pkg.id.nv.name,
       );
       if install_in_child {
@@ -496,7 +503,10 @@ async fn sync_resolution_with_fs(
         {
           symlink_package_dir(
             &local_registry_package_path,
-            &join_package_name(root_node_modules_dir_path, remote_alias),
+            &join_package_name(
+              Cow::Borrowed(root_node_modules_dir_path),
+              remote_alias,
+            ),
           )?;
         }
       }
@@ -526,15 +536,20 @@ async fn sync_resolution_with_fs(
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     if setup_cache.insert_root_symlink(&id.nv.name, &target_folder_name) {
       let local_registry_package_path = join_package_name(
-        &deno_local_registry_dir
-          .join(target_folder_name)
-          .join("node_modules"),
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(target_folder_name)
+            .join("node_modules"),
+        ),
         &id.nv.name,
       );
 
       symlink_package_dir(
         &local_registry_package_path,
-        &join_package_name(root_node_modules_dir_path, &id.nv.name),
+        &join_package_name(
+          Cow::Borrowed(root_node_modules_dir_path),
+          &id.nv.name,
+        ),
       )?;
     }
   }
@@ -556,15 +571,20 @@ async fn sync_resolution_with_fs(
     if setup_cache.insert_deno_symlink(&package.id.nv.name, &target_folder_name)
     {
       let local_registry_package_path = join_package_name(
-        &deno_local_registry_dir
-          .join(target_folder_name)
-          .join("node_modules"),
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(target_folder_name)
+            .join("node_modules"),
+        ),
         &package.id.nv.name,
       );
 
       symlink_package_dir(
         &local_registry_package_path,
-        &join_package_name(&deno_node_modules_dir, &package.id.nv.name),
+        &join_package_name(
+          Cow::Borrowed(&deno_node_modules_dir),
+          &package.id.nv.name,
+        ),
       )?;
     }
   }
@@ -986,13 +1006,17 @@ fn junction_or_symlink_dir(
   }
 }
 
-fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
-  let mut path = path.to_path_buf();
+fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
-    path = path.join(part);
+    match path {
+      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
+      Cow::Owned(ref mut path) => {
+        path.push(part);
+      }
+    }
   }
-  path
+  path.into_owned()
 }
 
 #[cfg(test)]
