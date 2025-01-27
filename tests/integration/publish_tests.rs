@@ -2,7 +2,7 @@
 
 use std::process::Command;
 
-use deno_core::serde_json::json;
+use serde_json::json;
 use test_util::assert_contains;
 use test_util::assert_not_contains;
 use test_util::env_vars_for_jsr_provenance_tests;

@@ -31,6 +31,10 @@ use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_core::url::Url;
 use deno_graph::GraphKind;
+use deno_lib::args::CaData;
+use deno_lib::args::UnstableConfig;
+use deno_lib::version::DENO_VERSION_INFO;
+use deno_npm::NpmSystemInfo;
 use deno_path_util::normalize_path;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
@@ -497,6 +501,52 @@ impl DenoSubcommand {
         | Self::Lsp
     )
   }
+
+  pub fn npm_system_info(&self) -> NpmSystemInfo {
+    match self {
+      DenoSubcommand::Compile(CompileFlags {
+        target: Some(target),
+        ..
+      }) => {
+        // the values of NpmSystemInfo align with the possible values for the
+        // `arch` and `platform` fields of Node.js' `process` global:
+        // https://nodejs.org/api/process.html
+        match target.as_str() {
+          "aarch64-apple-darwin" => NpmSystemInfo {
+            os: "darwin".into(),
+            cpu: "arm64".into(),
+          },
+          "aarch64-unknown-linux-gnu" => NpmSystemInfo {
+            os: "linux".into(),
+            cpu: "arm64".into(),
+          },
+          "x86_64-apple-darwin" => NpmSystemInfo {
+            os: "darwin".into(),
+            cpu: "x64".into(),
+          },
+          "x86_64-unknown-linux-gnu" => NpmSystemInfo {
+            os: "linux".into(),
+            cpu: "x64".into(),
+          },
+          "x86_64-pc-windows-msvc" => NpmSystemInfo {
+            os: "win32".into(),
+            cpu: "x64".into(),
+          },
+          value => {
+            log::warn!(
+              concat!(
+                "Not implemented npm system info for target '{}'. Using current ",
+                "system default. This may impact architecture specific dependencies."
+              ),
+              value,
+            );
+            NpmSystemInfo::default()
+          }
+        }
+      }
+      _ => NpmSystemInfo::default(),
+    }
+  }
 }
 
 impl Default for DenoSubcommand {
@@ -546,15 +596,6 @@ impl Default for TypeCheckMode {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CaData {
-  /// The string is a file path
-  File(String),
-  /// This variant is not exposed as an option in the CLI, it is used internally
-  /// for standalone binaries.
-  Bytes(Vec<u8>),
-}
-
 // Info needed to run NPM lifecycle scripts
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
 pub struct LifecycleScriptsConfig {
@@ -580,19 +621,6 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   } else {
     Ok(s.into())
   }
-}
-
-#[derive(
-  Clone, Default, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize,
-)]
-pub struct UnstableConfig {
-  // TODO(bartlomieju): remove in Deno 2.5
-  pub legacy_flag_enabled: bool, // --unstable
-  pub bare_node_builtins: bool,
-  pub detect_cjs: bool,
-  pub sloppy_imports: bool,
-  pub npm_lazy_caching: bool,
-  pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default)]
@@ -1484,14 +1512,15 @@ fn handle_repl_flags(flags: &mut Flags, repl_flags: ReplFlags) {
 }
 
 pub fn clap_root() -> Command {
+  debug_assert_eq!(DENO_VERSION_INFO.typescript, deno_snapshots::TS_VERSION);
   let long_version = format!(
     "{} ({}, {}, {})\nv8 {}\ntypescript {}",
-    crate::version::DENO_VERSION_INFO.deno,
-    crate::version::DENO_VERSION_INFO.release_channel.name(),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.release_channel.name(),
     env!("PROFILE"),
     env!("TARGET"),
     deno_core::v8::VERSION_STRING,
-    crate::version::DENO_VERSION_INFO.typescript
+    DENO_VERSION_INFO.typescript
   );
 
   run_args(Command::new("deno"), true)
@@ -1507,7 +1536,7 @@ pub fn clap_root() -> Command {
     )
     .color(ColorChoice::Auto)
     .term_width(800)
-    .version(crate::version::DENO_VERSION_INFO.deno)
+    .version(DENO_VERSION_INFO.deno)
     .long_version(long_version)
     .disable_version_flag(true)
     .disable_help_flag(true)
@@ -4274,7 +4303,7 @@ impl CommandExt for Command {
     let mut cmd = self.arg(
       Arg::new("unstable")
       .long("unstable")
-      .help(cstr!("Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      .help(cstr!("The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
   <p(245)>To view the list of individual unstable feature flags, run this command again with --help=unstable</>"))
       .action(ArgAction::SetTrue)
       .hide(matches!(cfg, UnstableArgsConfig::None))

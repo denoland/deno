@@ -16,6 +16,7 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
@@ -161,12 +162,13 @@ impl LintRule for NoSloppyImportsRule {
     CODE
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_sloppy_imports.md")
-  }
+  // TODO(bartlomieju): this document needs to be exposed to `https://lint.deno.land`.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_sloppy_imports.md")
+  // }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["recommended"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::RECOMMENDED]
   }
 }
 

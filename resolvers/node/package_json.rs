@@ -14,12 +14,39 @@ use url::Url;
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
-// it would be nice if this was passed down as a ctor arg to the package.json resolver,
-// but it's a little bit complicated to do that, so we just maintain a thread local cache
+pub trait NodePackageJsonCache:
+  deno_package_json::PackageJsonCache
+  + std::fmt::Debug
+  + crate::sync::MaybeSend
+  + crate::sync::MaybeSync
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache;
+}
+
+impl<T> NodePackageJsonCache for T
+where
+  T: deno_package_json::PackageJsonCache
+    + std::fmt::Debug
+    + crate::sync::MaybeSend
+    + crate::sync::MaybeSync,
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache {
+    self
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
+
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
 }
 
+#[derive(Debug)]
 pub struct PackageJsonThreadLocalCache;
 
 impl PackageJsonThreadLocalCache {
@@ -45,11 +72,12 @@ pub type PackageJsonResolverRc<TSys> =
 #[derive(Debug)]
 pub struct PackageJsonResolver<TSys: FsRead> {
   sys: TSys,
+  loader_cache: Option<PackageJsonCacheRc>,
 }
 
 impl<TSys: FsRead> PackageJsonResolver<TSys> {
-  pub fn new(sys: TSys) -> Self {
-    Self { sys }
+  pub fn new(sys: TSys, loader_cache: Option<PackageJsonCacheRc>) -> Self {
+    Self { sys, loader_cache }
   }
 
   pub fn get_closest_package_json(
@@ -83,7 +111,10 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
   ) -> Result<Option<PackageJsonRc>, PackageJsonLoadError> {
     let result = PackageJson::load_from_path(
       &self.sys,
-      Some(&PackageJsonThreadLocalCache),
+      self
+        .loader_cache
+        .as_deref()
+        .map(|cache| cache.as_deno_package_json_cache()),
       path,
     );
     match result {

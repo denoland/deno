@@ -2,47 +2,39 @@
 
 use std::env;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deno_cache_dir::DenoDirResolutionError;
-use once_cell::sync::OnceCell;
 
 use super::DiskCache;
+use crate::factory::CliDenoDirPathProvider;
 use crate::sys::CliSys;
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
 pub struct DenoDirProvider {
+  deno_dir_path_provider: Arc<CliDenoDirPathProvider>,
   sys: CliSys,
-  maybe_custom_root: Option<PathBuf>,
-  deno_dir: OnceCell<Result<DenoDir, DenoDirResolutionError>>,
+  deno_dir: once_cell::sync::OnceCell<DenoDir>,
 }
 
 impl DenoDirProvider {
-  pub fn new(sys: CliSys, maybe_custom_root: Option<PathBuf>) -> Self {
+  pub fn new(
+    sys: CliSys,
+    deno_dir_path_provider: Arc<CliDenoDirPathProvider>,
+  ) -> Self {
     Self {
       sys,
-      maybe_custom_root,
+      deno_dir_path_provider,
       deno_dir: Default::default(),
     }
   }
 
   pub fn get_or_create(&self) -> Result<&DenoDir, DenoDirResolutionError> {
-    self
-      .deno_dir
-      .get_or_init(|| {
-        DenoDir::new(self.sys.clone(), self.maybe_custom_root.clone())
-      })
-      .as_ref()
-      .map_err(|err| match err {
-        DenoDirResolutionError::NoCacheOrHomeDir => {
-          DenoDirResolutionError::NoCacheOrHomeDir
-        }
-        DenoDirResolutionError::FailedCwd { source } => {
-          DenoDirResolutionError::FailedCwd {
-            source: std::io::Error::new(source.kind(), source.to_string()),
-          }
-        }
-      })
+    self.deno_dir.get_or_try_init(|| {
+      let path = self.deno_dir_path_provider.get_or_create()?;
+      Ok(DenoDir::new(self.sys.clone(), path.clone()))
+    })
   }
 }
 
@@ -57,23 +49,14 @@ pub struct DenoDir {
 }
 
 impl DenoDir {
-  pub fn new(
-    sys: CliSys,
-    maybe_custom_root: Option<PathBuf>,
-  ) -> Result<Self, deno_cache_dir::DenoDirResolutionError> {
-    let root = deno_cache_dir::resolve_deno_dir(
-      &sys_traits::impls::RealSys,
-      maybe_custom_root,
-    )?;
+  pub fn new(sys: CliSys, root: PathBuf) -> Self {
     assert!(root.is_absolute());
     let gen_path = root.join("gen");
 
-    let deno_dir = Self {
+    Self {
       root,
-      gen_cache: DiskCache::new(sys, &gen_path),
-    };
-
-    Ok(deno_dir)
+      gen_cache: DiskCache::new(sys, gen_path),
+    }
   }
 
   /// The root directory of the DENO_DIR for display purposes only.

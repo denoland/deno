@@ -1,14 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::Path;
+use std::sync::Arc;
 
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 
-use crate::cache::DenoDir;
+use crate::args::Flags;
 use crate::colors;
 use crate::display;
-use crate::sys::CliSys;
+use crate::factory::CliFactory;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
@@ -29,8 +30,9 @@ impl CleanState {
   }
 }
 
-pub fn clean() -> Result<(), AnyError> {
-  let deno_dir = DenoDir::new(CliSys::default(), None)?;
+pub fn clean(flags: Arc<Flags>) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let deno_dir = factory.deno_dir()?;
   if deno_dir.root.exists() {
     let no_of_files = walkdir::WalkDir::new(&deno_dir.root).into_iter().count();
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);

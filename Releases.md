@@ -6,6 +6,45 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.7 / 2025.01.21
+
+- fix(deps): update yanked crates (#27512)
+- fix(ext/node): GCM auth tag check on DechiperIv#final (#27733)
+- fix(ext/node): add FileHandle#sync (#27677)
+- fix(ext/node): propagate socket error to client request object (#27678)
+- fix(ext/node): tls.connect regression (#27707)
+- fix(ext/os): pass SignalState to web worker (#27741)
+- fix(install/global): remove importMap field from specified config file
+  (#27744)
+- fix: use 'getrandom' feature for 'sys_traits' crate
+- perf(compile): remove swc from denort (#27721)
+
+### 2.1.6 / 2025.01.16
+
+- fix(check/lsp): correctly resolve compilerOptions.types (#27686)
+- fix(check/lsp): fix bugs with tsc type resolution, allow npm packages to
+  augment `ImportMeta` (#27690)
+- fix(compile): store embedded fs case sensitivity (#27653)
+- fix(compile/windows): better handling of deno_dir on different drive letter
+  than code (#27654)
+- fix(ext/console): change Temporal color (#27684)
+- fix(ext/node): add `writev` method to `FileHandle` (#27563)
+- fix(ext/node): add chown method to FileHandle class (#27638)
+- fix(ext/node): apply `@npmcli/agent` workaround to `npm-check-updates`
+  (#27639)
+- fix(ext/node): fix playwright http client (#27662)
+- fix(ext/node): show bare-node-builtin hint when using an import map (#27632)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs_common.ts` (#27589)
+- fix(lsp): handle pathless untitled URIs (#27637)
+- fix(lsp/check): don't resolve unknown media types to a `.js` extension
+  (#27631)
+- fix(node): Prevent node:child_process from always inheriting the parent
+  environment (#27343) (#27340)
+- fix(node/fs): add utimes method to the FileHandle class (#27582)
+- fix(outdated): Use `latest` tag even when it's the same as the current version
+  (#27699)
+- fix(outdated): retain strict semver specifier when updating (#27701)
+
 ### 2.1.5 / 2025.01.09
 
 - feat(unstable): implement QUIC (#21942)

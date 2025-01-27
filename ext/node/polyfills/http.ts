@@ -414,6 +414,11 @@ class ClientRequest extends OutgoingMessage {
             oncreate,
           );
           if (newSocket) {
+            // If socket is created by createConnection option
+            // we apply sock-init-workaround
+            // This covers npm:ws and npm:mqtt
+            // https://github.com/denoland/deno/issues/27694
+            newSocket._needsSockInitWorkaround = true;
             oncreate(null, newSocket);
           }
         } catch (err) {
@@ -455,8 +460,13 @@ class ClientRequest extends OutgoingMessage {
     (async () => {
       try {
         const parsedUrl = new URL(url);
-        let baseConnRid =
-          this.socket._handle[kStreamBaseField][internalRidSymbol];
+        const handle = this.socket._handle;
+        if (!handle) {
+          // Using non-standard socket. There's no way to handle this type of socket.
+          // This should be only happening in artificial test cases
+          return;
+        }
+        let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
           [baseConnRid] = op_tls_start({
             rid: baseConnRid,
@@ -637,6 +647,12 @@ class ClientRequest extends OutgoingMessage {
         };
         this.socket = socket;
         this.emit("socket", socket);
+        socket.once("error", (err) => {
+          // This callback loosely follow `socketErrorListener` in Node.js
+          // https://github.com/nodejs/node/blob/f16cd10946ca9ad272f42b94f00cf960571c9181/lib/_http_client.js#L509
+          emitErrorEvent(this, err);
+          socket.destroy(err);
+        });
         if (socket.readyState === "opening") {
           socket.on("connect", onConnect);
         } else {
