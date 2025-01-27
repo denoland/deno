@@ -1009,8 +1009,8 @@ fn resolve_non_graph_specifier_types(
           resolution_mode,
           NodeResolutionKind::Types,
         )
-        .ok()
-        .map(|res| res.into_url()),
+        .and_then(|res| res.into_url())
+        .ok(),
     )))
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)

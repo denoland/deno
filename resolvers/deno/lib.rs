@@ -255,10 +255,12 @@ impl<
       {
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-          .map(|res| DenoResolution {
-            url: res.into_url(),
-            found_package_json_dep,
-            maybe_diagnostic,
+          .and_then(|res| {
+            Ok(DenoResolution {
+              url: res.into_url()?,
+              found_package_json_dep,
+              maybe_diagnostic,
+            })
           })
           .map_err(|e| e.into());
       }
@@ -498,9 +500,9 @@ impl<
             })?;
           if let Some(res) = maybe_resolution {
             match res {
-              NodeResolution::Module(url) => {
+              NodeResolution::Module(ref _url) => {
                 return Ok(DenoResolution {
-                  url,
+                  url: res.into_url()?,
                   maybe_diagnostic,
                   found_package_json_dep,
                 })
