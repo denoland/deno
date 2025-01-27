@@ -351,12 +351,13 @@ impl Diagnostics {
 
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(self, predicate: P) -> Self
-  where
-    P: FnMut(&Diagnostic) -> bool,
-  {
+  pub fn filter(self, predicate: impl FnMut(&Diagnostic) -> bool) -> Self {
     let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
+  }
+
+  pub fn retain(&mut self, predicate: impl FnMut(&Diagnostic) -> bool) {
+    self.0.retain(predicate);
   }
 
   pub fn has_diagnostic(&self) -> bool {

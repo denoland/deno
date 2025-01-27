@@ -344,6 +344,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   roots_by_config: IndexMap<Arc<Url>, FolderInfo<'a>>,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
+  seen_diagnotics: HashSet<String>,
   options: CheckOptions,
 }
 
@@ -352,11 +353,24 @@ impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
 
   fn next(&mut self) -> Option<Self::Item> {
     let (url, folder) = self.roots_by_config.shift_remove_index(0)?;
-    let result = self.check_diagnostics_in_folder(
+    let mut result = self.check_diagnostics_in_folder(
       folder.dir,
       folder.tsconfig,
       folder.roots,
     );
+    if let Ok(diagnostics) = &mut result {
+      diagnostics.retain(|d| {
+        if let (Some(file_name), Some(start)) = (&d.file_name, &d.start) {
+          let data = format!(
+            "{}{}:{}:{}",
+            d.code, file_name, start.line, start.character
+          );
+          self.seen_diagnotics.insert(data)
+        } else {
+          true
+        }
+      });
+    }
     Some(result.map(|d| (url, d)))
   }
 }
@@ -494,6 +508,9 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     type_check_mode: TypeCheckMode,
     d: &tsc::Diagnostic,
   ) -> bool {
+    // this shouldn't check for duplicate diagnostics across folders because
+    // we don't want to accidentally mark a folder as being successful and save
+    // to the check cache if a previous folder caused a diagnostic
     if self.is_remote_diagnostic(d) {
       type_check_mode == TypeCheckMode::All && d.include_when_remote()
     } else {
