@@ -1,4 +1,7 @@
 {
+  "envs": {
+    "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
+  },
   "steps": [{
     "args": "run -A npm:playwright install chromium",
     "output": "[WILDCARD]"

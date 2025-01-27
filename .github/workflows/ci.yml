@@ -383,6 +383,12 @@ jobs:
         uses: ./.github/mtime_cache
         with:
           cache-path: ./target
+      - name: Set up playwright cache
+        uses: actions/cache@v4
+        with:
+          path: ./.ms-playwright
+          key: 'playwright-${{ runner.os }}-${{ runner.arch }}'
+        if: '!(matrix.skip)'
       - name: test_format.js
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run --allow-net ./tools/format.js --check
