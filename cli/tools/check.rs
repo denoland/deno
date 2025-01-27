@@ -293,6 +293,7 @@ impl TypeChecker {
         ),
         roots_by_config,
         options,
+        seen_diagnotics: Default::default(),
       }),
     ))
   }
@@ -860,7 +861,7 @@ impl<'a> GraphWalker<'a> {
         node_resolver::NodeResolutionKind::Types,
       )
       .ok()?;
-    Some(resolved)
+    resolved.into_url().ok()
   }
 }
 
