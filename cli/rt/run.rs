@@ -196,8 +196,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?
-          .into_url(),
+          .and_then(|res| res.into_url())
+          .map_err(JsErrorBox::from_err)?,
       );
     }
 
@@ -337,7 +337,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
-          return Ok(res.into_url());
+          return Ok(res.into_url().map_err(JsErrorBox::from_err)?);
         }
         Err(JsErrorBox::from_err(err).into())
       }

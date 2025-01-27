@@ -116,21 +116,19 @@ impl NodeResolutionKind {
 
 #[derive(Debug)]
 pub enum NodeResolution {
-  Module(Url),
+  Module(UrlOrPath),
   BuiltIn(String),
 }
 
 impl NodeResolution {
-  pub fn into_url(self) -> Url {
+  pub fn into_url(self) -> Result<Url, NodeResolveError> {
     match self {
-      Self::Module(u) => u,
-      Self::BuiltIn(specifier) => {
-        if specifier.starts_with("node:") {
-          Url::parse(&specifier).unwrap()
-        } else {
-          Url::parse(&format!("node:{specifier}")).unwrap()
-        }
-      }
+      Self::Module(u) => Ok(u.into_url()?),
+      Self::BuiltIn(specifier) => Ok(if specifier.starts_with("node:") {
+        Url::parse(&specifier).unwrap()
+      } else {
+        Url::parse(&format!("node:{specifier}")).unwrap()
+      }),
     }
   }
 }
@@ -221,7 +219,7 @@ impl<
 
     if let Ok(url) = Url::parse(specifier) {
       if url.scheme() == "data" {
-        return Ok(NodeResolution::Module(url));
+        return Ok(NodeResolution::Module(UrlOrPath::Url(url)));
       }
 
       if let Some(module_name) =
@@ -246,7 +244,7 @@ impl<
         let url = referrer
           .join(specifier)
           .map_err(|source| DataUrlReferrerError { source })?;
-        return Ok(NodeResolution::Module(url));
+        return Ok(NodeResolution::Module(UrlOrPath::Url(url)));
       }
     }
 
@@ -274,8 +272,8 @@ impl<
       url
     };
 
-    let url = self.finalize_resolution(url, Some(&referrer))?;
-    let resolve_response = NodeResolution::Module(url.into_url()?);
+    let url_or_path = self.finalize_resolution(url, Some(&referrer))?;
+    let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
     Ok(resolve_response)
