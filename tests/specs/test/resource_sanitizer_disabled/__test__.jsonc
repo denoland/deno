@@ -1,0 +1,5 @@
+{
+  "args": "test --allow-read main.ts",
+  "output": "main.out",
+  "exitCode": 0
+}

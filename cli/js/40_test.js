@@ -224,8 +224,9 @@ function testInner(
   const defaults = {
     ignore: false,
     only: false,
-    sanitizeOps: true,
-    sanitizeResources: true,
+    sanitizeOps: !sanitizersDisabled,
+    sanitizeResources: !sanitizersDisabled,
+    // Exit sanitizer is never disabled
     sanitizeExit: true,
     permissions: null,
   };
@@ -353,6 +354,12 @@ test.only = function (
   maybeFn,
 ) {
   return testInner(nameOrFnOrOptions, optionsOrFn, maybeFn, { only: true });
+};
+
+let sanitizersDisabled = false;
+
+test.disableSanitizers = function () {
+  sanitizersDisabled = true;
 };
 
 function getFullName(desc) {
