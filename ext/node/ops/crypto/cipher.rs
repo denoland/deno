@@ -27,6 +27,7 @@ enum Cipher {
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
   Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
@@ -39,8 +40,9 @@ enum Decipher {
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
-  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
+  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -225,6 +227,15 @@ impl Cipher {
         }
         Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
+      "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
       "aes-128-ctr" => {
         if key.len() != 16 {
           return Err(CipherError::InvalidKeyLength);
@@ -294,6 +305,9 @@ impl Cipher {
         }
       }
       Aes256Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(encryptor) => {
         encryptor.apply_keystream_b2b(input, output).unwrap();
       }
       Aes128Ctr(encryptor) => {
@@ -379,7 +393,7 @@ impl Cipher {
         );
         Ok(None)
       }
-      (Aes256Ctr(_) | Aes128Ctr(_), _) => Ok(None),
+      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
     }
   }
 
@@ -437,6 +451,9 @@ impl Decipher {
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ctr" => {
         Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-192-ctr" => {
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       "aes-128-ctr" => {
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
@@ -525,6 +542,9 @@ impl Decipher {
         }
       }
       Aes256Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(decryptor) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
       }
       Aes128Ctr(decryptor) => {
@@ -636,6 +656,10 @@ impl Decipher {
         Ok(())
       }
       (Aes256Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (Aes192Ctr(mut decryptor), _) => {
         decryptor.apply_keystream_b2b(input, output).unwrap();
         Ok(())
       }
