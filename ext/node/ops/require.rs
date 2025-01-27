@@ -18,7 +18,6 @@ use deno_package_json::PackageJsonRc;
 use deno_path_util::normalize_path;
 use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
-use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
@@ -524,8 +523,6 @@ pub fn op_require_try_self<
       TSys,
     >>();
     let referrer = UrlOrPathRef::from_path(&pkg.path);
-    // invalidate the resolution cache in case things have changed
-    NodeResolutionThreadLocalCache::clear();
     let r = node_resolver.package_exports_resolve(
       &pkg.path,
       &expansion,
@@ -629,7 +626,6 @@ pub fn op_require_resolve_exports<
   } else {
     Some(PathBuf::from(parent_path))
   };
-  NodeResolutionThreadLocalCache::clear();
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
@@ -712,7 +708,6 @@ pub fn op_require_package_imports_resolve<
       TNpmPackageFolderResolver,
       TSys,
     >>();
-    NodeResolutionThreadLocalCache::clear();
     let url = node_resolver.package_imports_resolve(
       &request,
       Some(&UrlOrPathRef::from_path(&referrer_path)),

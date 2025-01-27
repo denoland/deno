@@ -5,7 +5,6 @@
 
 pub mod analyze;
 mod builtin_modules;
-pub mod cache;
 pub mod errors;
 mod npm;
 mod package_json;
@@ -17,8 +16,6 @@ mod sync;
 pub use builtin_modules::DenoIsBuiltInNodeModuleChecker;
 pub use builtin_modules::IsBuiltInNodeModuleChecker;
 pub use builtin_modules::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
-pub use cache::NodeResolutionCache;
-pub use cache::NodeResolutionCacheRc;
 pub use deno_package_json::PackageJson;
 pub use npm::InNpmPackageChecker;
 pub use npm::NpmPackageFolderResolver;

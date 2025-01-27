@@ -23,7 +23,6 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
-use node_resolver::cache::NodeResolutionSys;
 use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -556,7 +555,6 @@ pub struct ResolverFactoryOptions {
   pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
   pub no_sloppy_imports_cache: bool,
   pub npm_system_info: NpmSystemInfo,
-  pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
@@ -586,7 +584,6 @@ pub struct ResolverFactory<
     + 'static,
 > {
   options: ResolverFactoryOptions,
-  sys: NodeResolutionSys<TSys>,
   deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -642,10 +639,6 @@ impl<
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
-      sys: NodeResolutionSys::new(
-        workspace_factory.sys.clone(),
-        options.node_resolution_cache.clone(),
-      ),
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -732,7 +725,7 @@ impl<
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.sys.clone(),
+        self.workspace_factory.sys.clone(),
         self.options.conditions_from_resolution_mode.clone(),
       )))
     })
@@ -767,7 +760,7 @@ impl<
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.sys.clone(),
+          sys: self.workspace_factory.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {
