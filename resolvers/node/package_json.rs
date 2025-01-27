@@ -16,6 +16,7 @@ use crate::errors::PackageJsonLoadError;
 
 pub trait NodePackageJsonCache:
   deno_package_json::PackageJsonCache
+  + std::fmt::Debug
   + crate::sync::MaybeSend
   + crate::sync::MaybeSync
 {
