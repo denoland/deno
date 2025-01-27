@@ -450,12 +450,30 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ctr" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       "aes-128-ctr" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
         Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       "aes-128-gcm" => {
