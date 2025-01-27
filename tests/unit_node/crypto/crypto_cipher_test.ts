@@ -125,6 +125,21 @@ Deno.test({
         "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b266491",
         "2e62607a5e8b715e4cb229a12169f2b2",
       ],
+      [
+        ["aes-128-ctr", 16, 16],
+        "66e94bd4ef8a2c3b884cfa59ca342b2e58e2fccefa7e3061367f1d57a4e7455a0388dace60b6a392f328c2b971b2fe78f795",
+        "",
+      ],
+      [
+        ["aes-192-ctr", 24, 16],
+        "aae06992acbf52a3e8f4a96ec9300bd7cd33b28ac773f74ba00ed1f31257243598e7247c07f0fe411c267e4384b0f6002a34",
+        "",
+      ],
+      [
+        ["aes-256-ctr", 32, 16],
+        "dc95c078a2408989ad48a21492842087530f8afbc74536b9a963b4f1c4cb738bcea7403d4d606b6e074ec5d3baf39d187260",
+        "",
+      ],
     ] as const;
     for (
       const [[alg, keyLen, ivLen], expectedUpdate, expectedFinal] of table
@@ -217,13 +232,28 @@ Deno.test({
         ["aes-256-cbc", 32, 16],
         "dc95c078a2408989ad48a2149284208708c374848c228233c2b34f332bd2e9d38b70c515a6663d38cdb8e6532b2664915d0dcc192580aee9ef8a8568193f1b44bfca557c6bab7dc79da07ffd42191b2659e6bee99cb2a6a7299f0e9a21686fc7",
       ],
+      [
+        ["aes-128-ctr", 16, 16],
+        "66e94bd4ef8a2c3b884cfa59ca342b2e58e2fccefa7e3061367f1d57a4e7455a0388dace60b6a392f328c2b971b2fe78f795aaab494b5923f7fd89ff948bc1e0200211214e7394da2089b6acd093abe0",
+        Buffer.alloc(0),
+      ],
+      [
+        ["aes-192-ctr", 24, 16],
+        "aae06992acbf52a3e8f4a96ec9300bd7cd33b28ac773f74ba00ed1f31257243598e7247c07f0fe411c267e4384b0f6002a3493e66235ee67deeccd2f3b393bd8fdaa17c2cde20268fe36e164ea532151",
+        Buffer.alloc(0),
+      ],
+      [
+        ["aes-256-ctr", 32, 16],
+        "dc95c078a2408989ad48a21492842087530f8afbc74536b9a963b4f1c4cb738bcea7403d4d606b6e074ec5d3baf39d18726003ca37a62a74d1a2f58e7506358edd4ab1284d4ae17b41e85924470c36f7",
+        Buffer.alloc(0),
+      ],
     ] as const;
     for (
-      const [[alg, keyLen, ivLen], input] of table
+      const [[alg, keyLen, ivLen], input, final] of table
     ) {
       const cipher = crypto.createDecipheriv(alg, zeros(keyLen), zeros(ivLen));
       assertEquals(cipher.update(input, "hex"), Buffer.alloc(80));
-      assertEquals(cipher.final(), Buffer.alloc(10));
+      assertEquals(cipher.final(), final ?? Buffer.alloc(10));
     }
   },
 });
