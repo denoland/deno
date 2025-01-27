@@ -9,17 +9,37 @@ use std::path::PathBuf;
 use deno_package_json::PackageJson;
 use deno_package_json::PackageJsonRc;
 use sys_traits::FsRead;
-use url::Url;
 
 use crate::errors::ClosestPkgJsonError;
 use crate::errors::PackageJsonLoadError;
 
-#[allow(clippy::disallowed_types)]
-pub type PackageJsonCacheRc = crate::sync::MaybeArc<
-  dyn deno_package_json::PackageJsonCache
+pub trait NodePackageJsonCache:
+  deno_package_json::PackageJsonCache
+  + std::fmt::Debug
+  + crate::sync::MaybeSend
+  + crate::sync::MaybeSync
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache;
+}
+
+impl<T> NodePackageJsonCache for T
+where
+  T: deno_package_json::PackageJsonCache
+    + std::fmt::Debug
     + crate::sync::MaybeSend
     + crate::sync::MaybeSync,
->;
+{
+  fn as_deno_package_json_cache(
+    &self,
+  ) -> &dyn deno_package_json::PackageJsonCache {
+    self
+  }
+}
+
+#[allow(clippy::disallowed_types)]
+pub type PackageJsonCacheRc = crate::sync::MaybeArc<dyn NodePackageJsonCache>;
 
 thread_local! {
   static CACHE: RefCell<HashMap<PathBuf, PackageJsonRc>> = RefCell::new(HashMap::new());
@@ -30,17 +50,17 @@ pub struct PackageJsonThreadLocalCache;
 
 impl PackageJsonThreadLocalCache {
   pub fn clear() {
-    CACHE.with(|cache| cache.borrow_mut().clear());
+    CACHE.with_borrow_mut(|cache| cache.clear());
   }
 }
 
 impl deno_package_json::PackageJsonCache for PackageJsonThreadLocalCache {
   fn get(&self, path: &Path) -> Option<PackageJsonRc> {
-    CACHE.with(|cache| cache.borrow().get(path).cloned())
+    CACHE.with_borrow(|cache| cache.get(path).cloned())
   }
 
   fn set(&self, path: PathBuf, package_json: PackageJsonRc) {
-    CACHE.with(|cache| cache.borrow_mut().insert(path, package_json));
+    CACHE.with_borrow_mut(|cache| cache.insert(path, package_json));
   }
 }
 
@@ -61,19 +81,11 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
 
   pub fn get_closest_package_json(
     &self,
-    url: &Url,
-  ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let Ok(file_path) = deno_path_util::url_to_file_path(url) else {
-      return Ok(None);
-    };
-    self.get_closest_package_json_from_file_path(&file_path)
-  }
-
-  pub fn get_closest_package_json_from_file_path(
-    &self,
     file_path: &Path,
   ) -> Result<Option<PackageJsonRc>, ClosestPkgJsonError> {
-    let parent_dir = file_path.parent().unwrap();
+    let Some(parent_dir) = file_path.parent() else {
+      return Ok(None);
+    };
     for current_dir in parent_dir.ancestors() {
       let package_json_path = current_dir.join("package.json");
       if let Some(pkg_json) = self.load_package_json(&package_json_path)? {
@@ -93,7 +105,7 @@ impl<TSys: FsRead> PackageJsonResolver<TSys> {
       self
         .loader_cache
         .as_deref()
-        .map(|cache| cache as &dyn deno_package_json::PackageJsonCache),
+        .map(|cache| cache.as_deno_package_json_cache()),
       path,
     );
     match result {

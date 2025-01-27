@@ -5,7 +5,7 @@ error[ban-untagged-ignore]: Ignore directive requires lint rule name(s)
   | ^^^^^^^^^^^^^^^^^^^
   = hint: Add one or more lint rule names.  E.g. // deno-lint-ignore adjacent-overload-signatures
 
-  docs: https://lint.deno.land/rules/ban-untagged-ignore
+  docs: https://docs.deno.com/lint/rules/ban-untagged-ignore
 
 
 error[no-empty]: Empty block statement
@@ -15,6 +15,6 @@ error[no-empty]: Empty block statement
   |               ^^
   = hint: Add code or comment to the empty block
 
-  docs: https://lint.deno.land/rules/no-empty
+  docs: https://docs.deno.com/lint/rules/no-empty
 
 
