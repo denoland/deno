@@ -128,7 +128,7 @@ data-encoding = "2.3.3"
 data-url = "=0.3.1"
 deno_cache_dir = "=0.17.0"
 deno_error = "=0.5.5"
-deno_package_json = { version = "=0.4.1", default-features = false }
+deno_package_json = { version = "=0.4.2", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"

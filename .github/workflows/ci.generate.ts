@@ -1097,6 +1097,26 @@ const ci = {
         },
       ]),
     },
+    wasm: {
+      name: "build wasm32",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          name: "Install wasm target",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        {
+          name: "Cargo build",
+          // we want this crate to be wasm compatible
+          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
+        },
+      ]),
+    },
     "publish-canary": {
       name: "publish canary",
       "runs-on": ubuntuX86Runner,

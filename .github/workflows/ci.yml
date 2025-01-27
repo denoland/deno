@@ -688,6 +688,33 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: '37-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+  wasm:
+    name: build wasm32
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+        if: '!(matrix.skip)'
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
+        if: '!(matrix.skip)'
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(matrix.skip)'
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
+        if: '!(matrix.skip)'
+      - name: Cargo build
+        run: cargo build --target wasm32-unknown-unknown -p deno_resolver
+        if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-24.04

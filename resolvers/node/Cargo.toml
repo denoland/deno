@@ -32,5 +32,4 @@ serde.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
 url.workspace = true
