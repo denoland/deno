@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -103,7 +104,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     sys: &impl EnvVar,
     source: &str,
     path: &Path,
-  ) -> Result<ResolvedNpmRc, NpmRcDiscoverError> {
+  ) -> Result<NpmRc, NpmRcDiscoverError> {
     let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
       |source| {
         NpmRcParseError {
@@ -113,71 +114,43 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         }
       },
     )?;
-    let resolved =
-      npmrc
-        .as_resolved(&npm_registry_url(sys))
-        .map_err(|source| NpmRcOptionsResolveError {
-          path: path.to_path_buf(),
-          source,
-        })?;
     log::debug!(".npmrc found at: '{}'", path.display());
-    Ok(resolved)
+    Ok(npmrc)
   }
 
-  fn merge_resolved_npm_rc(
-    rc1: ResolvedNpmRc,
-    rc2: ResolvedNpmRc,
-  ) -> ResolvedNpmRc {
-    let mut merged_registry_configs = rc1.registry_configs.clone();
-    for (key, value) in rc2.registry_configs {
-      merged_registry_configs.entry(key).or_insert(value);
-    }
-
-    let mut merged_default_config = rc1.default_config.clone();
-    if let Some(host) = merged_default_config.registry_url.host_str() {
-      if let Some(config) = merged_registry_configs.get(host) {
-        merged_default_config.config = config.clone();
-      } else if let Some(config) =
-        merged_registry_configs.get(format!("{}/", host).as_str())
-      {
-        merged_default_config.config = config.clone();
+  fn merge_npm_rc(project_rc: NpmRc, home_rc: NpmRc) -> NpmRc {
+    fn merge_maps<TValue>(
+      mut project: HashMap<String, TValue>,
+      home: HashMap<String, TValue>,
+    ) -> HashMap<String, TValue> {
+      for (key, value) in home {
+        project.entry(key).or_insert(value);
       }
+      project
     }
 
-    let mut merged_scopes = rc1.scopes.clone();
-    for (key, value) in rc2.scopes {
-      merged_scopes.entry(key).or_insert(value);
-    }
-    for data in merged_scopes.values_mut() {
-      if let (Some(host), Some(port)) =
-        (data.registry_url.host_str(), data.registry_url.port())
-      {
-        let path = data.registry_url.path();
-        let url = format!("{}:{}{}", host, port, path);
-        if let Some(config) = merged_registry_configs.get(&url) {
-          data.config = config.clone();
-        }
-      }
-    }
-
-    ResolvedNpmRc {
-      default_config: merged_default_config,
-      scopes: merged_scopes,
-      registry_configs: merged_registry_configs,
+    NpmRc {
+      registry: project_rc.registry.or(home_rc.registry),
+      scope_registries: merge_maps(
+        project_rc.scope_registries,
+        home_rc.scope_registries,
+      ),
+      registry_configs: merge_maps(
+        project_rc.registry_configs,
+        home_rc.registry_configs,
+      ),
     }
   }
 
   let mut home_npmrc = None;
   let mut project_npmrc = None;
-  let mut npmrc_path = None;
 
   // 1. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = sys.env_home_dir() {
     match try_to_read_npmrc(sys, &home_dir) {
       Ok(Some((source, path))) => {
         let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
-        home_npmrc = Some(npmrc);
-        npmrc_path = Some(path);
+        home_npmrc = Some((path, npmrc));
       }
       Ok(None) => {}
       Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
@@ -197,8 +170,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     if let Some(package_json_dir) = package_json_path.parent() {
       if let Some((source, path)) = try_to_read_npmrc(sys, package_json_dir)? {
         let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
-        project_npmrc = Some(npmrc);
-        npmrc_path = Some(path);
+        project_npmrc = Some((path, npmrc));
       }
     }
   }
@@ -209,30 +181,41 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
       if let Some(deno_json_dir) = deno_json_path.parent() {
         if let Some((source, path)) = try_to_read_npmrc(sys, deno_json_dir)? {
           let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
-          project_npmrc = Some(npmrc);
-          npmrc_path = Some(path);
+          project_npmrc = Some((path, npmrc));
         }
       }
     }
   }
+
+  let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
+    Ok((
+      npm_rc
+        .as_resolved(&npm_registry_url(sys))
+        .map_err(|source| NpmRcOptionsResolveError {
+          path: path.to_path_buf(),
+          source,
+        })?,
+      Some(path),
+    ))
+  };
 
   match (home_npmrc, project_npmrc) {
     (None, None) => {
       log::debug!("No .npmrc file found");
       Ok((create_default_npmrc(sys), None))
     }
-    (None, Some(project_rc)) => {
+    (None, Some((npmrc_path, project_rc))) => {
       log::debug!("Only project .npmrc file found");
-      Ok((project_rc, npmrc_path))
+      resolve_npmrc(npmrc_path, project_rc)
     }
-    (Some(home_rc), None) => {
+    (Some((npmrc_path, home_rc)), None) => {
       log::debug!("Only home .npmrc file found");
-      Ok((home_rc, npmrc_path))
+      resolve_npmrc(npmrc_path, home_rc)
     }
-    (Some(home_rc), Some(project_rc)) => {
+    (Some((_, home_rc)), Some((npmrc_path, project_rc))) => {
       log::debug!("Both home and project .npmrc files found");
-      let merged_npmrc = merge_resolved_npm_rc(project_rc, home_rc);
-      Ok((merged_npmrc, npmrc_path))
+      let merged_npmrc = merge_npm_rc(project_rc, home_rc);
+      resolve_npmrc(npmrc_path, merged_npmrc)
     }
   }
 }
