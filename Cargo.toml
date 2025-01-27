@@ -51,7 +51,7 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.331.0" }
+deno_core = { version = "0.333.0" }
 
 deno_bench_util = { version = "0.181.0", path = "./bench_util" }
 deno_config = { version = "=0.45.0", features = ["workspace"] }
@@ -142,7 +142,7 @@ flate2 = { version = "1.0.30", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
-h2 = "0.4.4"
+h2 = "0.4.6"
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
 http = "1.0"
 http-body = "1.0"

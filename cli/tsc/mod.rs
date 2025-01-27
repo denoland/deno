@@ -529,6 +529,9 @@ pub enum LoadError {
   #[error("Unable to load {path}: {error}")]
   LoadFromNodeModule { path: String, error: std::io::Error },
   #[class(inherit)]
+  #[error("{0}")]
+  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
+  #[class(inherit)]
   #[error(
     "Error converting a string module specifier for \"op_resolve\": {0}"
   )]
@@ -711,6 +714,9 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   PackageSubpathResolve(PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoModule(#[from] ResolvePkgFolderFromDenoModuleError),

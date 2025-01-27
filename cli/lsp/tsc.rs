@@ -3684,6 +3684,10 @@ impl CompletionInfo {
     position: u32,
     language_server: &language_server::Inner,
   ) -> lsp::CompletionResponse {
+    // A cache for costly resolution computations.
+    // On a test project, it was found to speed up completion requests
+    // by 10-20x and contained ~300 entries for 8000 completion items.
+    let mut cache = HashMap::with_capacity(512);
     let items = self
       .entries
       .iter()
@@ -3695,6 +3699,7 @@ impl CompletionInfo {
           specifier,
           position,
           language_server,
+          &mut cache,
         )
       })
       .collect();
@@ -3899,6 +3904,7 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
@@ -3907,6 +3913,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
+    resolution_cache: &mut HashMap<(ModuleSpecifier, ModuleSpecifier), String>,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
@@ -3965,14 +3972,18 @@ impl CompletionEntry {
         }
       }
     }
-
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
-        if let Some(mut new_specifier) = import_mapper
-          .check_specifier(&import_data.normalized, specifier)
+        let maybe_cached = resolution_cache
+          .get(&(import_data.normalized.clone(), specifier.clone()))
+          .cloned();
+        if let Some(mut new_specifier) = maybe_cached
+          .or_else(|| {
+            import_mapper.check_specifier(&import_data.normalized, specifier)
+          })
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
           .or_else(|| {
             ModuleSpecifier::parse(&import_data.raw.module_specifier)
@@ -3980,6 +3991,10 @@ impl CompletionEntry {
               .then(|| import_data.normalized.to_string())
           })
         {
+          resolution_cache.insert(
+            (import_data.normalized.clone(), specifier.clone()),
+            new_specifier.clone(),
+          );
           if new_specifier.contains("/node_modules/") {
             return None;
           }
