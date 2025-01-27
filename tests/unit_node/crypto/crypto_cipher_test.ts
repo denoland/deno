@@ -344,46 +344,36 @@ Deno.test({
 Deno.test({
   name: "createDecipheriv - invalid inputs",
   fn() {
-    assertThrows(
-      () =>
-        crypto.createDecipheriv(
-          "aes256",
-          new Uint8Array(31),
-          new Uint8Array(16),
-        ),
-      RangeError,
-      "Invalid key length",
-    );
-    assertThrows(
-      () =>
-        crypto.createDecipheriv(
-          "aes-256-cbc",
-          new Uint8Array(31),
-          new Uint8Array(16),
-        ),
-      RangeError,
-      "Invalid key length",
-    );
-    assertThrows(
-      () =>
-        crypto.createDecipheriv(
-          "aes256",
-          new Uint8Array(32),
-          new Uint8Array(15),
-        ),
-      TypeError,
-      "Invalid initialization vector",
-    );
-    assertThrows(
-      () =>
-        crypto.createDecipheriv(
-          "aes-256-cbc",
-          new Uint8Array(32),
-          new Uint8Array(15),
-        ),
-      TypeError,
-      "Invalid initialization vector",
-    );
+    const enum Invalid {
+      Key,
+      Iv,
+    }
+    const table = [
+      ["aes256", 31, 16, Invalid.Key],
+      ["aes-256-cbc", 31, 16, Invalid.Key],
+      ["aes256", 32, 15, Invalid.Iv],
+      ["aes-256-cbc", 32, 15, Invalid.Iv],
+      ["aes-128-ctr", 32, 16, Invalid.Key],
+      ["aes-128-ctr", 16, 32, Invalid.Iv],
+      ["aes-192-ctr", 16, 16, Invalid.Key],
+      ["aes-192-ctr", 24, 32, Invalid.Iv],
+      ["aes-256-ctr", 16, 16, Invalid.Key],
+      ["aes-256-ctr", 32, 32, Invalid.Iv],
+    ] as const;
+    for (const [algorithm, keyLen, ivLen, invalid] of table) {
+      assertThrows(
+        () =>
+          crypto.createDecipheriv(
+            algorithm,
+            new Uint8Array(keyLen),
+            new Uint8Array(ivLen),
+          ),
+        invalid === Invalid.Key ? RangeError : TypeError,
+        invalid === Invalid.Key
+          ? "Invalid key length"
+          : "Invalid initialization vector",
+      );
+    }
   },
 });
 
