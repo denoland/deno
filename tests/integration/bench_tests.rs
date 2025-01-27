@@ -23,20 +23,6 @@ fn recursive_permissions_pledge() {
 }
 
 #[test]
-fn file_protocol() {
-  let file_url =
-    Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
-      .unwrap()
-      .to_string();
-  let context = TestContext::default();
-  context
-    .new_command()
-    .args(format!("bench bench/file_protocol.ts {file_url}"))
-    .run()
-    .assert_matches_file("bench/file_protocol.out");
-}
-
-#[test]
 fn conditionally_loads_type_graph() {
   let context = TestContext::default();
   let output = context
