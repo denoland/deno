@@ -74,6 +74,9 @@ pub enum CacheError {
   #[error(transparent)]
   InvalidHeaderValue(#[from] hyper::header::InvalidHeaderValue),
   #[class(generic)]
+  #[error(transparent)]
+  ClientError(#[from] hyper_util::client::legacy::Error),
+  #[class(generic)]
   #[error("Failed to create cache storage directory {}", .dir.display())]
   CacheStorageDirectory {
     dir: PathBuf,

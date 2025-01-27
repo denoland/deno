@@ -3,16 +3,12 @@
 use std::convert::Infallible;
 
 use bytes::Bytes;
-use futures::Stream;
 use http::Method;
 use http::Request;
 use http::Response;
-use http_body::Body;
 use http_body_util::combinators::UnsyncBoxBody;
-use http_body_util::BodyStream;
 use http_body_util::Either;
 use http_body_util::Empty;
-use http_body_util::StreamBody;
 use hyper::body::Incoming;
 use hyper::header::AUTHORIZATION;
 use hyper::HeaderMap;
@@ -23,11 +19,11 @@ use hyper_util::rt::tokio::TokioExecutor;
 
 use crate::CacheError;
 
+type ClientBody =
+  Either<UnsyncBoxBody<Bytes, CacheError>, UnsyncBoxBody<Bytes, Infallible>>;
+
 pub struct CacheShard {
-  client: Client<
-    HttpConnector,
-    Either<UnsyncBoxBody<Bytes, CacheError>, UnsyncBoxBody<Bytes, Infallible>>,
-  >,
+  client: Client<HttpConnector, ClientBody>,
   endpoint: String,
   token: String,
 }

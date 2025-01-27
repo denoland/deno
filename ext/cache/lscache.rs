@@ -17,7 +17,6 @@ use http::HeaderMap;
 use http::HeaderName;
 use http::HeaderValue;
 use http_body_util::combinators::UnsyncBoxBody;
-use http_body_util::BodyExt;
 use slab::Slab;
 
 use crate::get_header;
@@ -141,9 +140,10 @@ impl LscBackend {
     };
     let (body_tx, body_rx) = futures::channel::mpsc::channel(4);
     spawn(body.map(Ok::<Result<_, CacheError>, _>).forward(body_tx));
-    let stream = body_rx.into_stream();
-    let body = http_body_util::StreamBody::new(stream);
-    let body = UnsyncBoxBody::new(http_body_util::BodyStream::new(body));
+    let body = http_body_util::StreamBody::new(
+      body_rx.into_stream().map_ok(http_body::Frame::data),
+    );
+    let body = UnsyncBoxBody::new(body);
     shard.put_object(&object_key, headers, body).await?;
     Ok(())
   }
@@ -245,11 +245,10 @@ impl LscBackend {
       response_headers,
     };
 
-    let body = CacheResponseResource::lsc(
-      res
-        .bytes_stream()
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-    );
+    let body = http_body_util::BodyDataStream::new(res.into_body())
+      .into_stream()
+      .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e));
+    let body = CacheResponseResource::lsc(body);
 
     Ok(Some((meta, Some(body))))
   }
