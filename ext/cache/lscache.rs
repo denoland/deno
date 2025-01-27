@@ -143,8 +143,8 @@ impl LscBackend {
     spawn(body.map(Ok::<Result<_, CacheError>, _>).forward(body_tx));
     let stream = body_rx.into_stream();
     let body = http_body_util::StreamBody::new(stream);
-    let stream = http_body_util::BodyStream::new(body);
-    shard.put_object(&object_key, headers, stream).await?;
+    let body = UnsyncBoxBody::new(http_body_util::BodyStream::new(body));
+    shard.put_object(&object_key, headers, body).await?;
     Ok(())
   }
 
@@ -287,13 +287,7 @@ impl LscBackend {
           .as_bytes(),
       )?,
     );
-    shard
-      .put_object(
-        &object_key,
-        headers,
-        UnsyncBoxBody::new(http_body_util::Full::new(Bytes::new())),
-      )
-      .await?;
+    shard.put_object_empty(&object_key, headers).await?;
     Ok(true)
   }
 }

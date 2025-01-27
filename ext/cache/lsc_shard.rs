@@ -71,6 +71,35 @@ impl CacheShard {
     }
   }
 
+  pub async fn put_object_empty(
+    &self,
+    object_key: &str,
+    headers: HeaderMap,
+  ) -> Result<(), CacheError> {
+    let body = Either::Right(UnsyncBoxBody::new(Empty::new()));
+    let mut builder = Request::builder()
+      .method(Method::PUT)
+      .uri(format!("{}/objects/{}", self.endpoint, object_key))
+      .header(&AUTHORIZATION, format!("Bearer {}", self.token));
+
+    for (key, val) in headers.iter() {
+      builder = builder.header(key, val)
+    }
+
+    let req = builder.body(body).unwrap();
+
+    let res = self.client.request(req).await?;
+
+    if res.status().is_success() {
+      Ok(())
+    } else {
+      Err(CacheError::RequestFailed {
+        method: "PUT",
+        status: res.status(),
+      })
+    }
+  }
+
   pub async fn put_object(
     &self,
     object_key: &str,
@@ -94,7 +123,7 @@ impl CacheShard {
       Ok(())
     } else {
       Err(CacheError::RequestFailed {
-        method: "GET",
+        method: "PUT",
         status: res.status(),
       })
     }
