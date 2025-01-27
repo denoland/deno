@@ -4623,6 +4623,7 @@ fn op_resolve_inner(
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark_with_args("tsc.op.op_resolve", &args);
   let referrer = state.specifier_map.normalize(&args.base)?;
+  NodeResolutionThreadLocalCache::clear();
   let specifiers = state
     .state_snapshot
     .documents
@@ -4641,8 +4642,8 @@ fn op_resolve_inner(
       })
     })
     .collect();
-  state.performance.measure(mark);
   NodeResolutionThreadLocalCache::clear();
+  state.performance.measure(mark);
   Ok(specifiers)
 }
 
