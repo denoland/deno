@@ -623,6 +623,11 @@ impl WebWorker {
       shared_array_buffer_store: services.shared_array_buffer_store,
       compiled_wasm_module_store: services.compiled_wasm_module_store,
       extensions,
+      #[cfg(feature = "transpile")]
+      extension_transpiler: Some(Rc::new(|specifier, source| {
+        crate::transpile::maybe_transpile_source(specifier, source)
+      })),
+      #[cfg(not(feature = "transpile"))]
       extension_transpiler: None,
       inspector: true,
       feature_checker: Some(services.feature_checker),

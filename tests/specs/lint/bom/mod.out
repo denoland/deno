@@ -5,7 +5,7 @@ error[no-unused-vars]: `t` is never used
   |       ^
   = hint: If this is intentional, prefix it with an underscore like `_t`
 
-  docs: https://lint.deno.land/rules/no-unused-vars
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
 
 
 Found 1 problem

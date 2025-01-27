@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_runtime"
-version = "0.194.0"
+version = "0.195.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -22,12 +22,13 @@ include_js_files_for_snapshotting = [
 ]
 # A dev feature to disable creations and loading of snapshots in favor of
 # loading JS sources at runtime.
-hmr = ["include_js_files_for_snapshotting"]
+hmr = ["include_js_files_for_snapshotting", "transpile"]
 # Signal that only snapshotted JS sources should be used. This will
 # conditionally exclude the runtime source transpilation logic, and add an
 # assertion that a snapshot is provided.
 only_snapshotted_js_sources = ["include_js_files_for_snapshotting"]
-snapshotting = ["deno_ast"]
+snapshot = ["transpile"]
+transpile = ["deno_ast"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
@@ -39,6 +40,7 @@ path = "lib.rs"
 [[example]]
 name = "extension"
 path = "examples/extension/main.rs"
+required-features = ["transpile"]
 
 [dependencies]
 deno_ast = { workspace = true, optional = true }
@@ -63,7 +65,7 @@ deno_os.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_process.workspace = true
-deno_resolver.workspace = true
+deno_resolver = { workspace = true, features = ["sync"] }
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
 deno_tls.workspace = true

@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.1.5"
+version = "2.1.7"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -26,14 +26,14 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 
 [dependencies]
-deno_cache_dir.workspace = true
-deno_config.workspace = true
+deno_cache_dir = { workspace = true, features = ["sync"] }
+deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
 deno_error.workspace = true
 deno_lib.workspace = true
 deno_media_type = { workspace = true, features = ["data_url", "decoding"] }
 deno_npm.workspace = true
-deno_package_json.workspace = true
+deno_package_json = { workspace = true, features = ["sync"] }
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }

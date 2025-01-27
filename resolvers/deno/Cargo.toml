@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_resolver"
-version = "0.17.0"
+version = "0.18.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,10 +14,11 @@ description = "Deno resolution algorithm"
 path = "lib.rs"
 
 [features]
-sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync"]
+sync = ["dashmap", "deno_package_json/sync", "node_resolver/sync", "deno_config/sync", "deno_cache_dir/sync"]
 
 [dependencies]
 anyhow.workspace = true
+async-once-cell.workspace = true
 async-trait.workspace = true
 base32.workspace = true
 boxed_error.workspace = true
@@ -30,8 +31,11 @@ deno_npm.workspace = true
 deno_package_json.workspace = true
 deno_path_util.workspace = true
 deno_semver.workspace = true
+deno_terminal.workspace = true
+futures.workspace = true
 log.workspace = true
 node_resolver.workspace = true
+once_cell.workspace = true
 parking_lot.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true

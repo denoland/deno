@@ -38,8 +38,8 @@ use deno_graph::ModuleGraphError;
 use deno_graph::Resolution;
 use deno_graph::WasmModule;
 use deno_lib::loader::ModuleCodeStringSource;
-use deno_lib::loader::NotSupportedKindInNpmError;
 use deno_lib::loader::NpmModuleLoadError;
+use deno_lib::loader::StrippingTypesNodeModulesError;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::CreateModuleLoaderResult;
@@ -49,10 +49,10 @@ use deno_runtime::code_cache;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -91,7 +91,7 @@ use crate::util::text_encoding::source_map_from_code;
 pub type CliNpmModuleLoader = deno_lib::loader::NpmModuleLoader<
   CliCjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSys,
 >;
@@ -606,12 +606,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else if referrer == "." {
       // main module, use the initial cwd
       deno_core::resolve_path(referrer, &self.shared.initial_cwd)
-        .map_err(|e| e.into())
+        .map_err(|e| JsErrorBox::from_err(e).into())
     } else {
       // this cwd check is slow, so try to avoid it
       let cwd = std::env::current_dir()
         .map_err(|e| JsErrorBox::from_err(UnableToGetCwdError(e)))?;
-      deno_core::resolve_path(referrer, &cwd).map_err(|e| e.into())
+      deno_core::resolve_path(referrer, &cwd)
+        .map_err(|e| JsErrorBox::from_err(e).into())
     }
   }
 
@@ -666,7 +667,12 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(|e| JsErrorBox::from_err(e).into());
+          .map_err(|e| JsErrorBox::from_err(e).into())
+          .and_then(|url_or_path| {
+            url_or_path
+              .into_url()
+              .map_err(|e| JsErrorBox::from_err(e).into())
+          });
       }
     }
 
@@ -695,6 +701,8 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             })
           })?
+          .into_url()
+          .map_err(JsErrorBox::from_err)?
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),
@@ -1257,8 +1265,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
       let specifier = deno_path_util::url_from_file_path(path)
         .map_err(JsErrorBox::from_err)?;
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Err(JsErrorBox::from_err(NotSupportedKindInNpmError {
-          media_type,
+        return Err(JsErrorBox::from_err(StrippingTypesNodeModulesError {
           specifier,
         }));
       }

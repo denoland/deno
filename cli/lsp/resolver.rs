@@ -28,20 +28,21 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
 
 use super::cache::LspCache;
 use super::jsr::JsrCacheResolver;
-use crate::args::create_default_npmrc;
 use crate::args::CliLockfile;
 use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmCachingStrategy;
@@ -206,6 +207,8 @@ impl LspScopeResolver {
                   NodeResolutionKind::Execution,
                 )
               })
+              .ok()?
+              .into_url()
               .ok()?,
           ))
           .0;
@@ -256,25 +259,26 @@ impl LspScopeResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
-                sys: CliSys::default(),
+                sys: factory.sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
             )
           }
           CliNpmResolver::Managed(managed_npm_resolver) => {
             CliNpmResolverCreateOptions::Managed({
+              let sys = CliSys::default();
               let npmrc = self
                 .config_data
                 .as_ref()
                 .and_then(|d| d.npmrc.clone())
-                .unwrap_or_else(create_default_npmrc);
+                .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
               let npm_cache_dir = Arc::new(NpmCacheDir::new(
-                &CliSys::default(),
+                &sys,
                 managed_npm_resolver.global_cache_root_path().to_path_buf(),
                 npmrc.get_all_known_registries_urls(),
               ));
               CliManagedNpmResolverCreateOptions {
-                sys: CliSys::default(),
+                sys,
                 npm_cache_dir,
                 maybe_node_modules_path: managed_npm_resolver
                   .root_node_modules_path()
@@ -520,6 +524,8 @@ impl LspResolver {
           resolution_mode,
           NodeResolutionKind::Types,
         )
+        .ok()?
+        .into_url()
         .ok()?,
     )))
   }
@@ -674,7 +680,11 @@ struct ResolverFactory<'a> {
 impl<'a> ResolverFactory<'a> {
   pub fn new(config_data: Option<&'a Arc<ConfigData>>) -> Self {
     let sys = CliSys::default();
-    let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(sys.clone()));
+    let pkg_json_resolver = Arc::new(CliPackageJsonResolver::new(
+      sys.clone(),
+      // this should be ok because we handle clearing this cache often in the LSP
+      Some(Arc::new(PackageJsonThreadLocalCache)),
+    ));
     Self {
       config_data,
       pkg_json_resolver,
@@ -696,7 +706,7 @@ impl<'a> ResolverFactory<'a> {
     let sys = CliSys::default();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-        sys,
+        sys: self.sys.clone(),
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
           config_data.node_modules_dir.clone().or_else(|| {
@@ -710,7 +720,7 @@ impl<'a> ResolverFactory<'a> {
       let npmrc = self
         .config_data
         .and_then(|d| d.npmrc.clone())
-        .unwrap_or_else(create_default_npmrc);
+        .unwrap_or_else(|| Arc::new(create_default_npmrc(&sys)));
       let npm_cache_dir = Arc::new(NpmCacheDir::new(
         &sys,
         cache.deno_dir().npm_folder_path(),
@@ -917,7 +927,7 @@ impl<'a> ResolverFactory<'a> {
         let npm_resolver = self.services.npm_resolver.as_ref()?;
         Some(Arc::new(CliNodeResolver::new(
           self.in_npm_pkg_checker().clone(),
-          RealIsBuiltInNodeModuleChecker,
+          DenoIsBuiltInNodeModuleChecker,
           npm_resolver.clone(),
           self.pkg_json_resolver.clone(),
           self.sys.clone(),

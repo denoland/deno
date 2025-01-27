@@ -143,3 +143,32 @@ Deno.test({
     );
   },
 });
+
+Deno.test({
+  name: "aes gcm with invalid key length",
+  fn() {
+    assertThrows(
+      () => {
+        crypto.createCipheriv(
+          "aes-128-gcm",
+          Buffer.alloc(15),
+          Buffer.alloc(12),
+        );
+      },
+      Error,
+      "Invalid key length",
+    );
+
+    assertThrows(
+      () => {
+        crypto.createCipheriv(
+          "aes-256-gcm",
+          Buffer.alloc(31),
+          Buffer.alloc(12),
+        );
+      },
+      Error,
+      "Invalid key length",
+    );
+  },
+});
