@@ -240,8 +240,6 @@ impl TypeChecker {
       ));
     }
 
-    log::debug!("Type checking");
-
     // node built-in specifiers use the @types/node package to determine
     // types, so inject that now (the caller should do this after the lockfile
     // has been written)
@@ -250,6 +248,8 @@ impl TypeChecker {
         npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
+
+    log::debug!("Type checking");
 
     // add fast check to the graph before getting the roots
     if options.build_fast_check_graph {
@@ -263,8 +263,9 @@ impl TypeChecker {
 
     let graph = Arc::new(graph);
 
-    // split the roots by compiler options
-    let roots_by_config = self.group_roots_by_tsconfig(&graph, options.lib)?;
+    // split the roots by what we can send to the ts compiler all at once
+    let grouped_roots =
+      self.group_roots_by_compiler_options(&graph, options.lib)?;
 
     Ok(DiagnosticsByFolderIterator(
       DiagnosticsByFolderIteratorInner::Real(DiagnosticsByFolderRealIterator {
@@ -279,21 +280,23 @@ impl TypeChecker {
         type_check_cache: TypeCheckCache::new(
           self.caches.type_checking_cache_db(),
         ),
-        roots_by_config,
+        grouped_roots,
         options,
         seen_diagnotics: Default::default(),
       }),
     ))
   }
 
-  fn group_roots_by_tsconfig<'a>(
+  /// Groups the roots based on the compiler options, which includes the
+  /// resolved TsConfig and resolved compilerOptions.types
+  fn group_roots_by_compiler_options<'a>(
     &'a self,
     graph: &ModuleGraph,
     lib: TsTypeLib,
-  ) -> Result<IndexMap<ConfigKey<'a>, FolderInfo>, CheckError> {
+  ) -> Result<IndexMap<CheckGroupKey<'a>, CheckGroupInfo>, CheckError> {
     let mut imports_for_specifier: HashMap<Arc<Url>, Rc<Vec<Url>>> =
       HashMap::with_capacity(self.tsconfig_resolver.folder_count());
-    let mut roots_by_config: IndexMap<_, FolderInfo> =
+    let mut roots_by_config: IndexMap<_, CheckGroupInfo> =
       IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
     for root in &graph.roots {
       let folder = self.tsconfig_resolver.folder_for_specifier(root);
@@ -312,14 +315,14 @@ impl TypeChecker {
           }
         };
       let tsconfig = folder.lib_tsconfig(lib)?;
-      let key = ConfigKey {
+      let key = CheckGroupKey {
         ts_config: tsconfig,
         imports,
       };
       let entry = roots_by_config.entry(key);
       let entry = match entry {
         indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
-        indexmap::map::Entry::Vacant(entry) => entry.insert(FolderInfo {
+        indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroupInfo {
           roots: Default::default(),
           // this is slightly hacky. It's used as the referrer for resolving
           // npm imports in the key
@@ -376,14 +379,14 @@ fn resolve_graph_imports_for_workspace_dir(
   specifiers
 }
 
-/// Key to use to group folders together by config.
+/// Key to use to group roots together by config.
 #[derive(Debug, Hash, PartialEq, Eq)]
-struct ConfigKey<'a> {
+struct CheckGroupKey<'a> {
   ts_config: &'a Arc<TsConfig>,
   imports: Rc<Vec<Url>>,
 }
 
-struct FolderInfo {
+struct CheckGroupInfo {
   roots: Vec<Url>,
   referrer: Url,
 }
@@ -425,7 +428,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   npm_resolver: &'a CliNpmResolver,
   tsconfig_resolver: &'a TsConfigResolver,
   type_check_cache: TypeCheckCache,
-  roots_by_config: IndexMap<ConfigKey<'a>, FolderInfo>,
+  grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
   seen_diagnotics: HashSet<String>,
@@ -436,8 +439,8 @@ impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
   type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let (key, folder) = self.roots_by_config.shift_remove_index(0)?;
-    let mut result = self.check_diagnostics_in_folder(&key, folder);
+    let (group_key, group_info) = self.grouped_roots.shift_remove_index(0)?;
+    let mut result = self.check_diagnostics_in_folder(&group_key, group_info);
     if let Ok(diagnostics) = &mut result {
       diagnostics.retain(|d| {
         if let (Some(file_name), Some(start)) = (&d.file_name, &d.start) {
@@ -464,8 +467,8 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::too_many_arguments)]
   fn check_diagnostics_in_folder(
     &self,
-    config_key: &'a ConfigKey<'a>,
-    folder_info: FolderInfo,
+    group_key: &'a CheckGroupKey<'a>,
+    group_info: CheckGroupInfo,
   ) -> Result<Diagnostics, CheckError> {
     fn log_provided_roots(provided_roots: &[Url]) {
       for root in provided_roots {
@@ -478,7 +481,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     // walk the graph
-    let ts_config = config_key.ts_config;
+    let ts_config = group_key.ts_config;
     let mut graph_walker = GraphWalker::new(
       &self.graph,
       self.sys,
@@ -489,9 +492,9 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       ts_config.as_ref(),
       self.options.type_check_mode,
     );
-    let mut provided_roots = folder_info.roots;
-    for import in config_key.imports.iter() {
-      graph_walker.add_config_import(import, &folder_info.referrer);
+    let mut provided_roots = group_info.roots;
+    for import in group_key.imports.iter() {
+      graph_walker.add_config_import(import, &group_info.referrer);
     }
 
     for root in &provided_roots {
@@ -520,7 +523,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       // do not type check if we know this is type checked
       if let Some(check_hash) = maybe_check_hash {
         if self.type_check_cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked {}", folder_info.referrer);
+          log::debug!("Already type checked {}", group_info.referrer);
           return Ok(Default::default());
         }
       }
