@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core } from "ext:core/mod.js";
 
@@ -32,7 +32,7 @@ import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import * as imageData from "ext:deno_web/16_image_data.js";
 import process from "node:process";
-import Buffer from "node:buffer";
+import { Buffer } from "node:buffer";
 import { clearImmediate, setImmediate } from "node:timers";
 import { loadWebGPU } from "ext:deno_webgpu/00_init.js";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -479,13 +479,13 @@ export class ClientHttp2Session extends Http2Session {
 
     socket.on("error", socketOnError);
     socket.on("close", socketOnClose);
+
+    socket[kHandle].pauseOnCreate = true;
     const connPromise = new Promise((resolve) => {
       const eventName = url.startsWith("https") ? "secureConnect" : "connect";
       socket.once(eventName, () => {
         const rid = socket[kHandle][kStreamBaseField][internalRidSymbol];
-        nextTick(() => {
-          resolve(rid);
-        });
+        nextTick(() => resolve(rid));
       });
     });
     socket[kSession] = this;

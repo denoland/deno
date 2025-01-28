@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assert, assertEquals, assertThrows, fail } from "./test_util.ts";
 
 const servePort = 4248;
@@ -262,7 +262,7 @@ Deno.test({
       socket.onopen = () => socket.send("Hello");
       socket.onmessage = () => {
         socket.send("Bye");
-        socket.close();
+        socket.close(1000);
       };
       socket.onclose = () => ac.abort();
       socket.onerror = () => fail();
@@ -288,7 +288,8 @@ Deno.test({
       seenBye = true;
     }
   };
-  ws.onclose = () => {
+  ws.onclose = (e) => {
+    assertEquals(e.code, 1000);
     deferred.resolve();
   };
   await Promise.all([deferred.promise, server.finished]);
@@ -805,4 +806,19 @@ Deno.test("Close connection", async () => {
 
   await server.finished;
   conn.close();
+});
+
+Deno.test("send to a closed socket", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4242");
+  const blob = new Blob(["foo"]);
+  ws.onerror = () => fail();
+  ws.onopen = () => {
+    ws.close();
+    ws.send(blob);
+  };
+  ws.onclose = () => {
+    resolve();
+  };
+  await promise;
 });

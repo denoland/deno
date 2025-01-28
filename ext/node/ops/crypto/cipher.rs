@@ -1,16 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
+use aes::cipher::KeySizeUser;
+use aes::cipher::StreamCipher;
 use deno_core::Resource;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 type Tag = Option<Vec<u8>>;
 
@@ -25,6 +27,9 @@ enum Cipher {
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
+  Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
+  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -36,6 +41,9 @@ enum Decipher {
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
+  Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
+  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -47,12 +55,15 @@ pub struct DecipherContext {
   decipher: Rc<RefCell<Decipher>>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherContextError {
+  #[class(type)]
   #[error("Cipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Cipher(#[from] CipherError),
 }
@@ -94,12 +105,15 @@ impl CipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherContextError {
+  #[class(type)]
   #[error("Decipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Decipher(#[from] DecipherError),
 }
@@ -150,16 +164,21 @@ impl Resource for DecipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot pad the input data")]
   CannotPadInputData,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -172,15 +191,15 @@ impl Cipher {
   ) -> Result<Self, CipherError> {
     use Cipher::*;
     Ok(match algorithm_name {
-      "aes-128-cbc" => {
+      "aes128" | "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
+        if key.len() != aes::Aes128::key_size() {
+          return Err(CipherError::InvalidKeyLength);
         }
 
         let cipher =
@@ -189,8 +208,8 @@ impl Cipher {
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
+        if key.len() != aes::Aes256::key_size() {
+          return Err(CipherError::InvalidKeyLength);
         }
 
         let cipher =
@@ -207,6 +226,33 @@ impl Cipher {
         }
 
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
+      }
+      "aes-256-ctr" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-128-ctr" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
@@ -266,6 +312,15 @@ impl Cipher {
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      Aes256Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes128Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
       }
     }
   }
@@ -347,6 +402,7 @@ impl Cipher {
         );
         Ok(None)
       }
+      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
     }
   }
 
@@ -360,22 +416,30 @@ impl Cipher {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot unpad the input data")]
   CannotUnpadInputData,
+  #[class(type)]
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
   SetAutoPaddingFalseAes128GcmUnsupported,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
   SetAutoPaddingFalseAes256GcmUnsupported,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -395,8 +459,8 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
+        if key.len() != aes::Aes128::key_size() {
+          return Err(DecipherError::InvalidKeyLength);
         }
 
         let decipher =
@@ -405,8 +469,8 @@ impl Decipher {
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
+        if key.len() != aes::Aes256::key_size() {
+          return Err(DecipherError::InvalidKeyLength);
         }
 
         let decipher =
@@ -423,6 +487,33 @@ impl Decipher {
         }
 
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
+      }
+      "aes-256-ctr" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-128-ctr" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
       }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()))
@@ -485,6 +576,15 @@ impl Decipher {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
       }
+      Aes256Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes128Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
     }
   }
 
@@ -497,6 +597,11 @@ impl Decipher {
     auth_tag: &[u8],
   ) -> Result<(), DecipherError> {
     use Decipher::*;
+
+    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+      return Ok(());
+    }
+
     match (self, auto_pad) {
       (Aes128Cbc(decryptor), true) => {
         assert!(input.len() == 16);
@@ -588,6 +693,18 @@ impl Decipher {
           GenericArray::from_slice(input),
           GenericArray::from_mut_slice(output),
         );
+        Ok(())
+      }
+      (Aes256Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (Aes192Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (Aes128Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
         Ok(())
       }
     }

@@ -1,27 +1,42 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::mem::MaybeUninit;
 
-use crate::NodePermissions;
 use deno_core::op2;
 use deno_core::OpState;
+use deno_permissions::PermissionCheckError;
+use sys_traits::EnvHomeDir;
+
+use crate::NodePermissions;
 
 mod cpus;
 pub mod priority;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum OsError {
+  #[class(inherit)]
   #[error(transparent)]
-  Priority(priority::PriorityError),
+  Priority(#[inherit] priority::PriorityError),
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(#[from] deno_permissions::PermissionCheckError),
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+  #[class(type)]
   #[error("Failed to get cpu info")]
   FailedToGetCpuInfo,
+  #[class(inherit)]
   #[error("Failed to get user info")]
-  FailedToGetUserInfo(#[source] std::io::Error),
+  FailedToGetUserInfo(
+    #[source]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_os_get_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -37,7 +52,7 @@ where
   priority::get_priority(pid).map_err(OsError::Priority)
 }
 
-#[op2(fast)]
+#[op2(fast, stack_trace)]
 pub fn op_node_os_set_priority<P>(
   state: &mut OpState,
   pid: u32,
@@ -193,7 +208,7 @@ fn get_user_info(_uid: u32) -> Result<UserInfo, OsError> {
   })
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_os_user_info<P>(
   state: &mut OpState,
@@ -212,10 +227,8 @@ where
   get_user_info(uid)
 }
 
-#[op2(fast)]
-pub fn op_geteuid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+#[op2(fast, stack_trace)]
+pub fn op_geteuid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -233,10 +246,8 @@ where
   Ok(euid)
 }
 
-#[op2(fast)]
-pub fn op_getegid<P>(
-  state: &mut OpState,
-) -> Result<u32, deno_core::error::AnyError>
+#[op2(fast, stack_trace)]
+pub fn op_getegid<P>(state: &mut OpState) -> Result<u32, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -254,7 +265,7 @@ where
   Ok(egid)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_cpus<P>(state: &mut OpState) -> Result<Vec<cpus::CpuInfo>, OsError>
 where
@@ -268,11 +279,11 @@ where
   cpus::cpu_info().ok_or(OsError::FailedToGetCpuInfo)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[string]
 pub fn op_homedir<P>(
   state: &mut OpState,
-) -> Result<Option<String>, deno_core::error::AnyError>
+) -> Result<Option<String>, PermissionCheckError>
 where
   P: NodePermissions + 'static,
 {
@@ -281,5 +292,9 @@ where
     permissions.check_sys("homedir", "node:os.homedir()")?;
   }
 
-  Ok(home::home_dir().map(|path| path.to_string_lossy().to_string()))
+  Ok(
+    sys_traits::impls::RealSys
+      .env_home_dir()
+      .map(|path| path.to_string_lossy().to_string()),
+  )
 }

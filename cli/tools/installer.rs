@@ -1,48 +1,47 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::resolve_no_prompt;
-use crate::args::AddFlags;
-use crate::args::CaData;
-use crate::args::CacheSetting;
-use crate::args::ConfigFlag;
-use crate::args::Flags;
-use crate::args::InstallFlags;
-use crate::args::InstallFlagsGlobal;
-use crate::args::InstallFlagsLocal;
-use crate::args::InstallKind;
-use crate::args::TypeCheckMode;
-use crate::args::UninstallFlags;
-use crate::args::UninstallKind;
-use crate::factory::CliFactory;
-use crate::file_fetcher::FileFetcher;
-use crate::graph_container::ModuleGraphContainer;
-use crate::http_util::HttpClientProvider;
-use crate::jsr::JsrFetchResolver;
-use crate::npm::NpmFetchResolver;
-use crate::util::fs::canonicalize_path_maybe_not_exists;
-
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
-use deno_core::error::AnyError;
-use deno_core::resolve_url_or_path;
-use deno_core::url::Url;
-use deno_semver::npm::NpmPackageReqReference;
-use log::Level;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use regex::RegexBuilder;
 use std::env;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::Write;
-use std::path::Path;
-use std::path::PathBuf;
-
 #[cfg(not(windows))]
 use std::os::unix::fs::PermissionsExt;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
+
+use deno_cache_dir::file_fetcher::CacheSetting;
+use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::resolve_url_or_path;
+use deno_core::url::Url;
+use deno_lib::args::CaData;
+use deno_semver::npm::NpmPackageReqReference;
+use log::Level;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use regex::RegexBuilder;
+
+use crate::args::resolve_no_prompt;
+use crate::args::AddFlags;
+use crate::args::ConfigFlag;
+use crate::args::Flags;
+use crate::args::InstallFlags;
+use crate::args::InstallFlagsGlobal;
+use crate::args::InstallFlagsLocal;
+use crate::args::TypeCheckMode;
+use crate::args::UninstallFlags;
+use crate::args::UninstallKind;
+use crate::factory::CliFactory;
+use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::ModuleGraphContainer;
+use crate::http_util::HttpClientProvider;
+use crate::jsr::JsrFetchResolver;
+use crate::npm::NpmFetchResolver;
+use crate::util::fs::canonicalize_path_maybe_not_exists;
 
 static EXEC_NAME_RE: Lazy<Regex> = Lazy::new(|| {
   RegexBuilder::new(r"^[a-z0-9][\w-]*$")
@@ -55,9 +54,7 @@ fn validate_name(exec_name: &str) -> Result<(), AnyError> {
   if EXEC_NAME_RE.is_match(exec_name) {
     Ok(())
   } else {
-    Err(generic_error(format!(
-      "Invalid executable name: {exec_name}"
-    )))
+    Err(anyhow!("Invalid executable name: {exec_name}"))
   }
 }
 
@@ -118,10 +115,16 @@ exec deno {} "$@"
   Ok(())
 }
 
-fn get_installer_root() -> Result<PathBuf, io::Error> {
-  if let Ok(env_dir) = env::var("DENO_INSTALL_ROOT") {
+fn get_installer_root() -> Result<PathBuf, AnyError> {
+  if let Some(env_dir) = env::var_os("DENO_INSTALL_ROOT") {
     if !env_dir.is_empty() {
-      return canonicalize_path_maybe_not_exists(&PathBuf::from(env_dir));
+      let env_dir = PathBuf::from(env_dir);
+      return canonicalize_path_maybe_not_exists(&env_dir).with_context(|| {
+        format!(
+          "Canonicalizing DENO_INSTALL_ROOT ('{}').",
+          env_dir.display()
+        )
+      });
     }
   }
   // Note: on Windows, the $HOME environment variable may be set by users or by
@@ -162,11 +165,11 @@ pub async fn infer_name_from_url(
     let npm_ref = npm_ref.into_inner();
     if let Some(sub_path) = npm_ref.sub_path {
       if !sub_path.contains('/') {
-        return Some(sub_path);
+        return Some(sub_path.to_string());
       }
     }
     if !npm_ref.req.name.contains('/') {
-      return Some(npm_ref.req.name);
+      return Some(npm_ref.req.name.into_string());
     }
     return None;
   }
@@ -224,7 +227,7 @@ pub async fn uninstall(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   }
 
@@ -248,10 +251,10 @@ pub async fn uninstall(
   }
 
   if !removed {
-    return Err(generic_error(format!(
+    return Err(anyhow!(
       "No installation found for {}",
       uninstall_flags.name
-    )));
+    ));
   }
 
   // There might be some extra files to delete
@@ -303,9 +306,7 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-        npm_resolver.ensure_no_pkg_json_dep_errors()?;
-      }
+      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
@@ -339,11 +340,11 @@ pub async fn install_command(
   flags: Arc<Flags>,
   install_flags: InstallFlags,
 ) -> Result<(), AnyError> {
-  match install_flags.kind {
-    InstallKind::Global(global_flags) => {
+  match install_flags {
+    InstallFlags::Global(global_flags) => {
       install_global(flags, global_flags).await
     }
-    InstallKind::Local(local_flags) => {
+    InstallFlags::Local(local_flags) => {
       if let InstallFlagsLocal::Add(add_flags) = &local_flags {
         check_if_installs_a_single_package_globally(Some(add_flags))?;
       }
@@ -359,20 +360,22 @@ async fn install_global(
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone());
 
+  let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
   let deps_http_cache = factory.global_http_cache()?;
-  let mut deps_file_fetcher = FileFetcher::new(
+  let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
-    CacheSetting::ReloadAll,
-    true,
     http_client.clone(),
+    factory.sys(),
     Default::default(),
     None,
+    true,
+    CacheSetting::ReloadAll,
+    log::Level::Trace,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
+  let npmrc = factory.npmrc()?;
 
-  deps_file_fetcher.set_download_log_level(log::Level::Trace);
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
   let npm_resolver = Arc::new(NpmFetchResolver::new(
@@ -381,20 +384,22 @@ async fn install_global(
   ));
 
   let entry_text = install_flags_global.module_url.as_str();
-  let req = super::registry::AddRmPackageReq::parse(entry_text);
-
-  // found a package requirement but missing the prefix
-  if let Ok(Err(package_req)) = req {
-    if jsr_resolver.req_to_nv(&package_req).await.is_some() {
-      bail!(
-        "{entry_text} is missing a prefix. Did you mean `{}`?",
-        crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
-      );
-    } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
-      bail!(
-        "{entry_text} is missing a prefix. Did you mean `{}`?",
-        crate::colors::yellow(format!("deno install -g npm:{package_req}"))
-      );
+  if !cli_options.initial_cwd().join(entry_text).exists() {
+    // check for package requirement missing prefix
+    if let Ok(Err(package_req)) =
+      super::registry::AddRmPackageReq::parse(entry_text)
+    {
+      if jsr_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g jsr:{package_req}"))
+        );
+      } else if npm_resolver.req_to_nv(&package_req).await.is_some() {
+        bail!(
+          "{entry_text} is missing a prefix. Did you mean `{}`?",
+          crate::colors::yellow(format!("deno install -g npm:{package_req}"))
+        );
+      }
     }
   }
 
@@ -403,6 +408,12 @@ async fn install_global(
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
+
+  if matches!(flags.config_flag, ConfigFlag::Discover)
+    && cli_options.workspace().deno_jsons().next().is_some()
+  {
+    log::warn!("{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.", crate::colors::yellow("Warning"));
+  }
 
   // create the install shim
   create_install_shim(http_client, &flags, install_flags_global).await
@@ -420,14 +431,14 @@ async fn create_install_shim(
   // ensure directory exists
   if let Ok(metadata) = fs::metadata(&shim_data.installation_dir) {
     if !metadata.is_dir() {
-      return Err(generic_error("Installation path is not a directory"));
+      return Err(anyhow!("Installation path is not a directory"));
     }
   } else {
     fs::create_dir_all(&shim_data.installation_dir)?;
   };
 
   if shim_data.file_path.exists() && !install_flags_global.force {
-    return Err(generic_error(
+    return Err(anyhow!(
       "Existing installation found. Aborting (Use -f to overwrite).",
     ));
   };
@@ -489,7 +500,7 @@ async fn resolve_shim_data(
 
   let name = match name {
     Some(name) => name,
-    None => return Err(generic_error(
+    None => return Err(anyhow!(
       "An executable name was not provided. One could not be inferred from the URL. Aborting.",
     )),
   };
@@ -521,9 +532,7 @@ async fn resolve_shim_data(
       let log_level = match log_level {
         Level::Debug => "debug",
         Level::Info => "info",
-        _ => {
-          return Err(generic_error(format!("invalid log level {log_level}")))
-        }
+        _ => return Err(anyhow!(format!("invalid log level {log_level}"))),
       };
       executable_args.push(log_level.to_string());
     }
@@ -588,11 +597,22 @@ async fn resolve_shim_data(
     let copy_path = get_hidden_file_with_ext(&file_path, "deno.json");
     executable_args.push("--config".to_string());
     executable_args.push(copy_path.to_str().unwrap().to_string());
-    extra_files.push((
-      copy_path,
-      fs::read_to_string(config_path)
-        .with_context(|| format!("error reading {config_path}"))?,
-    ));
+    let mut config_text = fs::read_to_string(config_path)
+      .with_context(|| format!("error reading {config_path}"))?;
+    // always remove the import map field because when someone specifies `--import-map` we
+    // don't want that file to be attempted to be loaded and when they don't specify that
+    // (which is just something we haven't implemented yet)
+    if let Some(new_text) = remove_import_map_field_from_text(&config_text) {
+      if flags.import_map_path.is_none() {
+        log::warn!(
+          "{} \"importMap\" field in the specified config file we be ignored. Use the --import-map flag instead.",
+          crate::colors::yellow("Warning"),
+        );
+      }
+      config_text = new_text;
+    }
+
+    extra_files.push((copy_path, config_text));
   } else {
     executable_args.push("--no-config".to_string());
   }
@@ -632,6 +652,16 @@ async fn resolve_shim_data(
   })
 }
 
+fn remove_import_map_field_from_text(config_text: &str) -> Option<String> {
+  let value =
+    jsonc_parser::cst::CstRootNode::parse(config_text, &Default::default())
+      .ok()?;
+  let root_value = value.object_value()?;
+  let import_map_value = root_value.get("importMap")?;
+  import_map_value.remove();
+  Some(value.to_string())
+}
+
 fn get_hidden_file_with_ext(file_path: &Path, ext: &str) -> PathBuf {
   // use a dot file to prevent the file from showing up in some
   // users shell auto-complete since this directory is on the PATH
@@ -656,16 +686,17 @@ fn is_in_path(dir: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
+  use std::process::Command;
 
+  use deno_lib::args::UnstableConfig;
+  use test_util::testdata_path;
+  use test_util::TempDir;
+
+  use super::*;
   use crate::args::ConfigFlag;
   use crate::args::PermissionFlags;
   use crate::args::UninstallFlagsGlobal;
-  use crate::args::UnstableConfig;
   use crate::util::fs::canonicalize_path;
-  use std::process::Command;
-  use test_util::testdata_path;
-  use test_util::TempDir;
 
   #[tokio::test]
   async fn install_infer_name_from_url() {
@@ -1584,5 +1615,18 @@ mod tests {
       file_path = file_path.with_extension("cmd");
       assert!(!file_path.exists());
     }
+  }
+
+  #[test]
+  fn test_remove_import_map_field_from_text() {
+    assert_eq!(
+      remove_import_map_field_from_text(
+        r#"{
+    "importMap": "./value.json"
+}"#,
+      )
+      .unwrap(),
+      "{}"
+    );
   }
 }

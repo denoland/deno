@@ -1,16 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::error::AnyError;
 use deno_core::unsync::spawn;
+pub use repl::ReplCompletionItem;
+pub use repl::ReplLanguageServer;
 use tower_lsp::LspService;
 use tower_lsp::Server;
 
+use self::diagnostics::should_send_diagnostic_batch_index_notifications;
 use crate::lsp::language_server::LanguageServer;
 use crate::util::sync::AsyncFlag;
-pub use repl::ReplCompletionItem;
-pub use repl::ReplLanguageServer;
-
-use self::diagnostics::should_send_diagnostic_batch_index_notifications;
 
 mod analysis;
 mod cache;
@@ -56,9 +55,6 @@ pub async fn start() -> Result<(), AnyError> {
     LanguageServer::performance_request,
   )
   .custom_method(lsp_custom::TASK_REQUEST, LanguageServer::task_definitions)
-  // TODO(nayeemrmn): Rename this to `deno/taskDefinitions` in vscode_deno and
-  // remove this alias.
-  .custom_method("deno/task", LanguageServer::task_definitions)
   .custom_method(testing::TEST_RUN_REQUEST, LanguageServer::test_run_request)
   .custom_method(
     testing::TEST_RUN_CANCEL_REQUEST,

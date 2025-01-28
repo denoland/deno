@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
@@ -549,6 +549,57 @@ Deno.test({
   });
 
   assert(renderPass);
+
+  device.destroy();
+});
+
+Deno.test({
+  ignore: isWsl || isCIWithoutGPU,
+}, async function adapterLimitsAreNumbers() {
+  const limitNames = [
+    "maxTextureDimension1D",
+    "maxTextureDimension2D",
+    "maxTextureDimension3D",
+    "maxTextureArrayLayers",
+    "maxBindGroups",
+    "maxDynamicUniformBuffersPerPipelineLayout",
+    "maxDynamicStorageBuffersPerPipelineLayout",
+    "maxSampledTexturesPerShaderStage",
+    "maxSamplersPerShaderStage",
+    "maxStorageBuffersPerShaderStage",
+    "maxStorageTexturesPerShaderStage",
+    "maxUniformBuffersPerShaderStage",
+    "maxUniformBufferBindingSize",
+    "maxStorageBufferBindingSize",
+    "minUniformBufferOffsetAlignment",
+    "minStorageBufferOffsetAlignment",
+    "maxVertexBuffers",
+    "maxVertexAttributes",
+    "maxVertexBufferArrayStride",
+    "maxInterStageShaderComponents",
+    "maxComputeWorkgroupStorageSize",
+    "maxComputeInvocationsPerWorkgroup",
+    "maxComputeWorkgroupSizeX",
+    "maxComputeWorkgroupSizeY",
+    "maxComputeWorkgroupSizeZ",
+    "maxComputeWorkgroupsPerDimension",
+  ];
+
+  const adapter = await navigator.gpu.requestAdapter();
+  assert(adapter);
+
+  for (const limitName of limitNames) {
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    assertEquals(typeof adapter.limits[limitName], "number");
+  }
+
+  const device = await adapter.requestDevice({
+    // deno-lint-ignore ban-ts-comment
+    // @ts-ignore
+    requiredLimits: adapter.limits,
+  });
+  assert(device);
 
   device.destroy();
 });

@@ -1,17 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::args::DocFlags;
-use crate::args::DocHtmlFlag;
-use crate::args::DocSourceFileFlag;
-use crate::args::Flags;
-use crate::colors;
-use crate::display;
-use crate::factory::CliFactory;
-use crate::graph_util::graph_exit_integrity_errors;
-use crate::graph_util::graph_walk_errors;
-use crate::graph_util::GraphWalkErrorsOptions;
-use crate::tsc::get_types_declaration_file_text;
-use crate::util::fs::collect_specifiers;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
 use deno_ast::diagnostics::Diagnostic;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -24,16 +16,29 @@ use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
 use deno_graph::source::NullFileSystem;
+use deno_graph::CheckJsOption;
 use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
 use deno_graph::ModuleSpecifier;
+use deno_lib::version::DENO_VERSION_INFO;
 use doc::html::ShortPath;
 use doc::DocDiagnostic;
 use indexmap::IndexMap;
-use std::collections::BTreeMap;
-use std::rc::Rc;
-use std::sync::Arc;
+
+use crate::args::DocFlags;
+use crate::args::DocHtmlFlag;
+use crate::args::DocSourceFileFlag;
+use crate::args::Flags;
+use crate::colors;
+use crate::display;
+use crate::factory::CliFactory;
+use crate::graph_util::graph_exit_integrity_errors;
+use crate::graph_util::graph_walk_errors;
+use crate::graph_util::GraphWalkErrorsOptions;
+use crate::sys::CliSys;
+use crate::tsc::get_types_declaration_file_text;
+use crate::util::fs::collect_specifiers;
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
@@ -59,10 +64,11 @@ async fn generate_doc_nodes_for_builtin_types(
     )],
     Vec::new(),
   );
+  let roots = vec![source_file_specifier.clone()];
   let mut graph = deno_graph::ModuleGraph::new(GraphKind::TypesOnly);
   graph
     .build(
-      vec![source_file_specifier.clone()],
+      roots.clone(),
       &loader,
       deno_graph::BuildOptions {
         imports: Vec::new(),
@@ -82,14 +88,13 @@ async fn generate_doc_nodes_for_builtin_types(
   let doc_parser = doc::DocParser::new(
     &graph,
     parser,
+    &roots,
     doc::DocParserOptions {
       diagnostics: false,
       private: doc_flags.private,
     },
   )?;
-  let nodes = doc_parser.parse_module(&source_file_specifier)?.definitions;
-
-  Ok(IndexMap::from([(source_file_specifier, nodes)]))
+  Ok(doc_parser.parse()?)
 }
 
 pub async fn doc(
@@ -114,7 +119,7 @@ pub async fn doc(
     }
     DocSourceFileFlag::Paths(ref source_files) => {
       let module_graph_creator = factory.module_graph_creator().await?;
-      let fs = factory.fs();
+      let sys = CliSys::default();
 
       let module_specifiers = collect_specifiers(
         FilePatterns {
@@ -131,16 +136,20 @@ pub async fn doc(
         |_| true,
       )?;
       let graph = module_graph_creator
-        .create_graph(GraphKind::TypesOnly, module_specifiers.clone())
+        .create_graph(
+          GraphKind::TypesOnly,
+          module_specifiers.clone(),
+          crate::graph_util::NpmCachingStrategy::Eager,
+        )
         .await?;
 
       graph_exit_integrity_errors(&graph);
       let errors = graph_walk_errors(
         &graph,
-        fs,
+        &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
-          check_js: false,
+          check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
         },
       );
@@ -151,19 +160,13 @@ pub async fn doc(
       let doc_parser = doc::DocParser::new(
         &graph,
         &capturing_parser,
+        &module_specifiers,
         doc::DocParserOptions {
           private: doc_flags.private,
           diagnostics: doc_flags.lint,
         },
       )?;
-
-      let mut doc_nodes_by_url =
-        IndexMap::with_capacity(module_specifiers.len());
-
-      for module_specifier in module_specifiers {
-        let nodes = doc_parser.parse_with_reexports(&module_specifier)?;
-        doc_nodes_by_url.insert(module_specifier, nodes);
-      }
+      let doc_nodes_by_url = doc_parser.parse()?;
 
       if doc_flags.lint {
         let diagnostics = doc_parser.take_diagnostics();
@@ -184,34 +187,18 @@ pub async fn doc(
       .await?;
       let (_, deno_ns) = deno_ns.into_iter().next().unwrap();
 
-      let short_path = Rc::new(ShortPath::new(
-        ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
-        None,
-        None,
-        None,
-      ));
-
-      deno_doc::html::compute_namespaced_symbols(
-        &deno_ns
-          .into_iter()
-          .map(|node| deno_doc::html::DocNodeWithContext {
-            origin: short_path.clone(),
-            ns_qualifiers: Rc::new([]),
-            kind_with_drilldown:
-              deno_doc::html::DocNodeKindWithDrilldown::Other(node.kind()),
-            inner: Rc::new(node),
-            drilldown_name: None,
-            parent: None,
-          })
-          .collect::<Vec<_>>(),
-      )
+      Some(deno_ns)
     } else {
-      Default::default()
+      None
     };
+
+    let mut main_entrypoint = None;
 
     let rewrite_map =
       if let Some(config_file) = cli_options.start_dir.maybe_deno_json() {
         let config = config_file.to_exports_config()?;
+
+        main_entrypoint = config.get_resolved(".").ok().flatten();
 
         let rewrite_map = config
           .clone()
@@ -240,6 +227,7 @@ pub async fn doc(
       html_options,
       deno_ns,
       rewrite_map,
+      main_entrypoint,
     )
   } else {
     let modules_len = doc_nodes_by_url.len();
@@ -294,7 +282,7 @@ impl deno_doc::html::HrefResolver for DocResolver {
     if self.deno_ns.contains_key(symbol) {
       Some(format!(
         "https://deno.land/api@v{}?s={}",
-        env!("CARGO_PKG_VERSION"),
+        DENO_VERSION_INFO.deno,
         symbol.join(".")
       ))
     } else {
@@ -334,14 +322,14 @@ impl deno_doc::html::HrefResolver for DocResolver {
           let name = &res.req().name;
           Some((
             format!("https://www.npmjs.com/package/{name}"),
-            name.to_owned(),
+            name.to_string(),
           ))
         }
         "jsr" => {
           let res =
             deno_semver::jsr::JsrPackageReqReference::from_str(module).ok()?;
           let name = &res.req().name;
-          Some((format!("https://jsr.io/{name}"), name.to_owned()))
+          Some((format!("https://jsr.io/{name}"), name.to_string()))
         }
         _ => None,
       }
@@ -381,8 +369,9 @@ impl UsageComposer for DocComposer {
 fn generate_docs_directory(
   doc_nodes_by_url: IndexMap<ModuleSpecifier, Vec<doc::DocNode>>,
   html_options: &DocHtmlFlag,
-  deno_ns: std::collections::HashMap<Vec<String>, Option<Rc<ShortPath>>>,
+  built_in_types: Option<Vec<doc::DocNode>>,
   rewrite_map: Option<IndexMap<ModuleSpecifier, String>>,
+  main_entrypoint: Option<ModuleSpecifier>,
 ) -> Result<(), AnyError> {
   let cwd = std::env::current_dir().context("Failed to get CWD")?;
   let output_dir_resolved = cwd.join(&html_options.output);
@@ -413,12 +402,12 @@ fn generate_docs_directory(
     None
   };
 
-  let options = deno_doc::html::GenerateOptions {
+  let mut options = deno_doc::html::GenerateOptions {
     package_name: html_options.name.clone(),
-    main_entrypoint: None,
+    main_entrypoint,
     rewrite_map,
     href_resolver: Rc::new(DocResolver {
-      deno_ns,
+      deno_ns: Default::default(),
       strip_trailing_html: html_options.strip_trailing_html,
     }),
     usage_composer: Rc::new(DocComposer),
@@ -427,33 +416,7 @@ fn generate_docs_directory(
     symbol_redirect_map,
     default_symbol_map,
     markdown_renderer: deno_doc::html::comrak::create_renderer(
-      None,
-      Some(Box::new(|ammonia| {
-        ammonia.add_allowed_classes(
-          "code",
-          &[
-            "language-ts",
-            "language-tsx",
-            "language-typescript",
-            "language-js",
-            "language-jsx",
-            "language-javascript",
-            "language-bash",
-            "language-shell",
-            "language-md",
-            "language-markdown",
-            "language-rs",
-            "language-rust",
-            "language-html",
-            "language-xml",
-            "language-css",
-            "language-json",
-            "language-regex",
-            "language-svg",
-          ],
-        );
-      })),
-      None,
+      None, None, None,
     ),
     markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
     head_inject: Some(Rc::new(|root| {
@@ -464,7 +427,58 @@ fn generate_docs_directory(
     })),
   };
 
-  let mut files = deno_doc::html::generate(options, doc_nodes_by_url)
+  if let Some(built_in_types) = built_in_types {
+    let ctx = deno_doc::html::GenerateCtx::create_basic(
+      deno_doc::html::GenerateOptions {
+        package_name: None,
+        main_entrypoint: Some(
+          ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
+        ),
+        href_resolver: Rc::new(DocResolver {
+          deno_ns: Default::default(),
+          strip_trailing_html: false,
+        }),
+        usage_composer: Rc::new(DocComposer),
+        rewrite_map: Default::default(),
+        category_docs: Default::default(),
+        disable_search: Default::default(),
+        symbol_redirect_map: Default::default(),
+        default_symbol_map: Default::default(),
+        markdown_renderer: deno_doc::html::comrak::create_renderer(
+          None, None, None,
+        ),
+        markdown_stripper: Rc::new(deno_doc::html::comrak::strip),
+        head_inject: None,
+      },
+      IndexMap::from([(
+        ModuleSpecifier::parse("file:///lib.deno.d.ts").unwrap(),
+        built_in_types,
+      )]),
+    )?;
+
+    let deno_ns = deno_doc::html::compute_namespaced_symbols(
+      &ctx,
+      Box::new(
+        ctx
+          .doc_nodes
+          .values()
+          .next()
+          .unwrap()
+          .iter()
+          .map(std::borrow::Cow::Borrowed),
+      ),
+    );
+
+    options.href_resolver = Rc::new(DocResolver {
+      deno_ns,
+      strip_trailing_html: html_options.strip_trailing_html,
+    });
+  }
+
+  let ctx =
+    deno_doc::html::GenerateCtx::create_basic(options, doc_nodes_by_url)?;
+
+  let mut files = deno_doc::html::generate(ctx)
     .context("Failed to generate HTML documentation")?;
 
   files.insert("prism.js".to_string(), PRISM_JS.to_string());

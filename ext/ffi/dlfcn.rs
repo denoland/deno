@@ -1,4 +1,21 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::rc::Rc;
+
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_core::Resource;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
+use dlopen2::raw::Library;
+use serde::Deserialize;
+use serde_value::ValueDeserializer;
 
 use crate::ir::out_buffer_as_ptr;
 use crate::symbol::NativeType;
@@ -6,34 +23,35 @@ use crate::symbol::Symbol;
 use crate::turbocall;
 use crate::turbocall::Turbocall;
 use crate::FfiPermissions;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::GarbageCollected;
-use deno_core::OpState;
-use deno_core::Resource;
-use dlopen2::raw::Library;
-use serde::Deserialize;
-use serde_value::ValueDeserializer;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::ffi::c_void;
-use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+deno_error::js_error_wrapper!(dlopen2::Error, JsDlopen2Error, |err| {
+  match err {
+    dlopen2::Error::NullCharacter(_) => "InvalidData".into(),
+    dlopen2::Error::OpeningLibraryError(e) => e.get_class(),
+    dlopen2::Error::SymbolGettingError(e) => e.get_class(),
+    dlopen2::Error::AddrNotMatchingDll(e) => e.get_class(),
+    dlopen2::Error::NullSymbol => "NotFound".into(),
+  }
+});
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DlfcnError {
+  #[class(generic)]
   #[error("Failed to register symbol {symbol}: {error}")]
   RegisterSymbol {
     symbol: String,
     #[source]
     error: dlopen2::Error,
   },
+  #[class(generic)]
   #[error(transparent)]
   Dlopen(#[from] dlopen2::Error),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[from] JsErrorBox),
 }
 
 pub struct DynamicLibraryResource {
@@ -124,7 +142,7 @@ pub struct FfiLoadArgs {
   symbols: HashMap<String, ForeignSymbol>,
 }
 
-#[op2]
+#[op2(stack_trace)]
 pub fn op_ffi_load<'scope, FP>(
   scope: &mut v8::HandleScope<'scope>,
   state: Rc<RefCell<OpState>>,
@@ -188,13 +206,8 @@ where
             .clone()
             .into_iter()
             .map(libffi::middle::Type::try_from)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(DlfcnError::Other)?,
-          foreign_fn
-            .result
-            .clone()
-            .try_into()
-            .map_err(DlfcnError::Other)?,
+            .collect::<Result<Vec<_>, _>>()?,
+          foreign_fn.result.clone().try_into()?,
         );
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
@@ -302,9 +315,7 @@ fn sync_fn_impl<'s>(
             unsafe { result.to_v8(scope, data.symbol.result_type.clone()) };
       rv.set(result);
     }
-    Err(err) => {
-      deno_core::_ops::throw_type_error(scope, err.to_string());
-    }
+    Err(err) => deno_core::error::throw_js_error_class(scope, &err),
   };
 }
 
@@ -324,6 +335,7 @@ pub(crate) fn format_error(
     // https://github.com/denoland/deno/issues/11632
     dlopen2::Error::OpeningLibraryError(e) => {
       use std::os::windows::ffi::OsStrExt;
+
       use winapi::shared::minwindef::DWORD;
       use winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER;
       use winapi::um::errhandlingapi::GetLastError;
@@ -392,10 +404,11 @@ pub(crate) fn format_error(
 
 #[cfg(test)]
 mod tests {
+  use serde_json::json;
+
   use super::ForeignFunction;
   use super::ForeignSymbol;
   use crate::symbol::NativeType;
-  use serde_json::json;
 
   #[cfg(target_os = "windows")]
   #[test]

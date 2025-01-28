@@ -1,7 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 import { assertCallbackErrorUncaught } from "../_test_utils.ts";
 import { BigIntStats, stat, Stats, statSync } from "node:fs";
-import { assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, fail } from "@std/assert";
 
 export function assertStats(actual: Stats, expected: Deno.FileInfo) {
   assertEquals(actual.dev, expected.dev);
@@ -150,5 +150,40 @@ Deno.test({
     assertEquals(stats.isSymbolicLink(), false);
     assertEquals(stats.isFIFO(), false);
     assertEquals(stats.isSocket(), false);
+  },
+});
+
+Deno.test({
+  name: "[node/fs] stat invalid path error",
+  async fn() {
+    try {
+      await new Promise<Stats>((resolve, reject) => {
+        stat(
+          // deno-lint-ignore no-explicit-any
+          undefined as any,
+          (err, stats) => err ? reject(err) : resolve(stats),
+        );
+      });
+      fail();
+    } catch (err) {
+      assert(err instanceof TypeError);
+      // deno-lint-ignore no-explicit-any
+      assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+    }
+  },
+});
+
+Deno.test({
+  name: "[node/fs] statSync invalid path error",
+  fn() {
+    try {
+      // deno-lint-ignore no-explicit-any
+      statSync(undefined as any);
+      fail();
+    } catch (err) {
+      assert(err instanceof TypeError);
+      // deno-lint-ignore no-explicit-any
+      assertEquals((err as any).code, "ERR_INVALID_ARG_TYPE");
+    }
   },
 });

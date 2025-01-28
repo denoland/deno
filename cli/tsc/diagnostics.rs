@@ -1,16 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::error::Error;
+use std::fmt;
 
 use deno_ast::ModuleSpecifier;
-use deno_graph::ModuleGraph;
-use deno_terminal::colors;
-
 use deno_core::serde::Deserialize;
 use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::sourcemap::SourceMap;
-use std::error::Error;
-use std::fmt;
+use deno_graph::ModuleGraph;
+use deno_terminal::colors;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
@@ -90,9 +90,9 @@ impl DiagnosticMessageChain {
     s.push_str(&" ".repeat(level * 2));
     s.push_str(&self.message_text);
     if let Some(next) = &self.next {
-      s.push('\n');
       let arr = next.clone();
       for dm in arr {
+        s.push('\n');
         s.push_str(&dm.format_message(level + 1));
       }
     }
@@ -108,6 +108,15 @@ pub struct Position {
   pub line: u64,
   /// 0-indexed character number
   pub character: u64,
+}
+
+impl Position {
+  pub fn from_deno_graph(deno_graph_position: deno_graph::Position) -> Self {
+    Self {
+      line: deno_graph_position.line as u64,
+      character: deno_graph_position.character as u64,
+    }
+  }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
@@ -133,9 +142,47 @@ pub struct Diagnostic {
   pub file_name: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub related_information: Option<Vec<Diagnostic>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_deprecated: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub reports_unnecessary: Option<bool>,
+  #[serde(flatten)]
+  pub other: deno_core::serde_json::Map<String, deno_core::serde_json::Value>,
 }
 
 impl Diagnostic {
+  pub fn from_missing_error(
+    specifier: &ModuleSpecifier,
+    maybe_range: Option<&deno_graph::Range>,
+    additional_message: Option<String>,
+  ) -> Self {
+    Self {
+      category: DiagnosticCategory::Error,
+      code: 2307,
+      start: maybe_range.map(|r| Position::from_deno_graph(r.range.start)),
+      end: maybe_range.map(|r| Position::from_deno_graph(r.range.end)),
+      original_source_start: None, // will be applied later
+      message_text: Some(format!(
+        "Cannot find module '{}'.{}{}",
+        specifier,
+        if additional_message.is_none() {
+          ""
+        } else {
+          " "
+        },
+        additional_message.unwrap_or_default()
+      )),
+      message_chain: None,
+      source: None,
+      source_line: None,
+      file_name: maybe_range.map(|r| r.specifier.to_string()),
+      related_information: None,
+      reports_deprecated: None,
+      reports_unnecessary: None,
+      other: Default::default(),
+    }
+  }
+
   /// If this diagnostic should be included when it comes from a remote module.
   pub fn include_when_remote(&self) -> bool {
     /// TS6133: value is declared but its value is never read (noUnusedParameters and noUnusedLocals)
@@ -273,7 +320,8 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
+#[class(generic)]
 pub struct Diagnostics(Vec<Diagnostic>);
 
 impl Diagnostics {
@@ -293,18 +341,27 @@ impl Diagnostics {
     });
   }
 
+  pub fn push(&mut self, diagnostic: Diagnostic) {
+    self.0.push(diagnostic);
+  }
+
+  pub fn extend(&mut self, diagnostic: Diagnostics) {
+    self.0.extend(diagnostic.0);
+  }
+
   /// Return a set of diagnostics where only the values where the predicate
   /// returns `true` are included.
-  pub fn filter<P>(self, predicate: P) -> Self
-  where
-    P: FnMut(&Diagnostic) -> bool,
-  {
+  pub fn filter(self, predicate: impl FnMut(&Diagnostic) -> bool) -> Self {
     let diagnostics = self.0.into_iter().filter(predicate).collect();
     Self(diagnostics)
   }
 
-  pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
+  pub fn retain(&mut self, predicate: impl FnMut(&Diagnostic) -> bool) {
+    self.0.retain(predicate);
+  }
+
+  pub fn has_diagnostic(&self) -> bool {
+    !self.0.is_empty()
   }
 
   /// Modifies all the diagnostics to have their display positions
@@ -374,31 +431,36 @@ impl Serialize for Diagnostics {
 
 impl fmt::Display for Diagnostics {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let mut i = 0;
-    for item in &self.0 {
-      if i > 0 {
-        write!(f, "\n\n")?;
-      }
-      write!(f, "{item}")?;
-      i += 1;
+    display_diagnostics(f, self)?;
+    if self.0.len() > 1 {
+      write!(f, "\n\nFound {} errors.", self.0.len())?;
     }
-
-    if i > 1 {
-      write!(f, "\n\nFound {i} errors.")?;
-    }
-
     Ok(())
   }
+}
+
+fn display_diagnostics(
+  f: &mut fmt::Formatter,
+  diagnostics: &Diagnostics,
+) -> fmt::Result {
+  for (i, item) in diagnostics.0.iter().enumerate() {
+    if i > 0 {
+      write!(f, "\n\n")?;
+    }
+    write!(f, "{item}")?;
+  }
+  Ok(())
 }
 
 impl Error for Diagnostics {}
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_de_diagnostics() {

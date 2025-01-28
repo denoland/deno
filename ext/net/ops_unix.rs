@@ -1,9 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::io::UnixStreamResource;
-use crate::ops::NetError;
-use crate::raw::NetworkListenerResource;
-use crate::NetPermissions;
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::path::Path;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::AsyncRefCell;
 use deno_core::CancelHandle;
@@ -15,13 +16,14 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
 use serde::Serialize;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::path::Path;
-use std::rc::Rc;
 use tokio::net::UnixDatagram;
 use tokio::net::UnixListener;
 pub use tokio::net::UnixStream;
+
+use crate::io::UnixStreamResource;
+use crate::ops::NetError;
+use crate::raw::NetworkListenerResource;
+use crate::NetPermissions;
 
 /// A utility function to map OsStrings to Strings
 pub fn into_string(s: std::ffi::OsString) -> Result<String, NetError> {
@@ -85,7 +87,7 @@ pub async fn op_net_accept_unix(
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_unix<NP>(
   state: Rc<RefCell<OpState>>,
@@ -118,7 +120,7 @@ where
   Ok((rid, local_addr_path, remote_addr_path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_recv_unixpacket(
   state: Rc<RefCell<OpState>>,
@@ -140,7 +142,7 @@ pub async fn op_net_recv_unixpacket(
   Ok((nread, path))
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[number]
 pub async fn op_net_send_unixpacket<NP>(
   state: Rc<RefCell<OpState>>,
@@ -171,7 +173,7 @@ where
   Ok(nwritten)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_unix<NP>(
   state: &mut OpState,
@@ -222,7 +224,7 @@ where
   Ok((rid, pathname))
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_net_listen_unixpacket<NP>(
   state: &mut OpState,
@@ -235,7 +237,7 @@ where
   net_listen_unixpacket::<NP>(state, path)
 }
 
-#[op2]
+#[op2(stack_trace)]
 #[serde]
 pub fn op_node_unstable_net_listen_unixpacket<NP>(
   state: &mut OpState,

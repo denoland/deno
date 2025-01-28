@@ -1,12 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::callback::PtrSymbol;
-use crate::dlfcn::DynamicLibraryResource;
-use crate::ir::*;
-use crate::symbol::NativeType;
-use crate::symbol::Symbol;
-use crate::FfiPermissions;
-use crate::ForeignFunction;
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::future::Future;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8::BigInt as V8BigInt;
@@ -18,23 +16,33 @@ use deno_core::ResourceId;
 use libffi::middle::Arg;
 use num_bigint::BigInt;
 use serde::Serialize;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::future::Future;
-use std::rc::Rc;
 
-#[derive(Debug, thiserror::Error)]
+use crate::callback::PtrSymbol;
+use crate::dlfcn::DynamicLibraryResource;
+use crate::ir::*;
+use crate::symbol::NativeType;
+use crate::symbol::Symbol;
+use crate::FfiPermissions;
+use crate::ForeignFunction;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallError {
+  #[class(type)]
   #[error(transparent)]
   IR(#[from] IRError),
+  #[class(generic)]
   #[error("Nonblocking FFI call failed: {0}")]
   NonblockingCallFailure(#[source] tokio::task::JoinError),
+  #[class(type)]
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Callback(#[from] super::CallbackError),
 }
@@ -287,7 +295,7 @@ fn ffi_call(
   }
 }
 
-#[op2(async)]
+#[op2(async, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr_nonblocking<FP>(
   scope: &mut v8::HandleScope,
@@ -344,10 +352,7 @@ pub fn op_ffi_call_nonblocking(
 ) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
   let symbol = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(rid)
-      .map_err(CallError::Resource)?;
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)
@@ -385,7 +390,7 @@ pub fn op_ffi_call_nonblocking(
   })
 }
 
-#[op2(reentrant)]
+#[op2(reentrant, stack_trace)]
 #[serde]
 pub fn op_ffi_call_ptr<FP>(
   scope: &mut v8::HandleScope,

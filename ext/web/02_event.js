@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This module follows most of the WHATWG Living Standard for the DOM logic.
 // Many parts of the DOM are not implemented in Deno, but the logic for those
@@ -1031,11 +1031,11 @@ class EventTarget {
     }
 
     if (getDispatched(event)) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     if (event.eventPhase !== Event.NONE) {
-      throw new DOMException("Invalid event state.", "InvalidStateError");
+      throw new DOMException("Invalid event state", "InvalidStateError");
     }
 
     return dispatch(self, event);

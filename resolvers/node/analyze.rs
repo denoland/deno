@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::BTreeSet;
@@ -6,26 +6,30 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_path_util::url_from_file_path;
+use deno_error::JsErrorBox;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
 use futures::FutureExt;
 use futures::StreamExt;
 use once_cell::sync::Lazy;
-
-use anyhow::Context;
-use anyhow::Error as AnyError;
+use serde::Deserialize;
+use serde::Serialize;
+use sys_traits::FsCanonicalize;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 use url::Url;
 
-use crate::env::NodeResolverEnv;
-use crate::npm::InNpmPackageCheckerRc;
 use crate::resolution::NodeResolverRc;
-use crate::NodeModuleKind;
-use crate::NodeResolutionMode;
-use crate::NpmPackageFolderResolverRc;
+use crate::InNpmPackageChecker;
+use crate::IsBuiltInNodeModuleChecker;
+use crate::NodeResolutionKind;
+use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
+use crate::ResolutionMode;
+use crate::UrlOrPath;
+use crate::UrlOrPathRef;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
@@ -35,7 +39,7 @@ pub enum CjsAnalysis<'a> {
   Cjs(CjsAnalysisExports),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
@@ -55,39 +59,85 @@ pub trait CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     maybe_source: Option<Cow<'a, str>>,
-  ) -> Result<CjsAnalysis<'a>, AnyError>;
+  ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TranslateCjsToEsmError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CjsCodeAnalysis(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  ExportAnalysis(JsErrorBox),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
+pub struct CjsAnalysisCouldNotLoadError {
+  reexport: String,
+  reexport_specifier: Url,
+  referrer: Url,
+  #[source]
+  source: JsErrorBox,
 }
 
 pub struct NodeCodeTranslator<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
-  TNodeResolverEnv: NodeResolverEnv,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
-  env: TNodeResolverEnv,
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
-  node_resolver: NodeResolverRc<TNodeResolverEnv>,
-  npm_resolver: NpmPackageFolderResolverRc,
-  pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+  in_npm_pkg_checker: TInNpmPackageChecker,
+  node_resolver: NodeResolverRc<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+  npm_resolver: TNpmPackageFolderResolver,
+  pkg_json_resolver: PackageJsonResolverRc<TSys>,
+  sys: TSys,
 }
 
-impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
-  NodeCodeTranslator<TCjsCodeAnalyzer, TNodeResolverEnv>
+impl<
+    TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TInNpmPackageChecker: InNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  >
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
 {
   pub fn new(
     cjs_code_analyzer: TCjsCodeAnalyzer,
-    env: TNodeResolverEnv,
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
-    node_resolver: NodeResolverRc<TNodeResolverEnv>,
-    npm_resolver: NpmPackageFolderResolverRc,
-    pkg_json_resolver: PackageJsonResolverRc<TNodeResolverEnv>,
+    in_npm_pkg_checker: TInNpmPackageChecker,
+    node_resolver: NodeResolverRc<
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+    npm_resolver: TNpmPackageFolderResolver,
+    pkg_json_resolver: PackageJsonResolverRc<TSys>,
+    sys: TSys,
   ) -> Self {
     Self {
       cjs_code_analyzer,
-      env,
       in_npm_pkg_checker,
       node_resolver,
       npm_resolver,
       pkg_json_resolver,
+      sys,
     }
   }
 
@@ -101,13 +151,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-  ) -> Result<Cow<'a, str>, AnyError> {
+  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
     let mut temp_var_count = 0;
 
     let analysis = self
       .cjs_code_analyzer
       .analyze_cjs(entry_specifier, source)
-      .await?;
+      .await
+      .map_err(TranslateCjsToEsmError::CjsCodeAnalysis)?;
 
     let analysis = match analysis {
       CjsAnalysis::Esm(source) => return Ok(source),
@@ -137,7 +188,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       // surface errors afterwards in a deterministic way
       if !errors.is_empty() {
         errors.sort_by_cached_key(|e| e.to_string());
-        return Err(errors.remove(0));
+        return Err(TranslateCjsToEsmError::ExportAnalysis(errors.remove(0)));
       }
     }
 
@@ -162,7 +213,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
         add_export(
           &mut source,
           export,
-          &format!("mod[\"{}\"]", escape_for_double_quote_string(export)),
+          &format!("mod[{}]", to_double_quote_string(export)),
           &mut temp_var_count,
         );
       }
@@ -181,7 +232,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     all_exports: &mut BTreeSet<String>,
     // this goes through the modules concurrently, so collect
     // the errors in order to be deterministic
-    errors: &mut Vec<anyhow::Error>,
+    errors: &mut Vec<JsErrorBox>,
   ) {
     struct Analysis {
       reexport_specifier: url::Url,
@@ -189,7 +240,7 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       analysis: CjsAnalysis<'static>,
     }
 
-    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, AnyError>>;
+    type AnalysisFuture<'a> = LocalBoxFuture<'a, Result<Analysis, JsErrorBox>>;
 
     let mut handled_reexports: HashSet<Url> = HashSet::default();
     handled_reexports.insert(entry_specifier.clone());
@@ -200,17 +251,24 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       |referrer: url::Url,
        reexports: Vec<String>,
        analyze_futures: &mut FuturesUnordered<AnalysisFuture<'a>>,
-       errors: &mut Vec<anyhow::Error>| {
+       errors: &mut Vec<JsErrorBox>| {
         // 1. Resolve the re-exports and start a future to analyze each one
         for reexport in reexports {
-          let result = self.resolve(
-            &reexport,
-            &referrer,
-            // FIXME(bartlomieju): check if these conditions are okay, probably
-            // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-            &["deno", "node", "require", "default"],
-            NodeResolutionMode::Execution,
-          );
+          let result = self
+            .resolve(
+              &reexport,
+              &referrer,
+              // FIXME(bartlomieju): check if these conditions are okay, probably
+              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+              &["deno", "node", "require", "default"],
+              NodeResolutionKind::Execution,
+            )
+            .and_then(|value| {
+              value
+                .map(|url_or_path| url_or_path.into_url())
+                .transpose()
+                .map_err(JsErrorBox::from_err)
+            });
           let reexport_specifier = match result {
             Ok(Some(specifier)) => specifier,
             Ok(None) => continue,
@@ -229,11 +287,13 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
             let analysis = cjs_code_analyzer
               .analyze_cjs(&reexport_specifier, None)
               .await
-              .with_context(|| {
-                format!(
-                  "Could not load '{}' ({}) referenced from {}",
-                  reexport, reexport_specifier, referrer
-                )
+              .map_err(|source| {
+                JsErrorBox::from_err(CjsAnalysisCouldNotLoadError {
+                  reexport,
+                  reexport_specifier: reexport_specifier.clone(),
+                  referrer: referrer.clone(),
+                  source,
+                })
               })?;
 
             Ok(Analysis {
@@ -270,11 +330,10 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       match analysis {
         CjsAnalysis::Esm(_) => {
           // todo(dsherret): support this once supporting requiring ES modules
-          errors.push(anyhow::anyhow!(
+          errors.push(JsErrorBox::generic(format!(
             "Cannot require ES module '{}' from '{}'",
-            reexport_specifier,
-            referrer,
-          ));
+            reexport_specifier, referrer,
+          )));
         }
         CjsAnalysis::Cjs(analysis) => {
           if !analysis.reexports.is_empty() {
@@ -303,19 +362,19 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     specifier: &str,
     referrer: &Url,
     conditions: &[&str],
-    mode: NodeResolutionMode,
-  ) -> Result<Option<Url>, AnyError> {
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<Option<UrlOrPath>, JsErrorBox> {
     if specifier.starts_with('/') {
       todo!();
     }
 
-    let referrer_path = url_to_file_path(referrer).unwrap();
+    let referrer = UrlOrPathRef::from_url(referrer);
+    let referrer_path = referrer.path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path)
-          .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
-          .map(Some);
+          .file_extension_probe(parent.join(specifier), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         todo!();
       }
@@ -325,25 +384,27 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
-    let module_dir = match self
-      .npm_resolver
-      .resolve_package_folder_from_package(package_specifier.as_str(), referrer)
-    {
-      Err(err)
-        if matches!(
-          err.as_kind(),
-          crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
-        ) =>
-      {
-        return Ok(None);
-      }
-      other => other,
-    }?;
+    let module_dir =
+      match self.npm_resolver.resolve_package_folder_from_package(
+        package_specifier.as_str(),
+        &referrer,
+      ) {
+        Err(err)
+          if matches!(
+            err.as_kind(),
+            crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
+          ) =>
+        {
+          return Ok(None);
+        }
+        other => other.map_err(JsErrorBox::from_err)?,
+      };
 
     let package_json_path = module_dir.join("package.json");
     let maybe_package_json = self
       .pkg_json_resolver
-      .load_package_json(&package_json_path)?;
+      .load_package_json(&package_json_path)
+      .map_err(JsErrorBox::from_err)?;
     if let Some(package_json) = maybe_package_json {
       if let Some(exports) = &package_json.exports {
         return Some(
@@ -353,12 +414,12 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
               &package_json_path,
               &package_subpath,
               exports,
-              Some(referrer),
-              NodeModuleKind::Esm,
+              Some(&referrer),
+              ResolutionMode::Import,
               conditions,
-              mode,
+              resolution_kind,
             )
-            .map_err(AnyError::from),
+            .map_err(JsErrorBox::from_err),
         )
         .transpose();
       }
@@ -366,35 +427,37 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       // old school
       if package_subpath != "." {
         let d = module_dir.join(package_subpath);
-        if self.env.is_dir_sync(&d) {
+        if self.sys.fs_is_dir_no_err(&d) {
           // subdir might have a package.json that specifies the entrypoint
           let package_json_path = d.join("package.json");
           let maybe_package_json = self
             .pkg_json_resolver
-            .load_package_json(&package_json_path)?;
+            .load_package_json(&package_json_path)
+            .map_err(JsErrorBox::from_err)?;
           if let Some(package_json) = maybe_package_json {
-            if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-              return Ok(Some(url_from_file_path(&d.join(main).clean())?));
+            if let Some(main) =
+              package_json.main(deno_package_json::NodeModuleKind::Cjs)
+            {
+              return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
             }
           }
 
-          return Ok(Some(url_from_file_path(&d.join("index.js").clean())?));
+          return Ok(Some(UrlOrPath::Path(d.join("index.js").clean())));
         }
         return self
-          .file_extension_probe(d, &referrer_path)
-          .and_then(|p| url_from_file_path(&p).map_err(AnyError::from))
-          .map(Some);
-      } else if let Some(main) = package_json.main(NodeModuleKind::Cjs) {
-        return Ok(Some(url_from_file_path(&module_dir.join(main).clean())?));
+          .file_extension_probe(d, referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
+      } else if let Some(main) =
+        package_json.main(deno_package_json::NodeModuleKind::Cjs)
+      {
+        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
       } else {
-        return Ok(Some(url_from_file_path(
-          &module_dir.join("index.js").clean(),
-        )?));
+        return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
     }
 
     // as a fallback, attempt to resolve it via the ancestor directories
-    let mut last = referrer_path.as_path();
+    let mut last = referrer_path;
     while let Some(parent) = last.parent() {
       if !self.in_npm_pkg_checker.in_npm_package_at_dir_path(parent) {
         break;
@@ -404,28 +467,28 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       } else {
         parent.join("node_modules").join(specifier)
       };
-      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
-        return Ok(Some(url_from_file_path(&path)?));
+      if let Ok(path) = self.file_extension_probe(path, referrer_path) {
+        return Ok(Some(UrlOrPath::Path(path)));
       }
       last = parent;
     }
 
-    Err(not_found(specifier, &referrer_path))
+    Err(not_found(specifier, referrer_path))
   }
 
   fn file_extension_probe(
     &self,
     p: PathBuf,
     referrer: &Path,
-  ) -> Result<PathBuf, AnyError> {
+  ) -> Result<PathBuf, JsErrorBox> {
     let p = p.clean();
-    if self.env.exists_sync(&p) {
+    if self.sys.fs_exists_no_err(&p) {
       let file_name = p.file_name().unwrap();
       let p_js =
         p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-      if self.env.is_file_sync(&p_js) {
+      if self.sys.fs_is_file_no_err(&p_js) {
         return Ok(p_js);
-      } else if self.env.is_dir_sync(&p) {
+      } else if self.sys.fs_is_dir_no_err(&p) {
         return Ok(p.join("index.js"));
       } else {
         return Ok(p);
@@ -434,14 +497,14 @@ impl<TCjsCodeAnalyzer: CjsCodeAnalyzer, TNodeResolverEnv: NodeResolverEnv>
       {
         let p_js =
           p.with_file_name(format!("{}.js", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_js) {
+        if self.sys.fs_is_file_no_err(&p_js) {
           return Ok(p_js);
         }
       }
       {
         let p_json =
           p.with_file_name(format!("{}.json", file_name.to_str().unwrap()));
-        if self.env.is_file_sync(&p_json) {
+        if self.sys.fs_is_file_no_err(&p_json) {
           return Ok(p_json);
         }
       }
@@ -557,8 +620,8 @@ fn add_export(
       "const __deno_export_{temp_var_count}__ = {initializer};"
     ));
     source.push(format!(
-      "export {{ __deno_export_{temp_var_count}__ as \"{}\" }};",
-      escape_for_double_quote_string(name)
+      "export {{ __deno_export_{temp_var_count}__ as {} }};",
+      to_double_quote_string(name)
     ));
   } else {
     source.push(format!("export const {name} = {initializer};"));
@@ -607,23 +670,18 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   Some((package_name, package_subpath))
 }
 
-fn not_found(path: &str, referrer: &Path) -> AnyError {
+fn not_found(path: &str, referrer: &Path) -> JsErrorBox {
   let msg = format!(
     "[ERR_MODULE_NOT_FOUND] Cannot find module \"{}\" imported from \"{}\"",
     path,
     referrer.to_string_lossy()
   );
-  std::io::Error::new(std::io::ErrorKind::NotFound, msg).into()
+  JsErrorBox::from_err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
 }
 
-fn escape_for_double_quote_string(text: &str) -> Cow<str> {
-  // this should be rare, so doing a scan first before allocating is ok
-  if text.chars().any(|c| matches!(c, '"' | '\\')) {
-    // don't bother making this more complex for perf because it's rare
-    Cow::Owned(text.replace('\\', "\\\\").replace('"', "\\\""))
-  } else {
-    Cow::Borrowed(text)
-  }
+fn to_double_quote_string(text: &str) -> String {
+  // serde can handle this for us
+  serde_json::to_string(text).unwrap()
 }
 
 #[cfg(test)]
@@ -659,6 +717,15 @@ mod tests {
     assert_eq!(
       parse_specifier("@some-package/core/actions"),
       Some(("@some-package/core".to_string(), "./actions".to_string()))
+    );
+  }
+
+  #[test]
+  fn test_to_double_quote_string() {
+    assert_eq!(to_double_quote_string("test"), "\"test\"");
+    assert_eq!(
+      to_double_quote_string("\r\n\t\"test"),
+      "\"\\r\\n\\t\\\"test\""
     );
   }
 }

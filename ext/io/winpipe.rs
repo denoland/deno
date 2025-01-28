@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-use rand::thread_rng;
-use rand::RngCore;
+// Copyright 2018-2025 the Deno authors. MIT license.
 use std::io;
 use std::os::windows::io::RawHandle;
 use std::sync::atomic::AtomicU32;
 use std::sync::atomic::Ordering;
+
+use rand::thread_rng;
+use rand::RngCore;
 use winapi::shared::minwindef::DWORD;
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::fileapi::CreateFileA;
@@ -116,13 +117,14 @@ fn create_named_pipe_inner() -> io::Result<(RawHandle, RawHandle)> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use std::fs::File;
   use std::io::Read;
   use std::io::Write;
   use std::os::windows::io::FromRawHandle;
   use std::sync::Arc;
   use std::sync::Barrier;
+
+  use super::*;
 
   #[test]
   fn make_named_pipe() {

@@ -1,7 +1,7 @@
 Download http://localhost:4260/@denotest%2ffile-dts-dmts-dcts
 Download http://localhost:4260/@denotest/file-dts-dmts-dcts/1.0.0.tgz
 Check file:///[WILDCARD]/main.ts
-error: TS2322 [ERROR]: Type '5' is not assignable to type '"dts"'.
+TS2322 [ERROR]: Type '5' is not assignable to type '"dts"'.
 const value1: Dts1 = 5;
       ~~~~~~
     at file:///[WILDCARD]
@@ -22,3 +22,5 @@ const value4: Cts1 = 5;
     at file:///[WILDCARD]
 
 Found 4 errors.
+
+error: Type checking failed.

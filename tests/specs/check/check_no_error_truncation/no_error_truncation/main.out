@@ -1,4 +1,4 @@
-error: TS2322 [ERROR]: Type '{ propertyWithAnExceedinglyLongName1: string; propertyWithAnExceedinglyLongName2: string; propertyWithAnExceedinglyLongName3: string; propertyWithAnExceedinglyLongName4: string; propertyWithAnExceedinglyLongName5: string; propertyWithAnExceedinglyLongName6: string; propertyWithAnExceedinglyLongName7: string; propertyWithAnExceedinglyLongName8: string; }' is not assignable to type 'string'.
+TS2322 [ERROR]: Type '{ propertyWithAnExceedinglyLongName1: string; propertyWithAnExceedinglyLongName2: string; propertyWithAnExceedinglyLongName3: string; propertyWithAnExceedinglyLongName4: string; propertyWithAnExceedinglyLongName5: string; propertyWithAnExceedinglyLongName6: string; propertyWithAnExceedinglyLongName7: string; propertyWithAnExceedinglyLongName8: string; }' is not assignable to type 'string'.
 const _s: string = x;
       ~~
     at file:///[WILDCARD]/no_error_truncation/main.ts:12:7
@@ -9,3 +9,5 @@ const _s: string = x;
     at file:///[WILDCARD]/no_error_truncation/main.ts:12:20
 
 Found 2 errors.
+
+error: Type checking failed.

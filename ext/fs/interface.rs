@@ -1,16 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use core::str;
 use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 use deno_io::fs::File;
 use deno_io::fs::FsResult;
 use deno_io::fs::FsStat;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
@@ -70,7 +70,7 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
   pub name: String,
@@ -288,7 +288,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let options = OpenOptions::read();
     let file = self.open_sync(path, options, access_check)?;
     let buf = file.read_all_sync()?;
@@ -298,7 +298,7 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
-  ) -> FsResult<Vec<u8>> {
+  ) -> FsResult<Cow<'static, [u8]>> {
     let options = OpenOptions::read();
     let file = self.open_async(path, options, access_check).await?;
     let buf = file.read_all_async().await?;
@@ -327,17 +327,25 @@ pub trait FileSystem: std::fmt::Debug + MaybeSend + MaybeSync {
     &self,
     path: &Path,
     access_check: Option<AccessCheckCb>,
-  ) -> FsResult<String> {
+  ) -> FsResult<Cow<'static, str>> {
     let buf = self.read_file_sync(path, access_check)?;
-    Ok(string_from_utf8_lossy(buf))
+    Ok(string_from_cow_utf8_lossy(buf))
   }
   async fn read_text_file_lossy_async<'a>(
     &'a self,
     path: PathBuf,
     access_check: Option<AccessCheckCb<'a>>,
-  ) -> FsResult<String> {
+  ) -> FsResult<Cow<'static, str>> {
     let buf = self.read_file_async(path, access_check).await?;
-    Ok(string_from_utf8_lossy(buf))
+    Ok(string_from_cow_utf8_lossy(buf))
+  }
+}
+
+#[inline(always)]
+fn string_from_cow_utf8_lossy(buf: Cow<'static, [u8]>) -> Cow<'static, str> {
+  match buf {
+    Cow::Owned(buf) => Cow::Owned(string_from_utf8_lossy(buf)),
+    Cow::Borrowed(buf) => String::from_utf8_lossy(buf),
   }
 }
 

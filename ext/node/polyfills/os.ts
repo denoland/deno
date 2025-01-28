@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -35,7 +35,7 @@ import { validateIntegerRange } from "ext:deno_node/_utils.ts";
 import process from "node:process";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
-import { osUptime } from "ext:runtime/30_os.js";
+import { osUptime } from "ext:deno_os/30_os.js";
 import { Buffer } from "ext:deno_node/internal/buffer.mjs";
 import { primordials } from "ext:core/mod.js";
 const { StringPrototypeEndsWith, StringPrototypeSlice } = primordials;

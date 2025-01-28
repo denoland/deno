@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,20 +8,23 @@ use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
+use deno_package_json::PackageJsonDepWorkspaceReq;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
+use deno_semver::VersionReq;
 use thiserror::Error;
 
 #[derive(Debug)]
 pub struct InstallNpmRemotePkg {
-  pub alias: Option<String>,
+  pub alias: Option<StackString>,
   pub base_dir: PathBuf,
   pub req: PackageReq,
 }
 
 #[derive(Debug)]
 pub struct InstallNpmWorkspacePkg {
-  pub alias: Option<String>,
+  pub alias: Option<StackString>,
   pub target_dir: PathBuf,
 }
 
@@ -29,7 +32,7 @@ pub struct InstallNpmWorkspacePkg {
 #[error("Failed to install '{}'\n    at {}", alias, location)]
 pub struct PackageJsonDepValueParseWithLocationError {
   pub location: Url,
-  pub alias: String,
+  pub alias: StackString,
   #[source]
   pub source: PackageJsonDepValueParseError,
 }
@@ -95,16 +98,20 @@ impl NpmInstallDepsProvider {
 
       if let Some(pkg_json) = &folder.pkg_json {
         let deps = pkg_json.resolve_local_package_json_deps();
-        let mut pkg_pkgs = Vec::with_capacity(deps.len());
-        for (alias, dep) in deps {
+        let mut pkg_pkgs = Vec::with_capacity(
+          deps.dependencies.len() + deps.dev_dependencies.len(),
+        );
+        for (alias, dep) in
+          deps.dependencies.iter().chain(deps.dev_dependencies.iter())
+        {
           let dep = match dep {
             Ok(dep) => dep,
             Err(err) => {
               pkg_json_dep_errors.push(
                 PackageJsonDepValueParseWithLocationError {
                   location: pkg_json.specifier(),
-                  alias,
-                  source: err,
+                  alias: alias.clone(),
+                  source: err.clone(),
                 },
               );
               continue;
@@ -113,30 +120,39 @@ impl NpmInstallDepsProvider {
           match dep {
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_req(&pkg_req)
+                pkg.matches_req(pkg_req)
               // do not resolve to the current package
               && pkg.pkg_json.path != pkg_json.path
               });
 
               if let Some(pkg) = workspace_pkg {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               } else {
                 pkg_pkgs.push(InstallNpmRemotePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   base_dir: pkg_json.dir_path().to_path_buf(),
-                  req: pkg_req,
+                  req: pkg_req.clone(),
                 });
               }
             }
-            PackageJsonDepValue::Workspace(version_req) => {
+            PackageJsonDepValue::Workspace(workspace_version_req) => {
+              let version_req = match workspace_version_req {
+                PackageJsonDepWorkspaceReq::VersionReq(version_req) => {
+                  version_req.clone()
+                }
+                PackageJsonDepWorkspaceReq::Tilde
+                | PackageJsonDepWorkspaceReq::Caret => {
+                  VersionReq::parse_from_npm("*").unwrap()
+                }
+              };
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
-                pkg.matches_name_and_version_req(&alias, &version_req)
+                pkg.matches_name_and_version_req(alias, &version_req)
               }) {
                 workspace_pkgs.push(InstallNpmWorkspacePkg {
-                  alias: Some(alias),
+                  alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
               }

@@ -1,6 +1,8 @@
 {
   "workspace": [
     "./package-a",
-    "./package-b"
+    "./package-b",
+    "./package-c",
+    "./package-d"
   ]
 }

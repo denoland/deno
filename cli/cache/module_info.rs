@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::sync::Arc;
 
@@ -194,7 +194,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
     source: &Arc<str>,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(source);
+    let source_hash = CacheDBHash::from_hashable(source);
     if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
@@ -228,7 +228,7 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
     media_type: MediaType,
   ) -> Result<ModuleInfo, deno_ast::ParseDiagnostic> {
     // attempt to load from the cache
-    let source_hash = CacheDBHash::from_source(&source);
+    let source_hash = CacheDBHash::from_hashable(&source);
     if let Some(info) =
       self.load_cached_module_info(specifier, media_type, source_hash)
     {
@@ -284,6 +284,7 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
 
 #[cfg(test)]
 mod test {
+  use deno_graph::JsDocImportInfo;
   use deno_graph::PositionRange;
   use deno_graph::SpecifierWithRange;
 
@@ -308,18 +309,21 @@ mod test {
     );
 
     let mut module_info = ModuleInfo::default();
-    module_info.jsdoc_imports.push(SpecifierWithRange {
-      range: PositionRange {
-        start: deno_graph::Position {
-          line: 0,
-          character: 3,
+    module_info.jsdoc_imports.push(JsDocImportInfo {
+      specifier: SpecifierWithRange {
+        range: PositionRange {
+          start: deno_graph::Position {
+            line: 0,
+            character: 3,
+          },
+          end: deno_graph::Position {
+            line: 1,
+            character: 2,
+          },
         },
-        end: deno_graph::Position {
-          line: 1,
-          character: 2,
-        },
+        text: "test".to_string(),
       },
-      text: "test".to_string(),
+      resolution_mode: None,
     });
     cache
       .set_module_info(
