@@ -73,6 +73,9 @@ pub enum CacheError {
   #[class(type)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] hyper::header::InvalidHeaderValue),
+  #[class(type)]
+  #[error(transparent)]
+  Hyper(#[from] hyper::Error),
   #[class(generic)]
   #[error(transparent)]
   ClientError(#[from] hyper_util::client::legacy::Error),

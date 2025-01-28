@@ -7,6 +7,7 @@ use http::Method;
 use http::Request;
 use http::Response;
 use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::BodyExt;
 use http_body_util::Either;
 use http_body_util::Empty;
 use hyper::body::Incoming;
@@ -89,9 +90,14 @@ impl CacheShard {
     if res.status().is_success() {
       Ok(())
     } else {
+      let status = res.status();
+      log::debug!(
+        "Response body {:#?}",
+        res.into_body().collect().await?.to_bytes()
+      );
       Err(CacheError::RequestFailed {
         method: "PUT",
-        status: res.status(),
+        status,
       })
     }
   }
@@ -118,9 +124,14 @@ impl CacheShard {
     if res.status().is_success() {
       Ok(())
     } else {
+      let status = res.status();
+      log::debug!(
+        "Response body {:#?}",
+        res.into_body().collect().await?.to_bytes()
+      );
       Err(CacheError::RequestFailed {
         method: "PUT",
-        status: res.status(),
+        status,
       })
     }
   }
