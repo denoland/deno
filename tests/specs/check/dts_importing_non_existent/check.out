@@ -1,3 +1,5 @@
 Check file:///[WILDLINE]/dts_importing_non_existent/index.js
-error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/test'.
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/test'.
     at file:///[WILDLINE]/index.d.ts:1:22
+
+error: Type checking failed.

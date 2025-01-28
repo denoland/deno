@@ -16,6 +16,7 @@ use deno_doc::html::UrlResolveKind;
 use deno_doc::html::UsageComposer;
 use deno_doc::html::UsageComposerEntry;
 use deno_graph::source::NullFileSystem;
+use deno_graph::CheckJsOption;
 use deno_graph::EsParser;
 use deno_graph::GraphKind;
 use deno_graph::ModuleAnalyzer;
@@ -148,7 +149,7 @@ pub async fn doc(
         &sys,
         &module_specifiers,
         GraphWalkErrorsOptions {
-          check_js: false,
+          check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
         },
       );
