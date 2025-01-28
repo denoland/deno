@@ -1,4 +1,4 @@
-error: TS2769 [ERROR]: No overload matches this call.
+TS2769 [ERROR]: No overload matches this call.
   Overload 1 of 3, '(s: string, b: boolean): void', gave the following error.
     Argument of type 'number' is not assignable to parameter of type 'boolean'.
   Overload 2 of 3, '(ss: string[], b: boolean): void', gave the following error.
@@ -8,3 +8,5 @@ error: TS2769 [ERROR]: No overload matches this call.
 foo("hello", 42);
 ~~~
     at [WILDLINE]/message_chain_formatting.ts:8:1
+
+error: Type checking failed.

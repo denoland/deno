@@ -1,5 +1,7 @@
 Check file:///[WILDCARD]/main.ts
-error: TS18046 [ERROR]: 'e' is of type 'unknown'.
+TS18046 [ERROR]: 'e' is of type 'unknown'.
   console.log(e.message);
               ^
     at file://[WILDCARD]/use_unknown_in_catch_variables/main.ts:4:15
+
+error: Type checking failed.

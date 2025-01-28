@@ -424,7 +424,7 @@ fn create_command(
 
   command.current_dir(run_env.cwd);
   command.env_clear();
-  command.envs(run_env.envs);
+  command.envs(run_env.envs.into_iter().map(|(k, v)| (k.into_inner(), v)));
 
   #[cfg(unix)]
   if let Some(gid) = args.gid {
@@ -697,8 +697,60 @@ fn compute_run_cmd_and_check_permissions(
   Ok((cmd, run_env))
 }
 
+#[derive(Debug)]
+struct EnvVarKey {
+  inner: OsString,
+  // Windows treats env vars as case insensitive, so use
+  // a normalized value for comparisons instead of the raw
+  // case sensitive value
+  #[cfg(windows)]
+  normalized: OsString,
+}
+
+impl EnvVarKey {
+  pub fn new(value: OsString) -> Self {
+    Self {
+      #[cfg(windows)]
+      normalized: value.to_ascii_uppercase(),
+      inner: value,
+    }
+  }
+
+  pub fn from_str(value: &str) -> Self {
+    Self::new(OsString::from(value))
+  }
+
+  pub fn into_inner(self) -> OsString {
+    self.inner
+  }
+
+  pub fn comparison_value(&self) -> &OsString {
+    #[cfg(windows)]
+    {
+      &self.normalized
+    }
+    #[cfg(not(windows))]
+    {
+      &self.inner
+    }
+  }
+}
+
+impl std::hash::Hash for EnvVarKey {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.comparison_value().hash(state);
+  }
+}
+
+impl std::cmp::Eq for EnvVarKey {}
+impl std::cmp::PartialEq for EnvVarKey {
+  fn eq(&self, other: &Self) -> bool {
+    self.comparison_value() == other.comparison_value()
+  }
+}
+
 struct RunEnv {
-  envs: HashMap<OsString, OsString>,
+  envs: HashMap<EnvVarKey, OsString>,
   cwd: PathBuf,
 }
 
@@ -721,30 +773,14 @@ fn compute_run_env(
   let envs = if arg_clear_env {
     arg_envs
       .iter()
-      .map(|(k, v)| (OsString::from(k), OsString::from(v)))
+      .map(|(k, v)| (EnvVarKey::from_str(k), OsString::from(v)))
       .collect()
   } else {
     let mut envs = std::env::vars_os()
-      .map(|(k, v)| {
-        (
-          if cfg!(windows) {
-            k.to_ascii_uppercase()
-          } else {
-            k
-          },
-          v,
-        )
-      })
+      .map(|(k, v)| (EnvVarKey::new(k), v))
       .collect::<HashMap<_, _>>();
     for (key, value) in arg_envs {
-      envs.insert(
-        OsString::from(if cfg!(windows) {
-          key.to_ascii_uppercase()
-        } else {
-          key.clone()
-        }),
-        OsString::from(value.clone()),
-      );
+      envs.insert(EnvVarKey::from_str(key), OsString::from(value));
     }
     envs
   };
@@ -758,7 +794,7 @@ fn resolve_cmd(cmd: &str, env: &RunEnv) -> Result<PathBuf, ProcessError> {
   if is_path {
     Ok(resolve_path(cmd, &env.cwd))
   } else {
-    let path = env.envs.get(&OsString::from("PATH"));
+    let path = env.envs.get(&EnvVarKey::new(OsString::from("PATH")));
     match which::which_in(cmd, path, &env.cwd) {
       Ok(cmd) => Ok(cmd),
       Err(which::Error::CannotFindBinaryPath) => {
@@ -815,10 +851,18 @@ fn check_run_permission(
 
 fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
   fn requires_allow_all(key: &str) -> bool {
+    fn starts_with_ignore_case(key: &str, search_value: &str) -> bool {
+      if let Some((key, _)) = key.split_at_checked(search_value.len()) {
+        search_value.eq_ignore_ascii_case(key)
+      } else {
+        false
+      }
+    }
+
     let key = key.trim();
     // we could be more targted here, but there are quite a lot of
     // LD_* and DYLD_* env variables
-    key.starts_with("LD_") || key.starts_with("DYLD_")
+    starts_with_ignore_case(key, "LD_") || starts_with_ignore_case(key, "DYLD_")
   }
 
   fn is_empty(value: &OsString) -> bool {
@@ -830,7 +874,7 @@ fn get_requires_allow_all_env_vars(env: &RunEnv) -> Vec<&str> {
     .envs
     .iter()
     .filter_map(|(k, v)| {
-      let key = k.to_str()?;
+      let key = k.comparison_value().to_str()?;
       if requires_allow_all(key) && !is_empty(v) {
         Some(key)
       } else {
@@ -993,7 +1037,7 @@ mod deprecated {
 
     c.env_clear();
     for (key, value) in run_env.envs {
-      c.env(key, value);
+      c.env(key.inner, value);
     }
 
     #[cfg(unix)]
