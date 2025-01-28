@@ -834,7 +834,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility
             log::warn!(
-              "Import map diagnostics:\n{}",
+              "Resolver diagnostics:\n{}",
               resolver
                 .diagnostics()
                 .iter()

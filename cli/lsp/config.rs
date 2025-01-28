@@ -1600,7 +1600,7 @@ impl ConfigData {
       });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
-        "  Import map diagnostics:\n{}",
+        "  Resolver diagnostics:\n{}",
         resolver
           .diagnostics()
           .iter()
