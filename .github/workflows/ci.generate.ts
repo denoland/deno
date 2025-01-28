@@ -653,6 +653,14 @@ const ci = {
           },
         },
         {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v4",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+          },
+        },
+        {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
