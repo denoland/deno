@@ -39,6 +39,7 @@ use deno_core::ModuleSpecifier;
 use deno_core::OpState;
 use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
+use deno_lib::util::result::InfallibleResultExt;
 use deno_lib::worker::create_isolate_create_params;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node::SUPPORTED_BUILTIN_NODE_MODULES;
@@ -96,7 +97,6 @@ use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
 use crate::util::path::to_percent_decoded_str;
-use crate::util::result::InfallibleResultExt;
 use crate::util::v8::convert;
 
 static BRACKET_ACCESSOR_RE: Lazy<Regex> =
@@ -3683,6 +3683,10 @@ impl CompletionInfo {
     position: u32,
     language_server: &language_server::Inner,
   ) -> lsp::CompletionResponse {
+    // A cache for costly resolution computations.
+    // On a test project, it was found to speed up completion requests
+    // by 10-20x and contained ~300 entries for 8000 completion items.
+    let mut cache = HashMap::with_capacity(512);
     let items = self
       .entries
       .iter()
@@ -3694,6 +3698,7 @@ impl CompletionInfo {
           specifier,
           position,
           language_server,
+          &mut cache,
         )
       })
       .collect();
@@ -3898,6 +3903,7 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
@@ -3906,6 +3912,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
+    resolution_cache: &mut HashMap<(ModuleSpecifier, ModuleSpecifier), String>,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
@@ -3964,14 +3971,18 @@ impl CompletionEntry {
         }
       }
     }
-
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
-        if let Some(mut new_specifier) = import_mapper
-          .check_specifier(&import_data.normalized, specifier)
+        let maybe_cached = resolution_cache
+          .get(&(import_data.normalized.clone(), specifier.clone()))
+          .cloned();
+        if let Some(mut new_specifier) = maybe_cached
+          .or_else(|| {
+            import_mapper.check_specifier(&import_data.normalized, specifier)
+          })
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
           .or_else(|| {
             ModuleSpecifier::parse(&import_data.raw.module_specifier)
@@ -3979,6 +3990,10 @@ impl CompletionEntry {
               .then(|| import_data.normalized.to_string())
           })
         {
+          resolution_cache.insert(
+            (import_data.normalized.clone(), specifier.clone()),
+            new_specifier.clone(),
+          );
           if new_specifier.contains("/node_modules/") {
             return None;
           }
@@ -4341,7 +4356,9 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
-    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
+    let specifier_str = original
+      .replace(".d.ts.d.ts", ".d.ts")
+      .replace("$node_modules", "node_modules");
     let specifier = match ModuleSpecifier::parse(&specifier_str) {
       Ok(s) => s,
       Err(err) => return Err(err),
@@ -6263,7 +6280,40 @@ mod tests {
             "kind": "keyword"
           }
         ],
-        "documentation": []
+        "documentation": [
+          {
+            "text": "Outputs a message to the console",
+            "kind": "text",
+          },
+        ],
+        "tags": [
+          {
+            "name": "param",
+            "text": [
+              {
+                "text": "data",
+                "kind": "parameterName",
+              },
+              {
+                "text": " ",
+                "kind": "space",
+              },
+              {
+                "text": "Values to be printed to the console",
+                "kind": "text",
+              },
+            ],
+          },
+          {
+            "name": "example",
+            "text": [
+              {
+                "text": "```ts\nconsole.log('Hello', 'World', 123);\n```",
+                "kind": "text",
+              },
+            ],
+          },
+        ]
       })
     );
   }

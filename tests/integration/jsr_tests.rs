@@ -1,13 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_cache_dir::HttpCache;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use deno_lockfile::Lockfile;
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use url::Url;
 use util::assert_contains;
@@ -65,7 +64,7 @@ fn fast_check_cache() {
 
   // ensure cache works
   let output = check_debug_cmd.run();
-  assert_contains!(output.combined_output(), "Already type checked.");
+  assert_contains!(output.combined_output(), "Already type checked");
 
   // now validated
   type_check_cache_path.remove_file();
@@ -98,10 +97,12 @@ fn fast_check_cache() {
     .run()
     .assert_matches_text(
       "Check file:///[WILDCARD]main.ts
-error: TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
+TS2322 [ERROR]: Type 'string' is not assignable to type 'number'.
 export function asdf(a: number) { let err: number = ''; return Math.random(); }
                                       ~~~
     at http://127.0.0.1:4250/@denotest/add/1.0.0/other.ts:2:39
+
+error: Type checking failed.
 ",
     )
     .assert_exit_code(1);

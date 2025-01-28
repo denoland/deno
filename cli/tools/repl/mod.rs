@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::futures::StreamExt;
 use deno_core::serde_json;
 use deno_core::unsync::spawn_blocking;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_runtime::WorkerExecutionMode;
 use rustyline::error::ReadlineError;
 
@@ -167,6 +168,7 @@ pub async fn run(
   let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
   let file_fetcher = factory.file_fetcher()?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -189,6 +191,7 @@ pub async fn run(
     cli_options,
     npm_installer,
     resolver,
+    tsconfig_resolver,
     worker,
     main_module.clone(),
     test_event_receiver,
@@ -244,7 +247,7 @@ pub async fn run(
   if !cli_options.is_quiet() {
     let mut handle = io::stdout().lock();
 
-    writeln!(handle, "Deno {}", crate::version::DENO_VERSION_INFO.deno)?;
+    writeln!(handle, "Deno {}", DENO_VERSION_INFO.deno)?;
     writeln!(handle, "exit using ctrl+d, ctrl+c, or close()")?;
 
     if repl_flags.is_default_command {

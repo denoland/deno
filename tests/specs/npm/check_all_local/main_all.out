@@ -1,7 +1,7 @@
 Download http://localhost:4260/@denotest%2fcheck-error
 Download http://localhost:4260/@denotest/check-error/1.0.0.tgz
 Check file:///[WILDCARD]/main.ts
-error: TS2506 [ERROR]: 'Class1' is referenced directly or indirectly in its own base expression.
+TS2506 [ERROR]: 'Class1' is referenced directly or indirectly in its own base expression.
 export class Class1 extends Class2 {
              ~~~~~~
     at file:///[WILDCARD]/1.0.0/index.d.ts:2:14
@@ -17,3 +17,5 @@ console.log(test.Asdf); // should error
     at file:///[WILDCARD]/main.ts:3:18
 
 Found 3 errors.
+
+error: Type checking failed.

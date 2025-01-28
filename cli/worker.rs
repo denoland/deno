@@ -1,11 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
-use deno_core::anyhow::bail;
-use deno_core::error::AnyError;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::v8;
@@ -14,19 +11,16 @@ use deno_core::PollEventLoopOptions;
 use deno_error::JsErrorBox;
 use deno_lib::worker::LibMainWorker;
 use deno_lib::worker::LibMainWorkerFactory;
-use deno_runtime::code_cache;
+use deno_lib::worker::ResolveNpmBinaryEntrypointError;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;
-use crate::node::CliNodeResolver;
 use crate::npm::installer::NpmInstaller;
 use crate::npm::installer::PackageCaching;
 use crate::npm::CliNpmResolver;
@@ -41,19 +35,10 @@ pub trait HmrRunner: Send + Sync {
   async fn run(&mut self) -> Result<(), CoreError>;
 }
 
-pub trait CliCodeCache: code_cache::CodeCache {
-  /// Gets if the code cache is still enabled.
-  fn enabled(&self) -> bool {
-    true
-  }
-
-  fn as_code_cache(self: Arc<Self>) -> Arc<dyn code_cache::CodeCache>;
-}
-
 #[async_trait::async_trait(?Send)]
 pub trait CoverageCollector: Send + Sync {
-  async fn start_collecting(&mut self) -> Result<(), AnyError>;
-  async fn stop_collecting(&mut self) -> Result<(), AnyError>;
+  async fn start_collecting(&mut self) -> Result<(), CoreError>;
+  async fn stop_collecting(&mut self) -> Result<(), CoreError>;
 }
 
 pub type CreateHmrRunnerCb = Box<
@@ -91,7 +76,7 @@ impl CliMainWorker {
     self.worker.into_main_worker()
   }
 
-  pub async fn setup_repl(&mut self) -> Result<(), AnyError> {
+  pub async fn setup_repl(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(false).await?;
     Ok(())
   }
@@ -103,6 +88,8 @@ impl CliMainWorker {
 
     log::debug!("main_module {}", self.worker.main_module());
 
+    // WARNING: Remember to update cli/lib/worker.rs to align with
+    // changes made here so that they affect deno_compile as well.
     self.execute_main_module().await?;
     self.worker.dispatch_load_event()?;
 
@@ -172,7 +159,7 @@ impl CliMainWorker {
     Ok(self.worker.exit_code())
   }
 
-  pub async fn run_for_watcher(self) -> Result<(), AnyError> {
+  pub async fn run_for_watcher(self) -> Result<(), CoreError> {
     /// The FileWatcherModuleExecutor provides module execution with safe dispatching of life-cycle events by tracking the
     /// state of any pending events and emitting accordingly on drop in the case of a future
     /// cancellation.
@@ -191,7 +178,7 @@ impl CliMainWorker {
 
       /// Execute the given main module emitting load and unload events before and after execution
       /// respectively.
-      pub async fn execute(&mut self) -> Result<(), AnyError> {
+      pub async fn execute(&mut self) -> Result<(), CoreError> {
         self.inner.execute_main_module().await?;
         self.inner.worker.dispatch_load_event()?;
         self.pending_unload = true;
@@ -245,7 +232,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_hmr_runner(
     &mut self,
-  ) -> Result<Option<Box<dyn HmrRunner>>, AnyError> {
+  ) -> Result<Option<Box<dyn HmrRunner>>, CoreError> {
     let Some(setup_hmr_runner) = self.shared.create_hmr_runner.as_ref() else {
       return Ok(None);
     };
@@ -267,7 +254,7 @@ impl CliMainWorker {
 
   pub async fn maybe_setup_coverage_collector(
     &mut self,
-  ) -> Result<Option<Box<dyn CoverageCollector>>, AnyError> {
+  ) -> Result<Option<Box<dyn CoverageCollector>>, CoreError> {
     let Some(create_coverage_collector) =
       self.shared.create_coverage_collector.as_ref()
     else {
@@ -296,10 +283,38 @@ impl CliMainWorker {
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CreateCustomWorkerError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Core(#[from] CoreError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolvePkgFolderFromDenoReq(
+    #[from] deno_resolver::npm::ResolvePkgFolderFromDenoReqError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlParse(#[from] deno_core::url::ParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ResolveNpmBinaryEntrypoint(#[from] ResolveNpmBinaryEntrypointError),
+  #[class(inherit)]
+  #[error(transparent)]
+  NpmPackageReq(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  AtomicWriteFileWithRetries(
+    #[from] crate::args::AtomicWriteFileWithRetriesError,
+  ),
+}
+
 pub struct CliMainWorkerFactory {
   lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
   maybe_lockfile: Option<Arc<CliLockfile>>,
-  node_resolver: Arc<CliNodeResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
   npm_resolver: CliNpmResolver,
   root_permissions: PermissionsContainer,
@@ -315,7 +330,6 @@ impl CliMainWorkerFactory {
     lib_main_worker_factory: LibMainWorkerFactory<CliSys>,
     maybe_file_watcher_communicator: Option<Arc<WatcherCommunicator>>,
     maybe_lockfile: Option<Arc<CliLockfile>>,
-    node_resolver: Arc<CliNodeResolver>,
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
@@ -325,7 +339,6 @@ impl CliMainWorkerFactory {
     Self {
       lib_main_worker_factory,
       maybe_lockfile,
-      node_resolver,
       npm_installer,
       npm_resolver,
       root_permissions,
@@ -344,7 +357,7 @@ impl CliMainWorkerFactory {
     &self,
     mode: WorkerExecutionMode,
     main_module: ModuleSpecifier,
-  ) -> Result<CliMainWorker, CoreError> {
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     self
       .create_custom_worker(
         mode,
@@ -363,7 +376,7 @@ impl CliMainWorkerFactory {
     permissions: PermissionsContainer,
     custom_extensions: Vec<Extension>,
     stdio: deno_runtime::deno_io::Stdio,
-  ) -> Result<CliMainWorker, CoreError> {
+  ) -> Result<CliMainWorker, CreateCustomWorkerError> {
     let main_module = if let Ok(package_ref) =
       NpmPackageReqReference::from_specifier(&main_module)
     {
@@ -381,21 +394,25 @@ impl CliMainWorkerFactory {
               PackageCaching::All
             },
           )
-          .await?;
+          .await
+          .map_err(CreateCustomWorkerError::NpmPackageReq)?;
       }
 
       // use a fake referrer that can be used to discover the package.json if necessary
-      let referrer = ModuleSpecifier::from_directory_path(
-        self.sys.env_current_dir().map_err(JsErrorBox::from_err)?,
-      )
-      .unwrap()
-      .join("package.json")?;
-      let package_folder = self
-        .npm_resolver
-        .resolve_pkg_folder_from_deno_module_req(package_ref.req(), &referrer)
-        .map_err(JsErrorBox::from_err)?;
-      let main_module = self
-        .resolve_binary_entrypoint(&package_folder, package_ref.sub_path())?;
+      let referrer =
+        ModuleSpecifier::from_directory_path(self.sys.env_current_dir()?)
+          .unwrap()
+          .join("package.json")?;
+      let package_folder =
+        self.npm_resolver.resolve_pkg_folder_from_deno_module_req(
+          package_ref.req(),
+          &referrer,
+        )?;
+      let main_module =
+        self.lib_main_worker_factory.resolve_npm_binary_entrypoint(
+          &package_folder,
+          package_ref.sub_path(),
+        )?;
 
       if let Some(lockfile) = &self.maybe_lockfile {
         // For npm binary commands, ensure that the lockfile gets updated
@@ -441,65 +458,6 @@ impl CliMainWorkerFactory {
       worker,
       shared: self.shared.clone(),
     })
-  }
-
-  fn resolve_binary_entrypoint(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<ModuleSpecifier, AnyError> {
-    match self
-      .node_resolver
-      .resolve_binary_export(package_folder, sub_path)
-    {
-      Ok(specifier) => Ok(specifier),
-      Err(original_err) => {
-        // if the binary entrypoint was not found, fallback to regular node resolution
-        let result =
-          self.resolve_binary_entrypoint_fallback(package_folder, sub_path);
-        match result {
-          Ok(Some(specifier)) => Ok(specifier),
-          Ok(None) => Err(original_err.into()),
-          Err(fallback_err) => {
-            bail!("{:#}\n\nFallback failed: {:#}", original_err, fallback_err)
-          }
-        }
-      }
-    }
-  }
-
-  /// resolve the binary entrypoint using regular node resolution
-  fn resolve_binary_entrypoint_fallback(
-    &self,
-    package_folder: &Path,
-    sub_path: Option<&str>,
-  ) -> Result<Option<ModuleSpecifier>, AnyError> {
-    // only fallback if the user specified a sub path
-    if sub_path.is_none() {
-      // it's confusing to users if the package doesn't have any binary
-      // entrypoint and we just execute the main script which will likely
-      // have blank output, so do not resolve the entrypoint in this case
-      return Ok(None);
-    }
-
-    let specifier = self
-      .node_resolver
-      .resolve_package_subpath_from_deno_module(
-        package_folder,
-        sub_path,
-        /* referrer */ None,
-        ResolutionMode::Import,
-        NodeResolutionKind::Execution,
-      )?;
-    if specifier
-      .to_file_path()
-      .map(|p| p.exists())
-      .unwrap_or(false)
-    {
-      Ok(Some(specifier))
-    } else {
-      bail!("Cannot find module '{}'", specifier)
-    }
   }
 }
 

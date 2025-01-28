@@ -4,6 +4,7 @@
 #![deny(clippy::print_stdout)]
 
 pub mod analyze;
+mod builtin_modules;
 pub mod errors;
 mod npm;
 mod package_json;
@@ -12,17 +13,22 @@ mod resolution;
 
 mod sync;
 
+pub use builtin_modules::DenoIsBuiltInNodeModuleChecker;
+pub use builtin_modules::IsBuiltInNodeModuleChecker;
+pub use builtin_modules::DENO_SUPPORTED_BUILTIN_NODE_MODULES;
 pub use deno_package_json::PackageJson;
 pub use npm::InNpmPackageChecker;
 pub use npm::NpmPackageFolderResolver;
+pub use package_json::PackageJsonCacheRc;
 pub use package_json::PackageJsonResolver;
 pub use package_json::PackageJsonResolverRc;
 pub use package_json::PackageJsonThreadLocalCache;
 pub use path::PathClean;
+pub use path::UrlOrPath;
+pub use path::UrlOrPathRef;
 pub use resolution::parse_npm_pkg_name;
 pub use resolution::resolve_specifier_into_node_modules;
 pub use resolution::ConditionsFromResolutionMode;
-pub use resolution::IsBuiltInNodeModuleChecker;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionKind;
 pub use resolution::NodeResolver;

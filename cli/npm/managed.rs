@@ -1,11 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::parking_lot::Mutex;
-use deno_core::serde_json;
 use deno_error::JsError;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
@@ -13,14 +11,10 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::resolution::ValidSerializedNpmResolutionSnapshot;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::npm::ManagedNpmResolverRc;
-use deno_runtime::ops::process::NpmProcessStateProvider;
 use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
 use crate::args::CliLockfile;
-use crate::args::NpmProcessState;
-use crate::args::NpmProcessStateKind;
 use crate::sys::CliSys;
 
 pub type CliManagedNpmResolverCreateOptions =
@@ -206,28 +200,4 @@ async fn snapshot_from_lockfile(
   )
   .await?;
   Ok(snapshot)
-}
-
-pub fn npm_process_state(
-  snapshot: ValidSerializedNpmResolutionSnapshot,
-  node_modules_path: Option<&Path>,
-) -> String {
-  serde_json::to_string(&NpmProcessState {
-    kind: NpmProcessStateKind::Snapshot(snapshot.into_serialized()),
-    local_node_modules_path: node_modules_path
-      .map(|p| p.to_string_lossy().to_string()),
-  })
-  .unwrap()
-}
-
-#[derive(Debug)]
-pub struct CliManagedNpmProcessStateProvider(pub ManagedNpmResolverRc<CliSys>);
-
-impl NpmProcessStateProvider for CliManagedNpmProcessStateProvider {
-  fn get_npm_process_state(&self) -> String {
-    npm_process_state(
-      self.0.resolution().serialized_valid_snapshot(),
-      self.0.root_node_modules_path(),
-    )
-  }
 }

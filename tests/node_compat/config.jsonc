@@ -2,6 +2,7 @@
   "ignore": {
     "common": ["index.js", "internet.js"],
     "fixtures": [
+      "baz.js",
       "child-process-spawn-node.js",
       "echo.js",
       "elipses.txt",
@@ -480,6 +481,7 @@
       "test-fs-opendir.js",
       "test-fs-promises-exists.js",
       "test-fs-promises-file-handle-stat.js",
+      "test-fs-promises-file-handle-sync.js",
       "test-fs-promises-file-handle-write.js",
       "test-fs-promises-readfile-empty.js",
       "test-fs-promises-readfile-with-fd.js",
@@ -852,6 +854,7 @@
       "test-process-emitwarning.js",
       "test-process-env-allowed-flags.js",
       "test-process-env-delete.js",
+      "test-process-env-tz.js",
       "test-process-env-windows-error-reset.js",
       "test-process-exit-from-before-exit.js",
       "test-process-exit-handler.js",

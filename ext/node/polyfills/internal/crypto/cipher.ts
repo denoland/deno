@@ -18,7 +18,6 @@ import {
   op_node_decipheriv_decrypt,
   op_node_decipheriv_final,
   op_node_decipheriv_set_aad,
-  op_node_decipheriv_take,
   op_node_private_decrypt,
   op_node_private_encrypt,
   op_node_public_encrypt,
@@ -187,7 +186,9 @@ export class Cipheriv extends Transform implements Cipher {
     this.#cache = new BlockModeCache(false);
     this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
+      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
+        cipher == "aes-256-ctr");
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
@@ -345,21 +346,15 @@ export class Decipheriv extends Transform implements Cipher {
     this.#cache = new BlockModeCache(this.#autoPadding);
     this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm");
+      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
+        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
+        cipher == "aes-256-ctr");
     if (this.#context == 0) {
       throw new TypeError("Unknown cipher");
     }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
-    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
-      op_node_decipheriv_take(this.#context);
-      return encoding === "buffer" ? Buffer.from([]) : "";
-    }
-    if (this.#cache.cache.byteLength != 16) {
-      throw new Error("Invalid final block size");
-    }
-
     let buf = new Buffer(16);
     op_node_decipheriv_final(
       this.#context,
@@ -368,6 +363,13 @@ export class Decipheriv extends Transform implements Cipher {
       buf,
       this.#authTag || NO_TAG,
     );
+
+    if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
+      return encoding === "buffer" ? Buffer.from([]) : "";
+    }
+    if (this.#cache.cache.byteLength != 16) {
+      throw new Error("Invalid final block size");
+    }
 
     buf = buf.subarray(0, 16 - buf.at(-1)); // Padded in Pkcs7 mode
     return encoding === "buffer" ? buf : buf.toString(encoding);
