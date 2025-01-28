@@ -9,6 +9,7 @@ use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
 use aes::cipher::KeySizeUser;
+use aes::cipher::StreamCipher;
 use deno_core::Resource;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
@@ -26,6 +27,9 @@ enum Cipher {
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Encryptor<aes::Aes256>>),
+  Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
+  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, etc.
 }
 
@@ -37,6 +41,9 @@ enum Decipher {
   Aes128Gcm(Box<Aes128Gcm>),
   Aes256Gcm(Box<Aes256Gcm>),
   Aes256Cbc(Box<cbc::Decryptor<aes::Aes256>>),
+  Aes128Ctr(Box<ctr::Ctr128BE<aes::Aes128>>),
+  Aes192Ctr(Box<ctr::Ctr128BE<aes::Aes192>>),
+  Aes256Ctr(Box<ctr::Ctr128BE<aes::Aes256>>),
   // TODO(kt3k): add more algorithms Aes192Cbc, Aes128GCM, etc.
 }
 
@@ -220,6 +227,33 @@ impl Cipher {
 
         Aes256Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
+      "aes-256-ctr" => {
+        if key.len() != 32 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-128-ctr" => {
+        if key.len() != 16 {
+          return Err(CipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(CipherError::InvalidInitializationVector);
+        }
+        Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
       _ => return Err(CipherError::UnknownCipher(algorithm_name.to_string())),
     })
   }
@@ -278,6 +312,15 @@ impl Cipher {
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           encryptor.encrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      Aes256Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes128Ctr(encryptor) => {
+        encryptor.apply_keystream_b2b(input, output).unwrap();
       }
     }
   }
@@ -359,6 +402,7 @@ impl Cipher {
         );
         Ok(None)
       }
+      (Aes256Ctr(_) | Aes128Ctr(_) | Aes192Ctr(_), _) => Ok(None),
     }
   }
 
@@ -444,6 +488,33 @@ impl Decipher {
 
         Aes256Cbc(Box::new(cbc::Decryptor::new(key.into(), iv.into())))
       }
+      "aes-256-ctr" => {
+        if key.len() != 32 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes256Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-192-ctr" => {
+        if key.len() != 24 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes192Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
+      "aes-128-ctr" => {
+        if key.len() != 16 {
+          return Err(DecipherError::InvalidKeyLength);
+        }
+        if iv.len() != 16 {
+          return Err(DecipherError::InvalidInitializationVector);
+        }
+        Aes128Ctr(Box::new(ctr::Ctr128BE::new(key.into(), iv.into())))
+      }
       _ => {
         return Err(DecipherError::UnknownCipher(algorithm_name.to_string()))
       }
@@ -504,6 +575,15 @@ impl Decipher {
         for (input, output) in input.chunks(16).zip(output.chunks_mut(16)) {
           decryptor.decrypt_block_b2b_mut(input.into(), output.into());
         }
+      }
+      Aes256Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes192Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+      }
+      Aes128Ctr(decryptor) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
       }
     }
   }
@@ -613,6 +693,18 @@ impl Decipher {
           GenericArray::from_slice(input),
           GenericArray::from_mut_slice(output),
         );
+        Ok(())
+      }
+      (Aes256Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (Aes192Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
+        Ok(())
+      }
+      (Aes128Ctr(mut decryptor), _) => {
+        decryptor.apply_keystream_b2b(input, output).unwrap();
         Ok(())
       }
     }

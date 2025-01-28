@@ -732,13 +732,13 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.106"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fce287b1d4eafef758e89e09d724a24808a9196fe9756b8ca90e86d0719a2"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
- "once_cell",
+ "shlex",
 ]
 
 [[package]]
@@ -2047,6 +2047,7 @@ dependencies = [
  "bytes",
  "cbc",
  "const-oid",
+ "ctr",
  "data-encoding",
  "deno_core",
  "deno_error",
@@ -2080,6 +2081,7 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
+ "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -2101,6 +2103,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
+ "rusqlite",
  "scrypt",
  "sec1",
  "serde",
@@ -4862,9 +4865,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b694a822684ddb75df4d657029161431bcb4a85c1856952f845b76912bc6fec"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
