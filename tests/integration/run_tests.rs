@@ -362,7 +362,7 @@ fn permissions_prompt_allow_all_2() {
       // "read" permissions
       test_util::assertions::assert_wildcard_match(&text, concat!(
         "\r\n",
-        "┏ ⚠️  Deno requests read access to \"[WILDCARD]/tests/testdata/\".\r\n",
+        "┏ ⚠️  Deno requests read access to \"[WILDCARD]tests[WILDCHAR]testdata[WILDCHAR]\".\r\n",
         "┠─ Requested by `Deno.lstatSync()` API.\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
@@ -2158,7 +2158,7 @@ fn ts_dependency_recompilation() {
   let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
-  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  // TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());

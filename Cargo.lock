@@ -732,13 +732,13 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.106"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fce287b1d4eafef758e89e09d724a24808a9196fe9756b8ca90e86d0719a2"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
- "once_cell",
+ "shlex",
 ]
 
 [[package]]
@@ -868,7 +868,7 @@ dependencies = [
  "hickory-server",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "nix",
  "once_cell",
@@ -1527,9 +1527,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.45.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a47412627aa0d08414eca0e8329128013ab70bdb2cdfdc5456c2214cf24c8f"
+checksum = "08fe512a72c4300bd997c6849450a1f050da0c909a2a4fbdc44891647392bacf"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -1730,7 +1730,7 @@ dependencies = [
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -1795,9 +1795,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.0"
+version = "0.87.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56d4eb4b7c81ae920b6d18c45a1866924f93110caee80bbbc362dc28143f2bb"
+checksum = "e4766f426e4258c481c3af019fb4bba31e3108e80b8b2a48bbeb68bfadcc8c18"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -1848,7 +1848,7 @@ dependencies = [
  "http-body-util",
  "httparse",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "itertools 0.10.5",
  "memmem",
@@ -2060,6 +2060,7 @@ dependencies = [
  "bytes",
  "cbc",
  "const-oid",
+ "ctr",
  "data-encoding",
  "deno_core",
  "deno_error",
@@ -2085,7 +2086,7 @@ dependencies = [
  "hkdf",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "idna",
  "indexmap 2.3.0",
@@ -2093,6 +2094,7 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
+ "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -2114,6 +2116,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
+ "rusqlite",
  "scrypt",
  "sec1",
  "serde",
@@ -2377,7 +2380,7 @@ dependencies = [
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "libc",
  "log",
@@ -2455,7 +2458,7 @@ dependencies = [
  "deno_error",
  "deno_tls",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "log",
@@ -2614,7 +2617,7 @@ dependencies = [
  "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "once_cell",
  "rustls-tokio-stream",
@@ -3359,7 +3362,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project",
  "rand",
@@ -4202,9 +4205,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.8.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d897f394bad6a705d5f4104762e116a75639e470d80901eed05a860a95cb1904"
+checksum = "f2d708df4e7140240a16cd6ab0ab65c972d7433ab77819ea693fde9c43811e2a"
 
 [[package]]
 name = "httpdate"
@@ -4244,9 +4247,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.4.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
+checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -4271,7 +4274,7 @@ checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "rustls",
  "rustls-pki-types",
@@ -4287,7 +4290,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
 dependencies = [
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project-lite",
  "tokio",
@@ -4305,7 +4308,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -4875,9 +4878,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b694a822684ddb75df4d657029161431bcb4a85c1856952f845b76912bc6fec"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
@@ -6467,7 +6470,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -8007,7 +8010,7 @@ dependencies = [
  "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "jsonc-parser",
  "lazy-regex",
@@ -8302,7 +8305,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",

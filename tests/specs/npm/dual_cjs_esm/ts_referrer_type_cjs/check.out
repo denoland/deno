@@ -2,7 +2,9 @@ Download http://localhost:4260/@denotest%2fdual-cjs-esm
 Download http://localhost:4260/@denotest/dual-cjs-esm/1.0.0.tgz
 Initialize @denotest/dual-cjs-esm@1.0.0
 Check file:///[WILDLINE]/main.ts
-error: TS2322 [ERROR]: Type '"cjs"' is not assignable to type '"other"'.
+TS2322 [ERROR]: Type '"cjs"' is not assignable to type '"other"'.
 const kind: "other" = mod.getKind();
       ~~~~
     at file:///[WILDLINE]/main.ts:3:7
+
+error: Type checking failed.
