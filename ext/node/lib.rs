@@ -440,7 +440,9 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_enabled,
   ],
   objects = [
-    ops::perf_hooks::EldHistogram
+    ops::perf_hooks::EldHistogram,
+    ops::sqlite::DatabaseSync,
+    ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -663,6 +665,7 @@ deno_core::extension!(deno_node,
     "node:readline" = "readline.ts",
     "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
+    "node:sqlite" = "sqlite.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",
     "node:stream/promises" = "stream/promises.mjs",

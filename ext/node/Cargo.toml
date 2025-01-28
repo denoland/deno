@@ -60,6 +60,7 @@ ipnetwork = "0.20.0"
 k256 = "0.13.1"
 lazy-regex.workspace = true
 libc.workspace = true
+libsqlite3-sys = "0.30.1"
 libz-sys.workspace = true
 md-5 = { version = "0.10.5", features = ["oid"] }
 md4 = "0.10.2"
@@ -81,6 +82,7 @@ regex.workspace = true
 ring.workspace = true
 ripemd = { version = "0.1.3", features = ["oid"] }
 rsa.workspace = true
+rusqlite.workspace = true
 scrypt = "0.11.0"
 sec1.workspace = true
 serde = "1.0.149"
