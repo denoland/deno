@@ -5280,6 +5280,7 @@ dependencies = [
  "dashmap",
  "deno_config",
  "deno_error",
+ "deno_media_type",
  "deno_package_json",
  "deno_path_util",
  "futures",
