@@ -585,7 +585,7 @@ mod tests {
   // in deno_graph
   async fn test_fetch_remote_encoded(
     fixture: &str,
-    charset: &str,
+    expected_charset: &str,
     expected: &str,
   ) {
     let url_str = format!("http://127.0.0.1:4545/encoding/{fixture}");
@@ -597,15 +597,20 @@ mod tests {
         Some(&headers),
       );
     assert_eq!(
-      deno_graph::source::decode_source(&specifier, file.source, maybe_charset)
-        .unwrap()
-        .as_ref(),
+      deno_media_type::encoding::decode_arc_source(
+        maybe_charset.unwrap_or_else(|| {
+          deno_media_type::encoding::detect_charset(&specifier, &file.source)
+        }),
+        file.source
+      )
+      .unwrap()
+      .as_ref(),
       expected
     );
     assert_eq!(media_type, MediaType::TypeScript);
     assert_eq!(
       headers.get("content-type").unwrap(),
-      &format!("application/typescript;charset={charset}")
+      &format!("application/typescript;charset={expected_charset}")
     );
   }
 
@@ -614,9 +619,12 @@ mod tests {
     let specifier = ModuleSpecifier::from_file_path(p).unwrap();
     let (file, _) = test_fetch(&specifier).await;
     assert_eq!(
-      deno_graph::source::decode_source(&specifier, file.source, None)
-        .unwrap()
-        .as_ref(),
+      deno_media_type::encoding::decode_arc_source(
+        deno_media_type::encoding::detect_charset(&specifier, &file.source),
+        file.source
+      )
+      .unwrap()
+      .as_ref(),
       expected
     );
   }

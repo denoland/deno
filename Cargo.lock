@@ -1514,9 +1514,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.45.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a47412627aa0d08414eca0e8329128013ab70bdb2cdfdc5456c2214cf24c8f"
+checksum = "08fe512a72c4300bd997c6849450a1f050da0c909a2a4fbdc44891647392bacf"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -1782,9 +1782,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.0"
+version = "0.87.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56d4eb4b7c81ae920b6d18c45a1866924f93110caee80bbbc362dc28143f2bb"
+checksum = "e4766f426e4258c481c3af019fb4bba31e3108e80b8b2a48bbeb68bfadcc8c18"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
