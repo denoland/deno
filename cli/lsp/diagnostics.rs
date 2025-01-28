@@ -415,9 +415,7 @@ impl DeferredDiagnostics {
   }
 
   fn take_filtered_diagnostics(&mut self) -> Option<DiagnosticVec> {
-    let Some(diagnostics) = self.diagnostics.take() else {
-      return None;
-    };
+    let diagnostics = self.diagnostics.take()?;
     for diagnostic in &diagnostics {
       let Some(ambient) = self.ambient_modules_by_scope.get(&diagnostic.scope)
       else {
@@ -469,7 +467,6 @@ impl DeferredDiagnostics {
     &mut self,
     new: HashMap<Option<Url>, Option<Vec<String>>>,
   ) {
-    eprintln!("new ambient modules: {new:?}");
     for (scope, value) in new {
       let ambient = self.ambient_modules_by_scope.entry(scope).or_default();
       ambient.dirty = false;
@@ -672,10 +669,12 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
-                    if let Some(deferred) = deferred_diagnostics_state
-                      .lock()
-                      .take_filtered_diagnostics()
+                    let mut deferred_diagnostics_state =
+                      deferred_diagnostics_state.lock();
+                    if let Some(deferred) =
+                      deferred_diagnostics_state.take_filtered_diagnostics()
                     {
+                      drop(deferred_diagnostics_state);
                       messages_len += diagnostics_publisher
                         .publish(
                           DiagnosticSource::DeferredDeno,
@@ -747,6 +746,7 @@ impl DiagnosticsServer {
                       if let Some(deferred) =
                         deferred_diagnostics_state.take_filtered_diagnostics()
                       {
+                        drop(deferred_diagnostics_state);
                         messages_len += diagnostics_publisher
                           .publish(
                             DiagnosticSource::DeferredDeno,
@@ -1675,13 +1675,13 @@ fn diagnose_resolution(
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
     Resolution::Err(err) => match &**err {
-      ResolutionError::InvalidSpecifier { error, .. } => match error {
-        SpecifierError::ImportPrefixMissing { .. } => {
-          deferred_diagnostics
-            .push(DenoDiagnostic::ResolutionError(*err.clone()));
-        }
-        _ => diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone())),
-      },
+      ResolutionError::InvalidSpecifier {
+        error: SpecifierError::ImportPrefixMissing { .. },
+        ..
+      } => {
+        deferred_diagnostics
+          .push(DenoDiagnostic::ResolutionError(*err.clone()));
+      }
       _ => diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone())),
     },
     _ => (),
@@ -1878,16 +1878,12 @@ fn generate_deno_diagnostics(
     });
     deferred_diagnostics.push(DeferredDiagnosticRecord {
       document_specifier: specifier.clone(),
-      scope: if snapshot.documents.is_valid_file_referrer(&specifier) {
-        snapshot
-          .config
-          .tree
-          .scope_for_specifier(&specifier)
-          .cloned()
+      scope: if snapshot.documents.is_valid_file_referrer(specifier) {
+        snapshot.config.tree.scope_for_specifier(specifier).cloned()
       } else {
         snapshot
           .documents
-          .get(&specifier)
+          .get(specifier)
           .and_then(|d| d.scope().cloned())
       },
       version: document.maybe_lsp_version(),
