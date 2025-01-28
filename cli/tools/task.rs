@@ -74,7 +74,7 @@ pub async fn execute_script(
   // TODO(bartlomieju): this whole huge if statement should be a separate function, preferably with unit tests
   let (packages_task_configs, name) = if let Some(filter) = &task_flags.filter {
     // Filter based on package name
-    let package_regex = package_filter_to_regex(filter, false)?;
+    let package_regex = package_filter_to_regex(filter)?;
 
     let Some(task_name) = &task_flags.task else {
       print_available_tasks_workspace(
@@ -936,28 +936,13 @@ fn match_tasks(
   matched.iter().map(|s| s.to_string()).collect::<Vec<_>>()
 }
 
-// TODO(bartlomieju): changes to this function might not be needed
-fn package_filter_to_regex(
-  input: &str,
-  exact: bool,
-) -> Result<regex::Regex, regex::Error> {
+fn package_filter_to_regex(input: &str) -> Result<regex::Regex, regex::Error> {
   let mut regex_str = regex::escape(input);
   regex_str = regex_str.replace("\\*", ".*");
-  let prefix = if exact && !regex_str.starts_with('^') {
-    "^"
-  } else {
-    ""
-  };
-  let suffix = if exact && !regex_str.ends_with('$') {
-    "$"
-  } else {
-    ""
-  };
 
-  Regex::new(&format!("{}{}{}", prefix, regex_str, suffix))
+  Regex::new(&regex_str)
 }
 
-// TODO(bartlomieju): should this support `^` and `$`?
 fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
