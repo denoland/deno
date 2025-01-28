@@ -194,7 +194,7 @@ interface URL {
   hash: string;
 
   /**
-   * The `host` property of the URL interface is a string that includes the {@linkcode hostname} and the {@linkcode port} if one is specified in the URL includes by including a `:` followed by the port number.
+   * The `host` property of the URL interface is a string that includes the {@linkcode URL.hostname} and the {@linkcode URL.port} if one is specified in the URL includes by including a `:` followed by the port number.
    *
    * @example
    * ```ts
@@ -252,7 +252,7 @@ interface URL {
   toString(): string;
 
   /**
-   * The `origin` property of the URL interface is a string that represents the origin of the URL, that is the {@linkcode protocol}, {@linkcode host}, and {@linkcode port}.
+   * The `origin` property of the URL interface is a string that represents the origin of the URL, that is the {@linkcode URL.protocol}, {@linkcode URL.host}, and {@linkcode URL.port}.
    *
    * @example
    * ```ts
@@ -336,7 +336,7 @@ interface URL {
 
   /**
    * The `search` property of the URL interface is a string that represents the search string, or the query string, of the URL.
-   * This includes the `?` character and the but excludes identifiers within the represented resource such as the {@linkcode hash}. More granular control can be found using {@linkcode searchParams} property.
+   * This includes the `?` character and the but excludes identifiers within the represented resource such as the {@linkcode URL.hash}. More granular control can be found using {@linkcode URL.searchParams} property.
    *
    * @example
    * ```ts
@@ -355,7 +355,7 @@ interface URL {
   search: string;
 
   /**
-   * The `searchParams` property of the URL interface is a {@linkcode URLSearchParams} object that represents the search parameters of the URL.
+   * The `searchParams` property of the URL interface is a {@linkcode URL.URLSearchParams} object that represents the search parameters of the URL.
    *
    * @example
    * ```ts
