@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
+use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use serde_json::Map;
 use serde_json::Value;
@@ -496,18 +497,18 @@ impl<
     fn probe_extensions<TSys: FsMetadata>(
       sys: &TSys,
       path: &Path,
-      lowercase_path: &str,
+      media_type: MediaType,
       resolution_mode: ResolutionMode,
     ) -> Option<PathBuf> {
       let mut searched_for_d_mts = false;
       let mut searched_for_d_cts = false;
-      if lowercase_path.ends_with(".mjs") {
+      if media_type == MediaType::Mjs {
         let d_mts_path = with_known_extension(path, "d.mts");
         if sys.fs_is_file_no_err(&d_mts_path) {
           return Some(d_mts_path);
         }
         searched_for_d_mts = true;
-      } else if lowercase_path.ends_with(".cjs") {
+      } else if media_type == MediaType::Cjs {
         let d_cts_path = with_known_extension(path, "d.cts");
         if sys.fs_is_file_no_err(&d_cts_path) {
           return Some(d_cts_path);
@@ -534,18 +535,19 @@ impl<
           return Some(specific_dts_path);
         }
       }
+      let ts_path = with_known_extension(path, "ts");
+      if sys.fs_is_file_no_err(&ts_path) {
+        return Some(ts_path);
+      }
       None
     }
 
-    let lowercase_path = path.to_string_lossy().to_lowercase();
-    if lowercase_path.ends_with(".d.ts")
-      || lowercase_path.ends_with(".d.cts")
-      || lowercase_path.ends_with(".d.mts")
-    {
+    let media_type = MediaType::from_path(&path);
+    if media_type.is_declaration() {
       return Ok(UrlOrPath::Path(path));
     }
     if let Some(path) =
-      probe_extensions(&self.sys, &path, &lowercase_path, resolution_mode)
+      probe_extensions(&self.sys, &path, media_type, resolution_mode)
     {
       return Ok(UrlOrPath::Path(path));
     }
@@ -565,14 +567,14 @@ impl<
       if let Some(path) = probe_extensions(
         &self.sys,
         &index_path,
-        &index_path.to_string_lossy().to_lowercase(),
+        MediaType::from_path(&index_path),
         resolution_mode,
       ) {
         return Ok(UrlOrPath::Path(path));
       }
     }
-    // allow resolving .css files for types resolution
-    if lowercase_path.ends_with(".css") {
+    // allow resolving .ts-like or .css files for types resolution
+    if media_type.is_typed() || media_type == MediaType::Css {
       return Ok(UrlOrPath::Path(path));
     }
     Err(TypesNotFoundError(Box::new(TypesNotFoundErrorData {
