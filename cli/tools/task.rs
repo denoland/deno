@@ -72,91 +72,90 @@ pub async fn execute_script(
       .unwrap_or(false);
 
   // TODO(bartlomieju): this whole huge if statement should be a separate function, preferably with unit tests
-  let (packages_task_configs, task_name): (Vec<PackageTaskInfo>, &str) =
-    if let Some(filter) = &task_flags.filter {
-      // Filter based on package name
-      let package_regex = package_filter_to_regex(filter, false)?;
+  let (packages_task_configs, name) = if let Some(filter) = &task_flags.filter {
+    // Filter based on package name
+    let package_regex = package_filter_to_regex(filter, false)?;
 
-      let Some(task_name) = &task_flags.task else {
-        print_available_tasks_workspace(
-          cli_options,
-          &package_regex,
-          filter,
-          force_use_pkg_json,
-          task_flags.recursive,
-        )?;
+    let Some(task_name) = &task_flags.task else {
+      print_available_tasks_workspace(
+        cli_options,
+        &package_regex,
+        filter,
+        force_use_pkg_json,
+        task_flags.recursive,
+      )?;
 
-        return Ok(0);
-      };
-      let task_regex = arg_to_task_name_filter(task_name)?;
+      return Ok(0);
+    };
+    let task_regex = arg_to_task_name_filter(task_name)?;
 
-      let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
+    let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
 
-      let workspace = cli_options.workspace();
-      for folder in workspace.config_folders() {
-        if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
-          continue;
-        }
-
-        let member_dir = workspace.resolve_member_dir(folder.0);
-        let mut tasks_config = member_dir.to_tasks_config()?;
-        if force_use_pkg_json {
-          tasks_config = tasks_config.with_only_pkg_json();
-        }
-
-        let matched_tasks = match_tasks(&tasks_config, &task_regex);
-
-        packages_task_info.push(PackageTaskInfo {
-          matched_tasks,
-          tasks_config,
-        });
+    let workspace = cli_options.workspace();
+    for folder in workspace.config_folders() {
+      if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+        continue;
       }
 
-      // Logging every task definition would be too spammy. Pnpm only
-      // logs a simple message too.
-      if packages_task_info
-        .iter()
-        .all(|config| config.matched_tasks.is_empty())
-      {
-        log::warn!(
-          "{}",
-          colors::red(format!(
-            "No matching task or script '{}' found in selected packages.",
-            task_name
-          ))
-        );
-        return Ok(0);
-      }
-
-      (packages_task_info, task_name)
-    } else {
-      let mut tasks_config = start_dir.to_tasks_config()?;
-
+      let member_dir = workspace.resolve_member_dir(folder.0);
+      let mut tasks_config = member_dir.to_tasks_config()?;
       if force_use_pkg_json {
-        tasks_config = tasks_config.with_only_pkg_json()
+        tasks_config = tasks_config.with_only_pkg_json();
       }
 
-      let Some(task_name) = &task_flags.task else {
-        print_available_tasks(
-          &mut std::io::stdout(),
-          &cli_options.start_dir,
-          &tasks_config,
-          None,
-        )?;
-        return Ok(0);
-      };
-
-      let task_regex = arg_to_task_name_filter(task_name)?;
       let matched_tasks = match_tasks(&tasks_config, &task_regex);
 
-      (
-        vec![PackageTaskInfo {
-          tasks_config,
-          matched_tasks,
-        }],
-        task_name,
-      )
+      packages_task_info.push(PackageTaskInfo {
+        matched_tasks,
+        tasks_config,
+      });
+    }
+
+    // Logging every task definition would be too spammy. Pnpm only
+    // logs a simple message too.
+    if packages_task_info
+      .iter()
+      .all(|config| config.matched_tasks.is_empty())
+    {
+      log::warn!(
+        "{}",
+        colors::red(format!(
+          "No matching task or script '{}' found in selected packages.",
+          task_name
+        ))
+      );
+      return Ok(0);
+    }
+
+    (packages_task_info, task_name)
+  } else {
+    let mut tasks_config = start_dir.to_tasks_config()?;
+
+    if force_use_pkg_json {
+      tasks_config = tasks_config.with_only_pkg_json()
+    }
+
+    let Some(task_name) = &task_flags.task else {
+      print_available_tasks(
+        &mut std::io::stdout(),
+        &cli_options.start_dir,
+        &tasks_config,
+        None,
+      )?;
+      return Ok(0);
     };
+
+    let task_regex = arg_to_task_name_filter(task_name)?;
+    let matched_tasks = match_tasks(&tasks_config, &task_regex);
+
+    (
+      vec![PackageTaskInfo {
+        tasks_config,
+        matched_tasks,
+      }],
+      task_name,
+    )
+  };
 
   let npm_installer = factory.npm_installer_if_managed()?;
   let npm_resolver = factory.npm_resolver().await?;
@@ -200,7 +199,7 @@ pub async fn execute_script(
 
     for task_config in &packages_task_configs {
       let exit_code = task_runner
-        .run_tasks(task_config, task_name, &kill_signal, cli_options.argv())
+        .run_tasks(task_config, name, &kill_signal, cli_options.argv())
         .await?;
       if exit_code > 0 {
         return Ok(exit_code);
