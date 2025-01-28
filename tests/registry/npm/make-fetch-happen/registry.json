@@ -103,6 +103,5 @@
   "homepage": "https://github.com/npm/make-fetch-happen#readme",
   "bugs": {
     "url": "https://github.com/npm/make-fetch-happen/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

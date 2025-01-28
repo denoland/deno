@@ -96,6 +96,5 @@
   "bugs": {
     "url": "https://github.com/ai/nanoid/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

@@ -68,6 +68,5 @@
   "bugs": {
     "url": "https://github.com/isaacs/chownr/issues"
   },
-  "license": "BlueOak-1.0.0",
-  "readmeFilename": "README.md"
+  "license": "BlueOak-1.0.0"
 }

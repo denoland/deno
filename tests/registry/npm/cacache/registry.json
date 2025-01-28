@@ -104,6 +104,5 @@
   "homepage": "https://github.com/npm/cacache#readme",
   "bugs": {
     "url": "https://github.com/npm/cacache/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

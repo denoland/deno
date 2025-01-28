@@ -68,6 +68,5 @@
     "type": "git",
     "url": "git+https://github.com/websockets/bufferutil.git"
   },
-  "description": "WebSocket buffer utils",
-  "readmeFilename": "README.md"
+  "description": "WebSocket buffer utils"
 }

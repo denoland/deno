@@ -80,6 +80,5 @@
   "bugs": {
     "url": "https://github.com/epoberezkin/fast-deep-equal/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

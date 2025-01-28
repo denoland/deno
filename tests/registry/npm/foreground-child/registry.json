@@ -147,6 +147,5 @@
   "homepage": "https://github.com/tapjs/foreground-child#readme",
   "bugs": {
     "url": "https://github.com/tapjs/foreground-child/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

@@ -82,6 +82,5 @@
   "homepage": "https://github.com/debug-js/debug#readme",
   "bugs": {
     "url": "https://github.com/debug-js/debug/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

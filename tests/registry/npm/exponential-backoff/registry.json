@@ -84,6 +84,5 @@
   "homepage": "https://github.com/coveo/exponential-backoff#readme",
   "bugs": {
     "url": "https://github.com/coveo/exponential-backoff/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

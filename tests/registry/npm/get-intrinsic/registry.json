@@ -116,6 +116,5 @@
   "bugs": {
     "url": "https://github.com/ljharb/get-intrinsic/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

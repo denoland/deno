@@ -72,6 +72,5 @@
   "bugs": {
     "url": "https://github.com/isaacs/minipass-sized/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

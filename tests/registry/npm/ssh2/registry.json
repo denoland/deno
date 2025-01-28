@@ -76,7 +76,6 @@
     "type": "git",
     "url": "git+ssh://git@github.com/mscdex/ssh2.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/mscdex/ssh2#readme",
   "bugs": {
     "url": "https://github.com/mscdex/ssh2/issues"

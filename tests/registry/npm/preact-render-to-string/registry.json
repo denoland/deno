@@ -171,7 +171,6 @@
     "email": "jason@developit.ca"
   },
   "license": "MIT",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/developit/preact-render-to-string",
   "repository": {
     "type": "git",

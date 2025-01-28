@@ -74,6 +74,5 @@
   "homepage": "https://github.com/npm/abbrev-js#readme",
   "bugs": {
     "url": "https://github.com/npm/abbrev-js/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

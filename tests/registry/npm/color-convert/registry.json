@@ -65,7 +65,6 @@
     "type": "git",
     "url": "git+https://github.com/Qix-/color-convert.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/Qix-/color-convert#readme",
   "bugs": {
     "url": "https://github.com/Qix-/color-convert/issues"

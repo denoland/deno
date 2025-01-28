@@ -57,6 +57,5 @@
   "bugs": {
     "url": "https://github.com/kornelski/http-cache-semantics/issues"
   },
-  "license": "BSD-2-Clause",
-  "readmeFilename": "README.md"
+  "license": "BSD-2-Clause"
 }

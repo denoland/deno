@@ -100,6 +100,5 @@
   "homepage": "https://github.com/isaacs/node-tar#readme",
   "bugs": {
     "url": "https://github.com/isaacs/node-tar/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

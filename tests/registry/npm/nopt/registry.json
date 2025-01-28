@@ -88,6 +88,5 @@
   "homepage": "https://github.com/npm/nopt#readme",
   "bugs": {
     "url": "https://github.com/npm/nopt/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

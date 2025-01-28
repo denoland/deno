@@ -117,6 +117,5 @@
     "type": "git",
     "url": "git+https://github.com/isaacs/jackspeak.git"
   },
-  "description": "A very strict and proper argument parser.",
-  "readmeFilename": "README.md"
+  "description": "A very strict and proper argument parser."
 }

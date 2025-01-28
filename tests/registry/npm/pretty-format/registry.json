@@ -60,7 +60,6 @@
     "email": "me@thejameskyle.com"
   },
   "license": "MIT",
-  "readmeFilename": "",
   "homepage": "https://github.com/jestjs/jest#readme",
   "bugs": {
     "url": "https://github.com/jestjs/jest/issues"

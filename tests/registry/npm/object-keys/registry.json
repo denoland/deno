@@ -90,7 +90,6 @@
     "type": "git",
     "url": "git://github.com/ljharb/object-keys.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/ljharb/object-keys#readme",
   "bugs": {
     "url": "https://github.com/ljharb/object-keys/issues"

@@ -44,6 +44,7 @@ monch.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
+percent-encoding.workspace = true
 pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true

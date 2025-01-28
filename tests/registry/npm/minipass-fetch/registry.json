@@ -100,6 +100,5 @@
   "homepage": "https://github.com/npm/minipass-fetch#readme",
   "bugs": {
     "url": "https://github.com/npm/minipass-fetch/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

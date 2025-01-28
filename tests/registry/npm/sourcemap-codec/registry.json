@@ -74,6 +74,5 @@
   "bugs": {
     "url": "https://github.com/Rich-Harris/sourcemap-codec/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

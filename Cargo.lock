@@ -8023,6 +8023,7 @@ dependencies = [
  "once_cell",
  "os_pipe",
  "parking_lot",
+ "percent-encoding",
  "pretty_assertions",
  "prost",
  "prost-build",

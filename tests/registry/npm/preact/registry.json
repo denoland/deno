@@ -305,6 +305,5 @@
   "bugs": {
     "url": "https://github.com/preactjs/preact/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

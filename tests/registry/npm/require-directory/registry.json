@@ -61,6 +61,5 @@
   "bugs": {
     "url": "http://github.com/troygoode/node-require-directory/issues/"
   },
-  "readmeFilename": "README.markdown",
   "license": "MIT"
 }

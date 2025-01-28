@@ -73,7 +73,6 @@
     "url": "git+https://github.com/JoshGlazebrook/socks.git"
   },
   "license": "MIT",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/JoshGlazebrook/socks/",
   "bugs": {
     "url": "https://github.com/JoshGlazebrook/socks/issues"

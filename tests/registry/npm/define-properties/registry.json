@@ -115,6 +115,5 @@
   "bugs": {
     "url": "https://github.com/ljharb/define-properties/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

@@ -156,6 +156,5 @@
   "bugs": {
     "url": "https://github.com/chalk/ansi-regex/issues"
   },
-  "license": "MIT",
-  "readmeFilename": ""
+  "license": "MIT"
 }

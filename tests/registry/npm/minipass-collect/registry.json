@@ -62,7 +62,6 @@
     "url": "https://izs.me"
   },
   "license": "ISC",
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/isaacs/minipass-collect#readme",
   "repository": {
     "type": "git",
