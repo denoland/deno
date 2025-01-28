@@ -27,6 +27,7 @@ brotli.workspace = true
 bytes.workspace = true
 cbc.workspace = true
 const-oid = "0.9.5"
+ctr.workspace = true
 data-encoding.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true

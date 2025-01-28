@@ -2121,3 +2121,20 @@ Deno.test(async function jwkKeyOpsValidation() {
 
   assert(publicKey);
 });
+
+Deno.test(async function x25519ExportJwk() {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+
+  assertEquals(jwk.kty, "OKP");
+  assertEquals(jwk.crv, "X25519");
+  assert(jwk.d);
+  assert(jwk.x);
+});
