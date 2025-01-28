@@ -470,11 +470,11 @@ function serverRequest(id, method, args, scope, maybeChange) {
             ...ls.getSyntacticDiagnostics(specifier),
           ].filter(filterMapDiagnostic));
         }
-        let ambient = ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) => symbol.getName()) ?? null;
+        let ambient = ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) => symbol.getName()) ?? [];
         const previousAmbient = ambientModulesCacheByScope.get(scope);
         if (ambient && previousAmbient && arraysEqual(ambient, previousAmbient)) {
           ambient = null; // null => use previous value
-        } else if (ambient) {
+        } else {
           ambientModulesCacheByScope.set(scope, ambient);
         }
         return respond(id, [diagnosticMap, ambient]);

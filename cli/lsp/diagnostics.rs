@@ -478,7 +478,8 @@ impl DeferredDiagnostics {
           ambient.regex = None;
           continue;
         }
-        let mut regex_string = String::new();
+        let mut regex_string = String::with_capacity(value.len() * 8);
+        regex_string.push('(');
         let last = value.len() - 1;
         for (idx, part) in value.into_iter().enumerate() {
           let trimmed = part.trim_matches('"');
@@ -489,6 +490,7 @@ impl DeferredDiagnostics {
             regex_string.push('|');
           }
         }
+        regex_string.push_str(")$");
         if let Ok(regex) = regex::Regex::new(&regex_string).inspect_err(|e| {
           lsp_warn!("failed to compile ambient modules pattern: {e} (pattern is {regex_string:?})");
         }) {
@@ -1672,9 +1674,16 @@ fn diagnose_resolution(
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
-    Resolution::Err(err) => {
-      diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone()))
-    }
+    Resolution::Err(err) => match &**err {
+      ResolutionError::InvalidSpecifier { error, .. } => match error {
+        SpecifierError::ImportPrefixMissing { .. } => {
+          deferred_diagnostics
+            .push(DenoDiagnostic::ResolutionError(*err.clone()));
+        }
+        _ => diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone())),
+      },
+      _ => diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone())),
+    },
     _ => (),
   }
   (diagnostics, deferred_diagnostics)
@@ -1685,7 +1694,7 @@ fn diagnose_resolution(
 /// any diagnostics related to the resolved code or type dependency.
 fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
-  deferred_diagnostics: &mut Vec<(Url, lsp::Diagnostic)>,
+  deferred_diagnostics: &mut Vec<(String, lsp::Diagnostic)>,
   snapshot: &language_server::StateSnapshot,
   referrer_doc: &Document,
   dependency_key: &str,
@@ -1768,10 +1777,22 @@ fn diagnose_dependency(
       .iter()
       .filter_map(|diag| match diag {
         DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => Some(
-          import_ranges
-            .iter()
-            .map(|range| (url.clone(), diag.to_lsp_diagnostic(range))),
+          Box::new(
+            import_ranges
+              .iter()
+              .map(|range| (url.to_string(), diag.to_lsp_diagnostic(range))),
+          ) as Box<dyn Iterator<Item = (String, lsp::Diagnostic)>>,
         ),
+        DenoDiagnostic::ResolutionError(
+          ResolutionError::InvalidSpecifier {
+            error: SpecifierError::ImportPrefixMissing { specifier, .. },
+            ..
+          },
+        ) => {
+          Some(Box::new(import_ranges.iter().map(|range| {
+            (specifier.clone(), diag.to_lsp_diagnostic(range))
+          })))
+        }
         _ => None,
       })
       .flatten(),
@@ -1797,14 +1818,14 @@ fn diagnose_dependency(
         .iter()
         .map(|diag| diag.to_lsp_diagnostic(&range)),
     );
-    deferred_diagnostics.extend(deferred.iter().filter_map(
-      |diag| match diag {
+    deferred_diagnostics.extend(Box::new(deferred.iter().filter_map(|diag| {
+      match diag {
         DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => {
-          Some((url.clone(), diag.to_lsp_diagnostic(&range)))
+          Some((url.to_string(), diag.to_lsp_diagnostic(&range)))
         }
         _ => None,
-      },
-    ));
+      }
+    })));
   }
 }
 
@@ -1813,7 +1834,7 @@ struct DeferredDiagnosticRecord {
   document_specifier: Url,
   version: Option<i32>,
   scope: Option<Url>,
-  diagnostics: Vec<(Url, lsp::Diagnostic)>,
+  diagnostics: Vec<(String, lsp::Diagnostic)>,
 }
 
 /// Generate diagnostics that come from Deno module resolution logic (like
