@@ -48,6 +48,7 @@ import {
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
   op_crypto_wrap_key,
+  op_crypto_x25519_public_key,
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
@@ -4532,17 +4533,18 @@ function exportKeyX25519(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
-      if (key[_type] === "private") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      const x = op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "X25519",
-        x,
         "key_ops": key.usages,
         ext: key[_extractable],
       };
+      if (key[_type] === "private") {
+        jwk.x = op_crypto_x25519_public_key(innerKey);
+        jwk.d = op_crypto_base64url_encode(innerKey);
+      } else {
+        jwk.x = op_crypto_base64url_encode(innerKey);
+      }
       return jwk;
     }
     default:
