@@ -38,6 +38,7 @@
       "hint": "If this is intentional, prefix it with an underscore like `_add`"
     }
   ],
+  "skipped": [],
   "errors": [],
   "checked_files": [
     "[WILDCARD]a.ts"
