@@ -3481,7 +3481,7 @@ interface Float16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
    * a negative value if the first argument is less than the second argument, zero if they're equal, and a positive
    * value otherwise. If omitted, the elements are sorted in ascending order.
    * ```ts
-   * const myNums = Float16Array<Buffer>.from([11.25, 2, -22.5, 1]);
+   * const myNums = Float16Array.from([11.25, 2, -22.5, 1]);
    * myNums.toSorted((a, b) => a - b) // Float16Array<Buffer>(4) [-22.5, 1, 2, 11.5]
    * ```
    */

@@ -408,10 +408,6 @@ export const host = {
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
-  getModuleSpecifierCache() {
-    return moduleSpecifierCache;
-  },
-  // @ts-ignore Undocumented method.
   getCachedExportInfoMap() {
     return exportMapCache;
   },
@@ -421,7 +417,7 @@ export const host = {
   // @ts-ignore Undocumented method.
   toPath(fileName) {
     // @ts-ignore Undocumented function.
-    ts.toPath(
+    return ts.toPath(
       fileName,
       this.getCurrentDirectory(),
       this.getCanonicalFileName.bind(this),
@@ -715,9 +711,6 @@ export const host = {
     return scriptSnapshot;
   },
 };
-
-// @ts-ignore Undocumented function.
-const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
 
 // @ts-ignore Undocumented function.
 const exportMapCache = ts.createCacheableExportInfoMap(host);
