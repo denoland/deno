@@ -1,0 +1,4 @@
+{
+  "args": "check --quiet member/subdir/mod.ts non_member/mod.ts",
+  "output": ""
+}
