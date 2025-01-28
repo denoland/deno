@@ -15,6 +15,7 @@ use node_resolver::errors::PackageFolderResolveIoError;
 use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::ReferrerNotFoundError;
 use node_resolver::NpmPackageFolderResolver;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use url::Url;
@@ -149,19 +150,19 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     let maybe_local_path = self
-      .resolve_folder_for_specifier(referrer)
+      .resolve_folder_for_specifier(referrer.url()?)
       .map_err(|err| PackageFolderResolveIoError {
-        package_name: name.to_string(),
-        referrer: referrer.clone(),
-        source: err,
-      })?;
+      package_name: name.to_string(),
+      referrer: referrer.display(),
+      source: err,
+    })?;
     let Some(local_path) = maybe_local_path else {
       return Err(
         ReferrerNotFoundError {
-          referrer: referrer.clone(),
+          referrer: referrer.display(),
           referrer_extra: None,
         }
         .into(),
@@ -182,7 +183,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
         return Ok(self.sys.fs_canonicalize(&sub_dir).map_err(|err| {
           PackageFolderResolveIoError {
             package_name: name.to_string(),
-            referrer: referrer.clone(),
+            referrer: referrer.display(),
             source: err,
           }
         })?);
@@ -196,7 +197,7 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
     Err(
       PackageNotFoundError {
         package_name: name.to_string(),
-        referrer: referrer.clone(),
+        referrer: referrer.display(),
         referrer_extra: None,
       }
       .into(),

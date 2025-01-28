@@ -709,6 +709,9 @@ pub enum ResolveError {
   )]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
+  #[error(transparent)]
+  FilePathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
   #[error("{0}")]
   PackageSubpathResolve(PackageSubpathResolveError),
   #[class(inherit)]
@@ -943,7 +946,7 @@ fn resolve_graph_specifier_types(
             NodeResolutionKind::Types,
           );
         let maybe_url = match res_result {
-          Ok(url) => Some(url),
+          Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
@@ -971,6 +974,9 @@ fn resolve_graph_specifier_types(
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ResolveNonGraphSpecifierTypesError {
+  #[class(inherit)]
+  #[error(transparent)]
+  FilePathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -1003,8 +1009,8 @@ fn resolve_non_graph_specifier_types(
           resolution_mode,
           NodeResolutionKind::Types,
         )
-        .ok()
-        .map(|res| res.into_url()),
+        .and_then(|res| res.into_url())
+        .ok(),
     )))
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)
@@ -1025,7 +1031,7 @@ fn resolve_non_graph_specifier_types(
       NodeResolutionKind::Types,
     );
     let maybe_url = match res_result {
-      Ok(url) => Some(url),
+      Ok(url_or_path) => Some(url_or_path.into_url()?),
       Err(err) => match err.code() {
         NodeJsErrorCode::ERR_TYPES_NOT_FOUND
         | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
