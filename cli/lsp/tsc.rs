@@ -5794,7 +5794,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5820,7 +5820,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5870,7 +5870,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5903,7 +5903,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5961,7 +5961,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();

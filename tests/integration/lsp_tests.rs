@@ -6279,8 +6279,12 @@ fn lsp_code_actions_deno_cache_all() {
       "#,
     }
   }));
+  let mut deno_diagnostics = diagnostics.messages_with_source("deno");
+  deno_diagnostics
+    .diagnostics
+    .sort_by_key(|d| d.range.start.line);
   assert_eq!(
-    diagnostics.messages_with_source("deno"),
+    deno_diagnostics,
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [
@@ -6311,7 +6315,7 @@ fn lsp_code_actions_deno_cache_all() {
     })).unwrap()
   );
 
-  let res =
+  let mut res =
     client
     .write_request(
       "textDocument/codeAction",
@@ -6341,6 +6345,11 @@ fn lsp_code_actions_deno_cache_all() {
         }
       }),
     );
+  res.as_array_mut().unwrap().iter_mut().for_each(|fix| {
+    fix["diagnostics"].as_array_mut().unwrap().sort_by_key(|v| {
+      v["range"]["start"]["line"].as_number().unwrap().as_i64()
+    })
+  });
   assert_eq!(
     res,
     json!([
