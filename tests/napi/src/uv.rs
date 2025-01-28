@@ -1,8 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::assert_napi_ok;
-use crate::napi_get_callback_info;
-use crate::napi_new_property;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::ptr::addr_of_mut;
+use std::ptr::null_mut;
+use std::time::Duration;
+
 use libuv_sys_lite::uv_async_init;
 use libuv_sys_lite::uv_async_t;
 use libuv_sys_lite::uv_close;
@@ -12,11 +15,10 @@ use libuv_sys_lite::uv_mutex_lock;
 use libuv_sys_lite::uv_mutex_t;
 use libuv_sys_lite::uv_mutex_unlock;
 use napi_sys::*;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::ptr::addr_of_mut;
-use std::ptr::null_mut;
-use std::time::Duration;
+
+use crate::assert_napi_ok;
+use crate::napi_get_callback_info;
+use crate::napi_new_property;
 
 struct KeepAlive {
   tsfn: napi_threadsafe_function,

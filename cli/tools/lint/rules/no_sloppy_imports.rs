@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::anyhow;
-use deno_graph::source::ResolutionMode;
+use deno_error::JsErrorBox;
+use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
 use deno_lint::diagnostic::LintDiagnosticDetails;
@@ -16,14 +16,14 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionMode;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
 
+use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::CliSloppyImportsResolver;
-
-use super::ExtendedLintRule;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {
@@ -101,16 +101,16 @@ impl LintRule for NoSloppyImportsRule {
       maybe_npm_resolver: None,
     });
 
-    for (range, sloppy_import) in resolver.captures.borrow_mut().drain() {
+    for (referrer, sloppy_import) in resolver.captures.borrow_mut().drain() {
       let start_range =
         context.text_info().loc_to_source_pos(LineAndColumnIndex {
-          line_index: range.start.line,
-          column_index: range.start.character,
+          line_index: referrer.range.start.line,
+          column_index: referrer.range.start.character,
         });
       let end_range =
         context.text_info().loc_to_source_pos(LineAndColumnIndex {
-          line_index: range.end.line,
-          column_index: range.end.character,
+          line_index: referrer.range.end.line,
+          column_index: referrer.range.end.character,
         });
       let source_range = SourceRange::new(start_range, end_range);
       context.add_diagnostic_details(
@@ -162,12 +162,13 @@ impl LintRule for NoSloppyImportsRule {
     CODE
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_sloppy_imports.md")
-  }
+  // TODO(bartlomieju): this document needs to be exposed to `https://lint.deno.land`.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_sloppy_imports.md")
+  // }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["recommended"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::RECOMMENDED]
   }
 }
 
@@ -183,12 +184,12 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
     &self,
     specifier_text: &str,
     referrer_range: &Range,
-    mode: ResolutionMode,
+    resolution_kind: ResolutionKind,
   ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
     let resolution = self
       .workspace_resolver
       .resolve(specifier_text, &referrer_range.specifier)
-      .map_err(|err| ResolveError::Other(err.into()))?;
+      .map_err(|err| ResolveError::Other(JsErrorBox::from_err(err)))?;
 
     match resolution {
       deno_config::workspace::MappedResolution::Normal {
@@ -198,9 +199,9 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
         specifier, ..
       } => match self.sloppy_imports_resolver.resolve(
         &specifier,
-        match mode {
-          ResolutionMode::Execution => SloppyImportsResolutionMode::Execution,
-          ResolutionMode::Types => SloppyImportsResolutionMode::Types,
+        match resolution_kind {
+          ResolutionKind::Execution => SloppyImportsResolutionKind::Execution,
+          ResolutionKind::Types => SloppyImportsResolutionKind::Types,
         },
       ) {
         Some(res) => {
@@ -221,7 +222,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
         // this error is ignored
-        Err(ResolveError::Other(anyhow!("")))
+        Err(ResolveError::Other(JsErrorBox::generic("")))
       }
     }
   }

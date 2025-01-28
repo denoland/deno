@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 /*
 MIT License
 
@@ -107,23 +107,19 @@ export function scrypt(
     throw new Error("exceeds max memory");
   }
 
-  try {
-    op_node_scrypt_async(
-      password,
-      salt,
-      keylen,
-      Math.log2(N),
-      r,
-      p,
-      maxmem,
-    ).then(
-      (buf: Uint8Array) => {
-        cb(null, Buffer.from(buf.buffer));
-      },
-    );
-  } catch (err: unknown) {
-    return cb(err);
-  }
+  op_node_scrypt_async(
+    password,
+    salt,
+    keylen,
+    Math.log2(N),
+    r,
+    p,
+    maxmem,
+  ).then(
+    (buf: Uint8Array) => {
+      cb(null, Buffer.from(buf.buffer));
+    },
+  ).catch((err: unknown) => cb(err));
 }
 
 export default {

@@ -1,14 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::fmt::Write;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use deno_terminal::colors;
 
-use crate::util::display::human_download_size;
-
 use super::ProgressMessagePrompt;
+use crate::util::display::human_download_size;
 
 #[derive(Clone)]
 pub struct ProgressDataDisplayEntry {
@@ -81,12 +81,14 @@ impl ProgressBarRenderer for BarProgressBarRenderer {
     let elapsed_text = get_elapsed_text(data.duration);
     let mut text = String::new();
     if !display_entry.message.is_empty() {
-      text.push_str(&format!(
-        "{} {}{}\n",
+      writeln!(
+        &mut text,
+        "{} {}{}",
         colors::green("Download"),
         display_entry.message,
         bytes_text,
-      ));
+      )
+      .unwrap();
     }
     text.push_str(&elapsed_text);
     let max_width = (data.terminal_width as i32 - 5).clamp(10, 75) as usize;
@@ -221,10 +223,12 @@ fn get_elapsed_text(elapsed: Duration) -> String {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-  use pretty_assertions::assert_eq;
   use std::time::Duration;
+
+  use pretty_assertions::assert_eq;
   use test_util::assert_contains;
+
+  use super::*;
 
   #[test]
   fn should_get_elapsed_text() {

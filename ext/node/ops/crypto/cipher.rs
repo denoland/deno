@@ -1,16 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use aes::cipher::block_padding::Pkcs7;
 use aes::cipher::BlockDecryptMut;
 use aes::cipher::BlockEncryptMut;
 use aes::cipher::KeyIvInit;
+use aes::cipher::KeySizeUser;
 use deno_core::Resource;
 use digest::generic_array::GenericArray;
 use digest::KeyInit;
-
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 type Tag = Option<Vec<u8>>;
 
@@ -47,12 +48,15 @@ pub struct DecipherContext {
   decipher: Rc<RefCell<Decipher>>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherContextError {
+  #[class(type)]
   #[error("Cipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Cipher(#[from] CipherError),
 }
@@ -94,12 +98,15 @@ impl CipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherContextError {
+  #[class(type)]
   #[error("Decipher context is already in use")]
   ContextInUse,
+  #[class(inherit)]
   #[error("{0}")]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Decipher(#[from] DecipherError),
 }
@@ -150,16 +157,21 @@ impl Resource for DecipherContext {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot pad the input data")]
   CannotPadInputData,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -172,15 +184,15 @@ impl Cipher {
   ) -> Result<Self, CipherError> {
     use Cipher::*;
     Ok(match algorithm_name {
-      "aes-128-cbc" => {
+      "aes128" | "aes-128-cbc" => {
         Aes128Cbc(Box::new(cbc::Encryptor::new(key.into(), iv.into())))
       }
       "aes-128-ecb" => Aes128Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Encryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
+        if key.len() != aes::Aes128::key_size() {
+          return Err(CipherError::InvalidKeyLength);
         }
 
         let cipher =
@@ -189,8 +201,8 @@ impl Cipher {
         Aes128Gcm(Box::new(cipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(CipherError::InvalidIvLength);
+        if key.len() != aes::Aes256::key_size() {
+          return Err(CipherError::InvalidKeyLength);
         }
 
         let cipher =
@@ -360,22 +372,30 @@ impl Cipher {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum DecipherError {
+  #[class(type)]
   #[error("IV length must be 12 bytes")]
   InvalidIvLength,
+  #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
+  #[class(type)]
   #[error("Cannot unpad the input data")]
   CannotUnpadInputData,
+  #[class(type)]
   #[error("Failed to authenticate data")]
   DataAuthenticationFailed,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes128Gcm yet")]
   SetAutoPaddingFalseAes128GcmUnsupported,
+  #[class(type)]
   #[error("setAutoPadding(false) not supported for Aes256Gcm yet")]
   SetAutoPaddingFalseAes256GcmUnsupported,
+  #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
 }
@@ -395,8 +415,8 @@ impl Decipher {
       "aes-192-ecb" => Aes192Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-256-ecb" => Aes256Ecb(Box::new(ecb::Decryptor::new(key.into()))),
       "aes-128-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
+        if key.len() != aes::Aes128::key_size() {
+          return Err(DecipherError::InvalidKeyLength);
         }
 
         let decipher =
@@ -405,8 +425,8 @@ impl Decipher {
         Aes128Gcm(Box::new(decipher))
       }
       "aes-256-gcm" => {
-        if iv.len() != 12 {
-          return Err(DecipherError::InvalidIvLength);
+        if key.len() != aes::Aes256::key_size() {
+          return Err(DecipherError::InvalidKeyLength);
         }
 
         let decipher =
@@ -497,6 +517,11 @@ impl Decipher {
     auth_tag: &[u8],
   ) -> Result<(), DecipherError> {
     use Decipher::*;
+
+    if input.is_empty() && !matches!(self, Aes128Gcm(_) | Aes256Gcm(_)) {
+      return Ok(());
+    }
+
     match (self, auto_pad) {
       (Aes128Cbc(decryptor), true) => {
         assert!(input.len() == 16);

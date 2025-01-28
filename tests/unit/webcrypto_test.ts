@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import {
   assert,
@@ -2084,4 +2084,21 @@ Deno.test(async function x25519SharedSecret() {
   assertEquals(sharedSecret1.byteLength, sharedSecret2.byteLength);
   assertEquals(sharedSecret1.byteLength, 16);
   assertEquals(new Uint8Array(sharedSecret1), new Uint8Array(sharedSecret2));
+});
+
+Deno.test(async function x25519ExportJwk() {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+
+  assertEquals(jwk.kty, "OKP");
+  assertEquals(jwk.crv, "X25519");
+  assert(jwk.d);
+  assert(jwk.x);
 });

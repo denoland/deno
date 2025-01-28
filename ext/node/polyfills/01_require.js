@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file
 
@@ -122,7 +122,6 @@ import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.mjs";
-import internalStreamsBufferList from "ext:deno_node/internal/streams/buffer_list.mjs";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
 import internalStreamsState from "ext:deno_node/internal/streams/state.mjs";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
@@ -225,7 +224,6 @@ function setupBuiltinModules() {
     "internal/http": internalHttp,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
-    "internal/streams/buffer_list": internalStreamsBufferList,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
@@ -946,7 +944,7 @@ Module.prototype.require = function (id) {
 // wrapper function we run the users code in. The only observable difference is
 // that in Deno `arguments.callee` is not null.
 Module.wrapper = [
-  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
+  "(function (exports, require, module, __filename, __dirname, Buffer, clearImmediate, clearInterval, clearTimeout, global, process, setImmediate, setInterval, setTimeout, performance) { (function (exports, require, module, __filename, __dirname) {",
   "\n}).call(this, exports, require, module, __filename, __dirname); })",
 ];
 Module.wrap = function (script) {
@@ -1031,6 +1029,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,
@@ -1049,6 +1048,7 @@ Module.prototype._compile = function (content, filename, format) {
     clearInterval,
     clearTimeout,
     global,
+    process,
     setImmediate,
     setInterval,
     setTimeout,

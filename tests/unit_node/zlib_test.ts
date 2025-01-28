@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
 import {
   brotliCompress,
   brotliCompressSync,
+  brotliDecompress,
   brotliDecompressSync,
   constants,
   crc32,
@@ -35,7 +36,11 @@ Deno.test("brotli compression async", async () => {
     })
   );
   assertEquals(compressed instanceof Buffer, true);
-  const decompressed = brotliDecompressSync(compressed);
+  const decompressed: Buffer = await new Promise((resolve) =>
+    brotliDecompress(compressed, (_, res) => {
+      return resolve(res);
+    })
+  );
   assertEquals(decompressed.toString(), "hello world");
 });
 
@@ -229,4 +234,6 @@ Deno.test("gzip() and gzipSync() accept ArrayBuffer", async () => {
 
 Deno.test("crc32()", () => {
   assertEquals(crc32("hello world"), 222957957);
+  // @ts-expect-error: passing an object
+  assertThrows(() => crc32({}), TypeError);
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
 use deno_core::op2;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -14,22 +13,38 @@ use deno_core::ByteString;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 
 mod sqlite;
 pub use sqlite::SqliteBackedCache;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CacheError {
+  #[class(type)]
+  #[error("CacheStorage is not available in this context")]
+  ContextUnsupported,
+  #[class(generic)]
   #[error(transparent)]
   Sqlite(#[from] rusqlite::Error),
+  #[class(generic)]
   #[error(transparent)]
   JoinError(#[from] tokio::task::JoinError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error("Failed to create cache storage directory {}", .dir.display())]
+  CacheStorageDirectory {
+    dir: PathBuf,
+    #[source]
+    source: std::io::Error,
+  },
 }
 
 #[derive(Clone)]
@@ -237,9 +252,7 @@ where
     state.put(cache);
     Ok(state.borrow::<CA>().clone())
   } else {
-    Err(CacheError::Other(type_error(
-      "CacheStorage is not available in this context",
-    )))
+    Err(CacheError::ContextUnsupported)
   }
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -14,7 +14,6 @@ use base64::Engine;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::ConfigFile;
 use deno_config::workspace::JsrPackageConfig;
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
@@ -27,6 +26,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::url::Url;
+use deno_runtime::deno_fetch;
 use deno_terminal::colors;
 use http_body_util::BodyExt;
 use serde::Deserialize;
@@ -44,8 +44,6 @@ use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::resolver::CliSloppyImportsResolver;
-use crate::resolver::SloppyImportsCachedFs;
 use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
@@ -75,11 +73,10 @@ pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
-use super::check::TypeChecker;
-
 use self::graph::GraphDiagnosticsCollector;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
+use super::check::TypeChecker;
 
 pub async fn publish(
   flags: Arc<Flags>,
@@ -97,11 +94,10 @@ pub async fn publish(
     match cli_options.start_dir.maybe_deno_json() {
       Some(deno_json) => {
         debug_assert!(!deno_json.is_package());
+        if deno_json.json.name.is_none() {
+          bail!("Missing 'name' field in '{}'.", deno_json.specifier);
+        }
         error_missing_exports_field(deno_json)?;
-        bail!(
-          "Missing 'name' or 'exports' field in '{}'.",
-          deno_json.specifier
-        );
       }
       None => {
         bail!(
@@ -124,19 +120,8 @@ pub async fn publish(
   }
 
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
-    if cli_options.unstable_sloppy_imports() {
-      Some(CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(
-        cli_factory.fs().clone(),
-      )))
-    } else {
-      None
-    },
-    cli_options
-      .create_workspace_resolver(
-        cli_factory.file_fetcher()?,
-        PackageJsonDepResolution::Enabled,
-      )
-      .await?,
+    cli_factory.sloppy_imports_resolver()?.cloned(),
+    cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   ));
 
@@ -926,9 +911,7 @@ async fn publish_package(
     package.config
   );
 
-  let body = http_body_util::Full::new(package.tarball.bytes.clone())
-    .map_err(|never| match never {})
-    .boxed();
+  let body = deno_fetch::ReqBody::full(package.tarball.bytes.clone());
   let response = http_client
     .post(url.parse()?, body)?
     .header(
@@ -1297,14 +1280,14 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
-  use deno_ast::ModuleSpecifier;
+  use std::collections::HashMap;
 
-  use crate::tools::registry::has_license_file;
+  use deno_ast::ModuleSpecifier;
 
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
-  use std::collections::HashMap;
+  use crate::tools::registry::has_license_file;
 
   #[test]
   fn test_verify_version_manifest() {

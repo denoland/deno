@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 
@@ -9,6 +9,7 @@ use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::tags;
 
 use super::PackageLintRule;
 
@@ -22,13 +23,14 @@ impl PackageLintRule for NoSlowTypesRule {
     CODE
   }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["jsr"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::JSR]
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_slow_types.md")
-  }
+  // TODO(bartlomieju): these docs need to be hosted somewhere.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_slow_types.md")
+  // }
 
   fn help_docs_url(&self) -> Cow<'static, str> {
     Cow::Borrowed("https://jsr.io/docs/about-slow-types")

@@ -1,19 +1,20 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 mod sync_fetch;
 
-use crate::web_worker::WebWorkerInternalHandle;
-use crate::web_worker::WebWorkerType;
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::OpState;
 use deno_web::JsMessageData;
 use deno_web::MessagePortError;
-use std::cell::RefCell;
-use std::rc::Rc;
+pub use sync_fetch::SyncFetchError;
 
 use self::sync_fetch::op_worker_sync_fetch;
-pub use sync_fetch::SyncFetchError;
+use crate::web_worker::WebWorkerInternalHandle;
+use crate::web_worker::WebWorkerType;
 
 deno_core::extension!(
   deno_web_worker,

@@ -5,6 +5,11 @@
       "output": "main.ts.out",
       "exitCode": 1
     },
+    "basic_no_config": {
+      "args": "run --quiet --no-config main.ts",
+      "output": "main_no_config.out",
+      "exitCode": 1
+    },
     "unstable_bare_node_builtins_enabled": {
       "args": "run --unstable-bare-node-builtins main.ts",
       "output": "feature_enabled.out"

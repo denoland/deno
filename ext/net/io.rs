@@ -1,4 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::rc::Rc;
 
 use deno_core::futures::TryFutureExt;
 use deno_core::AsyncMutFuture;
@@ -8,15 +11,13 @@ use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::RcRef;
 use deno_core::Resource;
+use deno_error::JsErrorBox;
 use socket2::SockRef;
-use std::borrow::Cow;
-use std::rc::Rc;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::net::tcp;
-
 #[cfg(unix)]
 use tokio::net::unix;
 
@@ -90,10 +91,12 @@ where
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MapError {
+  #[class(inherit)]
   #[error("{0}")]
   Io(std::io::Error),
+  #[class(generic)]
   #[error("Unable to get resources")]
   NoResources,
 }
@@ -110,7 +113,7 @@ impl Resource for TcpStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {
@@ -162,9 +165,7 @@ impl UnixStreamResource {
     unreachable!()
   }
   #[allow(clippy::unused_async)]
-  pub async fn shutdown(
-    self: Rc<Self>,
-  ) -> Result<(), deno_core::error::AnyError> {
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
     unreachable!()
   }
   pub fn cancel_read_ops(&self) {
@@ -181,7 +182,7 @@ impl Resource for UnixStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {
