@@ -355,6 +355,28 @@ function formatErrorWithArgs(error, args) {
 }
 
 /**
+ * @param {string[]} a
+ * @param {string[]} b
+ */
+function arraysEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (a === null || b === null) {
+    return false;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
@@ -438,13 +460,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
         return respond(id, [{}, null]);
       }
       try {
-        let ambient = ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) => symbol.getName()) ?? null;
-        const previousAmbient = ambientModulesCacheByScope.get(scope);
-        if (ambient == previousAmbient) { // we want referential equality because it's cheap and tsc caches the value
-          ambient = null; // null => use previous value
-        } else if (ambient) {
-          ambientModulesCacheByScope.set(scope, ambient);
-        }
+
         /** @type {Record<string, any[]>} */
         const diagnosticMap = {};
         for (const specifier of args[0]) {
@@ -453,6 +469,13 @@ function serverRequest(id, method, args, scope, maybeChange) {
             ...ls.getSuggestionDiagnostics(specifier),
             ...ls.getSyntacticDiagnostics(specifier),
           ].filter(filterMapDiagnostic));
+        }
+        let ambient = ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) => symbol.getName()) ?? null;
+        const previousAmbient = ambientModulesCacheByScope.get(scope);
+        if (ambient && previousAmbient && arraysEqual(ambient, previousAmbient)) {
+          ambient = null; // null => use previous value
+        } else if (ambient) {
+          ambientModulesCacheByScope.set(scope, ambient);
         }
         return respond(id, [diagnosticMap, ambient]);
       } catch (e) {
