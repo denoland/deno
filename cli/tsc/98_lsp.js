@@ -27,6 +27,9 @@ import {
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
+/** @type {Map<string | null, string[]>} */
+const ambientModulesCacheByScope = new Map();
+
 const ChangeKind = {
   Opened: 0,
   Modified: 1,
@@ -432,9 +435,16 @@ function serverRequest(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
       try {
+        let ambient = ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) => symbol.getName()) ?? null;
+        const previousAmbient = ambientModulesCacheByScope.get(scope);
+        if (ambient == previousAmbient) { // we want referential equality because it's cheap and tsc caches the value
+          ambient = null; // null => use previous value
+        } else if (ambient) {
+          ambientModulesCacheByScope.set(scope, ambient);
+        }
         /** @type {Record<string, any[]>} */
         const diagnosticMap = {};
         for (const specifier of args[0]) {
@@ -444,18 +454,18 @@ function serverRequest(id, method, args, scope, maybeChange) {
             ...ls.getSyntacticDiagnostics(specifier),
           ].filter(filterMapDiagnostic));
         }
-        return respond(id, diagnosticMap);
+        return respond(id, [diagnosticMap, ambient]);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            {},
+            [{}, null],
             formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
           );
         }
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
     }
     default:

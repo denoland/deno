@@ -466,7 +466,13 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
-  ) -> Result<IndexMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
+  ) -> Result<
+    (
+      IndexMap<String, Vec<crate::tsc::Diagnostic>>,
+      HashMap<Option<ModuleSpecifier>, Option<Vec<String>>>,
+    ),
+    AnyError,
+  > {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
     for specifier in specifiers {
@@ -489,10 +495,18 @@ impl TsServer {
     for (scope, specifiers) in specifiers_by_scope {
       let req =
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
-      results.push_back(self.request_with_cancellation::<IndexMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot.clone(), req, scope, token.clone()));
+      results.push_back(
+        self
+          .request_with_cancellation::<(
+            IndexMap<String, Vec<crate::tsc::Diagnostic>>,
+            Option<Vec<String>>,
+          )>(snapshot.clone(), req, scope.clone(), token.clone())
+          .map(|res| (scope, res)),
+      );
     }
-    while let Some(raw_diagnostics) = results.next().await {
-      let raw_diagnostics = raw_diagnostics
+    let mut ambient_modules_by_scope = HashMap::with_capacity(2);
+    while let Some((scope, raw_diagnostics)) = results.next().await {
+      let (raw_diagnostics, ambient_modules) = raw_diagnostics
         .inspect_err(|err| {
           if !token.is_cancelled() {
             lsp_warn!("Error generating TypeScript diagnostics: {err}");
@@ -506,8 +520,9 @@ impl TsServer {
         }
         diagnostics_map.insert(specifier, diagnostics);
       }
+      ambient_modules_by_scope.insert(scope, ambient_modules);
     }
-    Ok(diagnostics_map)
+    Ok((diagnostics_map, ambient_modules_by_scope))
   }
 
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
