@@ -79,7 +79,7 @@ pub struct UnpackArgs<'a> {
   pub dest_path: &'a Path,
 }
 
-pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
+pub fn unpack_binary_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
   let UnpackArgs {
     exe_name,
     archive_name,
@@ -115,4 +115,19 @@ pub fn unpack_into_dir(args: UnpackArgs) -> Result<PathBuf, AnyError> {
 
   assert!(exe_path.exists());
   Ok(exe_path)
+}
+
+pub fn unpack_zip_into_dir(
+  archive_name: &str,
+  dest_path: &Path,
+  archive_data: &[u8],
+) -> Result<(), AnyError> {
+  let archive_path = dest_path.join(archive_name);
+
+  if let Err(e) = unzip(archive_name, archive_data, dest_path) {
+    log::warn!("unpacking via zip crate failed: {e}");
+    unzip_with_shell(&archive_path, archive_data, dest_path)?;
+  }
+
+  Ok(())
 }
