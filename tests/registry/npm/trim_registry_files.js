@@ -15,6 +15,11 @@ for (const dirPath of getPackageDirs()) {
   const data = JSON.parse(Deno.readTextFileSync(registryPath));
   // this is to save data
   delete data.readme;
+  delete data.time;
+  delete data.contributors;
+  delete data.maintainers;
+  delete data.users;
+  delete data.readmeFilename;
   for (const version in data.versions) {
     if (!versions.includes(version)) {
       delete data.versions[version];
