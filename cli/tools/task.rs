@@ -71,101 +71,26 @@ pub async fn execute_script(
       })
       .unwrap_or(false);
 
-  // TODO(bartlomieju): changes to this function might not be needed
-  fn arg_to_regex(
-    input: &str,
-    exact: bool,
-  ) -> Result<regex::Regex, regex::Error> {
-    let mut regex_str = regex::escape(input);
-    regex_str = regex_str.replace("\\*", ".*");
-    let prefix = if exact && !regex_str.starts_with('^') {
-      "^"
-    } else {
-      ""
-    };
-    let suffix = if exact && !regex_str.ends_with('$') {
-      "$"
-    } else {
-      ""
-    };
-
-    Regex::new(&format!("{}{}{}", prefix, regex_str, suffix))
-  }
-
-  // Any of the matched tasks could be a child task of another matched
-  // one. Therefore we need to filter these out to ensure that every
-  // task is only run once.
-  fn match_tasks(
-    tasks_config: &WorkspaceTasksConfig,
-    task_regex: &Regex,
-  ) -> Vec<String> {
-    let mut matched: IndexSet<String> = IndexSet::new();
-    let mut visited: HashSet<String> = HashSet::new();
-
-    fn visit_task(
-      tasks_config: &WorkspaceTasksConfig,
-      visited: &mut HashSet<String>,
-      name: &str,
-    ) {
-      if visited.contains(name) {
-        return;
-      }
-
-      visited.insert(name.to_string());
-
-      if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name) {
-        for dep in &task.dependencies {
-          visit_task(tasks_config, visited, dep);
-        }
-      }
-    }
-
-    // Match tasks in deno.json
-    for name in tasks_config.task_names() {
-      if task_regex.is_match(name) && !visited.contains(name) {
-        matched.insert(name.to_string());
-        visit_task(&tasks_config, &mut visited, name);
-      }
-    }
-
-    matched.iter().map(|s| s.to_string()).collect::<Vec<_>>()
-  }
-
+  // TODO(bartlomieju): this whole huge if statement should be a separate function, preferably with unit tests
   let (packages_task_configs, task_name): (Vec<PackageTaskInfo>, &str) =
     if let Some(filter) = &task_flags.filter {
-      let task_name = task_flags.task.as_ref().unwrap();
-
       // Filter based on package name
-      let package_regex = arg_to_regex(filter, false)?;
-      let task_regex = arg_to_regex(task_name, true)?;
+      let package_regex = package_filter_to_regex(filter, false)?;
+
+      let Some(task_name) = &task_flags.task else {
+        print_available_tasks_workspace(
+          cli_options,
+          &package_regex,
+          filter,
+          force_use_pkg_json,
+          task_flags.recursive,
+        )?;
+
+        return Ok(0);
+      };
+      let task_regex = arg_to_task_name_filter(task_name)?;
 
       let mut packages_task_info: Vec<PackageTaskInfo> = vec![];
-
-      fn matches_package(
-        config: &FolderConfigs,
-        force_use_pkg_json: bool,
-        regex: &Regex,
-      ) -> bool {
-        if !force_use_pkg_json {
-          if let Some(deno_json) = &config.deno_json {
-            if let Some(name) = &deno_json.json.name {
-              if regex.is_match(name) {
-                return true;
-              }
-            }
-          }
-        }
-
-        if let Some(package_json) = &config.pkg_json {
-          if let Some(name) = &package_json.name {
-            if regex.is_match(name) {
-              return true;
-            }
-          }
-        }
-
-        false
-      }
 
       let workspace = cli_options.workspace();
       for folder in workspace.config_folders() {
@@ -203,8 +128,6 @@ pub async fn execute_script(
         return Ok(0);
       }
 
-      // TODO: Sort packages topologically
-
       (packages_task_info, task_name)
     } else {
       let mut tasks_config = start_dir.to_tasks_config()?;
@@ -223,7 +146,7 @@ pub async fn execute_script(
         return Ok(0);
       };
 
-      let task_regex = arg_to_regex(task_name, true)?;
+      let task_regex = arg_to_task_name_filter(task_name)?;
       let matched_tasks = match_tasks(&tasks_config, &task_regex);
 
       (
@@ -964,6 +887,72 @@ fn strip_ansi_codes_and_escape_control_chars(s: &str) -> String {
     .collect()
 }
 
+fn visit_task_and_dependencies(
+  tasks_config: &WorkspaceTasksConfig,
+  visited: &mut HashSet<String>,
+  name: &str,
+) {
+  if visited.contains(name) {
+    return;
+  }
+
+  visited.insert(name.to_string());
+
+  if let Some((_, TaskOrScript::Task(_, task))) = &tasks_config.task(name) {
+    for dep in &task.dependencies {
+      visit_task_and_dependencies(tasks_config, visited, dep);
+    }
+  }
+}
+
+// Any of the matched tasks could be a child task of another matched
+// one. Therefore we need to filter these out to ensure that every
+// task is only run once.
+fn match_tasks(
+  tasks_config: &WorkspaceTasksConfig,
+  task_name_filter: &TaskNameFilter,
+) -> Vec<String> {
+  let mut matched: IndexSet<String> = IndexSet::new();
+  let mut visited: HashSet<String> = HashSet::new();
+
+  // Match tasks in deno.json
+  for name in tasks_config.task_names() {
+    let matches_filter = match &task_name_filter {
+      TaskNameFilter::Exact(n) => *n == name,
+      TaskNameFilter::Regex(re) => re.is_match(name),
+    };
+
+    if matches_filter && !visited.contains(name) {
+      matched.insert(name.to_string());
+      visit_task_and_dependencies(tasks_config, &mut visited, name);
+    }
+  }
+
+  matched.iter().map(|s| s.to_string()).collect::<Vec<_>>()
+}
+
+// TODO(bartlomieju): changes to this function might not be needed
+fn package_filter_to_regex(
+  input: &str,
+  exact: bool,
+) -> Result<regex::Regex, regex::Error> {
+  let mut regex_str = regex::escape(input);
+  regex_str = regex_str.replace("\\*", ".*");
+  let prefix = if exact && !regex_str.starts_with('^') {
+    "^"
+  } else {
+    ""
+  };
+  let suffix = if exact && !regex_str.ends_with('$') {
+    "$"
+  } else {
+    ""
+  };
+
+  Regex::new(&format!("{}{}{}", prefix, regex_str, suffix))
+}
+
+// TODO(bartlomieju): should this support `^` and `$`?
 fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
   if !input.contains("*") {
     return Ok(TaskNameFilter::Exact(input));
