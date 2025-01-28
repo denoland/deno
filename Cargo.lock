@@ -1945,7 +1945,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.69.1"
+version = "0.70.0"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -1957,7 +1957,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "thiserror 2.0.3",
 ]
 
 [[package]]

@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -324,7 +325,12 @@ fn run_plugins(
   maybe_token: Option<CancellationToken>,
 ) -> Result<ExternalLinterResult, AnyError> {
   let source_text_info = parsed_source.text_info_lazy().clone();
-  let plugin_info = plugin_runner.lock().get_plugin_rules();
+  let plugin_info = plugin_runner
+    .lock()
+    .get_plugin_rules()
+    .into_iter()
+    .map(Cow::from)
+    .collect();
 
   #[allow(clippy::await_holding_lock)]
   let fut = async move {
