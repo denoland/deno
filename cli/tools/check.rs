@@ -1,7 +1,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -186,7 +188,7 @@ impl TypeChecker {
     let mut diagnostics = self.check_diagnostics(graph, options).await?;
     let mut failed = false;
     for result in diagnostics.by_ref() {
-      let (_, mut diagnostics) = result?;
+      let mut diagnostics = result?;
       diagnostics.emit_warnings();
       if diagnostics.has_diagnostic() {
         failed = true;
@@ -261,22 +263,8 @@ impl TypeChecker {
 
     let graph = Arc::new(graph);
 
-    // split the roots by tsconfig
-    let mut roots_by_config: IndexMap<Arc<Url>, FolderInfo> =
-      IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
-    for root in &graph.roots {
-      let folder = self.tsconfig_resolver.folder_for_specifier(root);
-      let entry = roots_by_config.entry(folder.dir.dir_url().clone());
-      let entry = match entry {
-        indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
-        indexmap::map::Entry::Vacant(entry) => entry.insert(FolderInfo {
-          dir: &folder.dir,
-          roots: Default::default(),
-          tsconfig: folder.lib_tsconfig(options.lib)?,
-        }),
-      };
-      entry.roots.push(root.clone());
-    }
+    // split the roots by compiler options
+    let roots_by_config = self.group_roots_by_tsconfig(&graph, options.lib)?;
 
     Ok(DiagnosticsByFolderIterator(
       DiagnosticsByFolderIteratorInner::Real(DiagnosticsByFolderRealIterator {
@@ -297,12 +285,107 @@ impl TypeChecker {
       }),
     ))
   }
+
+  fn group_roots_by_tsconfig<'a>(
+    &'a self,
+    graph: &ModuleGraph,
+    lib: TsTypeLib,
+  ) -> Result<IndexMap<ConfigKey<'a>, FolderInfo>, CheckError> {
+    let mut imports_for_specifier: HashMap<Arc<Url>, Rc<Vec<Url>>> =
+      HashMap::with_capacity(self.tsconfig_resolver.folder_count());
+    let mut roots_by_config: IndexMap<_, FolderInfo> =
+      IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
+    for root in &graph.roots {
+      let folder = self.tsconfig_resolver.folder_for_specifier(root);
+      let imports =
+        match imports_for_specifier.entry(folder.dir.dir_url().clone()) {
+          std::collections::hash_map::Entry::Occupied(entry) => {
+            entry.get().clone()
+          }
+          std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+            let value = Rc::new(resolve_graph_imports_for_workspace_dir(
+              graph,
+              &folder.dir,
+            ));
+            vacant_entry.insert(value.clone());
+            value
+          }
+        };
+      let tsconfig = folder.lib_tsconfig(lib)?;
+      let key = ConfigKey {
+        ts_config: tsconfig,
+        imports,
+      };
+      let entry = roots_by_config.entry(key);
+      let entry = match entry {
+        indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
+        indexmap::map::Entry::Vacant(entry) => entry.insert(FolderInfo {
+          roots: Default::default(),
+          // this is slightly hacky. It's used as the referrer for resolving
+          // npm imports in the key
+          referrer: folder
+            .dir
+            .maybe_deno_json()
+            .map(|d| d.specifier.clone())
+            .unwrap_or_else(|| folder.dir.dir_url().as_ref().clone()),
+        }),
+      };
+      entry.roots.push(root.clone());
+    }
+    Ok(roots_by_config)
+  }
 }
 
-struct FolderInfo<'a> {
-  dir: &'a WorkspaceDirectory,
-  tsconfig: &'a TsConfig,
+fn resolve_graph_imports_for_workspace_dir(
+  graph: &ModuleGraph,
+  dir: &WorkspaceDirectory,
+) -> Vec<Url> {
+  fn resolve_graph_imports_for_referrer<'a>(
+    graph: &'a ModuleGraph,
+    referrer: &'a Url,
+  ) -> Option<impl Iterator<Item = Url> + 'a> {
+    let imports = graph.imports.get(referrer)?;
+    Some(
+      imports
+        .dependencies
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
+        .map(|url| graph.resolve(url))
+        .cloned(),
+    )
+  }
+
+  let root_deno_json = dir.workspace.root_deno_json();
+  let member_deno_json = dir.maybe_deno_json().filter(|c| {
+    Some(&c.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
+  });
+  let mut specifiers = root_deno_json
+    .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
+    .into_iter()
+    .flatten()
+    .flatten()
+    .chain(
+      member_deno_json
+        .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
+        .into_iter()
+        .flatten()
+        .flatten(),
+    )
+    .collect::<Vec<_>>();
+  specifiers.sort();
+  specifiers
+}
+
+/// Key to use to group folders together by config.
+#[derive(Debug, Hash, PartialEq, Eq)]
+struct ConfigKey<'a> {
+  ts_config: &'a Arc<TsConfig>,
+  imports: Rc<Vec<Url>>,
+}
+
+struct FolderInfo {
   roots: Vec<Url>,
+  referrer: Url,
 }
 
 pub struct DiagnosticsByFolderIterator<'a>(
@@ -319,7 +402,7 @@ impl<'a> DiagnosticsByFolderIterator<'a> {
 }
 
 impl<'a> Iterator for DiagnosticsByFolderIterator<'a> {
-  type Item = Result<(Arc<Url>, Diagnostics), CheckError>;
+  type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {
     match &mut self.0 {
@@ -342,7 +425,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   npm_resolver: &'a CliNpmResolver,
   tsconfig_resolver: &'a TsConfigResolver,
   type_check_cache: TypeCheckCache,
-  roots_by_config: IndexMap<Arc<Url>, FolderInfo<'a>>,
+  roots_by_config: IndexMap<ConfigKey<'a>, FolderInfo>,
   log_level: Option<log::Level>,
   npm_check_state_hash: Option<u64>,
   seen_diagnotics: HashSet<String>,
@@ -350,29 +433,30 @@ struct DiagnosticsByFolderRealIterator<'a> {
 }
 
 impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
-  type Item = Result<(Arc<Url>, Diagnostics), CheckError>;
+  type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let (url, folder) = self.roots_by_config.shift_remove_index(0)?;
-    let mut result = self.check_diagnostics_in_folder(
-      folder.dir,
-      folder.tsconfig,
-      folder.roots,
-    );
+    let (key, folder) = self.roots_by_config.shift_remove_index(0)?;
+    let mut result = self.check_diagnostics_in_folder(&key, folder);
     if let Ok(diagnostics) = &mut result {
       diagnostics.retain(|d| {
         if let (Some(file_name), Some(start)) = (&d.file_name, &d.start) {
           let data = format!(
-            "{}{}:{}:{}",
-            d.code, file_name, start.line, start.character
+            "{}{}:{}:{}{}",
+            d.code,
+            file_name,
+            start.line,
+            start.character,
+            d.message_text.as_deref().unwrap_or_default()
           );
           self.seen_diagnotics.insert(data)
         } else {
+          // show these for each type of config
           true
         }
       });
     }
-    Some(result.map(|d| (url, d)))
+    Some(result)
   }
 }
 
@@ -380,9 +464,8 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
   #[allow(clippy::too_many_arguments)]
   fn check_diagnostics_in_folder(
     &self,
-    dir: &WorkspaceDirectory,
-    ts_config: &TsConfig,
-    mut provided_roots: Vec<Url>,
+    config_key: &'a ConfigKey<'a>,
+    folder_info: FolderInfo,
   ) -> Result<Diagnostics, CheckError> {
     fn log_provided_roots(provided_roots: &[Url]) {
       for root in provided_roots {
@@ -395,6 +478,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     }
 
     // walk the graph
+    let ts_config = config_key.ts_config;
     let mut graph_walker = GraphWalker::new(
       &self.graph,
       self.sys,
@@ -402,14 +486,12 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       self.npm_resolver,
       self.tsconfig_resolver,
       self.npm_check_state_hash,
-      ts_config,
+      ts_config.as_ref(),
       self.options.type_check_mode,
     );
-    if let Some(deno_json) = dir.maybe_deno_json() {
-      graph_walker.add_config_imports(&deno_json.specifier);
-    }
-    if let Some(deno_json) = dir.workspace.root_deno_json() {
-      graph_walker.add_config_imports(&deno_json.specifier);
+    let mut provided_roots = folder_info.roots;
+    for import in config_key.imports.iter() {
+      graph_walker.add_config_import(import, &folder_info.referrer);
     }
 
     for root in &provided_roots {
@@ -438,7 +520,7 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
       // do not type check if we know this is type checked
       if let Some(check_hash) = maybe_check_hash {
         if self.type_check_cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked {}", dir.dir_url());
+          log::debug!("Already type checked {}", folder_info.referrer);
           return Ok(Default::default());
         }
       }
@@ -595,20 +677,16 @@ impl<'a> GraphWalker<'a> {
     }
   }
 
-  pub fn add_config_imports(&mut self, referrer: &Url) {
-    let Some(imports) = self.graph.imports.get(referrer) else {
-      return;
-    };
-    for specifier in imports
-      .dependencies
-      .values()
-      .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
-    {
-      let specifier = self.graph.resolve(specifier);
-      if self.seen.insert(specifier) {
-        if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
-          let Some(resolved) = self.resolve_npm_nv_ref(&nv_ref, referrer)
-          else {
+  pub fn add_config_import(&mut self, specifier: &'a Url, referrer: &Url) {
+    let specifier = self.graph.resolve(specifier);
+    if self.seen.insert(specifier) {
+      if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
+        match self.resolve_npm_nv_ref(&nv_ref, referrer) {
+          Some(resolved) => {
+            let mt = MediaType::from_specifier(&resolved);
+            self.roots.push((resolved, mt));
+          }
+          None => {
             self
               .missing_diagnostics
               .push(tsc::Diagnostic::from_missing_error(
@@ -616,17 +694,13 @@ impl<'a> GraphWalker<'a> {
                 None,
                 maybe_additional_sloppy_imports_message(self.sys, specifier),
               ));
-            continue;
-          };
-          let mt = MediaType::from_specifier(&resolved);
-          self.roots.push((resolved, mt));
-        } else {
-          self.pending.push_back((specifier, false));
+          }
         }
+      } else {
+        self.pending.push_back((specifier, false));
+        self.resolve_pending();
       }
     }
-
-    self.resolve_pending()
   }
 
   pub fn add_root(&mut self, root: &'a Url) {

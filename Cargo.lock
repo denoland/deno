@@ -1781,8 +1781,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.1"
-source = "git+https://github.com/denoland/deno_graph?rev=a40b894b801148616004a83e6772927b281bc84a#a40b894b801148616004a83e6772927b281bc84a"
+version = "0.87.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4766f426e4258c481c3af019fb4bba31e3108e80b8b2a48bbeb68bfadcc8c18"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",

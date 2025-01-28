@@ -366,7 +366,7 @@ pub struct RequestNpmState {
 pub struct Request {
   /// The TypeScript compiler options which will be serialized and sent to
   /// tsc.
-  pub config: TsConfig,
+  pub config: Arc<TsConfig>,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
@@ -1279,7 +1279,7 @@ mod tests {
     graph
       .build(vec![specifier.clone()], &loader, Default::default())
       .await;
-    let config = TsConfig::new(json!({
+    let config = Arc::new(TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
       "esModuleInterop": true,
@@ -1294,7 +1294,7 @@ mod tests {
       "strict": true,
       "target": "esnext",
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
-    }));
+    })));
     let request = Request {
       config,
       debug: false,

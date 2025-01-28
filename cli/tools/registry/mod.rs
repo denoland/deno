@@ -379,7 +379,7 @@ impl PublishPreparer {
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
         for result in diagnostics_by_folder.by_ref() {
-          let (_, check_diagnostics) = result?;
+          let check_diagnostics = result?;
           let check_diagnostics =
             check_diagnostics.filter(|d| d.include_when_remote());
           if check_diagnostics.has_diagnostic() {

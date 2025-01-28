@@ -355,4 +355,3 @@ opt-level = 3
 
 [patch.crates-io]
 deno_config = { git = "https://github.com/nayeemrmn/deno_config", rev = "e095bf9769c50efd033714b56d6016553ed83091" }
-deno_graph = { git = "https://github.com/denoland/deno_graph", rev = "a40b894b801148616004a83e6772927b281bc84a" }
