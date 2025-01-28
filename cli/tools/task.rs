@@ -93,7 +93,9 @@ pub async fn execute_script(
 
     let workspace = cli_options.workspace();
     for folder in workspace.config_folders() {
-      if !matches_package(folder.1, force_use_pkg_json, &package_regex) {
+      if !task_flags.recursive
+        && !matches_package(folder.1, force_use_pkg_json, &package_regex)
+      {
         continue;
       }
 
@@ -104,6 +106,10 @@ pub async fn execute_script(
       }
 
       let matched_tasks = match_tasks(&tasks_config, &task_regex);
+
+      if matched_tasks.is_empty() {
+        continue;
+      }
 
       packages_task_info.push(PackageTaskInfo {
         matched_tasks,
