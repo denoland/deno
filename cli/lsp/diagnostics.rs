@@ -669,21 +669,23 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     ts_diagnostics_store.update(&diagnostics);
-                    let mut deferred_diagnostics_state =
-                      deferred_diagnostics_state.lock();
-                    if let Some(deferred) =
-                      deferred_diagnostics_state.take_filtered_diagnostics()
                     {
-                      drop(deferred_diagnostics_state);
-                      messages_len += diagnostics_publisher
-                        .publish(
-                          DiagnosticSource::DeferredDeno,
-                          deferred,
-                          &url_map,
-                          snapshot.documents.as_ref(),
-                          &token,
-                        )
-                        .await;
+                      let value = {
+                        let mut deferred_diagnostics_state =
+                          deferred_diagnostics_state.lock();
+                        deferred_diagnostics_state.take_filtered_diagnostics()
+                      };
+                      if let Some(deferred) = value {
+                        messages_len += diagnostics_publisher
+                          .publish(
+                            DiagnosticSource::DeferredDeno,
+                            deferred,
+                            &url_map,
+                            snapshot.documents.as_ref(),
+                            &token,
+                          )
+                          .await;
+                      }
                     }
                     messages_len += diagnostics_publisher
                       .publish(
@@ -739,14 +741,13 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     {
-                      let mut deferred_diagnostics_state =
-                        deferred_diagnostics_state.lock();
-
-                      deferred_diagnostics_state.diagnostics = Some(deferred);
-                      if let Some(deferred) =
+                      let value = {
+                        let mut deferred_diagnostics_state =
+                          deferred_diagnostics_state.lock();
+                        deferred_diagnostics_state.diagnostics = Some(deferred);
                         deferred_diagnostics_state.take_filtered_diagnostics()
-                      {
-                        drop(deferred_diagnostics_state);
+                      };
+                      if let Some(deferred) = value {
                         messages_len += diagnostics_publisher
                           .publish(
                             DiagnosticSource::DeferredDeno,
