@@ -1824,6 +1824,12 @@ fn diagnose_dependency(
         DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => {
           Some((url.to_string(), diag.to_lsp_diagnostic(&range)))
         }
+        DenoDiagnostic::ResolutionError(
+          ResolutionError::InvalidSpecifier {
+            error: SpecifierError::ImportPrefixMissing { specifier, .. },
+            ..
+          },
+        ) => Some((specifier.clone(), diag.to_lsp_diagnostic(&range))),
         _ => None,
       }
     })));
@@ -2013,12 +2019,11 @@ let c: number = "a";
       .unwrap()
       .0;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 4);
-      let diagnostics = generate_deno_diagnostics(
+      let diagnostics = generate_all_deno_diagnostics(
         &snapshot,
         &enabled_config,
         Default::default(),
-      )
-      .0;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 1);
     }
 
@@ -2049,12 +2054,11 @@ let c: number = "a";
       .unwrap()
       .0;
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
-      let diagnostics = generate_deno_diagnostics(
+      let diagnostics = generate_all_deno_diagnostics(
         &snapshot,
         &disabled_config,
         Default::default(),
-      )
-      .0;
+      );
       assert_eq!(get_diagnostics_for_single(diagnostics).len(), 0);
     }
   }
@@ -2072,6 +2076,37 @@ let c: number = "a";
       .unwrap()
       .versioned
       .diagnostics
+  }
+
+  fn generate_all_deno_diagnostics(
+    snapshot: &StateSnapshot,
+    config: &Config,
+    token: CancellationToken,
+  ) -> DiagnosticVec {
+    let (diagnostics, deferred) =
+      generate_deno_diagnostics(snapshot, config, token);
+
+    let mut all_diagnostics = diagnostics
+      .into_iter()
+      .map(|d| (d.specifier.clone(), d))
+      .collect::<HashMap<_, _>>();
+    for diag in deferred {
+      let existing = all_diagnostics
+        .entry(diag.document_specifier.clone())
+        .or_insert_with(|| DiagnosticRecord {
+          specifier: diag.document_specifier.clone(),
+          versioned: VersionedDiagnostics {
+            diagnostics: vec![],
+            version: diag.version,
+          },
+        });
+      existing
+        .versioned
+        .diagnostics
+        .extend(diag.diagnostics.into_iter().map(|(_, d)| d));
+      assert_eq!(existing.versioned.version, diag.version);
+    }
+    all_diagnostics.into_values().collect()
   }
 
   #[tokio::test]
@@ -2103,7 +2138,7 @@ let c: number = "a";
     .await;
     let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).0;
+    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 2);
     for record in actual {
       let relative_specifier =
@@ -2230,7 +2265,7 @@ let c: number = "a";
     .await;
     let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).0;
+    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 1);
     let record = actual.first().unwrap();
     assert_eq!(
@@ -2304,7 +2339,7 @@ let c: number = "a";
     .await;
     let config = mock_config();
     let token = CancellationToken::new();
-    let actual = generate_deno_diagnostics(&snapshot, &config, token).0;
+    let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 1);
     let record = actual.first().unwrap();
     assert_eq!(
