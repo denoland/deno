@@ -851,5 +851,17 @@ declare namespace Deno {
     options: ConnectQuicOptions<ZRTT>,
   ): ZRTT extends true ? (QuicConn | Promise<QuicConn>) : Promise<QuicConn>;
 
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Upgrade a QUIC connection into a WebTransport instance.
+   *
+   * @category Network
+   * @experimental
+   */
+  export function upgradeWebTransport(
+    conn: QuicConn,
+  ): Promise<WebTransport & { url: string }>;
+
   export {}; // only export exports
 }
