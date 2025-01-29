@@ -173,7 +173,7 @@ function hash(
   algorithm: string,
   data: BinaryLike,
   outputEncoding: BinaryToTextEncoding = "hex",
-): string | Buffer {
+) {
   const hash = createHash(algorithm);
   hash.update(data);
   return hash.digest(outputEncoding);
