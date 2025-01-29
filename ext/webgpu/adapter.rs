@@ -122,7 +122,7 @@ impl GPUAdapter {
     )?)?;
 
     let wgpu_descriptor = wgpu_types::DeviceDescriptor {
-      label: Some(std::borrow::Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       required_features: super::webidl::feature_names_to_features(
         descriptor.required_features,
       ),
@@ -135,8 +135,7 @@ impl GPUAdapter {
       &wgpu_descriptor,
       std::env::var("DENO_WEBGPU_TRACE")
         .ok()
-        .as_ref()
-        .map(std::path::Path::new),
+        .as_deref(),
       None,
       None,
     )?;
@@ -210,7 +209,7 @@ impl GPUAdapter {
           .unwrap();
 
         let recv = v8::Local::new(scope, task_device.clone());
-        func.open(scope).call(scope, recv, &[event.into()]);
+        func.open(scope).call(scope, recv, &[event.into()]).unwrap();
       }
     });
 

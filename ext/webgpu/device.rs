@@ -135,7 +135,7 @@ impl GPUDevice {
     #[webidl] descriptor: super::buffer::GPUBufferDescriptor,
   ) -> Result<GPUBuffer, JsErrorBox> {
     let wgpu_descriptor = wgpu_core::resource::BufferDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       size: descriptor.size,
       usage: wgpu_types::BufferUsages::from_bits(descriptor.usage)
         .ok_or_else(|| JsErrorBox::type_error("usage is not valid"))?,
@@ -146,7 +146,7 @@ impl GPUDevice {
       self
         .instance
         .device_create_buffer(self.id, &wgpu_descriptor, None);
-
+    
     self.error_handler.push_error(err);
 
     Ok(GPUBuffer {
@@ -163,7 +163,7 @@ impl GPUDevice {
         "unmapped"
       }),
       map_mode: RefCell::new(if descriptor.mapped_at_creation {
-        Some(wgpu_core::device::HostMap::Read)
+        Some(wgpu_core::device::HostMap::Write)
       } else {
         None
       }),
@@ -178,7 +178,7 @@ impl GPUDevice {
     #[webidl] descriptor: super::texture::GPUTextureDescriptor,
   ) -> Result<GPUTexture, JsErrorBox> {
     let wgpu_descriptor = wgpu_core::resource::TextureDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       size: descriptor.size.into(),
       mip_level_count: descriptor.mip_level_count,
       sample_count: descriptor.sample_count,
@@ -220,7 +220,7 @@ impl GPUDevice {
     #[webidl] descriptor: super::sampler::GPUSamplerDescriptor,
   ) -> Result<GPUSampler, JsErrorBox> {
     let wgpu_descriptor = wgpu_core::resource::SamplerDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       address_modes: [
         descriptor.address_mode_u.into(),
         descriptor.address_mode_v.into(),
@@ -308,7 +308,7 @@ impl GPUDevice {
     }
 
     let wgpu_descriptor = wgpu_core::binding_model::BindGroupLayoutDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       entries: Cow::Owned(entries),
     };
 
@@ -349,7 +349,7 @@ impl GPUDevice {
       .collect::<Result<_, JsErrorBox>>()?;
 
     let wgpu_descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       bind_group_layouts: Cow::Owned(bind_group_layouts),
       push_constant_ranges: Default::default(),
     };
@@ -399,7 +399,7 @@ impl GPUDevice {
       .collect::<Vec<_>>();
 
     let wgpu_descriptor = wgpu_core::binding_model::BindGroupDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       layout: descriptor.layout.id,
       entries: Cow::Owned(entries),
     };
@@ -425,7 +425,7 @@ impl GPUDevice {
     #[webidl] descriptor: super::shader::GPUShaderModuleDescriptor,
   ) -> GPUShaderModule {
     let wgpu_descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       runtime_checks: wgpu_types::ShaderRuntimeChecks::default(),
     };
 
@@ -521,7 +521,7 @@ impl GPUDevice {
     descriptor: super::render_bundle::GPURenderBundleEncoderDescriptor,
   ) -> GPURenderBundleEncoder {
     let wgpu_descriptor = wgpu_core::command::RenderBundleEncoderDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       color_formats: Cow::Owned(
         descriptor
           .color_formats
@@ -570,7 +570,7 @@ impl GPUDevice {
     #[webidl] descriptor: crate::query_set::GPUQuerySetDescriptor,
   ) -> GPUQuerySet {
     let wgpu_descriptor = wgpu_core::resource::QuerySetDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       ty: descriptor.r#type.clone().into(),
       count: descriptor.count,
     };
@@ -640,6 +640,16 @@ impl GPUDevice {
 
     Ok(v8::Global::new(scope, val))
   }
+  
+  #[fast]
+  fn start_capture(&self) {
+    self.instance.device_start_capture(self.id);
+  }
+  #[fast]
+  fn stop_capture(&self) {
+    self.instance.device_poll(self.id, wgpu_types::Maintain::wait()).unwrap();
+    self.instance.device_stop_capture(self.id);
+  }
 }
 
 impl GPUDevice {
@@ -648,7 +658,7 @@ impl GPUDevice {
     descriptor: super::compute_pipeline::GPUComputePipelineDescriptor,
   ) -> GPUComputePipeline {
     let wgpu_descriptor = wgpu_core::pipeline::ComputePipelineDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       layout: descriptor.layout.into(),
       stage: ProgrammableStageDescriptor {
         module: descriptor.compute.module.id,
@@ -830,7 +840,7 @@ impl GPUDevice {
       .transpose()?;
 
     let wgpu_descriptor = wgpu_core::pipeline::RenderPipelineDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       layout: descriptor.layout.into(),
       vertex,
       primitive,

@@ -355,3 +355,5 @@ opt-level = 3
 deno_core = { path = "../deno_core/core" }
 deno_ops = { path = "../deno_core/ops" }
 serde_v8 = { path = "../deno_core/serde_v8" }
+wgpu_core = { path = "../../wgpu/wgpu-core", package = "wgpu-core" }
+wgpu_types = { path = "../../wgpu/wgpu-types", package = "wgpu-types" }

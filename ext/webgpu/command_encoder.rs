@@ -106,7 +106,7 @@ impl GPUCommandEncoder {
       });
 
     let wgpu_descriptor = wgpu_core::command::RenderPassDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       color_attachments,
       depth_stencil_attachment: depth_stencil_attachment.as_ref(),
       timestamp_writes: timestamp_writes.as_ref(),
@@ -145,7 +145,7 @@ impl GPUCommandEncoder {
       });
 
     let wgpu_descriptor = wgpu_core::command::ComputePassDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       timestamp_writes: timestamp_writes.as_ref(),
     };
 
@@ -334,7 +334,7 @@ impl GPUCommandEncoder {
     #[webidl] descriptor: crate::command_buffer::GPUCommandBufferDescriptor,
   ) -> GPUCommandBuffer {
     let wgpu_descriptor = wgpu_types::CommandBufferDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
     };
 
     let (id, err) = self

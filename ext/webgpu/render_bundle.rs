@@ -49,7 +49,7 @@ impl GPURenderBundleEncoder {
     #[webidl] descriptor: GPURenderBundleDescriptor,
   ) -> GPURenderBundle {
     let wgpu_descriptor = wgpu_core::command::RenderBundleDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
     };
 
     let (id, err) = self.instance.render_bundle_encoder_finish(

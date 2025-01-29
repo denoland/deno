@@ -193,3 +193,11 @@ impl GPU {
     }
   }
 }
+
+fn transform_label<'a>(label: String) -> Option<std::borrow::Cow<'a, str>> {
+  if label.is_empty() {
+    None
+  } else {
+    Some(std::borrow::Cow::Owned(label))
+  }
+}

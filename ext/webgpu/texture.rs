@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-
 use deno_core::op2;
 use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
@@ -128,7 +126,7 @@ impl GPUTexture {
     #[webidl] descriptor: GPUTextureViewDescriptor,
   ) -> Result<GPUTextureView, JsErrorBox> {
     let wgpu_descriptor = wgpu_core::resource::TextureViewDescriptor {
-      label: Some(Cow::Owned(descriptor.label.clone())),
+      label: crate::transform_label(descriptor.label.clone()),
       format: descriptor.format.map(Into::into),
       dimension: descriptor.dimension.map(Into::into),
       usage: Some(
