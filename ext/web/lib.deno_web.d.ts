@@ -1111,7 +1111,7 @@ declare var MessageEvent: {
 };
 
 /** @category Events */
-type Transferable = MessagePort | ArrayBufferLike;
+type Transferable = MessagePort | ArrayBuffer;
 
 /** @category Platform */
 interface StructuredSerializeOptions {
