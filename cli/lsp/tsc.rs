@@ -6103,7 +6103,7 @@ mod tests {
       None,
     );
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
