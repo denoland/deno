@@ -153,7 +153,7 @@ impl LspScopeResolver {
     let maybe_jsx_import_source_config =
       config_data.and_then(|d| d.maybe_jsx_import_source_config());
     let graph_imports = config_data
-      .and_then(|d| d.member_dir.workspace.to_compiler_option_types().ok())
+      .and_then(|d| d.member_dir.to_compiler_option_types().ok())
       .map(|imports| {
         Arc::new(
           imports
@@ -207,6 +207,8 @@ impl LspScopeResolver {
                   NodeResolutionKind::Execution,
                 )
               })
+              .ok()?
+              .into_url()
               .ok()?,
           ))
           .0;
@@ -257,7 +259,7 @@ impl LspScopeResolver {
                 root_node_modules_dir: byonm_npm_resolver
                   .root_node_modules_path()
                   .map(|p| p.to_path_buf()),
-                sys: CliSys::default(),
+                sys: factory.sys.clone(),
                 pkg_json_resolver: self.pkg_json_resolver.clone(),
               },
             )
@@ -522,6 +524,8 @@ impl LspResolver {
           resolution_mode,
           NodeResolutionKind::Types,
         )
+        .ok()?
+        .into_url()
         .ok()?,
     )))
   }
@@ -702,7 +706,7 @@ impl<'a> ResolverFactory<'a> {
     let sys = CliSys::default();
     let options = if enable_byonm {
       CliNpmResolverCreateOptions::Byonm(CliByonmNpmResolverCreateOptions {
-        sys,
+        sys: self.sys.clone(),
         pkg_json_resolver: self.pkg_json_resolver.clone(),
         root_node_modules_dir: self.config_data.and_then(|config_data| {
           config_data.node_modules_dir.clone().or_else(|| {
@@ -984,19 +988,25 @@ pub struct SingleReferrerGraphResolver<'a> {
 }
 
 impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+  fn default_jsx_import_source(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .and_then(|c| c.default_specifier.clone())
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    _referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
       .jsx_import_source_config
       .and_then(|c| c.default_types_specifier.clone())
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, _referrer: &ModuleSpecifier) -> &str {
     self
       .jsx_import_source_config
       .map(|c| c.module.as_str())

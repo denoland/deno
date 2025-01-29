@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_config::deno_json;
+use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
@@ -19,6 +21,7 @@ use deno_graph::source::Loader;
 use deno_graph::source::LoaderChecksum;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
+use deno_graph::CheckJsOption;
 use deno_graph::FillFromLockfileOptions;
 use deno_graph::GraphKind;
 use deno_graph::JsrLoadError;
@@ -40,6 +43,7 @@ use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 
 use crate::args::config_to_deno_graph_workspace_member;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
 use crate::args::CliOptions;
@@ -67,8 +71,8 @@ use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
 #[derive(Clone)]
-pub struct GraphValidOptions {
-  pub check_js: bool,
+pub struct GraphValidOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
   /// Whether to exit the process for integrity check errors such as
   /// lockfile checksum mismatches and JSR integrity failures.
@@ -136,8 +140,8 @@ pub fn fill_graph_from_lockfile(
 }
 
 #[derive(Clone)]
-pub struct GraphWalkErrorsOptions {
-  pub check_js: bool,
+pub struct GraphWalkErrorsOptions<'a> {
+  pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
 }
 
@@ -147,7 +151,7 @@ pub fn graph_walk_errors<'a>(
   graph: &'a ModuleGraph,
   sys: &'a CliSys,
   roots: &'a [ModuleSpecifier],
-  options: GraphWalkErrorsOptions,
+  options: GraphWalkErrorsOptions<'a>,
 ) -> impl Iterator<Item = JsErrorBox> + 'a {
   graph
     .walk(
@@ -455,7 +459,6 @@ impl ModuleGraphCreator {
         check::CheckOptions {
           build_fast_check_graph: true,
           lib: self.options.ts_type_lib_window(),
-          log_ignored_options: true,
           reload: self.options.reload_flag(),
           type_check_mode: self.options.type_check_mode(),
         },
@@ -472,6 +475,9 @@ pub struct BuildFastCheckGraphOptions<'a> {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BuildGraphWithNpmResolutionError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
   #[class(inherit)]
   #[error(transparent)]
   SerdeJson(#[from] serde_json::Error),
@@ -508,6 +514,7 @@ pub struct ModuleGraphBuilder {
   resolver: Arc<CliResolver>,
   root_permissions_container: PermissionsContainer,
   sys: CliSys,
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 impl ModuleGraphBuilder {
@@ -529,6 +536,7 @@ impl ModuleGraphBuilder {
     resolver: Arc<CliResolver>,
     root_permissions_container: PermissionsContainer,
     sys: CliSys,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -547,6 +555,7 @@ impl ModuleGraphBuilder {
       resolver,
       root_permissions_container,
       sys,
+      tsconfig_resolver,
     }
   }
 
@@ -631,7 +640,16 @@ impl ModuleGraphBuilder {
     }
 
     let maybe_imports = if options.graph_kind.include_types() {
-      self.cli_options.to_compiler_option_types()?
+      // Resolve all the imports from every deno.json. We'll separate
+      // them later based on the folder we're type checking.
+      let mut imports = Vec::new();
+      for deno_json in self.cli_options.workspace().deno_jsons() {
+        let maybe_imports = deno_json.to_compiler_option_types()?;
+        imports.extend(maybe_imports.into_iter().map(|(referrer, imports)| {
+          deno_graph::ReferrerImports { referrer, imports }
+        }));
+      }
+      imports
     } else {
       Vec::new()
     };
@@ -847,7 +865,7 @@ impl ModuleGraphBuilder {
         } else {
           GraphKind::CodeOnly
         },
-        check_js: self.cli_options.check_js(),
+        check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
       },
     )
@@ -857,14 +875,23 @@ impl ModuleGraphBuilder {
     &self,
   ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
   {
-    let jsx_import_source_config = self
+    let jsx_import_source_config_unscoped = self
       .cli_options
-      .workspace()
+      .start_dir
       .to_maybe_jsx_import_source_config()?;
+    let mut jsx_import_source_config_by_scope = BTreeMap::default();
+    for (dir_url, _) in self.cli_options.workspace().config_folders() {
+      let dir = self.cli_options.workspace().resolve_member_dir(dir_url);
+      let jsx_import_source_config_unscoped =
+        dir.to_maybe_jsx_import_source_config()?;
+      jsx_import_source_config_by_scope
+        .insert(dir_url.clone(), jsx_import_source_config_unscoped);
+    }
     Ok(CliGraphResolver {
       cjs_tracker: &self.cjs_tracker,
       resolver: &self.resolver,
-      jsx_import_source_config,
+      jsx_import_source_config_unscoped,
+      jsx_import_source_config_by_scope,
     })
   }
 }
@@ -1100,7 +1127,7 @@ pub fn has_graph_root_local_dependent_changed(
       follow_dynamic: true,
       kind: GraphKind::All,
       prefer_fast_check_graph: true,
-      check_js: true,
+      check_js: CheckJsOption::True,
     },
   );
   while let Some((s, _)) = dependent_specifiers.next() {
@@ -1227,28 +1254,47 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
 struct CliGraphResolver<'a> {
   cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
-  jsx_import_source_config: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_unscoped: Option<JsxImportSourceConfig>,
+  jsx_import_source_config_by_scope:
+    BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
+}
+
+impl<'a> CliGraphResolver<'a> {
+  fn resolve_jsx_import_source_config(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<&JsxImportSourceConfig> {
+    self
+      .jsx_import_source_config_by_scope
+      .iter()
+      .rfind(|(s, _)| referrer.as_str().starts_with(s.as_str()))
+      .map(|(_, c)| c.as_ref())
+      .unwrap_or(self.jsx_import_source_config_unscoped.as_ref())
+  }
 }
 
 impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
-  fn default_jsx_import_source(&self) -> Option<String> {
+  fn default_jsx_import_source(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .resolve_jsx_import_source_config(referrer)
       .and_then(|c| c.default_specifier.clone())
   }
 
-  fn default_jsx_import_source_types(&self) -> Option<String> {
+  fn default_jsx_import_source_types(
+    &self,
+    referrer: &ModuleSpecifier,
+  ) -> Option<String> {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .resolve_jsx_import_source_config(referrer)
       .and_then(|c| c.default_types_specifier.clone())
   }
 
-  fn jsx_import_source_module(&self) -> &str {
+  fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {
     self
-      .jsx_import_source_config
-      .as_ref()
+      .resolve_jsx_import_source_config(referrer)
       .map(|c| c.module.as_str())
       .unwrap_or(deno_graph::source::DEFAULT_JSX_IMPORT_SOURCE_MODULE)
   }

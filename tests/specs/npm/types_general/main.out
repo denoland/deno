@@ -7,7 +7,7 @@ Download http://localhost:4260/@denotest/types-exports-subpaths/1.0.0.tgz
 Download http://localhost:4260/@denotest/types/1.0.0.tgz
 [UNORDERED_END]
 Check file:///[WILDLINE]/main.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
   bar: 1,
   ~~~
     at [WILDCARD]/main.ts:[WILDCARD]
@@ -78,3 +78,5 @@ const valueD: "test4" = entryTypes();
     at file:///[WILDCARD]/main.ts:[WILDCARD]
 
 Found 9 errors.
+
+error: Type checking failed.

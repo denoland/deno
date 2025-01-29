@@ -357,6 +357,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-waker"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+
+[[package]]
 name = "auto_impl"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -735,13 +741,13 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.106"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fce287b1d4eafef758e89e09d724a24808a9196fe9756b8ca90e86d0719a2"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
- "once_cell",
+ "shlex",
 ]
 
 [[package]]
@@ -871,7 +877,7 @@ dependencies = [
  "hickory-server",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "nix",
  "once_cell",
@@ -1464,14 +1470,28 @@ dependencies = [
 name = "deno_cache"
 version = "0.119.0"
 dependencies = [
+ "anyhow",
+ "async-stream",
  "async-trait",
+ "base64 0.21.7",
+ "bytes",
+ "chrono",
  "deno_core",
  "deno_error",
+ "futures",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "log",
  "rusqlite",
  "serde",
  "sha2",
+ "slab",
  "thiserror 2.0.3",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1517,9 +1537,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.45.0"
+version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a47412627aa0d08414eca0e8329128013ab70bdb2cdfdc5456c2214cf24c8f"
+checksum = "08fe512a72c4300bd997c6849450a1f050da0c909a2a4fbdc44891647392bacf"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -1551,9 +1571,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.331.0"
+version = "0.333.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce2d1779358cad2bc56d71176298767be628d707bb75585f6f8a4be2da8ccda1"
+checksum = "2e67f6f874401f3b8fb3e851743c40ee14014648db6685b233b34f783f6959e8"
 dependencies = [
  "anyhow",
  "az",
@@ -1566,6 +1586,7 @@ dependencies = [
  "deno_core_icudata",
  "deno_error",
  "deno_ops",
+ "deno_path_util",
  "deno_unsync",
  "futures",
  "indexmap 2.3.0",
@@ -1715,11 +1736,11 @@ dependencies = [
  "dyn-clone",
  "error_reporter",
  "fast-socks5",
- "h2 0.4.4",
+ "h2 0.4.7",
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -1794,9 +1815,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.0"
+version = "0.87.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56d4eb4b7c81ae920b6d18c45a1866924f93110caee80bbbc362dc28143f2bb"
+checksum = "e4766f426e4258c481c3af019fb4bba31e3108e80b8b2a48bbeb68bfadcc8c18"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -1847,7 +1868,7 @@ dependencies = [
  "http-body-util",
  "httparse",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "itertools 0.10.5",
  "memmem",
@@ -1957,9 +1978,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.69.0"
+version = "0.70.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "802583d3ca6c7063e14cafa02ddc206fb34e804e095d52032baf375c56a99515"
+checksum = "ac94db8d8597b96c92d30a68b11d4bec6822dcbb3e8675ab1e0136816a301a34"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2040,9 +2061,12 @@ dependencies = [
  "quinn",
  "rustls-tokio-stream",
  "serde",
+ "sha2",
  "socket2",
  "thiserror 2.0.3",
  "tokio",
+ "url",
+ "web-transport-proto",
 ]
 
 [[package]]
@@ -2059,6 +2083,7 @@ dependencies = [
  "bytes",
  "cbc",
  "const-oid",
+ "ctr",
  "data-encoding",
  "deno_core",
  "deno_error",
@@ -2080,11 +2105,11 @@ dependencies = [
  "elliptic-curve",
  "errno",
  "faster-hex",
- "h2 0.4.4",
+ "h2 0.4.7",
  "hkdf",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "idna",
  "indexmap 2.3.0",
@@ -2092,6 +2117,7 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
+ "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -2113,6 +2139,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
+ "rusqlite",
  "scrypt",
  "sec1",
  "serde",
@@ -2189,9 +2216,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.207.0"
+version = "0.209.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96f000a21f6969b4c945bc8e9e785aa439f11ca4fd3fbddcd5bebc102167eb37"
+checksum = "fbda741ba267a252bad86153d16c859c3a8e1b219b300a1b4f0a2632c0a465cf"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -2227,9 +2254,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a850e68d99edecd4ff3426dd14a3d44a33a6b2175f54d85db7b42e4a3844ed0b"
+checksum = "d07d26dbfcc01e636aef86f9baff7faf5338398e74d283d8fe01e39068f48049"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -2377,7 +2404,7 @@ dependencies = [
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "libc",
  "log",
@@ -2455,7 +2482,7 @@ dependencies = [
  "deno_error",
  "deno_tls",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "log",
@@ -2611,10 +2638,10 @@ dependencies = [
  "deno_permissions",
  "deno_tls",
  "fastwebsockets",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "once_cell",
  "rustls-tokio-stream",
@@ -3359,7 +3386,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project",
  "rand",
@@ -3871,15 +3898,15 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.4"
+version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "816ec7294445779408f36fe57bc5b7fc1cf59664059096c65f905c1c61f58069"
+checksum = "ccae279728d634d083c00f6099cb58f01cc99c145b84b8be2f6c74618d79922e"
 dependencies = [
+ "atomic-waker",
  "bytes",
  "fnv",
  "futures-core",
  "futures-sink",
- "futures-util",
  "http 1.1.0",
  "indexmap 2.3.0",
  "slab",
@@ -4202,9 +4229,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.8.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d897f394bad6a705d5f4104762e116a75639e470d80901eed05a860a95cb1904"
+checksum = "f2d708df4e7140240a16cd6ab0ab65c972d7433ab77819ea693fde9c43811e2a"
 
 [[package]]
 name = "httpdate"
@@ -4244,14 +4271,14 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.4.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
+checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
 dependencies = [
  "bytes",
  "futures-channel",
  "futures-util",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "httparse",
@@ -4271,7 +4298,7 @@ checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "rustls",
  "rustls-pki-types",
@@ -4287,7 +4314,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
 dependencies = [
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project-lite",
  "tokio",
@@ -4305,7 +4332,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -4875,9 +4902,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b694a822684ddb75df4d657029161431bcb4a85c1856952f845b76912bc6fec"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
@@ -5298,7 +5325,9 @@ dependencies = [
  "anyhow",
  "async-trait",
  "boxed_error",
+ "dashmap",
  "deno_error",
+ "deno_media_type",
  "deno_package_json",
  "deno_path_util",
  "futures",
@@ -5310,7 +5339,6 @@ dependencies = [
  "serde_json",
  "sys_traits",
  "thiserror 2.0.3",
- "tokio",
  "url",
 ]
 
@@ -6514,11 +6542,11 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-util",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -7074,9 +7102,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.240.0"
+version = "0.242.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd0494d74c40ab94f53a19485de359ea6a55f05341b817b93440b673c1ce8ec6"
+checksum = "aa9d64ec1fdc3316cb65ca60ccbb5a3a914f014ccb0b5f71fc9280506fd28247"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -8077,10 +8105,10 @@ dependencies = [
  "flate2",
  "futures",
  "glob",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "jsonc-parser",
  "lazy-regex",
@@ -8371,11 +8399,11 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bytes",
- "h2 0.4.4",
+ "h2 0.4.7",
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
@@ -8974,6 +9002,18 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "web-transport-proto"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3806ea43df5817f0d90618c842d28db5946bc18a5db0659b2275c2be48d472"
+dependencies = [
+ "bytes",
+ "http 1.1.0",
+ "thiserror 1.0.64",
+ "url",
 ]
 
 [[package]]

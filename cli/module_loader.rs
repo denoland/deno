@@ -219,7 +219,6 @@ impl ModuleLoadPreparer {
           check::CheckOptions {
             build_fast_check_graph: true,
             lib,
-            log_ignored_options: false,
             reload: self.options.reload_flag(),
             type_check_mode: self.options.type_check_mode(),
           },
@@ -606,12 +605,13 @@ impl<TGraphContainer: ModuleGraphContainer>
     } else if referrer == "." {
       // main module, use the initial cwd
       deno_core::resolve_path(referrer, &self.shared.initial_cwd)
-        .map_err(|e| e.into())
+        .map_err(|e| JsErrorBox::from_err(e).into())
     } else {
       // this cwd check is slow, so try to avoid it
       let cwd = std::env::current_dir()
         .map_err(|e| JsErrorBox::from_err(UnableToGetCwdError(e)))?;
-      deno_core::resolve_path(referrer, &cwd).map_err(|e| e.into())
+      deno_core::resolve_path(referrer, &cwd)
+        .map_err(|e| JsErrorBox::from_err(e).into())
     }
   }
 
@@ -666,7 +666,12 @@ impl<TGraphContainer: ModuleGraphContainer>
             ResolutionMode::Import,
             NodeResolutionKind::Execution,
           )
-          .map_err(|e| JsErrorBox::from_err(e).into());
+          .map_err(|e| JsErrorBox::from_err(e).into())
+          .and_then(|url_or_path| {
+            url_or_path
+              .into_url()
+              .map_err(|e| JsErrorBox::from_err(e).into())
+          });
       }
     }
 
@@ -695,6 +700,8 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             })
           })?
+          .into_url()
+          .map_err(JsErrorBox::from_err)?
       }
       Some(Module::Node(module)) => module.specifier.clone(),
       Some(Module::Js(module)) => module.specifier.clone(),

@@ -1,4 +1,6 @@
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const _test: string = getValue();
       ~~~~~
     at file:///[WILDCARD]/fail_check.ts:3:7
+
+error: Type checking failed.

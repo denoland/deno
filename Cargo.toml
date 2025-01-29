@@ -52,10 +52,10 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
-deno_core = { version = "0.331.0" }
+deno_core = { version = "0.333.0" }
 
 deno_bench_util = { version = "0.181.0", path = "./bench_util" }
-deno_config = { version = "=0.45.0", features = ["workspace"] }
+deno_config = { version = "=0.46.0", features = ["workspace"] }
 deno_lockfile = "=0.24.0"
 deno_media_type = { version = "=0.2.5", features = ["module_specifier"] }
 deno_npm = "=0.27.2"
@@ -110,6 +110,7 @@ node_resolver = { version = "0.25.0", path = "./resolvers/node" }
 aes = "=0.8.3"
 anyhow = "1.0.57"
 async-once-cell = "0.5.4"
+async-stream = "0.3"
 async-trait = "0.1.73"
 base32 = "=0.5.1"
 base64 = "0.21.7"
@@ -125,12 +126,13 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
 color-print = "0.3.5"
 console_static_text = "=0.8.1"
+ctr = { version = "0.9.2", features = ["alloc"] }
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
 deno_cache_dir = "=0.17.0"
 deno_error = "=0.5.5"
-deno_package_json = { version = "=0.4.1", default-features = false }
+deno_package_json = { version = "=0.4.2", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
 ecb = "=0.1.2"
@@ -144,14 +146,14 @@ flate2 = { version = "1.0.30", default-features = false }
 fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
-h2 = "0.4.4"
+h2 = "0.4.6"
 hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
 http_v02 = { package = "http", version = "0.2.9" }
 httparse = "1.8.0"
-hyper = { version = "1.4.1", features = ["full"] }
+hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }

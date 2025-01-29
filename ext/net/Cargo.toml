@@ -24,6 +24,9 @@ pin-project.workspace = true
 quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio", "rustls", "ring"] }
 rustls-tokio-stream.workspace = true
 serde.workspace = true
+sha2.workspace = true
 socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+url.workspace = true
+web-transport-proto = "0.2.3"
