@@ -55,6 +55,7 @@ use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
+use super::tsc::ScopedAmbientModules;
 use super::tsc::TsServer;
 use super::urls::uri_parse_unencoded;
 use super::urls::url_to_uri;
@@ -463,10 +464,7 @@ impl DeferredDiagnostics {
     )
   }
 
-  fn update_ambient_modules(
-    &mut self,
-    new: HashMap<Option<Url>, Option<Vec<String>>>,
-  ) {
+  fn update_ambient_modules(&mut self, new: ScopedAmbientModules) {
     for (scope, value) in new {
       let ambient = self.ambient_modules_by_scope.entry(scope).or_default();
       ambient.dirty = false;
@@ -1075,8 +1073,7 @@ async fn generate_ts_diagnostics(
   config: &Config,
   ts_server: &tsc::TsServer,
   token: CancellationToken,
-) -> Result<(DiagnosticVec, HashMap<Option<Url>, Option<Vec<String>>>), AnyError>
-{
+) -> Result<(DiagnosticVec, ScopedAmbientModules), AnyError> {
   let mut diagnostics_vec = Vec::new();
   let specifiers = snapshot
     .documents

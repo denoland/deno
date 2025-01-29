@@ -385,6 +385,11 @@ impl PendingChange {
   }
 }
 
+pub type DiagnosticsMap = IndexMap<String, Vec<crate::tsc::Diagnostic>>;
+pub type ScopedAmbientModules =
+  HashMap<Option<ModuleSpecifier>, MaybeAmbientModules>;
+pub type MaybeAmbientModules = Option<Vec<String>>;
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -466,13 +471,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
-  ) -> Result<
-    (
-      IndexMap<String, Vec<crate::tsc::Diagnostic>>,
-      HashMap<Option<ModuleSpecifier>, Option<Vec<String>>>,
-    ),
-    AnyError,
-  > {
+  ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
     for specifier in specifiers {
@@ -497,10 +496,12 @@ impl TsServer {
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
       results.push_back(
         self
-          .request_with_cancellation::<(
-            IndexMap<String, Vec<crate::tsc::Diagnostic>>,
-            Option<Vec<String>>,
-          )>(snapshot.clone(), req, scope.clone(), token.clone())
+          .request_with_cancellation::<(DiagnosticsMap, MaybeAmbientModules)>(
+            snapshot.clone(),
+            req,
+            scope.clone(),
+            token.clone(),
+          )
           .map(|res| (scope, res)),
       );
     }
