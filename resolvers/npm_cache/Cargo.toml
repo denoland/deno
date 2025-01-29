@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_npm_cache"
-version = "0.5.0"
+version = "0.6.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -17,7 +17,7 @@ path = "lib.rs"
 async-trait.workspace = true
 base64.workspace = true
 boxed_error.workspace = true
-deno_cache_dir.workspace = true
+deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_error = { workspace = true, features = ["serde", "serde_json", "tokio"] }
 deno_npm.workspace = true
 deno_path_util.workspace = true
@@ -35,6 +35,8 @@ ring.workspace = true
 serde_json.workspace = true
 sys_traits.workspace = true
 tar.workspace = true
-tempfile = "3.4.0"
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+tempfile = "3.4.0"

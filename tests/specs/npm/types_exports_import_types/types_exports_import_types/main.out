@@ -1,7 +1,9 @@
 Download http://localhost:4260/@denotest%2ftypes-exports-import-types
 Download http://localhost:4260/@denotest/types-exports-import-types/1.0.0.tgz
 Check file://[WILDCARD]/types_exports_import_types/main.ts
-error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
+TS2322 [ERROR]: Type 'number' is not assignable to type 'string'.
 const result: string = getValue();
       ~~~~~~
     at file:///[WILDCARD]/main.ts:4:7
+
+error: Type checking failed.

@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_cache"
-version = "0.118.0"
+version = "0.119.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,11 +14,25 @@ description = "Implementation of Cache API for Deno"
 path = "lib.rs"
 
 [dependencies]
+anyhow.workspace = true
+async-stream.workspace = true
 async-trait.workspace = true
+base64.workspace = true
+bytes.workspace = true
+chrono.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+futures.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+log.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 sha2.workspace = true
+slab.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true

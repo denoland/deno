@@ -30,7 +30,8 @@ mod cache_db;
 mod caches;
 mod check;
 mod code_cache;
-mod common;
+mod deno_dir;
+mod disk_cache;
 mod emit;
 mod fast_check;
 mod incremental;
@@ -42,9 +43,11 @@ pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
-pub use common::FastInsecureHasher;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
+pub use deno_dir::DenoDir;
+pub use deno_dir::DenoDirProvider;
+pub use disk_cache::DiskCache;
 pub use emit::EmitCache;
 pub use fast_check::FastCheckCache;
 pub use incremental::IncrementalCache;
@@ -54,7 +57,6 @@ pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
 pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
 use deno_error::JsErrorBox;
@@ -117,11 +119,7 @@ impl FetchCacher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      #[allow(deprecated)]
-      self
-        .global_http_cache
-        .get_global_cache_filepath(specifier)
-        .ok()
+      self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
 }

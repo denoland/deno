@@ -29,6 +29,7 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_graph::ResolutionResolved;
 use deno_lib::util::checksum;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::worker::create_isolate_create_params;
 use deno_resolver::npm::managed::ResolvePkgFolderFromDenoModuleError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
@@ -44,7 +45,6 @@ use thiserror::Error;
 
 use crate::args::TsConfig;
 use crate::args::TypeCheckMode;
-use crate::cache::FastInsecureHasher;
 use crate::cache::ModuleInfoCache;
 use crate::node::CliNodeResolver;
 use crate::npm::CliNpmResolver;
@@ -366,7 +366,7 @@ pub struct RequestNpmState {
 pub struct Request {
   /// The TypeScript compiler options which will be serialized and sent to
   /// tsc.
-  pub config: TsConfig,
+  pub config: Arc<TsConfig>,
   /// Indicates to the tsc runtime if debug logging should occur.
   pub debug: bool,
   pub graph: Arc<ModuleGraph>,
@@ -528,6 +528,9 @@ pub enum LoadError {
   #[class(generic)]
   #[error("Unable to load {path}: {error}")]
   LoadFromNodeModule { path: String, error: std::io::Error },
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error(
     "Error converting a string module specifier for \"op_resolve\": {0}"
@@ -706,8 +709,14 @@ pub enum ResolveError {
   )]
   ModuleResolution(#[from] deno_core::ModuleResolutionError),
   #[class(inherit)]
+  #[error(transparent)]
+  FilePathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
   #[error("{0}")]
   PackageSubpathResolve(PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error("{0}")]
+  ResolveUrlOrPathError(#[from] deno_path_util::ResolveUrlOrPathError),
   #[class(inherit)]
   #[error("{0}")]
   ResolvePkgFolderFromDenoModule(#[from] ResolvePkgFolderFromDenoModuleError),
@@ -937,7 +946,7 @@ fn resolve_graph_specifier_types(
             NodeResolutionKind::Types,
           );
         let maybe_url = match res_result {
-          Ok(url) => Some(url),
+          Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
             NodeJsErrorCode::ERR_TYPES_NOT_FOUND
             | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
@@ -965,6 +974,9 @@ fn resolve_graph_specifier_types(
 
 #[derive(Debug, Error, deno_error::JsError)]
 pub enum ResolveNonGraphSpecifierTypesError {
+  #[class(inherit)]
+  #[error(transparent)]
+  FilePathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -997,8 +1009,8 @@ fn resolve_non_graph_specifier_types(
           resolution_mode,
           NodeResolutionKind::Types,
         )
-        .ok()
-        .map(|res| res.into_url()),
+        .and_then(|res| res.into_url())
+        .ok(),
     )))
   } else if let Ok(npm_req_ref) =
     NpmPackageReqReference::from_str(raw_specifier)
@@ -1019,7 +1031,7 @@ fn resolve_non_graph_specifier_types(
       NodeResolutionKind::Types,
     );
     let maybe_url = match res_result {
-      Ok(url) => Some(url),
+      Ok(url_or_path) => Some(url_or_path.into_url()?),
       Err(err) => match err.code() {
         NodeJsErrorCode::ERR_TYPES_NOT_FOUND
         | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
@@ -1267,7 +1279,7 @@ mod tests {
     graph
       .build(vec![specifier.clone()], &loader, Default::default())
       .await;
-    let config = TsConfig::new(json!({
+    let config = Arc::new(TsConfig::new(json!({
       "allowJs": true,
       "checkJs": false,
       "esModuleInterop": true,
@@ -1282,7 +1294,7 @@ mod tests {
       "strict": true,
       "target": "esnext",
       "tsBuildInfoFile": "internal:///.tsbuildinfo",
-    }));
+    })));
     let request = Request {
       config,
       debug: false,
@@ -1517,7 +1529,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1528,7 +1540,7 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
     assert!(actual.maybe_tsbuildinfo.is_some());
     assert_eq!(actual.stats.0.len(), 12);
   }
@@ -1539,6 +1551,6 @@ mod tests {
     let actual = test_exec(&specifier)
       .await
       .expect("exec should not have errored");
-    assert!(actual.diagnostics.is_empty());
+    assert!(!actual.diagnostics.has_diagnostic());
   }
 }

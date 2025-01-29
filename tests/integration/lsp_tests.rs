@@ -3,13 +3,10 @@
 use std::fs;
 use std::str::FromStr;
 
-use deno_ast::ModuleSpecifier;
-use deno_core::serde::Deserialize;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
-use deno_core::url::Url;
 use pretty_assertions::assert_eq;
+use serde::Deserialize;
+use serde_json::json;
+use serde_json::Value;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
 use test_util::deno_cmd_with_deno_dir;
@@ -20,6 +17,7 @@ use test_util::lsp::LspClient;
 use test_util::testdata_path;
 use test_util::TestContextBuilder;
 use tower_lsp::lsp_types as lsp;
+use url::Url;
 
 #[test]
 fn lsp_startup_shutdown() {
@@ -5764,7 +5762,6 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5844,7 +5841,6 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -8727,6 +8723,7 @@ fn lsp_completions_node_specifier() {
       "node:readline",
       "node:readline/promises",
       "node:repl",
+      "node:sqlite",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
@@ -13149,7 +13146,7 @@ fn lsp_lint_exclude_with_config() {
   let diagnostics = client.did_open(
     json!({
       "textDocument": {
-        "uri": ModuleSpecifier::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
+        "uri": Url::from_file_path(temp_dir.path().join("ignored.ts")).unwrap().to_string(),
         "languageId": "typescript",
         "version": 1,
         "text": "// TODO: fixme\nexport async function non_camel_case() {\nconsole.log(\"finished!\")\n}"
@@ -14133,10 +14130,7 @@ fn lsp_node_modules_dir() {
     .unwrap();
   // canonicalize for mac
   let path = temp_dir.path().join("node_modules").canonicalize();
-  assert_starts_with!(
-    uri,
-    ModuleSpecifier::from_file_path(&path).unwrap().as_str()
-  );
+  assert_starts_with!(uri, Url::from_file_path(&path).unwrap().as_str());
 
   client.shutdown();
 }

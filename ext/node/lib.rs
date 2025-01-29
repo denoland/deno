@@ -15,6 +15,7 @@ use deno_core::v8;
 use deno_core::v8::ExternalReference;
 use deno_error::JsErrorBox;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NpmPackageFolderResolver;
@@ -25,25 +26,24 @@ extern crate libz_sys as zlib;
 
 mod global;
 pub mod ops;
-mod polyfill;
 
 pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
+pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
 pub use ops::ipc::ChildPipeFd;
-pub use ops::ipc::IpcJsonStreamResource;
-pub use ops::ipc::IpcRefTracker;
 use ops::vm;
 pub use ops::vm::create_v8_context;
 pub use ops::vm::init_global_template;
 pub use ops::vm::ContextInitMode;
 pub use ops::vm::VM_CONTEXT_INDEX;
-pub use polyfill::is_builtin_node_module;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES;
-pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
+
+pub fn is_builtin_node_module(module_name: &str) -> bool {
+  DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
+}
 
 pub trait NodePermissions {
   fn check_net_url(
@@ -228,7 +228,6 @@ deno_core::extension!(deno_node,
     ops::crypto::op_node_decipheriv_decrypt,
     ops::crypto::op_node_decipheriv_final,
     ops::crypto::op_node_decipheriv_set_aad,
-    ops::crypto::op_node_decipheriv_take,
     ops::crypto::op_node_dh_compute_secret,
     ops::crypto::op_node_diffie_hellman,
     ops::crypto::op_node_ecdh_compute_public_key,
@@ -302,6 +301,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_parse,
     ops::crypto::x509::op_node_x509_ca,
     ops::crypto::x509::op_node_x509_check_email,
+    ops::crypto::x509::op_node_x509_check_host,
     ops::crypto::x509::op_node_x509_fingerprint,
     ops::crypto::x509::op_node_x509_fingerprint256,
     ops::crypto::x509::op_node_x509_fingerprint512,
@@ -375,6 +375,7 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn<P>,
+    ops::http::op_node_http_await_information,
     ops::http::op_node_http_await_response,
     ops::http2::op_http2_connect,
     ops::http2::op_http2_poll_client_connection,
@@ -440,7 +441,9 @@ deno_core::extension!(deno_node,
     ops::inspector::op_inspector_enabled,
   ],
   objects = [
-    ops::perf_hooks::EldHistogram
+    ops::perf_hooks::EldHistogram,
+    ops::sqlite::DatabaseSync,
+    ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
   esm = [
@@ -592,7 +595,6 @@ deno_core::extension!(deno_node,
     "internal/readline/utils.mjs",
     "internal/stream_base_commons.ts",
     "internal/streams/add-abort-signal.mjs",
-    "internal/streams/buffer_list.mjs",
     "internal/streams/destroy.mjs",
     "internal/streams/end-of-stream.mjs",
     "internal/streams/lazy_transform.mjs",
@@ -664,6 +666,7 @@ deno_core::extension!(deno_node,
     "node:readline" = "readline.ts",
     "node:readline/promises" = "readline/promises.ts",
     "node:repl" = "repl.ts",
+    "node:sqlite" = "sqlite.ts",
     "node:stream" = "stream.ts",
     "node:stream/consumers" = "stream/consumers.mjs",
     "node:stream/promises" = "stream/promises.mjs",
@@ -816,16 +819,6 @@ deno_core::extension!(deno_node,
   },
 );
 
-#[derive(Debug)]
-pub struct RealIsBuiltInNodeModuleChecker;
-
-impl IsBuiltInNodeModuleChecker for RealIsBuiltInNodeModuleChecker {
-  #[inline]
-  fn is_builtin_node_module(&self, specifier: &str) -> bool {
-    is_builtin_node_module(specifier)
-  }
-}
-
 pub trait ExtNodeSys:
   sys_traits::BaseFsCanonicalize
   + sys_traits::BaseFsMetadata
@@ -840,7 +833,7 @@ impl ExtNodeSys for sys_traits::impls::RealSys {}
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<
     TInNpmPackageChecker,
-    RealIsBuiltInNodeModuleChecker,
+    DenoIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
     TSys,
   >;

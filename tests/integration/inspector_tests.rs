@@ -4,12 +4,9 @@ use std::io::BufRead;
 use std::process::ChildStderr;
 use std::time::Duration;
 
+use anyhow::anyhow;
+use anyhow::Error as AnyError;
 use bytes::Bytes;
-use deno_core::anyhow::anyhow;
-use deno_core::error::AnyError;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::url;
 use fastwebsockets::FragmentCollector;
 use fastwebsockets::Frame;
 use fastwebsockets::WebSocket;
@@ -18,6 +15,7 @@ use hyper::upgrade::Upgraded;
 use hyper::Request;
 use hyper::Response;
 use hyper_util::rt::TokioIo;
+use serde_json::json;
 use test_util as util;
 use tokio::net::TcpStream;
 use tokio::time::timeout;
@@ -35,7 +33,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
+    deno_unsync::spawn(fut);
   }
 }
 
@@ -742,7 +740,7 @@ async fn inspector_json() {
     }
     let resp = client.execute(req).await.unwrap();
     assert_eq!(resp.status(), reqwest::StatusCode::OK);
-    let endpoint_list: Vec<deno_core::serde_json::Value> =
+    let endpoint_list: Vec<serde_json::Value> =
       serde_json::from_str(&resp.text().await.unwrap()).unwrap();
     let matching_endpoint = endpoint_list.iter().find(|e| {
       e["webSocketDebuggerUrl"]
@@ -775,7 +773,7 @@ async fn inspector_json_list() {
   url.set_path("/json/list");
   let resp = reqwest::get(url).await.unwrap();
   assert_eq!(resp.status(), reqwest::StatusCode::OK);
-  let endpoint_list: Vec<deno_core::serde_json::Value> =
+  let endpoint_list: Vec<serde_json::Value> =
     serde_json::from_str(&resp.text().await.unwrap()).unwrap();
   let matching_endpoint = endpoint_list
     .iter()

@@ -23,7 +23,7 @@ import * as io from "ext:deno_io/12_io.js";
 import * as fs from "ext:deno_fs/30_fs.js";
 import * as os from "ext:deno_os/30_os.js";
 import * as fsEvents from "ext:runtime/40_fs_events.js";
-import * as process from "ext:runtime/40_process.js";
+import * as process from "ext:deno_process/40_process.js";
 import * as signals from "ext:deno_os/40_signals.js";
 import * as tty from "ext:runtime/40_tty.js";
 import * as kv from "ext:deno_kv/01_db.ts";

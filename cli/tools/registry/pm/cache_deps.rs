@@ -19,15 +19,13 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_installer = factory.npm_installer_if_managed()?;
+  let npm_installer = factory.npm_installer()?;
   let cli_options = factory.cli_options()?;
-  if let Some(npm_installer) = &npm_installer {
-    npm_installer
-      .ensure_top_level_package_json_install()
-      .await?;
-    if let Some(lockfile) = cli_options.maybe_lockfile() {
-      lockfile.error_if_changed()?;
-    }
+  npm_installer
+    .ensure_top_level_package_json_install()
+    .await?;
+  if let Some(lockfile) = cli_options.maybe_lockfile() {
+    lockfile.error_if_changed()?;
   }
   // cache as many entries in the import map as we can
   let resolver = factory.workspace_resolver().await?;
@@ -141,9 +139,7 @@ pub async fn cache_top_level_deps(
     maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots);
   }
 
-  if let Some(npm_installer) = &npm_installer {
-    npm_installer.cache_packages(PackageCaching::All).await?;
-  }
+  npm_installer.cache_packages(PackageCaching::All).await?;
 
   maybe_graph_error?;
 

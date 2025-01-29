@@ -23,6 +23,8 @@ use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
+use node_resolver::UrlOrPath;
+use node_resolver::UrlOrPathRef;
 use node_resolver::REQUIRE_CONDITIONS;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
@@ -106,9 +108,14 @@ pub enum RequireErrorKind {
     JsErrorBox,
   ),
   #[class(inherit)]
-  #[error("Unable to get CWD: {0}")]
-  UnableToGetCwd(#[inherit] std::io::Error),
+  #[error(transparent)]
+  UnableToGetCwd(UnableToGetCwdError),
 }
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[error("Unable to get CWD")]
+#[class(inherit)]
+pub struct UnableToGetCwdError(#[source] pub std::io::Error);
 
 #[op2]
 #[serde]
@@ -177,7 +184,7 @@ pub fn op_require_node_module_paths<
   } else {
     let current_dir = &sys
       .env_current_dir()
-      .map_err(RequireErrorKind::UnableToGetCwd)?;
+      .map_err(|e| RequireErrorKind::UnableToGetCwd(UnableToGetCwdError(e)))?;
     normalize_path(current_dir.join(from))
   };
 
@@ -272,11 +279,12 @@ pub fn op_require_resolve_deno_dir<
     TSys,
   >>();
 
+  let path = PathBuf::from(parent_filename);
   Ok(
     resolver
       .resolve_package_folder_from_package(
         &request,
-        &url_from_file_path(&PathBuf::from(parent_filename))?,
+        &UrlOrPathRef::from_path(&path),
       )
       .ok()
       .map(|p| p.to_string_lossy().into_owned()),
@@ -482,9 +490,7 @@ pub fn op_require_try_self<
 
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
   let pkg = pkg_json_resolver
-    .get_closest_package_json_from_file_path(&PathBuf::from(
-      parent_path.unwrap(),
-    ))
+    .get_closest_package_json(&PathBuf::from(parent_path.unwrap()))
     .ok()
     .flatten();
   if pkg.is_none() {
@@ -510,13 +516,13 @@ pub fn op_require_try_self<
     return Ok(None);
   }
 
-  let referrer = deno_core::url::Url::from_file_path(&pkg.path).unwrap();
   if let Some(exports) = &pkg.exports {
     let node_resolver = state.borrow::<NodeResolverRc<
       TInNpmPackageChecker,
       TNpmPackageFolderResolver,
       TSys,
     >>();
+    let referrer = UrlOrPathRef::from_path(&pkg.path);
     let r = node_resolver.package_exports_resolve(
       &pkg.path,
       &expansion,
@@ -526,11 +532,7 @@ pub fn op_require_try_self<
       REQUIRE_CONDITIONS,
       NodeResolutionKind::Execution,
     )?;
-    Ok(Some(if r.scheme() == "file" {
-      url_to_file_path_string(&r)?
-    } else {
-      r.to_string()
-    }))
+    Ok(Some(url_or_path_to_string(r)?))
   } else {
     Ok(None)
   }
@@ -622,22 +624,21 @@ pub fn op_require_resolve_exports<
   let referrer = if parent_path.is_empty() {
     None
   } else {
-    Some(Url::from_file_path(parent_path).unwrap())
+    Some(PathBuf::from(parent_path))
   };
   let r = node_resolver.package_exports_resolve(
     &pkg.path,
     &format!(".{expansion}"),
     exports,
-    referrer.as_ref(),
+    referrer
+      .as_ref()
+      .map(|r| UrlOrPathRef::from_path(r))
+      .as_ref(),
     ResolutionMode::Require,
     REQUIRE_CONDITIONS,
     NodeResolutionKind::Execution,
   )?;
-  Ok(Some(if r.scheme() == "file" {
-    url_to_file_path_string(&r)?
-  } else {
-    r.to_string()
-  }))
+  Ok(Some(url_or_path_to_string(r)?))
 }
 
 deno_error::js_error_wrapper!(
@@ -696,8 +697,7 @@ pub fn op_require_package_imports_resolve<
   let referrer_path = ensure_read_permission::<P>(state, &referrer_path)
     .map_err(RequireErrorKind::Permission)?;
   let pkg_json_resolver = state.borrow::<PackageJsonResolverRc<TSys>>();
-  let Some(pkg) = pkg_json_resolver
-    .get_closest_package_json_from_file_path(&referrer_path)?
+  let Some(pkg) = pkg_json_resolver.get_closest_package_json(&referrer_path)?
   else {
     return Ok(None);
   };
@@ -708,16 +708,15 @@ pub fn op_require_package_imports_resolve<
       TNpmPackageFolderResolver,
       TSys,
     >>();
-    let referrer_url = Url::from_file_path(&referrer_filename).unwrap();
     let url = node_resolver.package_imports_resolve(
       &request,
-      Some(&referrer_url),
+      Some(&UrlOrPathRef::from_path(&referrer_path)),
       ResolutionMode::Require,
       Some(&pkg),
       REQUIRE_CONDITIONS,
       NodeResolutionKind::Execution,
     )?;
-    Ok(Some(url_to_file_path_string(&url)?))
+    Ok(Some(url_or_path_to_string(url)?))
   } else {
     Ok(None)
   }
@@ -731,11 +730,6 @@ pub fn op_require_break_on_next_statement(state: Rc<RefCell<OpState>>) {
   };
   let mut inspector = inspector_rc.borrow_mut();
   inspector.wait_for_session_and_break_on_next_statement()
-}
-
-fn url_to_file_path_string(url: &Url) -> Result<String, RequireError> {
-  let file_path = url_to_file_path(url)?;
-  Ok(file_path.to_string_lossy().into_owned())
 }
 
 #[op2(fast)]
@@ -762,4 +756,14 @@ pub fn op_require_can_parse_as_esm(
   );
   let mut source = v8::script_compiler::Source::new(source, Some(&origin));
   v8::script_compiler::compile_module(scope, &mut source).is_some()
+}
+
+fn url_or_path_to_string(
+  url: UrlOrPath,
+) -> Result<String, deno_path_util::UrlToFilePathError> {
+  if url.is_file() {
+    Ok(url.into_path()?.to_string_lossy().to_string())
+  } else {
+    Ok(url.to_string_lossy().to_string())
+  }
 }

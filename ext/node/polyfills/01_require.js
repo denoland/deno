@@ -122,7 +122,6 @@ import internalFsUtils from "ext:deno_node/internal/fs/utils.mjs";
 import internalHttp from "ext:deno_node/internal/http.ts";
 import internalReadlineUtils from "ext:deno_node/internal/readline/utils.mjs";
 import internalStreamsAddAbortSignal from "ext:deno_node/internal/streams/add-abort-signal.mjs";
-import internalStreamsBufferList from "ext:deno_node/internal/streams/buffer_list.mjs";
 import internalStreamsLazyTransform from "ext:deno_node/internal/streams/lazy_transform.mjs";
 import internalStreamsState from "ext:deno_node/internal/streams/state.mjs";
 import internalTestBinding from "ext:deno_node/internal/test/binding.ts";
@@ -142,6 +141,7 @@ import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
+import sqlite from "node:sqlite";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
@@ -225,7 +225,6 @@ function setupBuiltinModules() {
     "internal/http": internalHttp,
     "internal/readline/utils": internalReadlineUtils,
     "internal/streams/add-abort-signal": internalStreamsAddAbortSignal,
-    "internal/streams/buffer_list": internalStreamsBufferList,
     "internal/streams/lazy_transform": internalStreamsLazyTransform,
     "internal/streams/state": internalStreamsState,
     "internal/test/binding": internalTestBinding,
@@ -253,6 +252,7 @@ function setupBuiltinModules() {
     readline,
     "readline/promises": readlinePromises,
     repl,
+    sqlite,
     stream,
     "stream/consumers": streamConsumers,
     "stream/promises": streamPromises,
