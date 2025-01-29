@@ -35,6 +35,7 @@ import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 const { ObjectDefineProperties } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 const denoNs = {
   Process: process.Process,
@@ -207,6 +208,10 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
     loadQuic,
   ),
   QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+  upgradeWebTransport: core.propWritableLazyLoaded(
+    (wt) => wt.upgradeWebTransport,
+    loadWebTransport,
+  ),
 });
 
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }
