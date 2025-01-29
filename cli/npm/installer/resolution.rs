@@ -189,7 +189,7 @@ fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
     // WARNING: When bumping this version, check if anything needs to be
     // updated in the `setNodeOnlyGlobalNames` call in 99_main_compiler.js
     types_node_version_req: Some(
-      VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
+      VersionReq::parse_from_npm("22.9.0 - 22.12.0").unwrap(),
     ),
   }
 }

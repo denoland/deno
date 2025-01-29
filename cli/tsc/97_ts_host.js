@@ -735,36 +735,65 @@ ts.setLocalizedDiagnosticMessages((() => {
 })());
 
 /** @param {ts.Diagnostic} diagnostic */
+function isLibDiagnostic(diagnostic) {
+  return diagnostic.file?.fileName.startsWith("asset:///") ||
+    diagnostic.file?.fileName?.includes("@types/node");
+}
+
+/** @param {ts.DiagnosticMessageChain | string} messageText  */
+function getTopLevelMessageText(messageText) {
+  if (typeof messageText === "string") {
+    return messageText;
+  } else if (typeof messageText.messageText === "string") {
+    return messageText.messageText;
+  }
+  return undefined;
+}
+
+// ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
+// the one in @types/node. the types of the filename and dirname properties are different,
+// which causes tsc to error.
+const importMetaFilenameDirnameModifiersRe =
+  /^All declarations of '(filename|dirname)'/;
+const importMetaFilenameDirnameTypesRe =
+  /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
+const urlExtendsRe = /^Interface '(URL|URLSearchParams)'/;
+
+/** @param {ts.Diagnostic} diagnostic */
 export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
   }
 
-  // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
-  // the one in @types/node. the types of the filename and dirname properties are different,
-  // which causes tsc to error.
-  const importMetaFilenameDirnameModifiersRe =
-    /^All declarations of '(filename|dirname)'/;
-  const importMetaFilenameDirnameTypesRe =
-    /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
   // Declarations of X must have identical modifiers.
   if (diagnostic.code === 2687) {
+    const messageText = getTopLevelMessageText(diagnostic.messageText);
     if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameModifiersRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
+      messageText != null &&
+      importMetaFilenameDirnameModifiersRe.test(messageText) &&
+      isLibDiagnostic(diagnostic)
     ) {
       return false;
     }
   }
   // Subsequent property declarations must have the same type.
   if (diagnostic.code === 2717) {
+    const messageText = getTopLevelMessageText(diagnostic.messageText);
     if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameTypesRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
+      messageText != null &&
+      importMetaFilenameDirnameTypesRe.test(messageText) &&
+      isLibDiagnostic(diagnostic)
+    ) {
+      return false;
+    }
+  }
+  // Ignore URL and URLSearchParams differences in @types/node
+  if (diagnostic.code === 2430) {
+    const messageText = getTopLevelMessageText(diagnostic.messageText);
+    if (
+      messageText != null &&
+      urlExtendsRe.test(messageText) &&
+      isLibDiagnostic(diagnostic)
     ) {
       return false;
     }

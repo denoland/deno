@@ -22,7 +22,7 @@
         "shasum": "bf8af3b2af0837b5a62a368756ff2b705ae0048c",
         "tarball": "http://localhost:4260/@types%2fnode/node-22.12.0.tgz",
         "fileCount": 76,
-        "integrity": "sha512-4irB/NnYtCxtBr+39yrAH8HPDHIHU+FKEhXUm9Y0OdkXCI7fOR9U3ZOf77tcZIJdOkRDJvbmzFV/s5DjDqI5qw==",
+        "integrity": "sha512-Fll2FZ1riMjNmlmJOdAyY5pUbkftXslB5DgEzlIuNaiWhXd00FhWxVC/r4yV/4wBb9JfImTu+jiSvXTkJ7F/gA==",
         "unpackedSize": 2296605
       },
       "main": "",
