@@ -2556,7 +2556,7 @@ impl Inner {
       let scope = asset_or_doc.scope();
       let maybe_completion_info = self
         .ts_server
-        .get_completions_tsc(
+        .get_completions(
           self.snapshot(),
           specifier.clone(),
           position,

@@ -383,137 +383,146 @@ function arraysEqual(a, b) {
  * @param {PendingChange | null} maybeChange
  */
 function serverRequest(id, method, args, scope, maybeChange) {
-  debug(`serverRequest()`, id, method, args, scope, maybeChange);
-  if (maybeChange !== null) {
-    const changedScripts = maybeChange[0];
-    const newProjectVersion = maybeChange[1];
-    const newConfigsByScope = maybeChange[2];
-    if (newConfigsByScope) {
-      IS_NODE_SOURCE_FILE_CACHE.clear();
-      ASSET_SCOPES.clear();
-      /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
-      const newByScope = new Map();
-      for (const [scope, config] of newConfigsByScope) {
-        LAST_REQUEST_SCOPE.set(scope);
-        const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
-        const ls = oldEntry
-          ? oldEntry.ls
-          : ts.createLanguageService(host, documentRegistry);
-        const compilerOptions = lspTsConfigToCompilerOptions(config);
-        newByScope.set(scope, { ls, compilerOptions });
-        LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
-      }
-      for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
-        oldEntry.ls.dispose();
-      }
-      LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
-    }
-
-    PROJECT_VERSION_CACHE.set(newProjectVersion);
-
-    let opened = false;
-    let closed = false;
-    for (const { 0: script, 1: changeKind } of changedScripts) {
-      if (changeKind === ChangeKind.Opened) {
-        opened = true;
-      } else if (changeKind === ChangeKind.Closed) {
-        closed = true;
-      }
-      SCRIPT_VERSION_CACHE.delete(script);
-      SCRIPT_SNAPSHOT_CACHE.delete(script);
-    }
-
-    if (newConfigsByScope || opened || closed) {
-      clearScriptNamesCache();
-    }
-  }
-
-  // For requests pertaining to an asset document, we make it so that the
-  // passed scope is just its own specifier. We map it to an actual scope here
-  // based on the first scope that the asset was loaded into.
-  if (scope?.startsWith(ASSETS_URL_PREFIX)) {
-    scope = ASSET_SCOPES.get(scope) ?? null;
-  }
-  LAST_REQUEST_METHOD.set(method);
-  LAST_REQUEST_SCOPE.set(scope);
-  const ls = (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
-    LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
-  switch (method) {
-    case "$getSupportedCodeFixes": {
-      return respond(
-        id,
-        ts.getSupportedCodeFixes(),
-      );
-    }
-    case "$getDiagnostics": {
-      const projectVersion = args[1];
-      // there's a possibility that we receive a change notification
-      // but the diagnostic server queues a `$getDiagnostics` request
-      // with a stale project version. in that case, treat it as cancelled
-      // (it's about to be invalidated anyway).
-      const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
-      if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, [{}, null]);
-      }
-      try {
-        /** @type {Record<string, any[]>} */
-        const diagnosticMap = {};
-        for (const specifier of args[0]) {
-          diagnosticMap[specifier] = fromTypeScriptDiagnostics([
-            ...ls.getSemanticDiagnostics(specifier),
-            ...ls.getSuggestionDiagnostics(specifier),
-            ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic));
+  const span = ops.op_make_span(`serverRequest(${method})`, true);
+  try {
+    debug(`serverRequest()`, id, method, args, scope, maybeChange);
+    if (maybeChange !== null) {
+      const changedScripts = maybeChange[0];
+      const newProjectVersion = maybeChange[1];
+      const newConfigsByScope = maybeChange[2];
+      if (newConfigsByScope) {
+        IS_NODE_SOURCE_FILE_CACHE.clear();
+        ASSET_SCOPES.clear();
+        /** @type { typeof LANGUAGE_SERVICE_ENTRIES.byScope } */
+        const newByScope = new Map();
+        for (const [scope, config] of newConfigsByScope) {
+          LAST_REQUEST_SCOPE.set(scope);
+          const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
+          const ls = oldEntry
+            ? oldEntry.ls
+            : ts.createLanguageService(host, documentRegistry);
+          const compilerOptions = lspTsConfigToCompilerOptions(config);
+          newByScope.set(scope, { ls, compilerOptions });
+          LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
         }
-        let ambient =
-          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
-            symbol.getName()
-          ) ?? [];
-        const previousAmbient = ambientModulesCacheByScope.get(scope);
-        if (
-          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
-        ) {
-          ambient = null; // null => use previous value
-        } else {
-          ambientModulesCacheByScope.set(scope, ambient);
+        for (const oldEntry of LANGUAGE_SERVICE_ENTRIES.byScope.values()) {
+          oldEntry.ls.dispose();
         }
-        return respond(id, [diagnosticMap, ambient]);
-      } catch (e) {
-        if (
-          !isCancellationError(e)
-        ) {
-          return respond(
-            id,
-            [{}, null],
-            formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
-          );
+        LANGUAGE_SERVICE_ENTRIES.byScope = newByScope;
+      }
+
+      PROJECT_VERSION_CACHE.set(newProjectVersion);
+
+      let opened = false;
+      let closed = false;
+      for (const { 0: script, 1: changeKind } of changedScripts) {
+        if (changeKind === ChangeKind.Opened) {
+          opened = true;
+        } else if (changeKind === ChangeKind.Closed) {
+          closed = true;
         }
-        return respond(id, [{}, null]);
+        SCRIPT_VERSION_CACHE.delete(script);
+        SCRIPT_SNAPSHOT_CACHE.delete(script);
+      }
+
+      if (newConfigsByScope || opened || closed) {
+        clearScriptNamesCache();
       }
     }
-    default:
-      if (typeof ls[method] === "function") {
-        // The `getCompletionEntryDetails()` method returns null if the
-        // `source` is `null` for whatever reason. It must be `undefined`.
-        if (method == "getCompletionEntryDetails") {
-          args[4] ??= undefined;
+
+    // For requests pertaining to an asset document, we make it so that the
+    // passed scope is just its own specifier. We map it to an actual scope here
+    // based on the first scope that the asset was loaded into.
+    if (scope?.startsWith(ASSETS_URL_PREFIX)) {
+      scope = ASSET_SCOPES.get(scope) ?? null;
+    }
+    LAST_REQUEST_METHOD.set(method);
+    LAST_REQUEST_SCOPE.set(scope);
+    const ls =
+      (scope ? LANGUAGE_SERVICE_ENTRIES.byScope.get(scope)?.ls : null) ??
+        LANGUAGE_SERVICE_ENTRIES.unscoped.ls;
+    switch (method) {
+      case "$getSupportedCodeFixes": {
+        return respond(
+          id,
+          ts.getSupportedCodeFixes(),
+        );
+      }
+      case "$getAssets": {
+        return respond(id, getAssets());
+      }
+      case "$getDiagnostics": {
+        const projectVersion = args[1];
+        // there's a possibility that we receive a change notification
+        // but the diagnostic server queues a `$getDiagnostics` request
+        // with a stale project version. in that case, treat it as cancelled
+        // (it's about to be invalidated anyway).
+        const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
+        if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
+          return respond(id, [{}, null]);
         }
         try {
-          return respond(id, ls[method](...args));
+          /** @type {Record<string, any[]>} */
+          const diagnosticMap = {};
+          for (const specifier of args[0]) {
+            diagnosticMap[specifier] = fromTypeScriptDiagnostics([
+              ...ls.getSemanticDiagnostics(specifier),
+              ...ls.getSuggestionDiagnostics(specifier),
+              ...ls.getSyntacticDiagnostics(specifier),
+            ].filter(filterMapDiagnostic));
+          }
+          let ambient =
+            ls.getProgram()?.getTypeChecker().getAmbientModules().map((
+              symbol,
+            ) => symbol.getName()) ?? [];
+          const previousAmbient = ambientModulesCacheByScope.get(scope);
+          if (
+            ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
+          ) {
+            ambient = null; // null => use previous value
+          } else {
+            ambientModulesCacheByScope.set(scope, ambient);
+          }
+          return respond(id, [diagnosticMap, ambient]);
         } catch (e) {
-          if (!isCancellationError(e)) {
+          if (
+            !isCancellationError(e)
+          ) {
             return respond(
               id,
-              null,
+              [{}, null],
               formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
             );
           }
-          return respond(id);
+          return respond(id, [{}, null]);
         }
       }
-      throw new TypeError(
-        // @ts-ignore exhausted case statement sets type to never
-        `Invalid request method for request: "${method}" (${id})`,
-      );
+      default:
+        if (typeof ls[method] === "function") {
+          // The `getCompletionEntryDetails()` method returns null if the
+          // `source` is `null` for whatever reason. It must be `undefined`.
+          if (method == "getCompletionEntryDetails") {
+            args[4] ??= undefined;
+          }
+          try {
+            return respond(id, ls[method](...args));
+          } catch (e) {
+            if (!isCancellationError(e)) {
+              return respond(
+                id,
+                null,
+                formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
+              );
+            }
+            return respond(id);
+          }
+        }
+        throw new TypeError(
+          // @ts-ignore exhausted case statement sets type to never
+          `Invalid request method for request: "${method}" (${id})`,
+        );
+    }
+  } finally {
+    ops.op_exit_span(span, true);
   }
 }
