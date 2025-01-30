@@ -1425,7 +1425,9 @@ declare namespace Deno {
      *   rules: {
      *     "no-foo": {
      *        create(ctx) {
-     *          // ...
+     *          return {
+     *             VariableDeclaration(node) {}
+     *          }
      *        }
      *     }
      *   }
