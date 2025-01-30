@@ -1341,12 +1341,34 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * @category Linter
+   */
+  export interface LintRule {
+    create(context: any): any;
+    destroy?(context: any): void;
+  }
+
+  /**
+   * @category Linter
+   */
+  export interface LintPlugin {
+    name: string;
+    rules: Record<string, LintRule>;
+  }
+
+  /**
+   * @category Linter
+   */
   export namespace lint {
     interface LintFix {
       range: [number, number];
       text?: string;
     }
 
+    /**
+     * @category Linter
+     */
     interface LintDiagnostic {
       id: string;
       message: string;
@@ -1355,6 +1377,10 @@ declare namespace Deno {
       fix?: LintFix;
     }
 
+    /**
+     * This API is a noop in `deno run`...
+     * @category Linter
+     */
     export function runPlugin(
       plugin: LintPlugin,
       fileName: string,
