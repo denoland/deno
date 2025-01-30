@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -10,6 +10,7 @@ import http, {
 } from "node:http";
 import url from "node:url";
 import https from "node:https";
+import zlib from "node:zlib";
 import net, { Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
@@ -1821,5 +1822,73 @@ Deno.test("[node/http] ServerResponse socket", async () => {
     });
   });
 
+  await promise;
+});
+
+Deno.test("[node/http] decompress brotli response", {
+  permissions: { net: true },
+}, async () => {
+  let received = false;
+  const ac = new AbortController();
+  const server = Deno.serve({ port: 5928, signal: ac.signal }, (_req) => {
+    received = true;
+    return Response.json([
+      ["accept-language", "*"],
+      ["host", "localhost:3000"],
+      ["user-agent", "Deno/2.1.1"],
+    ], {});
+  });
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  let body = "";
+
+  const request = http.get(
+    "http://localhost:5928/",
+    {
+      headers: {
+        "accept-encoding": "gzip, deflate, br, zstd",
+      },
+    },
+    (resp) => {
+      const decompress = zlib.createBrotliDecompress();
+      resp.on("data", (chunk) => {
+        decompress.write(chunk);
+      });
+
+      resp.on("end", () => {
+        decompress.end();
+      });
+
+      decompress.on("data", (chunk) => {
+        body += chunk;
+      });
+
+      decompress.on("end", () => {
+        resolve();
+      });
+    },
+  );
+  request.on("error", reject);
+  request.end(() => {
+    assert(received);
+  });
+
+  await promise;
+  ac.abort();
+  await server.finished;
+
+  assertEquals(JSON.parse(body), [["accept-language", "*"], [
+    "host",
+    "localhost:3000",
+  ], ["user-agent", "Deno/2.1.1"]]);
+});
+
+Deno.test("[node/http] an error with DNS propagates to request object", async () => {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  const req = http.request("http://invalid-hostname.test", () => {});
+  req.on("error", (err) => {
+    assertEquals(err.name, "Error");
+    assertEquals(err.message, "getaddrinfo ENOTFOUND invalid-hostname.test");
+    resolve();
+  });
   await promise;
 });

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Remove Intl.v8BreakIterator because it is a non-standard API.
 delete Intl.v8BreakIterator;
@@ -55,7 +55,7 @@ import { registerDeclarativeServer } from "ext:deno_http/00_serve.ts";
 import * as event from "ext:deno_web/02_event.js";
 import * as location from "ext:deno_web/12_location.js";
 import * as version from "ext:runtime/01_version.ts";
-import * as os from "ext:runtime/30_os.js";
+import * as os from "ext:deno_os/30_os.js";
 import * as timers from "ext:deno_web/02_timers.js";
 import {
   getDefaultInspectOptions,
@@ -525,6 +525,9 @@ const NOT_IMPORTED_OPS = [
   "op_jupyter_input",
   // Used in jupyter API
   "op_base64_encode",
+
+  // Used in the lint API
+  "op_lint_create_serialized_ast",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",

@@ -1,0 +1,7 @@
+imported: [Module: null prototype] {
+  "\ty": "test",
+  "\nx": "test",
+  "\rz": "test",
+  '"a': "test",
+  default: { "\nx": "test", "\ty": "test", "\rz": "test", '"a': "test" }
+}

@@ -1,5 +1,23 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::fs::File as StdFile;
+use std::future::Future;
+use std::io;
+use std::io::ErrorKind;
+use std::io::Read;
+use std::io::Seek;
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::io::FromRawFd;
+#[cfg(windows)]
+use std::os::windows::io::FromRawHandle;
+use std::rc::Rc;
+#[cfg(windows)]
+use std::sync::Arc;
+
+use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::TaskQueue;
@@ -15,45 +33,26 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_error::JsErrorBox;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
 use fs::FsStat;
 use fs3::FileExt;
 use once_cell::sync::Lazy;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::fs::File as StdFile;
-use std::future::Future;
-use std::io;
-use std::io::ErrorKind;
-use std::io::Read;
-use std::io::Seek;
-use std::io::Write;
-use std::rc::Rc;
+#[cfg(windows)]
+use parking_lot::Condvar;
+#[cfg(windows)]
+use parking_lot::Mutex;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
-
-#[cfg(unix)]
-use std::os::unix::io::FromRawFd;
-
-#[cfg(windows)]
-use std::os::windows::io::FromRawHandle;
 #[cfg(windows)]
 use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
 use winapi::um::winbase;
-
-use deno_core::futures::TryFutureExt;
-#[cfg(windows)]
-use parking_lot::Condvar;
-#[cfg(windows)]
-use parking_lot::Mutex;
-#[cfg(windows)]
-use std::sync::Arc;
 
 pub mod fs;
 mod pipe;
@@ -62,19 +61,18 @@ mod winpipe;
 
 mod bi_pipe;
 
-pub use pipe::pipe;
-pub use pipe::AsyncPipeRead;
-pub use pipe::AsyncPipeWrite;
-pub use pipe::PipeRead;
-pub use pipe::PipeWrite;
-pub use pipe::RawPipeHandle;
-
 pub use bi_pipe::bi_pipe_pair_raw;
 pub use bi_pipe::BiPipe;
 pub use bi_pipe::BiPipeRead;
 pub use bi_pipe::BiPipeResource;
 pub use bi_pipe::BiPipeWrite;
 pub use bi_pipe::RawBiPipeHandle;
+pub use pipe::pipe;
+pub use pipe::AsyncPipeRead;
+pub use pipe::AsyncPipeWrite;
+pub use pipe::PipeRead;
+pub use pipe::PipeWrite;
+pub use pipe::RawPipeHandle;
 
 /// Abstraction over `AsRawFd` (unix) and `AsRawHandle` (windows)
 pub trait AsRawIoHandle {
@@ -417,7 +415,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(|e| e.into()))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 }
 
@@ -1010,9 +1008,11 @@ pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    Ok(file.write_all_sync(msg.as_bytes())?)
+    file
+      .write_all_sync(msg.as_bytes())
+      .map_err(JsErrorBox::from_err)
   })
 }

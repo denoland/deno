@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -73,11 +73,10 @@ pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
-use super::check::TypeChecker;
-
 use self::graph::GraphDiagnosticsCollector;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
+use super::check::TypeChecker;
 
 pub async fn publish(
   flags: Arc<Flags>,
@@ -365,14 +364,13 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let (graph, check_diagnostics) = self
+        let mut diagnostics_by_folder = self
           .type_checker
           .check_diagnostics(
             graph,
             CheckOptions {
               build_fast_check_graph: false, // already built
               lib: self.cli_options.ts_type_lib_window(),
-              log_ignored_options: false,
               reload: self.cli_options.reload_flag(),
               type_check_mode: self.cli_options.type_check_mode(),
             },
@@ -380,20 +378,23 @@ impl PublishPreparer {
           .await?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
-        let check_diagnostics =
-          check_diagnostics.filter(|d| d.include_when_remote());
-        if !check_diagnostics.is_empty() {
-          bail!(
-            concat!(
-            "Failed ensuring public API type output is valid.\n\n",
-            "{:#}\n\n",
-            "You may have discovered a bug in Deno. Please open an issue at: ",
-            "https://github.com/denoland/deno/issues/"
-          ),
-            check_diagnostics
-          );
+        for result in diagnostics_by_folder.by_ref() {
+          let check_diagnostics = result?;
+          let check_diagnostics =
+            check_diagnostics.filter(|d| d.include_when_remote());
+          if check_diagnostics.has_diagnostic() {
+            bail!(
+              concat!(
+                "Failed ensuring public API type output is valid.\n\n",
+                "{:#}\n\n",
+                "You may have discovered a bug in Deno. Please open an issue at: ",
+                "https://github.com/denoland/deno/issues/"
+              ),
+              check_diagnostics
+            );
+          }
         }
-        Ok(graph)
+        Ok(diagnostics_by_folder.into_graph())
       }
     }
   }
@@ -1281,14 +1282,14 @@ fn ring_bell() {
 
 #[cfg(test)]
 mod tests {
-  use deno_ast::ModuleSpecifier;
+  use std::collections::HashMap;
 
-  use crate::tools::registry::has_license_file;
+  use deno_ast::ModuleSpecifier;
 
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
-  use std::collections::HashMap;
+  use crate::tools::registry::has_license_file;
 
   #[test]
   fn test_verify_version_manifest() {

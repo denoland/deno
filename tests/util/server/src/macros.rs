@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #[macro_export]
 // https://stackoverflow.com/questions/38088067/equivalent-of-func-or-function-in-rust

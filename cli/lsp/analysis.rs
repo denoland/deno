@@ -1,4 +1,46 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+
+use deno_ast::SourceRange;
+use deno_ast::SourceRangedForSpanned;
+use deno_ast::SourceTextInfo;
+use deno_config::workspace::MappedResolution;
+use deno_core::error::AnyError;
+use deno_core::serde::Deserialize;
+use deno_core::serde::Serialize;
+use deno_core::serde_json;
+use deno_core::serde_json::json;
+use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_path_util::url_to_file_path;
+use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_runtime::deno_node::PathClean;
+use deno_semver::jsr::JsrPackageNvReference;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageNv;
+use deno_semver::package::PackageNvReference;
+use deno_semver::package::PackageReq;
+use deno_semver::package::PackageReqReference;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
+use deno_semver::Version;
+use import_map::ImportMap;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use text_lines::LineAndColumnIndex;
+use tower_lsp::lsp_types as lsp;
+use tower_lsp::lsp_types::Position;
+use tower_lsp::lsp_types::Range;
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
@@ -8,49 +50,11 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use super::urls::url_to_uri;
-
 use crate::args::jsr_url;
 use crate::lsp::logging::lsp_warn;
 use crate::lsp::search::PackageSearchApi;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
-use deno_config::workspace::MappedResolution;
-use deno_lint::diagnostic::LintDiagnosticRange;
-
-use deno_ast::SourceRange;
-use deno_ast::SourceRangedForSpanned;
-use deno_ast::SourceTextInfo;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::serde::Deserialize;
-use deno_core::serde::Serialize;
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::ModuleSpecifier;
-use deno_path_util::url_to_file_path;
-use deno_runtime::deno_node::PathClean;
-use deno_semver::jsr::JsrPackageNvReference;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageNv;
-use deno_semver::package::PackageNvReference;
-use deno_semver::package::PackageReq;
-use deno_semver::package::PackageReqReference;
-use deno_semver::Version;
-use import_map::ImportMap;
-use node_resolver::NodeResolutionKind;
-use node_resolver::ResolutionMode;
-use once_cell::sync::Lazy;
-use regex::Regex;
-use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::Path;
-use text_lines::LineAndColumnIndex;
-use tower_lsp::lsp_types as lsp;
-use tower_lsp::lsp_types::Position;
-use tower_lsp::lsp_types::Range;
 
 /// Diagnostic error codes which actually are the same, and so when grouping
 /// fixes we treat them the same.
@@ -278,9 +282,16 @@ impl<'a> TsResponseImportMapper<'a> {
     {
       let mut segments = jsr_path.split('/');
       let name = if jsr_path.starts_with('@') {
-        format!("{}/{}", segments.next()?, segments.next()?)
+        let scope = segments.next()?;
+        let name = segments.next()?;
+        capacity_builder::StringBuilder::<StackString>::build(|builder| {
+          builder.append(scope);
+          builder.append("/");
+          builder.append(name);
+        })
+        .unwrap()
       } else {
-        segments.next()?.to_string()
+        StackString::from(segments.next()?)
       };
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
@@ -290,7 +301,9 @@ impl<'a> TsResponseImportMapper<'a> {
         &path,
         Some(&self.file_referrer),
       )?;
-      let sub_path = (export != ".").then_some(export);
+      let sub_path = (export != ".")
+        .then_some(export)
+        .map(SmallStackString::from_string);
       let mut req = None;
       req = req.or_else(|| {
         let import_map = self.maybe_import_map?;
@@ -354,7 +367,9 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
-          let pkg_reqs = npm_resolver.resolve_pkg_reqs_from_pkg_id(&pkg_id);
+          let pkg_reqs = npm_resolver
+            .resolution()
+            .resolve_pkg_reqs_from_pkg_id(&pkg_id);
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = npm_resolver
@@ -434,9 +449,7 @@ impl<'a> TsResponseImportMapper<'a> {
       .pkg_json_resolver(specifier)
       // the specifier might have a closer package.json, but we
       // want the root of the package's package.json
-      .get_closest_package_json_from_file_path(
-        &package_root_folder.join("package.json"),
-      )
+      .get_closest_package_json(&package_root_folder.join("package.json"))
       .ok()
       .flatten()?;
     let root_folder = package_json.path.parent()?;
@@ -1059,10 +1072,13 @@ impl CodeActionCollection {
       // we wrap tsc, we can't handle the asynchronous response, so it is
       // actually easier to return errors if we ever encounter one of these,
       // which we really wouldn't expect from the Deno lsp.
-      return Err(custom_error(
-        "UnsupportedFix",
-        "The action returned from TypeScript is unsupported.",
-      ));
+      return Err(
+        JsErrorBox::new(
+          "UnsupportedFix",
+          "The action returned from TypeScript is unsupported.",
+        )
+        .into(),
+      );
     }
     let Some(action) =
       fix_ts_import_action(specifier, resolution_mode, action, language_server)
@@ -1281,6 +1297,19 @@ impl CodeActionCollection {
       range: &lsp::Range,
       language_server: &language_server::Inner,
     ) -> Option<lsp::CodeAction> {
+      fn top_package_req_for_name(
+        resolution: &NpmResolutionCell,
+        name: &str,
+      ) -> Option<PackageReq> {
+        let package_reqs = resolution.package_reqs();
+        let mut entries = package_reqs
+          .into_iter()
+          .filter(|(_, nv)| nv.name == name)
+          .collect::<Vec<_>>();
+        entries.sort_by(|a, b| a.1.version.cmp(&b.1.version));
+        Some(entries.pop()?.0)
+      }
+
       let (dep_key, dependency, _) =
         document.get_maybe_dependency(&range.end)?;
       if dependency.maybe_deno_types_specifier.is_some() {
@@ -1314,9 +1343,11 @@ impl CodeActionCollection {
         .tree
         .data_for_specifier(file_referrer?)?;
       let workspace_resolver = config_data.resolver.clone();
-      let npm_ref = if let Ok(resolution) =
-        workspace_resolver.resolve(&dep_key, document.specifier())
-      {
+      let npm_ref = if let Ok(resolution) = workspace_resolver.resolve(
+        &dep_key,
+        document.specifier(),
+        deno_config::workspace::ResolutionKind::Execution,
+      ) {
         let specifier = match resolution {
           MappedResolution::Normal { specifier, .. }
           | MappedResolution::ImportMap { specifier, .. } => specifier,
@@ -1368,9 +1399,10 @@ impl CodeActionCollection {
         .and_then(|versions| versions.first().cloned())?;
       let types_specifier_text =
         if let Some(npm_resolver) = managed_npm_resolver {
-          let mut specifier_text = if let Some(req) =
-            npm_resolver.top_package_req_for_name(&types_package_name)
-          {
+          let mut specifier_text = if let Some(req) = top_package_req_for_name(
+            npm_resolver.resolution(),
+            &types_package_name,
+          ) {
             format!("npm:{req}")
           } else {
             format!("npm:{}@^{}", &types_package_name, types_package_version)

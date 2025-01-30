@@ -1,11 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //
 // Forked from https://github.com/demurgos/v8-coverage/tree/d0ca18da8740198681e0bc68971b0a6cdb11db3e/rust
 // Copyright 2021 Charles Samborski. All rights reserved. MIT license.
 
-use crate::cdp;
 use std::iter::Peekable;
+
 use typed_arena::Arena;
+
+use crate::cdp;
 
 pub struct RangeTreeArena<'a>(Arena<RangeTree<'a>>);
 

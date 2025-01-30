@@ -1,11 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use std::fmt::Write as _;
+
 use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors;
-use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -422,7 +423,7 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-webgpu` flag to enable this API.",
         ),
       ];
-    } else if msg.contains("listenQuic is not a function") {
+    } else if msg.contains("QuicEndpoint is not a constructor") {
       return vec![
         FixSuggestion::info("listenQuic is an unstable API."),
         FixSuggestion::hint(
@@ -490,8 +491,9 @@ pub fn format_js_error(js_error: &JsError) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_format_none_source_line() {

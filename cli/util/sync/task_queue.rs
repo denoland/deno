@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::LinkedList;
 use std::sync::Arc;
@@ -146,9 +146,10 @@ impl<'a> Future for TaskQueuePermitAcquireFuture<'a> {
 
 #[cfg(test)]
 mod test {
+  use std::sync::Arc;
+
   use deno_core::futures;
   use deno_core::parking_lot::Mutex;
-  use std::sync::Arc;
 
   use super::*;
 

@@ -1,13 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::cell::RefCell;
+use std::thread;
 
 use deno_core::v8;
 use deno_core::ModuleSpecifier;
 use deno_telemetry::OtelConfig;
-use serde::Serialize;
-use std::cell::RefCell;
-use std::thread;
-
 use deno_terminal::colors;
+use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
@@ -129,6 +129,8 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
+    // this version is not correct as its the version of deno_runtime
+    // and the implementor should supply a user agent that makes sense
     let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 

@@ -1,14 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::str::FromStr;
+use std::time::Duration;
 
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use lsp_types::Uri;
-use std::collections::HashMap;
-use std::path::Path;
-use std::str::FromStr;
-use std::time::Duration;
 use test_util::lsp::LspClientBuilder;
 use test_util::PathRef;
 use tower_lsp::lsp_types as lsp;

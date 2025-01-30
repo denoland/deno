@@ -1,28 +1,31 @@
 {
-  "steps": [
-    {
+  "tests": {
+    "basic": {
       "args": "run -A main.ts basic.ts",
       "output": "basic.out"
     },
-    {
+    "natural_exit": {
       "args": "run -A main.ts natural_exit.ts",
       "output": "natural_exit.out"
     },
-    {
+    "deno_dot_exit": {
       "args": "run -A main.ts deno_dot_exit.ts",
       "output": "deno_dot_exit.out"
     },
-    {
+    "uncaught": {
       "args": "run -A main.ts uncaught.ts",
       "output": "uncaught.out"
     },
-    {
+    "metric": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
       "args": "run -A main.ts metric.ts",
       "output": "metric.out"
     },
-    {
-      "args": "run -A --unstable-otel context.ts",
-      "output": ""
+    "links": {
+      "args": "run -A main.ts links.ts",
+      "output": "links.out"
     }
-  ]
+  }
 }

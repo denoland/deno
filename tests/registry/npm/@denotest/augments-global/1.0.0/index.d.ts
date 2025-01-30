@@ -1,0 +1,1 @@
+import "./other.d.ts";

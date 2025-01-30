@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -323,8 +323,9 @@ fn create_pty(
   cwd: &Path,
   env_vars: Option<HashMap<String, String>>,
 ) -> Box<dyn SystemPty> {
-  use crate::pty::unix::UnixPty;
   use std::os::unix::process::CommandExt;
+
+  use crate::pty::unix::UnixPty;
 
   // Manually open pty main/secondary sides in the test process. Since we're not actually
   // changing uid/gid here, this is the easiest way to do it.

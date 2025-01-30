@@ -1,7 +1,15 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides file linting utilities using
 //! [`deno_lint`](https://github.com/denoland/deno_lint).
+
+use std::collections::HashSet;
+use std::fs;
+use std::io::stdin;
+use std::io::Read;
+use std::path::PathBuf;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
@@ -10,7 +18,6 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -20,29 +27,24 @@ use deno_core::unsync::future::LocalFutureExt;
 use deno_core::unsync::future::SharedLocal;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
-use deno_lint::linter::LintConfig as DenoLintConfig;
 use log::debug;
 use reporters::create_reporter;
 use reporters::LintReporter;
 use serde::Serialize;
-use std::collections::HashSet;
-use std::fs;
-use std::io::stdin;
-use std::io::Read;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::sync::Arc;
 
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::args::WorkspaceLintOptions;
+use crate::cache::CacheDBHash;
 use crate::cache::Caches;
 use crate::cache::IncrementalCache;
 use crate::colors;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
+use crate::sys::CliSys;
 use crate::tools::fmt::run_parallelized;
 use crate::util::display;
 use crate::util::file_watcher;
@@ -51,10 +53,13 @@ use crate::util::fs::canonicalize_path;
 use crate::util::path::is_script_ext;
 use crate::util::sync::AtomicFlag;
 
+mod ast_buffer;
 mod linter;
 mod reporters;
 mod rules;
 
+// TODO(bartlomieju): remove once we wire plugins through the CLI linter
+pub use ast_buffer::serialize_ast_to_buffer;
 pub use linter::CliLinter;
 pub use linter::CliLinterOptions;
 pub use rules::collect_no_slow_type_diagnostics;
@@ -71,9 +76,7 @@ pub async fn lint(
 ) -> Result<(), AnyError> {
   if lint_flags.watch.is_some() {
     if lint_flags.is_stdin() {
-      return Err(generic_error(
-        "Lint watch on standard input is not supported.",
-      ));
+      return Err(anyhow!("Lint watch on standard input is not supported.",));
     }
 
     return lint_with_watch(flags, lint_flags).await;
@@ -83,7 +86,7 @@ pub async fn lint(
   let cli_options = factory.cli_options()?;
   let lint_rule_provider = factory.lint_rule_provider().await?;
   let is_stdin = lint_flags.is_stdin();
-  let deno_lint_config = cli_options.resolve_deno_lint_config()?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
   let success = if is_stdin {
@@ -92,13 +95,14 @@ pub async fn lint(
       lint_rule_provider,
       workspace_lint_options,
       lint_flags,
-      deno_lint_config,
+      tsconfig_resolver,
     )?
   } else {
     let mut linter = WorkspaceLinter::new(
       factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
+      tsconfig_resolver.clone(),
       cli_options.start_dir.clone(),
       &workspace_lint_options,
     );
@@ -109,7 +113,6 @@ pub async fn lint(
         .lint_files(
           cli_options,
           paths_with_options.options,
-          deno_lint_config.clone(),
           paths_with_options.dir,
           paths_with_options.paths,
         )
@@ -132,7 +135,6 @@ async fn lint_with_watch_inner(
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let cli_options = factory.cli_options()?;
-  let lint_config = cli_options.resolve_deno_lint_config()?;
   let mut paths_with_options_batches =
     resolve_paths_with_options_batches(cli_options, &lint_flags)?;
   for paths_with_options in &mut paths_with_options_batches {
@@ -159,6 +161,7 @@ async fn lint_with_watch_inner(
     factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
+    factory.tsconfig_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
   );
@@ -167,7 +170,6 @@ async fn lint_with_watch_inner(
       .lint_files(
         cli_options,
         paths_with_options.options,
-        lint_config.clone(),
         paths_with_options.dir,
         paths_with_options.paths,
       )
@@ -217,7 +219,7 @@ fn resolve_paths_with_options_batches(
   let mut paths_with_options_batches =
     Vec::with_capacity(members_lint_options.len());
   for (dir, lint_options) in members_lint_options {
-    let files = collect_lint_files(cli_options, lint_options.files.clone())?;
+    let files = collect_lint_files(cli_options, lint_options.files.clone());
     if !files.is_empty() {
       paths_with_options_batches.push(PathsWithOptions {
         dir,
@@ -227,7 +229,7 @@ fn resolve_paths_with_options_batches(
     }
   }
   if paths_with_options_batches.is_empty() {
-    return Err(generic_error("No target files found."));
+    return Err(anyhow!("No target files found."));
   }
   Ok(paths_with_options_batches)
 }
@@ -239,6 +241,7 @@ struct WorkspaceLinter {
   caches: Arc<Caches>,
   lint_rule_provider: LintRuleProvider,
   module_graph_creator: Arc<ModuleGraphCreator>,
+  tsconfig_resolver: Arc<TsConfigResolver>,
   workspace_dir: Arc<WorkspaceDirectory>,
   reporter_lock: Arc<Mutex<Box<dyn LintReporter + Send>>>,
   workspace_module_graph: Option<WorkspaceModuleGraphFuture>,
@@ -251,6 +254,7 @@ impl WorkspaceLinter {
     caches: Arc<Caches>,
     lint_rule_provider: LintRuleProvider,
     module_graph_creator: Arc<ModuleGraphCreator>,
+    tsconfig_resolver: Arc<TsConfigResolver>,
     workspace_dir: Arc<WorkspaceDirectory>,
     workspace_options: &WorkspaceLintOptions,
   ) -> Self {
@@ -260,6 +264,7 @@ impl WorkspaceLinter {
       caches,
       lint_rule_provider,
       module_graph_creator,
+      tsconfig_resolver,
       workspace_dir,
       reporter_lock,
       workspace_module_graph: None,
@@ -272,7 +277,6 @@ impl WorkspaceLinter {
     &mut self,
     cli_options: &Arc<CliOptions>,
     lint_options: LintOptions,
-    lint_config: DenoLintConfig,
     member_dir: WorkspaceDirectory,
     paths: Vec<PathBuf>,
   ) -> Result<(), AnyError> {
@@ -286,7 +290,7 @@ impl WorkspaceLinter {
       lint_rules.incremental_cache_state().map(|state| {
         Arc::new(IncrementalCache::new(
           self.caches.lint_incremental_cache_db(),
-          &state,
+          CacheDBHash::from_hashable(&state),
           &paths,
         ))
       });
@@ -294,7 +298,9 @@ impl WorkspaceLinter {
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rules,
       fix: lint_options.fix,
-      deno_lint_config: lint_config,
+      deno_lint_config: self
+        .tsconfig_resolver
+        .deno_lint_config(member_dir.dir_url())?,
     }));
 
     let has_error = self.has_error.clone();
@@ -440,7 +446,7 @@ impl WorkspaceLinter {
 fn collect_lint_files(
   cli_options: &CliOptions,
   files: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     is_script_ext(e.path)
       || (e.path.extension().is_none() && cli_options.ext_flag().is_some())
@@ -449,33 +455,34 @@ fn collect_lint_files(
   .ignore_node_modules()
   .use_gitignore()
   .set_vendor_folder(cli_options.vendor_dir_path().map(ToOwned::to_owned))
-  .collect_file_patterns(&deno_config::fs::RealDenoConfigFs, files)
+  .collect_file_patterns(&CliSys::default(), files)
 }
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
   let rule_provider = LintRuleProvider::new(None, None);
-  let lint_rules = rule_provider
-    .resolve_lint_rules(
-      LintRulesConfig {
-        tags: maybe_rules_tags.clone(),
-        include: None,
-        exclude: None,
-      },
-      None,
-    )
-    .rules;
+  let mut all_rules = rule_provider.all_rules();
+  let configured_rules = rule_provider.resolve_lint_rules(
+    LintRulesConfig {
+      tags: maybe_rules_tags.clone(),
+      include: None,
+      exclude: None,
+    },
+    None,
+  );
+  all_rules.sort_by_cached_key(|rule| rule.code().to_string());
 
   if json {
     let json_output = serde_json::json!({
       "version": JSON_SCHEMA_VERSION,
-      "rules": lint_rules
+      "rules": all_rules
         .iter()
         .map(|rule| {
+          // TODO(bartlomieju): print if rule enabled
           serde_json::json!({
             "code": rule.code(),
-            "tags": rule.tags(),
-            "docs": rule.docs(),
+            "tags": rule.tags().iter().map(|t| t.display()).collect::<Vec<_>>(),
+            "docs": rule.help_docs_url(),
           })
         })
         .collect::<Vec<serde_json::Value>>(),
@@ -485,17 +492,34 @@ pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
     // The rules should still be printed even if `--quiet` option is enabled,
     // so use `println!` here instead of `info!`.
     println!("Available rules:");
-    for rule in lint_rules.iter() {
-      print!(" - {}", colors::cyan(rule.code()));
-      if rule.tags().is_empty() {
-        println!();
+    for rule in all_rules.iter() {
+      // TODO(bartlomieju): this is O(n) search, fix before landing
+      let enabled = if configured_rules.rules.contains(rule) {
+        "✓"
       } else {
-        println!(" [{}]", colors::gray(rule.tags().join(", ")))
-      }
+        ""
+      };
+      println!("- {} {}", rule.code(), colors::green(enabled),);
       println!(
         "{}",
-        colors::gray(format!("   help: {}", rule.help_docs_url()))
+        colors::gray(format!("  help: {}", rule.help_docs_url()))
       );
+      if rule.tags().is_empty() {
+        println!("  {}", colors::gray("tags:"));
+      } else {
+        println!(
+          "  {}",
+          colors::gray(format!(
+            "tags: {}",
+            rule
+              .tags()
+              .iter()
+              .map(|t| t.display())
+              .collect::<Vec<_>>()
+              .join(", ")
+          ))
+        );
+      }
       println!();
     }
   }
@@ -509,7 +533,7 @@ fn lint_stdin(
   lint_rule_provider: LintRuleProvider,
   workspace_lint_options: WorkspaceLintOptions,
   lint_flags: LintFlags,
-  deno_lint_config: DenoLintConfig,
+  tsconfig_resolver: &TsConfigResolver,
 ) -> Result<bool, AnyError> {
   let start_dir = &cli_options.start_dir;
   let reporter_lock = Arc::new(Mutex::new(create_reporter(
@@ -517,6 +541,8 @@ fn lint_stdin(
   )));
   let lint_config = start_dir
     .to_lint_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
+  let deno_lint_config =
+    tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
   let lint_options = LintOptions::resolve(lint_config, &lint_flags);
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
@@ -528,7 +554,7 @@ fn lint_stdin(
   }
   let mut source_code = String::new();
   if stdin().read_to_string(&mut source_code).is_err() {
-    return Err(generic_error("Failed to read from stdin"));
+    return Err(anyhow!("Failed to read from stdin"));
   }
 
   let linter = CliLinter::new(CliLinterOptions {
@@ -592,10 +618,11 @@ struct LintError {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use pretty_assertions::assert_eq;
   use serde::Deserialize;
   use test_util as util;
+
+  use super::*;
 
   #[derive(Serialize, Deserialize)]
   struct RulesSchema {
@@ -645,11 +672,14 @@ mod tests {
 
     std::fs::write(
       &rules_schema_path,
-      serde_json::to_string_pretty(&RulesSchema {
-        schema: schema.schema,
-        rules: all_rules,
-      })
-      .unwrap(),
+      format!(
+        "{}\n",
+        serde_json::to_string_pretty(&RulesSchema {
+          schema: schema.schema,
+          rules: all_rules,
+        })
+        .unwrap(),
+      ),
     )
     .unwrap();
   }

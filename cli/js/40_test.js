@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { core, primordials } from "ext:core/mod.js";
 import { escapeName, withPermissions } from "ext:cli/40_test_common.js";
@@ -26,7 +26,7 @@ const {
   TypeError,
 } = primordials;
 
-import { setExitHandler } from "ext:runtime/30_os.js";
+import { setExitHandler } from "ext:deno_os/30_os.js";
 
 // Capture `Deno` global so that users deleting or mangling it, won't
 // have impact on our sanitizers.

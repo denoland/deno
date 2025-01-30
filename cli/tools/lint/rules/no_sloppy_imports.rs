@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_config::workspace::WorkspaceResolver;
-use deno_core::anyhow::anyhow;
+use deno_error::JsErrorBox;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
 use deno_graph::Range;
@@ -16,26 +16,27 @@ use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
+use deno_lint::tags;
 use deno_resolver::sloppy_imports::SloppyImportsResolution;
 use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use text_lines::LineAndColumnIndex;
 
+use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::CliSloppyImportsResolver;
-
-use super::ExtendedLintRule;
+use crate::sys::CliSys;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {
   sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   // None for making printing out the lint rules easy
-  workspace_resolver: Option<Arc<WorkspaceResolver>>,
+  workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
 }
 
 impl NoSloppyImportsRule {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-    workspace_resolver: Option<Arc<WorkspaceResolver>>,
+    workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
   ) -> Self {
     NoSloppyImportsRule {
       sloppy_imports_resolver,
@@ -162,18 +163,19 @@ impl LintRule for NoSloppyImportsRule {
     CODE
   }
 
-  fn docs(&self) -> &'static str {
-    include_str!("no_sloppy_imports.md")
-  }
+  // TODO(bartlomieju): this document needs to be exposed to `https://lint.deno.land`.
+  // fn docs(&self) -> &'static str {
+  //   include_str!("no_sloppy_imports.md")
+  // }
 
-  fn tags(&self) -> &'static [&'static str] {
-    &["recommended"]
+  fn tags(&self) -> tags::Tags {
+    &[tags::RECOMMENDED]
   }
 }
 
 #[derive(Debug)]
 struct SloppyImportCaptureResolver<'a> {
-  workspace_resolver: &'a WorkspaceResolver,
+  workspace_resolver: &'a WorkspaceResolver<CliSys>,
   sloppy_imports_resolver: &'a CliSloppyImportsResolver,
   captures: RefCell<HashMap<Range, SloppyImportsResolution>>,
 }
@@ -187,8 +189,19 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
   ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
     let resolution = self
       .workspace_resolver
-      .resolve(specifier_text, &referrer_range.specifier)
-      .map_err(|err| ResolveError::Other(err.into()))?;
+      .resolve(
+        specifier_text,
+        &referrer_range.specifier,
+        match resolution_kind {
+          ResolutionKind::Execution => {
+            deno_config::workspace::ResolutionKind::Execution
+          }
+          ResolutionKind::Types => {
+            deno_config::workspace::ResolutionKind::Types
+          }
+        },
+      )
+      .map_err(|err| ResolveError::Other(JsErrorBox::from_err(err)))?;
 
     match resolution {
       deno_config::workspace::MappedResolution::Normal {
@@ -221,7 +234,7 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
       }
       | deno_config::workspace::MappedResolution::PackageJson { .. } => {
         // this error is ignored
-        Err(ResolveError::Other(anyhow!("")))
+        Err(ResolveError::Other(JsErrorBox::generic("")))
       }
     }
   }

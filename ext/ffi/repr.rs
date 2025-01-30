@@ -1,15 +1,18 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::FfiPermissions;
-use deno_core::op2;
-use deno_core::v8;
-use deno_core::OpState;
 use std::ffi::c_char;
 use std::ffi::c_void;
 use std::ffi::CStr;
 use std::ptr;
 
-#[derive(Debug, thiserror::Error)]
+use deno_core::op2;
+use deno_core::v8;
+use deno_core::OpState;
+
+use crate::FfiPermissions;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum ReprError {
   #[error("Invalid pointer to offset, pointer is null")]
   InvalidOffset,
@@ -45,6 +48,7 @@ pub enum ReprError {
   InvalidF64,
   #[error("Invalid pointer pointer, pointer is null")]
   InvalidPointer,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
 }

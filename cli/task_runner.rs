@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -10,7 +10,6 @@ use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
-use deno_runtime::deno_node::NodeResolver;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
 use deno_task_shell::ExecuteResult;
@@ -25,9 +24,9 @@ use tokio::task::JoinHandle;
 use tokio::task::LocalSet;
 use tokio_util::sync::CancellationToken;
 
+use crate::node::CliNodeResolver;
+use crate::npm::CliManagedNpmResolver;
 use crate::npm::CliNpmResolver;
-use crate::npm::InnerCliNpmResolverRef;
-use crate::npm::ManagedCliNpmResolver;
 
 pub fn get_script_with_args(script: &str, argv: &[String]) -> String {
   let additional_args = argv
@@ -414,15 +413,15 @@ impl ShellCommand for NodeModulesFileRunCommand {
 }
 
 pub fn resolve_custom_commands(
-  npm_resolver: &dyn CliNpmResolver,
-  node_resolver: &NodeResolver,
+  npm_resolver: &CliNpmResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
-  let mut commands = match npm_resolver.as_inner() {
-    InnerCliNpmResolverRef::Byonm(npm_resolver) => {
+  let mut commands = match npm_resolver {
+    CliNpmResolver::Byonm(npm_resolver) => {
       let node_modules_dir = npm_resolver.root_node_modules_path().unwrap();
       resolve_npm_commands_from_bin_dir(node_modules_dir)
     }
-    InnerCliNpmResolverRef::Managed(npm_resolver) => {
+    CliNpmResolver::Managed(npm_resolver) => {
       resolve_managed_npm_commands(npm_resolver, node_resolver)?
     }
   };
@@ -521,13 +520,12 @@ fn resolve_execution_path_from_npx_shim(
 }
 
 fn resolve_managed_npm_commands(
-  npm_resolver: &ManagedCliNpmResolver,
-  node_resolver: &NodeResolver,
+  npm_resolver: &CliManagedNpmResolver,
+  node_resolver: &CliNodeResolver,
 ) -> Result<HashMap<String, Rc<dyn ShellCommand>>, AnyError> {
   let mut result = HashMap::new();
-  let snapshot = npm_resolver.snapshot();
-  for id in snapshot.top_level_packages() {
-    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(id)?;
+  for id in npm_resolver.resolution().top_level_packages() {
+    let package_folder = npm_resolver.resolve_pkg_folder_from_pkg_id(&id)?;
     let bin_commands =
       node_resolver.resolve_binary_commands(&package_folder)?;
     for bin_command in bin_commands {
@@ -598,7 +596,7 @@ async fn listen_ctrl_c(kill_signal: KillSignal) {
 #[cfg(unix)]
 async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
   use deno_core::futures::FutureExt;
-  use deno_runtime::signal::SIGNAL_NUMS;
+  use deno_runtime::deno_os::signal::SIGNAL_NUMS;
 
   // listen and forward every signal we support
   let mut futures = Vec::with_capacity(SIGNAL_NUMS.len());

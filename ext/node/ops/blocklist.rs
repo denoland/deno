@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -9,7 +9,6 @@ use std::net::SocketAddr;
 
 use deno_core::op2;
 use deno_core::OpState;
-
 use ipnetwork::IpNetwork;
 use ipnetwork::Ipv4Network;
 use ipnetwork::Ipv6Network;
@@ -24,7 +23,8 @@ impl deno_core::GarbageCollected for BlockListResource {}
 #[derive(Serialize)]
 struct SocketAddressSerialization(String, String);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
 pub enum BlocklistError {
   #[error("{0}")]
   AddrParse(#[from] std::net::AddrParseError),

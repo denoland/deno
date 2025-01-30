@@ -1,8 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json::json;
-use deno_core::url::Url;
+use serde_json::json;
 use test_util as util;
+use url::Url;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::TestContext;

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Node.js contributors. All rights reserved. MIT License.
 
 // TODO(petamoriken): enable prefer-primordials for node polyfills
@@ -622,6 +622,15 @@ function createInvalidArgType(
   }
 
   return msg;
+}
+
+export class ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH extends NodeRangeError {
+  constructor() {
+    super(
+      "ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH",
+      "Input buffers must have the same length",
+    );
+  }
 }
 
 export class ERR_INVALID_ARG_TYPE_RANGE extends NodeRangeError {
@@ -2842,6 +2851,7 @@ export default {
   ERR_INVALID_ADDRESS_FAMILY,
   ERR_INVALID_ARG_TYPE,
   ERR_INVALID_ARG_TYPE_RANGE,
+  ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH,
   ERR_INVALID_ARG_VALUE,
   ERR_INVALID_ARG_VALUE_RANGE,
   ERR_INVALID_ASYNC_ID,

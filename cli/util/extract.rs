@@ -1,4 +1,8 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::collections::BTreeSet;
+use std::fmt::Write as _;
+use std::sync::Arc;
 
 use deno_ast::swc::ast;
 use deno_ast::swc::atoms::Atom;
@@ -17,9 +21,6 @@ use deno_cache_dir::file_fetcher::File;
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
 use regex::Regex;
-use std::collections::BTreeSet;
-use std::fmt::Write as _;
-use std::sync::Arc;
 
 use crate::file_fetcher::TextDecodedFile;
 use crate::util::path::mapped_specifier_for_tsc;
@@ -808,10 +809,11 @@ fn wrap_in_deno_test(stmts: Vec<ast::Stmt>, test_name: Atom) -> ast::Stmt {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::file_fetcher::TextDecodedFile;
   use deno_ast::swc::atoms::Atom;
   use pretty_assertions::assert_eq;
+
+  use super::*;
+  use crate::file_fetcher::TextDecodedFile;
 
   #[test]
   fn test_extract_doc_tests() {

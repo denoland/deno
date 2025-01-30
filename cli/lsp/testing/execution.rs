@@ -1,24 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::definitions::TestDefinition;
-use super::definitions::TestModule;
-use super::lsp_custom;
-use super::server::TestServerTests;
-
-use crate::args::flags_from_vec;
-use crate::args::DenoSubcommand;
-use crate::factory::CliFactory;
-use crate::lsp::client::Client;
-use crate::lsp::client::TestingNotification;
-use crate::lsp::config;
-use crate::lsp::logging::lsp_log;
-use crate::lsp::urls::uri_parse_unencoded;
-use crate::lsp::urls::uri_to_url;
-use crate::lsp::urls::url_to_uri;
-use crate::tools::test;
-use crate::tools::test::create_test_event_channel;
-use crate::tools::test::FailFastTracker;
-use crate::tools::test::TestFailureFormatOptions;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::num::NonZeroUsize;
+use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
@@ -34,15 +22,27 @@ use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util::create_and_run_current_thread;
 use indexmap::IndexMap;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::num::NonZeroUsize;
-use std::sync::Arc;
-use std::time::Duration;
-use std::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
+
+use super::definitions::TestDefinition;
+use super::definitions::TestModule;
+use super::lsp_custom;
+use super::server::TestServerTests;
+use crate::args::flags_from_vec;
+use crate::args::DenoSubcommand;
+use crate::factory::CliFactory;
+use crate::lsp::client::Client;
+use crate::lsp::client::TestingNotification;
+use crate::lsp::config;
+use crate::lsp::logging::lsp_log;
+use crate::lsp::urls::uri_parse_unencoded;
+use crate::lsp::urls::uri_to_url;
+use crate::lsp::urls::url_to_uri;
+use crate::tools::test;
+use crate::tools::test::create_test_event_channel;
+use crate::tools::test::FailFastTracker;
+use crate::tools::test::TestFailureFormatOptions;
 
 /// Logic to convert a test request into a set of test modules to be tested and
 /// any filters to be applied to those tests
@@ -794,9 +794,10 @@ impl LspTestReporter {
 
 #[cfg(test)]
 mod tests {
+  use deno_core::serde_json::json;
+
   use super::*;
   use crate::lsp::testing::collectors::tests::new_range;
-  use deno_core::serde_json::json;
 
   #[test]
   fn test_as_queue_and_filters() {

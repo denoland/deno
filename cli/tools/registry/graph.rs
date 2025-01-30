@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -16,10 +16,9 @@ use deno_graph::WalkOptions;
 use deno_semver::jsr::JsrPackageReqReference;
 use deno_semver::npm::NpmPackageReqReference;
 
-use crate::cache::ParsedSourceCache;
-
 use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
+use crate::cache::ParsedSourceCache;
 
 pub struct GraphDiagnosticsCollector {
   parsed_source_cache: Arc<ParsedSourceCache>,
@@ -124,7 +123,7 @@ impl GraphDiagnosticsCollector {
       };
 
     let options = WalkOptions {
-      check_js: true,
+      check_js: deno_graph::CheckJsOption::True,
       follow_dynamic: true,
       // search the entire graph and not just the fast check subset
       prefer_fast_check_graph: false,

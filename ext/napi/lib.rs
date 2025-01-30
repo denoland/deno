@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
@@ -22,48 +22,50 @@ pub mod util;
 pub mod uv;
 
 use core::ptr::NonNull;
-use deno_core::op2;
-use deno_core::parking_lot::RwLock;
-use deno_core::url::Url;
-use deno_core::ExternalOpsTracker;
-use deno_core::OpState;
-use deno_core::V8CrossThreadTaskSpawner;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::rc::Rc;
-use std::thread_local;
-
-#[derive(Debug, thiserror::Error)]
-pub enum NApiError {
-  #[error("Invalid path")]
-  InvalidPath,
-  #[error(transparent)]
-  LibLoading(#[from] libloading::Error),
-  #[error("Unable to find register Node-API module at {}", .0.display())]
-  ModuleNotFound(PathBuf),
-  #[error(transparent)]
-  Permission(#[from] PermissionCheckError),
-}
-
-#[cfg(unix)]
-use libloading::os::unix::*;
-
-#[cfg(windows)]
-use libloading::os::windows::*;
-
-// Expose common stuff for ease of use.
-// `use deno_napi::*`
-pub use deno_core::v8;
-use deno_permissions::PermissionCheckError;
 pub use std::ffi::CStr;
 pub use std::os::raw::c_char;
 pub use std::os::raw::c_void;
+use std::path::PathBuf;
 pub use std::ptr;
+use std::rc::Rc;
+use std::thread_local;
+
+use deno_core::op2;
+use deno_core::parking_lot::RwLock;
+use deno_core::url::Url;
+// Expose common stuff for ease of use.
+// `use deno_napi::*`
+pub use deno_core::v8;
+use deno_core::ExternalOpsTracker;
+use deno_core::OpState;
+use deno_core::V8CrossThreadTaskSpawner;
+use deno_permissions::PermissionCheckError;
+#[cfg(unix)]
+use libloading::os::unix::*;
+#[cfg(windows)]
+use libloading::os::windows::*;
 pub use value::napi_value;
 
 pub mod function;
 mod value;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum NApiError {
+  #[class(type)]
+  #[error("Invalid path")]
+  InvalidPath,
+  #[class(type)]
+  #[error(transparent)]
+  LibLoading(#[from] libloading::Error),
+  #[class(type)]
+  #[error("Unable to find register Node-API module at {}", .0.display())]
+  ModuleNotFound(PathBuf),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
+}
 
 pub type napi_status = i32;
 pub type napi_env = *mut c_void;

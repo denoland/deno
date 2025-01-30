@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use serde::Deserialize;
-use std::borrow::Cow;
-use std::rc::Rc;
 
 use super::error::WebGpuResult;
 pub(crate) struct WebGpuTexture {
@@ -61,7 +62,7 @@ pub struct CreateTextureArgs {
 pub fn op_webgpu_create_texture(
   state: &mut OpState,
   #[serde] args: CreateTextureArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, deno_core::error::ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -110,7 +111,7 @@ pub struct CreateTextureViewArgs {
 pub fn op_webgpu_create_texture_view(
   state: &mut OpState,
   #[serde] args: CreateTextureViewArgs,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, deno_core::error::ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let texture_resource = state
     .resource_table

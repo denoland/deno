@@ -1,11 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_core::op2;
-
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::DetachedBuffer;
@@ -21,18 +20,23 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MessagePortError {
+  #[class(type)]
   #[error("Invalid message port transfer")]
   InvalidTransfer,
+  #[class(type)]
   #[error("Message port is not ready for transfer")]
   NotReady,
+  #[class(type)]
   #[error("Can not transfer self message port")]
   TransferSelf,
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(deno_core::error::ResourceError),
 }
 
 pub enum Transferable {
