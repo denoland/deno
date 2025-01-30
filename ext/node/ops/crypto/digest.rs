@@ -1,53 +1,91 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::cell::RefCell;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
 use deno_core::GarbageCollected;
+use digest::generic_array::ArrayLength;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
 
-#[derive(Clone)]
-pub struct Sha256Digest {
-  context: ring::digest::Context,
+pub trait RingDigestAlgo {
+  fn algorithm() -> &'static ring::digest::Algorithm;
+  type OutputSize: ArrayLength<u8> + 'static;
 }
-impl Default for Sha256Digest {
-  fn default() -> Self {
+
+pub struct RingDigest<Algo: RingDigestAlgo> {
+  context: ring::digest::Context,
+  _phantom: PhantomData<Algo>,
+}
+
+impl<Algo: RingDigestAlgo> Clone for RingDigest<Algo> {
+  fn clone(&self) -> Self {
     Self {
-      context: ring::digest::Context::new(&ring::digest::SHA256),
+      context: self.context.clone(),
+      _phantom: self._phantom.clone(),
     }
   }
 }
-impl digest::HashMarker for Sha256Digest {}
-impl digest::Reset for Sha256Digest {
-  fn reset(&mut self) {
-    self.context = ring::digest::Context::new(&ring::digest::SHA256);
+
+impl<Algo: RingDigestAlgo> digest::HashMarker for RingDigest<Algo> {}
+impl<Algo: RingDigestAlgo> Default for RingDigest<Algo> {
+  fn default() -> Self {
+    Self {
+      context: ring::digest::Context::new(Algo::algorithm()),
+      _phantom: PhantomData,
+    }
   }
 }
-impl digest::Update for Sha256Digest {
+impl<Algo: RingDigestAlgo> digest::Reset for RingDigest<Algo> {
+  fn reset(&mut self) {
+    self.context = ring::digest::Context::new(Algo::algorithm())
+  }
+}
+impl<Algo: RingDigestAlgo> digest::Update for RingDigest<Algo> {
   fn update(&mut self, data: &[u8]) {
     self.context.update(data);
   }
 }
-impl digest::OutputSizeUser for Sha256Digest {
-  type OutputSize = digest::typenum::U32;
+impl<Algo: RingDigestAlgo> digest::OutputSizeUser for RingDigest<Algo> {
+  type OutputSize = Algo::OutputSize;
 }
-impl digest::FixedOutput for Sha256Digest {
+impl<Algo: RingDigestAlgo> digest::FixedOutput for RingDigest<Algo> {
   fn finalize_into(self, out: &mut digest::Output<Self>) {
     let result = self.context.finish();
     out.copy_from_slice(result.as_ref());
   }
 }
-impl digest::FixedOutputReset for Sha256Digest {
+impl<Algo: RingDigestAlgo> digest::FixedOutputReset for RingDigest<Algo> {
   fn finalize_into_reset(&mut self, out: &mut digest::Output<Self>) {
     let context = std::mem::replace(
       &mut self.context,
-      ring::digest::Context::new(&ring::digest::SHA256),
+      ring::digest::Context::new(Algo::algorithm()),
     );
     out.copy_from_slice(context.finish().as_ref());
   }
 }
+
+pub struct RingSha256Algo;
+impl RingDigestAlgo for RingSha256Algo {
+  fn algorithm() -> &'static ring::digest::Algorithm {
+    &ring::digest::SHA256
+  }
+
+  type OutputSize = digest::typenum::U32;
+}
+pub struct RingSha512Algo;
+impl RingDigestAlgo for RingSha512Algo {
+  fn algorithm() -> &'static ring::digest::Algorithm {
+    &ring::digest::SHA512
+  }
+
+  type OutputSize = digest::typenum::U64;
+}
+
+pub type RingSha256 = RingDigest<RingSha256Algo>;
+pub type RingSha512 = RingDigest<RingSha512Algo>;
 
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
@@ -241,7 +279,8 @@ impl Hash {
     match algorithm_name {
       "shake128" => return Ok(Shake128(Default::default(), output_length)),
       "shake256" => return Ok(Shake256(Default::default(), output_length)),
-      "sha256" => return Ok(Hash::FixedSize(Box::new(Sha256Digest::new()))),
+      "sha256" => return Ok(Hash::FixedSize(Box::new(RingSha256::new()))),
+      "sha512" => return Ok(Hash::FixedSize(Box::new(RingSha512::new()))),
       _ => {}
     }
 
