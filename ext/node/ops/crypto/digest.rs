@@ -203,10 +203,22 @@ impl Hash {
       "shake128" => return Ok(Shake128(Default::default(), output_length)),
       "shake256" => return Ok(Shake256(Default::default(), output_length)),
       "sha256" => {
-        return Ok(Hash::FixedSize(Box::new(ring_sha2::RingSha256::new())))
+        let digest = ring_sha2::RingSha256::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
       }
       "sha512" => {
-        return Ok(Hash::FixedSize(Box::new(ring_sha2::RingSha512::new())))
+        let digest = ring_sha2::RingSha512::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
       }
       _ => {}
     }
