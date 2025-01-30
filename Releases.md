@@ -6,6 +6,10 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.9 / 2025.01.30
+
+- fix(ext/node): add http information support (#27381)
+
 ### 2.1.8 / 2025.01.30
 
 - feat(unstable): support https otlp endpoints (#27743)
