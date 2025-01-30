@@ -6264,8 +6264,12 @@ fn lsp_code_actions_deno_cache_all() {
       "#,
     }
   }));
+  let mut deno_diagnostics = diagnostics.messages_with_source("deno");
+  deno_diagnostics
+    .diagnostics
+    .sort_by_key(|d| d.range.start.line);
   assert_eq!(
-    diagnostics.messages_with_source("deno"),
+    deno_diagnostics,
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [
@@ -6296,7 +6300,7 @@ fn lsp_code_actions_deno_cache_all() {
     })).unwrap()
   );
 
-  let res =
+  let mut res =
     client
     .write_request(
       "textDocument/codeAction",
@@ -6326,6 +6330,11 @@ fn lsp_code_actions_deno_cache_all() {
         }
       }),
     );
+  res.as_array_mut().unwrap().iter_mut().for_each(|fix| {
+    fix["diagnostics"].as_array_mut().unwrap().sort_by_key(|v| {
+      v["range"]["start"]["line"].as_number().unwrap().as_i64()
+    })
+  });
   assert_eq!(
     res,
     json!([
@@ -17412,4 +17421,52 @@ fn type_reference_import_meta() {
     assert_eq!(diagnostics.all().len(), 0);
     client.did_close_file(&source);
   }
+}
+
+#[test]
+fn ambient_module_errors_suppressed() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+
+  client.initialize_default();
+
+  temp_dir.join("ambient.d.ts").write(
+    r#"
+      declare module "$virtual/module" {
+        export const foo: number;
+      }
+      declare module "*.fake" {
+        const fake: string;
+        export default fake;
+      }
+
+    "#,
+  );
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      /// <reference types="./ambient.d.ts"/>
+      import { foo as _foo } from "$virtual/module";
+      import _fake from "./not-real.fake";
+      import _bad from "./not-real.bad";
+    "#,
+  );
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": source.range_of("\"./not-real.bad\""),
+        "severity": 1,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nPlease check the file path.",
+          temp_dir.join("./not-real.bad").url_file()
+        )
+      }
+    ])
+  );
 }

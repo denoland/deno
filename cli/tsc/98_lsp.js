@@ -27,6 +27,9 @@ import {
 const core = globalThis.Deno.core;
 const ops = core.ops;
 
+/** @type {Map<string | null, string[]>} */
+const ambientModulesCacheByScope = new Map();
+
 const ChangeKind = {
   Opened: 0,
   Modified: 1,
@@ -352,6 +355,28 @@ function formatErrorWithArgs(error, args) {
 }
 
 /**
+ * @param {string[]} a
+ * @param {string[]} b
+ */
+function arraysEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (a === null || b === null) {
+    return false;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
@@ -432,7 +457,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
       try {
         /** @type {Record<string, any[]>} */
@@ -444,18 +469,30 @@ function serverRequest(id, method, args, scope, maybeChange) {
             ...ls.getSyntacticDiagnostics(specifier),
           ].filter(filterMapDiagnostic));
         }
-        return respond(id, diagnosticMap);
+        let ambient =
+          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+            symbol.getName()
+          ) ?? [];
+        const previousAmbient = ambientModulesCacheByScope.get(scope);
+        if (
+          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
+        ) {
+          ambient = null; // null => use previous value
+        } else {
+          ambientModulesCacheByScope.set(scope, ambient);
+        }
+        return respond(id, [diagnosticMap, ambient]);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            {},
+            [{}, null],
             formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
           );
         }
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
     }
     default:

@@ -385,6 +385,11 @@ impl PendingChange {
   }
 }
 
+pub type DiagnosticsMap = IndexMap<String, Vec<crate::tsc::Diagnostic>>;
+pub type ScopedAmbientModules =
+  HashMap<Option<ModuleSpecifier>, MaybeAmbientModules>;
+pub type MaybeAmbientModules = Option<Vec<String>>;
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -466,7 +471,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
-  ) -> Result<IndexMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
+  ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
     for specifier in specifiers {
@@ -489,10 +494,20 @@ impl TsServer {
     for (scope, specifiers) in specifiers_by_scope {
       let req =
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
-      results.push_back(self.request_with_cancellation::<IndexMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot.clone(), req, scope, token.clone()));
+      results.push_back(
+        self
+          .request_with_cancellation::<(DiagnosticsMap, MaybeAmbientModules)>(
+            snapshot.clone(),
+            req,
+            scope.clone(),
+            token.clone(),
+          )
+          .map(|res| (scope, res)),
+      );
     }
-    while let Some(raw_diagnostics) = results.next().await {
-      let raw_diagnostics = raw_diagnostics
+    let mut ambient_modules_by_scope = HashMap::with_capacity(2);
+    while let Some((scope, raw_diagnostics)) = results.next().await {
+      let (raw_diagnostics, ambient_modules) = raw_diagnostics
         .inspect_err(|err| {
           if !token.is_cancelled() {
             lsp_warn!("Error generating TypeScript diagnostics: {err}");
@@ -506,8 +521,9 @@ impl TsServer {
         }
         diagnostics_map.insert(specifier, diagnostics);
       }
+      ambient_modules_by_scope.insert(scope, ambient_modules);
     }
-    Ok(diagnostics_map)
+    Ok((diagnostics_map, ambient_modules_by_scope))
   }
 
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
@@ -5703,7 +5719,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5749,7 +5765,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5779,7 +5795,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5805,7 +5821,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5855,7 +5871,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5888,7 +5904,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5946,7 +5962,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -6038,7 +6054,7 @@ mod tests {
       )
       .unwrap();
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
@@ -6088,7 +6104,7 @@ mod tests {
       None,
     );
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
