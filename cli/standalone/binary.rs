@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env;
@@ -61,6 +62,7 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
+use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -193,7 +195,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   emitter: &'a Emitter,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
-  workspace_resolver: &'a WorkspaceResolver,
+  workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
 }
 
@@ -207,7 +209,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     emitter: &'a Emitter,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
-    workspace_resolver: &'a WorkspaceResolver,
+    workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
@@ -699,7 +701,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs_case_sensitivity: vfs.case_sensitivity,
     };
 
-    let data_section_bytes = serialize_binary_data_section(
+    let (data_section_bytes, section_sizes) = serialize_binary_data_section(
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
       &specifier_store.for_serialization(&root_dir_url),
@@ -708,6 +710,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       &vfs,
     )
     .context("Serializing binary data section.")?;
+
+    log::info!(
+      "\n{} {}",
+      crate::colors::bold("Files:"),
+      crate::util::display::human_size(section_sizes.vfs as f64)
+    );
+    log::info!(
+      "{} {}",
+      crate::colors::bold("Metadata:"),
+      crate::util::display::human_size(section_sizes.metadata as f64)
+    );
+    log::info!(
+      "{} {}\n",
+      crate::colors::bold("Remote modules:"),
+      crate::util::display::human_size(section_sizes.remote_modules as f64)
+    );
 
     write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
       .context("Writing binary bytes")
@@ -912,6 +930,12 @@ fn write_binary_bytes(
   Ok(())
 }
 
+struct BinaryDataSectionSizes {
+  metadata: usize,
+  remote_modules: usize,
+  vfs: usize,
+}
+
 /// Binary format:
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
@@ -930,11 +954,15 @@ fn serialize_binary_data_section(
   redirects: &SpecifierDataStore<SpecifierId>,
   remote_modules: &SpecifierDataStore<RemoteModuleEntry<'_>>,
   vfs: &BuiltVfs,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<(Vec<u8>, BinaryDataSectionSizes), AnyError> {
   let metadata = serde_json::to_string(metadata)?;
   let npm_snapshot =
     npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
   let serialized_vfs = serde_json::to_string(&vfs.entries)?;
+
+  let remote_modules_len = Cell::new(0);
+  let metadata_len = Cell::new(0);
+  let vfs_len = Cell::new(0);
 
   let bytes = capacity_builder::BytesBuilder::build(|builder| {
     builder.append(MAGIC_BYTES);
@@ -948,12 +976,14 @@ fn serialize_binary_data_section(
       builder.append_le(npm_snapshot.len() as u64);
       builder.append(&npm_snapshot);
     }
+    metadata_len.set(builder.len());
     // 3. Specifiers
     builder.append(specifiers);
     // 4. Redirects
     redirects.serialize(builder);
     // 5. Remote modules
     remote_modules.serialize(builder);
+    remote_modules_len.set(builder.len() - metadata_len.get());
     // 6. VFS
     {
       builder.append_le(serialized_vfs.len() as u64);
@@ -964,13 +994,21 @@ fn serialize_binary_data_section(
         builder.append(file);
       }
     }
+    vfs_len.set(builder.len() - remote_modules_len.get());
 
     // write the magic bytes at the end so we can use it
     // to make sure we've deserialized correctly
     builder.append(MAGIC_BYTES);
   })?;
 
-  Ok(bytes)
+  Ok((
+    bytes,
+    BinaryDataSectionSizes {
+      metadata: metadata_len.get(),
+      remote_modules: remote_modules_len.get(),
+      vfs: vfs_len.get(),
+    },
+  ))
 }
 
 fn serialize_npm_snapshot(

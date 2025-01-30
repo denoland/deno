@@ -13,7 +13,6 @@ use deno_config::workspace::MappedResolutionError;
 use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
 use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
-use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
@@ -43,15 +42,15 @@ use thiserror::Error;
 use url::Url;
 
 pub mod cjs;
+pub mod factory;
 pub mod npm;
+pub mod npmrc;
 pub mod sloppy_imports;
 mod sync;
 
 #[allow(clippy::disallowed_types)]
-pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
-
-#[allow(clippy::disallowed_types)]
-pub(crate) type ResolvedNpmRcRc = crate::sync::MaybeArc<ResolvedNpmRc>;
+pub type WorkspaceResolverRc<TSys> =
+  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
@@ -92,6 +91,9 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   PackageSubpathResolve(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
   #[class(inherit)]
   #[error(transparent)]
   ResolvePkgFolderFromDenoReq(#[from] ResolvePkgFolderFromDenoReqError),
@@ -140,13 +142,40 @@ pub struct DenoResolverOptions<
   >,
   pub sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
-  pub workspace_resolver: WorkspaceResolverRc,
+  pub workspace_resolver: WorkspaceResolverRc<TSys>,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
   pub is_byonm: bool,
   pub maybe_vendor_dir: Option<&'a PathBuf>,
 }
+
+#[allow(clippy::disallowed_types)]
+pub type DenoResolverRc<
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSloppyImportResolverFs,
+  TSys,
+> = crate::sync::MaybeArc<
+  DenoResolver<
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSloppyImportResolverFs,
+    TSys,
+  >,
+>;
+
+/// Helper type for a DenoResolverRc that has the implementations
+/// used by the Deno CLI.
+pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
+  npm::DenoInNpmPackageChecker,
+  node_resolver::DenoIsBuiltInNodeModuleChecker,
+  npm::NpmResolver<TSys>,
+  sloppy_imports::SloppyImportsCachedFs<TSys>,
+  TSys,
+>;
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
@@ -169,7 +198,7 @@ pub struct DenoResolver<
   >,
   sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
-  workspace_resolver: WorkspaceResolverRc,
+  workspace_resolver: WorkspaceResolverRc<TSys>,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
@@ -227,10 +256,12 @@ impl<
       {
         return node_resolver
           .resolve(raw_specifier, referrer, resolution_mode, resolution_kind)
-          .map(|res| DenoResolution {
-            url: res.into_url(),
-            found_package_json_dep,
-            maybe_diagnostic,
+          .and_then(|res| {
+            Ok(DenoResolution {
+              url: res.into_url()?,
+              found_package_json_dep,
+              maybe_diagnostic,
+            })
           })
           .map_err(|e| e.into());
       }
@@ -239,7 +270,7 @@ impl<
     // Attempt to resolve with the workspace resolver
     let result: Result<_, DenoResolveError> = self
       .workspace_resolver
-      .resolve(raw_specifier, referrer)
+      .resolve(raw_specifier, referrer, resolution_kind.into())
       .map_err(|err| err.into());
     let result = match result {
       Ok(resolution) => match resolution {
@@ -293,7 +324,8 @@ impl<
             resolution_mode,
             resolution_kind,
           )
-          .map_err(|e| e.into()),
+          .map_err(DenoResolveError::from)
+          .and_then(|r| Ok(r.into_url()?)),
         MappedResolution::PackageJson {
           dep_result,
           alias,
@@ -347,7 +379,8 @@ impl<
                     .map_err(|e| {
                       DenoResolveErrorKind::PackageSubpathResolve(e).into_box()
                     })
-                }),
+                })
+                .and_then(|r| Ok(r.into_url()?)),
             })
         }
       },
@@ -400,12 +433,14 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map(|url| DenoResolution {
-                url,
-                maybe_diagnostic,
-                found_package_json_dep,
-              })
-              .map_err(|e| e.into());
+              .map_err(DenoResolveError::from)
+              .and_then(|url_or_path| {
+                Ok(DenoResolution {
+                  url: url_or_path.into_url()?,
+                  maybe_diagnostic,
+                  found_package_json_dep,
+                })
+              });
           }
 
           // do npm resolution for byonm
@@ -417,11 +452,6 @@ impl<
                 resolution_mode,
                 resolution_kind,
               )
-              .map(|url| DenoResolution {
-                url,
-                maybe_diagnostic,
-                found_package_json_dep,
-              })
               .map_err(|err| {
                 match err.into_kind() {
                   ResolveReqWithSubPathErrorKind::MissingPackageNodeModulesFolder(
@@ -434,7 +464,12 @@ impl<
                     err.into()
                   }
                 }
-              });
+              })
+              .and_then(|url_or_path| Ok(DenoResolution {
+                url: url_or_path.into_url()?,
+                maybe_diagnostic,
+                found_package_json_dep,
+              }));
           }
         }
 
@@ -466,9 +501,9 @@ impl<
             })?;
           if let Some(res) = maybe_resolution {
             match res {
-              NodeResolution::Module(url) => {
+              NodeResolution::Module(ref _url) => {
                 return Ok(DenoResolution {
-                  url,
+                  url: res.into_url()?,
                   maybe_diagnostic,
                   found_package_json_dep,
                 })

@@ -18,6 +18,7 @@ use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
+use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CreateResolverOptions;
@@ -47,6 +48,7 @@ use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
+use deno_resolver::npmrc::discover_npmrc_from_workspace;
 use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
@@ -56,7 +58,6 @@ use tower_lsp::lsp_types as lsp;
 use super::logging::lsp_log;
 use super::lsp_custom;
 use super::urls::url_to_uri;
-use crate::args::discover_npmrc_from_workspace;
 use crate::args::CliLockfile;
 use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
@@ -1168,14 +1169,13 @@ impl Default for LspTsConfig {
 }
 
 impl LspTsConfig {
-  pub fn new(config_file: Option<&ConfigFile>) -> Self {
-    let mut ts_config = Self::default();
-    match ts_config.inner.merge_tsconfig_from_config_file(config_file) {
-      Ok(Some(ignored_options)) => lsp_warn!("{}", ignored_options),
-      Err(err) => lsp_warn!("{}", err),
-      _ => {}
+  pub fn new(raw_ts_config: TsConfigWithIgnoredOptions) -> Self {
+    let mut base_ts_config = Self::default();
+    for ignored_options in &raw_ts_config.ignored_options {
+      lsp_warn!("{}", ignored_options)
     }
-    ts_config
+    base_ts_config.inner.merge_mut(raw_ts_config.ts_config);
+    base_ts_config
   }
 }
 
@@ -1205,7 +1205,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver>,
+  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   pub unstable: BTreeSet<String>,
@@ -1362,21 +1362,22 @@ impl ConfigData {
     }
 
     // todo(dsherret): cache this so we don't load this so many times
-    let npmrc = discover_npmrc_from_workspace(&member_dir.workspace)
-      .inspect(|(_, path)| {
-        if let Some(path) = path {
-          lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
+    let npmrc =
+      discover_npmrc_from_workspace(&CliSys::default(), &member_dir.workspace)
+        .inspect(|(_, path)| {
+          if let Some(path) = path {
+            lsp_log!("  Resolved .npmrc: \"{}\"", path.display());
 
-          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-            add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
+            if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
+              add_watched_file(specifier, ConfigWatchedFileType::NpmRc);
+            }
           }
-        }
-      })
-      .inspect_err(|err| {
-        lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
-      })
-      .map(|(r, _)| r)
-      .ok();
+        })
+        .inspect_err(|err| {
+          lsp_warn!("  Couldn't read .npmrc for \"{scope}\": {err}");
+        })
+        .map(|(r, _)| Arc::new(r))
+        .ok();
     let default_file_pattern_base =
       scope.to_file_path().unwrap_or_else(|_| PathBuf::from("/"));
     let fmt_config = Arc::new(
@@ -1424,9 +1425,10 @@ impl ConfigData {
         .unwrap_or_default(),
     );
 
-    let ts_config = LspTsConfig::new(
-      member_dir.workspace.root_deno_json().map(|c| c.as_ref()),
-    );
+    let ts_config = member_dir
+      .to_raw_user_provided_tsconfig()
+      .map(LspTsConfig::new)
+      .unwrap_or_default();
 
     let deno_lint_config =
       if ts_config.inner.0.get("jsx").and_then(|v| v.as_str()) == Some("react")
@@ -1570,7 +1572,7 @@ impl ConfigData {
     let resolver = member_dir
       .workspace
       .create_resolver(
-        &CliSys::default(),
+        CliSys::default(),
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
@@ -1591,11 +1593,14 @@ impl ConfigData {
           member_dir.workspace.resolver_jsr_pkgs().collect(),
           member_dir.workspace.package_jsons().cloned().collect(),
           pkg_json_dep_resolution,
+          Default::default(),
+          Default::default(),
+          CliSys::default(),
         )
       });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
-        "  Import map diagnostics:\n{}",
+        "  Resolver diagnostics:\n{}",
         resolver
           .diagnostics()
           .iter()
@@ -1672,7 +1677,6 @@ impl ConfigData {
   ) -> Option<JsxImportSourceConfig> {
     self
       .member_dir
-      .workspace
       .to_maybe_jsx_import_source_config()
       .ok()
       .flatten()
@@ -2048,7 +2052,7 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
   }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {

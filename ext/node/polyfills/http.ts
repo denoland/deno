@@ -5,6 +5,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_node_http_await_information,
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
@@ -414,6 +415,11 @@ class ClientRequest extends OutgoingMessage {
             oncreate,
           );
           if (newSocket) {
+            // If socket is created by createConnection option
+            // we apply sock-init-workaround
+            // This covers npm:ws and npm:mqtt
+            // https://github.com/denoland/deno/issues/27694
+            newSocket._needsSockInitWorkaround = true;
             oncreate(null, newSocket);
           }
         } catch (err) {
@@ -479,6 +485,44 @@ class ClientRequest extends OutgoingMessage {
           this._encrypted,
         );
         this._flushBuffer();
+
+        const infoPromise = op_node_http_await_information(
+          this._req!.requestRid,
+        );
+        core.unrefOpPromise(infoPromise);
+        infoPromise.then((info) => {
+          if (!info) return;
+
+          if (info.status === 100) this.emit("continue");
+
+          let headers;
+          let rawHeaders;
+
+          this.emit("information", {
+            statusCode: info.status,
+            statusMessage: info.statusText,
+            httpVersionMajor: info.versionMajor,
+            httpVersionMinor: info.versionMinor,
+            httpVersion: `${info.versionMajor}.${info.versionMinor}`,
+            get headers() {
+              if (!headers) {
+                headers = {};
+                for (let i = 0; i < info.headers.length; i++) {
+                  const entry = info.headers[i];
+                  headers[entry[0]] = entry[1];
+                }
+              }
+              return headers;
+            },
+            get rawHeaders() {
+              if (!rawHeaders) {
+                rawHeaders = info.headers.flat();
+              }
+              return rawHeaders;
+            },
+          });
+        });
+
         const res = await op_node_http_await_response(this._req!.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
@@ -1621,6 +1665,12 @@ ServerResponse.prototype.detachSocket = function (
   this._socketOverride = null;
 };
 
+ServerResponse.prototype.writeContinue = function writeContinue(cb) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
 Object.defineProperty(ServerResponse.prototype, "connection", {
   get: deprecate(
     function (this: ServerResponse) {
@@ -1826,7 +1876,24 @@ export class ServerImpl extends EventEmitter {
       } else {
         return new Promise<Response>((resolve): void => {
           const res = new ServerResponse(resolve, socket);
-          this.emit("request", req, res);
+
+          if (request.headers.has("expect")) {
+            if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {
+              if (this.listenerCount("checkContinue") > 0) {
+                this.emit("checkContinue", req, res);
+              } else {
+                res.writeContinue();
+                this.emit("request", req, res);
+              }
+            } else if (this.listenerCount("checkExpectation") > 0) {
+              this.emit("checkExpectation", req, res);
+            } else {
+              res.writeHead(417);
+              res.end();
+            }
+          } else {
+            this.emit("request", req, res);
+          }
         });
       }
     };

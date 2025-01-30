@@ -166,9 +166,35 @@ fn op_exec_path(state: &mut OpState) -> Result<String, OsError> {
     .map_err(OsError::InvalidUtf8)
 }
 
+fn dt_change_notif(isolate: &mut v8::Isolate, key: &str) {
+  extern "C" {
+    #[cfg(unix)]
+    fn tzset();
+
+    #[cfg(windows)]
+    fn _tzset();
+  }
+
+  if key == "TZ" {
+    // SAFETY: tzset/_tzset (libc) is called to update the timezone information
+    unsafe {
+      #[cfg(unix)]
+      tzset();
+
+      #[cfg(windows)]
+      _tzset();
+    }
+
+    isolate.date_time_configuration_change_notification(
+      v8::TimeZoneDetection::Redetect,
+    );
+  }
+}
+
 #[op2(fast, stack_trace)]
 fn op_set_env(
   state: &mut OpState,
+  scope: &mut v8::HandleScope,
   #[string] key: &str,
   #[string] value: &str,
 ) -> Result<(), OsError> {
@@ -182,7 +208,9 @@ fn op_set_env(
   if value.contains('\0') {
     return Err(OsError::EnvInvalidValue(value.to_string()));
   }
+
   env::set_var(key, value);
+  dt_change_notif(scope, key);
   Ok(())
 }
 

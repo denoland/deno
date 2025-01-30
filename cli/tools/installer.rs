@@ -306,9 +306,7 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_installer) = factory.npm_installer_if_managed()? {
-        npm_installer.ensure_no_pkg_json_dep_errors()?;
-      }
+      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
       crate::tools::registry::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
@@ -376,7 +374,7 @@ async fn install_global(
     log::Level::Trace,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
+  let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
@@ -410,6 +408,12 @@ async fn install_global(
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
+
+  if matches!(flags.config_flag, ConfigFlag::Discover)
+    && cli_options.workspace().deno_jsons().next().is_some()
+  {
+    log::warn!("{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.", crate::colors::yellow("Warning"));
+  }
 
   // create the install shim
   create_install_shim(http_client, &flags, install_flags_global).await

@@ -162,7 +162,11 @@ impl PathRef {
 
   #[track_caller]
   pub fn rename(&self, to: impl AsRef<Path>) {
-    fs::rename(self, self.join(to)).unwrap();
+    let to = self.join(to);
+    if let Some(parent_path) = to.as_path().parent() {
+      fs::create_dir_all(parent_path).unwrap()
+    }
+    fs::rename(self, to).unwrap();
   }
 
   #[track_caller]
@@ -173,6 +177,9 @@ impl PathRef {
 
   #[track_caller]
   pub fn write(&self, text: impl AsRef<[u8]>) {
+    if let Some(parent_path) = self.as_path().parent() {
+      fs::create_dir_all(parent_path).unwrap()
+    }
     fs::write(self, text).unwrap();
   }
 
@@ -188,17 +195,20 @@ impl PathRef {
     oldpath: impl AsRef<Path>,
     newpath: impl AsRef<Path>,
   ) {
+    let oldpath = self.as_path().join(oldpath);
+    let newpath = self.as_path().join(newpath);
+    if let Some(parent_path) = newpath.parent() {
+      fs::create_dir_all(parent_path).unwrap()
+    }
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(self.as_path().join(oldpath), self.as_path().join(newpath))
-        .unwrap();
+      symlink(oldpath, newpath).unwrap();
     }
     #[cfg(not(unix))]
     {
       use std::os::windows::fs::symlink_dir;
-      symlink_dir(self.as_path().join(oldpath), self.as_path().join(newpath))
-        .unwrap();
+      symlink_dir(oldpath, newpath).unwrap();
     }
   }
 
@@ -208,17 +218,20 @@ impl PathRef {
     oldpath: impl AsRef<Path>,
     newpath: impl AsRef<Path>,
   ) {
+    let oldpath = self.as_path().join(oldpath);
+    let newpath = self.as_path().join(newpath);
+    if let Some(parent_path) = newpath.as_path().parent() {
+      fs::create_dir_all(parent_path).unwrap()
+    }
     #[cfg(unix)]
     {
       use std::os::unix::fs::symlink;
-      symlink(self.as_path().join(oldpath), self.as_path().join(newpath))
-        .unwrap();
+      symlink(oldpath, newpath).unwrap();
     }
     #[cfg(not(unix))]
     {
       use std::os::windows::fs::symlink_file;
-      symlink_file(self.as_path().join(oldpath), self.as_path().join(newpath))
-        .unwrap();
+      symlink_file(oldpath, newpath).unwrap();
     }
   }
 
