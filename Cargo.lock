@@ -2136,6 +2136,7 @@ dependencies = [
  "thiserror 2.0.3",
  "tokio",
  "tokio-eld",
+ "tower-service",
  "url",
  "webpki-root-certs",
  "winapi",
