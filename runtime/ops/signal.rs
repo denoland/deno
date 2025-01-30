@@ -25,13 +25,11 @@ use tokio::signal::unix::Signal;
 #[cfg(unix)]
 use tokio::signal::unix::SignalKind;
 #[cfg(windows)]
-use tokio::signal::windows::ctrl_break;
-#[cfg(windows)]
-use tokio::signal::windows::ctrl_c;
-#[cfg(windows)]
 use tokio::signal::windows::CtrlBreak;
 #[cfg(windows)]
 use tokio::signal::windows::CtrlC;
+#[cfg(windows)]
+use tokio::signal::windows::CtrlClose;
 
 deno_core::extension!(
   deno_signal,
@@ -114,19 +112,27 @@ impl Resource for SignalStreamResource {
 enum WindowsSignal {
   Sigint(CtrlC),
   Sigbreak(CtrlBreak),
+  Sighup(CtrlClose),
 }
 
 #[cfg(windows)]
 impl From<CtrlC> for WindowsSignal {
   fn from(ctrl_c: CtrlC) -> Self {
-    WindowsSignal::Sigint(ctrl_c)
+    Self::Sigint(ctrl_c)
   }
 }
 
 #[cfg(windows)]
 impl From<CtrlBreak> for WindowsSignal {
   fn from(ctrl_break: CtrlBreak) -> Self {
-    WindowsSignal::Sigbreak(ctrl_break)
+    Self::Sigbreak(ctrl_break)
+  }
+}
+
+#[cfg(windows)]
+impl From<CtrlClose> for WindowsSignal {
+  fn from(ctrl_close: CtrlClose) -> Self {
+    Self::Sighup(ctrl_close)
   }
 }
 
@@ -134,8 +140,9 @@ impl From<CtrlBreak> for WindowsSignal {
 impl WindowsSignal {
   pub async fn recv(&mut self) -> Option<()> {
     match self {
-      WindowsSignal::Sigint(ctrl_c) => ctrl_c.recv().await,
-      WindowsSignal::Sigbreak(ctrl_break) => ctrl_break.recv().await,
+      Self::Sigint(ctrl_c) => ctrl_c.recv().await,
+      Self::Sigbreak(ctrl_break) => ctrl_break.recv().await,
+      Self::Sighup(ctrl_close) => ctrl_close.recv().await,
     }
   }
 }
@@ -201,18 +208,20 @@ fn op_signal_bind(
   state: &mut OpState,
   #[string] sig: &str,
 ) -> Result<ResourceId, SignalError> {
-  let signo = crate::signal::signal_str_to_int(sig)?;
+  use tokio::signal::windows::ctrl_break;
+  use tokio::signal::windows::ctrl_c;
+  use tokio::signal::windows::ctrl_close;
+
   let resource = SignalStreamResource {
-    signal: AsyncRefCell::new(match signo {
-      // SIGINT
-      2 => ctrl_c()
-        .expect("There was an issue creating ctrl+c event stream.")
-        .into(),
-      // SIGBREAK
-      21 => ctrl_break()
-        .expect("There was an issue creating ctrl+break event stream.")
-        .into(),
-      _ => unimplemented!(),
+    signal: AsyncRefCell::new(match sig {
+      "SIGHUP" => ctrl_close()?.into(),
+      "SIGINT" => ctrl_c()?.into(),
+      "SIGBREAK" => ctrl_break()?.into(),
+      _ => {
+        return Err(
+          crate::signal::InvalidSignalStrError(sig.to_string()).into(),
+        );
+      }
     }),
     cancel: Default::default(),
   };
