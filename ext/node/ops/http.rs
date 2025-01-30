@@ -252,9 +252,9 @@ where
   let path = url_parsed.path();
   let query = url_parsed.query();
   if let Some(request_path) = request_path {
-    *request.uri_mut() = request_path.parse().map_err(|_| {
-      ConnError::InvalidPath(request_path.clone())
-    })?;
+    *request.uri_mut() = request_path
+      .parse()
+      .map_err(|_| ConnError::InvalidPath(request_path.clone()))?;
   } else {
     *request.uri_mut() = query
       .map(|q| format!("{}?{}", path, q))
