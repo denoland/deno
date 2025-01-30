@@ -539,9 +539,6 @@ pub enum LoadError {
   #[class(inherit)]
   #[error("{0}")]
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
-  #[class(inherit)]
-  #[error("{0}")]
-  ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
 }
 
 #[derive(Debug, Serialize)]
@@ -726,9 +723,6 @@ pub enum ResolveError {
   #[class(inherit)]
   #[error("{0}")]
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
-  #[class(inherit)]
-  #[error("{0}")]
-  ResolveUrlOrPath(#[from] deno_path_util::ResolveUrlOrPathError),
 }
 
 #[derive(Debug, Deserialize, Serialize)]
