@@ -8990,7 +8990,7 @@ checksum = "6a3806ea43df5817f0d90618c842d28db5946bc18a5db0659b2275c2be48d472"
 dependencies = [
  "bytes",
  "http 1.1.0",
- "thiserror 1.0.64",
+ "thiserror 1.0.69",
  "url",
 ]
 
