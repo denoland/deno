@@ -6,6 +6,47 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.8 / 2025.01.30
+
+- feat(unstable): support https otlp endpoints (#27743)
+- fix(check): better handling of TypeScript in npm packages for type checking
+  (#27853)
+- fix(check): compiler options from workspace members (#27785)
+- fix(core): Fix `create_stack_trace` from empty trace (#27873)
+- fix(core): handle dyn imports exceeding call stack size (#27825)
+- fix(ext/crypto): export private x25519 JWK key (#27828)
+- fix(ext/crypto): fix jwk key_ops validation (#27827)
+- fix(ext/fetch): update h2 to fix sending a PROTOCOL_ERROR instead of
+  REFUSED_STREAM when receiving oversized headers (#27531)
+- fix(ext/node): clear tz cache when setting process.env.TZ (#27826)
+- fix(ext/node): do not apply socket-init-workaround to ipc socket (#27779)
+- fix(ext/node): fix async variant of brotliDecompress (#27815)
+- fix(ext/node): fix formatting of debug logs (#27772)
+- fix(ext/node): fix panic when invalid AES GCM key size (#27818)
+- fix(ext/node): implement X509Certificate#checkHost (#27821)
+- fix(ext/node): implement `aes-128-ctr`, `aes-192-ctr`, and `aes-256-ctr`
+  (#27630)
+- fix(ext/node): implement `crypto.hash` (#27858)
+- fix(ext/node): npm:mqtt compatibility (#27792)
+- fix(ext/node): reference error in zlib.crc32 (#27777)
+- fix(ext/node): scrypt panic when `log_n` > 64 (#27816)
+- fix(init): correct dev task for --lib (#27860)
+- fix(install/global): warn about not including auto-discovered config file
+  (#27745)
+- fix(lsp): ignore errors on ambient module imports (#27855)
+- fix(lsp): silence debug error for 'move to a new file' action (#27780)
+- fix(node): align type stripping in node_modules error message with Node
+  (#27809)
+- fix(npmrc): merge `.npmrc` in user's homedir and project (#27119)
+- fix(process/windows): correct command resolution when PATH env var not
+  uppercase (#27846)
+- fix(publish): unfurl sloppy imports in d.ts files and type imports (#27793)
+- fix(types): `Deno.readDirSync`'s type returns an `IteratorObject` (#27805)
+- fix: do not log cache creation failure on readonly file system (#27794)
+- perf(lsp): cache completion item resolution during request (#27831)
+- perf(node_resolver): reduce url to/from path conversions (#27839)
+- perf: full LTO in sysroot (#27771)
+
 ### 2.1.7 / 2025.01.21
 
 - fix(deps): update yanked crates (#27512)
