@@ -77,13 +77,8 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
-/** @typedef {import("./40_lint_types.d.ts").IFixer} IFixer */
-/** @typedef {import("./40_lint_types.d.ts").RuleContext} RuleContext */
-/** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
-/** @typedef {import("./40_lint_types.d.ts").INode} INode */
-/** @typedef {import("./40_lint_types.d.ts").IReportData} IReportData */
 
 /** @type {LintState} */
 const state = {
@@ -108,10 +103,10 @@ class CancellationToken {
   }
 }
 
-/** @implements {IFixer} */
+/** @implements {Deno.lint.Fixer} */
 class Fixer {
   /**
-   * @param {INode} node
+   * @param {Deno.lint.Node} node
    * @param {string} text
    */
   insertTextAfter(node, text) {
@@ -122,7 +117,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode["range"]} range
+   * @param {Deno.lint.Node["range"]} range
    * @param {string} text
    */
   insertTextAfterRange(range, text) {
@@ -133,7 +128,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode} node
+   * @param {Deno.lint.Node} node
    * @param {string} text
    */
   insertTextBefore(node, text) {
@@ -144,7 +139,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode["range"]} range
+   * @param {Deno.lint.Node["range"]} range
    * @param {string} text
    */
   insertTextBeforeRange(range, text) {
@@ -155,7 +150,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode} node
+   * @param {Deno.lint.Node} node
    */
   remove(node) {
     return {
@@ -165,7 +160,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode["range"]} range
+   * @param {Deno.lint.Node["range"]} range
    */
   removeRange(range) {
     return {
@@ -175,7 +170,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode} node
+   * @param {Deno.lint.Node} node
    * @param {string} text
    */
   replaceText(node, text) {
@@ -186,7 +181,7 @@ class Fixer {
   }
 
   /**
-   * @param {INode["range"]} range
+   * @param {Deno.lint.Node["range"]} range
    * @param {string} text
    */
   replaceTextRange(range, text) {
@@ -200,7 +195,7 @@ class Fixer {
 /**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
- * @implements {RuleContext}
+ * @implements {Deno.lint.RuleContext}
  */
 export class Context {
   id;
@@ -226,7 +221,7 @@ export class Context {
   }
 
   /**
-   * @param {IReportData} data
+   * @param {Deno.lint.ReportData} data
    */
   report(data) {
     const range = data.node ? data.node.range : data.range ? data.range : null;
@@ -260,7 +255,7 @@ export class Context {
 }
 
 /**
- * @param {LintPlugin[]} plugins
+ * @param {Deno.lint.Plugin[]} plugins
  * @param {string[]} exclude
  */
 export function installPlugins(plugins, exclude) {
@@ -274,7 +269,7 @@ export function installPlugins(plugins, exclude) {
 }
 
 /**
- * @param {LintPlugin} plugin
+ * @param {Deno.lint.Plugin} plugin
  */
 function installPlugin(plugin) {
   if (typeof plugin !== "object") {
@@ -459,7 +454,7 @@ function readType(buf, idx) {
 /**
  * @param {AstContext} ctx
  * @param {number} idx
- * @returns {INode["range"]}
+ * @returns {Deno.lint.Node["range"]}
  */
 function readSpan(ctx, idx) {
   let offset = ctx.spansOffset + (idx * SPAN_SIZE);

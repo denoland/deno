@@ -1,17 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-export interface INode {
-  type: string;
-  range: [number, number];
-  [key: string]: unknown;
-}
-
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
   strTableOffset: number;
   rootOffset: number;
-  nodes: Map<number, INode>;
+  nodes: Map<number, Deno.lint.Node>;
   spansOffset: number;
   propsOffset: number;
   strByType: number[];
@@ -21,52 +15,8 @@ export interface AstContext {
   matcher: MatchContext;
 }
 
-export type TRange = [number, number];
-
-export interface IFixData {
-  range: TRange;
-  text?: string;
-}
-
-export interface IFixer {
-  insertTextAfter(node: INode, text: string): IFixData;
-  insertTextAfterRange(range: TRange, text: string): IFixData;
-  insertTextBefore(node: INode, text: string): IFixData;
-  insertTextBeforeRange(range: TRange, text: string): IFixData;
-  remove(node: INode): IFixData;
-  removeRange(range: TRange): IFixData;
-  replaceText(node: INode, text: string): IFixData;
-  replaceTextRange(range: TRange, text: string): IFixData;
-}
-
-export interface IReportData {
-  node?: INode;
-  range?: TRange;
-  message: string;
-  hint?: string;
-  fix?(fixer: IFixer): IFixData;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface RuleContext {
-  id: string;
-  report(data: IReportData): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintRule {
-  create(ctx: RuleContext): Record<string, (node: unknown) => void>;
-  destroy?(ctx: RuleContext): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintPlugin {
-  name: string;
-  rules: Record<string, LintRule>;
-}
-
 export interface LintState {
-  plugins: LintPlugin[];
+  plugins: Deno.lint.Plugin[];
   installedPlugins: Set<string>;
   /** format: `<plugin>/<rule>` */
   ignoredRules: Set<string>;
