@@ -1,5 +1,8 @@
-use digest::generic_array::ArrayLength;
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::marker::PhantomData;
+
+use digest::generic_array::ArrayLength;
 
 pub trait RingDigestAlgo {
   fn algorithm() -> &'static ring::digest::Algorithm;
