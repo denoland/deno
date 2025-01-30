@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-export interface NodeFacade {
+export interface INode {
   type: string;
   range: [number, number];
   [key: string]: unknown;
@@ -11,7 +11,7 @@ export interface AstContext {
   strTable: Map<number, string>;
   strTableOffset: number;
   rootOffset: number;
-  nodes: Map<number, NodeFacade>;
+  nodes: Map<number, INode>;
   spansOffset: number;
   propsOffset: number;
   strByType: number[];
@@ -21,40 +21,36 @@ export interface AstContext {
   matcher: MatchContext;
 }
 
-export interface Node {
-  range: Range;
-}
+export type TRange = [number, number];
 
-export type Range = [number, number];
-
-export interface FixData {
-  range: Range;
+export interface IFixData {
+  range: TRange;
   text?: string;
 }
 
-export interface Fixer {
-  insertTextAfter(node: Node, text: string): FixData;
-  insertTextAfterRange(range: Range, text: string): FixData;
-  insertTextBefore(node: Node, text: string): FixData;
-  insertTextBeforeRange(range: Range, text: string): FixData;
-  remove(node: Node): FixData;
-  removeRange(range: Range): FixData;
-  replaceText(node: Node, text: string): FixData;
-  replaceTextRange(range: Range, text: string): FixData;
+export interface IFixer {
+  insertTextAfter(node: INode, text: string): IFixData;
+  insertTextAfterRange(range: TRange, text: string): IFixData;
+  insertTextBefore(node: INode, text: string): IFixData;
+  insertTextBeforeRange(range: TRange, text: string): IFixData;
+  remove(node: INode): IFixData;
+  removeRange(range: TRange): IFixData;
+  replaceText(node: INode, text: string): IFixData;
+  replaceTextRange(range: TRange, text: string): IFixData;
 }
 
-export interface ReportData {
-  node?: Node;
-  range?: Range;
+export interface IReportData {
+  node?: INode;
+  range?: TRange;
   message: string;
   hint?: string;
-  fix?(fixer: Fixer): FixData;
+  fix?(fixer: IFixer): IFixData;
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
 export interface RuleContext {
   id: string;
-  report(data: ReportData): void;
+  report(data: IReportData): void;
 }
 
 // TODO(@marvinhagemeister) Remove once we land "official" types

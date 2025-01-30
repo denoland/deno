@@ -77,12 +77,13 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
+/** @typedef {import("./40_lint_types.d.ts").IFixer} IFixer */
 /** @typedef {import("./40_lint_types.d.ts").RuleContext} RuleContext */
-/** @typedef {import("./40_lint_types.d.ts").NodeFacade} NodeFacade */
 /** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
-/** @typedef {import("./40_lint_types.d.ts").Node} Node */
+/** @typedef {import("./40_lint_types.d.ts").INode} INode */
+/** @typedef {import("./40_lint_types.d.ts").IReportData} IReportData */
 
 /** @type {LintState} */
 const state = {
@@ -107,10 +108,10 @@ class CancellationToken {
   }
 }
 
-/** @implements {Fixer} */
-class FixerHelper {
+/** @implements {IFixer} */
+class Fixer {
   /**
-   * @param {Node} node
+   * @param {INode} node
    * @param {string} text
    */
   insertTextAfter(node, text) {
@@ -121,7 +122,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node["range"]} range
+   * @param {INode["range"]} range
    * @param {string} text
    */
   insertTextAfterRange(range, text) {
@@ -132,7 +133,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node} node
+   * @param {INode} node
    * @param {string} text
    */
   insertTextBefore(node, text) {
@@ -143,7 +144,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node["range"]} range
+   * @param {INode["range"]} range
    * @param {string} text
    */
   insertTextBeforeRange(range, text) {
@@ -154,7 +155,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node} node
+   * @param {INode} node
    */
   remove(node) {
     return {
@@ -164,7 +165,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node["range"]} range
+   * @param {INode["range"]} range
    */
   removeRange(range) {
     return {
@@ -174,7 +175,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node} node
+   * @param {INode} node
    * @param {string} text
    */
   replaceText(node, text) {
@@ -185,7 +186,7 @@ class FixerHelper {
   }
 
   /**
-   * @param {Node["range"]} range
+   * @param {INode["range"]} range
    * @param {string} text
    */
   replaceTextRange(range, text) {
@@ -225,7 +226,7 @@ export class Context {
   }
 
   /**
-   * @param {ReportData} data
+   * @param {IReportData} data
    */
   report(data) {
     const range = data.node ? data.node.range : data.range ? data.range : null;
@@ -241,7 +242,7 @@ export class Context {
     let fix;
 
     if (typeof data.fix === "function") {
-      const fixer = new FixerHelper();
+      const fixer = new Fixer();
       fix = data.fix(fixer);
       fix.range[0]--;
       fix.range[1]--;
@@ -458,7 +459,7 @@ function readType(buf, idx) {
 /**
  * @param {AstContext} ctx
  * @param {number} idx
- * @returns {Node["range"]}
+ * @returns {INode["range"]}
  */
 function readSpan(ctx, idx) {
   let offset = ctx.spansOffset + (idx * SPAN_SIZE);
