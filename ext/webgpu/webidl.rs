@@ -346,17 +346,14 @@ impl<'a> WebIdlConverter<'a> for GPUPipelineLayoutOrGPUAutoLayoutMode {
 #[derive(WebIDL, Clone, Hash, Eq, PartialEq)]
 #[webidl(enum)]
 pub enum GPUFeatureName {
-  // api
   #[webidl(rename = "depth-clip-control")]
   DepthClipControl,
   #[webidl(rename = "timestamp-query")]
   TimestampQuery,
   #[webidl(rename = "indirect-first-instance")]
   IndirectFirstInstance,
-  // shader
   #[webidl(rename = "shader-f16")]
   ShaderF16,
-  // texture formats
   #[webidl(rename = "depth32float-stencil8")]
   Depth32floatStencil8,
   #[webidl(rename = "texture-compression-bc")]
@@ -375,17 +372,16 @@ pub enum GPUFeatureName {
   Float32Filterable,
   #[webidl(rename = "dual-source-blending")]
   DualSourceBlending,
+  #[webidl(rename = "subgroups")]
+  Subgroups,
 
   // extended from spec
-
-  // texture formats
   #[webidl(rename = "texture-format-16-bit-norm")]
   TextureFormat16BitNorm,
   #[webidl(rename = "texture-compression-astc-hdr")]
   TextureCompressionAstcHdr,
   #[webidl(rename = "texture-adapter-specific-format-features")]
   TextureAdapterSpecificFormatFeatures,
-  // api
   #[webidl(rename = "pipeline-statistics-query")]
   PipelineStatisticsQuery,
   #[webidl(rename = "timestamp-query-inside-passes")]
@@ -434,7 +430,6 @@ pub enum GPUFeatureName {
   Multiview,
   #[webidl(rename = "vertex-attribute-64-bit")]
   VertexAttribute64Bit,
-  // shader
   #[webidl(rename = "shader-f64")]
   ShaderF64,
   #[webidl(rename = "shader-i16")]
@@ -467,6 +462,7 @@ pub fn feature_names_to_features(
       GPUFeatureName::Bgra8unormStorage => Features::BGRA8UNORM_STORAGE,
       GPUFeatureName::Float32Filterable => Features::FLOAT32_FILTERABLE,
       GPUFeatureName::DualSourceBlending => Features::DUAL_SOURCE_BLENDING,
+      GPUFeatureName::Subgroups => Features::SUBGROUP,
       GPUFeatureName::TextureFormat16BitNorm => Features::TEXTURE_FORMAT_16BIT_NORM,
       GPUFeatureName::TextureCompressionAstcHdr => Features::TEXTURE_COMPRESSION_ASTC_HDR,
       GPUFeatureName::TextureAdapterSpecificFormatFeatures => Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
@@ -550,6 +546,9 @@ pub fn features_to_feature_names(
   }
   if features.contains(wgpu_types::Features::DUAL_SOURCE_BLENDING) {
     return_features.insert(DualSourceBlending);
+  }
+  if features.contains(wgpu_types::Features::SUBGROUP) {
+    return_features.insert(Subgroups);
   }
 
   // extended from spec

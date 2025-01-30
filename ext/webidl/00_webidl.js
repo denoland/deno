@@ -1315,7 +1315,7 @@ function configureProperties(obj) {
 const setlikeInner = SymbolFor("setlike_set");
 
 // Ref: https://webidl.spec.whatwg.org/#es-setlike
-function setlike(obj, objPrototype, readonly) {
+function setlike(objPrototype, readonly) {
   ObjectDefineProperties(objPrototype, {
     size: {
       __proto__: null,

@@ -226,7 +226,7 @@ ObjectDefineProperty(GPUSupportedFeatures, customInspect, {
   },
 });
 const GPUSupportedFeaturesPrototype = GPUSupportedFeatures.prototype;
-webidl.setlike(GPUSupportedFeatures, GPUSupportedFeaturesPrototype, true);
+webidl.setlike(GPUSupportedFeaturesPrototype, true);
 
 ObjectDefineProperty(GPUDeviceLostInfo, customInspect, {
   __proto__: null,

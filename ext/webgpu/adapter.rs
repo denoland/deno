@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
-use std::ops::DerefMut;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -43,7 +42,7 @@ struct GPUDeviceDescriptor {
   required_features: Vec<GPUFeatureName>,
   #[webidl(default = Default::default())]
   #[options(enforce_range = true)]
-  required_limits: indexmap::IndexMap<String, u64>,
+  required_limits: indexmap::IndexMap<String, Option<u64>>,
 }
 
 pub struct GPUAdapter {
@@ -70,7 +69,13 @@ impl GPUAdapter {
   fn info(&self, scope: &mut v8::HandleScope) -> v8::Global<v8::Object> {
     self.info.get(scope, |_| {
       let info = self.instance.adapter_get_info(self.id);
-      GPUAdapterInfo(info)
+      let limits = self.instance.adapter_limits(self.id);
+
+      GPUAdapterInfo {
+        info,
+        subgroup_min_size: limits.min_subgroup_size,
+        subgroup_max_size: limits.max_subgroup_size,
+      }
     })
   }
 
@@ -102,6 +107,7 @@ impl GPUAdapter {
   fn request_device(
     &self,
     state: &mut OpState,
+    isolate_ptr: *mut v8::Isolate,
     scope: &mut v8::HandleScope,
     #[webidl] descriptor: GPUDeviceDescriptor,
   ) -> Result<v8::Global<v8::Value>, CreateDeviceError> {
@@ -179,7 +185,6 @@ impl GPUAdapter {
 
     let context = scope.get_current_context();
     let context = v8::Global::new(scope, context);
-    let isolate_ptr = scope.deref_mut().deref_mut() as *mut v8::Isolate;
 
     let task_device = device.clone();
     deno_unsync::spawn(async move {
@@ -192,7 +197,7 @@ impl GPUAdapter {
         // SAFETY: eh, it's safe
         let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
         let scope =
-          &mut v8::HandleScope::with_context(isolate, context.clone());
+          &mut v8::HandleScope::with_context(isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =
@@ -417,7 +422,11 @@ impl GPUSupportedFeatures {
   }
 }
 
-pub struct GPUAdapterInfo(pub wgpu_types::AdapterInfo);
+pub struct GPUAdapterInfo {
+  pub info: wgpu_types::AdapterInfo,
+  pub subgroup_min_size: u32,
+  pub subgroup_max_size: u32,
+}
 
 impl GarbageCollected for GPUAdapterInfo {}
 
@@ -426,7 +435,7 @@ impl GPUAdapterInfo {
   #[getter]
   #[string]
   fn vendor(&self) -> String {
-    self.0.vendor.to_string()
+    self.info.vendor.to_string()
   }
 
   #[getter]
@@ -438,12 +447,22 @@ impl GPUAdapterInfo {
   #[getter]
   #[string]
   fn device(&self) -> String {
-    self.0.device.to_string()
+    self.info.device.to_string()
   }
 
   #[getter]
   #[string]
   fn description(&self) -> String {
-    self.0.name.clone()
+    self.info.name.clone()
+  }
+
+  #[getter]
+  fn subgroup_min_size(&self) -> u32 {
+    self.subgroup_min_size
+  }
+
+  #[getter]
+  fn subgroup_max_size(&self) -> u32 {
+    self.subgroup_max_size
   }
 }

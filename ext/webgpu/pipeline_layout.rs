@@ -2,7 +2,6 @@
 
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
-use deno_core::webidl::Nullable;
 use deno_core::webidl::WebIdlInterfaceConverter;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
@@ -48,5 +47,5 @@ pub(crate) struct GPUPipelineLayoutDescriptor {
   pub label: String,
 
   pub bind_group_layouts:
-    Vec<Nullable<Ptr<super::bind_group_layout::GPUBindGroupLayout>>>,
+    Vec<Ptr<super::bind_group_layout::GPUBindGroupLayout>>,
 }
