@@ -236,6 +236,7 @@ impl GPURenderPassEncoder {
       let ptr = ab.data().unwrap();
       let ab_len = ab.byte_length() / 4;
 
+      // SAFETY: created from an array buffer, slice is dropped at end of function call
       let data =
         unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
 
@@ -315,7 +316,7 @@ impl GPURenderPassEncoder {
   fn set_vertex_buffer(
     &self,
     #[webidl(options(enforce_range = true))] slot: u32,
-    #[webidl] buffer: Ptr<GPUBuffer>, // TODO: support nullable buffer
+    #[webidl] buffer: Ptr<GPUBuffer>, // TODO(wgpu): support nullable buffer
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) {
@@ -421,17 +422,17 @@ pub(crate) struct GPURenderPassDescriptor {
   pub depth_stencil_attachment: Option<GPURenderPassDepthStencilAttachment>,
   pub occlusion_query_set: Option<Ptr<crate::query_set::GPUQuerySet>>,
   pub timestamp_writes: Option<GPURenderPassTimestampWrites>,
-  #[webidl(default = 50000000)]
+  /*#[webidl(default = 50000000)]
   #[options(enforce_range = true)]
-  pub max_draw_count: u64,
+  pub max_draw_count: u64,*/
 }
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 pub(crate) struct GPURenderPassColorAttachment {
   pub view: Ptr<GPUTextureView>,
-  #[options(enforce_range = true)]
-  pub depth_slice: Option<u32>,
+  /*#[options(enforce_range = true)]
+  pub depth_slice: Option<u32>,*/
   pub resolve_target: Option<Ptr<GPUTextureView>>,
   pub clear_value: Option<GPUColor>,
   pub load_op: GPULoadOp,

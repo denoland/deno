@@ -135,7 +135,8 @@ impl GPUAdapter {
       &wgpu_descriptor,
       std::env::var("DENO_WEBGPU_TRACE")
         .ok()
-        .as_deref(),
+        .as_ref()
+        .map(std::path::Path::new),
       None,
       None,
     )?;

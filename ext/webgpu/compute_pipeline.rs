@@ -53,7 +53,7 @@ impl GPUComputePipeline {
 
     self.error_handler.push_error(err);
 
-    // TODO: wgpu needs to support retrieving the label
+    // TODO(wgpu): needs to support retrieving the label
     GPUBindGroupLayout {
       instance: self.instance.clone(),
       id,

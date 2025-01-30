@@ -59,7 +59,7 @@ pub struct GPUBuffer {
   pub map_state: RefCell<&'static str>,
   pub map_mode: RefCell<Option<MapMode>>,
 
-  pub mapped_js_buffers: RefCell<Vec<(v8::Global<v8::ArrayBuffer>, *mut u8, usize)>>,
+  pub mapped_js_buffers: RefCell<Vec<v8::Global<v8::ArrayBuffer>>>,
 }
 
 impl Drop for GPUBuffer {
@@ -191,7 +191,7 @@ impl GPUBuffer {
     scope: &mut v8::HandleScope<'s>,
     #[webidl(default = 0)] offset: u64,
     #[webidl] size: Option<u64>,
-  ) -> Result<v8::Local<'s, v8::Uint8Array>, BufferError> {
+  ) -> Result<v8::Local<'s, v8::ArrayBuffer>, BufferError> {
     let (slice_pointer, range_size) = self
       .instance
       .buffer_get_mapped_range(self.id, offset, size)
@@ -232,21 +232,15 @@ impl GPUBuffer {
       self
         .mapped_js_buffers
         .borrow_mut()
-        .push((v8::Global::new(scope, ab),slice_pointer.as_ptr(), range_size as usize ));
+        .push(v8::Global::new(scope, ab));
     }
 
-    Ok(v8::Uint8Array::new(scope, ab, 0, range_size as usize).unwrap())
+    Ok(ab)
   }
 
   #[nofast]
   fn unmap(&self, scope: &mut v8::HandleScope) -> Result<(), BufferError> {
-    for (ab, ptr, size) in self.mapped_js_buffers.replace(vec![]) {
-      let slice = unsafe {
-        std::slice::from_raw_parts(ptr, size)
-      };
-      dbg!(slice);
-
-
+    for ab in self.mapped_js_buffers.replace(vec![]) {
       let ab = ab.open(scope);
       ab.detach(None);
     }

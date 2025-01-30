@@ -36,7 +36,6 @@ import {
   op_create_gpu,
 } from "ext:core/ops";
 const {
-  Error,
   ObjectDefineProperty,
   ObjectPrototypeIsPrototypeOf,
   ObjectSetPrototypeOf,
@@ -57,9 +56,8 @@ import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 const customInspect = SymbolFor("Deno.privateCustomInspect");
 const _message = Symbol("[[message]]");
 const illegalConstructorKey = Symbol("illegalConstructorKey");
-class GPUError extends Error {
+class GPUError {
   constructor(key = null) {
-    super();
     if (key !== illegalConstructorKey) {
       webidl.illegalConstructor();
     }
@@ -70,11 +68,23 @@ class GPUError extends Error {
     webidl.assertBranded(this, GPUErrorPrototype);
     return this[_message];
   }
+
+  [customInspect](inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(GPUErrorPrototype, this),
+        keys: [
+          "message",
+        ],
+      }),
+      inspectOptions,
+    );
+  }
 }
 const GPUErrorPrototype = GPUError.prototype;
 
 class GPUValidationError extends GPUError {
-  name = "GPUValidationError";
   /** @param {string} message */
   constructor(message) {
     const prefix = "Failed to construct 'GPUValidationError'";
@@ -88,7 +98,6 @@ class GPUValidationError extends GPUError {
 core.registerErrorClass("GPUValidationError", GPUValidationError);
 
 class GPUOutOfMemoryError extends GPUError {
-  name = "GPUOutOfMemoryError";
   constructor(message) {
     const prefix = "Failed to construct 'GPUOutOfMemoryError'";
     webidl.requiredArguments(arguments.length, 1, prefix);
@@ -101,7 +110,6 @@ class GPUOutOfMemoryError extends GPUError {
 core.registerErrorClass("GPUOutOfMemoryError", GPUOutOfMemoryError);
 
 class GPUInternalError extends GPUError {
-  name = "GPUInternalError";
   constructor() {
     super(illegalConstructorKey);
     this[webidl.brand] = webidl.brand;

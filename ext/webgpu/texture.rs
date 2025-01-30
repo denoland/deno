@@ -247,7 +247,7 @@ impl WebIdlInterfaceConverter for GPUTextureView {
 }
 
 impl GarbageCollected for GPUTextureView {}
-// TODO: weakref in texture for view
+// TODO(@crowlKats): weakref in texture for view
 
 #[op2]
 impl GPUTextureView {

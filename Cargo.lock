@@ -3481,12 +3481,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "foldhash"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a0d2fde1f7b3d48b8395d5f2de76c18a528bd6a9cdde438df747bfcba3e05d6f"
-
-[[package]]
 name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3925,16 +3919,6 @@ checksum = "e5274423e17b7c9fc20b6e7e208532f9b19825d82dfd615708b70edd83df41f1"
 dependencies = [
  "ahash",
  "allocator-api2",
-]
-
-[[package]]
-name = "hashbrown"
-version = "0.15.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf151400ff0baff5465007dd2f3e717f3fe502074ca563069ce3a6629d07b289"
-dependencies = [
- "foldhash",
- "serde",
 ]
 
 [[package]]
@@ -5186,13 +5170,14 @@ checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
 [[package]]
 name = "naga"
 version = "24.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e380993072e52eef724eddfcde0ed013b0c023c3f0417336ed041aa9f076994e"
 dependencies = [
  "arrayvec",
  "bit-set 0.8.0",
  "bitflags 2.8.0",
  "cfg_aliases",
  "codespan-reporting",
- "hashbrown 0.15.2",
  "hexf-parse",
  "indexmap 2.3.0",
  "log",
@@ -8972,13 +8957,14 @@ dependencies = [
 [[package]]
 name = "wgpu-core"
 version = "24.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82a39b8842dc9ffcbe34346e3ab6d496b32a47f6497e119d762c97fcaae3cb37"
 dependencies = [
  "arrayvec",
  "bit-vec 0.8.0",
  "bitflags 2.8.0",
  "cfg_aliases",
  "document-features",
- "hashbrown 0.15.2",
  "indexmap 2.3.0",
  "log",
  "naga",
@@ -8998,6 +8984,8 @@ dependencies = [
 [[package]]
 name = "wgpu-hal"
 version = "24.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a782e5056b060b0b4010881d1decddd059e44f2ecd01e2db2971b48ad3627e5"
 dependencies = [
  "android_system_properties",
  "arrayvec",
@@ -9013,7 +9001,6 @@ dependencies = [
  "gpu-alloc",
  "gpu-allocator",
  "gpu-descriptor",
- "hashbrown 0.15.2",
  "js-sys",
  "khronos-egl",
  "libc",
@@ -9042,6 +9029,8 @@ dependencies = [
 [[package]]
 name = "wgpu-types"
 version = "24.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50ac044c0e76c03a0378e7786ac505d010a873665e2d51383dcff8dd227dc69c"
 dependencies = [
  "bitflags 2.8.0",
  "js-sys",

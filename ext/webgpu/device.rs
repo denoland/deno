@@ -67,7 +67,6 @@ impl WebIdlInterfaceConverter for GPUDevice {
 impl GarbageCollected for GPUDevice {}
 
 // EventTarget is extended in JS
-// TODO: setEventTargetData on instance
 #[op2]
 impl GPUDevice {
   #[getter]
@@ -146,7 +145,7 @@ impl GPUDevice {
       self
         .instance
         .device_create_buffer(self.id, &wgpu_descriptor, None);
-    
+
     self.error_handler.push_error(err);
 
     Ok(GPUBuffer {
@@ -591,7 +590,7 @@ impl GPUDevice {
     }
   }
 
-  // TODO: support returning same promise
+  // TODO(@crowlKats): support returning same promise
   #[async_method]
   #[getter]
   #[cppgc]
@@ -640,14 +639,17 @@ impl GPUDevice {
 
     Ok(v8::Global::new(scope, val))
   }
-  
+
   #[fast]
   fn start_capture(&self) {
     self.instance.device_start_capture(self.id);
   }
   #[fast]
   fn stop_capture(&self) {
-    self.instance.device_poll(self.id, wgpu_types::Maintain::wait()).unwrap();
+    self
+      .instance
+      .device_poll(self.id, wgpu_types::Maintain::wait())
+      .unwrap();
     self.instance.device_stop_capture(self.id);
   }
 }
@@ -768,7 +770,7 @@ impl GPUDevice {
         depth_compare: depth_stencil
           .depth_compare
           .map(Into::into)
-          .unwrap_or(wgpu_types::CompareFunction::Never), // TODO: wgpu should be optional here
+          .unwrap_or(wgpu_types::CompareFunction::Never), // TODO(wgpu): should be optional here
         stencil: wgpu_types::StencilState {
           front,
           back,

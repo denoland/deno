@@ -112,6 +112,7 @@ pub enum GPUError {
   Validation(String),
   #[class("GPUOutOfMemoryError")]
   OutOfMemory,
+  #[allow(dead_code)]
   #[class("GPUInternalError")]
   Internal,
 }

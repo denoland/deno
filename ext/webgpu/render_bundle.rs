@@ -163,11 +163,13 @@ impl GPURenderBundleEncoder {
       let ptr = ab.data().unwrap();
       let ab_len = ab.byte_length() / 4;
 
+      // SAFETY: created from an array buffer, slice is dropped at end of function call
       let data =
         unsafe { std::slice::from_raw_parts(ptr.as_ptr() as _, ab_len) };
 
       let offsets = &data[start..(start + len)];
 
+      // SAFETY: wgpu FFI call
       unsafe {
         wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
           encoder,
@@ -190,6 +192,7 @@ impl GPURenderBundleEncoder {
       )?
       .unwrap_or_default();
 
+      // SAFETY: wgpu FFI call
       unsafe {
         wgpu_core::command::bundle_ffi::wgpu_render_bundle_set_bind_group(
           encoder,
@@ -246,7 +249,7 @@ impl GPURenderBundleEncoder {
   fn set_vertex_buffer(
     &self,
     #[webidl(options(enforce_range = true))] slot: u32,
-    #[webidl] buffer: Ptr<GPUBuffer>, // TODO: support nullable buffer
+    #[webidl] buffer: Ptr<GPUBuffer>, // TODO(wgpu): support nullable buffer
     #[webidl(default = 0, options(enforce_range = true))] offset: u64,
     #[webidl(options(enforce_range = true))] size: Option<u64>,
   ) -> Result<(), JsErrorBox> {

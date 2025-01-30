@@ -56,7 +56,7 @@ impl GPURenderPipeline {
 
     self.error_handler.push_error(err);
 
-    // TODO: wgpu needs to add a way to retrieve the label
+    // TODO(wgpu): needs to add a way to retrieve the label
     GPUBindGroupLayout {
       instance: self.instance.clone(),
       id,
@@ -73,9 +73,9 @@ pub(crate) struct GPURenderPipelineDescriptor {
 
   pub layout: GPUPipelineLayoutOrGPUAutoLayoutMode,
   pub vertex: GPUVertexState,
-  pub primitive: GPUPrimitiveState, // TODO: default {}
+  pub primitive: GPUPrimitiveState,
   pub depth_stencil: Option<GPUDepthStencilState>,
-  pub multisample: GPUMultisampleState, // TODO: default {}
+  pub multisample: GPUMultisampleState,
   pub fragment: Option<GPUFragmentState>,
 }
 
@@ -98,8 +98,8 @@ pub(crate) struct GPUDepthStencilState {
   pub format: GPUTextureFormat,
   pub depth_write_enabled: Option<bool>,
   pub depth_compare: Option<GPUCompareFunction>,
-  pub stencil_front: GPUStencilFaceState, // TODO: default {}
-  pub stencil_back: GPUStencilFaceState,  // TODO: default {}
+  pub stencil_front: GPUStencilFaceState,
+  pub stencil_back: GPUStencilFaceState,
   #[webidl(default = 0xFFFFFFFF)]
   #[options(enforce_range = true)]
   pub stencil_read_mask: u32,

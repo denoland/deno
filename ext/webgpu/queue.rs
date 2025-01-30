@@ -53,7 +53,7 @@ impl GPUQueue {
       .into_iter()
       .enumerate()
       .map(|(i, cb)| {
-        if let Err(_) = cb.consumed.set(()) {
+        if cb.consumed.set(()).is_err() {
           Err(JsErrorBox::type_error(format!(
             "The command buffer at position {i} has already been submitted."
           )))
