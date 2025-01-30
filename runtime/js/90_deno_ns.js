@@ -4,6 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
+  op_runtime_cpu_usage,
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
@@ -59,7 +60,15 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => op_runtime_memory_usage(),
+  cpuUsage: () => {
+    const { 0: system, 1: user } = op_runtime_cpu_usage();
+    return { system, user };
+  },
+  memoryUsage: () => {
+    const { 0: rss, 1: heapTotal, 2: heapUsed, 3: external } =
+      op_runtime_memory_usage();
+    return { rss, heapTotal, heapUsed, external };
+  },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,
