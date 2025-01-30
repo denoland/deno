@@ -8,6 +8,47 @@ use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
 
+#[derive(Clone)]
+pub struct Sha256Digest {
+  context: ring::digest::Context,
+}
+impl Default for Sha256Digest {
+  fn default() -> Self {
+    Self {
+      context: ring::digest::Context::new(&ring::digest::SHA256),
+    }
+  }
+}
+impl digest::HashMarker for Sha256Digest {}
+impl digest::Reset for Sha256Digest {
+  fn reset(&mut self) {
+    self.context = ring::digest::Context::new(&ring::digest::SHA256);
+  }
+}
+impl digest::Update for Sha256Digest {
+  fn update(&mut self, data: &[u8]) {
+    self.context.update(data);
+  }
+}
+impl digest::OutputSizeUser for Sha256Digest {
+  type OutputSize = digest::typenum::U32;
+}
+impl digest::FixedOutput for Sha256Digest {
+  fn finalize_into(self, out: &mut digest::Output<Self>) {
+    let result = self.context.finish();
+    out.copy_from_slice(result.as_ref());
+  }
+}
+impl digest::FixedOutputReset for Sha256Digest {
+  fn finalize_into_reset(&mut self, out: &mut digest::Output<Self>) {
+    let context = std::mem::replace(
+      &mut self.context,
+      ring::digest::Context::new(&ring::digest::SHA256),
+    );
+    out.copy_from_slice(context.finish().as_ref());
+  }
+}
+
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
 }
@@ -200,6 +241,7 @@ impl Hash {
     match algorithm_name {
       "shake128" => return Ok(Shake128(Default::default(), output_length)),
       "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "sha256" => return Ok(Hash::FixedSize(Box::new(Sha256Digest::new()))),
       _ => {}
     }
 
