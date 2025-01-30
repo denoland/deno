@@ -4,35 +4,13 @@ import { assertEquals } from "./test_util.ts";
 import { assertSnapshot } from "@std/testing/snapshot";
 
 // TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintReportData {
-  // deno-lint-ignore no-explicit-any
-  node: any;
-  message: string;
-}
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintContext {
-  id: string;
-}
-// TODO(@marvinhagemeister) Remove once we land "official" types
 // deno-lint-ignore no-explicit-any
 type LintVisitor = Record<string, (node: any) => void>;
 
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintRule {
-  create(ctx: LintContext): LintVisitor;
-  destroy?(): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-interface LintPlugin {
-  name: string;
-  rules: Record<string, LintRule>;
-}
-
 function testPlugin(
   source: string,
-  rule: LintRule,
-): Deno.lint.LintDiagnostic[] {
+  rule: Deno.lint.Rule,
+): Deno.lint.Diagnostic[] {
   const plugin = {
     name: "test-plugin",
     rules: {

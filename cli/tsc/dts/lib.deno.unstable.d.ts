@@ -1423,8 +1423,12 @@ declare namespace Deno {
      * export default {
      *   name: "my-plugin",
      *   rules: {
-     *      TODO:...
-     *    }
+     *     "no-foo": {
+     *        create(ctx) {
+     *          // ...
+     *        }
+     *     }
+     *   }
      * } satisfies Deno.lint.Plugin
      * ```
      * @category Linter
