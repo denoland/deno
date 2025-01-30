@@ -851,6 +851,9 @@ impl<'a> ResolverFactory<'a> {
               Vec::new(),
               Vec::new(),
               PackageJsonDepResolution::Disabled,
+              Default::default(),
+              Default::default(),
+              self.sys.clone(),
             ))
           }),
         is_byonm: self.config_data.map(|d| d.byonm).unwrap_or(false),
