@@ -1407,6 +1407,10 @@ declare namespace Deno {
       report(data: ReportData): void;
     }
 
+    /**
+     * @category Linter
+     * @experimental
+     */
     export interface Rule {
       create(ctx: RuleContext): Record<string, (node: unknown) => void>;
       destroy?(ctx: RuleContext): void;
@@ -1436,7 +1440,7 @@ declare namespace Deno {
      * @experimental
      */
     export interface Fix {
-      range: [number, number];
+      range: Range;
       text?: string;
     }
 
@@ -1444,12 +1448,12 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    interface LintDiagnostic {
+    export interface Diagnostic {
       id: string;
       message: string;
       hint?: string;
-      range: [number, number];
-      fix?: LintFix;
+      range: Range;
+      fix?: Fix;
     }
 
     /**
@@ -1458,10 +1462,10 @@ declare namespace Deno {
      * @experimental
      */
     export function runPlugin(
-      plugin: LintPlugin,
+      plugin: Plugin,
       fileName: string,
       source: string,
-    ): LintDiagnostic[];
+    ): Diagnostic[];
   }
 
   export {}; // only export exports
