@@ -2605,7 +2605,7 @@ declare namespace Temporal {
    * `Temporal.PlainDateTime` by combining it with a `Temporal.PlainDate` using the
    * `toPlainDateTime()` method.
    *
-   * See https://tc39.es/proposal-temporal/docs/time.html for more details.
+   * See https://tc39.es/proposal-temporal/docs/plaintime.html for more details.
    *
    * @category Temporal
    * @experimental
