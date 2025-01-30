@@ -33,6 +33,7 @@ use deno_semver::Version;
 use deno_semver::VersionReq;
 
 use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
 pub enum SpecifierUnfurlerDiagnostic {
@@ -190,14 +191,14 @@ enum UnfurlSpecifierError {
 
 pub struct SpecifierUnfurler {
   sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-  workspace_resolver: Arc<WorkspaceResolver>,
+  workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
   bare_node_builtins: bool,
 }
 
 impl SpecifierUnfurler {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-    workspace_resolver: Arc<WorkspaceResolver>,
+    workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
     bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
@@ -252,9 +253,11 @@ impl SpecifierUnfurler {
     specifier: &str,
     resolution_kind: SloppyImportsResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
-    let resolved = if let Ok(resolved) =
-      self.workspace_resolver.resolve(specifier, referrer)
-    {
+    let resolved = if let Ok(resolved) = self.workspace_resolver.resolve(
+      specifier,
+      referrer,
+      resolution_kind.into(),
+    ) {
       match resolved {
         MappedResolution::Normal { specifier, .. }
         | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
@@ -758,6 +761,9 @@ mod tests {
       }],
       vec![Arc::new(package_json)],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
+      Default::default(),
+      Default::default(),
+      CliSys::default(),
     );
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
@@ -900,6 +906,7 @@ export type * from "./c.d.ts";
       cwd.join("package.json"),
       json!({ "workspaces": ["./publish", "./subtract", "./add"] }),
     );
+    let sys = CliSys::default();
     let workspace_resolver = WorkspaceResolver::new_raw(
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       None,
@@ -920,8 +927,10 @@ export type * from "./c.d.ts";
         Arc::new(pkg_json_publishing),
       ],
       deno_config::workspace::PackageJsonDepResolution::Enabled,
+      Default::default(),
+      Default::default(),
+      sys.clone(),
     );
-    let sys = CliSys::default();
     let unfurler = SpecifierUnfurler::new(
       Some(Arc::new(CliSloppyImportsResolver::new(
         SloppyImportsCachedFs::new(sys),

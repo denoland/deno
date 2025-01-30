@@ -232,6 +232,7 @@
     "ext:deno_web/14_compression.js": "../ext/web/14_compression.js",
     "ext:deno_web/15_performance.js": "../ext/web/15_performance.js",
     "ext:deno_web/16_image_data.js": "../ext/web/16_image_data.js",
+    "ext:deno_web/webtransport.js": "../ext/web/webtransport.js",
     "ext:deno_webidl/00_webidl.js": "../ext/webidl/00_webidl.js",
     "ext:deno_websocket/01_websocket.js": "../ext/websocket/01_websocket.js",
     "ext:deno_websocket/02_websocketstream.js": "../ext/websocket/02_websocketstream.js",

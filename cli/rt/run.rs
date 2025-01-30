@@ -104,7 +104,7 @@ struct SharedModuleLoaderState {
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker<DenoRtSys>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
   vfs: Arc<FileBackedVfs>,
-  workspace_resolver: WorkspaceResolver,
+  workspace_resolver: WorkspaceResolver<DenoRtSys>,
 }
 
 impl SharedModuleLoaderState {
@@ -201,10 +201,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    let mapped_resolution = self
-      .shared
-      .workspace_resolver
-      .resolve(raw_specifier, &referrer);
+    let mapped_resolution = self.shared.workspace_resolver.resolve(
+      raw_specifier,
+      &referrer,
+      deno_config::workspace::ResolutionKind::Execution,
+    );
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -859,6 +860,9 @@ pub async fn run(
         .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
+      Default::default(),
+      Default::default(),
+      sys.clone(),
     )
   };
   let code_cache = match metadata.code_cache_key {

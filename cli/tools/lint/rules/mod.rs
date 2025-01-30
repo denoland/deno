@@ -16,6 +16,7 @@ use deno_lint::rules::LintRule;
 use deno_lint::tags;
 
 use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
 
 mod no_sloppy_imports;
 mod no_slow_types;
@@ -141,13 +142,13 @@ impl ConfiguredRules {
 
 pub struct LintRuleProvider {
   sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-  workspace_resolver: Option<Arc<WorkspaceResolver>>,
+  workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
 }
 
 impl LintRuleProvider {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-    workspace_resolver: Option<Arc<WorkspaceResolver>>,
+    workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
   ) -> Self {
     Self {
       sloppy_imports_resolver,
