@@ -150,6 +150,10 @@ impl GPUAdapter {
     let (lost_sender, lost_receiver) = tokio::sync::oneshot::channel();
     let (uncaptured_sender, mut uncaptured_receiver) =
       tokio::sync::mpsc::unbounded_channel();
+    let (
+      uncaptured_sender_is_closed_sender,
+      mut uncaptured_sender_is_closed_receiver,
+    ) = tokio::sync::oneshot::channel::<()>();
 
     let device = GPUDevice {
       instance: self.instance.clone(),
@@ -161,6 +165,7 @@ impl GPUAdapter {
       error_handler: Arc::new(super::error::DeviceErrorHandler::new(
         lost_sender,
         uncaptured_sender,
+        uncaptured_sender_is_closed_sender,
       )),
       adapter: self.id,
       lost_receiver: Mutex::new(Some(lost_receiver)),
@@ -189,15 +194,20 @@ impl GPUAdapter {
     let task_device = device.clone();
     deno_unsync::spawn(async move {
       loop {
-        // TODO(@crowlKats): check for is_closed instead once tokio is upgraded
+        // TODO(@crowlKats): check for uncaptured_receiver.is_closed instead once tokio is upgraded
+        if !matches!(
+          uncaptured_sender_is_closed_receiver.try_recv(),
+          Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ) {
+          break;
+        }
         let Some(error) = uncaptured_receiver.recv().await else {
           break;
         };
 
         // SAFETY: eh, it's safe
         let isolate: &mut v8::Isolate = unsafe { &mut *isolate_ptr };
-        let scope =
-          &mut v8::HandleScope::with_context(isolate, &context);
+        let scope = &mut v8::HandleScope::with_context(isolate, &context);
         let error = deno_core::error::to_v8_error(scope, &error);
 
         let error_event_class =
@@ -215,7 +225,7 @@ impl GPUAdapter {
           .unwrap();
 
         let recv = v8::Local::new(scope, task_device.clone());
-        func.open(scope).call(scope, recv, &[event.into()]).unwrap();
+        func.open(scope).call(scope, recv, &[event.into()]);
       }
     });
 

@@ -1315,14 +1315,14 @@ function configureProperties(obj) {
 const setlikeInner = SymbolFor("setlike_set");
 
 // Ref: https://webidl.spec.whatwg.org/#es-setlike
-function setlike(objPrototype, readonly) {
+function setlikeObjectWrap(objPrototype, readonly) {
   ObjectDefineProperties(objPrototype, {
     size: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       get() {
-        return this[setlikeInner].size;
+        return this[setlikeInner]().size;
       },
     },
     [SymbolIterator]: {
@@ -1331,7 +1331,7 @@ function setlike(objPrototype, readonly) {
       enumerable: false,
       writable: true,
       value() {
-        return this[setlikeInner][SymbolIterator]();
+        return this[setlikeInner]()[SymbolIterator]();
       },
     },
     entries: {
@@ -1340,7 +1340,7 @@ function setlike(objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        return SetPrototypeEntries(this[setlikeInner]);
+        return SetPrototypeEntries(this[setlikeInner]());
       },
     },
     keys: {
@@ -1349,7 +1349,7 @@ function setlike(objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        return SetPrototypeKeys(this[setlikeInner]);
+        return SetPrototypeKeys(this[setlikeInner]());
       },
     },
     values: {
@@ -1358,7 +1358,7 @@ function setlike(objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        return SetPrototypeValues(this[setlikeInner]);
+        return SetPrototypeValues(this[setlikeInner]());
       },
     },
     forEach: {
@@ -1367,7 +1367,7 @@ function setlike(objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(callbackfn, thisArg) {
-        return SetPrototypeForEach(this[setlikeInner], callbackfn, thisArg);
+        return SetPrototypeForEach(this[setlikeInner](), callbackfn, thisArg);
       },
     },
     has: {
@@ -1376,7 +1376,7 @@ function setlike(objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(value) {
-        return SetPrototypeHas(this[setlikeInner], value);
+        return SetPrototypeHas(this[setlikeInner](), value);
       },
     },
   });
@@ -1389,7 +1389,7 @@ function setlike(objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value(value) {
-          return SetPrototypeAdd(this[setlikeInner], value);
+          return SetPrototypeAdd(this[setlikeInner](), value);
         },
       },
       delete: {
@@ -1398,7 +1398,7 @@ function setlike(objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value(value) {
-          return SetPrototypeDelete(this[setlikeInner], value);
+          return SetPrototypeDelete(this[setlikeInner](), value);
         },
       },
       clear: {
@@ -1407,7 +1407,7 @@ function setlike(objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value() {
-          return SetPrototypeClear(this[setlikeInner]);
+          return SetPrototypeClear(this[setlikeInner]());
         },
       },
     });
@@ -1435,7 +1435,7 @@ export {
   makeException,
   mixinPairIterable,
   requiredArguments,
-  setlike,
   setlikeInner,
+  setlikeObjectWrap,
   type,
 };

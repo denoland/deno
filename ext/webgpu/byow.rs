@@ -151,7 +151,7 @@ impl UnsafeWindowSurface {
 
   #[nofast]
   fn present(&self, scope: &mut v8::HandleScope) -> Result<(), JsErrorBox> {
-    let Some(context) = self.context.value(scope) else {
+    let Some(context) = self.context.try_unwrap(scope) else {
       return Err(JsErrorBox::type_error("getContext was never called"));
     };
 
