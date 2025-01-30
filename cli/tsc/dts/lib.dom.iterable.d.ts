@@ -354,8 +354,7 @@ interface TouchList {
     [Symbol.iterator](): ArrayIterator<Touch>;
 }
 
-interface URLSearchParamsIterator<T> extends IteratorObject<T, BuiltinIteratorReturn, unknown> {
-    [Symbol.iterator](): URLSearchParamsIterator<T>;
+interface URLSearchParamsIterator<T> extends IterableIterator<T> {
 }
 
 interface URLSearchParams {

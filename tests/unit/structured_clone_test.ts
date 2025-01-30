@@ -27,7 +27,7 @@ Deno.test("correct DataCloneError message", () => {
   assertThrows(
     () => {
       const sab = new SharedArrayBuffer(1024);
-      structuredClone(sab, { transfer: [sab] });
+      structuredClone(sab, { transfer: [sab as any] });
     },
     DOMException,
     "Value not transferable",

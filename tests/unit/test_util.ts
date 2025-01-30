@@ -22,7 +22,6 @@ export {
   unreachable,
 } from "@std/assert";
 export { delay } from "@std/async/delay";
-export { readLines } from "@std/io/read-lines";
 export { parseArgs } from "@std/cli/parse-args";
 
 export function pathToAbsoluteFileUrl(path: string): URL {

@@ -296,6 +296,9 @@ const IGNORED_DIAGNOSTICS = [
   // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
   // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
   1479,
+  // TS1543: Importing a JSON file into an ECMAScript module requires a 'type: \"json\"' import
+  // attribute when 'module' is set to 'NodeNext'.
+  1543,
   // TS2306: File '.../index.d.ts' is not a module.
   // We get this for `x-typescript-types` declaration files which don't export
   // anything. We prefer to treat these as modules with no exports.
@@ -757,7 +760,6 @@ const importMetaFilenameDirnameModifiersRe =
   /^All declarations of '(filename|dirname)'/;
 const importMetaFilenameDirnameTypesRe =
   /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
-const urlExtendsRe = /^Interface '(URL|URLSearchParams)'/;
 
 /** @param {ts.Diagnostic} diagnostic */
 export function filterMapDiagnostic(diagnostic) {
@@ -782,17 +784,6 @@ export function filterMapDiagnostic(diagnostic) {
     if (
       messageText != null &&
       importMetaFilenameDirnameTypesRe.test(messageText) &&
-      isLibDiagnostic(diagnostic)
-    ) {
-      return false;
-    }
-  }
-  // Ignore URL and URLSearchParams differences in @types/node
-  if (diagnostic.code === 2430) {
-    const messageText = getTopLevelMessageText(diagnostic.messageText);
-    if (
-      messageText != null &&
-      urlExtendsRe.test(messageText) &&
       isLibDiagnostic(diagnostic)
     ) {
       return false;

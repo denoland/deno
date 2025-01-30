@@ -7,7 +7,7 @@ import {
   assertStrictEquals,
   assertThrows,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "@std/io";
+import { Buffer } from "@std/streams/buffer";
 import { readAll } from "@std/io/read-all";
 import { writeAll } from "@std/io/write-all";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
@@ -114,12 +114,11 @@ Deno.test(
     );
 
     const conn = await Deno.connectTls({ hostname, port, caCerts });
-    const w = new BufWriter(conn);
-    const r = new BufReader(conn);
+    const buffer = new Buffer(conn);
+    const w = buffer.writable.getWriter();
+    const r = buffer.readable.getWriter();
     const body = `GET / HTTP/1.1\r\nHost: ${hostname}:${port}\r\n\r\n`;
-    const writeResult = await w.write(encoder.encode(body));
-    assertEquals(body.length, writeResult);
-    await w.flush();
+    await w.write(encoder.encode(body));
     const tpr = new TextProtoReader(r);
     const statusLine = await tpr.readLine();
     assert(statusLine !== null, `line must be read: ${String(statusLine)}`);

@@ -348,10 +348,10 @@ Deno.test({
         for (const offset of offsets) {
           // test read
           resetBuffer();
-          const buf = new constr(
+          const buf = new (constr as any)(
             buffer,
             innerOffset,
-          );
+          ) as Int8Array | Uint8Array;
           await readTest(
             testData,
             buf,
