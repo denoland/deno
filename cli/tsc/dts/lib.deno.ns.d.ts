@@ -6159,21 +6159,5 @@ declare namespace Deno {
       | (CreateHttpClientOptions & TlsCertifiedKeyPem),
   ): HttpClient;
 
-  /**
-   * @category Linter
-   */
-  export interface LintRule {
-    create(context: any): any;
-    destroy?(context: any): void;
-  }
-
-  /**
-   * @category Linter
-   */
-  export interface LintPlugin {
-    name: string;
-    rules: Record<string, LintRule>;
-  }
-
   export {}; // only export exports
 }
