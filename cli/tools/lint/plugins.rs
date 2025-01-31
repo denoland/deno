@@ -488,7 +488,7 @@ impl PluginHostProxy {
       };
       self
         .logger
-        .error(&format!("load plugins response {:#?}", result));
+        .debug(&format!("load plugins response {:#?}", result));
       let infos = result?;
       *self.plugin_info.lock() = infos;
       return Ok(());

@@ -323,7 +323,8 @@ impl WorkspaceLinter {
 
     let mut plugin_runner = None;
     if let Some(plugin_specifiers) = maybe_plugin_specifiers {
-      let logger = plugins::PluginLogger::new(logger_printer, true);
+      // TODO(bartlomieju): respect `-L debug` flag here
+      let logger = plugins::PluginLogger::new(logger_printer, false);
       let runner = plugins::create_runner_and_load_plugins(
         plugin_specifiers,
         logger,
