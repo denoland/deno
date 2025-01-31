@@ -667,12 +667,23 @@ mod tests {
   use super::*;
 
   #[derive(Serialize, Deserialize)]
+  struct RulesPattern {
+    r#type: String,
+    pattern: String,
+  }
+
+  #[derive(Serialize, Deserialize)]
+  struct RulesEnum {
+    r#enum: Vec<String>,
+  }
+
+  #[derive(Serialize, Deserialize)]
   struct RulesSchema {
     #[serde(rename = "$schema")]
     schema: String,
 
-    #[serde(rename = "enum")]
-    rules: Vec<String>,
+    #[serde(rename = "oneOf")]
+    one_of: (RulesPattern, RulesEnum),
   }
 
   fn get_all_rules() -> Vec<String> {
@@ -703,25 +714,25 @@ mod tests {
 
     const UPDATE_ENV_VAR_NAME: &str = "UPDATE_EXPECTED";
 
+    let rules_list = schema.one_of.1.r#enum;
+
     if std::env::var(UPDATE_ENV_VAR_NAME).ok().is_none() {
       assert_eq!(
-        schema.rules, all_rules,
+        rules_list, all_rules,
         "Lint rules schema file not up to date. Run again with {}=1 to update the expected output",
         UPDATE_ENV_VAR_NAME
       );
       return;
     }
 
+    let new_schema = RulesSchema {
+      schema: schema.schema,
+      one_of: (schema.one_of.0, RulesEnum { r#enum: all_rules }),
+    };
+
     std::fs::write(
       &rules_schema_path,
-      format!(
-        "{}\n",
-        serde_json::to_string_pretty(&RulesSchema {
-          schema: schema.schema,
-          rules: all_rules,
-        })
-        .unwrap(),
-      ),
+      format!("{}\n", serde_json::to_string_pretty(&new_schema).unwrap(),),
     )
     .unwrap();
   }
