@@ -348,6 +348,7 @@ Deno.test({
         for (const offset of offsets) {
           // test read
           resetBuffer();
+          // deno-lint-ignore no-explicit-any
           const buf = new (constr as any)(
             buffer,
             innerOffset,
