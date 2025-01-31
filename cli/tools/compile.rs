@@ -37,7 +37,7 @@ pub async fn compile(
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
-  let (module_roots, include_files) = get_module_roots_and_include_files(
+  let (module_roots, mut include_files) = get_module_roots_and_include_files(
     entrypoint,
     &compile_flags,
     cli_options.initial_cwd(),
@@ -90,6 +90,15 @@ pub async fn compile(
     output_path.display(),
   );
   validate_output_path(&output_path)?;
+
+  let file_index = include_files.iter().position(|file_included| {
+    file_included
+      .path()
+      .ends_with(output_path.to_str().unwrap().replace(" ", "%20").as_str())
+  });
+  if let Some(index) = file_index {
+    include_files.remove(index);
+  }
 
   let mut temp_filename = output_path.file_name().unwrap().to_owned();
   temp_filename.push(format!(
