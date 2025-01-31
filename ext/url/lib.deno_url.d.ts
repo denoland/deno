@@ -166,7 +166,11 @@ interface URLSearchParams {
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   new (
-    init?: Iterable<string[]> | Record<string, string> | string | URLSearchParams,
+    init?:
+      | Iterable<string[]>
+      | Record<string, string>
+      | string
+      | URLSearchParams,
   ): URLSearchParams;
 };
 
