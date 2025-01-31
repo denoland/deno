@@ -133,7 +133,6 @@ mod ts {
       // Deno built-in type libraries
       "decorators",
       "decorators.legacy",
-      "deno_webgpu",
       "dom.asynciterable",
       "dom",
       "dom.extras",
