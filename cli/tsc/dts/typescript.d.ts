@@ -16,7 +16,8 @@ and limitations under the License.
 declare namespace ts {
     namespace deno {
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
-        function setNodeOnlyGlobalNames(names: readonly string[]): void;
+        function setNodeOnlyGlobalNames(names: Set<string>): void;
+        function setTypesNodeIgnorableNames(names: Set<string>): void;
         function createDenoForkContext({ mergeSymbol, globals, nodeGlobals }: {
             mergeSymbol(target: ts.Symbol, source: ts.Symbol, unidirectional?: boolean): ts.Symbol;
             globals: ts.SymbolTable;

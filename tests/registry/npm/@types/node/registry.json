@@ -20,7 +20,7 @@
       "_id": "@types/node@22.12.0",
       "dist": {
         "shasum": "bf8af3b2af0837b5a62a368756ff2b705ae0048c",
-        "tarball": "http://localhost:4260/@types%2fnode/node-22.12.0.tgz",
+        "tarball": "http://localhost:4260/@types/node/node-22.12.0.tgz",
         "fileCount": 76,
         "integrity": "sha512-Fll2FZ1riMjNmlmJOdAyY5pUbkftXslB5DgEzlIuNaiWhXd00FhWxVC/r4yV/4wBb9JfImTu+jiSvXTkJ7F/gA==",
         "unpackedSize": 2296605
