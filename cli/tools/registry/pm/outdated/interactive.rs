@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+
 use std::collections::HashSet;
 use std::io;
 use std::io::Write;
@@ -12,14 +14,21 @@ use crossterm::style::Stylize;
 use crossterm::terminal;
 use crossterm::ExecutableCommand;
 use crossterm::QueueableCommand;
+use deno_core::anyhow;
+use deno_core::anyhow::Context;
+
+use crate::tools::registry::pm::deps::DepKind;
 
 use super::super::deps::DepLocation;
-use super::OutdatedPackage;
 
 #[derive(Debug)]
-struct PackageInfo {
-  location: DepLocation,
-  package: OutdatedPackage,
+pub struct PackageInfo {
+  pub location: DepLocation,
+  pub current_version: String,
+  pub new_version: String,
+  pub name: String,
+
+  pub kind: DepKind,
 }
 
 #[derive(Debug)]
@@ -30,18 +39,19 @@ struct State {
 
   name_width: usize,
   current_width: usize,
+  start_row: u16,
 }
 
 impl State {
-  fn new(packages: Vec<PackageInfo>) -> Self {
+  fn new(packages: Vec<PackageInfo>) -> anyhow::Result<Self> {
     let name_width = packages
       .iter()
-      .map(|p| p.package.name.len())
+      .map(|p| p.name.len() + p.kind.scheme().len() + 1)
       .max()
       .unwrap_or_default();
     let current_width = packages
       .iter()
-      .map(|p| p.package.current.len())
+      .map(|p| p.current_version.len())
       .max()
       .unwrap_or_default();
 
@@ -49,35 +59,36 @@ impl State {
     packages
       .sort_by(|a, b| a.location.file_path().cmp(&b.location.file_path()));
 
-    Self {
+    Ok(Self {
       packages,
       currently_selected: 0,
       checked: HashSet::new(),
 
       name_width,
       current_width,
-    }
+      start_row: cursor::position()?.1,
+    })
   }
 
-  fn render<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<()> {
+  fn render<W: std::io::Write>(&self, out: &mut W) -> anyhow::Result<()> {
     use cursor::MoveTo;
     use style::Print;
     use style::PrintStyledContent;
 
     crossterm::queue!(
       out,
-      terminal::Clear(terminal::ClearType::All),
-      MoveTo(0, 0),
+      MoveTo(0, self.start_row),
+      terminal::Clear(terminal::ClearType::FromCursorDown),
       PrintStyledContent("?".blue()),
     )?;
 
-    let base = 1;
+    let base = self.start_row + 1;
 
     for (i, package) in self.packages.iter().enumerate() {
       if self.currently_selected == i {
         crossterm::queue!(
           out,
-          MoveTo(1, base + (self.currently_selected as u16)),
+          MoveTo(0, base + (self.currently_selected as u16)),
           PrintStyledContent("❯".blue()),
           Print(' '),
         )?;
@@ -86,7 +97,7 @@ impl State {
       let selector = if checked { "●" } else { "○" };
       crossterm::queue!(
         out,
-        MoveTo(3, base + (i as u16)),
+        MoveTo(2, base + (i as u16)),
         Print(selector),
         Print(" "),
       )?;
@@ -96,14 +107,22 @@ impl State {
           style::ContentStyle::new().on_black().white().bold(),
         ))?;
       }
-      let want = &package.package.latest;
+      let want = &package.new_version;
+      let new_version_highlight =
+        highlight_new_version(&package.current_version, want)?;
+      // let style = style::PrintStyledContent()
       crossterm::queue!(
         out,
         Print(format!(
-          "{:<name_width$}{:<current_width$}   ->   {}",
-          package.package.name,
-          package.package.current,
-          highlight_new_version(&package.package.current, want),
+          "{:<name_width$} {:<current_width$} -> {}",
+          format_args!(
+            "{}{}{}",
+            deno_terminal::colors::gray(package.kind.scheme()),
+            deno_terminal::colors::gray(":"),
+            package.name
+          ),
+          package.current_version,
+          new_version_highlight,
           name_width = self.name_width + 2,
           current_width = self.current_width
         )),
@@ -136,25 +155,33 @@ struct VersionParts {
 }
 
 impl VersionParts {
-  fn parse(s: &str) -> VersionParts {
+  fn parse(s: &str) -> Result<VersionParts, anyhow::Error> {
     let mut parts = s.splitn(3, '.');
-    let major = parts.next().unwrap().parse().unwrap();
-    let minor = parts.next().unwrap().parse().unwrap();
-    let patch = parts.next().unwrap();
+    let major = parts
+      .next()
+      .ok_or_else(|| anyhow::anyhow!("expected major version"))?
+      .parse()?;
+    let minor = parts
+      .next()
+      .ok_or_else(|| anyhow::anyhow!("expected minor version"))?
+      .parse()?;
+    let patch = parts
+      .next()
+      .ok_or_else(|| anyhow::anyhow!("expected patch version"))?;
     let (patch, pre) = if patch.contains('-') {
       let (patch, pre) = patch.split_once('-').unwrap();
       (patch, Some(pre.into()))
     } else {
       (patch, None)
     };
-    let patch = patch.parse().unwrap();
+    let patch = patch.parse()?;
     let pre = pre.clone();
-    Self {
+    Ok(Self {
       patch,
       pre,
       minor,
       major,
-    }
+    })
   }
 }
 
@@ -168,12 +195,17 @@ fn version_diff(a: &VersionParts, b: &VersionParts) -> VersionDifference {
   }
 }
 
-fn highlight_new_version(current: &str, new: &str) -> String {
-  let current_parts = VersionParts::parse(current);
-  let new_parts = VersionParts::parse(new);
+fn highlight_new_version(
+  current: &str,
+  new: &str,
+) -> Result<String, anyhow::Error> {
+  let current_parts = VersionParts::parse(current)
+    .with_context(|| format!("parsing current version: {current}"))?;
+  let new_parts = VersionParts::parse(new)
+    .with_context(|| format!("parsing new version: {new}"))?;
   let diff = version_diff(&current_parts, &new_parts);
 
-  match diff {
+  Ok(match diff {
     VersionDifference::Major => format!(
       "{}.{}.{}{}",
       style::style(new_parts.major).red().bold(),
@@ -204,15 +236,51 @@ fn highlight_new_version(current: &str, new: &str) -> String {
         .map(|pre| pre.green().to_string())
         .unwrap_or_default()
     ),
+  })
+}
+
+struct RawMode {
+  needs_disable: bool,
+}
+
+impl RawMode {
+  fn enable() -> io::Result<Self> {
+    terminal::enable_raw_mode()?;
+    Ok(Self {
+      needs_disable: true,
+    })
+  }
+  fn disable(mut self) -> io::Result<()> {
+    self.needs_disable = false;
+    terminal::disable_raw_mode()
   }
 }
 
-fn interactive() -> io::Result<()> {
+impl Drop for RawMode {
+  fn drop(&mut self) {
+    if self.needs_disable {
+      let _ = terminal::disable_raw_mode();
+    }
+  }
+}
+
+pub fn select_interactive(
+  packages: Vec<PackageInfo>,
+) -> anyhow::Result<Option<HashSet<usize>>> {
   let mut stdout = io::stdout();
-  terminal::enable_raw_mode()?;
+  let raw_mode = RawMode::enable()?;
 
-  let mut state = State::new(todo!());
+  let (_, rows) = terminal::size().unwrap();
 
+  let (_, start_row) = cursor::position().unwrap_or_default();
+  if rows - start_row < (packages.len() + 2) as u16 {
+    let pad = ((packages.len() + 2) as u16) - (rows - start_row);
+
+    stdout.execute(terminal::ScrollUp(pad))?;
+    stdout.execute(cursor::MoveUp(pad))?;
+  }
+
+  let mut state = State::new(packages)?;
   stdout.execute(cursor::Hide)?;
 
   state.render(&mut stdout)?;
@@ -258,17 +326,17 @@ fn interactive() -> io::Result<()> {
 
   crossterm::queue!(
     &mut stdout,
-    terminal::Clear(terminal::ClearType::All),
+    cursor::MoveTo(0, state.start_row),
+    terminal::Clear(terminal::ClearType::FromCursorDown),
     cursor::Show,
-    cursor::MoveTo(0, 0),
   )?;
   stdout.flush()?;
 
-  terminal::disable_raw_mode()?;
+  raw_mode.disable()?;
 
   if do_it {
-    println!("doing the thing... {state:?}");
+    Ok(Some(state.checked.into_iter().collect()))
+  } else {
+    Ok(None)
   }
-
-  Ok(())
 }
