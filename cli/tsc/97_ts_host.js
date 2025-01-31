@@ -745,22 +745,6 @@ ts.setLocalizedDiagnosticMessages((() => {
 })());
 
 /** @param {ts.Diagnostic} diagnostic */
-function isLibDiagnostic(diagnostic) {
-  return diagnostic.file?.fileName.startsWith("asset:///") ||
-    diagnostic.file?.fileName?.includes("@types/node");
-}
-
-/** @param {ts.DiagnosticMessageChain | string} messageText  */
-function getTopLevelMessageText(messageText) {
-  if (typeof messageText === "string") {
-    return messageText;
-  } else if (typeof messageText.messageText === "string") {
-    return messageText.messageText;
-  }
-  return undefined;
-}
-
-/** @param {ts.Diagnostic} diagnostic */
 export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
@@ -780,49 +764,7 @@ export function filterMapDiagnostic(diagnostic) {
     }
   }
 
-  // // allow assigning a globalThis.URL to "node:url".URL
-  // if (
-  //   checkDiagnosticAndChain(diagnostic, (d) => {
-  //     return d.code === 2322 && d.messageText ===
-  //         "Type 'URL' is not assignable to type 'import(\"url\").URL'.";
-  //   })
-  // ) {
-  //   return false;
-  // }
-
   return true;
-}
-
-/**
- * @param {ts.Diagnostic} diagnostic
- * @param {(d: { code: number, messageText: string }) => boolean} check
- */
-function checkDiagnosticAndChain(diagnostic, check) {
-  if (typeof diagnostic.messageText === "string") {
-    return check(
-      /** @type {{ code: number, messageText: string }} */ (diagnostic),
-    );
-  } else {
-    return checkDiagnosticMessageChain(diagnostic.messageText, check);
-  }
-}
-
-/**
- * @param {ts.DiagnosticMessageChain} dmc
- * @param {(d: ts.DiagnosticMessageChain) => boolean} check
- */
-function checkDiagnosticMessageChain(dmc, check) {
-  if (check(dmc)) {
-    return true;
-  }
-  if (dmc.next) {
-    for (const next of dmc.next) {
-      if (checkDiagnosticMessageChain(next, check)) {
-        return true;
-      }
-    }
-  }
-  return false;
 }
 
 // list of globals that should be kept in Node's globalThis
@@ -853,7 +795,11 @@ ts.deno.setNodeOnlyGlobalNames(
     "setTimeout",
   ]),
 );
-// list of globals in @types/node that collide with Deno
+// List of globals in @types/node that collide with Deno's types.
+// When the `@types/node` package attempts to assign to these types
+// if the type is already in the global symbol table, then assignment
+// will be a no-op, but if the global type does not exist then the package can
+// create the global.
 const setTypesNodeIgnorableNames = new Set([
   "AbortController",
   "AbortSignal",
