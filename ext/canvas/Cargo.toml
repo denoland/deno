@@ -19,7 +19,10 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_terminal.workspace = true
 deno_webgpu.workspace = true
-image = { version = "0.25.4", default-features = false, features = ["png", "jpeg", "bmp", "ico", "webp", "gif"] }
+image = { version = "0.25.4", default-features = false, features = ["png", "jpeg", "bmp", "ico" # NOTE: Temporarily not supported due to build size concerns
+  # https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
+  # "webp", "gif"
+] }
 # NOTE: The qcms is a color space conversion crate which parses ICC profiles that used in Gecko,
 # however it supports only 8-bit color depth currently.
 # https://searchfox.org/mozilla-central/rev/f09e3f9603a08b5b51bf504846091579bc2ff531/gfx/qcms/src/transform.rs#130-137
