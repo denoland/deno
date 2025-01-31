@@ -77,7 +77,8 @@ declare namespace Deno {
    * @category Network
    * @experimental
    */
-  export interface DatagramConn extends AsyncIterable<[Uint8Array, Addr]> {
+  export interface DatagramConn
+    extends AsyncIterable<[Uint8Array<ArrayBuffer>, Addr]> {
     /** Joins an IPv4 multicast group. */
     joinMulticastV4(
       address: string,
@@ -95,7 +96,7 @@ declare namespace Deno {
      * Messages are received in the format of a tuple containing the data array
      * and the address information.
      */
-    receive(p?: Uint8Array): Promise<[Uint8Array, Addr]>;
+    receive(p?: Uint8Array): Promise<[Uint8Array<ArrayBuffer>, Addr]>;
     /** Sends a message to the target via the connection. The method resolves
      * with the number of bytes sent. */
     send(p: Uint8Array, addr: Addr): Promise<number>;
@@ -104,7 +105,9 @@ declare namespace Deno {
     close(): void;
     /** Return the address of the instance. */
     readonly addr: Addr;
-    [Symbol.asyncIterator](): AsyncIterableIterator<[Uint8Array, Addr]>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<
+      [Uint8Array<ArrayBuffer>, Addr]
+    >;
   }
 
   /**
@@ -1402,8 +1405,8 @@ interface WebSocketStreamOptions {
  * @experimental
  */
 interface WebSocketConnection {
-  readable: ReadableStream<string | Uint8Array>;
-  writable: WritableStream<string | Uint8Array>;
+  readable: ReadableStream<string | Uint8Array<ArrayBuffer>>;
+  writable: WritableStream<string | Uint8Array<ArrayBufferLike>>;
   extensions: string;
   protocol: string;
 }

@@ -235,13 +235,13 @@ function fromRelatedInformation({
   if (start !== undefined && length !== undefined && file) {
     let startPos = file.getLineAndCharacterOfPosition(start);
     let endPos = file.getLineAndCharacterOfPosition(start + length);
+    // ok to get because it's cached via file.getLineAndCharacterOfPosition
     const lineStarts = file.getLineStarts();
     /** @type {string | undefined} */
     let sourceLine = file.getFullText().slice(
       lineStarts[startPos.line],
-      // todo(THIS PR): fix this to use lineStarts only to prevent another lookup
-      file.getLineEndOfPosition(start),
-    );
+      lineStarts[startPos.line + 1],
+    ).trimEnd();
     const originalFileName = file.fileName;
     const fileName = ops.op_remap_specifier
       ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
