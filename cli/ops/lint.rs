@@ -41,6 +41,11 @@ deno_core::extension!(
   },
 );
 
+deno_core::extension!(
+  deno_lint_ext_for_test,
+  ops = [op_lint_create_serialized_ast,],
+);
+
 #[derive(Default)]
 pub struct LintPluginContainer {
   pub diagnostics: Vec<LintDiagnostic>,
