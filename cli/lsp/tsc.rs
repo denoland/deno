@@ -4779,6 +4779,16 @@ struct TracingSpan(#[allow(dead_code)] tracing::span::EnteredSpan);
 
 deno_core::external!(TracingSpan, "tracingspan");
 
+fn span_with_context(
+  state: &State,
+  span: tracing::Span,
+) -> tracing::span::EnteredSpan {
+  if let Some(context) = &state.context {
+    span.set_parent(context.clone());
+  }
+  span.entered()
+}
+
 #[op2(fast)]
 fn op_make_span(
   op_state: &mut OpState,
@@ -4801,7 +4811,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
   let _span = unsafe { ptr.unsafely_take().0 };
   if root {
     let state = op_state.borrow_mut::<State>();
-    state.context.pop();
+    state.context = None;
   }
 }
 
