@@ -64,15 +64,14 @@ impl std::fmt::Debug for PluginHostResponse {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct PluginLogger {
   print: fn(&str, bool),
-  debug: bool,
 }
 
 impl PluginLogger {
-  pub fn new(print: fn(&str, bool), debug: bool) -> Self {
-    Self { print, debug }
+  pub fn new(print: fn(&str, bool)) -> Self {
+    Self { print }
   }
 
   pub fn log(&self, msg: &str) {
@@ -81,19 +80,6 @@ impl PluginLogger {
 
   pub fn error(&self, msg: &str) {
     (self.print)(msg, true);
-  }
-
-  pub fn debug(&self, msg: &str) {
-    if self.debug {
-      (self.print)(msg, false);
-      (self.print)("\n", false);
-    }
-  }
-}
-
-impl std::fmt::Debug for PluginLogger {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    f.debug_tuple("PluginLogger").field(&self.debug).finish()
   }
 }
 
@@ -118,7 +104,6 @@ pub struct PluginHostProxy {
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
   #[allow(unused)]
   join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
-  logger: PluginLogger,
 }
 
 impl PluginHostProxy {
@@ -141,7 +126,6 @@ pub struct PluginHost {
   run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
   tx: Sender<PluginHostResponse>,
   rx: Receiver<PluginHostRequest>,
-  logger: PluginLogger,
 }
 
 async fn create_plugin_runner_inner(
@@ -182,11 +166,9 @@ async fn create_plugin_runner_inner(
   let mut worker = worker.into_main_worker();
   let runtime = &mut worker.js_runtime;
 
-  logger.debug("before loaded");
-
   let obj = runtime.execute_script("lint.js", "Deno[Deno.internal]")?;
 
-  logger.debug("After plugin loaded, capturing exports");
+  log::debug!("Lint plugins loaded, capturing default exports");
   let (install_plugins_fn, run_plugins_for_file_fn) = {
     let scope = &mut runtime.handle_scope();
     let module_exports: v8::Local<v8::Object> =
@@ -219,7 +201,6 @@ async fn create_plugin_runner_inner(
     run_plugins_for_file_fn,
     tx: tx_res,
     rx: rx_req,
-    logger: logger.clone(),
   })
 }
 
@@ -247,44 +228,40 @@ impl PluginHost {
     let (tx_req, rx_req) = channel(10);
     let (tx_res, rx_res) = channel(10);
 
-    logger.debug("spawning thread");
     let logger_ = logger.clone();
     let join_handle = std::thread::spawn(move || {
       let logger = logger_;
-      logger.debug("PluginHost thread spawned");
+      log::debug!("Lint PluginHost thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
         let runner =
           create_plugin_runner_inner(logger.clone(), rx_req, tx_res).await?;
-        // TODO(bartlomieju): send "host ready" message to the proxy
-        logger.debug("running host loop");
+        log::debug!("Lint PlugibnHost running loop");
         runner.run_loop().await?;
-        logger.debug(&format!(
-          "PluginHost thread finished, took {:?}",
+        log::debug!(
+          "Lint PluginHost thread finished, took {:?}",
           std::time::Instant::now() - start
-        ));
+        );
         Ok(())
       }
       .boxed_local();
       tokio_util::create_and_run_current_thread(fut)
     });
 
-    logger.debug(&format!("is thread finished {}", join_handle.is_finished()));
     let proxy = PluginHostProxy {
       tx: tx_req,
       rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
       plugin_info: Arc::new(Mutex::new(vec![])),
       join_handle,
-      logger,
     };
 
     Ok(proxy)
   }
 
   async fn run_loop(mut self) -> Result<(), AnyError> {
-    self.logger.debug("waiting for message");
+    log::debug!("Lint PluginHost is waiting for message");
     while let Some(req) = self.rx.recv().await {
-      self.logger.debug("received message");
+      log::debug!("Lint PluginHost has received a message");
       match req {
         PluginHostRequest::LoadPlugins {
           specifiers,
@@ -309,15 +286,15 @@ impl PluginHost {
             Ok(()) => Ok(self.take_diagnostics()),
             Err(err) => Err(err),
           };
-          self.logger.debug(&format!(
-            "Running rules took {:?}",
+          log::debug!(
+            "Running plugins lint rules took {:?}",
             std::time::Instant::now() - start
-          ));
+          );
           let _ = self.tx.send(PluginHostResponse::Run(r)).await;
         }
       }
     }
-    self.logger.debug("breaking loop");
+    log::debug!("Lint PluginHost run loop finished");
     Ok(())
   }
 
@@ -372,13 +349,10 @@ impl PluginHost {
 
     if let Some(exception) = tc_scope.exception() {
       let error = JsError::from_v8_exception(&mut tc_scope, exception);
-      self.logger.debug("error running plugins");
       let core_err = CoreError::Js(error);
       return Err(core_err.into());
     }
     drop(tc_scope);
-
-    self.logger.debug("plugins finished");
     Ok(())
   }
 
@@ -446,7 +420,7 @@ impl PluginHost {
     };
     let args = &[local_handles.into(), exclude_v8];
 
-    self.logger.debug("Installing plugins...");
+    log::debug!("Installing lint plugins...");
 
     let mut tc_scope = v8::TryCatch::new(scope);
     let plugins_info_result =
@@ -459,9 +433,7 @@ impl PluginHost {
     let plugins_info = plugins_info_result.unwrap();
     let infos: Vec<PluginInfo> =
       deno_core::serde_v8::from_v8(scope, plugins_info)?;
-    self
-      .logger
-      .debug(&format!("Plugins installed: {}", infos.len()));
+    log::debug!("Plugins installed: {}", infos.len());
 
     Ok(infos)
   }
@@ -481,14 +453,11 @@ impl PluginHostProxy {
       })
       .await?;
     let mut rx = self.rx.lock().await;
-    self.logger.debug("receiving load plugins");
+
     if let Some(val) = rx.recv().await {
       let PluginHostResponse::LoadPlugin(result) = val else {
         unreachable!()
       };
-      self
-        .logger
-        .debug(&format!("load plugins response {:#?}", result));
       let infos = result?;
       *self.plugin_info.lock() = infos;
       return Ok(());
@@ -513,7 +482,7 @@ impl PluginHostProxy {
       })
       .await?;
     let mut rx = self.rx.lock().await;
-    self.logger.debug("receiving diagnostics");
+
     if let Some(PluginHostResponse::Run(diagnostics_result)) = rx.recv().await {
       return diagnostics_result;
     }
@@ -526,10 +495,10 @@ impl PluginHostProxy {
   ) -> Result<Vec<u8>, AnyError> {
     let start = std::time::Instant::now();
     let r = serialize_ast_to_buffer(&parsed_source);
-    self.logger.debug(&format!(
-      "serialize custom ast took {:?}",
+    log::debug!(
+      "Serializing an AST took {:?}",
       std::time::Instant::now() - start
-    ));
+    );
     Ok(r)
   }
 }

@@ -157,7 +157,7 @@ pub fn op_print(state: &mut OpState, #[string] msg: &str, is_err: bool) {
 
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
-  let container = state.borrow_mut::<LintPluginContainer>();
+  let container = state.borrow::<LintPluginContainer>();
   container.token.is_cancelled()
 }
 

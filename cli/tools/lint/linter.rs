@@ -100,8 +100,6 @@ impl CliLinter {
     parsed_source: &ParsedSource,
     token: CancellationToken,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
-    // TODO(bartlomieju): surface error is running plugin fails
-
     let external_linter_container = ExternalLinterContainer::new(
       self.maybe_plugin_runner.clone(),
       Some(token),
@@ -375,8 +373,15 @@ impl ExternalLinterContainer {
       let error_ = s.error.clone();
       let cb = Arc::new(move |parsed_source: ParsedSource| {
         let token_ = maybe_token.clone();
-        // TODO: clean this up
-        let file_path = parsed_source.specifier().to_file_path().unwrap();
+        let file_path =
+          match deno_path_util::url_to_file_path(parsed_source.specifier()) {
+            Ok(path) => path,
+            Err(err) => {
+              *error_.as_ref().unwrap().lock() = Some(err.into());
+              return None;
+            }
+          };
+
         let r =
           run_plugins(plugin_runner.clone(), parsed_source, file_path, token_);
 

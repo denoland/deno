@@ -1641,7 +1641,7 @@ impl ConfigData {
       fn logger_printer(msg: &str, _is_err: bool) {
         lsp_log!("pluggin runner - {}", msg);
       }
-      let logger = crate::tools::lint::PluginLogger::new(logger_printer, false);
+      let logger = crate::tools::lint::PluginLogger::new(logger_printer);
       let plugin_load_result =
         crate::tools::lint::create_runner_and_load_plugins(
           plugin_specifiers,
