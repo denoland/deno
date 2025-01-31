@@ -288,7 +288,7 @@ impl WorkspaceLinter {
 
     let exclude = lint_options.rules.exclude.clone();
 
-    let maybe_plugin_specifiers = lint_options.resolve_lint_plugins()?;
+    let plugin_specifiers = lint_options.plugins.clone();
     let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
@@ -299,8 +299,8 @@ impl WorkspaceLinter {
     if lint_rules.supports_incremental_cache() {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
       hasher.write_hashable(lint_rules.incremental_cache_state());
-      if let Some(plugin_specifiers) = maybe_plugin_specifiers.as_ref() {
-        hasher.write_hashable(plugin_specifiers);
+      if !plugin_specifiers.is_empty() {
+        hasher.write_hashable(&plugin_specifiers);
       }
       let state_hash = hasher.finish();
 
@@ -322,7 +322,7 @@ impl WorkspaceLinter {
     }
 
     let mut plugin_runner = None;
-    if let Some(plugin_specifiers) = maybe_plugin_specifiers {
+    if !plugin_specifiers.is_empty() {
       let logger = plugins::PluginLogger::new(logger_printer);
       let runner = plugins::create_runner_and_load_plugins(
         plugin_specifiers,
@@ -583,7 +583,7 @@ fn lint_stdin(
   let deno_lint_config =
     tsconfig_resolver.deno_lint_config(start_dir.dir_url())?;
   let lint_options =
-    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags);
+    LintOptions::resolve(start_dir.dir_path(), lint_config, &lint_flags)?;
   let configured_rules = lint_rule_provider.resolve_lint_rules_err_empty(
     lint_options.rules,
     start_dir.maybe_deno_json().map(|c| c.as_ref()),

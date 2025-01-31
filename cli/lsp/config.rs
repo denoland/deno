@@ -1634,17 +1634,19 @@ impl ConfigData {
       member_dir.dir_path(),
       (*lint_config).clone(),
       &LintFlags::default(),
-    );
+    )
+    .inspect_err(|err| lsp_warn!("  Failed to resolve linter options: {}", err))
+    .ok()
+    .unwrap_or_default();
     let mut plugin_runner = None;
-    let maybe_plugin_specifiers_result = lint_options.resolve_lint_plugins();
-    if let Ok(Some(plugin_specifiers)) = maybe_plugin_specifiers_result {
+    if !lint_options.plugins.is_empty() {
       fn logger_printer(msg: &str, _is_err: bool) {
         lsp_log!("pluggin runner - {}", msg);
       }
       let logger = crate::tools::lint::PluginLogger::new(logger_printer);
       let plugin_load_result =
         crate::tools::lint::create_runner_and_load_plugins(
-          plugin_specifiers,
+          lint_options.plugins.clone(),
           logger,
           lint_options.rules.exclude.clone(),
         )
