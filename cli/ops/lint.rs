@@ -43,7 +43,10 @@ deno_core::extension!(
 
 deno_core::extension!(
   deno_lint_ext_for_test,
-  ops = [op_lint_create_serialized_ast,],
+  ops = [op_lint_create_serialized_ast, op_is_cancelled],
+  state = |state| {
+    state.put(LintPluginContainer::default());
+  },
 );
 
 #[derive(Default)]
