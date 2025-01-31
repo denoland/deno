@@ -225,6 +225,8 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
+
+  _tracing: Option<super::trace::TracingGuard>,
 }
 
 impl LanguageServer {
@@ -244,6 +246,7 @@ impl LanguageServer {
 
   /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
+  #[tracing::instrument(skip_all)]
   pub async fn cache(
     &self,
     specifiers: Vec<ModuleSpecifier>,
@@ -419,6 +422,7 @@ impl LanguageServer {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn refresh_configuration(&self) {
     let (folders, capable) = {
       let inner = self.inner.read().await;
@@ -510,11 +514,13 @@ impl Inner {
       url_map: Default::default(),
       workspace_files: Default::default(),
       workspace_files_hash: 0,
+      _tracing: Default::default(),
     }
   }
 
   /// Searches assets and documents for the provided
   /// specifier erroring if it doesn't exist.
+  #[tracing::instrument(skip_all)]
   pub fn get_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
@@ -541,6 +547,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
@@ -602,6 +609,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
@@ -612,6 +620,37 @@ impl Inner {
     })
   }
 
+  pub fn update_tracing(&mut self) {
+    let tracing =
+      self
+        .config
+        .workspace_settings()
+        .tracing
+        .clone()
+        .or_else(|| {
+          std::env::var("DENO_LSP_TRACE").ok().map(|_| {
+            super::trace::TracingConfig {
+              enable: true,
+              ..Default::default()
+            }
+            .into()
+          })
+        });
+    self._tracing = tracing.and_then(|conf| {
+      if !conf.enabled() {
+        return None;
+      }
+      lsp_log!("Initializing tracing subscriber: {:#?}", conf);
+      let config = conf.into();
+      super::trace::init_tracing_subscriber(&config)
+        .inspect_err(|e| {
+          lsp_warn!("Error initializing tracing subscriber: {e:#}");
+        })
+        .ok()
+    });
+  }
+
+  #[tracing::instrument(skip_all)]
   pub async fn update_global_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_global_cache");
     let maybe_cache = self.config.workspace_settings().cache.as_ref();
@@ -669,6 +708,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
@@ -778,6 +818,7 @@ impl Inner {
       return Err(tower_lsp::jsonrpc::Error::internal_error());
     };
 
+    self.update_tracing();
     self.update_debug_flag();
 
     if capabilities.code_action_provider.is_some() {
@@ -797,6 +838,7 @@ impl Inner {
     })
   }
 
+  #[tracing::instrument(skip_all)]
   fn walk_workspace(config: &Config) -> (IndexSet<ModuleSpecifier>, bool) {
     if !config.workspace_capable() {
       log::debug!("Skipped workspace walk due to client incapability.");
@@ -956,6 +998,7 @@ impl Inner {
     self.workspace_files_hash = enable_settings_hash;
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
@@ -1011,6 +1054,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_resolver(&mut self) {
     self.resolver = Arc::new(
       LspResolver::from_config(
@@ -1022,6 +1066,7 @@ impl Inner {
     );
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(
       &self.config,
@@ -1037,6 +1082,7 @@ impl Inner {
     self.project_changed([], true);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let Some(scheme) = params.text_document.uri.scheme() else {
@@ -1086,11 +1132,13 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
+    eprintln!("did_change: {specifier}");
     match self.documents.change(
       &specifier,
       params.text_document.version,
@@ -1123,6 +1171,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   fn did_save(&mut self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let specifier = self
@@ -1151,6 +1200,7 @@ impl Inner {
     }));
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.documents.dep_info_by_scope();
     let resolver = self.resolver.clone();
@@ -1162,6 +1212,7 @@ impl Inner {
     .ok();
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
     let Some(scheme) = params.text_document.uri.scheme() else {
@@ -1188,6 +1239,8 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn did_change_configuration(
     &mut self,
     params: DidChangeConfigurationParams,
@@ -1206,6 +1259,7 @@ impl Inner {
         self.config.set_workspace_settings(settings, vec![]);
       }
     };
+    // self.update_tracing();
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
@@ -1217,6 +1271,8 @@ impl Inner {
     self.send_diagnostics_update();
     self.send_testing_update();
   }
+
+  #[tracing::instrument(skip(self))]
 
   async fn did_change_watched_files(
     &mut self,
@@ -1303,6 +1359,8 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
@@ -1344,6 +1402,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(response)
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn formatting(
     &self,
@@ -1458,6 +1518,8 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
@@ -1544,6 +1606,8 @@ impl Inner {
     Ok(hover)
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -1585,6 +1649,8 @@ impl Inner {
       Resolution::None => "_[missing]_".to_string(),
     }
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn code_action(
     &self,
@@ -1805,6 +1871,8 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn code_action_resolve(
     &self,
     params: CodeAction,
@@ -1958,6 +2026,8 @@ impl Inner {
     )
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn code_lens(
     &self,
     params: CodeLensParams,
@@ -2023,6 +2093,8 @@ impl Inner {
     Ok(Some(code_lenses))
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn code_lens_resolve(
     &self,
     code_lens: CodeLens,
@@ -2045,6 +2117,8 @@ impl Inner {
     self.performance.measure(mark);
     result
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn document_highlight(
     &self,
@@ -2089,6 +2163,8 @@ impl Inner {
       Ok(None)
     }
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn references(
     &self,
@@ -2146,6 +2222,8 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
@@ -2184,6 +2262,8 @@ impl Inner {
       Ok(None)
     }
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn goto_type_definition(
     &self,
@@ -2230,6 +2310,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(response)
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn completion(
     &self,
@@ -2343,6 +2425,8 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn completion_resolve(
     &self,
     params: CompletionItem,
@@ -2424,6 +2508,8 @@ impl Inner {
     Ok(completion_item)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
@@ -2473,6 +2559,8 @@ impl Inner {
     Ok(result)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
@@ -2519,6 +2607,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(response)
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn incoming_calls(
     &self,
@@ -2569,6 +2659,8 @@ impl Inner {
     Ok(Some(resolved_items))
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
@@ -2615,6 +2707,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(Some(resolved_items))
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn prepare_call_hierarchy(
     &self,
@@ -2680,6 +2774,8 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn rename(
     &self,
     params: RenameParams,
@@ -2727,6 +2823,8 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
@@ -2764,6 +2862,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(Some(selection_ranges))
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn semantic_tokens_full(
     &self,
@@ -2818,6 +2918,8 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
@@ -2868,6 +2970,8 @@ impl Inner {
     self.performance.measure(mark);
     Ok(response)
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn signature_help(
     &self,
@@ -2921,6 +3025,8 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
@@ -2973,6 +3079,8 @@ impl Inner {
     file_text_changes_to_workspace_edit(&changes, self)
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -3012,6 +3120,8 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn project_changed<'a>(
     &mut self,
     modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
@@ -3033,6 +3143,7 @@ impl Inner {
     );
   }
 
+  #[tracing::instrument(skip_all)]
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
@@ -3587,6 +3698,8 @@ impl Inner {
     registrations
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -3665,6 +3778,8 @@ impl Inner {
     })
   }
 
+  #[tracing::instrument(skip_all)]
+
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
@@ -3674,6 +3789,8 @@ impl Inner {
     self.send_diagnostics_update();
     self.send_testing_update();
   }
+
+  #[tracing::instrument(skip_all)]
 
   fn pre_did_change_workspace_folders(
     &mut self,
@@ -3702,6 +3819,8 @@ impl Inner {
     }
     self.config.set_workspace_folders(workspace_folders);
   }
+
+  #[tracing::instrument(skip_all)]
 
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();

@@ -613,6 +613,7 @@ FetchPermissionsOptionRef::AllowAll,
 
   /// For a string specifier from the client, provide a set of completions, if
   /// any, for the specifier.
+  #[tracing::instrument(skip_all)]
   pub async fn get_completions(
     &self,
     text: &str,
