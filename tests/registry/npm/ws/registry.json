@@ -92,6 +92,5 @@
   "homepage": "https://github.com/websockets/ws",
   "bugs": {
     "url": "https://github.com/websockets/ws/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }
