@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { DatabaseSync } from "node:sqlite";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
@@ -52,6 +52,15 @@ Deno.test(
   },
 );
 
+Deno.test("[node/sqlite] StatementSync bind bigints", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+
+  const stmt = db.prepare("INSERT INTO data (key) VALUES (?)");
+  assertEquals(stmt.run(100n), { lastInsertRowid: 100, changes: 1 });
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -62,4 +71,13 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
 
   stmt.setReadBigInts(true);
   assertEquals(stmt.get(), { key: 1n, __proto__: null });
+});
+
+Deno.test("[node/sqlite] StatementSync blob are Uint8Array", () => {
+  const db = new DatabaseSync(":memory:");
+  const obj = db.prepare("select cast('test' as blob)").all();
+
+  assertEquals(obj.length, 1);
+  const row = obj[0] as Record<string, Uint8Array>;
+  assert(row["cast('test' as blob)"] instanceof Uint8Array);
 });

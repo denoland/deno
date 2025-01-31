@@ -1343,9 +1343,11 @@ impl CodeActionCollection {
         .tree
         .data_for_specifier(file_referrer?)?;
       let workspace_resolver = config_data.resolver.clone();
-      let npm_ref = if let Ok(resolution) =
-        workspace_resolver.resolve(&dep_key, document.specifier())
-      {
+      let npm_ref = if let Ok(resolution) = workspace_resolver.resolve(
+        &dep_key,
+        document.specifier(),
+        deno_config::workspace::ResolutionKind::Execution,
+      ) {
         let specifier = match resolution {
           MappedResolution::Normal { specifier, .. }
           | MappedResolution::ImportMap { specifier, .. } => specifier,

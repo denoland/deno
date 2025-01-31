@@ -2,7 +2,7 @@
 
 [package]
 name = "node_resolver"
-version = "0.25.0"
+version = "0.27.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,6 +21,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 boxed_error.workspace = true
 dashmap.workspace = true
+deno_config.workspace = true
 deno_error.workspace = true
 deno_media_type.workspace = true
 deno_package_json.workspace = true
