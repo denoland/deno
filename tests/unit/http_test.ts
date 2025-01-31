@@ -3,7 +3,7 @@
 
 // deno-lint-ignore-file no-deprecated-deno-api
 
-import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
+import { Buffer, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -13,6 +13,7 @@ import {
   assertThrows,
   delay,
   fail,
+  BufReader,BufWriter,
 } from "./test_util.ts";
 import { join } from "@std/path";
 
