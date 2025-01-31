@@ -348,16 +348,11 @@ async fn update(
           )| {
             let dep = deps.get_dep(*dep_id);
             interactive::PackageInfo {
-              location: dep.location.clone(),
               current_version: current_version
                 .as_ref()
                 .map(|nv| nv.version.to_string())
                 .unwrap_or_default(),
-              name: dep
-                .alias
-                .as_ref()
-                .cloned()
-                .unwrap_or_else(|| dep.req.name.to_string()),
+              name: dep.alias_or_name().into(),
               kind: dep.kind,
               new_version: new_req
                 .version_text()
