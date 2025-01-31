@@ -17,9 +17,8 @@ use crossterm::QueueableCommand;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 
-use crate::tools::registry::pm::deps::DepKind;
-
 use super::super::deps::DepLocation;
+use crate::tools::registry::pm::deps::DepKind;
 
 #[derive(Debug)]
 pub struct PackageInfo {
