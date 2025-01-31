@@ -11,9 +11,10 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  BufReader,
+  BufWriter,
   delay,
   fail,
-  BufReader,BufWriter,
 } from "./test_util.ts";
 import { join } from "@std/path";
 
