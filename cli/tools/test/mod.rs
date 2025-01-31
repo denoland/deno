@@ -619,27 +619,12 @@ async fn configure_main_worker(
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,
 > {
-  // TODO(bartlomieju): this should be removed
-  #[allow(clippy::print_stdout)]
-  #[allow(clippy::print_stderr)]
-  fn linter_logger(msg: &str, is_err: bool) {
-    if is_err {
-      eprint!("{}", msg);
-    } else {
-      print!("{}", msg);
-    }
-  }
-  let logger = crate::tools::lint::PluginLogger::new(linter_logger, true);
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
       specifier.clone(),
       permissions_container,
-      vec![
-        ops::testing::deno_test::init_ops(worker_sender.sender),
-        // TODO(bartlomieju): this is temporary and should be removed before landing plugin support
-        ops::lint::deno_lint_ext::init_ops(logger),
-      ],
+      vec![ops::testing::deno_test::init_ops(worker_sender.sender)],
       Stdio {
         stdin: StdioPipe::inherit(),
         stdout: StdioPipe::file(worker_sender.stdout),
