@@ -5,6 +5,7 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
+/** @category URL */
 interface URLSearchParamsIterator<T>
   extends IteratorObject<T, BuiltinIteratorReturn, unknown> {
   [Symbol.iterator](): URLSearchParamsIterator<T>;
