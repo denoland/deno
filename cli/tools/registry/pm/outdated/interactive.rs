@@ -79,6 +79,7 @@ impl State {
       MoveTo(0, self.start_row),
       terminal::Clear(terminal::ClearType::FromCursorDown),
       PrintStyledContent("?".blue()),
+      Print(" Select which packages to update (<space> to select, ↑/↓/j/k to navigate, enter to accept, <Ctrl-c> to cancel)")
     )?;
 
     let base = self.start_row + 1;
@@ -114,7 +115,7 @@ impl State {
         out,
         Print(format!(
           "{:<name_width$} {:<current_width$} -> {}",
-          format_args!(
+          format!(
             "{}{}{}",
             deno_terminal::colors::gray(package.kind.scheme()),
             deno_terminal::colors::gray(":"),
@@ -269,7 +270,7 @@ pub fn select_interactive(
   let mut stdout = io::stdout();
   let raw_mode = RawMode::enable()?;
 
-  let (_, rows) = terminal::size().unwrap();
+  let (_, rows) = terminal::size()?;
 
   let (_, start_row) = cursor::position().unwrap_or_default();
   if rows - start_row < (packages.len() + 2) as u16 {
