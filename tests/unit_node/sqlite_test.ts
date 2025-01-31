@@ -52,6 +52,15 @@ Deno.test(
   },
 );
 
+Deno.test("[node/sqlite] StatementSync bind bigints", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+
+  const stmt = db.prepare("INSERT INTO data (key) VALUES (?)");
+  assertEquals(stmt.run(100n), { lastInsertRowid: 100, changes: 1 });
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");

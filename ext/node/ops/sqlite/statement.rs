@@ -261,6 +261,20 @@ impl StatementSync {
               ffi::SQLITE_TRANSIENT(),
             );
           }
+        } else if value.is_big_int() {
+          let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
+          let (as_int, lossless) = value.i64_value();
+          if !lossless {
+            return Err(SqliteError::FailedBind(
+              "BigInt value is too large to bind",
+            ));
+          }
+
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
+          unsafe {
+            ffi::sqlite3_bind_int64(raw, i + 1, as_int);
+          }
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));
         }
