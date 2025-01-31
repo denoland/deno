@@ -6019,6 +6019,7 @@ mod tests {
       total_size += asset.text().len();
     }
     assert!(total_size > 0);
+    #[allow(clippy::print_stderr)]
     // currently as of TS 5.7, it's 3MB
     if total_size > 3_500_000 {
       let mut sizes = Vec::new();
