@@ -17,16 +17,13 @@ use crossterm::QueueableCommand;
 use deno_core::anyhow;
 use deno_core::anyhow::Context;
 
-use super::super::deps::DepLocation;
 use crate::tools::registry::pm::deps::DepKind;
 
 #[derive(Debug)]
 pub struct PackageInfo {
-  pub location: DepLocation,
   pub current_version: String,
   pub new_version: String,
   pub name: String,
-
   pub kind: DepKind,
 }
 
@@ -53,10 +50,6 @@ impl State {
       .map(|p| p.current_version.len())
       .max()
       .unwrap_or_default();
-
-    let mut packages = packages;
-    packages
-      .sort_by(|a, b| a.location.file_path().cmp(&b.location.file_path()));
 
     Ok(Self {
       packages,
@@ -110,24 +103,22 @@ impl State {
       let want = &package.new_version;
       let new_version_highlight =
         highlight_new_version(&package.current_version, want)?;
-      // let style = style::PrintStyledContent()
+      let formatted_name = format!(
+        "{}{}",
+        deno_terminal::colors::gray(format!("{}:", package.kind.scheme())),
+        package.name
+      );
+      let name_pad = " ".repeat(self.name_width + 2 - (package.name.len() + 4));
+
       crossterm::queue!(
         out,
         Print(format!(
-          "{:<name_width$} {:<current_width$} -> {}",
-          format!(
-            "{}{}{}",
-            deno_terminal::colors::gray(package.kind.scheme()),
-            deno_terminal::colors::gray(":"),
-            package.name
-          ),
+          "{formatted_name}{name_pad} {:<current_width$} -> {}",
           package.current_version,
           new_version_highlight,
-          name_width = self.name_width + 2,
           current_width = self.current_width
         )),
       )?;
-      // out.queue(Print(&package.package.name))?;
       if self.currently_selected == i {
         out.queue(style::ResetColor)?;
       }

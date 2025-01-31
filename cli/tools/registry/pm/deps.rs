@@ -194,6 +194,12 @@ pub struct Dep {
   pub alias: Option<String>,
 }
 
+impl Dep {
+  pub fn alias_or_name(&self) -> &str {
+    self.alias.as_deref().unwrap_or_else(|| &self.req.name)
+  }
+}
+
 fn import_map_entries(
   import_map: &ImportMap,
 ) -> impl Iterator<Item = (KeyPath, SpecifierMapEntry<'_>)> {
