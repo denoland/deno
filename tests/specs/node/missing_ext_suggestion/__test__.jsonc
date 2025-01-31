@@ -1,0 +1,16 @@
+{
+  "tests": {
+    "cjs": {
+      "args": "run commonjs.ts",
+      "output": "commonjs.out"
+    },
+    "esm": {
+      "args": "run esm.ts",
+      "output": "esm.out"
+    },
+    "js": {
+      "args": "run js.ts",
+      "output": "js.out"
+    }
+  }
+}

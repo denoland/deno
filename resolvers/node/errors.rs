@@ -551,16 +551,18 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Cannot find {} '{}'{}",
+  "[{}] Cannot find {} '{}'{}{}",
   self.code(),
   typ,
   specifier,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  suggested_module.as_ref().map(|m| format!("\nDid you mean to import \"{}\"?", m)).unwrap_or_default()
 )]
 pub struct ModuleNotFoundError {
   pub specifier: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
   pub typ: &'static str,
+  pub suggested_module: Option<String>,
 }
 
 impl NodeJsErrorCoded for ModuleNotFoundError {

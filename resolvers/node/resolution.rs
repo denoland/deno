@@ -143,6 +143,18 @@ impl NodeResolution {
   }
 }
 
+enum ModuleResolution {
+  Url(UrlOrPath),
+  RelativeOrAbsolute(UrlOrPath),
+  Package(PackageResolution),
+}
+
+enum PackageResolution {
+  Imports(UrlOrPath),
+  Exports(UrlOrPath),
+  SubPath(UrlOrPath),
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -262,7 +274,7 @@ impl<
       .conditions_from_resolution_mode
       .resolve(resolution_mode);
     let referrer = UrlOrPathRef::from_url(referrer);
-    let url = self.module_resolve(
+    let resolution = self.module_resolve(
       specifier,
       &referrer,
       resolution_mode,
@@ -270,19 +282,8 @@ impl<
       resolution_kind,
     )?;
 
-    let url = if resolution_kind.is_types() && url.is_file() {
-      let file_path = url.into_path()?;
-      self.path_to_declaration_path(
-        file_path,
-        Some(&referrer),
-        resolution_mode,
-        conditions,
-      )?
-    } else {
-      url
-    };
-
-    let url_or_path = self.finalize_resolution(url, Some(&referrer))?;
+    let url_or_path =
+      self.finalize_resolution(resolution, specifier, &referrer)?;
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -296,51 +297,96 @@ impl<
     resolution_mode: ResolutionMode,
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, NodeResolveError> {
+  ) -> Result<ModuleResolution, NodeResolveError> {
     if should_be_treated_as_relative_or_absolute_path(specifier) {
       let referrer_url = referrer.url()?;
-      Ok(UrlOrPath::Url(
-        node_join_url(referrer_url, specifier).map_err(|err| {
-          NodeResolveRelativeJoinError {
+      Ok(ModuleResolution::RelativeOrAbsolute(self.handle_if_types(
+        UrlOrPath::Url(node_join_url(referrer_url, specifier).map_err(
+          |err| NodeResolveRelativeJoinError {
             path: specifier.to_string(),
             base: referrer_url.clone(),
             source: err,
-          }
-        })?,
-      ))
+          },
+        )?),
+        referrer,
+        resolution_mode,
+        conditions,
+        resolution_kind,
+      )?))
     } else if specifier.starts_with('#') {
       let pkg_config = self
         .pkg_json_resolver
         .get_closest_package_json(referrer.path()?)
         .map_err(PackageImportsResolveErrorKind::ClosestPkgJson)
         .map_err(|err| PackageImportsResolveError(Box::new(err)))?;
-      Ok(self.package_imports_resolve(
-        specifier,
-        Some(referrer),
+      Ok(ModuleResolution::Package(PackageResolution::Imports(
+        self.package_imports_resolve(
+          specifier,
+          Some(referrer),
+          resolution_mode,
+          pkg_config.as_deref(),
+          conditions,
+          resolution_kind,
+        )?,
+      )))
+    } else if let Ok(resolved) = Url::parse(specifier) {
+      Ok(ModuleResolution::Url(self.handle_if_types(
+        UrlOrPath::Url(resolved),
+        referrer,
         resolution_mode,
-        pkg_config.as_deref(),
         conditions,
         resolution_kind,
-      )?)
-    } else if let Ok(resolved) = Url::parse(specifier) {
-      Ok(UrlOrPath::Url(resolved))
+      )?))
     } else {
-      Ok(self.package_resolve(
+      Ok(ModuleResolution::Package(self.package_resolve(
         specifier,
         referrer,
         resolution_mode,
         conditions,
         resolution_kind,
-      )?)
+      )?))
+    }
+  }
+
+  fn handle_if_types(
+    &self,
+    url_or_path: UrlOrPath,
+    referrer: &UrlOrPathRef,
+    resolution_mode: ResolutionMode,
+    conditions: &[&str],
+    resolution_kind: NodeResolutionKind,
+  ) -> Result<UrlOrPath, TypesNotFoundError> {
+    if resolution_kind.is_types() && url_or_path.is_file() {
+      let file_path = match url_or_path {
+        UrlOrPath::Url(url) => match deno_path_util::url_to_file_path(&url) {
+          Ok(path) => path,
+          // should never happen
+          Err(_) => return Ok(UrlOrPath::Url(url)),
+        },
+        UrlOrPath::Path(path_buf) => path_buf,
+      };
+      self.path_to_declaration_path(
+        file_path,
+        Some(referrer),
+        resolution_mode,
+        conditions,
+      )
+    } else {
+      Ok(url_or_path)
     }
   }
 
   fn finalize_resolution(
     &self,
-    resolved: UrlOrPath,
-    maybe_referrer: Option<&UrlOrPathRef>,
+    resolution: ModuleResolution,
+    original_specifier: &str,
+    referrer: &UrlOrPathRef,
   ) -> Result<UrlOrPath, FinalizeResolutionError> {
     let encoded_sep_re = lazy_regex::regex!(r"%2F|%2C");
+
+    if resolution.is_node_url() {
+      return Ok(resolved);
+    }
 
     let text = match &resolved {
       UrlOrPath::Url(url) => Cow::Borrowed(url.as_str()),
@@ -363,10 +409,6 @@ impl<
       );
     }
 
-    if resolved.is_node_url() {
-      return Ok(resolved);
-    }
-
     let path = resolved.into_path()?;
 
     // TODO(bartlomieju): currently not supported
@@ -376,8 +418,7 @@ impl<
 
     let p_str = path.to_str().unwrap();
     let path = if p_str.ends_with('/') {
-      // todo(dsherret): don't allocate a new string here
-      PathBuf::from(p_str[p_str.len() - 1..].to_string())
+      PathBuf::from(&p_str[p_str.len() - 1..])
     } else {
       path
     };
@@ -394,6 +435,11 @@ impl<
       Ok(FileType::File) => Ok(UrlOrPath::Path(path)),
       _ => Err(
         ModuleNotFoundError {
+          suggested_module: self.module_not_found_suggestion(
+            &path,
+            original_specifier,
+            maybe_referrer,
+          ),
           specifier: UrlOrPath::Path(path),
           maybe_referrer: maybe_referrer.map(|r| r.display()),
           typ: "module",
@@ -401,6 +447,52 @@ impl<
         .into(),
       ),
     }
+  }
+
+  fn module_not_found_suggestion(
+    &self,
+    path: &Path,
+    original_specifier: &str,
+    maybe_referrer: Option<&UrlOrPathRef>,
+  ) -> Option<String> {
+    fn should_probe(
+      path: &Path,
+      original_specifier: &str,
+      maybe_referrer: Option<&UrlOrPathRef>,
+    ) -> bool {
+      if MediaType::from_path(&path) != MediaType::Unknown {
+        false
+      } else if should_be_treated_as_relative_or_absolute_path(
+        original_specifier,
+      ) {
+        true
+      } else if original_specifier.starts_with("#") {
+        false
+      } else {
+        let Some(referrer) = maybe_referrer else {
+          return false;
+        };
+        let Ok((package_name, package_subpath, _is_scoped)) =
+          parse_npm_pkg_name(original_specifier, referrer)
+        else {
+          return false;
+        };
+        //package_subpath
+        true
+      }
+    }
+
+    if should_probe(path, original_specifier, maybe_referrer) {
+      for ext in ["js", "mjs", "cjs"] {
+        let new_path = with_known_extension(path, ext);
+        eprintln!("PRobing for: {}", new_path.display());
+        if self.sys.fs_is_file_no_err(&new_path) {
+          return Some(format!("{}.{}", original_specifier, ext));
+        }
+      }
+    }
+
+    None
   }
 
   pub fn resolve_package_subpath_from_deno_module(
@@ -940,17 +1032,7 @@ impl<
         conditions,
         resolution_kind,
       )?;
-      if resolution_kind.is_types() && url_or_path.is_file() {
-        let path = url_or_path.into_path()?;
-        return Ok(Some(self.path_to_declaration_path(
-          path,
-          maybe_referrer,
-          resolution_mode,
-          conditions,
-        )?));
-      } else {
-        return Ok(Some(url_or_path));
-      }
+      return Ok(Some(url_or_path));
     } else if let Some(target_arr) = target.as_array() {
       if target_arr.is_empty() {
         return Ok(None);
@@ -1156,14 +1238,14 @@ impl<
     )
   }
 
-  pub(super) fn package_resolve(
+  fn package_resolve(
     &self,
     specifier: &str,
     referrer: &UrlOrPathRef,
     resolution_mode: ResolutionMode,
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
-  ) -> Result<UrlOrPath, PackageResolveError> {
+  ) -> Result<PackageResolution, PackageResolveError> {
     let (package_name, package_subpath, _is_scoped) =
       parse_npm_pkg_name(specifier, referrer)?;
 
@@ -1184,19 +1266,22 @@ impl<
               conditions,
               resolution_kind,
             )
+            .map(PackageResolution::Exports)
             .map_err(|err| err.into());
         }
       }
     }
 
-    self.resolve_package_subpath_for_package(
-      package_name,
-      &package_subpath,
-      referrer,
-      resolution_mode,
-      conditions,
-      resolution_kind,
-    )
+    self
+      .resolve_package_subpath_for_package(
+        package_name,
+        &package_subpath,
+        referrer,
+        resolution_mode,
+        conditions,
+        resolution_kind,
+      )
+      .map(PackageResolution::SubPath)
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -1565,6 +1650,7 @@ impl<
           specifier: UrlOrPath::Path(directory.join("index.js")),
           typ: "module",
           maybe_referrer: maybe_referrer.map(|r| r.display()),
+          suggested_module: None,
         }
         .into(),
       )

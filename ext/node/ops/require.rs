@@ -710,7 +710,7 @@ pub fn op_require_package_imports_resolve<
     >>();
     let url = node_resolver.package_imports_resolve(
       &request,
-      Some(&UrlOrPathRef::from_path(&referrer_path)),
+      &UrlOrPathRef::from_path(&referrer_path),
       ResolutionMode::Require,
       Some(&pkg),
       REQUIRE_CONDITIONS,
