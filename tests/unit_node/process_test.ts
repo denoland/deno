@@ -390,6 +390,8 @@ Deno.test({
 Deno.test({
   name: "process.env",
   fn() {
+    assert(Object.prototype.hasOwnProperty.call(process, "env"));
+
     Deno.env.set("HELLO", "WORLD");
 
     assertObjectMatch(process.env, Deno.env.toObject());

@@ -784,6 +784,7 @@ const process = new Process();
 
 /* Set owned property */
 process.versions = versions;
+process.env = env;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
