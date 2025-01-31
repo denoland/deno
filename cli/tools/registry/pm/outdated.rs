@@ -335,7 +335,7 @@ async fn update(
     ));
   }
 
-  if interactive {
+  if interactive && !to_update.is_empty() {
     let selected = interactive::select_interactive(
       to_update
         .iter()
@@ -380,13 +380,14 @@ async fn update(
       return Ok(());
     }
   }
-  for (dep_id, _, _, new_version_req) in &to_update {
-    deps.update_dep(*dep_id, new_version_req.clone());
-  }
-
-  deps.commit_changes()?;
 
   if !to_update.is_empty() {
+    for (dep_id, _, _, new_version_req) in &to_update {
+      deps.update_dep(*dep_id, new_version_req.clone());
+    }
+
+    deps.commit_changes()?;
+
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
