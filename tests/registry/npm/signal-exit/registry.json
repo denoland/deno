@@ -136,6 +136,5 @@
   "bugs": {
     "url": "https://github.com/tapjs/signal-exit/issues"
   },
-  "license": "ISC",
-  "readmeFilename": "README.md"
+  "license": "ISC"
 }

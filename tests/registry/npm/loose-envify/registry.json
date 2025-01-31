@@ -63,6 +63,5 @@
   "bugs": {
     "url": "https://github.com/zertosh/loose-envify/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }
