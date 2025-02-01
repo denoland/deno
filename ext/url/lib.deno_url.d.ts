@@ -6,6 +6,12 @@
 /// <reference lib="esnext" />
 
 /** @category URL */
+interface URLSearchParamsIterator<T>
+  extends IteratorObject<T, BuiltinIteratorReturn, unknown> {
+  [Symbol.iterator](): URLSearchParamsIterator<T>;
+}
+
+/** @category URL */
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
@@ -102,7 +108,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  keys(): IterableIterator<string>;
+  keys(): URLSearchParamsIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
@@ -114,7 +120,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  values(): IterableIterator<string>;
+  values(): URLSearchParamsIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
@@ -126,7 +132,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  entries(): IterableIterator<[string, string]>;
+  entries(): URLSearchParamsIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
@@ -138,7 +144,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
+  [Symbol.iterator](): URLSearchParamsIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
@@ -154,14 +160,18 @@ interface URLSearchParams {
    * searchParams.size
    * ```
    */
-  size: number;
+  readonly size: number;
 }
 
 /** @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   new (
-    init?: Iterable<string[]> | Record<string, string> | string,
+    init?:
+      | Iterable<string[]>
+      | Record<string, string>
+      | string
+      | URLSearchParams,
   ): URLSearchParams;
 };
 

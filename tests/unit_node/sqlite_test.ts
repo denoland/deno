@@ -52,6 +52,15 @@ Deno.test(
   },
 );
 
+Deno.test("[node/sqlite] StatementSync bind bigints", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+
+  const stmt = db.prepare("INSERT INTO data (key) VALUES (?)");
+  assertEquals(stmt.run(100n), { lastInsertRowid: 100, changes: 1 });
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
@@ -84,4 +93,23 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   assertThrows(() => session.changeset(), Error, "Session is already closed");
   // Close after close should throw.
   assertThrows(() => session.close(), Error, "Session is already closed");
+});
+
+Deno.test("[node/sqlite] StatementSync integer too large", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+  db.prepare("INSERT INTO data (key) VALUES (?)").run(
+    Number.MAX_SAFE_INTEGER + 1,
+  );
+
+  assertThrows(() => db.prepare("SELECT * FROM data").get());
+});
+
+Deno.test("[node/sqlite] StatementSync blob are Uint8Array", () => {
+  const db = new DatabaseSync(":memory:");
+  const obj = db.prepare("select cast('test' as blob)").all();
+
+  assertEquals(obj.length, 1);
+  const row = obj[0] as Record<string, Uint8Array>;
+  assert(row["cast('test' as blob)"] instanceof Uint8Array);
 });

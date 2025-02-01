@@ -70,6 +70,5 @@
     "type": "git",
     "url": "git+https://github.com/websockets/utf-8-validate.git"
   },
-  "description": "Check if a buffer contains valid UTF-8",
-  "readmeFilename": "README.md"
+  "description": "Check if a buffer contains valid UTF-8"
 }
