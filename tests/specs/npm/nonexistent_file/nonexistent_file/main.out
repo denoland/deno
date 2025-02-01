@@ -1,4 +1,4 @@
-error: Unable to load [WILDCARD]non-existent imported from [WILDCARD]main.js
+error: Could not resolve 'npm:crypto-js@4.1.1/non-existent'
 
 Caused by:
-[WILDCARD]
+    [ERR_MODULE_NOT_FOUND] Cannot find module 'file:///[WILDLINE]/non-existent' imported from 'file:///[WILDLINE]/main.js'

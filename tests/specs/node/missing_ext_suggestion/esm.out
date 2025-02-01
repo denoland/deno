@@ -1,0 +1,3 @@
+error: [ERR_MODULE_NOT_FOUND] Cannot find module 'file:///[WILDLINE]/node_modules/package/esm' imported from 'file:///[WILDLINE]/esm.ts'
+Did you mean to import with the ".mjs" extension?
+    at file:///[WILDLINE]/esm.ts:1:8
