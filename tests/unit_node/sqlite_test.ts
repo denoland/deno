@@ -75,7 +75,6 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
 
 Deno.test("[node/sqlite] createSession and changesets", () => {
   const db = new DatabaseSync(":memory:");
-  // @ts-expect-error: types aint typing yet
   const session = db.createSession();
 
   db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
