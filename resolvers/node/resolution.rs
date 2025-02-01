@@ -434,8 +434,6 @@ impl<
       path
     };
 
-    // todo(dsherret): we could avoid this metadata call in many cases
-    // if we keep track of it earlier on in resolution
     let maybe_file_type = self.sys.fs_metadata(&path).map(|m| m.file_type());
     match maybe_file_type {
       Ok(FileType::Dir) => {
