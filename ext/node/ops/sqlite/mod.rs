@@ -38,4 +38,7 @@ pub enum SqliteError {
   #[class(generic)]
   #[error("Invalid constructor")]
   InvalidConstructor,
+  #[class(generic)]
+  #[error("Expanded SQL text would exceed configured limits")]
+  InvalidExpandedSql,
 }

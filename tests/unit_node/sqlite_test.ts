@@ -62,4 +62,7 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
 
   stmt.setReadBigInts(true);
   assertEquals(stmt.get(), { key: 1n, __proto__: null });
+
+  assertEquals(stmt.sourceSQL, "SELECT * FROM data");
+  assertEquals(stmt.expandedSQL, "SELECT * FROM data");
 });
