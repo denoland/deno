@@ -42,6 +42,7 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::colors;
@@ -203,6 +204,7 @@ impl ReplSession {
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,
     resolver: Arc<CliResolver>,
+    tsconfig_resolver: &TsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -258,13 +260,10 @@ impl ReplSession {
           cli_options.initial_cwd().to_string_lossy(),
         )
       })?;
-    let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_for_emit.ts_config,
-      )?;
-    let experimental_decorators = transpile_options.use_ts_decorators;
+    let experimental_decorators = tsconfig_resolver
+      .transpile_and_emit_options(&cwd_url)?
+      .transpile
+      .use_ts_decorators;
     let mut repl_session = ReplSession {
       npm_installer,
       resolver,

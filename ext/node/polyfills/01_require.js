@@ -141,6 +141,7 @@ import querystring from "node:querystring";
 import readline from "node:readline";
 import readlinePromises from "node:readline/promises";
 import repl from "node:repl";
+import sqlite from "node:sqlite";
 import stream from "node:stream";
 import streamConsumers from "node:stream/consumers";
 import streamPromises from "node:stream/promises";
@@ -251,6 +252,7 @@ function setupBuiltinModules() {
     readline,
     "readline/promises": readlinePromises,
     repl,
+    sqlite,
     stream,
     "stream/consumers": streamConsumers,
     "stream/promises": streamPromises,

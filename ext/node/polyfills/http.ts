@@ -5,6 +5,7 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_node_http_await_information,
   op_node_http_await_response,
   op_node_http_fetch_response_upgrade,
   op_node_http_request_with_conn,
@@ -478,12 +479,51 @@ class ClientRequest extends OutgoingMessage {
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
+          this._createRequestPath(),
           headers,
           this._bodyWriteRid,
           baseConnRid,
           this._encrypted,
         );
         this._flushBuffer();
+
+        const infoPromise = op_node_http_await_information(
+          this._req!.requestRid,
+        );
+        core.unrefOpPromise(infoPromise);
+        infoPromise.then((info) => {
+          if (!info) return;
+
+          if (info.status === 100) this.emit("continue");
+
+          let headers;
+          let rawHeaders;
+
+          this.emit("information", {
+            statusCode: info.status,
+            statusMessage: info.statusText,
+            httpVersionMajor: info.versionMajor,
+            httpVersionMinor: info.versionMinor,
+            httpVersion: `${info.versionMajor}.${info.versionMinor}`,
+            get headers() {
+              if (!headers) {
+                headers = {};
+                for (let i = 0; i < info.headers.length; i++) {
+                  const entry = info.headers[i];
+                  headers[entry[0]] = entry[1];
+                }
+              }
+              return headers;
+            },
+            get rawHeaders() {
+              if (!rawHeaders) {
+                rawHeaders = info.headers.flat();
+              }
+              return rawHeaders;
+            },
+          });
+        });
+
         const res = await op_node_http_await_response(this._req!.requestRid);
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
@@ -776,6 +816,15 @@ class ClientRequest extends OutgoingMessage {
     );
     url.hash = hash;
     return url.href;
+  }
+
+  _createRequestPath(): string | undefined {
+    // If the path starts with protocol, pass this to op_node_http_request_with_conn
+    // This will be used as Request.uri in hyper for supporting http proxy
+    if (this.path?.startsWith("http://") || this.path?.startsWith("https://")) {
+      return this.path;
+    }
+    return undefined;
   }
 
   setTimeout(msecs: number, callback?: () => void) {
@@ -1626,6 +1675,12 @@ ServerResponse.prototype.detachSocket = function (
   this._socketOverride = null;
 };
 
+ServerResponse.prototype.writeContinue = function writeContinue(cb) {
+  if (cb) {
+    nextTick(cb);
+  }
+};
+
 Object.defineProperty(ServerResponse.prototype, "connection", {
   get: deprecate(
     function (this: ServerResponse) {
@@ -1831,7 +1886,24 @@ export class ServerImpl extends EventEmitter {
       } else {
         return new Promise<Response>((resolve): void => {
           const res = new ServerResponse(resolve, socket);
-          this.emit("request", req, res);
+
+          if (request.headers.has("expect")) {
+            if (/(?:^|\W)100-continue(?:$|\W)/i.test(req.headers.expect)) {
+              if (this.listenerCount("checkContinue") > 0) {
+                this.emit("checkContinue", req, res);
+              } else {
+                res.writeContinue();
+                this.emit("request", req, res);
+              }
+            } else if (this.listenerCount("checkExpectation") > 0) {
+              this.emit("checkExpectation", req, res);
+            } else {
+              res.writeHead(417);
+              res.end();
+            }
+          } else {
+            this.emit("request", req, res);
+          }
         });
       }
     };

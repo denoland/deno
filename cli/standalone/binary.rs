@@ -62,6 +62,7 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
+use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -194,7 +195,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   emitter: &'a Emitter,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
-  workspace_resolver: &'a WorkspaceResolver,
+  workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
 }
 
@@ -208,7 +209,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     emitter: &'a Emitter,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
-    workspace_resolver: &'a WorkspaceResolver,
+    workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {

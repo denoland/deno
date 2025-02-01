@@ -56,9 +56,11 @@ pub async fn info(
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Ok(resolved) =
-      resolver.resolve(&specifier, &cwd_url)
-    {
+    let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
+      &specifier,
+      &cwd_url,
+      deno_config::workspace::ResolutionKind::Execution,
+    ) {
       match resolved {
         deno_config::workspace::MappedResolution::Normal {
           specifier, ..

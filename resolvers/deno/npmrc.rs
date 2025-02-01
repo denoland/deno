@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -103,7 +104,7 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     sys: &impl EnvVar,
     source: &str,
     path: &Path,
-  ) -> Result<ResolvedNpmRc, NpmRcDiscoverError> {
+  ) -> Result<NpmRc, NpmRcDiscoverError> {
     let npmrc = NpmRc::parse(source, &|name| sys.env_var(name).ok()).map_err(
       |source| {
         NpmRcParseError {
@@ -113,52 +114,50 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
         }
       },
     )?;
-    let resolved =
-      npmrc
-        .as_resolved(&npm_registry_url(sys))
-        .map_err(|source| NpmRcOptionsResolveError {
-          path: path.to_path_buf(),
-          source,
-        })?;
     log::debug!(".npmrc found at: '{}'", path.display());
-    Ok(resolved)
+    Ok(npmrc)
   }
 
-  // 1. Try `.npmrc` next to `package.json`
-  if let Some(package_json_path) = maybe_package_json_path {
-    if let Some(package_json_dir) = package_json_path.parent() {
-      if let Some((source, path)) = try_to_read_npmrc(sys, package_json_dir)? {
-        return try_to_parse_npmrc(sys, &source, &path)
-          .map(|r| (r, Some(path)));
+  fn merge_npm_rc(project_rc: NpmRc, home_rc: NpmRc) -> NpmRc {
+    fn merge_maps<TValue>(
+      mut project: HashMap<String, TValue>,
+      home: HashMap<String, TValue>,
+    ) -> HashMap<String, TValue> {
+      for (key, value) in home {
+        project.entry(key).or_insert(value);
       }
+      project
+    }
+
+    NpmRc {
+      registry: project_rc.registry.or(home_rc.registry),
+      scope_registries: merge_maps(
+        project_rc.scope_registries,
+        home_rc.scope_registries,
+      ),
+      registry_configs: merge_maps(
+        project_rc.registry_configs,
+        home_rc.registry_configs,
+      ),
     }
   }
 
-  // 2. Try `.npmrc` next to `deno.json(c)`
-  if let Some(deno_json_path) = maybe_deno_json_path {
-    if let Some(deno_json_dir) = deno_json_path.parent() {
-      if let Some((source, path)) = try_to_read_npmrc(sys, deno_json_dir)? {
-        return try_to_parse_npmrc(sys, &source, &path)
-          .map(|r| (r, Some(path)));
-      }
-    }
-  }
+  let mut home_npmrc = None;
+  let mut project_npmrc = None;
 
-  // TODO(bartlomieju): update to read both files - one in the project root and one and
-  // home dir and then merge them.
-  // 3. Try `.npmrc` in the user's home directory
+  // 1. Try `.npmrc` in the user's home directory
   if let Some(home_dir) = sys.env_home_dir() {
     match try_to_read_npmrc(sys, &home_dir) {
       Ok(Some((source, path))) => {
-        return try_to_parse_npmrc(sys, &source, &path)
-          .map(|r| (r, Some(path)));
+        let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
+        home_npmrc = Some((path, npmrc));
       }
       Ok(None) => {}
       Err(err) if err.source.kind() == std::io::ErrorKind::PermissionDenied => {
         log::debug!(
-          "Skipping .npmrc in home directory due to permission denied error. {:#}",
-          err
-        );
+            "Skipping .npmrc in home directory due to permission denied error. {:#}",
+            err
+          );
       }
       Err(err) => {
         return Err(err.into());
@@ -166,8 +165,59 @@ fn discover_npmrc<TSys: EnvVar + EnvHomeDir + FsRead>(
     }
   }
 
-  log::debug!("No .npmrc file found");
-  Ok((create_default_npmrc(sys), None))
+  // 2. Try `.npmrc` next to `package.json`
+  if let Some(package_json_path) = maybe_package_json_path {
+    if let Some(package_json_dir) = package_json_path.parent() {
+      if let Some((source, path)) = try_to_read_npmrc(sys, package_json_dir)? {
+        let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
+        project_npmrc = Some((path, npmrc));
+      }
+    }
+  }
+
+  // 3. Try `.npmrc` next to `deno.json(c)` when not found `package.json`
+  if project_npmrc.is_none() {
+    if let Some(deno_json_path) = maybe_deno_json_path {
+      if let Some(deno_json_dir) = deno_json_path.parent() {
+        if let Some((source, path)) = try_to_read_npmrc(sys, deno_json_dir)? {
+          let npmrc = try_to_parse_npmrc(sys, &source, &path)?;
+          project_npmrc = Some((path, npmrc));
+        }
+      }
+    }
+  }
+
+  let resolve_npmrc = |path: PathBuf, npm_rc: NpmRc| {
+    Ok((
+      npm_rc
+        .as_resolved(&npm_registry_url(sys))
+        .map_err(|source| NpmRcOptionsResolveError {
+          path: path.to_path_buf(),
+          source,
+        })?,
+      Some(path),
+    ))
+  };
+
+  match (home_npmrc, project_npmrc) {
+    (None, None) => {
+      log::debug!("No .npmrc file found");
+      Ok((create_default_npmrc(sys), None))
+    }
+    (None, Some((npmrc_path, project_rc))) => {
+      log::debug!("Only project .npmrc file found");
+      resolve_npmrc(npmrc_path, project_rc)
+    }
+    (Some((npmrc_path, home_rc)), None) => {
+      log::debug!("Only home .npmrc file found");
+      resolve_npmrc(npmrc_path, home_rc)
+    }
+    (Some((_, home_rc)), Some((npmrc_path, project_rc))) => {
+      log::debug!("Both home and project .npmrc files found");
+      let merged_npmrc = merge_npm_rc(project_rc, home_rc);
+      resolve_npmrc(npmrc_path, merged_npmrc)
+    }
+  }
 }
 
 pub fn create_default_npmrc(sys: &impl EnvVar) -> ResolvedNpmRc {

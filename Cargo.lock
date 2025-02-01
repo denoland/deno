@@ -732,13 +732,13 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.0.106"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "066fce287b1d4eafef758e89e09d724a24808a9196fe9756b8ca90e86d0719a2"
+checksum = "27f657647bcff5394bf56c7317665bbf790a137a50eaaa5c6bfbb9e27a518f2d"
 dependencies = [
  "jobserver",
  "libc",
- "once_cell",
+ "shlex",
 ]
 
 [[package]]
@@ -868,7 +868,7 @@ dependencies = [
  "hickory-server",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "nix",
  "once_cell",
@@ -1259,7 +1259,7 @@ dependencies = [
 
 [[package]]
 name = "deno"
-version = "2.1.7"
+version = "2.1.9"
 dependencies = [
  "anstream",
  "async-trait",
@@ -1438,7 +1438,7 @@ dependencies = [
 
 [[package]]
 name = "deno_bench_util"
-version = "0.181.0"
+version = "0.183.0"
 dependencies = [
  "bencher",
  "deno_core",
@@ -1447,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "deno_broadcast_channel"
-version = "0.181.0"
+version = "0.183.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1459,16 +1459,30 @@ dependencies = [
 
 [[package]]
 name = "deno_cache"
-version = "0.119.0"
+version = "0.121.0"
 dependencies = [
+ "anyhow",
+ "async-stream",
  "async-trait",
+ "base64 0.21.7",
+ "bytes",
+ "chrono",
  "deno_core",
  "deno_error",
+ "futures",
+ "http 1.1.0",
+ "http-body 1.0.0",
+ "http-body-util",
+ "hyper 1.6.0",
+ "hyper-util",
+ "log",
  "rusqlite",
  "serde",
  "sha2",
+ "slab",
  "thiserror 2.0.3",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1502,7 +1516,7 @@ dependencies = [
 
 [[package]]
 name = "deno_canvas"
-version = "0.56.0"
+version = "0.58.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -1514,9 +1528,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.45.0"
+version = "0.47.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47a47412627aa0d08414eca0e8329128013ab70bdb2cdfdc5456c2214cf24c8f"
+checksum = "2f7883c48549bab8e446a58c64ee3d106a13052d2ff5e864de765a60260cb02b"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -1541,7 +1555,7 @@ dependencies = [
 
 [[package]]
 name = "deno_console"
-version = "0.187.0"
+version = "0.189.0"
 dependencies = [
  "deno_core",
 ]
@@ -1593,7 +1607,7 @@ checksum = "fe4dccb6147bb3f3ba0c7a48e993bfeb999d2c2e47a81badee80e2b370c8d695"
 
 [[package]]
 name = "deno_cron"
-version = "0.67.0"
+version = "0.69.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1607,7 +1621,7 @@ dependencies = [
 
 [[package]]
 name = "deno_crypto"
-version = "0.201.0"
+version = "0.203.0"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1700,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fetch"
-version = "0.211.0"
+version = "0.213.0"
 dependencies = [
  "base64 0.21.7",
  "bytes",
@@ -1717,7 +1731,7 @@ dependencies = [
  "hickory-resolver",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -1737,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "deno_ffi"
-version = "0.174.0"
+version = "0.176.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -1758,7 +1772,7 @@ dependencies = [
 
 [[package]]
 name = "deno_fs"
-version = "0.97.0"
+version = "0.99.0"
 dependencies = [
  "async-trait",
  "base32",
@@ -1782,9 +1796,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.0"
+version = "0.87.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56d4eb4b7c81ae920b6d18c45a1866924f93110caee80bbbc362dc28143f2bb"
+checksum = "e4766f426e4258c481c3af019fb4bba31e3108e80b8b2a48bbeb68bfadcc8c18"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -1816,7 +1830,7 @@ dependencies = [
 
 [[package]]
 name = "deno_http"
-version = "0.185.0"
+version = "0.187.0"
 dependencies = [
  "async-compression",
  "async-trait",
@@ -1835,7 +1849,7 @@ dependencies = [
  "http-body-util",
  "httparse",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "itertools 0.10.5",
  "memmem",
@@ -1856,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "deno_io"
-version = "0.97.0"
+version = "0.99.0"
 dependencies = [
  "async-trait",
  "deno_core",
@@ -1878,7 +1892,7 @@ dependencies = [
 
 [[package]]
 name = "deno_kv"
-version = "0.95.0"
+version = "0.97.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1911,7 +1925,7 @@ dependencies = [
 
 [[package]]
 name = "deno_lib"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "capacity_builder 0.5.0",
  "deno_config",
@@ -1987,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "deno_napi"
-version = "0.118.0"
+version = "0.120.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2016,7 +2030,7 @@ dependencies = [
 
 [[package]]
 name = "deno_net"
-version = "0.179.0"
+version = "0.181.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2028,14 +2042,17 @@ dependencies = [
  "quinn",
  "rustls-tokio-stream",
  "serde",
+ "sha2",
  "socket2",
  "thiserror 2.0.3",
  "tokio",
+ "url",
+ "web-transport-proto",
 ]
 
 [[package]]
 name = "deno_node"
-version = "0.125.0"
+version = "0.127.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
@@ -2047,6 +2064,7 @@ dependencies = [
  "bytes",
  "cbc",
  "const-oid",
+ "ctr",
  "data-encoding",
  "deno_core",
  "deno_error",
@@ -2072,7 +2090,7 @@ dependencies = [
  "hkdf",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "idna",
  "indexmap 2.3.0",
@@ -2080,6 +2098,7 @@ dependencies = [
  "k256",
  "lazy-regex",
  "libc",
+ "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -2101,6 +2120,7 @@ dependencies = [
  "ring",
  "ripemd",
  "rsa",
+ "rusqlite",
  "scrypt",
  "sec1",
  "serde",
@@ -2147,7 +2167,7 @@ dependencies = [
 
 [[package]]
 name = "deno_npm_cache"
-version = "0.6.0"
+version = "0.8.0"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
@@ -2194,7 +2214,7 @@ dependencies = [
 
 [[package]]
 name = "deno_os"
-version = "0.4.0"
+version = "0.6.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2246,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "deno_permissions"
-version = "0.46.0"
+version = "0.48.0"
 dependencies = [
  "capacity_builder 0.5.0",
  "deno_core",
@@ -2266,7 +2286,7 @@ dependencies = [
 
 [[package]]
 name = "deno_process"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2293,7 +2313,7 @@ dependencies = [
 
 [[package]]
 name = "deno_resolver"
-version = "0.18.0"
+version = "0.20.0"
 dependencies = [
  "anyhow",
  "async-once-cell",
@@ -2323,7 +2343,7 @@ dependencies = [
 
 [[package]]
 name = "deno_runtime"
-version = "0.195.0"
+version = "0.197.0"
 dependencies = [
  "color-print",
  "deno_ast",
@@ -2364,7 +2384,7 @@ dependencies = [
  "http 1.1.0",
  "http-body-util",
  "hyper 0.14.28",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "libc",
  "log",
@@ -2410,7 +2430,7 @@ dependencies = [
 
 [[package]]
 name = "deno_snapshots"
-version = "0.2.0"
+version = "0.4.0"
 dependencies = [
  "deno_runtime",
 ]
@@ -2435,14 +2455,14 @@ dependencies = [
 
 [[package]]
 name = "deno_telemetry"
-version = "0.9.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "deno_core",
  "deno_error",
  "deno_tls",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "log",
@@ -2480,7 +2500,7 @@ dependencies = [
 
 [[package]]
 name = "deno_tls"
-version = "0.174.0"
+version = "0.176.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2531,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "deno_url"
-version = "0.187.0"
+version = "0.189.0"
 dependencies = [
  "deno_bench_util",
  "deno_console",
@@ -2544,7 +2564,7 @@ dependencies = [
 
 [[package]]
 name = "deno_web"
-version = "0.218.0"
+version = "0.220.0"
 dependencies = [
  "async-trait",
  "base64-simd 0.8.0",
@@ -2567,7 +2587,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webgpu"
-version = "0.154.0"
+version = "0.156.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2581,7 +2601,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webidl"
-version = "0.187.0"
+version = "0.189.0"
 dependencies = [
  "deno_bench_util",
  "deno_core",
@@ -2589,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "deno_websocket"
-version = "0.192.0"
+version = "0.194.0"
 dependencies = [
  "bytes",
  "deno_core",
@@ -2601,7 +2621,7 @@ dependencies = [
  "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "once_cell",
  "rustls-tokio-stream",
@@ -2612,7 +2632,7 @@ dependencies = [
 
 [[package]]
 name = "deno_webstorage"
-version = "0.182.0"
+version = "0.184.0"
 dependencies = [
  "deno_core",
  "deno_error",
@@ -2700,7 +2720,7 @@ dependencies = [
 
 [[package]]
 name = "denort"
-version = "2.1.7"
+version = "2.1.9"
 dependencies = [
  "async-trait",
  "bincode",
@@ -3346,7 +3366,7 @@ dependencies = [
  "base64 0.21.7",
  "bytes",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project",
  "rand",
@@ -4189,9 +4209,9 @@ dependencies = [
 
 [[package]]
 name = "httparse"
-version = "1.8.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d897f394bad6a705d5f4104762e116a75639e470d80901eed05a860a95cb1904"
+checksum = "f2d708df4e7140240a16cd6ab0ab65c972d7433ab77819ea693fde9c43811e2a"
 
 [[package]]
 name = "httpdate"
@@ -4231,9 +4251,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.4.1"
+version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "50dfd22e0e76d0f662d429a5f80fcaf3855009297eab6a0a9f8543834744ba05"
+checksum = "cc2b571658e38e0c01b1fdca3bbbe93c00d3d71693ff2770043f8c29bc7d6f80"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -4258,7 +4278,7 @@ checksum = "5ee4be2c948921a1a5320b629c4193916ed787a7f7f293fd3f7f5a6c9de74155"
 dependencies = [
  "futures-util",
  "http 1.1.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "rustls",
  "rustls-pki-types",
@@ -4274,7 +4294,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b90d566bffbce6a75bd8b09a05aa8c2cb1fabb6cb348f8840c9e4c90a0d83b0"
 dependencies = [
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "pin-project-lite",
  "tokio",
@@ -4292,7 +4312,7 @@ dependencies = [
  "futures-util",
  "http 1.1.0",
  "http-body 1.0.0",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "pin-project-lite",
  "socket2",
  "tokio",
@@ -4862,9 +4882,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.0"
+version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b694a822684ddb75df4d657029161431bcb4a85c1856952f845b76912bc6fec"
+checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
  "cc",
  "pkg-config",
@@ -5200,7 +5220,7 @@ dependencies = [
 
 [[package]]
 name = "napi_sym"
-version = "0.117.0"
+version = "0.119.0"
 dependencies = [
  "quote",
  "serde",
@@ -5255,13 +5275,15 @@ dependencies = [
 
 [[package]]
 name = "node_resolver"
-version = "0.25.0"
+version = "0.27.0"
 dependencies = [
  "anyhow",
  "async-trait",
  "boxed_error",
  "dashmap",
+ "deno_config",
  "deno_error",
+ "deno_media_type",
  "deno_package_json",
  "deno_path_util",
  "futures",
@@ -6454,7 +6476,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-rustls",
  "hyper-util",
  "ipnet",
@@ -7892,9 +7914,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b46ac05dfbe9fd3a9703eff20e17f5b31e7b6a54daf27a421dcd56c7a27ecdd"
+checksum = "638f0e61b5134e56b2abdf4c704fd44672603f15ca09013f314649056f3fee4d"
 dependencies = [
  "filetime",
  "getrandom",
@@ -7994,7 +8016,7 @@ dependencies = [
  "h2 0.4.7",
  "http 1.1.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-util",
  "jsonc-parser",
  "lazy-regex",
@@ -8005,6 +8027,7 @@ dependencies = [
  "once_cell",
  "os_pipe",
  "parking_lot",
+ "percent-encoding",
  "pretty_assertions",
  "prost",
  "prost-build",
@@ -8289,7 +8312,7 @@ dependencies = [
  "http 1.1.0",
  "http-body 1.0.0",
  "http-body-util",
- "hyper 1.4.1",
+ "hyper 1.6.0",
  "hyper-timeout",
  "hyper-util",
  "percent-encoding",
@@ -8888,6 +8911,18 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "web-transport-proto"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3806ea43df5817f0d90618c842d28db5946bc18a5db0659b2275c2be48d472"
+dependencies = [
+ "bytes",
+ "http 1.1.0",
+ "thiserror 1.0.64",
+ "url",
 ]
 
 [[package]]

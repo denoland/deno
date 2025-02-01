@@ -23,6 +23,7 @@ use deno_core::unsync::spawn;
 use deno_core::url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_graph::CheckJsOption;
 use deno_graph::GraphKind;
 use deno_graph::Resolution;
 use deno_lib::args::get_root_cert_store;
@@ -279,7 +280,7 @@ impl LanguageServer {
         &roots,
         graph_util::GraphValidOptions {
           kind: GraphKind::All,
-          check_js: false,
+          check_js: CheckJsOption::False,
           exit_integrity_errors: false,
         },
       )?;
@@ -1879,7 +1880,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let refactor_edit_info = self
+      let mut refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -1900,34 +1901,19 @@ impl Inner {
           )),
           asset_or_doc.scope().cloned(),
         )
-        .await;
-
-      match refactor_edit_info {
-        Ok(mut refactor_edit_info) => {
-          if kind_suffix == ".rewrite.function.returnType"
-            || kind_suffix == ".move.newFile"
-          {
-            refactor_edit_info.edits =
-              fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
-                |err| {
-                  error!("Unable to remap changes: {:#}", err);
-                  LspError::internal_error()
-                },
-              )?
-          }
-          code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
-        }
-        Err(err) => {
-          // TODO(nayeemrmn): Investigate cause for
-          // https://github.com/denoland/deno/issues/27778. Prevent popups for
-          // this error for now.
-          if kind_suffix == ".move.newFile" {
-            lsp_warn!("{:#}", err);
-          } else {
-            return Err(err);
-          }
-        }
+        .await?;
+      if kind_suffix == ".rewrite.function.returnType"
+        || kind_suffix == ".move.newFile"
+      {
+        refactor_edit_info.edits =
+          fix_ts_import_changes(&refactor_edit_info.edits, self).map_err(
+            |err| {
+              error!("Unable to remap changes: {:#}", err);
+              LspError::internal_error()
+            },
+          )?
       }
+      code_action.edit = refactor_edit_info.to_workspace_edit(self)?;
       code_action
     } else {
       // The code action doesn't need to be resolved

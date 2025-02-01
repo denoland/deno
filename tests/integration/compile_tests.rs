@@ -495,7 +495,7 @@ fn check_local_by_default2() {
     ])
     .run()
     .assert_matches_text(
-      r#"[WILDCARD]error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
+      r#"[WILDCARD]TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
     )
     .assert_exit_code(1);
 }

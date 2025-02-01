@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_cache::SqliteBackedCache;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
@@ -282,7 +281,7 @@ pub fn create_runtime_snapshot(
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+    deno_cache::deno_cache::init_ops_and_esm(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
       "".to_owned(),
       None,

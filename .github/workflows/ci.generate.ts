@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 37;
+const cacheVersion = 39;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -650,6 +650,14 @@ const ci = {
           uses: "./.github/mtime_cache",
           with: {
             "cache-path": "./target",
+          },
+        },
+        {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v4",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
           },
         },
         {

@@ -304,7 +304,9 @@ Deno.test(function urlSearchParamsDeletingAppendedMultiple() {
 // ref: https://github.com/web-platform-tests/wpt/blob/master/url/urlsearchparams-constructor.any.js#L176-L182
 Deno.test(function urlSearchParamsCustomSymbolIterator() {
   const params = new URLSearchParams();
-  params[Symbol.iterator] = function* (): IterableIterator<[string, string]> {
+  params[Symbol.iterator] = function* (): URLSearchParamsIterator<
+    [string, string]
+  > {
     yield ["a", "b"];
   };
   const params1 = new URLSearchParams((params as unknown) as string[][]);
@@ -345,7 +347,7 @@ Deno.test(
 
 Deno.test(function urlSearchParamsOverridingEntriesNotChangeForEach() {
   class CustomSearchParams extends URLSearchParams {
-    override *entries(): IterableIterator<[string, string]> {
+    override *entries(): URLSearchParamsIterator<[string, string]> {
       yield* [];
     }
   }

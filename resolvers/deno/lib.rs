@@ -49,7 +49,8 @@ pub mod sloppy_imports;
 mod sync;
 
 #[allow(clippy::disallowed_types)]
-pub type WorkspaceResolverRc = crate::sync::MaybeArc<WorkspaceResolver>;
+pub type WorkspaceResolverRc<TSys> =
+  crate::sync::MaybeArc<WorkspaceResolver<TSys>>;
 
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
@@ -141,7 +142,7 @@ pub struct DenoResolverOptions<
   >,
   pub sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
-  pub workspace_resolver: WorkspaceResolverRc,
+  pub workspace_resolver: WorkspaceResolverRc<TSys>,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
   /// what already exists on the file system.
@@ -197,7 +198,7 @@ pub struct DenoResolver<
   >,
   sloppy_imports_resolver:
     Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
-  workspace_resolver: WorkspaceResolverRc,
+  workspace_resolver: WorkspaceResolverRc<TSys>,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
 }
@@ -269,7 +270,7 @@ impl<
     // Attempt to resolve with the workspace resolver
     let result: Result<_, DenoResolveError> = self
       .workspace_resolver
-      .resolve(raw_specifier, referrer)
+      .resolve(raw_specifier, referrer, resolution_kind.into())
       .map_err(|err| err.into());
     let result = match result {
       Ok(resolution) => match resolution {

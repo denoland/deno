@@ -24,18 +24,19 @@ use text_lines::LineAndColumnIndex;
 use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::resolver::CliSloppyImportsResolver;
+use crate::sys::CliSys;
 
 #[derive(Debug)]
 pub struct NoSloppyImportsRule {
   sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   // None for making printing out the lint rules easy
-  workspace_resolver: Option<Arc<WorkspaceResolver>>,
+  workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
 }
 
 impl NoSloppyImportsRule {
   pub fn new(
     sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
-    workspace_resolver: Option<Arc<WorkspaceResolver>>,
+    workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
   ) -> Self {
     NoSloppyImportsRule {
       sloppy_imports_resolver,
@@ -174,7 +175,7 @@ impl LintRule for NoSloppyImportsRule {
 
 #[derive(Debug)]
 struct SloppyImportCaptureResolver<'a> {
-  workspace_resolver: &'a WorkspaceResolver,
+  workspace_resolver: &'a WorkspaceResolver<CliSys>,
   sloppy_imports_resolver: &'a CliSloppyImportsResolver,
   captures: RefCell<HashMap<Range, SloppyImportsResolution>>,
 }
@@ -188,7 +189,18 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
   ) -> Result<deno_ast::ModuleSpecifier, deno_graph::source::ResolveError> {
     let resolution = self
       .workspace_resolver
-      .resolve(specifier_text, &referrer_range.specifier)
+      .resolve(
+        specifier_text,
+        &referrer_range.specifier,
+        match resolution_kind {
+          ResolutionKind::Execution => {
+            deno_config::workspace::ResolutionKind::Execution
+          }
+          ResolutionKind::Types => {
+            deno_config::workspace::ResolutionKind::Types
+          }
+        },
+      )
       .map_err(|err| ResolveError::Other(JsErrorBox::from_err(err)))?;
 
     match resolution {

@@ -65,6 +65,5 @@
   "bugs": {
     "url": "https://github.com/vuejs/core/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
@@ -51,13 +52,12 @@ use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
-use crate::args::check_warn_tsconfig;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::NpmInstallDepsProvider;
-use crate::args::TsConfigType;
 use crate::args::WorkspaceExternalImportMapLoader;
 use crate::cache::Caches;
 use crate::cache::CodeCache;
@@ -297,6 +297,7 @@ struct CliFactoryServices {
   root_cert_store_provider: Deferred<Arc<dyn RootCertStoreProvider>>,
   root_permissions_container: Deferred<PermissionsContainer>,
   text_only_progress_bar: Deferred<ProgressBar>,
+  tsconfig_resolver: Deferred<Arc<TsConfigResolver>>,
   type_checker: Deferred<Arc<TypeChecker>>,
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
   workspace_external_import_map_loader:
@@ -677,6 +678,10 @@ impl CliFactory {
     self.resolver_factory()?.sloppy_imports_resolver()
   }
 
+  pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
+    Ok(&self.workspace_directory()?.workspace)
+  }
+
   pub fn workspace_directory(
     &self,
   ) -> Result<&Arc<WorkspaceDirectory>, AnyError> {
@@ -708,7 +713,7 @@ impl CliFactory {
 
   pub async fn workspace_resolver(
     &self,
-  ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
+  ) -> Result<&Arc<WorkspaceResolver<CliSys>>, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.workspace_resolver().await
   }
@@ -775,20 +780,11 @@ impl CliFactory {
 
   pub fn emitter(&self) -> Result<&Arc<Emitter>, AnyError> {
     self.services.emitter.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      let ts_config_result =
-        cli_options.resolve_ts_config_for_emit(TsConfigType::Emit)?;
-      check_warn_tsconfig(&ts_config_result);
-      let (transpile_options, emit_options) =
-        crate::args::ts_config_to_transpile_and_emit_options(
-          ts_config_result.ts_config,
-        )?;
       Ok(Arc::new(Emitter::new(
         self.cjs_tracker()?.clone(),
         self.emit_cache()?.clone(),
         self.parsed_source_cache().clone(),
-        transpile_options,
-        emit_options,
+        self.tsconfig_resolver()?.clone(),
       )))
     })
   }
@@ -859,6 +855,13 @@ impl CliFactory {
     Ok(self.resolver_factory()?.pkg_json_resolver())
   }
 
+  pub fn tsconfig_resolver(&self) -> Result<&Arc<TsConfigResolver>, AnyError> {
+    self.services.tsconfig_resolver.get_or_try_init(|| {
+      let workspace = self.workspace()?;
+      Ok(Arc::new(TsConfigResolver::from_workspace(workspace)))
+    })
+  }
+
   pub async fn type_checker(&self) -> Result<&Arc<TypeChecker>, AnyError> {
     self
       .services
@@ -877,6 +880,7 @@ impl CliFactory {
           self.npm_installer_if_managed()?.cloned(),
           self.npm_resolver().await?.clone(),
           self.sys(),
+          self.tsconfig_resolver()?.clone(),
         )))
       })
       .await
@@ -907,6 +911,7 @@ impl CliFactory {
           self.resolver().await?.clone(),
           self.root_permissions_container()?.clone(),
           self.sys(),
+          self.tsconfig_resolver()?.clone(),
         )))
       })
       .await
