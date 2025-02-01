@@ -11656,7 +11656,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11664,7 +11667,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "--latest"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: true },
+          kind: OutdatedKind::Update {
+            latest: true,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11672,7 +11678,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "--recursive"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: true,
         },
       ),
@@ -11680,7 +11689,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "@foo/bar"],
         OutdatedFlags {
           filters: svec!["@foo/bar"],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11689,6 +11701,17 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec![],
           kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--latest", "--interactive"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::Update {
+            latest: true,
+            interactive: true,
+          },
           recursive: false,
         },
       ),
