@@ -274,7 +274,7 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
         self.pkg_json_resolver.get_closest_package_json(&path)?
       {
         let is_file_location_cjs = pkg_json.typ != "module";
-        Ok(if is_file_location_cjs {
+        Ok(if is_file_location_cjs || path.extension().is_none() {
           ResolutionMode::Require
         } else {
           ResolutionMode::Import
