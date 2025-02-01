@@ -498,6 +498,7 @@ impl DenoSubcommand {
         | Self::Jupyter(_)
         | Self::Repl(_)
         | Self::Bench(_)
+        | Self::Lint(_)
         | Self::Lsp
     )
   }

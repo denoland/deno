@@ -626,7 +626,7 @@ async fn configure_main_worker(
       permissions_container,
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint::init_ops(),
+        ops::lint::deno_lint_ext_for_test::init_ops(),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),

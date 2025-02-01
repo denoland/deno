@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-const EXPECTED_OP_COUNT = 13;
+const EXPECTED_OP_COUNT = 14;
 
 Deno.test(function checkExposedOps() {
   // @ts-ignore TS doesn't allow to index with symbol

@@ -1344,6 +1344,139 @@ declare namespace Deno {
     export {}; // only export exports
   }
 
+  /**
+   * @category Linter
+   * @experimental
+   */
+  export namespace lint {
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export type Range = [number, number];
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Node {
+      type: string;
+      range: Range;
+      [key: string]: unknown;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface FixData {
+      range: Range;
+      text?: string;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Fixer {
+      insertTextAfter(node: Node, text: string): FixData;
+      insertTextAfterRange(range: Range, text: string): FixData;
+      insertTextBefore(node: Node, text: string): FixData;
+      insertTextBeforeRange(range: Range, text: string): FixData;
+      remove(node: Node): FixData;
+      removeRange(range: Range): FixData;
+      replaceText(node: Node, text: string): FixData;
+      replaceTextRange(range: Range, text: string): FixData;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ReportData {
+      node?: Node;
+      range?: Range;
+      message: string;
+      hint?: string;
+      fix?(fixer: Fixer): FixData;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface RuleContext {
+      id: string;
+      report(data: ReportData): void;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Rule {
+      create(ctx: RuleContext): Record<string, (node: unknown) => void>;
+      destroy?(ctx: RuleContext): void;
+    }
+
+    /**
+     * In your plugins file do something like
+     *
+     * ```ts
+     * export default {
+     *   name: "my-plugin",
+     *   rules: {
+     *     "no-foo": {
+     *        create(ctx) {
+     *          return {
+     *             VariableDeclaration(node) {}
+     *          }
+     *        }
+     *     }
+     *   }
+     * } satisfies Deno.lint.Plugin
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface Plugin {
+      name: string;
+      rules: Record<string, Rule>;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Fix {
+      range: Range;
+      text?: string;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Diagnostic {
+      id: string;
+      message: string;
+      hint?: string;
+      range: Range;
+      fix?: Fix;
+    }
+
+    /**
+     * This API is a noop in `deno run`...
+     * @category Linter
+     * @experimental
+     */
+    export function runPlugin(
+      plugin: Plugin,
+      fileName: string,
+      source: string,
+    ): Diagnostic[];
+  }
+
   export {}; // only export exports
 }
 

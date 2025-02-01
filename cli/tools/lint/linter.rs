@@ -1,22 +1,33 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
 
+use ::tokio_util::sync::CancellationToken;
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt as _;
+use deno_core::parking_lot::Mutex;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_lint::linter::ExternalLinterCb;
+use deno_lint::linter::ExternalLinterResult;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_lint::linter::LintFileOptions;
 use deno_lint::linter::Linter as DenoLintLinter;
 use deno_lint::linter::LinterOptions;
 use deno_path_util::fs::atomic_write_file_with_retries;
+use deno_runtime::tokio_util;
 
+use super::plugins;
+use super::plugins::PluginHostProxy;
 use super::rules::FileOrPackageLintRule;
 use super::rules::PackageLintRule;
 use super::ConfiguredRules;
@@ -27,6 +38,7 @@ pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
   pub fix: bool,
   pub deno_lint_config: DenoLintConfig,
+  pub maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
 }
 
 #[derive(Debug)]
@@ -35,6 +47,7 @@ pub struct CliLinter {
   package_rules: Vec<Box<dyn PackageLintRule>>,
   linter: DenoLintLinter,
   deno_lint_config: DenoLintConfig,
+  maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
 }
 
 impl CliLinter {
@@ -62,6 +75,7 @@ impl CliLinter {
         custom_ignore_diagnostic_directive: None,
       }),
       deno_lint_config: options.deno_lint_config,
+      maybe_plugin_runner: options.maybe_plugin_runner,
     }
   }
 
@@ -84,10 +98,22 @@ impl CliLinter {
   pub fn lint_with_ast(
     &self,
     parsed_source: &ParsedSource,
-  ) -> Vec<LintDiagnostic> {
-    self
-      .linter
-      .lint_with_ast(parsed_source, self.deno_lint_config.clone())
+    token: CancellationToken,
+  ) -> Result<Vec<LintDiagnostic>, AnyError> {
+    let external_linter_container = ExternalLinterContainer::new(
+      self.maybe_plugin_runner.clone(),
+      Some(token),
+    );
+
+    let d = self.linter.lint_with_ast(
+      parsed_source,
+      self.deno_lint_config.clone(),
+      external_linter_container.get_callback(),
+    );
+    if let Some(err) = external_linter_container.take_error() {
+      return Err(err);
+    }
+    Ok(d)
   }
 
   pub fn lint_file(
@@ -105,18 +131,34 @@ impl CliLinter {
       MediaType::from_specifier(&specifier)
     };
 
+    let external_linter_container =
+      ExternalLinterContainer::new(self.maybe_plugin_runner.clone(), None);
+
     if self.fix {
-      self.lint_file_and_fix(&specifier, media_type, source_code, file_path)
+      self.lint_file_and_fix(
+        &specifier,
+        media_type,
+        source_code,
+        file_path,
+        external_linter_container,
+      )
     } else {
-      self
+      let (source, diagnostics) = self
         .linter
         .lint_file(LintFileOptions {
           specifier,
           media_type,
           source_code,
           config: self.deno_lint_config.clone(),
+          external_linter: external_linter_container.get_callback(),
         })
-        .map_err(AnyError::from)
+        .map_err(AnyError::from)?;
+
+      if let Some(err) = external_linter_container.take_error() {
+        return Err(err);
+      }
+
+      Ok((source, diagnostics))
     }
   }
 
@@ -126,6 +168,7 @@ impl CliLinter {
     media_type: MediaType,
     source_code: String,
     file_path: &Path,
+    external_linter_container: ExternalLinterContainer,
   ) -> Result<(ParsedSource, Vec<LintDiagnostic>), deno_core::anyhow::Error> {
     // initial lint
     let (source, diagnostics) = self.linter.lint_file(LintFileOptions {
@@ -133,7 +176,12 @@ impl CliLinter {
       media_type,
       source_code,
       config: self.deno_lint_config.clone(),
+      external_linter: external_linter_container.get_callback(),
     })?;
+
+    if let Some(err) = external_linter_container.take_error() {
+      return Err(err);
+    }
 
     // Try applying fixes repeatedly until the file has none left or
     // a maximum number of iterations is reached. This is necessary
@@ -150,6 +198,7 @@ impl CliLinter {
         self.deno_lint_config.clone(),
         source.text_info_lazy(),
         &diagnostics,
+        &external_linter_container,
       )?;
       match change {
         Some(change) => {
@@ -195,21 +244,29 @@ fn apply_lint_fixes_and_relint(
   config: DenoLintConfig,
   text_info: &SourceTextInfo,
   diagnostics: &[LintDiagnostic],
+  external_linter_container: &ExternalLinterContainer,
 ) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
   let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
     return Ok(None);
   };
-  linter
+
+  let (source, diagnostics) = linter
     .lint_file(LintFileOptions {
       specifier: specifier.clone(),
       source_code: new_text,
       media_type,
       config,
+      external_linter: external_linter_container.get_callback(),
     })
-    .map(Some)
     .context(
       "An applied lint fix caused a syntax error. Please report this bug.",
-    )
+    )?;
+
+  if let Some(err) = external_linter_container.take_error() {
+    return Err(err);
+  }
+
+  Ok(Some((source, diagnostics)))
 }
 
 fn apply_lint_fixes(
@@ -257,4 +314,95 @@ fn apply_lint_fixes(
   let new_text =
     deno_ast::apply_text_changes(text_info.text_str(), quick_fixes);
   Some(new_text)
+}
+
+fn run_plugins(
+  plugin_runner: Arc<Mutex<PluginHostProxy>>,
+  parsed_source: ParsedSource,
+  file_path: PathBuf,
+  maybe_token: Option<CancellationToken>,
+) -> Result<ExternalLinterResult, AnyError> {
+  let source_text_info = parsed_source.text_info_lazy().clone();
+  let plugin_info = plugin_runner
+    .lock()
+    .get_plugin_rules()
+    .into_iter()
+    .map(Cow::from)
+    .collect();
+
+  #[allow(clippy::await_holding_lock)]
+  let fut = async move {
+    let mut plugin_runner = plugin_runner.lock();
+    let serialized_ast = plugin_runner.serialize_ast(parsed_source)?;
+
+    plugins::run_rules_for_ast(
+      &mut plugin_runner,
+      &file_path,
+      serialized_ast,
+      source_text_info,
+      maybe_token,
+    )
+    .await
+  }
+  .boxed_local();
+
+  let plugin_diagnostics = tokio_util::create_and_run_current_thread(fut)?;
+
+  Ok(ExternalLinterResult {
+    diagnostics: plugin_diagnostics,
+    rules: plugin_info,
+  })
+}
+
+struct ExternalLinterContainer {
+  cb: Option<ExternalLinterCb>,
+  error: Option<Arc<Mutex<Option<AnyError>>>>,
+}
+
+impl ExternalLinterContainer {
+  pub fn new(
+    maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
+    maybe_token: Option<CancellationToken>,
+  ) -> Self {
+    let mut s = Self {
+      cb: None,
+      error: None,
+    };
+    if let Some(plugin_runner) = maybe_plugin_runner {
+      s.error = Some(Arc::new(Mutex::new(None)));
+      let error_ = s.error.clone();
+      let cb = Arc::new(move |parsed_source: ParsedSource| {
+        let token_ = maybe_token.clone();
+        let file_path =
+          match deno_path_util::url_to_file_path(parsed_source.specifier()) {
+            Ok(path) => path,
+            Err(err) => {
+              *error_.as_ref().unwrap().lock() = Some(err.into());
+              return None;
+            }
+          };
+
+        let r =
+          run_plugins(plugin_runner.clone(), parsed_source, file_path, token_);
+
+        match r {
+          Ok(d) => Some(d),
+          Err(err) => {
+            *error_.as_ref().unwrap().lock() = Some(err);
+            None
+          }
+        }
+      });
+      s.cb = Some(cb);
+    }
+    s
+  }
+
+  pub fn get_callback(&self) -> Option<ExternalLinterCb> {
+    self.cb.clone()
+  }
+
+  pub fn take_error(&self) -> Option<AnyError> {
+    self.error.as_ref().and_then(|e| e.lock().take())
+  }
 }

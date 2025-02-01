@@ -1,0 +1,11 @@
+{
+  "version": "4",
+  "specifiers": {
+    "jsr:@bartlomieju/test-lint-plugin@0.2.0": "0.2.0"
+  },
+  "jsr": {
+    "@bartlomieju/test-lint-plugin@0.2.0": {
+      "integrity": "b6ef2d11164cccf97c049a487295c81843f8aa7ef42c03dff546adadf9fef443"
+    }
+  }
+}

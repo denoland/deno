@@ -1,17 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-export interface NodeFacade {
-  type: string;
-  range: [number, number];
-  [key: string]: unknown;
-}
-
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
   strTableOffset: number;
   rootOffset: number;
-  nodes: Map<number, NodeFacade>;
+  nodes: Map<number, Deno.lint.Node>;
   spansOffset: number;
   propsOffset: number;
   strByType: number[];
@@ -21,32 +15,11 @@ export interface AstContext {
   matcher: MatchContext;
 }
 
-export interface Node {
-  range: Range;
-}
-
-export type Range = [number, number];
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface RuleContext {
-  id: string;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintRule {
-  create(ctx: RuleContext): Record<string, (node: unknown) => void>;
-  destroy?(ctx: RuleContext): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintPlugin {
-  name: string;
-  rules: Record<string, LintRule>;
-}
-
 export interface LintState {
-  plugins: LintPlugin[];
+  plugins: Deno.lint.Plugin[];
   installedPlugins: Set<string>;
+  /** format: `<plugin>/<rule>` */
+  ignoredRules: Set<string>;
 }
 
 export type VisitorFn = (node: unknown) => void;
