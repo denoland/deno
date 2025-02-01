@@ -65,6 +65,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/aggregate-error/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

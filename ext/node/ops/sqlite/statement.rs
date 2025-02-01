@@ -160,10 +160,10 @@ impl StatementSync {
           let size = ffi::sqlite3_column_bytes(self.inner, index);
           let value =
             std::slice::from_raw_parts(value as *const u8, size as usize);
-          let value =
-            v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
-              .make_shared();
-          v8::ArrayBuffer::with_backing_store(scope, &value).into()
+          let bs = v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+            .make_shared();
+          let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+          v8::Uint8Array::new(scope, ab, 0, size as _).unwrap().into()
         }
         ffi::SQLITE_NULL => v8::null(scope).into(),
         _ => v8::undefined(scope).into(),
@@ -265,6 +265,20 @@ impl StatementSync {
               size as i32,
               ffi::SQLITE_TRANSIENT(),
             );
+          }
+        } else if value.is_big_int() {
+          let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
+          let (as_int, lossless) = value.i64_value();
+          if !lossless {
+            return Err(SqliteError::FailedBind(
+              "BigInt value is too large to bind",
+            ));
+          }
+
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
+          unsafe {
+            ffi::sqlite3_bind_int64(raw, i + 1, as_int);
           }
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));

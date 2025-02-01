@@ -155,7 +155,6 @@
     "email": "fredrik.nicol@gmail.com"
   },
   "license": "MIT",
-  "readmeFilename": "README.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/frenic/csstype.git"

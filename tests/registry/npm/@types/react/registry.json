@@ -85,6 +85,5 @@
     "type": "git",
     "directory": "types/react"
   },
-  "description": "TypeScript definitions for react",
-  "readmeFilename": ""
+  "description": "TypeScript definitions for react"
 }

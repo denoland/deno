@@ -104,6 +104,5 @@
     "url": "git+https://github.com/fsevents/fsevents.git",
     "type": "git"
   },
-  "description": "Native Access to MacOS FSEvents",
-  "readmeFilename": "README.md"
+  "description": "Native Access to MacOS FSEvents"
 }
