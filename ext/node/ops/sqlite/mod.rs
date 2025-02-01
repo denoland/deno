@@ -1,9 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 mod database;
+mod session;
 mod statement;
 
 pub use database::DatabaseSync;
+pub use session::Session;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
@@ -35,6 +37,15 @@ pub enum SqliteError {
   #[class(generic)]
   #[error("Failed to prepare statement")]
   PrepareFailed,
+  #[class(generic)]
+  #[error("Failed to create session")]
+  SessionCreateFailed,
+  #[class(generic)]
+  #[error("Failed to retrieve changeset")]
+  SessionChangesetFailed,
+  #[class(generic)]
+  #[error("Session is already closed")]
+  SessionClosed,
   #[class(generic)]
   #[error("Invalid constructor")]
   InvalidConstructor,

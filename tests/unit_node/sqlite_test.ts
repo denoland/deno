@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 import { DatabaseSync } from "node:sqlite";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
@@ -62,4 +62,26 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
 
   stmt.setReadBigInts(true);
   assertEquals(stmt.get(), { key: 1n, __proto__: null });
+});
+
+Deno.test("[node/sqlite] createSession and changesets", () => {
+  const db = new DatabaseSync(":memory:");
+  // @ts-expect-error: types aint typing yet
+  const session = db.createSession();
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('foo')");
+
+  assert(session.changeset() instanceof Uint8Array);
+  assert(session.patchset() instanceof Uint8Array);
+
+  assert(session.changeset().byteLength > 0);
+  assert(session.patchset().byteLength > 0);
+
+  session.close();
+
+  // Use after close shoud throw.
+  assertThrows(() => session.changeset(), Error, "Session is already closed");
+  // Close after close should throw.
+  assertThrows(() => session.close(), Error, "Session is already closed");
 });
