@@ -382,12 +382,9 @@ impl StatementSync {
     // as it lives as long as the StatementSync instance.
     unsafe {
       let raw = ffi::sqlite3_sql(self.inner);
-      let sql = std::ffi::CStr::from_ptr(raw as _)
+      std::ffi::CStr::from_ptr(raw as _)
         .to_string_lossy()
-        .into_owned();
-      ffi::sqlite3_free(raw as _);
-
-      sql
+        .into_owned()
     }
   }
 
