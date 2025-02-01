@@ -63,3 +63,13 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
   stmt.setReadBigInts(true);
   assertEquals(stmt.get(), { key: 1n, __proto__: null });
 });
+
+Deno.test("[node/sqlite] StatementSync integer too large", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
+  db.prepare("INSERT INTO data (key) VALUES (?)").run(
+    Number.MAX_SAFE_INTEGER + 1,
+  );
+
+  assertThrows(() => db.prepare("SELECT * FROM data").get());
+});
