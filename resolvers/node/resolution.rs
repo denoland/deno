@@ -14,10 +14,10 @@ use serde_json::Value;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
-use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::cache::NodeResolutionSys;
 use crate::errors;
 use crate::errors::DataUrlReferrerError;
 use crate::errors::FinalizeResolutionError;
@@ -169,7 +169,7 @@ pub struct NodeResolver<
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
   npm_pkg_folder_resolver: TNpmPackageFolderResolver,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
-  sys: TSys,
+  sys: NodeResolutionSys<TSys>,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
 }
 
@@ -191,7 +191,7 @@ impl<
     is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
     npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
-    sys: TSys,
+    sys: NodeResolutionSys<TSys>,
     conditions_from_resolution_mode: ConditionsFromResolutionMode,
   ) -> Self {
     Self {
@@ -382,7 +382,7 @@ impl<
       path
     };
 
-    let maybe_file_type = self.sys.fs_metadata(&path).map(|m| m.file_type());
+    let maybe_file_type = self.sys.get_file_type(&path);
     match maybe_file_type {
       Ok(FileType::Dir) => Err(
         UnsupportedDirImportError {
@@ -504,7 +504,7 @@ impl<
     conditions: &[&str],
   ) -> Result<UrlOrPath, TypesNotFoundError> {
     fn probe_extensions<TSys: FsMetadata>(
-      sys: &TSys,
+      sys: &NodeResolutionSys<TSys>,
       path: &Path,
       media_type: MediaType,
       resolution_mode: ResolutionMode,
@@ -513,20 +513,20 @@ impl<
       let mut searched_for_d_cts = false;
       if media_type == MediaType::Mjs {
         let d_mts_path = with_known_extension(path, "d.mts");
-        if sys.fs_is_file_no_err(&d_mts_path) {
+        if sys.exists_(&d_mts_path) {
           return Some(d_mts_path);
         }
         searched_for_d_mts = true;
       } else if media_type == MediaType::Cjs {
         let d_cts_path = with_known_extension(path, "d.cts");
-        if sys.fs_is_file_no_err(&d_cts_path) {
+        if sys.exists_(&d_cts_path) {
           return Some(d_cts_path);
         }
         searched_for_d_cts = true;
       }
 
       let dts_path = with_known_extension(path, "d.ts");
-      if sys.fs_is_file_no_err(&dts_path) {
+      if sys.exists_(&dts_path) {
         return Some(dts_path);
       }
 
@@ -540,7 +540,7 @@ impl<
         _ => None, // already searched above
       };
       if let Some(specific_dts_path) = specific_dts_path {
-        if sys.fs_is_file_no_err(&specific_dts_path) {
+        if sys.exists_(&specific_dts_path) {
           return Some(specific_dts_path);
         }
       }
@@ -560,7 +560,7 @@ impl<
     {
       return Ok(UrlOrPath::Path(path));
     }
-    if self.sys.fs_is_dir_no_err(&path) {
+    if self.sys.is_dir(&path) {
       let resolution_result = self.resolve_package_dir_subpath(
         &path,
         /* sub path */ ".",
@@ -1478,7 +1478,7 @@ impl<
 
     if let Some(main) = maybe_main {
       let guess = package_json.path.parent().unwrap().join(main).clean();
-      if self.sys.fs_is_file_no_err(&guess) {
+      if self.sys.is_file(&guess) {
         return Ok(UrlOrPath::Path(guess));
       }
 
@@ -1507,7 +1507,7 @@ impl<
           .unwrap()
           .join(format!("{main}{ending}"))
           .clean();
-        if self.sys.fs_is_file_no_err(&guess) {
+        if self.sys.is_file(&guess) {
           // TODO(bartlomieju): emitLegacyIndexDeprecation()
           return Ok(UrlOrPath::Path(guess));
         }
@@ -1544,7 +1544,7 @@ impl<
     };
     for index_file_name in index_file_names {
       let guess = directory.join(index_file_name).clean();
-      if self.sys.fs_is_file_no_err(&guess) {
+      if self.sys.is_file(&guess) {
         // TODO(bartlomieju): emitLegacyIndexDeprecation()
         return Ok(guess);
       }
