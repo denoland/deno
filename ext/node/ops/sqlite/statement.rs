@@ -12,6 +12,9 @@ use serde::Serialize;
 
 use super::SqliteError;
 
+// ECMA-262, 15th edition, 21.1.2.6. Number.MAX_SAFE_INTEGER (2^53-1)
+const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatementResult {
@@ -122,17 +125,19 @@ impl StatementSync {
     &self,
     index: i32,
     scope: &mut v8::HandleScope<'a>,
-  ) -> v8::Local<'a, v8::Value> {
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
     // as it lives as long as the StatementSync instance.
     unsafe {
-      match ffi::sqlite3_column_type(self.inner, index) {
+      Ok(match ffi::sqlite3_column_type(self.inner, index) {
         ffi::SQLITE_INTEGER => {
           let value = ffi::sqlite3_column_int64(self.inner, index);
           if self.use_big_ints.get() {
             v8::BigInt::new_from_i64(scope, value).into()
-          } else {
+          } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Integer::new(scope, value as _).into()
+          } else {
+            return Err(SqliteError::NumberTooLarge(index, value));
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -162,7 +167,7 @@ impl StatementSync {
         }
         ffi::SQLITE_NULL => v8::null(scope).into(),
         _ => v8::undefined(scope).into(),
-      }
+      })
     }
   }
 
@@ -183,7 +188,7 @@ impl StatementSync {
     let mut values = Vec::with_capacity(num_cols);
 
     for (index, name) in iter {
-      let value = self.column_value(index, scope);
+      let value = self.column_value(index, scope)?;
       let name =
         v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
           .unwrap()
