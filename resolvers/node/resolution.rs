@@ -439,7 +439,7 @@ impl<
       Ok(FileType::Dir) => {
         let suggested_file_name = ["index.mjs", "index.js", "index.cjs"]
           .into_iter()
-          .find(|e| self.sys.fs_is_file_no_err(path.join(e)));
+          .find(|e| self.sys.is_file(&path.join(e)));
         Err(
           UnsupportedDirImportError {
             dir_url: UrlOrPath::Path(path),
@@ -492,7 +492,7 @@ impl<
     if should_probe(path, resolved_method) {
       ["js", "mjs", "cjs"]
         .into_iter()
-        .find(|ext| self.sys.fs_is_file_no_err(with_known_extension(path, ext)))
+        .find(|ext| self.sys.is_file(&with_known_extension(path, ext)))
     } else {
       None
     }
@@ -679,7 +679,7 @@ impl<
         }
       }
       let ts_path = with_known_extension(path, "ts");
-      if sys.fs_is_file_no_err(&ts_path) {
+      if sys.is_file(&ts_path) {
         return Some(ts_path);
       }
       None
