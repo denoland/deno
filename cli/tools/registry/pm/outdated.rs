@@ -350,14 +350,10 @@ async fn update(
             interactive::PackageInfo {
               current_version: current_version
                 .as_ref()
-                .map(|nv| nv.version.to_string())
-                .unwrap_or_default(),
+                .map(|nv| nv.version.clone()),
               name: dep.alias_or_name().into(),
               kind: dep.kind,
-              new_version: new_req
-                .version_text()
-                .trim_start_matches('^')
-                .to_string(),
+              new_version: new_req.clone(),
             }
           },
         )
