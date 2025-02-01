@@ -553,7 +553,7 @@ Deno.test(
     const data = "Hello World";
     const response = await fetch("http://localhost:4545/echo_server", {
       method: "POST",
-      body: new TextEncoder().encode(data).buffer,
+      body: new TextEncoder().encode(data).buffer as ArrayBuffer,
     });
     const text = await response.text();
     assertEquals(text, data);

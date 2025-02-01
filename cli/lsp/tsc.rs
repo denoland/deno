@@ -6015,11 +6015,25 @@ mod tests {
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
-    for asset in assets {
+    for asset in &assets {
       total_size += asset.text().len();
     }
     assert!(total_size > 0);
-    assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
+    #[allow(clippy::print_stderr)]
+    // currently as of TS 5.7, it's 3MB
+    if total_size > 3_500_000 {
+      let mut sizes = Vec::new();
+      for asset in &assets {
+        sizes.push((asset.specifier(), asset.text().len()));
+      }
+      sizes.sort_by_cached_key(|(_, size)| *size);
+      sizes.reverse();
+      for (specifier, size) in &sizes {
+        eprintln!("{}: {}", specifier, size);
+      }
+      eprintln!("Total size: {}", total_size);
+      panic!("Assets were quite large.");
+    }
   }
 
   #[tokio::test]

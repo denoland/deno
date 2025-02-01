@@ -71,6 +71,5 @@
   "bugs": {
     "url": "https://github.com/alexei/sprintf.js/issues"
   },
-  "license": "BSD-3-Clause",
-  "readmeFilename": "README.md"
+  "license": "BSD-3-Clause"
 }

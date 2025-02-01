@@ -234,7 +234,14 @@ function fromRelatedInformation({
   }
   if (start !== undefined && length !== undefined && file) {
     let startPos = file.getLineAndCharacterOfPosition(start);
-    let sourceLine = file.getFullText().split("\n")[startPos.line];
+    let endPos = file.getLineAndCharacterOfPosition(start + length);
+    // ok to get because it's cached via file.getLineAndCharacterOfPosition
+    const lineStarts = file.getLineStarts();
+    /** @type {string | undefined} */
+    let sourceLine = file.getFullText().slice(
+      lineStarts[startPos.line],
+      lineStarts[startPos.line + 1],
+    ).trimEnd();
     const originalFileName = file.fileName;
     const fileName = ops.op_remap_specifier
       ? (ops.op_remap_specifier(file.fileName) ?? file.fileName)
@@ -244,12 +251,12 @@ function fromRelatedInformation({
     if (
       fileName.endsWith(".wasm") && originalFileName.endsWith(".wasm.d.mts")
     ) {
-      startPos = { line: 0, character: 0 };
+      startPos = endPos = { line: 0, character: 0 };
       sourceLine = undefined;
     }
     return {
       start: startPos,
-      end: file.getLineAndCharacterOfPosition(start + length),
+      end: endPos,
       fileName,
       messageChain,
       messageText,
@@ -296,6 +303,9 @@ const IGNORED_DIAGNOSTICS = [
   // TS1479: The current file is a CommonJS module whose imports will produce 'require' calls;
   // however, the referenced file is an ECMAScript module and cannot be imported with 'require'.
   1479,
+  // TS1543: Importing a JSON file into an ECMAScript module requires a 'type: \"json\"' import
+  // attribute when 'module' is set to 'NodeNext'.
+  1543,
   // TS2306: File '.../index.d.ts' is not a module.
   // We get this for `x-typescript-types` declaration files which don't export
   // anything. We prefer to treat these as modules with no exports.
@@ -408,10 +418,6 @@ export const host = {
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
-  getModuleSpecifierCache() {
-    return moduleSpecifierCache;
-  },
-  // @ts-ignore Undocumented method.
   getCachedExportInfoMap() {
     return exportMapCache;
   },
@@ -421,7 +427,7 @@ export const host = {
   // @ts-ignore Undocumented method.
   toPath(fileName) {
     // @ts-ignore Undocumented function.
-    ts.toPath(
+    return ts.toPath(
       fileName,
       this.getCurrentDirectory(),
       this.getCanonicalFileName.bind(this),
@@ -717,9 +723,6 @@ export const host = {
 };
 
 // @ts-ignore Undocumented function.
-const moduleSpecifierCache = ts.server.createModuleSpecifierCache(host);
-
-// @ts-ignore Undocumented function.
 const exportMapCache = ts.createCacheableExportInfoMap(host);
 
 // override the npm install @types package diagnostics to be deno specific
@@ -747,35 +750,6 @@ export function filterMapDiagnostic(diagnostic) {
     return false;
   }
 
-  // ignore diagnostics resulting from the `ImportMeta` declaration in deno merging with
-  // the one in @types/node. the types of the filename and dirname properties are different,
-  // which causes tsc to error.
-  const importMetaFilenameDirnameModifiersRe =
-    /^All declarations of '(filename|dirname)'/;
-  const importMetaFilenameDirnameTypesRe =
-    /^Subsequent property declarations must have the same type.\s+Property '(filename|dirname)'/;
-  // Declarations of X must have identical modifiers.
-  if (diagnostic.code === 2687) {
-    if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameModifiersRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
-    ) {
-      return false;
-    }
-  }
-  // Subsequent property declarations must have the same type.
-  if (diagnostic.code === 2717) {
-    if (
-      typeof diagnostic.messageText === "string" &&
-      (importMetaFilenameDirnameTypesRe.test(diagnostic.messageText)) &&
-      (diagnostic.file?.fileName.startsWith("asset:///") ||
-        diagnostic.file?.fileName?.includes("@types/node"))
-    ) {
-      return false;
-    }
-  }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
     diagnostic.category = ts.DiagnosticCategory.Warning;
@@ -789,33 +763,98 @@ export function filterMapDiagnostic(diagnostic) {
       }
     }
   }
+
   return true;
 }
 
 // list of globals that should be kept in Node's globalThis
-ts.deno.setNodeOnlyGlobalNames([
-  "__dirname",
-  "__filename",
-  "Buffer",
-  "BufferConstructor",
-  "BufferEncoding",
-  "clearImmediate",
-  "clearInterval",
-  "clearTimeout",
-  "console",
-  "Console",
-  "ErrorConstructor",
-  "gc",
-  "Global",
-  "localStorage",
-  "queueMicrotask",
-  "RequestInit",
-  "ResponseInit",
-  "sessionStorage",
-  "setImmediate",
-  "setInterval",
-  "setTimeout",
+ts.deno.setNodeOnlyGlobalNames(
+  new Set([
+    "__dirname",
+    "__filename",
+    '"buffer"',
+    "Buffer",
+    "BufferConstructor",
+    "BufferEncoding",
+    "clearImmediate",
+    "clearInterval",
+    "clearTimeout",
+    "console",
+    "Console",
+    "crypto",
+    "ErrorConstructor",
+    "gc",
+    "Global",
+    "localStorage",
+    "queueMicrotask",
+    "RequestInit",
+    "ResponseInit",
+    "sessionStorage",
+    "setImmediate",
+    "setInterval",
+    "setTimeout",
+  ]),
+);
+// List of globals in @types/node that collide with Deno's types.
+// When the `@types/node` package attempts to assign to these types
+// if the type is already in the global symbol table, then assignment
+// will be a no-op, but if the global type does not exist then the package can
+// create the global.
+const setTypesNodeIgnorableNames = new Set([
+  "AbortController",
+  "AbortSignal",
+  "AsyncIteratorObject",
+  "atob",
+  "Blob",
+  "BroadcastChannel",
+  "btoa",
+  "ByteLengthQueuingStrategy",
+  "CompressionStream",
+  "CountQueuingStrategy",
+  "DecompressionStream",
+  "Disposable",
+  "DOMException",
+  "Event",
+  "EventSource",
+  "EventTarget",
+  "fetch",
+  "File",
+  "Float32Array",
+  "Float64Array",
+  "FormData",
+  "Headers",
+  "ImportMeta",
+  "MessageChannel",
+  "MessageEvent",
+  "MessagePort",
+  "performance",
+  "PerformanceEntry",
+  "PerformanceMark",
+  "PerformanceMeasure",
+  "ReadableByteStreamController",
+  "ReadableStream",
+  "ReadableStreamBYOBReader",
+  "ReadableStreamBYOBRequest",
+  "ReadableStreamDefaultController",
+  "ReadableStreamDefaultReader",
+  "ReadonlyArray",
+  "Request",
+  "Response",
+  "Storage",
+  "TextDecoder",
+  "TextDecoderStream",
+  "TextEncoder",
+  "TextEncoderStream",
+  "TransformStream",
+  "TransformStreamDefaultController",
+  "URL",
+  "URLSearchParams",
+  "WebSocket",
+  "WritableStream",
+  "WritableStreamDefaultController",
+  "WritableStreamDefaultWriter",
 ]);
+ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
 
 export function getAssets() {
   /** @type {{ specifier: string; text: string; }[]} */

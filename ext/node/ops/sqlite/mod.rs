@@ -41,4 +41,7 @@ pub enum SqliteError {
   #[class(generic)]
   #[error("Expanded SQL text would exceed configured limits")]
   InvalidExpandedSql,
+  #[class(range)]
+  #[error("The value of column {0} is too large to be represented as a JavaScript number: {1}")]
+  NumberTooLarge(i32, i64),
 }

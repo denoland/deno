@@ -79,7 +79,6 @@
     "type": "git",
     "url": "git+https://github.com/chaijs/chai.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "http://chaijs.com",
   "bugs": {
     "url": "https://github.com/chaijs/chai/issues"
