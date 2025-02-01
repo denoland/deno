@@ -1,2 +1,5 @@
 {
+  "dependencies": {
+    "package": "*"
+  }
 }
