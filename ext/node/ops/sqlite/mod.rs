@@ -4,10 +4,14 @@ mod database;
 mod statement;
 
 pub use database::DatabaseSync;
+use deno_permissions::PermissionCheckError;
 pub use statement::StatementSync;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SqliteError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(#[from] PermissionCheckError),
   #[class(generic)]
   #[error(transparent)]
   SqliteError(#[from] rusqlite::Error),
