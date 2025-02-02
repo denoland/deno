@@ -373,8 +373,8 @@ Deno.test("[node/http] request default protocol", async () => {
 });
 
 Deno.test("[node/http] request non-ws upgrade header", async () => {
-  const { promise, resolve, reject } = Promise.withResolvers<void>();
-  const server = http.createServer((req, res) => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
     res.writeHead(200, { "upgrade": "h2,h2c" });
     res.end("ok");
   });
