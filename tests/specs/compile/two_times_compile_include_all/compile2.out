@@ -1,0 +1,13 @@
+Compile file:[WILDCARD]main.ts to [WILDCARD].exe
+
+Embedded Files
+
+[WILDCARD].exe
+├── .gitignore ([WILDCARD])
+├── deno.json ([WILDCARD])
+└── main.ts ([WILDCARD])
+
+Files: [WILDCARD]
+Metadata: [WILDCARD]
+Remote modules: [WILDCARD]
+
