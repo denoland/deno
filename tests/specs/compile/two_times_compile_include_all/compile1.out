@@ -1,11 +1,10 @@
 Check file:[WILDCARD]main.ts
 Check file:[WILDCARD]deno.json
-Compile file:[WILDCARD]main.ts to [WILDCARD].exe
+Compile file:[WILDCARD]main.ts to [WILDCARD]
 
 Embedded Files
 
-[WILDCARD].exe
-├── .gitignore ([WILDCARD])
+[WILDCARD]
 ├── deno.json ([WILDCARD])
 └── main.ts ([WILDCARD])
 
