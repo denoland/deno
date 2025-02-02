@@ -47,10 +47,10 @@ fn check_perms(state: &mut OpState, location: &str) -> Result<(), SqliteError> {
   if location != ":memory:" {
     state
       .borrow::<PermissionsContainer>()
-      .check_read_with_api_name(&location, Some("node:sqlite"))?;
+      .check_read_with_api_name(location, Some("node:sqlite"))?;
     state
       .borrow::<PermissionsContainer>()
-      .check_write_with_api_name(&location, Some("node:sqlite"))?;
+      .check_write_with_api_name(location, Some("node:sqlite"))?;
   }
 
   Ok(())
