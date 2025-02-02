@@ -6,6 +6,8 @@ use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 
 use super::SqliteError;
@@ -41,6 +43,19 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
+fn check_perms(state: &mut OpState, location: &str) -> Result<(), SqliteError> {
+  if location != ":memory:" {
+    state
+      .borrow::<PermissionsContainer>()
+      .check_read_with_api_name(location, Some("node:sqlite"))?;
+    state
+      .borrow::<PermissionsContainer>()
+      .check_write_with_api_name(location, Some("node:sqlite"))?;
+  }
+
+  Ok(())
+}
+
 // Represents a single connection to a SQLite database.
 #[op2]
 impl DatabaseSync {
@@ -53,12 +68,15 @@ impl DatabaseSync {
   #[constructor]
   #[cppgc]
   fn new(
+    state: &mut OpState,
     #[string] location: String,
     #[serde] options: Option<DatabaseSyncOptions>,
   ) -> Result<DatabaseSync, SqliteError> {
     let options = options.unwrap_or_default();
 
     let db = if options.open {
+      check_perms(state, &location)?;
+
       let db = rusqlite::Connection::open(&location)?;
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
@@ -81,11 +99,12 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
-  fn open(&self) -> Result<(), SqliteError> {
+  fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
     }
 
+    check_perms(state, &self.location)?;
     let db = rusqlite::Connection::open(&self.location)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;

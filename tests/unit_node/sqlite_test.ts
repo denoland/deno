@@ -91,3 +91,13 @@ Deno.test("[node/sqlite] StatementSync blob are Uint8Array", () => {
   const row = obj[0] as Record<string, Uint8Array>;
   assert(row["cast('test' as blob)"] instanceof Uint8Array);
 });
+
+Deno.test({
+  name: "[node/sqlite] sqlite permissions",
+  permissions: { read: false, write: false },
+  fn() {
+    assertThrows(() => {
+      new DatabaseSync("test.db");
+    }, Deno.errors.NotCapable);
+  },
+});
