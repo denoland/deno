@@ -441,11 +441,7 @@ Process.prototype.config = {
 };
 
 Process.prototype.cpuUsage = function () {
-  warnNotImplemented("process.cpuUsage()");
-  return {
-    user: 0,
-    system: 0,
-  };
+  return Deno.cpuUsage();
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
@@ -784,6 +780,7 @@ const process = new Process();
 
 /* Set owned property */
 process.versions = versions;
+process.env = env;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,

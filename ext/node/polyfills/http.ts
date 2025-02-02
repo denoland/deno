@@ -479,6 +479,7 @@ class ClientRequest extends OutgoingMessage {
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
+          this._createRequestPath(),
           headers,
           this._bodyWriteRid,
           baseConnRid,
@@ -815,6 +816,15 @@ class ClientRequest extends OutgoingMessage {
     );
     url.hash = hash;
     return url.href;
+  }
+
+  _createRequestPath(): string | undefined {
+    // If the path starts with protocol, pass this to op_node_http_request_with_conn
+    // This will be used as Request.uri in hyper for supporting http proxy
+    if (this.path?.startsWith("http://") || this.path?.startsWith("https://")) {
+      return this.path;
+    }
+    return undefined;
   }
 
   setTimeout(msecs: number, callback?: () => void) {
