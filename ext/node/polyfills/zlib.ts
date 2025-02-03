@@ -31,7 +31,6 @@ import {
   Unzip,
   unzip,
   unzipSync,
-  Zlib,
 } from "ext:deno_node/_zlib.mjs";
 import {
   BrotliCompress,
