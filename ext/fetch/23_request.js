@@ -14,7 +14,6 @@ const {
   ArrayPrototypeMap,
   ArrayPrototypeSlice,
   ArrayPrototypeSplice,
-  ObjectFreeze,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
   RegExpPrototypeExec,
