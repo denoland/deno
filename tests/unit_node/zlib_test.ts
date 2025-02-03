@@ -76,7 +76,7 @@ Deno.test("brotli compression", {
 
   await Promise.all([
     promise.promise,
-    new Promise((r) => stream.on("close", r)),
+    new Promise<void>((r) => stream.on("close", r)),
   ]);
 
   const content = Deno.readTextFileSync("lorem_ipsum.txt");
