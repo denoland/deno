@@ -20,6 +20,7 @@ struct DatabaseSyncOptions {
   open: bool,
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
+  read_only: bool,
 }
 
 fn true_fn() -> bool {
@@ -31,6 +32,7 @@ impl Default for DatabaseSyncOptions {
     DatabaseSyncOptions {
       open: true,
       enable_foreign_key_constraints: true,
+      read_only: false,
     }
   }
 }
@@ -43,17 +45,31 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
-fn check_perms(state: &mut OpState, location: &str) -> Result<(), SqliteError> {
-  if location != ":memory:" {
-    state
-      .borrow::<PermissionsContainer>()
-      .check_read_with_api_name(location, Some("node:sqlite"))?;
-    state
-      .borrow::<PermissionsContainer>()
-      .check_write_with_api_name(location, Some("node:sqlite"))?;
+fn open_db(
+  state: &mut OpState,
+  readonly: bool,
+  location: &str,
+) -> Result<rusqlite::Connection, SqliteError> {
+  if location == ":memory:" {
+    return Ok(rusqlite::Connection::open_in_memory()?);
   }
 
-  Ok(())
+  state
+    .borrow::<PermissionsContainer>()
+    .check_read_with_api_name(location, Some("node:sqlite"))?;
+
+  if readonly {
+    return Ok(rusqlite::Connection::open_with_flags(
+      location,
+      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?);
+  }
+
+  state
+    .borrow::<PermissionsContainer>()
+    .check_write_with_api_name(location, Some("node:sqlite"))?;
+
+  Ok(rusqlite::Connection::open(location)?)
 }
 
 // Represents a single connection to a SQLite database.
@@ -75,9 +91,8 @@ impl DatabaseSync {
     let options = options.unwrap_or_default();
 
     let db = if options.open {
-      check_perms(state, &location)?;
+      let db = open_db(state, options.read_only, &location)?;
 
-      let db = rusqlite::Connection::open(&location)?;
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
       }
@@ -104,8 +119,7 @@ impl DatabaseSync {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    check_perms(state, &self.location)?;
-    let db = rusqlite::Connection::open(&self.location)?;
+    let db = open_db(state, self.options.read_only, &self.location)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     }
