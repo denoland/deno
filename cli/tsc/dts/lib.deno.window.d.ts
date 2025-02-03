@@ -83,8 +83,30 @@ declare var window: Window & typeof globalThis;
 declare var self: Window & typeof globalThis;
 /** @category Platform */
 declare var closed: boolean;
-/** @category Platform */
+
+/**
+ * Exits the current Deno process.
+ *
+ * This function terminates the process by signaling the runtime to exit.
+ * Similar to exit(0) in posix. Its behavior is similar to the `window.close()`
+ * method in the browser, but specific to the Deno runtime.
+ *
+ * Note: Use this function cautiously, as it will stop the execution of the
+ * entire Deno program immediately.
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/close
+ *
+ * @example
+ * ```ts
+ * console.log("About to close the Deno process.");
+ * close(); // The process will terminate here.
+ * console.log("This will not be logged."); // This line will never execute.
+ * ```
+ *
+ * @category Platform
+ */
 declare function close(): void;
+
 /** @category Events */
 declare var onerror: ((this: Window, ev: ErrorEvent) => any) | null;
 /** @category Events */
@@ -97,9 +119,86 @@ declare var onunload: ((this: Window, ev: Event) => any) | null;
 declare var onunhandledrejection:
   | ((this: Window, ev: PromiseRejectionEvent) => any)
   | null;
-/** @category Storage */
+/**
+ * Deno's `localStorage` API provides a way to store key-value pairs in a
+ * web-like environment, similar to the Web Storage API found in browsers.
+ * It allows developers to persist data across sessions in a Deno application.
+ * This API is particularly useful for applications that require a simple
+ * and effective way to store data locally.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Persistent: Data is retained even after the application is closed.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `localStorage` is similar to {@linkcode sessionStorage}, and shares the same
+ * API methods, visible in the {@linkcode Storage} type.
+ *
+ * When using the `--location` flag, the origin for the location is used to
+ * uniquely store the data. That means a location of http://example.com/a.ts
+ * and http://example.com/b.ts and http://example.com:80/ would all share the
+ * same storage, but https://example.com/ would be different.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ * and using
+ * [the `--location` flag](https://docs.deno.com/runtime/reference/web_platform_apis/#location-flag).
+ *
+ * @example
+ * ```ts
+ * // Set a value in localStorage
+ * localStorage.setItem("key", "value");
+ *
+ * // Get a value from localStorage
+ * const value = localStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from localStorage
+ * localStorage.removeItem("key");
+ *
+ * // Clear all values from localStorage
+ * localStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage
+ * @category Storage */
 declare var localStorage: Storage;
-/** @category Storage */
+
+/**
+ * Deno's `sessionStorage` API operates similarly to the {@linkcode localStorage} API,
+ * but it is intended for storing data temporarily for the duration of a session.
+ * Data stored in sessionStorage is cleared when the application session or
+ * process ends. This makes it suitable for temporary data that you do not need
+ * to persist across user sessions.
+ *
+ * - Key-Value Storage: Stores data as key-value pairs.
+ * - Session-Based: Data is only available for the duration of the page session.
+ * - Synchronous API: Operations are performed synchronously.
+ *
+ * `sessionStorage` is similar to {@linkcode localStorage}, and shares the same API
+ * methods, visible in the {@linkcode Storage} type.
+ *
+ * For more information, see the reference guide for
+ * [Web Storage](https://docs.deno.com/runtime/reference/web_platform_apis/#web-storage)
+ *
+ * @example
+ * ```ts
+ * // Set a value in sessionStorage
+ * sessionStorage.setItem("key", "value");
+ *
+ * // Get a value from sessionStorage
+ * const value = sessionStorage.getItem("key");
+ * console.log(value); // Output: "value"
+ *
+ * // Remove a value from sessionStorage
+ * sessionStorage.removeItem("key");
+ *
+ * // Clear all the values from sessionStorage
+ * sessionStorage.clear();
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/sessionStorage
+ * @category Storage
+ */
 declare var sessionStorage: Storage;
 /** @category Cache */
 declare var caches: CacheStorage;
@@ -127,6 +226,12 @@ declare var navigator: Navigator;
  *
  * If the stdin is not interactive, it does nothing.
  *
+ * @example
+ * ```ts
+ * // Displays the message "Acknowledge me! [Enter]" and waits for the enter key to be pressed before continuing.
+ * alert("Acknowledge me!");
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/alert
  * @category Platform
  *
  * @param message
@@ -140,6 +245,15 @@ declare function alert(message?: string): void;
  *
  * If the stdin is not interactive, it returns false.
  *
+ * @example
+ * ```ts
+ * const shouldProceed = confirm("Do you want to proceed?");
+ *
+ * // If the user presses 'y' or 'Y', the result will be true
+ * // If the user presses 'n' or 'N', the result will be false
+ * console.log("Should proceed?", shouldProceed);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/confirm
  * @category Platform
  *
  * @param message
@@ -156,6 +270,15 @@ declare function confirm(message?: string): boolean;
  * string.
  *
  * If the stdin is not interactive, it returns null.
+ *
+ * @example
+ * ```ts
+ * const pet = prompt("Cats or dogs?", "It's fine to love both!");
+ *
+ * // Displays the user's input or the default value of "It's fine to love both!"
+ * console.log("Best pet:", pet);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/prompt
  *
  * @category Platform
  *

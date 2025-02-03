@@ -4,9 +4,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use async_trait::async_trait;
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use denokv_proto::CommitResult;
 use denokv_proto::ReadRangeOutput;
 use denokv_proto::WatchStream;
@@ -63,7 +62,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsErrorBox> {
     for (prefixes, handler) in &self.backends {
       for &prefix in *prefixes {
         if prefix.is_empty() {
@@ -77,7 +76,7 @@ impl DatabaseHandler for MultiBackendDbHandler {
         }
       }
     }
-    Err(type_error(format!(
+    Err(JsErrorBox::type_error(format!(
       "No backend supports the given path: {:?}",
       path
     )))
@@ -90,7 +89,7 @@ pub trait DynamicDbHandler {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<RcDynamicDb, AnyError>;
+  ) -> Result<RcDynamicDb, JsErrorBox>;
 }
 
 #[async_trait(?Send)]
@@ -101,7 +100,7 @@ impl DatabaseHandler for Box<dyn DynamicDbHandler> {
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<Self::DB, AnyError> {
+  ) -> Result<Self::DB, JsErrorBox> {
     (**self).dyn_open(state, path).await
   }
 }
@@ -116,7 +115,7 @@ where
     &self,
     state: Rc<RefCell<OpState>>,
     path: Option<String>,
-  ) -> Result<RcDynamicDb, AnyError> {
+  ) -> Result<RcDynamicDb, JsErrorBox> {
     Ok(RcDynamicDb(Rc::new(self.open(state, path).await?)))
   }
 }
@@ -127,16 +126,16 @@ pub trait DynamicDb {
     &self,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError>;
+  ) -> Result<Vec<ReadRangeOutput>, JsErrorBox>;
 
   async fn dyn_atomic_write(
     &self,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError>;
+  ) -> Result<Option<CommitResult>, JsErrorBox>;
 
   async fn dyn_dequeue_next_message(
     &self,
-  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError>;
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, JsErrorBox>;
 
   fn dyn_watch(&self, keys: Vec<Vec<u8>>) -> WatchStream;
 
@@ -154,20 +153,20 @@ impl Database for RcDynamicDb {
     &self,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+  ) -> Result<Vec<ReadRangeOutput>, JsErrorBox> {
     (*self.0).dyn_snapshot_read(requests, options).await
   }
 
   async fn atomic_write(
     &self,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<Option<CommitResult>, JsErrorBox> {
     (*self.0).dyn_atomic_write(write).await
   }
 
   async fn dequeue_next_message(
     &self,
-  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError> {
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, JsErrorBox> {
     (*self.0).dyn_dequeue_next_message().await
   }
 
@@ -190,20 +189,20 @@ where
     &self,
     requests: Vec<ReadRange>,
     options: SnapshotReadOptions,
-  ) -> Result<Vec<ReadRangeOutput>, AnyError> {
+  ) -> Result<Vec<ReadRangeOutput>, JsErrorBox> {
     Ok(self.snapshot_read(requests, options).await?)
   }
 
   async fn dyn_atomic_write(
     &self,
     write: AtomicWrite,
-  ) -> Result<Option<CommitResult>, AnyError> {
+  ) -> Result<Option<CommitResult>, JsErrorBox> {
     Ok(self.atomic_write(write).await?)
   }
 
   async fn dyn_dequeue_next_message(
     &self,
-  ) -> Result<Option<Box<dyn QueueMessageHandle>>, AnyError> {
+  ) -> Result<Option<Box<dyn QueueMessageHandle>>, JsErrorBox> {
     Ok(
       self
         .dequeue_next_message()

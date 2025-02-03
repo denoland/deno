@@ -50,7 +50,7 @@ pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,
   #[smi] sig: i32,
-) -> Result<i32, deno_core::error::AnyError> {
+) -> Result<i32, deno_permissions::PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run_all("process.kill")?;

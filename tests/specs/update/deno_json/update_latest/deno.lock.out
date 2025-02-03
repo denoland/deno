@@ -2,10 +2,10 @@
   "version": "4",
   "specifiers": {
     "jsr:@denotest/add@1": "1.0.0",
-    "jsr:@denotest/multiple-exports@1": "1.0.0",
+    "jsr:@denotest/multiple-exports@1.0.0": "1.0.0",
     "jsr:@denotest/subtract@1": "1.0.0",
-    "npm:@denotest/bin@1": "1.0.0",
-    "npm:@denotest/breaking-change-between-versions@2": "2.0.0",
+    "npm:@denotest/bin@1.0.0": "1.0.0",
+    "npm:@denotest/breaking-change-between-versions@2.0.0": "2.0.0",
     "npm:@denotest/has-patch-versions@0.2": "0.2.0"
   },
   "jsr": {
@@ -33,10 +33,10 @@
   "workspace": {
     "dependencies": [
       "jsr:@denotest/add@1",
-      "jsr:@denotest/multiple-exports@1",
+      "jsr:@denotest/multiple-exports@1.0.0",
       "jsr:@denotest/subtract@1",
-      "npm:@denotest/bin@1",
-      "npm:@denotest/breaking-change-between-versions@2",
+      "npm:@denotest/bin@1.0.0",
+      "npm:@denotest/breaking-change-between-versions@2.0.0",
       "npm:@denotest/has-patch-versions@0.2"
     ]
   }

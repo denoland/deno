@@ -12,19 +12,20 @@ use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
 use crate::graph_util::CreateGraphOptions;
+use crate::npm::installer::PackageCaching;
 
 pub async fn cache_top_level_deps(
   // todo(dsherret): don't pass the factory into this function. Instead use ctor deps
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_resolver = factory.npm_resolver().await?;
+  let npm_installer = factory.npm_installer()?;
   let cli_options = factory.cli_options()?;
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver.ensure_top_level_package_json_install().await?;
-    if let Some(lockfile) = cli_options.maybe_lockfile() {
-      lockfile.error_if_changed()?;
-    }
+  npm_installer
+    .ensure_top_level_package_json_install()
+    .await?;
+  if let Some(lockfile) = cli_options.maybe_lockfile() {
+    lockfile.error_if_changed()?;
   }
   // cache as many entries in the import map as we can
   let resolver = factory.workspace_resolver().await?;
@@ -138,11 +139,7 @@ pub async fn cache_top_level_deps(
     maybe_graph_error = graph_builder.graph_roots_valid(graph, &roots);
   }
 
-  if let Some(npm_resolver) = npm_resolver.as_managed() {
-    npm_resolver
-      .cache_packages(crate::npm::PackageCaching::All)
-      .await?;
-  }
+  npm_installer.cache_packages(PackageCaching::All).await?;
 
   maybe_graph_error?;
 

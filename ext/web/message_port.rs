@@ -20,18 +20,23 @@ use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum MessagePortError {
+  #[class(type)]
   #[error("Invalid message port transfer")]
   InvalidTransfer,
+  #[class(type)]
   #[error("Message port is not ready for transfer")]
   NotReady,
+  #[class(type)]
   #[error("Can not transfer self message port")]
   TransferSelf,
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(deno_core::error::ResourceError),
 }
 
 pub enum Transferable {

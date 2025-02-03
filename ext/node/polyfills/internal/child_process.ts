@@ -61,7 +61,7 @@ import {
   kExtraStdio,
   kIpc,
   kNeedsNpmProcessState,
-} from "ext:runtime/40_process.js";
+} from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,
@@ -277,6 +277,7 @@ export class ChildProcess extends EventEmitter {
     try {
       this.#process = new Deno.Command(cmd, {
         args: cmdArgs,
+        clearEnv: true,
         cwd,
         env: stringEnv,
         stdin: toDenoStdio(stdin),
@@ -839,6 +840,7 @@ export function normalizeSpawnArguments(
     args,
     cwd,
     detached: !!options.detached,
+    env,
     envPairs,
     file,
     windowsHide: !!options.windowsHide,

@@ -51,6 +51,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
+use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
@@ -165,36 +166,50 @@ deno_core::extension!(
   }
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum HttpError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class("Http")]
   #[error("{0}")]
   HyperV014(#[source] Arc<hyper_v014::Error>),
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderName(#[from] hyper_v014::header::InvalidHeaderName),
+  #[class(generic)]
   #[error("{0}")]
   InvalidHeaderValue(#[from] hyper_v014::header::InvalidHeaderValue),
+  #[class(generic)]
   #[error("{0}")]
   Http(#[from] hyper_v014::http::Error),
+  #[class("Http")]
   #[error("response headers already sent")]
   ResponseHeadersAlreadySent,
+  #[class("Http")]
   #[error("connection closed while sending response")]
   ConnectionClosedWhileSendingResponse,
+  #[class("Http")]
   #[error("already in use")]
   AlreadyInUse,
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[from] std::io::Error),
+  #[class("Http")]
   #[error("no response headers")]
   NoResponseHeaders,
+  #[class("Http")]
   #[error("response already completed")]
   ResponseAlreadyCompleted,
+  #[class("Http")]
   #[error("cannot upgrade because request body was used")]
   UpgradeBodyUsed,
+  #[class("Http")]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[from] JsErrorBox),
 }
 
 pub enum HttpSocketAddr {
@@ -486,7 +501,9 @@ impl Resource for HttpStreamReadResource {
             Some(_) => match body.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
               Err(err) => {
-                break Err(HttpError::HyperV014(Arc::new(err)).into())
+                break Err(JsErrorBox::from_err(HttpError::HyperV014(
+                  Arc::new(err),
+                )))
               }
             },
             None => break Ok(BufView::empty()),
@@ -610,11 +627,7 @@ async fn op_http_accept(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
 ) -> Result<Option<NextRequestResponse>, HttpError> {
-  let conn = state
-    .borrow()
-    .resource_table
-    .get::<HttpConnResource>(rid)
-    .map_err(HttpError::Resource)?;
+  let conn = state.borrow().resource_table.get::<HttpConnResource>(rid)?;
 
   match conn.accept().await {
     Ok(Some((read_stream, write_stream, method, url))) => {
@@ -729,8 +742,7 @@ async fn op_http_write_headers(
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
 
   // Track supported encoding
   let encoding = stream.accept_encoding;
@@ -795,10 +807,7 @@ fn op_http_headers(
   state: &mut OpState,
   #[smi] rid: u32,
 ) -> Result<Vec<(ByteString, ByteString)>, HttpError> {
-  let stream = state
-    .resource_table
-    .get::<HttpStreamReadResource>(rid)
-    .map_err(HttpError::Resource)?;
+  let stream = state.resource_table.get::<HttpStreamReadResource>(rid)?;
   let rd = RcRef::map(&stream, |r| &r.rd)
     .try_borrow()
     .ok_or(HttpError::AlreadyInUse)?;
@@ -954,14 +963,9 @@ async fn op_http_write_resource(
   let http_stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&http_stream, |r| &r.wr).borrow_mut().await;
-  let resource = state
-    .borrow()
-    .resource_table
-    .get_any(stream)
-    .map_err(HttpError::Resource)?;
+  let resource = state.borrow().resource_table.get_any(stream)?;
   loop {
     match *wr {
       HttpResponseWriter::Headers(_) => {
@@ -973,11 +977,7 @@ async fn op_http_write_resource(
       _ => {}
     };
 
-    let view = resource
-      .clone()
-      .read(64 * 1024)
-      .await
-      .map_err(HttpError::Other)?; // 64KB
+    let view = resource.clone().read(64 * 1024).await?; // 64KB
     if view.is_empty() {
       break;
     }
@@ -1022,8 +1022,7 @@ async fn op_http_write(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
   match &mut *wr {
@@ -1075,8 +1074,7 @@ async fn op_http_shutdown(
   let stream = state
     .borrow()
     .resource_table
-    .get::<HttpStreamWriteResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let wr = take(&mut *wr);
   match wr {
@@ -1122,8 +1120,7 @@ async fn op_http_upgrade_websocket(
   let stream = state
     .borrow_mut()
     .resource_table
-    .get::<HttpStreamReadResource>(rid)
-    .map_err(HttpError::Resource)?;
+    .get::<HttpStreamReadResource>(rid)?;
   let mut rd = RcRef::map(&stream, |r| &r.rd).borrow_mut().await;
 
   let request = match &mut *rd {

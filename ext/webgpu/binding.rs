@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::rc::Rc;
 
-use deno_core::error::AnyError;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
@@ -170,7 +170,7 @@ pub fn op_webgpu_create_bind_group_layout(
   #[smi] device_rid: ResourceId,
   #[string] label: Cow<str>,
   #[serde] entries: Vec<GpuBindGroupLayoutEntry>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -209,7 +209,7 @@ pub fn op_webgpu_create_pipeline_layout(
   #[smi] device_rid: ResourceId,
   #[string] label: Cow<str>,
   #[serde] bind_group_layouts: Vec<u32>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -223,7 +223,7 @@ pub fn op_webgpu_create_pipeline_layout(
         state.resource_table.get::<WebGpuBindGroupLayout>(rid)?;
       Ok(bind_group_layout.1)
     })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .collect::<Result<Vec<_>, ResourceError>>()?;
 
   let descriptor = wgpu_core::binding_model::PipelineLayoutDescriptor {
     label: Some(label),
@@ -256,7 +256,7 @@ pub fn op_webgpu_create_bind_group(
   #[string] label: Cow<str>,
   #[smi] layout: ResourceId,
   #[serde] entries: Vec<GpuBindGroupEntry>,
-) -> Result<WebGpuResult, AnyError> {
+) -> Result<WebGpuResult, ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table
@@ -304,7 +304,7 @@ pub fn op_webgpu_create_bind_group(
         },
       })
     })
-    .collect::<Result<Vec<_>, AnyError>>()?;
+    .collect::<Result<Vec<_>, ResourceError>>()?;
 
   let bind_group_layout =
     state.resource_table.get::<WebGpuBindGroupLayout>(layout)?;

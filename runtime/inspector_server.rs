@@ -10,8 +10,6 @@ use std::process;
 use std::rc::Rc;
 use std::thread;
 
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::channel::mpsc::UnboundedSender;
@@ -49,17 +47,33 @@ pub struct InspectorServer {
   thread_handle: Option<thread::JoinHandle<()>>,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum InspectorServerError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(inherit)]
+  #[error("Failed to start inspector server at \"{host}\"")]
+  Connect {
+    host: SocketAddr,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+}
+
 impl InspectorServer {
-  pub fn new(host: SocketAddr, name: &'static str) -> Result<Self, AnyError> {
+  pub fn new(
+    host: SocketAddr,
+    name: &'static str,
+  ) -> Result<Self, InspectorServerError> {
     let (register_inspector_tx, register_inspector_rx) =
       mpsc::unbounded::<InspectorInfo>();
 
     let (shutdown_server_tx, shutdown_server_rx) = broadcast::channel(1);
 
-    let tcp_listener =
-      std::net::TcpListener::bind(host).with_context(|| {
-        format!("Failed to start inspector server at \"{}\"", host)
-      })?;
+    let tcp_listener = std::net::TcpListener::bind(host)
+      .map_err(|source| InspectorServerError::Connect { host, source })?;
     tcp_listener.set_nonblocking(true)?;
 
     let thread_handle = thread::spawn(move || {

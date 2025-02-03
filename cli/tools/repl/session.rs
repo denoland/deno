@@ -16,8 +16,9 @@ use deno_ast::ParsedSource;
 use deno_ast::SourcePos;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_core::error::generic_error;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::futures::channel::mpsc::UnboundedReceiver;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -27,9 +28,11 @@ use deno_core::unsync::spawn;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
 use deno_core::PollEventLoopOptions;
+use deno_error::JsErrorBox;
 use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -39,11 +42,12 @@ use regex::Match;
 use regex::Regex;
 use tokio::sync::Mutex;
 
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CliOptions;
 use crate::cdp;
 use crate::colors;
 use crate::lsp::ReplLanguageServer;
-use crate::npm::CliNpmResolver;
+use crate::npm::installer::NpmInstaller;
 use crate::resolver::CliResolver;
 use crate::tools::test::report_tests;
 use crate::tools::test::reporters::PrettyTestReporter;
@@ -179,7 +183,7 @@ struct ReplJsxState {
 }
 
 pub struct ReplSession {
-  npm_resolver: Arc<dyn CliNpmResolver>,
+  npm_installer: Option<Arc<NpmInstaller>>,
   resolver: Arc<CliResolver>,
   pub worker: MainWorker,
   session: LocalInspectorSession,
@@ -198,8 +202,9 @@ pub struct ReplSession {
 impl ReplSession {
   pub async fn initialize(
     cli_options: &CliOptions,
-    npm_resolver: Arc<dyn CliNpmResolver>,
+    npm_installer: Option<Arc<NpmInstaller>>,
     resolver: Arc<CliResolver>,
+    tsconfig_resolver: &TsConfigResolver,
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
@@ -250,20 +255,17 @@ impl ReplSession {
 
     let cwd_url =
       Url::from_directory_path(cli_options.initial_cwd()).map_err(|_| {
-        generic_error(format!(
+        anyhow!(
           "Unable to construct URL from the path of cwd: {}",
           cli_options.initial_cwd().to_string_lossy(),
-        ))
+        )
       })?;
-    let ts_config_for_emit = cli_options
-      .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-    let (transpile_options, _) =
-      crate::args::ts_config_to_transpile_and_emit_options(
-        ts_config_for_emit.ts_config,
-      )?;
-    let experimental_decorators = transpile_options.use_ts_decorators;
+    let experimental_decorators = tsconfig_resolver
+      .transpile_and_emit_options(&cwd_url)?
+      .transpile
+      .use_ts_decorators;
     let mut repl_session = ReplSession {
-      npm_resolver,
+      npm_installer,
       resolver,
       worker,
       session,
@@ -322,7 +324,7 @@ impl ReplSession {
     &mut self,
     method: &str,
     params: Option<T>,
-  ) -> Result<Value, AnyError> {
+  ) -> Result<Value, CoreError> {
     self
       .worker
       .js_runtime
@@ -339,7 +341,7 @@ impl ReplSession {
       .await
   }
 
-  pub async fn run_event_loop(&mut self) -> Result<(), AnyError> {
+  pub async fn run_event_loop(&mut self) -> Result<(), CoreError> {
     self.worker.run_event_loop(true).await
   }
 
@@ -400,21 +402,27 @@ impl ReplSession {
         }
         Err(err) => {
           // handle a parsing diagnostic
-          match err.downcast_ref::<deno_ast::ParseDiagnostic>() {
+          match any_and_jserrorbox_downcast_ref::<deno_ast::ParseDiagnostic>(
+            &err,
+          ) {
             Some(diagnostic) => {
               Ok(EvaluationOutput::Error(format_diagnostic(diagnostic)))
             }
-            None => match err.downcast_ref::<ParseDiagnosticsError>() {
-              Some(diagnostics) => Ok(EvaluationOutput::Error(
-                diagnostics
-                  .0
-                  .iter()
-                  .map(format_diagnostic)
-                  .collect::<Vec<_>>()
-                  .join("\n\n"),
-              )),
-              None => Err(err),
-            },
+            None => {
+              match any_and_jserrorbox_downcast_ref::<ParseDiagnosticsError>(
+                &err,
+              ) {
+                Some(diagnostics) => Ok(EvaluationOutput::Error(
+                  diagnostics
+                    .0
+                    .iter()
+                    .map(format_diagnostic)
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                )),
+                None => Err(err),
+              }
+            }
           }
         }
       }
@@ -694,8 +702,8 @@ impl ReplSession {
     &mut self,
     program: &swc_ast::Program,
   ) -> Result<(), AnyError> {
-    let Some(npm_resolver) = self.npm_resolver.as_managed() else {
-      return Ok(()); // don't auto-install for byonm
+    let Some(npm_installer) = &self.npm_installer else {
+      return Ok(());
     };
 
     let mut collector = ImportCollector::new();
@@ -727,13 +735,13 @@ impl ReplSession {
     let has_node_specifier =
       resolved_imports.iter().any(|url| url.scheme() == "node");
     if !npm_imports.is_empty() || has_node_specifier {
-      npm_resolver
+      npm_installer
         .add_and_cache_package_reqs(&npm_imports)
         .await?;
 
       // prevent messages in the repl about @types/node not being cached
       if has_node_specifier {
-        npm_resolver.inject_synthetic_types_node_package().await?;
+        npm_installer.inject_synthetic_types_node_package().await?;
       }
     }
     Ok(())
@@ -742,7 +750,7 @@ impl ReplSession {
   async fn evaluate_expression(
     &mut self,
     expression: &str,
-  ) -> Result<cdp::EvaluateResponse, AnyError> {
+  ) -> Result<cdp::EvaluateResponse, CoreError> {
     self
       .post_message_with_event_loop(
         "Runtime.evaluate",
@@ -765,7 +773,9 @@ impl ReplSession {
         }),
       )
       .await
-      .and_then(|res| serde_json::from_value(res).map_err(|e| e.into()))
+      .and_then(|res| {
+        serde_json::from_value(res).map_err(|e| JsErrorBox::from_err(e).into())
+      })
   }
 }
 

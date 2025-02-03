@@ -14,6 +14,9 @@ use deno_core::parking_lot::Mutex;
 use deno_core::OpState;
 #[cfg(unix)]
 use deno_core::ResourceId;
+use deno_error::builtin_classes::GENERIC_ERROR;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 #[cfg(windows)]
 use deno_io::WinTtyState;
 #[cfg(unix)]
@@ -47,6 +50,8 @@ impl TtyModeStore {
   }
 }
 
+#[cfg(unix)]
+use deno_process::JsNixError;
 #[cfg(windows)]
 use winapi::shared::minwindef::DWORD;
 #[cfg(windows)]
@@ -61,17 +66,29 @@ deno_core::extension!(
   },
 );
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TtyError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(#[from] std::io::Error),
+  Io(
+    #[from]
+    #[inherit]
+    Error,
+  ),
   #[cfg(unix)]
+  #[class(inherit)]
   #[error(transparent)]
-  Nix(nix::Error),
+  Nix(#[inherit] JsNixError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsErrorBox),
 }
 
 // ref: <https://learn.microsoft.com/en-us/windows/console/setconsolemode>
@@ -101,10 +118,7 @@ fn op_set_raw(
   is_raw: bool,
   cbreak: bool,
 ) -> Result<(), TtyError> {
-  let handle_or_fd = state
-    .resource_table
-    .get_fd(rid)
-    .map_err(TtyError::Resource)?;
+  let handle_or_fd = state.resource_table.get_fd(rid)?;
 
   // From https://github.com/kkawakam/rustyline/blob/master/src/tty/windows.rs
   // and https://github.com/kkawakam/rustyline/blob/master/src/tty/unix.rs
@@ -113,13 +127,14 @@ fn op_set_raw(
   // Copyright (c) 2019 Timon. MIT license.
   #[cfg(windows)]
   {
+    use deno_error::JsErrorBox;
     use winapi::shared::minwindef::FALSE;
     use winapi::um::consoleapi;
 
     let handle = handle_or_fd;
 
     if cbreak {
-      return Err(TtyError::Other(deno_core::error::not_supported()));
+      return Err(TtyError::Other(JsErrorBox::not_supported()));
     }
 
     let mut original_mode: DWORD = 0;
@@ -264,8 +279,8 @@ fn op_set_raw(
         Some(mode) => mode,
         None => {
           // Save original mode.
-          let original_mode =
-            termios::tcgetattr(raw_fd).map_err(TtyError::Nix)?;
+          let original_mode = termios::tcgetattr(raw_fd)
+            .map_err(|e| TtyError::Nix(JsNixError(e)))?;
           tty_mode_store.set(rid, original_mode.clone());
           original_mode
         }
@@ -288,12 +303,12 @@ fn op_set_raw(
       raw.control_chars[termios::SpecialCharacterIndices::VMIN as usize] = 1;
       raw.control_chars[termios::SpecialCharacterIndices::VTIME as usize] = 0;
       termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &raw)
-        .map_err(TtyError::Nix)?;
+        .map_err(|e| TtyError::Nix(JsNixError(e)))?;
     } else {
       // Try restore saved mode.
       if let Some(mode) = tty_mode_store.take(rid) {
         termios::tcsetattr(raw_fd, termios::SetArg::TCSADRAIN, &mode)
-          .map_err(TtyError::Nix)?;
+          .map_err(|e| TtyError::Nix(JsNixError(e)))?;
       }
     }
 
@@ -311,10 +326,7 @@ fn op_console_size(
     result: &mut [u32],
     rid: u32,
   ) -> Result<(), TtyError> {
-    let fd = state
-      .resource_table
-      .get_fd(rid)
-      .map_err(TtyError::Resource)?;
+    let fd = state.resource_table.get_fd(rid)?;
     let size = console_size_from_fd(fd)?;
     result[0] = size.cols;
     result[1] = size.rows;
@@ -432,12 +444,28 @@ mod tests {
   }
 }
 
+deno_error::js_error_wrapper!(ReadlineError, JsReadlineError, |err| {
+  match err {
+    ReadlineError::Io(e) => e.get_class(),
+    ReadlineError::Eof => GENERIC_ERROR.into(),
+    ReadlineError::Interrupted => GENERIC_ERROR.into(),
+    #[cfg(unix)]
+    ReadlineError::Errno(e) => JsNixError(*e).get_class(),
+    ReadlineError::WindowResized => GENERIC_ERROR.into(),
+    #[cfg(windows)]
+    ReadlineError::Decode(_) => GENERIC_ERROR.into(),
+    #[cfg(windows)]
+    ReadlineError::SystemError(_) => GENERIC_ERROR.into(),
+    _ => GENERIC_ERROR.into(),
+  }
+});
+
 #[op2]
 #[string]
 pub fn op_read_line_prompt(
   #[string] prompt_text: &str,
   #[string] default_value: &str,
-) -> Result<Option<String>, ReadlineError> {
+) -> Result<Option<String>, JsReadlineError> {
   let mut editor = Editor::<(), rustyline::history::DefaultHistory>::new()
     .expect("Failed to create editor.");
 
@@ -457,6 +485,6 @@ pub fn op_read_line_prompt(
       Ok(None)
     }
     Err(ReadlineError::Eof) => Ok(None),
-    Err(err) => Err(err),
+    Err(err) => Err(JsReadlineError(err)),
   }
 }

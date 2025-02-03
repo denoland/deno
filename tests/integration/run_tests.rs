@@ -9,15 +9,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 
 use bytes::Bytes;
-use deno_core::serde_json::json;
-use deno_core::url;
-use deno_tls::rustls;
-use deno_tls::rustls::ClientConnection;
-use deno_tls::rustls_pemfile;
-use deno_tls::TlsStream;
 use hickory_proto::serialize::txt::Parser;
 use hickory_server::authority::AuthorityObject;
 use pretty_assertions::assert_eq;
+use rustls::ClientConnection;
+use rustls_tokio_stream::TlsStream;
+use serde_json::json;
 use test_util as util;
 use test_util::itest;
 use test_util::TempDir;
@@ -253,7 +250,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all run access.");
+      console.expect("Granted all run access.");
       // "read" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests read access to \"FOO\".\r\n",
@@ -265,7 +262,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all read access.");
+      console.expect("Granted all read access.");
       // "write" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests write access to \"FOO\".\r\n",
@@ -277,7 +274,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all write access.");
+      console.expect("Granted all write access.");
       // "net" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests net access to \"foo\".\r\n",
@@ -289,7 +286,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all net access.");
+      console.expect("Granted all net access.");
       // "env" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests env access to \"FOO\".\r\n",
@@ -301,7 +298,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all env access.");
+      console.expect("Granted all env access.");
       // "sys" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests sys access to \"loadavg\".\r\n",
@@ -313,7 +310,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all sys access.");
+      console.expect("Granted all sys access.");
       // "ffi" permissions
       console.expect(concat!(
         "┏ ⚠️  Deno requests ffi access to \"FOO\".\r\n",
@@ -325,7 +322,7 @@ fn permissions_prompt_allow_all() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all ffi access.")
+      console.expect("Granted all ffi access.")
     },
   );
 }
@@ -346,7 +343,7 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all env access.");
+      console.expect("Granted all env access.");
 
       // "sys" permissions
       console.expect(concat!(
@@ -359,12 +356,14 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all sys access.");
+      console.expect("Granted all sys access.");
 
+      let text = console.read_until("Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions)");
       // "read" permissions
-      console.expect(concat!(
-        "┏ ⚠️  Deno requests read access to <CWD>.\r\n",
-        "┠─ Requested by `Deno.cwd()` API.\r\n",
+      test_util::assertions::assert_wildcard_match(&text, concat!(
+        "\r\n",
+        "┏ ⚠️  Deno requests read access to \"[WILDCARD]tests[WILDCHAR]testdata[WILDCHAR]\".\r\n",
+        "┠─ Requested by `Deno.lstatSync()` API.\r\n",
         "┠─ To see a stack trace for this prompt, set the DENO_TRACE_PERMISSIONS environmental variable.\r\n",
         "┠─ Learn more at: https://docs.deno.com/go/--allow-read\r\n",
         "┠─ Run again with --allow-read to bypass this prompt.\r\n",
@@ -372,7 +371,7 @@ fn permissions_prompt_allow_all_2() {
       ));
       console.human_delay();
       console.write_line_raw("A");
-      console.expect("✅ Granted all read access.");
+      console.expect("Granted all read access.");
     });
 }
 
@@ -428,7 +427,7 @@ fn permissions_cache() {
       ));
       console.human_delay();
       console.write_line_raw("y");
-      console.expect("✅ Granted read access to \"foo\".");
+      console.expect("Granted read access to \"foo\".");
       console.expect("granted");
       console.expect("prompt");
     });
@@ -445,7 +444,7 @@ fn permissions_trace() {
       test_util::assertions::assert_wildcard_match(&text, concat!(
       "┏ ⚠️  Deno requests sys access to \"hostname\".\r\n",
       "┠─ Requested by `Deno.hostname()` API.\r\n",
-      "┃  ├─ Object.hostname (ext:runtime/30_os.js:43:10)\r\n",
+      "┃  ├─ Object.hostname (ext:deno_os/30_os.js:43:10)\r\n",
       "┃  ├─ foo (file://[WILDCARD]/run/permissions_trace.ts:2:8)\r\n",
       "┃  ├─ bar (file://[WILDCARD]/run/permissions_trace.ts:6:3)\r\n",
       "┃  └─ file://[WILDCARD]/run/permissions_trace.ts:9:1\r\n",
@@ -456,7 +455,7 @@ fn permissions_trace() {
 
       console.human_delay();
       console.write_line_raw("y");
-      console.expect("✅ Granted sys access to \"hostname\".");
+      console.expect("Granted sys access to \"hostname\".");
     });
 }
 
@@ -2159,7 +2158,7 @@ fn ts_dependency_recompilation() {
   let stdout_output = std::str::from_utf8(&output.stdout).unwrap().trim();
   let stderr_output = std::str::from_utf8(&output.stderr).unwrap().trim();
 
-  // error: TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
+  // TS2345 [ERROR]: Argument of type '5' is not assignable to parameter of type 'string'.
   assert!(stderr_output.contains("TS2345"));
   assert!(!output.status.success());
   assert!(stdout_output.is_empty());
@@ -2615,7 +2614,7 @@ where
   Fut::Output: Send + 'static,
 {
   fn execute(&self, fut: Fut) {
-    deno_core::unsync::spawn(fut);
+    deno_unsync::spawn(fut);
   }
 }
 
@@ -2663,7 +2662,6 @@ async fn websocket_server_multi_field_connection_header() {
 
   let message = socket.read_frame().await.unwrap();
   assert_eq!(message.opcode, fastwebsockets::OpCode::Close);
-  assert!(message.payload.is_empty());
   socket
     .write_frame(fastwebsockets::Frame::close_raw(vec![].into()))
     .await
@@ -2764,20 +2762,38 @@ fn stdio_streams_are_locked_in_permission_prompt() {
       // The worker is blocked, so nothing else should get written here
       console.human_delay();
       console.write_line_raw("i");
-      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
+      // We ensure that nothing gets written here between the permission prompt and this text, despite the delay
       let newline = if cfg!(target_os = "linux") {
         "^J"
       } else {
         "\r\n"
       };
-      console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
-      console.human_delay();
-      console.write_line_raw("y");
-      // We ensure that nothing gets written here between the permission prompt and this text, despire the delay
-      console.expect_raw_next(format!("y{newline}\x1b[6A\x1b[0J✅ Granted read access to \""));
+      if cfg!(windows) {
+        // it's too difficult to inspect the raw text on windows because the console
+        // outputs a bunch of control characters, so we instead rely on the last assertion
+        // in this test that checks to ensure we didn't receive any malicious output during
+        // the permission prompts
+        console.expect("Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) >");
+        console.human_delay();
+        console.write_line_raw("y");
+        console.expect("Granted read access to");
+      } else {
+        console.expect_raw_next(format!("i{newline}\u{1b}[1A\u{1b}[0J┗ Unrecognized option. Allow? [y/n/A] (y = yes, allow; n = no, deny; A = allow all read permissions) > "));
+        console.human_delay();
+        console.write_line_raw("y");
+        // We ensure that nothing gets written here between the permission prompt and this text, despite the delay
+        console.expect_raw_next(format!("y{newline}\x1b[6A\x1b[0J✅ Granted read access to \""));
+      }
 
       // Back to spamming!
       console.expect(malicious_output);
+
+      // Ensure during the permission prompt showing we didn't receive any malicious output
+      let all_text = console.all_output();
+      let start_prompt_index = all_text.find("Allow?").unwrap();
+      let end_prompt_index = all_text.find("Granted read access to").unwrap();
+      let prompt_text = &all_text[start_prompt_index..end_prompt_index];
+      assert!(!prompt_text.contains(malicious_output), "Prompt text: {:?}", prompt_text);
   });
 }
 

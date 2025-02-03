@@ -2,7 +2,7 @@
 
 use deno_media_type::MediaType;
 use node_resolver::errors::ClosestPkgJsonError;
-use node_resolver::InNpmPackageCheckerRc;
+use node_resolver::InNpmPackageChecker;
 use node_resolver::PackageJsonResolverRc;
 use node_resolver::ResolutionMode;
 use sys_traits::FsRead;
@@ -16,14 +16,16 @@ use crate::sync::MaybeDashMap;
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
 #[derive(Debug)]
-pub struct CjsTracker<TSys: FsRead> {
-  is_cjs_resolver: IsCjsResolver<TSys>,
+pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
+  is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
 }
 
-impl<TSys: FsRead> CjsTracker<TSys> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  CjsTracker<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
@@ -46,6 +48,26 @@ impl<TSys: FsRead> CjsTracker<TSys> {
     media_type: MediaType,
   ) -> Result<bool, ClosestPkgJsonError> {
     self.treat_as_cjs_with_is_script(specifier, media_type, None)
+  }
+
+  /// Mark a file as being known CJS or ESM.
+  pub fn set_is_known_script(&self, specifier: &Url, is_script: bool) {
+    let new_value = if is_script {
+      ResolutionMode::Require
+    } else {
+      ResolutionMode::Import
+    };
+    // block to really ensure dashmap is not borrowed while trying to insert
+    {
+      if let Some(value) = self.known.get(specifier) {
+        // you shouldn't be insert a value in here that's
+        // already known and is a different value than what
+        // was previously determined
+        debug_assert_eq!(*value, new_value);
+        return;
+      }
+    }
+    self.known.insert(specifier.clone(), new_value);
   }
 
   /// Gets whether the file is CJS. If true, this is for sure
@@ -125,15 +147,20 @@ pub enum IsCjsResolutionMode {
 
 /// Resolves whether a module is CJS or ESM.
 #[derive(Debug)]
-pub struct IsCjsResolver<TSys: FsRead> {
-  in_npm_pkg_checker: InNpmPackageCheckerRc,
+pub struct IsCjsResolver<
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TSys: FsRead,
+> {
+  in_npm_pkg_checker: TInNpmPackageChecker,
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   mode: IsCjsResolutionMode,
 }
 
-impl<TSys: FsRead> IsCjsResolver<TSys> {
+impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
+  IsCjsResolver<TInNpmPackageChecker, TSys>
+{
   pub fn new(
-    in_npm_pkg_checker: InNpmPackageCheckerRc,
+    in_npm_pkg_checker: TInNpmPackageChecker,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     mode: IsCjsResolutionMode,
   ) -> Self {
@@ -226,7 +253,7 @@ impl<TSys: FsRead> IsCjsResolver<TSys> {
           }
         } else if is_script == Some(false) {
           // we know this is esm
-            known_cache.insert(specifier.clone(), ResolutionMode::Import);
+          known_cache.insert(specifier.clone(), ResolutionMode::Import);
           Some(ResolutionMode::Import)
         } else {
           None
@@ -240,11 +267,14 @@ impl<TSys: FsRead> IsCjsResolver<TSys> {
     specifier: &Url,
   ) -> Result<ResolutionMode, ClosestPkgJsonError> {
     if self.in_npm_pkg_checker.in_npm_package(specifier) {
+      let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+        return Ok(ResolutionMode::Require);
+      };
       if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(specifier)?
+        self.pkg_json_resolver.get_closest_package_json(&path)?
       {
         let is_file_location_cjs = pkg_json.typ != "module";
-        Ok(if is_file_location_cjs {
+        Ok(if is_file_location_cjs || path.extension().is_none() {
           ResolutionMode::Require
         } else {
           ResolutionMode::Import
@@ -253,8 +283,11 @@ impl<TSys: FsRead> IsCjsResolver<TSys> {
         Ok(ResolutionMode::Require)
       }
     } else if self.mode != IsCjsResolutionMode::Disabled {
+      let Ok(path) = deno_path_util::url_to_file_path(specifier) else {
+        return Ok(ResolutionMode::Import);
+      };
       if let Some(pkg_json) =
-        self.pkg_json_resolver.get_closest_package_json(specifier)?
+        self.pkg_json_resolver.get_closest_package_json(&path)?
       {
         let is_cjs_type = pkg_json.typ == "commonjs"
           || self.mode == IsCjsResolutionMode::ImplicitTypeCommonJs

@@ -96,6 +96,5 @@
   "bugs": {
     "url": "https://github.com/moxystudio/node-cross-spawn/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

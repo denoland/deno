@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use deno_core::op2;
 use deno_core::url::Url;
 use deno_core::OpState;
+use deno_error::JsErrorBox;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 
@@ -18,7 +19,7 @@ use crate::NodeRequireLoaderRc;
 fn ensure_read_permission<'a, P>(
   state: &mut OpState,
   file_path: &'a Path,
-) -> Result<Cow<'a, Path>, deno_core::error::AnyError>
+) -> Result<Cow<'a, Path>, JsErrorBox>
 where
   P: NodePermissions + 'static,
 {
@@ -27,24 +28,47 @@ where
   loader.ensure_read_permission(permissions, file_path)
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum WorkerThreadsFilenameError {
+  #[class(inherit)]
   #[error(transparent)]
-  Permission(deno_core::error::AnyError),
+  Permission(JsErrorBox),
+  #[class(inherit)]
   #[error("{0}")]
-  UrlParse(#[from] url::ParseError),
+  UrlParse(
+    #[from]
+    #[inherit]
+    url::ParseError,
+  ),
+  #[class(generic)]
   #[error("Relative path entries must start with '.' or '..'")]
   InvalidRelativeUrl,
+  #[class(generic)]
   #[error("URL from Path-String")]
   UrlFromPathString,
+  #[class(generic)]
   #[error("URL to Path-String")]
   UrlToPathString,
+  #[class(generic)]
   #[error("URL to Path")]
   UrlToPath,
+  #[class(generic)]
   #[error("File not found [{0:?}]")]
   FileNotFound(PathBuf),
+  #[class(inherit)]
   #[error(transparent)]
-  Fs(#[from] std::io::Error),
+  Fs(
+    #[from]
+    #[inherit]
+    deno_io::fs::FsError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(
+    #[from]
+    #[inherit]
+    std::io::Error,
+  ),
 }
 
 // todo(dsherret): we should remove this and do all this work inside op_create_worker

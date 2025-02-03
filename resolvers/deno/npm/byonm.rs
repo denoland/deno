@@ -18,6 +18,7 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NpmPackageFolderResolver;
 use node_resolver::PackageJsonResolverRc;
+use node_resolver::UrlOrPathRef;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
@@ -27,17 +28,19 @@ use thiserror::Error;
 use url::Url;
 
 use super::local::normalize_pkg_name_for_node_modules_deno_folder;
-use super::CliNpmReqResolver;
-use super::ResolvePkgFolderFromDenoReqError;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, deno_error::JsError)]
 pub enum ByonmResolvePkgFolderFromDenoReqError {
+  #[class(generic)]
   #[error("Could not find \"{}\" in a node_modules folder. Deno expects the node_modules/ directory to be up to date. Did you forget to run `deno install`?", .0)]
   MissingAlias(StackString),
+  #[class(inherit)]
   #[error(transparent)]
   PackageJson(#[from] PackageJsonLoadError),
+  #[class(generic)]
   #[error("Could not find a matching package for 'npm:{}' in the node_modules directory. Ensure you have all your JSR and npm dependencies listed in your deno.json or package.json, then run `deno install`. Alternatively, turn on auto-install by specifying `\"nodeModulesDir\": \"auto\"` in your deno.json file.", .0)]
   UnmatchedReq(PackageReq),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
 }
@@ -85,7 +88,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     }
   }
 
-  pub fn root_node_modules_dir(&self) -> Option<&Path> {
+  pub fn root_node_modules_path(&self) -> Option<&Path> {
     self.root_node_modules_dir.as_deref()
   }
 
@@ -139,7 +142,7 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     ) -> std::io::Result<Option<PathBuf>> {
       for ancestor in start_dir.ancestors() {
         let node_modules_folder = ancestor.join("node_modules");
-        let sub_dir = join_package_name(&node_modules_folder, alias);
+        let sub_dir = join_package_name(Cow::Owned(node_modules_folder), alias);
         if sys.fs_is_dir_no_err(&sub_dir) {
           return Ok(Some(
             deno_path_util::fs::canonicalize_path_maybe_not_exists(
@@ -366,56 +369,27 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
 
     best_version.map(|(_version, entry_name)| {
       join_package_name(
-        &node_modules_deno_dir.join(entry_name).join("node_modules"),
+        Cow::Owned(node_modules_deno_dir.join(entry_name).join("node_modules")),
         &req.name,
       )
     })
   }
 }
 
-impl<
-    Sys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + Send
-      + Sync
-      + std::fmt::Debug,
-  > CliNpmReqResolver for ByonmNpmResolver<Sys>
-{
-  fn resolve_pkg_folder_from_deno_module_req(
-    &self,
-    req: &PackageReq,
-    referrer: &Url,
-  ) -> Result<PathBuf, ResolvePkgFolderFromDenoReqError> {
-    ByonmNpmResolver::resolve_pkg_folder_from_deno_module_req(
-      self, req, referrer,
-    )
-    .map_err(ResolvePkgFolderFromDenoReqError::Byonm)
-  }
-}
-
-impl<
-    Sys: FsCanonicalize
-      + FsMetadata
-      + FsRead
-      + FsReadDir
-      + Send
-      + Sync
-      + std::fmt::Debug,
-  > NpmPackageFolderResolver for ByonmNpmResolver<Sys>
+impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
+  NpmPackageFolderResolver for ByonmNpmResolver<TSys>
 {
   fn resolve_package_folder_from_package(
     &self,
     name: &str,
-    referrer: &Url,
+    referrer: &UrlOrPathRef,
   ) -> Result<PathBuf, PackageFolderResolveError> {
     fn inner<TSys: FsMetadata>(
       sys: &TSys,
       name: &str,
-      referrer: &Url,
+      referrer: &UrlOrPathRef,
     ) -> Result<PathBuf, PackageFolderResolveError> {
-      let maybe_referrer_file = url_to_file_path(referrer).ok();
+      let maybe_referrer_file = referrer.path().ok();
       let maybe_start_folder =
         maybe_referrer_file.as_ref().and_then(|f| f.parent());
       if let Some(start_folder) = maybe_start_folder {
@@ -427,7 +401,7 @@ impl<
             Cow::Owned(current_folder.join("node_modules"))
           };
 
-          let sub_dir = join_package_name(&node_modules_folder, name);
+          let sub_dir = join_package_name(node_modules_folder, name);
           if sys.fs_is_dir_no_err(&sub_dir) {
             return Ok(sub_dir);
           }
@@ -437,7 +411,7 @@ impl<
       Err(
         PackageNotFoundError {
           package_name: name.to_string(),
-          referrer: referrer.clone(),
+          referrer: referrer.display(),
           referrer_extra: None,
         }
         .into(),
@@ -448,7 +422,7 @@ impl<
     self.sys.fs_canonicalize(&path).map_err(|err| {
       PackageFolderResolveIoError {
         package_name: name.to_string(),
-        referrer: referrer.clone(),
+        referrer: referrer.display(),
         source: err,
       }
       .into()
@@ -456,7 +430,7 @@ impl<
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {
@@ -469,11 +443,15 @@ impl InNpmPackageChecker for ByonmInNpmPackageChecker {
   }
 }
 
-fn join_package_name(path: &Path, package_name: &str) -> PathBuf {
-  let mut path = path.to_path_buf();
+fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
   // ensure backslashes are used on windows
   for part in package_name.split('/') {
-    path = path.join(part);
+    match path {
+      Cow::Borrowed(inner) => path = Cow::Owned(inner.join(part)),
+      Cow::Owned(ref mut path) => {
+        path.push(part);
+      }
+    }
   }
-  path
+  path.into_owned()
 }

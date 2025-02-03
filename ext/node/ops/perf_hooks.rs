@@ -5,8 +5,9 @@ use std::cell::Cell;
 use deno_core::op2;
 use deno_core::GarbageCollected;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum PerfHooksError {
+  #[class(generic)]
   #[error(transparent)]
   TokioEld(#[from] tokio_eld::Error),
 }

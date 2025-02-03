@@ -406,8 +406,9 @@ export function splitSelectors(input) {
     }
   }
 
-  if (last < input.length - 1) {
-    out.push(input.slice(last).trim());
+  const remaining = input.slice(last).trim();
+  if (remaining.length > 0) {
+    out.push(remaining);
   }
 
   return out;
@@ -743,8 +744,7 @@ export function compileSelector(selector) {
         fn = matchNthChild(node, fn);
         break;
       case PSEUDO_HAS:
-        // FIXME
-        // fn = matchIs(part, fn);
+        // TODO(@marvinhagemeister)
         throw new Error("TODO: :has");
       case PSEUDO_NOT:
         fn = matchNot(node.selectors, fn);
@@ -766,8 +766,7 @@ export function compileSelector(selector) {
  */
 function matchFirstChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const first = ctx.getFirstChild(parent);
+    const first = ctx.getFirstChild(id);
     return first === id && next(ctx, first);
   };
 }
@@ -778,8 +777,7 @@ function matchFirstChild(next) {
  */
 function matchLastChild(next) {
   return (ctx, id) => {
-    const parent = ctx.getParent(id);
-    const last = ctx.getLastChild(parent);
+    const last = ctx.getLastChild(id);
     return last === id && next(ctx, id);
   };
 }
@@ -954,7 +952,9 @@ function matchElem(part, next) {
     else if (part.elem === 0) return false;
 
     const type = ctx.getType(id);
-    if (type > 0 && type === part.elem) return next(ctx, id);
+    if (type > 0 && type === part.elem) {
+      return next(ctx, id);
+    }
 
     return false;
   };
@@ -967,7 +967,16 @@ function matchElem(part, next) {
  */
 function matchAttrExists(attr, next) {
   return (ctx, id) => {
-    return ctx.hasAttrPath(id, attr.prop, 0) ? next(ctx, id) : false;
+    try {
+      ctx.getAttrPathValue(id, attr.prop, 0);
+      return next(ctx, id);
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+
+      throw err;
+    }
   };
 }
 
@@ -978,9 +987,15 @@ function matchAttrExists(attr, next) {
  */
 function matchAttrBin(attr, next) {
   return (ctx, id) => {
-    if (!ctx.hasAttrPath(id, attr.prop, 0)) return false;
-    const value = ctx.getAttrPathValue(id, attr.prop, 0);
-    if (!matchAttrValue(attr, value)) return false;
+    try {
+      const value = ctx.getAttrPathValue(id, attr.prop, 0);
+      if (!matchAttrValue(attr, value)) return false;
+    } catch (err) {
+      if (err === -1) {
+        return false;
+      }
+      throw err;
+    }
     return next(ctx, id);
   };
 }

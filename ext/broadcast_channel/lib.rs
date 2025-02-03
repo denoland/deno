@@ -12,6 +12,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannel;
 pub use in_memory_broadcast_channel::InMemoryBroadcastChannelResource;
 use tokio::sync::broadcast::error::SendError as BroadcastSendError;
@@ -19,18 +20,26 @@ use tokio::sync::mpsc::error::SendError as MpscSendError;
 
 pub const UNSTABLE_FEATURE_NAME: &str = "broadcast-channel";
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BroadcastChannelError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(generic)]
   #[error(transparent)]
   MPSCSendError(MpscSendError<Box<dyn std::fmt::Debug + Send + Sync>>),
+  #[class(generic)]
   #[error(transparent)]
   BroadcastSendError(
     BroadcastSendError<Box<dyn std::fmt::Debug + Send + Sync>>,
   ),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(#[inherit] JsErrorBox),
 }
 
 impl<T: std::fmt::Debug + Send + Sync + 'static> From<MpscSendError<T>>
@@ -100,10 +109,7 @@ pub fn op_broadcast_unsubscribe<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state
-    .resource_table
-    .get::<BC::Resource>(rid)
-    .map_err(BroadcastChannelError::Resource)?;
+  let resource = state.resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow::<BC>();
   bc.unsubscribe(&resource)
 }
@@ -118,11 +124,7 @@ pub async fn op_broadcast_send<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<BC::Resource>(rid)
-    .map_err(BroadcastChannelError::Resource)?;
+  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.send(&resource, name, buf.to_vec()).await
 }
@@ -136,11 +138,7 @@ pub async fn op_broadcast_recv<BC>(
 where
   BC: BroadcastChannel + 'static,
 {
-  let resource = state
-    .borrow()
-    .resource_table
-    .get::<BC::Resource>(rid)
-    .map_err(BroadcastChannelError::Resource)?;
+  let resource = state.borrow().resource_table.get::<BC::Resource>(rid)?;
   let bc = state.borrow().borrow::<BC>().clone();
   bc.recv(&resource).await
 }

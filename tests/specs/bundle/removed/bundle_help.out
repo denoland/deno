@@ -6,5 +6,5 @@ Usage: deno bundle [OPTIONS]
 
 Options:
   -q, --quiet     Suppress diagnostic output
-      --unstable  Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      --unstable  The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
                     To view the list of individual unstable feature flags, run this command again with --help=unstable

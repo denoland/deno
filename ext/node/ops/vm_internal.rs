@@ -1,9 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::error::type_error;
-use deno_core::error::AnyError;
 use deno_core::v8;
 use deno_core::v8::MapFnTo;
+use deno_error::JsErrorBox;
 
 use crate::create_host_defined_options;
 
@@ -20,7 +19,7 @@ impl ContextifyScript {
   pub fn new(
     scope: &mut v8::HandleScope,
     source_str: v8::Local<v8::String>,
-  ) -> Result<Self, AnyError> {
+  ) -> Result<Self, JsErrorBox> {
     let resource_name = v8::undefined(scope);
     let host_defined_options = create_host_defined_options(scope);
     let origin = v8::ScriptOrigin::new(
@@ -45,7 +44,7 @@ impl ContextifyScript {
       v8::script_compiler::CompileOptions::NoCompileOptions,
       v8::script_compiler::NoCacheReason::NoReason,
     )
-    .ok_or_else(|| type_error("Failed to compile script"))?;
+    .ok_or_else(|| JsErrorBox::type_error("Failed to compile script"))?;
     let script = v8::Global::new(scope, unbound_script);
     Ok(Self { script })
   }

@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
 #[error("bad argument")]
 pub struct ModeError;
 

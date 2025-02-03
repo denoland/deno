@@ -10,8 +10,8 @@ use std::task::Context;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::error::bad_resource;
-use deno_core::error::type_error;
+use deno_core::error::ResourceError;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -33,6 +33,8 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsError;
+use deno_error::JsErrorBox;
 use deno_fetch::FetchCancelHandle;
 use deno_fetch::FetchReturn;
 use deno_fetch::ResBody;
@@ -69,9 +71,20 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct InformationalResponse {
+  status: u16,
+  status_text: String,
+  headers: Vec<(ByteString, ByteString)>,
+  version_major: u16,
+  version_minor: u16,
+}
+
 pub struct NodeHttpClientResponse {
   response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   url: String,
+  informational_rx: RefCell<Option<mpsc::Receiver<InformationalResponse>>>,
 }
 
 impl Debug for NodeHttpClientResponse {
@@ -88,32 +101,48 @@ impl deno_core::Resource for NodeHttpClientResponse {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, JsError)]
 pub enum ConnError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
+  #[class(type)]
+  #[error("Invalid Path {0}")]
+  InvalidPath(String),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
+  #[class(inherit)]
   #[error(transparent)]
   Url(#[from] url::ParseError),
+  #[class(type)]
   #[error(transparent)]
   Method(#[from] http::method::InvalidMethod),
+  #[class(inherit)]
   #[error(transparent)]
   Io(#[from] std::io::Error),
+  #[class("Busy")]
   #[error("TLS stream is currently in use")]
   TlsStreamBusy,
+  #[class("Busy")]
   #[error("TCP stream is currently in use")]
   TcpStreamBusy,
+  #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class("Http")]
   #[error(transparent)]
   Hyper(#[from] hyper::Error),
 }
@@ -124,6 +153,7 @@ pub async fn op_node_http_request_with_conn<P>(
   state: Rc<RefCell<OpState>>,
   #[serde] method: ByteString,
   #[string] url: String,
+  #[string] request_path: Option<String>,
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
@@ -221,11 +251,17 @@ where
   *request.method_mut() = method.clone();
   let path = url_parsed.path();
   let query = url_parsed.query();
-  *request.uri_mut() = query
-    .map(|q| format!("{}?{}", path, q))
-    .unwrap_or_else(|| path.to_string())
-    .parse()
-    .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  if let Some(request_path) = request_path {
+    *request.uri_mut() = request_path
+      .parse()
+      .map_err(|_| ConnError::InvalidPath(request_path.clone()))?;
+  } else {
+    *request.uri_mut() = query
+      .map(|q| format!("{}?{}", path, q))
+      .unwrap_or_else(|| path.to_string())
+      .parse()
+      .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  }
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -237,6 +273,36 @@ where
   if let Some(len) = con_len {
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
+
+  let (tx, informational_rx) = mpsc::channel(1);
+  hyper::ext::on_informational(&mut request, move |res| {
+    let mut tx = tx.clone();
+    let _ = tx.try_send(InformationalResponse {
+      status: res.status().as_u16(),
+      status_text: res.status().canonical_reason().unwrap_or("").to_string(),
+      headers: res
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.as_str().into(), v.as_bytes().into()))
+        .collect(),
+      version_major: match res.version() {
+        hyper::Version::HTTP_09 => 0,
+        hyper::Version::HTTP_10 => 1,
+        hyper::Version::HTTP_11 => 1,
+        hyper::Version::HTTP_2 => 2,
+        hyper::Version::HTTP_3 => 3,
+        _ => unreachable!(),
+      },
+      version_minor: match res.version() {
+        hyper::Version::HTTP_09 => 9,
+        hyper::Version::HTTP_10 => 0,
+        hyper::Version::HTTP_11 => 1,
+        hyper::Version::HTTP_2 => 0,
+        hyper::Version::HTTP_3 => 0,
+        _ => unreachable!(),
+      },
+    });
+  });
 
   let cancel_handle = CancelHandle::new_rc();
   let cancel_handle_ = cancel_handle.clone();
@@ -250,6 +316,7 @@ where
     .add(NodeHttpClientResponse {
       response: Box::pin(fut),
       url: url.clone(),
+      informational_rx: RefCell::new(Some(informational_rx)),
     });
 
   let cancel_handle_rid = state
@@ -265,6 +332,27 @@ where
 
 #[op2(async)]
 #[serde]
+pub async fn op_node_http_await_information(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Option<InformationalResponse> {
+  let Ok(resource) = state
+    .borrow_mut()
+    .resource_table
+    .get::<NodeHttpClientResponse>(rid)
+  else {
+    return None;
+  };
+
+  let mut rx = resource.informational_rx.borrow_mut().take()?;
+
+  drop(resource);
+
+  rx.next().await
+}
+
+#[op2(async)]
+#[serde]
 pub async fn op_node_http_await_response(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
@@ -274,8 +362,11 @@ pub async fn op_node_http_await_response(
     .resource_table
     .take::<NodeHttpClientResponse>(rid)
     .map_err(ConnError::Resource)?;
-  let resource = Rc::try_unwrap(resource)
-    .map_err(|_| ConnError::Resource(bad_resource("NodeHttpClientResponse")))?;
+  let resource = Rc::try_unwrap(resource).map_err(|_| {
+    ConnError::Resource(ResourceError::Other(
+      "NodeHttpClientResponse".to_string(),
+    ))
+  })?;
 
   let res = resource.response.await??;
   let status = res.status();
@@ -296,7 +387,7 @@ pub async fn op_node_http_await_response(
   };
 
   let (parts, body) = res.into_parts();
-  let body = body.map_err(deno_core::anyhow::Error::from);
+  let body = body.map_err(|e| JsErrorBox::new("Http", e.to_string()));
   let body = body.boxed();
 
   let res = http::Response::from_parts(parts, body);
@@ -523,7 +614,7 @@ impl Resource for NodeHttpResponseResource {
             // safely call `await` on it without creating a race condition.
             Some(_) => match reader.as_mut().next().await.unwrap() {
               Ok(chunk) => assert!(chunk.is_empty()),
-              Err(err) => break Err(type_error(err.to_string())),
+              Err(err) => break Err(JsErrorBox::type_error(err.to_string())),
             },
             None => break Ok(BufView::empty()),
           }
@@ -547,9 +638,7 @@ impl Resource for NodeHttpResponseResource {
 #[allow(clippy::type_complexity)]
 pub struct NodeHttpResourceToBodyAdapter(
   Rc<dyn Resource>,
-  Option<
-    Pin<Box<dyn Future<Output = Result<BufView, deno_core::anyhow::Error>>>>,
-  >,
+  Option<Pin<Box<dyn Future<Output = Result<BufView, JsErrorBox>>>>>,
 );
 
 impl NodeHttpResourceToBodyAdapter {
@@ -565,7 +654,7 @@ unsafe impl Send for NodeHttpResourceToBodyAdapter {}
 unsafe impl Sync for NodeHttpResourceToBodyAdapter {}
 
 impl Stream for NodeHttpResourceToBodyAdapter {
-  type Item = Result<Bytes, deno_core::anyhow::Error>;
+  type Item = Result<Bytes, JsErrorBox>;
 
   fn poll_next(
     self: Pin<&mut Self>,
@@ -596,7 +685,7 @@ impl Stream for NodeHttpResourceToBodyAdapter {
 
 impl hyper::body::Body for NodeHttpResourceToBodyAdapter {
   type Data = Bytes;
-  type Error = deno_core::anyhow::Error;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,

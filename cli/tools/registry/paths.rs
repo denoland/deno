@@ -233,7 +233,7 @@ pub fn collect_publish_paths(
 ) -> Result<Vec<CollectedPublishPath>, AnyError> {
   let diagnostics_collector = opts.diagnostics_collector;
   let publish_paths =
-    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns)?;
+    collect_paths(opts.cli_options, diagnostics_collector, opts.file_patterns);
   let publish_paths_set = publish_paths.iter().cloned().collect::<HashSet<_>>();
   let capacity = publish_paths.len() + opts.force_include_paths.len();
   let mut paths = HashSet::with_capacity(capacity);
@@ -321,7 +321,7 @@ fn collect_paths(
   cli_options: &CliOptions,
   diagnostics_collector: &PublishDiagnosticsCollector,
   file_patterns: FilePatterns,
-) -> Result<Vec<PathBuf>, AnyError> {
+) -> Vec<PathBuf> {
   FileCollector::new(|e| {
     if !e.metadata.file_type().is_file() {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(e.path) {

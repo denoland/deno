@@ -1881,3 +1881,38 @@ Deno.test("[node/http] decompress brotli response", {
     "localhost:3000",
   ], ["user-agent", "Deno/2.1.1"]]);
 });
+
+Deno.test("[node/http] an error with DNS propagates to request object", async () => {
+  const { resolve, promise } = Promise.withResolvers<void>();
+  const req = http.request("http://invalid-hostname.test", () => {});
+  req.on("error", (err) => {
+    assertEquals(err.name, "Error");
+    assertEquals(err.message, "getaddrinfo ENOTFOUND invalid-hostname.test");
+    resolve();
+  });
+  await promise;
+});
+
+Deno.test("[node/http] supports proxy http request", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = Deno.serve({ port: 0, onListen }, (req) => {
+    console.log("server received", req.url);
+    assertEquals(req.url, "http://example.com/");
+    return new Response("ok");
+  });
+
+  function onListen({ port }: { port: number }) {
+    http.request({
+      host: "localhost",
+      port,
+      path: "http://example.com",
+    }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertEquals(await text(res), "ok");
+      resolve();
+      server.shutdown();
+    }).end();
+  }
+  await promise;
+  await server.finished;
+});

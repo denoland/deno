@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
+use deno_core::anyhow::anyhow;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
-use deno_core::error::generic_error;
 use deno_core::error::AnyError;
 use deno_core::resolve_url_or_path;
 use deno_graph::GraphKind;
@@ -20,7 +20,6 @@ use deno_terminal::colors;
 use rand::Rng;
 
 use super::installer::infer_name_from_url;
-use crate::args::check_warn_tsconfig;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -84,9 +83,6 @@ pub async fn compile(
     graph
   };
 
-  let ts_config_for_emit = cli_options
-    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-  check_warn_tsconfig(&ts_config_for_emit);
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
@@ -330,7 +326,7 @@ async fn resolve_compile_executable_output_path(
       .map(PathBuf::from)
   }
 
-  output_path.ok_or_else(|| generic_error(
+  output_path.ok_or_else(|| anyhow!(
     "An executable name was not provided. One could not be inferred from the URL. Aborting.",
   )).map(|output_path| {
     get_os_specific_filepath(output_path, &compile_flags.target)

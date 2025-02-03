@@ -3,10 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
+use deno_error::JsErrorBox;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageVersionDistInfo;
 use deno_semver::package::PackageNv;
@@ -33,7 +30,7 @@ use crate::NpmCache;
 use crate::NpmCacheHttpClient;
 use crate::NpmCacheSetting;
 
-type LoadResult = Result<(), Arc<AnyError>>;
+type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
 #[derive(Debug, Clone)]
@@ -41,7 +38,7 @@ enum MemoryCacheItem {
   /// The cache item hasn't finished yet.
   Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
   /// The result errored.
-  Errored(Arc<AnyError>),
+  Errored(Arc<JsErrorBox>),
   /// This package has already been cached.
   Cached,
 }
@@ -73,6 +70,14 @@ pub struct TarballCache<
   memory_cache: Mutex<HashMap<PackageNv, MemoryCacheItem>>,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Failed caching npm package '{package_nv}'")]
+pub struct EnsurePackageError {
+  package_nv: Box<PackageNv>,
+  #[source]
+  source: Arc<JsErrorBox>,
+}
 impl<
     THttpClient: NpmCacheHttpClient,
     TSys: FsCreateDirAll
@@ -108,18 +113,21 @@ impl<
     self: &Arc<Self>,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), EnsurePackageError> {
     self
       .ensure_package_inner(package_nv, dist)
       .await
-      .with_context(|| format!("Failed caching npm package '{}'.", package_nv))
+      .map_err(|source| EnsurePackageError {
+        package_nv: Box::new(package_nv.clone()),
+        source,
+      })
   }
 
   async fn ensure_package_inner(
     self: &Arc<Self>,
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
-  ) -> Result<(), AnyError> {
+  ) -> Result<(), Arc<JsErrorBox>> {
     let cache_item = {
       let mut mem_cache = self.memory_cache.lock();
       if let Some(cache_item) = mem_cache.get(package_nv) {
@@ -141,7 +149,7 @@ impl<
 
     match cache_item {
       MemoryCacheItem::Cached => Ok(()),
-      MemoryCacheItem::Errored(err) => Err(anyhow!("{:#}", err)),
+      MemoryCacheItem::Errored(err) => Err(err),
       MemoryCacheItem::Pending(creator) => {
         let result = creator.get().await;
         match result {
@@ -151,10 +159,9 @@ impl<
             Ok(())
           }
           Err(err) => {
-            let result_err = anyhow!("{:#}", err);
             *self.memory_cache.lock().get_mut(package_nv).unwrap() =
-              MemoryCacheItem::Errored(err);
-            Err(result_err)
+              MemoryCacheItem::Errored(err.clone());
+            Err(err)
           }
         }
       }
@@ -176,7 +183,7 @@ impl<
       if should_use_cache && package_folder_exists {
         return Ok(());
       } else if tarball_cache.cache.cache_setting() == &NpmCacheSetting::Only {
-        return Err(deno_core::error::custom_error(
+        return Err(JsErrorBox::new(
           "NotCached",
           format!(
             "npm package not found in cache: \"{}\", --cached-only is specified.",
@@ -187,12 +194,12 @@ impl<
       }
 
       if dist.tarball.is_empty() {
-        bail!("Tarball URL was empty.");
+        return Err(JsErrorBox::generic("Tarball URL was empty."));
       }
 
       // IMPORTANT: npm registries may specify tarball URLs at different URLS than the
       // registry, so we MUST get the auth for the tarball URL and not the registry URL.
-      let tarball_uri = Url::parse(&dist.tarball)?;
+      let tarball_uri = Url::parse(&dist.tarball).map_err(JsErrorBox::from_err)?;
       let maybe_registry_config =
         tarball_cache.npmrc.tarball_config(&tarball_uri);
       let maybe_auth_header = maybe_registry_config.and_then(|c| maybe_auth_header_for_npm_registry(c).ok()?);
@@ -207,7 +214,7 @@ impl<
             && maybe_registry_config.is_none()
             && tarball_cache.npmrc.get_registry_config(&package_nv.name).auth_token.is_some()
           {
-            bail!(
+            return Err(JsErrorBox::generic(format!(
               concat!(
                 "No auth for tarball URI, but present for scoped registry.\n\n",
                 "Tarball URI: {}\n",
@@ -216,9 +223,9 @@ impl<
               ),
               dist.tarball,
               registry_url,
-            )
+            )));
           }
-          return Err(err.into())
+          return Err(JsErrorBox::from_err(err))
         },
       };
       match maybe_bytes {
@@ -247,10 +254,10 @@ impl<
               extraction_mode,
             )
           })
-          .await?
+          .await.map_err(JsErrorBox::from_err)?.map_err(JsErrorBox::from_err)
         }
         None => {
-          bail!("Could not find npm package tarball at: {}", dist.tarball);
+          Err(JsErrorBox::generic(format!("Could not find npm package tarball at: {}", dist.tarball)))
         }
       }
     }

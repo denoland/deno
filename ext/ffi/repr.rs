@@ -11,7 +11,8 @@ use deno_core::OpState;
 
 use crate::FfiPermissions;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
 pub enum ReprError {
   #[error("Invalid pointer to offset, pointer is null")]
   InvalidOffset,
@@ -47,6 +48,7 @@ pub enum ReprError {
   InvalidF64,
   #[error("Invalid pointer pointer, pointer is null")]
   InvalidPointer,
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
 }

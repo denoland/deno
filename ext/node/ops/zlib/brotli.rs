@@ -18,20 +18,34 @@ use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ToJsBuffer;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum BrotliError {
+  #[class(type)]
   #[error("Invalid encoder mode")]
   InvalidEncoderMode,
+  #[class(type)]
   #[error("Failed to compress")]
   CompressFailed,
+  #[class(type)]
   #[error("Failed to decompress")]
   DecompressFailed,
+  #[class(inherit)]
   #[error(transparent)]
-  Join(#[from] tokio::task::JoinError),
+  Join(
+    #[from]
+    #[inherit]
+    tokio::task::JoinError,
+  ),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(
+    #[from]
+    #[inherit]
+    deno_core::error::ResourceError,
+  ),
+  #[class(inherit)]
   #[error("{0}")]
-  Io(std::io::Error),
+  Io(#[inherit] std::io::Error),
 }
 
 fn encoder_mode(mode: u32) -> Result<BrotliEncoderMode, BrotliError> {
@@ -167,10 +181,7 @@ pub fn op_brotli_compress_stream(
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliCompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -199,10 +210,7 @@ pub fn op_brotli_compress_stream_end(
   #[smi] rid: u32,
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliCompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+  let ctx = state.resource_table.get::<BrotliCompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -277,10 +285,7 @@ pub fn op_brotli_decompress_stream(
   #[buffer] input: &[u8],
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliDecompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+  let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 
@@ -308,10 +313,7 @@ pub fn op_brotli_decompress_stream_end(
   #[smi] rid: u32,
   #[buffer] output: &mut [u8],
 ) -> Result<usize, BrotliError> {
-  let ctx = state
-    .resource_table
-    .get::<BrotliDecompressCtx>(rid)
-    .map_err(BrotliError::Resource)?;
+  let ctx = state.resource_table.get::<BrotliDecompressCtx>(rid)?;
   let mut inst = ctx.inst.borrow_mut();
   let mut output_offset = 0;
 

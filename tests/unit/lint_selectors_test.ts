@@ -20,6 +20,9 @@ import {
 import { assertThrows } from "@std/assert";
 
 Deno.test("splitSelectors", () => {
+  assertEquals(splitSelectors("*"), ["*"]);
+  assertEquals(splitSelectors("*,*"), ["*", "*"]);
+  assertEquals(splitSelectors("*,*     "), ["*", "*"]);
   assertEquals(splitSelectors("foo"), ["foo"]);
   assertEquals(splitSelectors("foo, bar"), ["foo", "bar"]);
   assertEquals(splitSelectors("foo:f(bar, baz)"), ["foo:f(bar, baz)"]);

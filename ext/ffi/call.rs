@@ -25,18 +25,24 @@ use crate::symbol::Symbol;
 use crate::FfiPermissions;
 use crate::ForeignFunction;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CallError {
+  #[class(type)]
   #[error(transparent)]
   IR(#[from] IRError),
+  #[class(generic)]
   #[error("Nonblocking FFI call failed: {0}")]
   NonblockingCallFailure(#[source] tokio::task::JoinError),
+  #[class(type)]
   #[error("Invalid FFI symbol name: '{0}'")]
   InvalidSymbol(String),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] deno_permissions::PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(inherit)]
   #[error(transparent)]
   Callback(#[from] super::CallbackError),
 }
@@ -346,10 +352,7 @@ pub fn op_ffi_call_nonblocking(
 ) -> Result<impl Future<Output = Result<FfiValue, CallError>>, CallError> {
   let symbol = {
     let state = state.borrow();
-    let resource = state
-      .resource_table
-      .get::<DynamicLibraryResource>(rid)
-      .map_err(CallError::Resource)?;
+    let resource = state.resource_table.get::<DynamicLibraryResource>(rid)?;
     let symbols = &resource.symbols;
     *symbols
       .get(&symbol)

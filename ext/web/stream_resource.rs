@@ -31,10 +31,12 @@ use deno_core::ResourceId;
 use futures::future::poll_fn;
 use futures::TryFutureExt;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum StreamResourceError {
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class(type)]
   #[error("{0}")]
   Js(String),
 }
@@ -404,7 +406,10 @@ impl Resource for ReadableStreamResource {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(ReadableStreamResource::read(self, limit).map_err(|e| e.into()))
+    Box::pin(
+      ReadableStreamResource::read(self, limit)
+        .map_err(deno_error::JsErrorBox::from_err),
+    )
   }
 
   fn close(self: Rc<Self>) {

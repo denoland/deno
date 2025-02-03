@@ -262,7 +262,7 @@ Deno.test({
       socket.onopen = () => socket.send("Hello");
       socket.onmessage = () => {
         socket.send("Bye");
-        socket.close();
+        socket.close(1000);
       };
       socket.onclose = () => ac.abort();
       socket.onerror = () => fail();
@@ -288,7 +288,8 @@ Deno.test({
       seenBye = true;
     }
   };
-  ws.onclose = () => {
+  ws.onclose = (e) => {
+    assertEquals(e.code, 1000);
     deferred.resolve();
   };
   await Promise.all([deferred.promise, server.finished]);

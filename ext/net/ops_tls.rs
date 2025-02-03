@@ -23,6 +23,7 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use deno_tls::create_client_config;
 use deno_tls::load_certs;
 use deno_tls::load_private_keys;
@@ -163,7 +164,7 @@ impl Resource for TlsStreamResource {
   }
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(Into::into))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 
   fn close(self: Rc<Self>) {

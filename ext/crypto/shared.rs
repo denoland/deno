@@ -60,26 +60,36 @@ pub enum RustRawKeyData {
   Public(ToJsBuffer),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SharedError {
+  #[class(type)]
   #[error("expected valid private key")]
   ExpectedValidPrivateKey,
+  #[class(type)]
   #[error("expected valid public key")]
   ExpectedValidPublicKey,
+  #[class(type)]
   #[error("expected valid private EC key")]
   ExpectedValidPrivateECKey,
+  #[class(type)]
   #[error("expected valid public EC key")]
   ExpectedValidPublicECKey,
+  #[class(type)]
   #[error("expected private key")]
   ExpectedPrivateKey,
+  #[class(type)]
   #[error("expected public key")]
   ExpectedPublicKey,
+  #[class(type)]
   #[error("expected secret key")]
   ExpectedSecretKey,
+  #[class("DOMExceptionOperationError")]
   #[error("failed to decode private key")]
   FailedDecodePrivateKey,
+  #[class("DOMExceptionOperationError")]
   #[error("failed to decode public key")]
   FailedDecodePublicKey,
+  #[class("DOMExceptionNotSupportedError")]
   #[error("unsupported format")]
   UnsupportedFormat,
 }

@@ -12,6 +12,7 @@ use crate::args::EvalFlags;
 use crate::args::Flags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
+use crate::npm::installer::PackageCaching;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
 
@@ -202,18 +203,17 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if cli_options.node_modules_dir()? == Some(NodeModulesDirMode::Auto) {
-    if let Some(npm_resolver) = factory.npm_resolver().await?.as_managed() {
-      let already_done =
-        npm_resolver.ensure_top_level_package_json_install().await?;
+    if let Some(npm_installer) = factory.npm_installer_if_managed()? {
+      let already_done = npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
       if !already_done
         && matches!(
           cli_options.default_npm_caching_strategy(),
           crate::graph_util::NpmCachingStrategy::Eager
         )
       {
-        npm_resolver
-          .cache_packages(crate::npm::PackageCaching::All)
-          .await?;
+        npm_installer.cache_packages(PackageCaching::All).await?;
       }
     }
   }

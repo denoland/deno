@@ -7,9 +7,6 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::path::PathBuf;
 
-use anyhow::bail;
-use anyhow::Context;
-use anyhow::Error as AnyError;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use deno_npm::registry::NpmPackageVersionDistInfo;
@@ -31,23 +28,37 @@ pub enum TarballExtractionMode {
   SiblingTempDir,
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum VerifyAndExtractTarballError {
+  #[class(inherit)]
+  #[error(transparent)]
+  TarballIntegrity(#[from] TarballIntegrityError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ExtractTarball(#[from] ExtractTarballError),
+  #[class(inherit)]
+  #[error("Failed moving extracted tarball to final destination")]
+  MoveFailed(std::io::Error),
+}
+
 pub fn verify_and_extract_tarball(
   package_nv: &PackageNv,
   data: &[u8],
   dist_info: &NpmPackageVersionDistInfo,
   output_folder: &Path,
   extraction_mode: TarballExtractionMode,
-) -> Result<(), AnyError> {
+) -> Result<(), VerifyAndExtractTarballError> {
   verify_tarball_integrity(package_nv, data, &dist_info.integrity())?;
 
   match extraction_mode {
-    TarballExtractionMode::Overwrite => extract_tarball(data, output_folder),
+    TarballExtractionMode::Overwrite => {
+      extract_tarball(data, output_folder).map_err(Into::into)
+    }
     TarballExtractionMode::SiblingTempDir => {
       let temp_dir = get_atomic_dir_path(output_folder);
       extract_tarball(data, &temp_dir)?;
       rename_with_retries(&temp_dir, output_folder)
-        .map_err(AnyError::from)
-        .context("Failed moving extracted tarball to final destination.")
+        .map_err(VerifyAndExtractTarballError::MoveFailed)
     }
   }
 }
@@ -89,11 +100,32 @@ fn rename_with_retries(
   }
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+pub enum TarballIntegrityError {
+  #[error("Not implemented hash function for {package}: {hash_kind}")]
+  NotImplementedHashFunction {
+    package: Box<PackageNv>,
+    hash_kind: String,
+  },
+  #[error("Not implemented integrity kind for {package}: {integrity}")]
+  NotImplementedIntegrityKind {
+    package: Box<PackageNv>,
+    integrity: String,
+  },
+  #[error("Tarball checksum did not match what was provided by npm registry for {package}.\n\nExpected: {expected}\nActual: {actual}")]
+  MismatchedChecksum {
+    package: Box<PackageNv>,
+    expected: String,
+    actual: String,
+  },
+}
+
 fn verify_tarball_integrity(
   package: &PackageNv,
   data: &[u8],
   npm_integrity: &NpmPackageVersionDistInfoIntegrity,
-) -> Result<(), AnyError> {
+) -> Result<(), TarballIntegrityError> {
   use ring::digest::Context;
   let (tarball_checksum, expected_checksum) = match npm_integrity {
     NpmPackageVersionDistInfoIntegrity::Integrity {
@@ -103,11 +135,12 @@ fn verify_tarball_integrity(
       let algo = match *algorithm {
         "sha512" => &ring::digest::SHA512,
         "sha1" => &ring::digest::SHA1_FOR_LEGACY_USE_ONLY,
-        hash_kind => bail!(
-          "Not implemented hash function for {}: {}",
-          package,
-          hash_kind
-        ),
+        hash_kind => {
+          return Err(TarballIntegrityError::NotImplementedHashFunction {
+            package: Box::new(package.clone()),
+            hash_kind: hash_kind.to_string(),
+          });
+        }
       };
       let mut hash_ctx = Context::new(algo);
       hash_ctx.update(data);
@@ -123,26 +156,39 @@ fn verify_tarball_integrity(
       (tarball_checksum, hex)
     }
     NpmPackageVersionDistInfoIntegrity::UnknownIntegrity(integrity) => {
-      bail!(
-        "Not implemented integrity kind for {}: {}",
-        package,
-        integrity
-      )
+      return Err(TarballIntegrityError::NotImplementedIntegrityKind {
+        package: Box::new(package.clone()),
+        integrity: integrity.to_string(),
+      });
     }
   };
 
   if tarball_checksum != *expected_checksum {
-    bail!(
-      "Tarball checksum did not match what was provided by npm registry for {}.\n\nExpected: {}\nActual: {}",
-      package,
-      expected_checksum,
-      tarball_checksum,
-    )
+    return Err(TarballIntegrityError::MismatchedChecksum {
+      package: Box::new(package.clone()),
+      expected: expected_checksum.to_string(),
+      actual: tarball_checksum,
+    });
   }
   Ok(())
 }
 
-fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum ExtractTarballError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Io(#[from] std::io::Error),
+  #[class(generic)]
+  #[error(
+    "Extracted directory '{0}' of npm tarball was not in output directory."
+  )]
+  NotInOutputDirectory(PathBuf),
+}
+
+fn extract_tarball(
+  data: &[u8],
+  output_folder: &Path,
+) -> Result<(), ExtractTarballError> {
   fs::create_dir_all(output_folder)?;
   let output_folder = fs::canonicalize(output_folder)?;
   let tar = GzDecoder::new(data);
@@ -174,10 +220,9 @@ fn extract_tarball(data: &[u8], output_folder: &Path) -> Result<(), AnyError> {
       fs::create_dir_all(dir_path)?;
       let canonicalized_dir = fs::canonicalize(dir_path)?;
       if !canonicalized_dir.starts_with(&output_folder) {
-        bail!(
-          "Extracted directory '{}' of npm tarball was not in output directory.",
-          canonicalized_dir.display()
-        )
+        return Err(ExtractTarballError::NotInOutputDirectory(
+          canonicalized_dir.to_path_buf(),
+        ));
       }
     }
 

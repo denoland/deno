@@ -7,11 +7,12 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use deno_core::error::get_custom_error_class;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
+use deno_error::JsErrorClass;
 
 pub use crate::interface::*;
 
@@ -47,26 +48,35 @@ impl<EH: CronHandle + 'static> Resource for CronResource<EH> {
   }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CronError {
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] deno_core::error::ResourceError),
+  #[class(type)]
   #[error("Cron name cannot exceed 64 characters: current length {0}")]
   NameExceeded(usize),
+  #[class(type)]
   #[error("Invalid cron name: only alphanumeric characters, whitespace, hyphens, and underscores are allowed")]
   NameInvalid,
+  #[class(type)]
   #[error("Cron with this name already exists")]
   AlreadyExists,
+  #[class(type)]
   #[error("Too many crons")]
   TooManyCrons,
+  #[class(type)]
   #[error("Invalid cron schedule")]
   InvalidCron,
+  #[class(type)]
   #[error("Invalid backoff schedule")]
   InvalidBackoff,
+  #[class(generic)]
   #[error(transparent)]
   AcquireError(#[from] tokio::sync::AcquireError),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 #[op2]
@@ -119,7 +129,7 @@ where
     let resource = match state.resource_table.get::<CronResource<C::EH>>(rid) {
       Ok(resource) => resource,
       Err(err) => {
-        if get_custom_error_class(&err) == Some("BadResource") {
+        if err.get_class() == "BadResource" {
           return Ok(false);
         } else {
           return Err(CronError::Resource(err));

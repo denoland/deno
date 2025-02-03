@@ -1,0 +1,13 @@
+{
+  "name": "@denotest/augments-global",
+  "version": "1.0.0",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./import-meta": {
+      "types": "./import-meta.d.ts"
+    }
+  }
+}

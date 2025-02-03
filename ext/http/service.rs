@@ -15,6 +15,7 @@ use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
+use deno_error::JsErrorBox;
 use http::request::Parts;
 use hyper::body::Body;
 use hyper::body::Frame;
@@ -529,7 +530,7 @@ pub struct HttpRecordResponse(ManuallyDrop<Rc<HttpRecord>>);
 
 impl Body for HttpRecordResponse {
   type Data = BufView;
-  type Error = deno_core::error::AnyError;
+  type Error = JsErrorBox;
 
   fn poll_frame(
     self: Pin<&mut Self>,

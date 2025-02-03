@@ -1951,14 +1951,14 @@ dbTest("Invalid backoffSchedule", async (db) => {
       await db.enqueue("foo", { backoffSchedule: [1, 1, 1, 1, 1, 1] });
     },
     TypeError,
-    "Invalid backoffSchedule",
+    "Invalid backoffSchedule, max 5 intervals allowed",
   );
   await assertRejects(
     async () => {
       await db.enqueue("foo", { backoffSchedule: [3600001] });
     },
     TypeError,
-    "Invalid backoffSchedule",
+    "Invalid backoffSchedule, interval at index 0 is invalid",
   );
 });
 

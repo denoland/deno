@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_lib::version::DENO_VERSION_INFO;
 
 use super::util;
 use super::CoverageReport;
@@ -559,7 +560,7 @@ impl HtmlCoverageReporter {
 
   /// Creates footer part of the contents for html report.
   pub fn create_html_footer(&self, now: &str) -> String {
-    let version = env!("CARGO_PKG_VERSION");
+    let version = DENO_VERSION_INFO.deno;
     format!(
       "
       <div class='footer quiet pad2 space-top1 center small'>

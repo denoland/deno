@@ -33,6 +33,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceHandle;
 use deno_core::ResourceHandleFd;
+use deno_error::JsErrorBox;
 use fs::FileResource;
 use fs::FsError;
 use fs::FsResult;
@@ -414,7 +415,7 @@ impl Resource for ChildStdinResource {
   deno_core::impl_writable!();
 
   fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
-    Box::pin(self.shutdown().map_err(|e| e.into()))
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
   }
 }
 
@@ -1007,9 +1008,11 @@ pub fn op_print(
   state: &mut OpState,
   #[string] msg: &str,
   is_err: bool,
-) -> Result<(), deno_core::error::AnyError> {
+) -> Result<(), JsErrorBox> {
   let rid = if is_err { 2 } else { 1 };
   FileResource::with_file(state, rid, move |file| {
-    Ok(file.write_all_sync(msg.as_bytes())?)
+    file
+      .write_all_sync(msg.as_bytes())
+      .map_err(JsErrorBox::from_err)
   })
 }

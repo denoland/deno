@@ -8,7 +8,7 @@ import {
   restorePermissions,
 } from "ext:cli/40_test_common.js";
 import { Console } from "ext:deno_console/01_console.js";
-import { setExitHandler } from "ext:runtime/30_os.js";
+import { setExitHandler } from "ext:deno_os/30_os.js";
 const {
   op_register_bench,
   op_bench_get_origin,

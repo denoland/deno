@@ -13,6 +13,11 @@ repository.workspace = true
 name = "test_server"
 path = "src/test_server.rs"
 
+[[test]]
+name = "integration"
+path = "integration_tests_runner.rs"
+harness = false
+
 [dependencies]
 anyhow.workspace = true
 async-stream = "0.3.3"
@@ -36,10 +41,10 @@ lazy-regex.workspace = true
 libc.workspace = true
 lsp-types.workspace = true
 monch.workspace = true
-nix = { workspace = true, features = ["fs", "term", "signal"] }
 once_cell.workspace = true
 os_pipe.workspace = true
 parking_lot.workspace = true
+percent-encoding.workspace = true
 pretty_assertions.workspace = true
 prost.workspace = true
 regex.workspace = true
@@ -59,6 +64,9 @@ win32job = "2"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["consoleapi", "synchapi", "handleapi", "namedpipeapi", "winbase", "winerror"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { workspace = true, features = ["fs", "term", "signal"] }
 
 [build-dependencies]
 prost-build.workspace = true

@@ -1,6 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json;
 use test_util as util;
 use test_util::TempDir;
 use util::assert_contains;

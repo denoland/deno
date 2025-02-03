@@ -14,10 +14,16 @@ use spki::der::Decode;
 
 use crate::shared::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class("DOMExceptionDataError")]
 pub enum ImportKeyError {
+  #[class(inherit)]
   #[error(transparent)]
-  General(#[from] SharedError),
+  General(
+    #[from]
+    #[inherit]
+    SharedError,
+  ),
   #[error("invalid modulus")]
   InvalidModulus,
   #[error("invalid public exponent")]

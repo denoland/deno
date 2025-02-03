@@ -12,6 +12,7 @@ use std::path::StripPrefixError;
 use std::rc::Rc;
 
 use boxed_error::Boxed;
+use deno_core::error::ResourceError;
 use deno_core::op2;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
@@ -20,6 +21,7 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_core::ToJsBuffer;
+use deno_error::JsErrorBox;
 use deno_io::fs::FileResource;
 use deno_io::fs::FsError;
 use deno_io::fs::FsStat;
@@ -36,34 +38,46 @@ use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::OpenOptions;
 
-#[derive(Debug, Boxed)]
+#[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum FsOpsErrorKind {
+  #[class(inherit)]
   #[error("{0}")]
   Io(#[source] std::io::Error),
+  #[class(inherit)]
   #[error("{0}")]
   OperationError(#[source] OperationError),
+  #[class(inherit)]
   #[error(transparent)]
   Permission(#[from] PermissionCheckError),
+  #[class(inherit)]
   #[error(transparent)]
-  Resource(deno_core::error::AnyError),
+  Resource(#[from] ResourceError),
+  #[class("InvalidData")]
   #[error("File name or path {0:?} is not valid UTF-8")]
   InvalidUtf8(std::ffi::OsString),
+  #[class(generic)]
   #[error("{0}")]
   StripPrefix(#[from] StripPrefixError),
+  #[class(inherit)]
   #[error("{0}")]
   Canceled(#[from] deno_core::Canceled),
+  #[class(type)]
   #[error("Invalid seek mode: {0}")]
   InvalidSeekMode(i32),
+  #[class(generic)]
   #[error("Invalid control character in prefix or suffix: {0:?}")]
   InvalidControlCharacter(String),
+  #[class(generic)]
   #[error("Invalid character in prefix or suffix: {0:?}")]
   InvalidCharacter(String),
   #[cfg(windows)]
+  #[class(generic)]
   #[error("Invalid trailing character in suffix")]
   InvalidTrailingCharacter,
+  #[class("NotCapable")]
   #[error("Requires {err} access to {path}, {}", print_not_capable_info(*.standalone, .err))]
   NotCapableAccess {
     // NotCapable
@@ -71,21 +85,21 @@ pub enum FsOpsErrorKind {
     err: &'static str,
     path: String,
   },
+  #[class("NotCapable")]
   #[error("permission denied: {0}")]
-  NotCapable(&'static str), // NotCapable
+  NotCapable(&'static str),
+  #[class(inherit)]
   #[error(transparent)]
-  Other(deno_core::error::AnyError),
+  Other(JsErrorBox),
 }
 
 impl From<FsError> for FsOpsError {
   fn from(err: FsError) -> Self {
     match err {
       FsError::Io(err) => FsOpsErrorKind::Io(err),
-      FsError::FileBusy => {
-        FsOpsErrorKind::Other(deno_core::error::resource_unavailable())
-      }
+      FsError::FileBusy => FsOpsErrorKind::Resource(ResourceError::Unavailable),
       FsError::NotSupported => {
-        FsOpsErrorKind::Other(deno_core::error::not_supported())
+        FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
     }
@@ -157,9 +171,6 @@ where
 {
   let fs = state.borrow::<FileSystemRc>();
   let path = fs.cwd()?;
-  state
-    .borrow_mut::<P>()
-    .check_read_blind(&path, "CWD", "Deno.cwd()")?;
   let path_str = path_into_string(path.into_os_string())?;
   Ok(path_str)
 }
@@ -1666,10 +1677,12 @@ pub async fn op_fs_futime_async(
   Ok(())
 }
 
-#[derive(Debug)]
+#[derive(Debug, deno_error::JsError)]
+#[class(inherit)]
 pub struct OperationError {
   operation: &'static str,
   kind: OperationErrorKind,
+  #[inherit]
   pub err: FsError,
 }
 

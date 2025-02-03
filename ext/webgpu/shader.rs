@@ -31,7 +31,7 @@ pub fn op_webgpu_create_shader_module(
   #[smi] device_rid: ResourceId,
   #[string] label: Cow<str>,
   #[string] code: Cow<str>,
-) -> Result<WebGpuResult, deno_core::error::AnyError> {
+) -> Result<WebGpuResult, deno_core::error::ResourceError> {
   let instance = state.borrow::<super::Instance>();
   let device_resource = state
     .resource_table

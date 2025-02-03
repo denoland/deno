@@ -4,7 +4,6 @@ mod args;
 mod cache;
 mod cdp;
 mod emit;
-mod errors;
 mod factory;
 mod file_fetcher;
 mod graph_container;
@@ -18,15 +17,17 @@ mod node;
 mod npm;
 mod ops;
 mod resolver;
-mod shared;
 mod standalone;
-mod sys;
 mod task_runner;
 mod tools;
 mod tsc;
 mod util;
-mod version;
 mod worker;
+
+pub mod sys {
+  #[allow(clippy::disallowed_types)] // ok, definition
+  pub type CliSys = sys_traits::impls::RealSys;
+}
 
 use std::env;
 use std::future::Future;
@@ -38,21 +39,25 @@ use std::sync::Arc;
 use args::TaskFlags;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::error::JsError;
+use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
 use deno_core::unsync::JoinHandle;
-use deno_npm::resolution::SnapshotFromLockfileError;
+use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
 use deno_resolver::npm::ByonmResolvePkgFolderFromDenoReqError;
 use deno_resolver::npm::ResolvePkgFolderFromDenoReqError;
 use deno_runtime::fmt_errors::format_js_error;
 use deno_runtime::tokio_util::create_and_run_current_thread_with_maybe_metrics;
 use deno_runtime::WorkerExecutionMode;
 pub use deno_runtime::UNSTABLE_GRANULAR_FLAGS;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
 use factory::CliFactory;
-use standalone::MODULE_NOT_FOUND;
-use standalone::UNSUPPORTED_SCHEME;
 
+const MODULE_NOT_FOUND: &str = "Module not found";
+const UNSUPPORTED_SCHEME: &str = "Unsupported scheme";
+
+use self::npm::ResolveSnapshotError;
+use self::util::draw_thread::DrawThread;
 use crate::args::flags_from_vec;
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -129,7 +134,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean()
+      tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
@@ -202,7 +207,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
         match result {
           Ok(v) => Ok(v),
           Err(script_err) => {
-            if let Some(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_))) = script_err.downcast_ref::<ResolvePkgFolderFromDenoReqError>() {
+            if let Some(worker::CreateCustomWorkerError::ResolvePkgFolderFromDenoReq(ResolvePkgFolderFromDenoReqError::Byonm(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(_)))) = any_and_jserrorbox_downcast_ref::<worker::CreateCustomWorkerError>(&script_err) {
               if flags.node_modules_dir.is_none() {
                 let mut flags = flags.deref().clone();
                 let watch = match &flags.subcommand {
@@ -352,7 +357,7 @@ fn setup_panic_hook() {
     eprintln!("var set and include the backtrace in your report.");
     eprintln!();
     eprintln!("Platform: {} {}", env::consts::OS, env::consts::ARCH);
-    eprintln!("Version: {}", version::DENO_VERSION_INFO.deno);
+    eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
     orig_hook(panic_info);
@@ -373,13 +378,17 @@ fn exit_for_error(error: AnyError) -> ! {
   let mut error_string = format!("{error:?}");
   let mut error_code = 1;
 
-  if let Some(e) = error.downcast_ref::<JsError>() {
-    error_string = format_js_error(e);
-  } else if let Some(SnapshotFromLockfileError::IntegrityCheckFailed(e)) =
-    error.downcast_ref::<SnapshotFromLockfileError>()
+  if let Some(CoreError::Js(e)) =
+    any_and_jserrorbox_downcast_ref::<CoreError>(&error)
   {
-    error_string = e.to_string();
-    error_code = 10;
+    error_string = format_js_error(e);
+  } else if let Some(e @ ResolveSnapshotError { .. }) =
+    any_and_jserrorbox_downcast_ref::<ResolveSnapshotError>(&error)
+  {
+    if let Some(e) = e.maybe_integrity_check_error() {
+      error_string = e.to_string();
+      error_code = 10;
+    }
   }
 
   exit_with_message(&error_string, error_code);
@@ -437,18 +446,19 @@ fn resolve_flags_and_init(
       if err.kind() == clap::error::ErrorKind::DisplayVersion =>
     {
       // Ignore results to avoid BrokenPipe errors.
-      util::logger::init(None, None);
+      init_logging(None, None);
       let _ = err.print();
       deno_runtime::exit(0);
     }
     Err(err) => {
-      util::logger::init(None, None);
+      init_logging(None, None);
       exit_for_error(AnyError::from(err))
     }
   };
 
-  deno_telemetry::init(crate::args::otel_runtime_config())?;
-  util::logger::init(flags.log_level, Some(flags.otel_config()));
+  let otel_config = flags.otel_config();
+  deno_telemetry::init(deno_lib::version::otel_runtime_config(), &otel_config)?;
+  init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
   if flags.unstable_config.legacy_flag_enabled {
@@ -480,4 +490,20 @@ fn resolve_flags_and_init(
   );
 
   Ok(flags)
+}
+
+fn init_logging(
+  maybe_level: Option<log::Level>,
+  otel_config: Option<OtelConfig>,
+) {
+  deno_lib::util::logger::init(deno_lib::util::logger::InitLoggingOptions {
+    maybe_level,
+    otel_config,
+    // it was considered to hold the draw thread's internal lock
+    // across logging, but if outputting to stderr blocks then that
+    // could potentially block other threads that access the draw
+    // thread's state
+    on_log_start: DrawThread::hide,
+    on_log_end: DrawThread::show,
+  })
 }

@@ -1,6 +1,6 @@
 import { metrics } from "npm:@opentelemetry/api@1";
 
-metrics.setGlobalMeterProvider(new Deno.telemetry.MeterProvider());
+metrics.setGlobalMeterProvider(Deno.telemetry.meterProvider);
 
 const meter = metrics.getMeter("m");
 

@@ -7,17 +7,17 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use deno_cache::SqliteBackedCache;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
+use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::npm::NpmResolver;
 
 use crate::ops;
 use crate::ops::bootstrap::SnapshotOptions;
-use crate::shared::maybe_transpile_source;
 use crate::shared::runtime;
 
 #[derive(Clone)]
@@ -281,7 +281,7 @@ pub fn create_runtime_snapshot(
     deno_webgpu::deno_webgpu::init_ops_and_esm(),
     deno_canvas::deno_canvas::init_ops_and_esm(),
     deno_fetch::deno_fetch::init_ops_and_esm::<Permissions>(Default::default()),
-    deno_cache::deno_cache::init_ops_and_esm::<SqliteBackedCache>(None),
+    deno_cache::deno_cache::init_ops_and_esm(None),
     deno_websocket::deno_websocket::init_ops_and_esm::<Permissions>(
       "".to_owned(),
       None,
@@ -308,8 +308,12 @@ pub fn create_runtime_snapshot(
     ),
     deno_io::deno_io::init_ops_and_esm(Default::default()),
     deno_fs::deno_fs::init_ops_and_esm::<Permissions>(fs.clone()),
+    deno_os::deno_os::init_ops_and_esm(Default::default()),
+    deno_process::deno_process::init_ops_and_esm(Default::default()),
     deno_node::deno_node::init_ops_and_esm::<
       Permissions,
+      DenoInNpmPackageChecker,
+      NpmResolver<sys_traits::impls::RealSys>,
       sys_traits::impls::RealSys,
     >(None, fs.clone()),
     runtime::init_ops_and_esm(),
@@ -319,10 +323,7 @@ pub fn create_runtime_snapshot(
       None,
     ),
     ops::fs_events::deno_fs_events::init_ops(),
-    ops::os::deno_os::init_ops(Default::default()),
     ops::permissions::deno_permissions::init_ops(),
-    ops::process::deno_process::init_ops(None),
-    ops::signal::deno_signal::init_ops(),
     ops::tty::deno_tty::init_ops(),
     ops::http::deno_http_runtime::init_ops(),
     ops::bootstrap::deno_bootstrap::init_ops(Some(snapshot_options)),
@@ -336,7 +337,7 @@ pub fn create_runtime_snapshot(
       startup_snapshot: None,
       extensions,
       extension_transpiler: Some(Rc::new(|specifier, source| {
-        maybe_transpile_source(specifier, source)
+        crate::transpile::maybe_transpile_source(specifier, source)
       })),
       with_runtime_cb: Some(Box::new(|rt| {
         let isolate = rt.v8_isolate();
