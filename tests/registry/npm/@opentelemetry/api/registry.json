@@ -127,6 +127,5 @@
   "homepage": "https://github.com/open-telemetry/opentelemetry-js/tree/main/api",
   "bugs": {
     "url": "https://github.com/open-telemetry/opentelemetry-js/issues"
-  },
-  "readmeFilename": "README.md"
+  }
 }

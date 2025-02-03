@@ -103,6 +103,5 @@
     "url": "git+https://github.com/microsoft/playwright.git",
     "type": "git"
   },
-  "description": "A high-level API to automate web browsers",
-  "readmeFilename": ""
+  "description": "A high-level API to automate web browsers"
 }

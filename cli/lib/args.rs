@@ -60,6 +60,8 @@ pub enum RootCertStoreLoadError {
   FailedAddPemFile(String),
   #[error("Failed opening CA file: {0}")]
   CaFileOpenError(String),
+  #[error("Failed to load platform certificates: {0}")]
+  FailedNativeCerts(String),
 }
 
 /// Create and populate a root cert store based on the passed options and
@@ -89,7 +91,9 @@ pub fn get_root_cert_store(
         root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.to_vec());
       }
       "system" => {
-        let roots = load_native_certs().expect("could not load platform certs");
+        let roots = load_native_certs().map_err(|err| {
+          RootCertStoreLoadError::FailedNativeCerts(err.to_string())
+        })?;
         for root in roots {
           if let Err(err) = root_cert_store
             .add(rustls::pki_types::CertificateDer::from(root.0.clone()))

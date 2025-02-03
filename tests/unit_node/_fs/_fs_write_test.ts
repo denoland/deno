@@ -117,7 +117,7 @@ Deno.test({
       for (const innerOffset of offsets) {
         for (const offset of offsets) {
           resetBuffer();
-          const buffer = new constr(
+          const buffer = new (constr as Uint8ArrayConstructor)(
             arrayBuffer,
             innerOffset,
             offset + bytes.length,
