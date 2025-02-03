@@ -1029,7 +1029,7 @@ Deno.test(
   "[node/http] client destroy before sending request should not error",
   async () => {
     const { resolve, promise } = Promise.withResolvers<void>();
-    const request = http.request("http://localhost:5929/");
+    const request = http.request("http://127.0.0.1:5929/");
     // Calling this would throw
     request.destroy();
     request.on("error", (e) => {
@@ -1037,11 +1037,6 @@ Deno.test(
     });
     request.on("close", () => resolve());
     await promise;
-
-    if (Deno.build.os === "windows") {
-      // FIXME(kt3k): This is necessary for preventing op leak on windows
-      await new Promise((resolve) => setTimeout(resolve, 4000));
-    }
   },
 );
 
