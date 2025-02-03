@@ -3,7 +3,7 @@ Compile file:///[WILDLINE]/main.ts to [WILDLINE]
 
 Embedded Files
 
-out.exe
+[WILDLINE]
 ├── hello.ts ([WILDLINE])
 └── main.ts ([WILDLINE])
 
