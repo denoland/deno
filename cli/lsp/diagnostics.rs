@@ -1727,7 +1727,7 @@ fn diagnose_resolution(
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
     Resolution::Err(err) => {
-      if maybe_ambient_specifier_resolution_err(&**err).is_none() {
+      if maybe_ambient_specifier_resolution_err(err).is_none() {
         diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone()))
       } else {
         deferred_diagnostics
