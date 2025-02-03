@@ -7,7 +7,7 @@
     },
     "permit_no_files": {
       "args": "bench --permit-no-files",
-      "output": "permit_no_files.out",
+      "output": "",
       "exitCode": 0
     }
   }

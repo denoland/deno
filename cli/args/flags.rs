@@ -4489,7 +4489,6 @@ fn bench_parse(
   flags.permissions.no_prompt = true;
 
   let json = matches.get_flag("json");
-  #[allow(clippy::print_stderr)]
   let permit_no_files = matches.get_flag("permit-no-files");
 
   let ignore = match matches.remove_many::<String>("ignore") {
@@ -10884,6 +10883,7 @@ mod tests {
       }
     );
   }
+
   #[test]
   fn run_with_check() {
     let r = flags_from_vec(svec!["deno", "run", "--check", "script.ts",]);
