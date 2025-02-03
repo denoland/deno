@@ -3358,8 +3358,8 @@ fn publish_subcommand() -> Command {
         .arg(
           Arg::new("set-version")
             .long("set-version")
-            .help("Set version for a package to be published.
-  <p(245)>This flag can be used while publishing individual packages and cannot be used in a workspace.</>")
+            .help(cstr!("Set version for a package to be published.
+  <p(245)>This flag can be used while publishing individual packages and cannot be used in a workspace.</>"))
             .value_name("VERSION")
             .help_heading(PUBLISH_HEADING)
         )
