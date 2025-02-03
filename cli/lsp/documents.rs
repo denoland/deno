@@ -1443,6 +1443,7 @@ impl Documents {
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
+    NodeResolutionThreadLocalCache::clear();
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc.scope();
       let dep_info = dep_info_by_scope.entry(scope.cloned()).or_default();
