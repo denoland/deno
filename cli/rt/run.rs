@@ -290,17 +290,6 @@ impl ModuleLoader for EmbeddedModuleLoader {
       },
       Ok(MappedResolution::Normal { specifier, .. })
       | Ok(MappedResolution::ImportMap { specifier, .. }) => {
-        // do sloppy imports resolution if enabled
-        let specifier = if let Some(sloppy_imports_resolver) =
-          &self.shared.sloppy_imports_resolver
-        {
-          sloppy_imports_resolver
-            .resolve(&specifier, SloppyImportsResolutionKind::Execution)
-            .map(|s| s.into_specifier())
-            .unwrap_or(specifier)
-        } else {
-          specifier
-        };
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -331,6 +320,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
             return Ok(specifier.clone());
           }
         }
+
+        // do sloppy imports resolution if enabled
+        let specifier = if let Some(sloppy_imports_resolver) =
+          &self.shared.sloppy_imports_resolver
+        {
+          sloppy_imports_resolver
+            .resolve(&specifier, SloppyImportsResolutionKind::Execution)
+            .map(|s| s.into_specifier())
+            .unwrap_or(specifier)
+        } else {
+          specifier
+        };
 
         Ok(
           self
