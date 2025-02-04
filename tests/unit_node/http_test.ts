@@ -1009,7 +1009,7 @@ Deno.test(
     );
     const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-    const request = http.request("http://localhost:5929/");
+    const request = http.request("http://127.0.0.1:5929/");
     request.on("error", reject);
     request.on("close", () => {});
     request.end();
@@ -1058,7 +1058,7 @@ Deno.test(
       receivedRequest = true;
       return new Response(null);
     });
-    const request = http.request(`http://localhost:${server.addr.port}/`);
+    const request = http.request(`http://127.0.0.1:${server.addr.port}/`);
     request.destroy();
     request.end("hello");
     request.on("error", (err) => {
