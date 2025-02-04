@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+import { Buffer } from "node:buffer";
 import { assert, assertEquals, loadTestLibrary } from "./common.js";
 
 const typedarray = loadTestLibrary();
@@ -26,6 +27,14 @@ Deno.test("napi typedarray float64", function () {
   assertEquals(doubleResult[0], -0);
   assertEquals(Math.round(10 * doubleResult[1]) / 10, -3.3);
   assertEquals(Math.round(10 * doubleResult[2]) / 10, -6.6);
+});
+
+Deno.test("napi_is_buffer", () => {
+  assert(!typedarray.test_is_buffer(5));
+  assert(!typedarray.test_is_buffer([]));
+  assert(typedarray.test_is_buffer(new Uint8Array()));
+  assert(typedarray.test_is_buffer(new Uint32Array()));
+  assert(typedarray.test_is_buffer(new Buffer([])));
 });
 
 // TODO(bartlomieju): this test causes segfaults when used with jemalloc.
