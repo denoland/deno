@@ -55,11 +55,19 @@ impl LintReporter for PrettyLintReporter {
 
   fn visit_error(&mut self, file_path: &str, err: &AnyError) {
     log::error!("Error linting: {file_path}");
-    if let Some(CoreError::Js(js_error)) = err.downcast_ref::<CoreError>() {
-      log::error!("   {}", format_js_error(js_error));
-      return;
+    let text =
+      if let Some(CoreError::Js(js_error)) = err.downcast_ref::<CoreError>() {
+        format_js_error(js_error)
+      } else {
+        format!("{err:#}")
+      };
+    for line in text.split('\n') {
+      if line.is_empty() {
+        log::error!("");
+      } else {
+        log::error!("    {}", line);
+      }
     }
-    log::error!("   {err}");
   }
 
   fn close(&mut self, check_count: usize) {

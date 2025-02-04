@@ -197,7 +197,7 @@ impl CliLinter {
         media_type,
         &self.linter,
         self.deno_lint_config.clone(),
-        source.text_info_lazy(),
+        &source,
         &diagnostics,
         &external_linter_container,
       )?;
@@ -215,7 +215,7 @@ impl CliLinter {
         log::warn!(
           concat!(
             "Reached maximum number of fix iterations for '{}'. There's ",
-            "probably a bug in Deno. Please fix this file manually.",
+            "probably a bug in the lint rule. Please fix this file manually.",
           ),
           specifier,
         );
@@ -243,25 +243,75 @@ fn apply_lint_fixes_and_relint(
   media_type: MediaType,
   linter: &DenoLintLinter,
   config: DenoLintConfig,
-  text_info: &SourceTextInfo,
+  original_source: &ParsedSource,
   diagnostics: &[LintDiagnostic],
   external_linter_container: &ExternalLinterContainer,
 ) -> Result<Option<(ParsedSource, Vec<LintDiagnostic>)>, AnyError> {
+  let text_info = original_source.text_info_lazy();
   let Some(new_text) = apply_lint_fixes(text_info, diagnostics) else {
     return Ok(None);
   };
 
-  let (source, diagnostics) = linter
-    .lint_file(LintFileOptions {
+  let lint_with_text = |new_text: String| {
+    let (source, diagnostics) = linter.lint_file(LintFileOptions {
       specifier: specifier.clone(),
       source_code: new_text,
       media_type,
-      config,
+      config: config.clone(),
       external_linter: external_linter_container.get_callback(),
-    })
-    .context(
-      "An applied lint fix caused a syntax error. Please report this bug.",
-    )?;
+    })?;
+    let mut new_diagnostics = source.diagnostics().clone();
+    new_diagnostics.retain(|d| !original_source.diagnostics().contains(d));
+    if let Some(diagnostic) = new_diagnostics.pop() {
+      return Err(AnyError::from(diagnostic));
+    }
+    Ok((source, diagnostics))
+  };
+
+  let (source, diagnostics) = match lint_with_text(new_text) {
+    Ok(result) => result,
+    Err(err) => {
+      let utf16_map = Utf16Map::new(text_info.text_str());
+      // figure out which diagnostic caused a syntax error
+      let mut diagnostics = diagnostics.to_vec();
+      while let Some(last_diagnostic) = diagnostics.pop() {
+        let Some(lint_fix) = last_diagnostic.details.fixes.first() else {
+          continue;
+        };
+        let success = match apply_lint_fixes(text_info, &diagnostics) {
+          Some(new_text) => lint_with_text(new_text).is_ok(),
+          None => true,
+        };
+        if success {
+          let mut changes_text = String::new();
+          for change in &lint_fix.changes {
+            let utf8_start =
+              (change.range.start - text_info.range().start) as u32;
+            let utf8_end = (change.range.end - text_info.range().start) as u32;
+            let utf16_start = utf16_map
+              .utf8_to_utf16_offset(utf8_start.into())
+              .unwrap_or(utf8_start.into());
+            let utf16_end = utf16_map
+              .utf8_to_utf16_offset(utf8_end.into())
+              .unwrap_or(utf8_end.into());
+            changes_text.push_str(&format!(
+              "Range: [{}, {}]\n",
+              u32::from(utf16_start),
+              u32::from(utf16_end)
+            ));
+            changes_text.push_str(&format!("Text: {:?}\n\n", &change.new_text));
+          }
+          return Err(err).context(format!(
+            "The '{}' rule caused a syntax error applying '{}'.\n\n{}",
+            last_diagnostic.details.code, lint_fix.description, changes_text
+          ));
+        }
+      }
+      return Err(err).context(
+        "A lint fix caused a syntax error. This is a bug in a lint rule.",
+      );
+    }
+  };
 
   if let Some(err) = external_linter_container.take_error() {
     return Err(err);

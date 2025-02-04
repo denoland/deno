@@ -1,0 +1,12 @@
+Reached maximum number of fix iterations for 'file:///[WILDLINE]/main.ts'. There's probably a bug in the lint rule. Please fix this file manually.
+error[test-plugin/my-rule]: should be equal to string "1"
+ --> [WILDLINE]main.ts:1:15
+  | 
+1 | const value = [WILDLINE];
+  |               [WILDLINE]
+
+  docs: https://docs.deno.com/lint/rules/test-plugin/my-rule
+
+
+Found 1 problem (1 fixable via --fix)
+Checked 2 files
