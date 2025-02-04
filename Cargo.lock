@@ -513,6 +513,26 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
+version = "0.69.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
+dependencies = [
+ "bitflags 2.6.0",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.10.5",
+ "lazy_static",
+ "lazycell",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 1.1.0",
+ "shlex",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "bindgen"
 version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
@@ -4820,6 +4840,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lazycell"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
+
+[[package]]
 name = "libc"
 version = "0.2.168"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4886,6 +4912,7 @@ version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
 dependencies = [
+ "bindgen 0.69.5",
  "cc",
  "pkg-config",
  "vcpkg",
@@ -4910,7 +4937,7 @@ version = "1.48.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ca8dfd1a173826d193e3b955e07c22765829890f62c677a59c4a410cb4f47c01"
 dependencies = [
- "bindgen",
+ "bindgen 0.70.1",
  "libloading 0.8.5",
 ]
 
@@ -8689,7 +8716,7 @@ version = "130.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a511192602f7b435b0a241c1947aa743eb7717f20a9195f4b5e8ed1952e01db1"
 dependencies = [
- "bindgen",
+ "bindgen 0.70.1",
  "bitflags 2.6.0",
  "fslock",
  "gzip-header",

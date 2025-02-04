@@ -2,6 +2,8 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::ffi::CString;
+use std::ptr::null;
 use std::rc::Rc;
 
 use deno_core::op2;
@@ -10,6 +12,8 @@ use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 
+use super::session::SessionOptions;
+use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 
@@ -190,6 +194,64 @@ impl DatabaseSync {
       inner: raw_stmt,
       db: self.conn.clone(),
       use_big_ints: Cell::new(false),
+    })
+  }
+
+  // Creates and attaches a session to the database.
+  //
+  // This method is a wrapper around `sqlite3session_create()` and
+  // `sqlite3session_attach()`.
+  #[cppgc]
+  fn create_session(
+    &self,
+    #[serde] options: Option<SessionOptions>,
+  ) -> Result<Session, SqliteError> {
+    let db = self.conn.borrow();
+    let db = db.as_ref().ok_or(SqliteError::AlreadyClosed)?;
+
+    // SAFETY: lifetime of the connection is guaranteed by reference
+    // counting.
+    let raw_handle = unsafe { db.handle() };
+
+    let mut raw_session = std::ptr::null_mut();
+    let mut options = options;
+
+    let z_db = options
+      .as_mut()
+      .and_then(|options| options.db.take())
+      .map(|db| CString::new(db).unwrap())
+      .unwrap_or_else(|| CString::new("main").unwrap());
+    // SAFETY: `z_db` points to a valid c-string.
+    let r = unsafe {
+      libsqlite3_sys::sqlite3session_create(
+        raw_handle,
+        z_db.as_ptr() as *const _,
+        &mut raw_session,
+      )
+    };
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      return Err(SqliteError::SessionCreateFailed);
+    }
+
+    let table = options
+      .as_mut()
+      .and_then(|options| options.table.take())
+      .map(|table| CString::new(table).unwrap());
+    let z_table = table.as_ref().map(|table| table.as_ptr()).unwrap_or(null());
+    let r =
+      // SAFETY: `z_table` points to a valid c-string and `raw_session`
+      // is a valid session handle.
+      unsafe { libsqlite3_sys::sqlite3session_attach(raw_session, z_table) };
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      return Err(SqliteError::SessionCreateFailed);
+    }
+
+    Ok(Session {
+      inner: raw_session,
+      freed: Cell::new(false),
+      _db: self.conn.clone(),
     })
   }
 }

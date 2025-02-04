@@ -77,6 +77,27 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
   assertEquals(stmt.expandedSQL, "SELECT * FROM data");
 });
 
+Deno.test("[node/sqlite] createSession and changesets", () => {
+  const db = new DatabaseSync(":memory:");
+  const session = db.createSession();
+
+  db.exec("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)");
+  db.exec("INSERT INTO test (name) VALUES ('foo')");
+
+  assert(session.changeset() instanceof Uint8Array);
+  assert(session.patchset() instanceof Uint8Array);
+
+  assert(session.changeset().byteLength > 0);
+  assert(session.patchset().byteLength > 0);
+
+  session.close();
+
+  // Use after close shoud throw.
+  assertThrows(() => session.changeset(), Error, "Session is already closed");
+  // Close after close should throw.
+  assertThrows(() => session.close(), Error, "Session is already closed");
+});
+
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE data(key INTEGER PRIMARY KEY);");
