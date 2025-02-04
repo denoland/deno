@@ -348,6 +348,7 @@ async fn update(
           )| {
             let dep = deps.get_dep(*dep_id);
             interactive::PackageInfo {
+              id: *dep_id,
               current_version: current_version
                 .as_ref()
                 .map(|nv| nv.version.clone()),
@@ -360,12 +361,7 @@ async fn update(
         .collect(),
     )?;
     if let Some(selected) = selected {
-      let mut i = 0;
-      to_update.retain(|_| {
-        let keep = selected.contains(&i);
-        i += 1;
-        keep
-      });
+      to_update.retain(|(id, _, _, _)| selected.contains(id));
     } else {
       log::info!("Cancelled, not updating");
       return Ok(());

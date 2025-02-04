@@ -1416,6 +1416,7 @@ dependencies = [
  "tracing",
  "twox-hash",
  "typed-arena",
+ "unicode-width",
  "uuid",
  "walkdir",
  "which",

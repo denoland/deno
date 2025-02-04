@@ -170,6 +170,7 @@ tower-lsp.workspace = true
 tracing = { version = "0.1", features = ["log", "default"] }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
+unicode-width = "0.1.3"
 uuid = { workspace = true, features = ["serde"] }
 walkdir.workspace = true
 which.workspace = true

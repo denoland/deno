@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Write as _;
 use std::io;
@@ -17,11 +18,14 @@ use deno_core::anyhow;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 use deno_terminal::colors;
+use unicode_width::UnicodeWidthStr;
 
+use crate::tools::registry::pm::deps::DepId;
 use crate::tools::registry::pm::deps::DepKind;
 
 #[derive(Debug)]
 pub struct PackageInfo {
+  pub id: DepId,
   pub current_version: Option<Version>,
   pub new_version: VersionReq,
   pub name: String,
@@ -30,10 +34,12 @@ pub struct PackageInfo {
 
 #[derive(Debug)]
 struct FormattedPackageInfo {
+  dep_ids: Vec<DepId>,
   current_version_string: Option<String>,
   new_version_highlighted: String,
   formatted_name: String,
   formatted_name_len: usize,
+  name: String,
 }
 
 #[derive(Debug)]
@@ -44,7 +50,6 @@ struct State {
 
   name_width: usize,
   current_width: usize,
-  // start_row: u16,
 }
 
 impl From<PackageInfo> for FormattedPackageInfo {
@@ -62,6 +67,7 @@ impl From<PackageInfo> for FormattedPackageInfo {
         new_version_string.to_string()
       };
     FormattedPackageInfo {
+      dep_ids: vec![package.id],
       current_version_string: package
         .current_version
         .as_ref()
@@ -73,16 +79,34 @@ impl From<PackageInfo> for FormattedPackageInfo {
         package.name
       ),
       formatted_name_len: package.kind.scheme().len() + 1 + package.name.len(),
+      name: package.name,
     }
   }
 }
 
 impl State {
   fn new(packages: Vec<PackageInfo>) -> anyhow::Result<Self> {
-    let packages: Vec<_> = packages
-      .into_iter()
-      .map(FormattedPackageInfo::from)
-      .collect();
+    let mut deduped_packages: HashMap<
+      (String, Option<Version>, VersionReq),
+      FormattedPackageInfo,
+    > = HashMap::with_capacity(packages.len());
+    for package in packages {
+      match deduped_packages.entry((
+        package.name.clone(),
+        package.current_version.clone(),
+        package.new_version.clone(),
+      )) {
+        std::collections::hash_map::Entry::Occupied(mut occupied_entry) => {
+          occupied_entry.get_mut().dep_ids.push(package.id)
+        }
+        std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+          vacant_entry.insert(FormattedPackageInfo::from(package));
+        }
+      }
+    }
+
+    let mut packages: Vec<_> = deduped_packages.into_values().collect();
+    packages.sort_by(|a, b| a.name.cmp(&b.name));
     let name_width = packages
       .iter()
       .map(|p| p.formatted_name_len)
@@ -109,12 +133,17 @@ impl State {
     })
   }
 
+  fn instructions_line() -> &'static str {
+    "Select which packages to update (<space> to select, ↑/↓/j/k to navigate, a to select all, i to invert selection, enter to accept, <Ctrl-c> to cancel)"
+  }
+
   fn render(&self) -> anyhow::Result<Vec<TextItem>> {
     let mut items = Vec::with_capacity(self.packages.len() + 1);
 
     items.push(TextItem::new_owned(format!(
-      "{} Select which packages to update (<space> to select, ↑/↓/j/k to navigate, enter to accept, <Ctrl-c> to cancel)",
-      colors::intense_blue("?")
+      "{} {}",
+      colors::intense_blue("?"),
+      Self::instructions_line()
     )));
 
     for (i, package) in self.packages.iter().enumerate() {
@@ -159,6 +188,7 @@ enum VersionDifference {
   Major,
   Minor,
   Patch,
+  Prerelease,
 }
 
 fn version_diff(a: &Version, b: &Version) -> VersionDifference {
@@ -166,8 +196,10 @@ fn version_diff(a: &Version, b: &Version) -> VersionDifference {
     VersionDifference::Major
   } else if a.minor != b.minor {
     VersionDifference::Minor
-  } else {
+  } else if a.patch != b.patch {
     VersionDifference::Patch
+  } else {
+    VersionDifference::Prerelease
   }
 }
 
@@ -189,23 +221,30 @@ fn highlight_new_version(current: &Version, new: &Version) -> String {
     VersionDifference::Major => format!(
       "{}.{}.{}{}",
       colors::red_bold(new.major),
-      colors::red(new.minor),
-      colors::red(new.patch),
-      colors::red(new_pre)
+      colors::red_bold(new.minor),
+      colors::red_bold(new.patch),
+      colors::red_bold(new_pre)
     ),
     VersionDifference::Minor => format!(
       "{}.{}.{}{}",
       new.major,
       colors::yellow_bold(new.minor),
-      colors::yellow(new.patch),
-      colors::yellow(new_pre)
+      colors::yellow_bold(new.patch),
+      colors::yellow_bold(new_pre)
     ),
     VersionDifference::Patch => format!(
       "{}.{}.{}{}",
       new.major,
       new.minor,
       colors::green_bold(new.patch),
-      colors::green(new_pre)
+      colors::green_bold(new_pre)
+    ),
+    VersionDifference::Prerelease => format!(
+      "{}.{}.{}{}",
+      new.major,
+      new.minor,
+      new.patch,
+      colors::red_bold(new_pre)
     ),
   }
 }
@@ -237,7 +276,7 @@ impl Drop for RawMode {
 
 pub fn select_interactive(
   packages: Vec<PackageInfo>,
-) -> anyhow::Result<Option<HashSet<usize>>> {
+) -> anyhow::Result<Option<HashSet<DepId>>> {
   let mut stderr = io::stderr();
 
   let raw_mode = RawMode::enable()?;
@@ -261,17 +300,57 @@ pub fn select_interactive(
   let (_, rows) = terminal::size()?;
   if rows - start_row < (packages.len() + 2) as u16 {
     let pad = ((packages.len() + 2) as u16) - (rows - start_row);
-
-    stderr.execute(terminal::ScrollUp(pad))?;
-    stderr.execute(cursor::MoveUp(pad))?;
+    stderr.execute(terminal::ScrollUp(pad.min(rows)))?;
+    stderr.execute(cursor::MoveUp(pad.min(rows)))?;
   }
 
   let mut state = State::new(packages)?;
   stderr.execute(cursor::Hide)?;
 
+  let instructions_width = format!("? {}", State::instructions_line()).width();
+
   let mut do_it = false;
+  let mut scroll_offset = 0;
   loop {
-    let items = state.render()?;
+    let mut items = state.render()?;
+    let size = static_text.console_size();
+    let first_line_rows = size
+      .cols
+      .map(|cols| (instructions_width / cols as usize) + 1)
+      .unwrap_or(1);
+    if let Some(rows) = size.rows {
+      if items.len() + first_line_rows >= rows as usize {
+        let adj = if scroll_offset == 0 {
+          first_line_rows.saturating_sub(1)
+        } else {
+          0
+        };
+        if state.currently_selected < scroll_offset {
+          scroll_offset = state.currently_selected;
+        } else if state.currently_selected + 1
+          >= scroll_offset + (rows as usize).saturating_sub(adj)
+        {
+          scroll_offset =
+            (state.currently_selected + 1).saturating_sub(rows as usize) + 1;
+        }
+        let adj = if scroll_offset == 0 {
+          first_line_rows.saturating_sub(1)
+        } else {
+          0
+        };
+        let mut new_items = Vec::with_capacity(rows as usize);
+
+        scroll_offset = scroll_offset.clamp(0, items.len() - 1);
+        new_items.extend(
+          items.drain(
+            scroll_offset
+              ..(scroll_offset + (rows as usize).saturating_sub(adj))
+                .min(items.len()),
+          ),
+        );
+        items = new_items;
+      }
+    }
     static_text.eprint_items(items.iter());
 
     let event = crossterm::event::read()?;
@@ -293,11 +372,27 @@ pub fn select_interactive(
         }
         (KeyCode::Down | KeyCode::Char('j'), KeyModifiers::NONE) => {
           state.currently_selected =
-            (state.currently_selected + 1) % state.packages.len()
+            (state.currently_selected + 1) % state.packages.len();
         }
         (KeyCode::Char(' '), _) => {
           if !state.checked.insert(state.currently_selected) {
             state.checked.remove(&state.currently_selected);
+          }
+        }
+        (KeyCode::Char('a'), _) => {
+          if (0..state.packages.len()).all(|idx| state.checked.contains(&idx)) {
+            state.checked.clear();
+          } else {
+            state.checked.extend(0..state.packages.len());
+          }
+        }
+        (KeyCode::Char('i'), _) => {
+          for idx in 0..state.packages.len() {
+            if state.checked.contains(&idx) {
+              state.checked.remove(&idx);
+            } else {
+              state.checked.insert(idx);
+            }
           }
         }
         (KeyCode::Enter, _) => {
@@ -317,7 +412,14 @@ pub fn select_interactive(
   raw_mode.disable()?;
 
   if do_it {
-    Ok(Some(state.checked.into_iter().collect()))
+    Ok(Some(
+      state
+        .checked
+        .into_iter()
+        .flat_map(|idx| &state.packages[idx].dep_ids)
+        .copied()
+        .collect(),
+    ))
   } else {
     Ok(None)
   }
