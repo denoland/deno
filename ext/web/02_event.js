@@ -1520,6 +1520,7 @@ export {
   ErrorEvent,
   Event,
   EventTarget,
+  EventTargetPrototype,
   listenerCount,
   MessageEvent,
   ProgressEvent,
