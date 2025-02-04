@@ -49,6 +49,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -4599,6 +4600,9 @@ async fn op_poll_requests(
     let state = state.try_borrow_mut::<State>().unwrap();
     state.pending_requests.take().unwrap()
   };
+
+  // clear the resolution cache after each request
+  NodeResolutionThreadLocalCache::clear();
 
   let Some((request, scope, snapshot, response_tx, token, change)) =
     pending_requests.recv().await
