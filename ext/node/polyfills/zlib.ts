@@ -33,8 +33,10 @@ import {
   unzipSync,
 } from "ext:deno_node/_zlib.mjs";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   createBrotliCompress,
@@ -113,21 +115,7 @@ export class BrotliOptions {
     notImplemented("BrotliOptions.prototype.constructor");
   }
 }
-export class BrotliCompress {
-  constructor() {
-    notImplemented("BrotliCompress.prototype.constructor");
-  }
-}
-export class BrotliDecompress {
-  constructor() {
-    notImplemented("BrotliDecompress.prototype.constructor");
-  }
-}
-export class ZlibBase {
-  constructor() {
-    notImplemented("ZlibBase.prototype.constructor");
-  }
-}
+
 export { constants };
 
 export default {
@@ -216,12 +204,13 @@ export default {
   Z_SYNC_FLUSH: constants.Z_SYNC_FLUSH,
   Z_VERSION_ERROR: constants.Z_VERSION_ERROR,
   ZLIB_VERNUM: constants.ZLIB_VERNUM,
-  ZlibBase,
 };
 
 export {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   codes,
