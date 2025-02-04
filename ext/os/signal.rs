@@ -254,4 +254,4 @@ signal_dict!(
 );
 
 #[cfg(target_os = "windows")]
-signal_dict!((2, "SIGINT"), (21, "SIGBREAK"));
+signal_dict!((1, "SIGHUP"), (2, "SIGINT"), (21, "SIGBREAK"));
