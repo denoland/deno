@@ -548,8 +548,11 @@ class ClientRequest extends OutgoingMessage {
         incoming.statusMessage = res.statusText;
         incoming.upgrade = null;
 
-        for (const [key, _value] of res.headers) {
-          if (key.toLowerCase() === "upgrade") {
+        for (const [key, value] of res.headers) {
+          if (
+            key.toLowerCase() === "upgrade" &&
+            value.toLowerCase() === "websocket"
+          ) {
             incoming.upgrade = true;
             break;
           }
