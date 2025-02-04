@@ -1151,7 +1151,6 @@ impl Inner {
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
-    eprintln!("did_change: {specifier}");
     match self.documents.change(
       &specifier,
       params.text_document.version,

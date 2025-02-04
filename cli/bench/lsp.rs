@@ -95,7 +95,7 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
     c.set_workspace_folders(vec![lsp_types::WorkspaceFolder {
       uri: apps.uri_dir(),
       name: "apps".to_string(),
-    }]);
+    }]);  
     c.set_deno_enable(true);
     c.set_unstable(true);
     c.set_preload_limit(1000);

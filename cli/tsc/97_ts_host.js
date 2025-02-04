@@ -751,7 +751,11 @@ const excluded = new Set([
   "getSourceFile",
 ]);
 /** @type {typeof hosty} */
-export const host = {};
+export const host = {
+  log(msg) {
+    ops.op_log_event(msg);
+  },
+};
 for (const [key, value] of Object.entries(hosty)) {
   if (typeof value === "function" && !excluded.has(key)) {
     host[key] = (...args) => {

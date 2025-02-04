@@ -4806,8 +4806,14 @@ fn op_make_span(
 }
 
 #[op2(fast)]
+fn op_log_event(#[string] msg: &str) {
+  tracing::info!(msg = msg);
+}
+
+#[op2(fast)]
 fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
   let ptr = deno_core::ExternalPointer::<TracingSpan>::from_raw(span);
+  // SAFETY: trust me
   let _span = unsafe { ptr.unsafely_take().0 };
   if root {
     let state = op_state.borrow_mut::<State>();
@@ -5095,6 +5101,7 @@ deno_core::extension!(deno_tsc,
     op_poll_requests,
     op_make_span,
     op_exit_span,
+    op_log_event,
     op_libs,
   ],
   options = {
