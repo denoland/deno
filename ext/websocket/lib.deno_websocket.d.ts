@@ -48,6 +48,9 @@ interface WebSocketEventMap {
  *
  * If you are looking to create a WebSocket server, please take a look at
  * `Deno.upgradeWebSocket()`.
+ * 
+ * @see https://developer.mozilla.org/docs/Web/API/WebSocket
+ *
  *
  * @tags allow-net
  * @category WebSockets
@@ -57,16 +60,32 @@ interface WebSocket extends EventTarget {
    * Returns a string that indicates how binary data from the WebSocket object is exposed to scripts:
    *
    * Can be set, to change how binary data is returned. The default is "blob".
+   * 
+   * ```ts
+   * const ws = new WebSocket("ws://localhost:8080");
+   * ws.binaryType = "arraybuffer";
+   * ```
    */
   binaryType: BinaryType;
   /**
    * Returns the number of bytes of application data (UTF-8 text and binary data) that have been queued using send() but not yet been transmitted to the network.
    *
    * If the WebSocket connection is closed, this attribute's value will only increase with each call to the send() method. (The number does not reset to zero once the connection closes.)
+   * 
+   * ```ts
+   * const ws = new WebSocket("ws://localhost:8080");
+   * ws.send("Hello, world!");
+   * console.log(ws.bufferedAmount); // 13
+   * ```
    */
   readonly bufferedAmount: number;
   /**
    * Returns the extensions selected by the server, if any.
+   * 
+   * ```ts
+   * const ws = new WebSocket("ws://localhost:8080");
+   * console.log(ws.extensions); // ""
+   * ```
    */
   readonly extensions: string;
   onclose: ((this: WebSocket, ev: CloseEvent) => any) | null;
