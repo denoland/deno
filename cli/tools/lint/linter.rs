@@ -33,6 +33,7 @@ use super::rules::PackageLintRule;
 use super::ConfiguredRules;
 use crate::sys::CliSys;
 use crate::util::fs::specifier_from_file_path;
+use crate::util::text_encoding::Utf16Map;
 
 pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
@@ -333,13 +334,16 @@ fn run_plugins(
   #[allow(clippy::await_holding_lock)]
   let fut = async move {
     let mut plugin_runner = plugin_runner.lock();
-    let serialized_ast = plugin_runner.serialize_ast(parsed_source)?;
+    let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
+    let serialized_ast =
+      plugin_runner.serialize_ast(&parsed_source, &utf16_map)?;
 
     plugins::run_rules_for_ast(
       &mut plugin_runner,
       &file_path,
       serialized_ast,
       source_text_info,
+      utf16_map,
       maybe_token,
     )
     .await

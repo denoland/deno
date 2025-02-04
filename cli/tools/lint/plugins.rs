@@ -34,6 +34,7 @@ use crate::args::LintFlags;
 use crate::factory::CliFactory;
 use crate::ops::lint::LintPluginContainer;
 use crate::tools::lint::serialize_ast_to_buffer;
+use crate::util::text_encoding::Utf16Map;
 
 #[derive(Debug)]
 pub enum PluginHostRequest {
@@ -45,6 +46,7 @@ pub enum PluginHostRequest {
     serialized_ast: Vec<u8>,
     file_path: PathBuf,
     source_text_info: SourceTextInfo,
+    utf16_map: Utf16Map,
     maybe_token: Option<CancellationToken>,
   },
 }
@@ -274,6 +276,7 @@ impl PluginHost {
           serialized_ast,
           file_path,
           source_text_info,
+          utf16_map,
           maybe_token,
         } => {
           let start = std::time::Instant::now();
@@ -281,6 +284,7 @@ impl PluginHost {
             &file_path,
             serialized_ast,
             source_text_info,
+            utf16_map,
             maybe_token,
           ) {
             Ok(()) => Ok(self.take_diagnostics()),
@@ -310,6 +314,7 @@ impl PluginHost {
     file_path: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
+    utf16_map: Utf16Map,
     maybe_token: Option<CancellationToken>,
   ) -> Result<(), AnyError> {
     {
@@ -319,6 +324,7 @@ impl PluginHost {
       container.set_info_for_file(
         ModuleSpecifier::from_file_path(file_path).unwrap(),
         source_text_info,
+        utf16_map,
       );
       container.set_cancellation_token(maybe_token);
     }
@@ -470,6 +476,7 @@ impl PluginHostProxy {
     specifier: &Path,
     serialized_ast: Vec<u8>,
     source_text_info: SourceTextInfo,
+    utf16_map: Utf16Map,
     maybe_token: Option<CancellationToken>,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
     self
@@ -478,6 +485,7 @@ impl PluginHostProxy {
         serialized_ast,
         file_path: specifier.to_path_buf(),
         source_text_info,
+        utf16_map,
         maybe_token,
       })
       .await?;
@@ -491,10 +499,11 @@ impl PluginHostProxy {
 
   pub fn serialize_ast(
     &self,
-    parsed_source: ParsedSource,
+    parsed_source: &ParsedSource,
+    utf16_map: &Utf16Map,
   ) -> Result<Vec<u8>, AnyError> {
     let start = std::time::Instant::now();
-    let r = serialize_ast_to_buffer(&parsed_source);
+    let r = serialize_ast_to_buffer(parsed_source, utf16_map);
     log::debug!(
       "Serializing an AST took {:?}",
       std::time::Instant::now() - start
@@ -518,10 +527,17 @@ pub async fn run_rules_for_ast(
   specifier: &Path,
   serialized_ast: Vec<u8>,
   source_text_info: SourceTextInfo,
+  utf16_map: Utf16Map,
   maybe_token: Option<CancellationToken>,
 ) -> Result<Vec<LintDiagnostic>, AnyError> {
   let d = host_proxy
-    .run_rules(specifier, serialized_ast, source_text_info, maybe_token)
+    .run_rules(
+      specifier,
+      serialized_ast,
+      source_text_info,
+      utf16_map,
+      maybe_token,
+    )
     .await?;
   Ok(d)
 }

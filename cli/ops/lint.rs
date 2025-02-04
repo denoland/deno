@@ -17,6 +17,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::tools::lint;
 use crate::tools::lint::PluginLogger;
+use crate::util::text_encoding::Utf16Map;
 
 deno_core::extension!(
   deno_lint_ext,
@@ -53,6 +54,7 @@ deno_core::extension!(
 pub struct LintPluginContainer {
   pub diagnostics: Vec<LintDiagnostic>,
   pub source_text_info: Option<SourceTextInfo>,
+  pub utf_16_map: Option<Utf16Map>,
   pub specifier: Option<ModuleSpecifier>,
   pub token: CancellationToken,
 }
@@ -70,8 +72,10 @@ impl LintPluginContainer {
     &mut self,
     specifier: ModuleSpecifier,
     source_text_info: SourceTextInfo,
+    utf16_map: Utf16Map,
   ) {
     self.specifier = Some(specifier);
+    self.utf_16_map = Some(utf16_map);
     self.source_text_info = Some(source_text_info);
   }
 
@@ -80,24 +84,49 @@ impl LintPluginContainer {
     id: String,
     message: String,
     hint: Option<String>,
-    start: usize,
-    end: usize,
+    start_utf16: usize,
+    end_utf16: usize,
     fix: Option<LintReportFix>,
   ) -> Result<(), LintReportError> {
-    let source_text_info = self.source_text_info.as_ref().unwrap();
-    let specifier = self.specifier.clone().unwrap();
-    let source_range = source_text_info.range();
-    let start_pos = source_text_info.start_pos();
-    let diagnostic_range = SourceRange::new(start_pos + start, start_pos + end);
-    if !source_range.contains(&diagnostic_range) {
-      return Err(LintReportError::DiagnosticIncorrectRange {
-        // JS uses 1-based indexes
-        start: start + 1,
-        end: end + 1,
-        source_start: source_range.start.as_byte_pos().0,
-        source_end: source_range.end.as_byte_pos().0,
-      });
+    fn out_of_range_err(
+      map: &Utf16Map,
+      start_utf16: usize,
+      end_utf16: usize,
+    ) -> LintReportError {
+      LintReportError::IncorrectRange {
+        start: start_utf16,
+        end: end_utf16,
+        source_end: map.text_content_length_utf16().into(),
+      }
     }
+
+    fn utf16_to_utf8_range(
+      utf16_map: &Utf16Map,
+      source_text_info: &SourceTextInfo,
+      start_utf16: usize,
+      end_utf16: usize,
+    ) -> Result<SourceRange, LintReportError> {
+      let Some(start) =
+        utf16_map.utf16_to_utf8_offset((start_utf16 as u32).into())
+      else {
+        return Err(out_of_range_err(utf16_map, start_utf16, end_utf16));
+      };
+      let Some(end) = utf16_map.utf16_to_utf8_offset((end_utf16 as u32).into())
+      else {
+        return Err(out_of_range_err(utf16_map, start_utf16, end_utf16));
+      };
+      let start_pos = source_text_info.start_pos();
+      Ok(SourceRange::new(
+        start_pos + start.into(),
+        start_pos + end.into(),
+      ))
+    }
+
+    let source_text_info = self.source_text_info.as_ref().unwrap();
+    let utf16_map = self.utf_16_map.as_ref().unwrap();
+    let specifier = self.specifier.clone().unwrap();
+    let diagnostic_range =
+      utf16_to_utf8_range(utf16_map, source_text_info, start_utf16, end_utf16)?;
     let range = LintDiagnosticRange {
       range: diagnostic_range,
       description: None,
@@ -107,17 +136,12 @@ impl LintPluginContainer {
     let mut fixes: Vec<LintFix> = vec![];
 
     if let Some(fix) = fix {
-      let fix_range =
-        SourceRange::new(start_pos + fix.range.0, start_pos + fix.range.1);
-      if !source_range.contains(&fix_range) {
-        return Err(LintReportError::FixIncorrectRange {
-          // JS uses 1-based indexes
-          start: fix.range.0 + 1,
-          end: fix.range.1 + 1,
-          source_start: source_range.start.as_byte_pos().0,
-          source_end: source_range.end.as_byte_pos().0,
-        });
-      }
+      let fix_range = utf16_to_utf8_range(
+        utf16_map,
+        source_text_info,
+        fix.range.0,
+        fix.range.1,
+      )?;
       fixes.push(LintFix {
         changes: vec![LintFixChange {
           new_text: fix.text.into(),
@@ -193,7 +217,8 @@ fn op_lint_create_serialized_ast(
     scope_analysis: false,
     maybe_syntax: None,
   })?;
-  Ok(lint::serialize_ast_to_buffer(&parsed_source))
+  let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
+  Ok(lint::serialize_ast_to_buffer(&parsed_source, &utf16_map))
 }
 
 #[derive(serde::Deserialize)]
@@ -205,20 +230,10 @@ struct LintReportFix {
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum LintReportError {
   #[class(type)]
-  #[error("Invalid diagnostic range [{start}, {end}], the source has a range of [{source_start}, {source_end}]")]
-  DiagnosticIncorrectRange {
+  #[error("Invalid range [{start}, {end}], the source has a range of [0, {source_end}]")]
+  IncorrectRange {
     start: usize,
     end: usize,
-    source_start: u32,
-    source_end: u32,
-  },
-
-  #[class(type)]
-  #[error("Invalid fix range [{start}, {end}], the source has a range of [{source_start}, {source_end}]")]
-  FixIncorrectRange {
-    start: usize,
-    end: usize,
-    source_start: u32,
     source_end: u32,
   },
 }
@@ -229,12 +244,12 @@ fn op_lint_report(
   #[string] id: String,
   #[string] message: String,
   #[string] hint: Option<String>,
-  #[smi] start: usize,
-  #[smi] end: usize,
+  #[smi] start_utf16: usize,
+  #[smi] end_utf16: usize,
   #[serde] fix: Option<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
-  container.report(id, message, hint, start, end, fix)?;
+  container.report(id, message, hint, start_utf16, end_utf16, fix)?;
   Ok(())
 }
 

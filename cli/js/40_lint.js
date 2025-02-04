@@ -231,16 +231,14 @@ export class Context {
       );
     }
 
-    const start = range[0] - 1;
-    const end = range[1] - 1;
+    const start = range[0];
+    const end = range[1];
 
     let fix;
 
     if (typeof data.fix === "function") {
       const fixer = new Fixer();
       fix = data.fix(fixer);
-      fix.range[0]--;
-      fix.range[1]--;
     }
 
     doReport(
