@@ -43,18 +43,6 @@ pub async fn compile(
     cli_options.initial_cwd(),
   )?;
 
-  // this is not supported, so show a warning about it, but don't error in order
-  // to allow someone to still run `deno compile` when this is in a deno.json
-  if cli_options.unstable_sloppy_imports() {
-    log::warn!(
-      concat!(
-        "{} Sloppy imports are not supported in deno compile. ",
-        "The compiled executable may encounter runtime errors.",
-      ),
-      crate::colors::yellow("Warning"),
-    );
-  }
-
   let output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,

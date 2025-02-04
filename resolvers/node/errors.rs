@@ -198,6 +198,7 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
       PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
       PackageSubpathResolveErrorKind::Exports(e) => e.code(),
       PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
+      PackageSubpathResolveErrorKind::FinalizeResolution(e) => e.code(),
     }
   }
 }
@@ -216,6 +217,9 @@ pub enum PackageSubpathResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   LegacyResolve(LegacyResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -551,16 +555,18 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Cannot find {} '{}'{}",
+  "[{}] Cannot find {} '{}'{}{}",
   self.code(),
   typ,
   specifier,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
 )]
 pub struct ModuleNotFoundError {
   pub specifier: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
   pub typ: &'static str,
+  pub suggested_ext: Option<&'static str>,
 }
 
 impl NodeJsErrorCoded for ModuleNotFoundError {
@@ -572,14 +578,16 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Directory import '{}' is not supported resolving ES modules{}",
+  "[{}] Directory import '{}' is not supported resolving ES modules{}{}",
   self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
 )]
 pub struct UnsupportedDirImportError {
   pub dir_url: UrlOrPath,
   pub maybe_referrer: Option<UrlOrPath>,
+  pub suggested_file_name: Option<&'static str>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {
