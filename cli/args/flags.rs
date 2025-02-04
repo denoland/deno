@@ -475,7 +475,7 @@ pub enum DenoSubcommand {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutdatedKind {
-  Update { latest: bool },
+  Update { latest: bool, interactive: bool },
   PrintOutdated { compatible: bool },
 }
 
@@ -2660,7 +2660,7 @@ Specific version requirements to update to can be specified:
           .long("latest")
           .action(ArgAction::SetTrue)
           .help(
-            "Update to the latest version, regardless of semver constraints",
+            "Consider the latest version, regardless of semver constraints",
           )
           .conflicts_with("compatible"),
       )
@@ -2669,15 +2669,21 @@ Specific version requirements to update to can be specified:
           .long("update")
           .short('u')
           .action(ArgAction::SetTrue)
-          .conflicts_with("compatible")
           .help("Update dependency versions"),
+      )
+      .arg(
+        Arg::new("interactive")
+          .long("interactive")
+          .short('i')
+          .action(ArgAction::SetTrue)
+          .requires("update")
+          .help("Interactively select which dependencies to update")
       )
       .arg(
         Arg::new("compatible")
           .long("compatible")
           .action(ArgAction::SetTrue)
-          .help("Only output versions that satisfy semver requirements")
-          .conflicts_with("update"),
+          .help("Only consider versions that satisfy semver requirements")
       )
       .arg(
         Arg::new("recursive")
@@ -4462,7 +4468,11 @@ fn outdated_parse(
   let update = matches.get_flag("update");
   let kind = if update {
     let latest = matches.get_flag("latest");
-    OutdatedKind::Update { latest }
+    let interactive = matches.get_flag("interactive");
+    OutdatedKind::Update {
+      latest,
+      interactive,
+    }
   } else {
     let compatible = matches.get_flag("compatible");
     OutdatedKind::PrintOutdated { compatible }
@@ -11646,7 +11656,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11654,7 +11667,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "--latest"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: true },
+          kind: OutdatedKind::Update {
+            latest: true,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11662,7 +11678,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "--recursive"],
         OutdatedFlags {
           filters: vec![],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: true,
         },
       ),
@@ -11670,7 +11689,10 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         svec!["--update", "@foo/bar"],
         OutdatedFlags {
           filters: svec!["@foo/bar"],
-          kind: OutdatedKind::Update { latest: false },
+          kind: OutdatedKind::Update {
+            latest: false,
+            interactive: false,
+          },
           recursive: false,
         },
       ),
@@ -11679,6 +11701,17 @@ Usage: deno repl [OPTIONS] [-- [ARGS]...]\n"
         OutdatedFlags {
           filters: svec![],
           kind: OutdatedKind::PrintOutdated { compatible: false },
+          recursive: false,
+        },
+      ),
+      (
+        svec!["--update", "--latest", "--interactive"],
+        OutdatedFlags {
+          filters: svec![],
+          kind: OutdatedKind::Update {
+            latest: true,
+            interactive: true,
+          },
           recursive: false,
         },
       ),
