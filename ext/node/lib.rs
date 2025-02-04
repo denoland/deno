@@ -443,6 +443,7 @@ deno_core::extension!(deno_node,
   objects = [
     ops::perf_hooks::EldHistogram,
     ops::sqlite::DatabaseSync,
+    ops::sqlite::Session,
     ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",

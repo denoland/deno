@@ -23,6 +23,7 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
@@ -203,43 +204,32 @@ pub struct WorkspaceFactoryOptions<
 pub type WorkspaceFactoryRc<TSys> =
   crate::sync::MaybeArc<WorkspaceFactory<TSys>>;
 
-pub struct WorkspaceFactory<
-  TSys: EnvCacheDir
-    + EnvHomeDir
-    + EnvVar
-    + EnvCurrentDir
-    + FsCanonicalize
-    + FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + SystemRandom
-    + SystemTimeNow
-    + ThreadSleep
-    + std::fmt::Debug
-    + MaybeSend
-    + MaybeSync
-    + Clone
-    + 'static,
-> {
-  sys: TSys,
-  deno_dir_path: DenoDirPathProviderRc<TSys>,
-  global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
-  http_cache: Deferred<HttpCacheRc>,
-  node_modules_dir_path: Deferred<Option<PathBuf>>,
-  npm_cache_dir: Deferred<NpmCacheDirRc>,
-  npmrc: Deferred<ResolvedNpmRcRc>,
-  node_modules_dir_mode: Deferred<NodeModulesDirMode>,
-  workspace_directory: Deferred<WorkspaceDirectoryRc>,
-  initial_cwd: PathBuf,
-  options: WorkspaceFactoryOptions<TSys>,
+pub trait WorkspaceFactorySys:
+  EnvCacheDir
+  + EnvHomeDir
+  + EnvVar
+  + EnvCurrentDir
+  + FsCanonicalize
+  + FsCreateDirAll
+  + FsMetadata
+  + FsOpen
+  + FsRead
+  + FsReadDir
+  + FsRemoveFile
+  + FsRename
+  + SystemRandom
+  + SystemTimeNow
+  + ThreadSleep
+  + std::fmt::Debug
+  + MaybeSend
+  + MaybeSync
+  + Clone
+  + 'static
+{
 }
 
 impl<
-    TSys: EnvCacheDir
+    T: EnvCacheDir
       + EnvHomeDir
       + EnvVar
       + EnvCurrentDir
@@ -259,8 +249,25 @@ impl<
       + MaybeSync
       + Clone
       + 'static,
-  > WorkspaceFactory<TSys>
+  > WorkspaceFactorySys for T
 {
+}
+
+pub struct WorkspaceFactory<TSys: WorkspaceFactorySys> {
+  sys: TSys,
+  deno_dir_path: DenoDirPathProviderRc<TSys>,
+  global_http_cache: Deferred<GlobalHttpCacheRc<TSys>>,
+  http_cache: Deferred<HttpCacheRc>,
+  node_modules_dir_path: Deferred<Option<PathBuf>>,
+  npm_cache_dir: Deferred<NpmCacheDirRc>,
+  npmrc: Deferred<ResolvedNpmRcRc>,
+  node_modules_dir_mode: Deferred<NodeModulesDirMode>,
+  workspace_directory: Deferred<WorkspaceDirectoryRc>,
+  initial_cwd: PathBuf,
+  options: WorkspaceFactoryOptions<TSys>,
+}
+
+impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   pub fn new(
     sys: TSys,
     initial_cwd: PathBuf,
@@ -555,35 +562,16 @@ pub struct ResolverFactoryOptions {
   pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
   pub no_sloppy_imports_cache: bool,
   pub npm_system_info: NpmSystemInfo,
+  pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
   pub unstable_sloppy_imports: bool,
 }
 
-pub struct ResolverFactory<
-  TSys: EnvCacheDir
-    + EnvCurrentDir
-    + EnvHomeDir
-    + EnvVar
-    + FsCanonicalize
-    + FsCreateDirAll
-    + FsMetadata
-    + FsOpen
-    + FsRead
-    + FsReadDir
-    + FsRemoveFile
-    + FsRename
-    + ThreadSleep
-    + SystemRandom
-    + SystemTimeNow
-    + std::fmt::Debug
-    + MaybeSend
-    + MaybeSync
-    + Clone
-    + 'static,
-> {
+pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
+  sys: NodeResolutionSys<TSys>,
   deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -608,37 +596,19 @@ pub struct ResolverFactory<
   sloppy_imports_resolver:
     Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
-  workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc>,
+  workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
 }
 
-impl<
-    TSys: EnvCacheDir
-      + EnvCurrentDir
-      + EnvHomeDir
-      + EnvVar
-      + FsCanonicalize
-      + FsCreateDirAll
-      + FsMetadata
-      + FsOpen
-      + FsRead
-      + FsReadDir
-      + FsRemoveFile
-      + FsRename
-      + ThreadSleep
-      + SystemRandom
-      + SystemTimeNow
-      + std::fmt::Debug
-      + MaybeSend
-      + MaybeSync
-      + Clone
-      + 'static,
-  > ResolverFactory<TSys>
-{
+impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   pub fn new(
     workspace_factory: WorkspaceFactoryRc<TSys>,
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
+      sys: NodeResolutionSys::new(
+        workspace_factory.sys.clone(),
+        options.node_resolution_cache.clone(),
+      ),
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -725,7 +695,7 @@ impl<
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.workspace_factory.sys.clone(),
+        self.sys.clone(),
         self.options.conditions_from_resolution_mode.clone(),
       )))
     })
@@ -760,7 +730,7 @@ impl<
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {
@@ -834,7 +804,7 @@ impl<
 
   pub async fn workspace_resolver(
     &self,
-  ) -> Result<&WorkspaceResolverRc, anyhow::Error> {
+  ) -> Result<&WorkspaceResolverRc<TSys>, anyhow::Error> {
     self
       .workspace_resolver
       .get_or_try_init(
@@ -865,13 +835,13 @@ impl<
             },
             specified_import_map,
           };
-          let resolver =
-            workspace.create_resolver(&self.workspace_factory.sys, options)?;
+          let resolver = workspace
+            .create_resolver(self.workspace_factory.sys.clone(), options)?;
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility
             log::warn!(
-              "Import map diagnostics:\n{}",
+              "Resolver diagnostics:\n{}",
               resolver
                 .diagnostics()
                 .iter()

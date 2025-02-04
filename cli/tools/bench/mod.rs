@@ -456,7 +456,7 @@ pub async fn run_benchmarks(
     .flatten()
     .collect::<Vec<_>>();
 
-  if specifiers.is_empty() {
+  if !workspace_bench_options.permit_no_files && specifiers.is_empty() {
     return Err(anyhow!("No bench modules found"));
   }
 

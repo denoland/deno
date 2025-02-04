@@ -136,8 +136,8 @@ declare namespace Deno {
     /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
-    readonly readable: ReadableStream<Uint8Array>;
-    readonly writable: WritableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
   }
 
   /** @category Network */
@@ -751,7 +751,7 @@ declare namespace Deno {
      * `maxDatagramSize`. */
     sendDatagram(data: Uint8Array): Promise<void>;
     /** Receive a datagram. */
-    readDatagram(): Promise<Uint8Array>;
+    readDatagram(): Promise<Uint8Array<ArrayBuffer>>;
 
     /** The endpoint for this connection. */
     readonly endpoint: QuicEndpoint;
@@ -800,7 +800,8 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface QuicSendStream extends WritableStream<Uint8Array> {
+  export interface QuicSendStream
+    extends WritableStream<Uint8Array<ArrayBufferLike>> {
     /** Indicates the send priority of this stream relative to other streams for
      * which the value has been set. */
     sendOrder: number;
@@ -817,7 +818,8 @@ declare namespace Deno {
    * @experimental
    * @category Network
    */
-  export interface QuicReceiveStream extends ReadableStream<Uint8Array> {
+  export interface QuicReceiveStream
+    extends ReadableStream<Uint8Array<ArrayBuffer>> {
     /**
      * 62-bit stream ID, unique within this connection.
      */
@@ -850,6 +852,18 @@ declare namespace Deno {
   export function connectQuic<ZRTT extends boolean>(
     options: ConnectQuicOptions<ZRTT>,
   ): ZRTT extends true ? (QuicConn | Promise<QuicConn>) : Promise<QuicConn>;
+
+  /**
+   * **UNSTABLE**: New API, yet to be vetted.
+   *
+   * Upgrade a QUIC connection into a WebTransport instance.
+   *
+   * @category Network
+   * @experimental
+   */
+  export function upgradeWebTransport(
+    conn: QuicConn,
+  ): Promise<WebTransport & { url: string }>;
 
   export {}; // only export exports
 }

@@ -59,6 +59,9 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
+use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -73,6 +76,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -103,8 +107,10 @@ struct SharedModuleLoaderState {
   npm_module_loader: Arc<DenoRtNpmModuleLoader>,
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker<DenoRtSys>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
+  sloppy_imports_resolver:
+    Option<SloppyImportsResolver<SloppyImportsCachedFs<DenoRtSys>>>,
   vfs: Arc<FileBackedVfs>,
-  workspace_resolver: WorkspaceResolver,
+  workspace_resolver: WorkspaceResolver<DenoRtSys>,
 }
 
 impl SharedModuleLoaderState {
@@ -201,10 +207,11 @@ impl ModuleLoader for EmbeddedModuleLoader {
       );
     }
 
-    let mapped_resolution = self
-      .shared
-      .workspace_resolver
-      .resolve(raw_specifier, &referrer);
+    let mapped_resolution = self.shared.workspace_resolver.resolve(
+      raw_specifier,
+      &referrer,
+      deno_config::workspace::ResolutionKind::Execution,
+    );
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -314,6 +321,18 @@ impl ModuleLoader for EmbeddedModuleLoader {
             return Ok(specifier.clone());
           }
         }
+
+        // do sloppy imports resolution if enabled
+        let specifier = if let Some(sloppy_imports_resolver) =
+          &self.shared.sloppy_imports_resolver
+        {
+          sloppy_imports_resolver
+            .resolve(&specifier, SloppyImportsResolutionKind::Execution)
+            .map(|s| s.into_specifier())
+            .unwrap_or(specifier)
+        } else {
+          specifier
+        };
 
         Ok(
           self
@@ -689,6 +708,7 @@ pub async fn run(
     };
     NpmRegistryReadPermissionChecker::new(sys.clone(), mode)
   };
+  let node_resolution_sys = NodeResolutionSys::new(sys.clone(), None);
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -738,7 +758,7 @@ pub async fn run(
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
@@ -782,7 +802,7 @@ pub async fn run(
     DenoIsBuiltInNodeModuleChecker,
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
-    sys.clone(),
+    node_resolution_sys,
     node_resolver::ConditionsFromResolutionMode::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
@@ -812,6 +832,10 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
+  let sloppy_imports_resolver =
+    metadata.unstable_config.sloppy_imports.then(|| {
+      SloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
+    });
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -859,6 +883,9 @@ pub async fn run(
         .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
+      Default::default(),
+      Default::default(),
+      sys.clone(),
     )
   };
   let code_cache = match metadata.code_cache_key {
@@ -888,6 +915,7 @@ pub async fn run(
       )),
       npm_registry_permission_checker,
       npm_req_resolver,
+      sloppy_imports_resolver,
       vfs: vfs.clone(),
       workspace_resolver,
     }),

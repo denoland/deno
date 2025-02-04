@@ -4,6 +4,7 @@ import { core, primordials } from "ext:core/mod.js";
 import {
   op_net_listen_udp,
   op_net_listen_unixpacket,
+  op_runtime_cpu_usage,
   op_runtime_memory_usage,
 } from "ext:core/ops";
 
@@ -34,6 +35,7 @@ import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 const { ObjectDefineProperties } = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
+const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
 
 const denoNs = {
   Process: process.Process,
@@ -58,7 +60,15 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  memoryUsage: () => op_runtime_memory_usage(),
+  cpuUsage: () => {
+    const { 0: system, 1: user } = op_runtime_cpu_usage();
+    return { system, user };
+  },
+  memoryUsage: () => {
+    const { 0: rss, 1: heapTotal, 2: heapUsed, 3: external } =
+      op_runtime_memory_usage();
+    return { rss, heapTotal, heapUsed, external };
+  },
   mkdirSync: fs.mkdirSync,
   mkdir: fs.mkdir,
   chdir: fs.chdir,
@@ -198,6 +208,10 @@ ObjectDefineProperties(denoNsUnstableById[unstableIds.net], {
     loadQuic,
   ),
   QuicIncoming: core.propWritableLazyLoaded((q) => q.QuicIncoming, loadQuic),
+  upgradeWebTransport: core.propWritableLazyLoaded(
+    (wt) => wt.upgradeWebTransport,
+    loadWebTransport,
+  ),
 });
 
 // denoNsUnstableById[unstableIds.unsafeProto] = { __proto__: null }

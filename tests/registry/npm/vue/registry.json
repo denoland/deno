@@ -89,7 +89,6 @@
     "type": "git",
     "url": "git+https://github.com/vuejs/core.git"
   },
-  "readmeFilename": "README.md",
   "homepage": "https://github.com/vuejs/core/tree/main/packages/vue#readme",
   "bugs": {
     "url": "https://github.com/vuejs/core/issues"

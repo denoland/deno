@@ -12,6 +12,9 @@ use serde::Serialize;
 
 use super::SqliteError;
 
+// ECMA-262, 15th edition, 21.1.2.6. Number.MAX_SAFE_INTEGER (2^53-1)
+const MAX_SAFE_JS_INTEGER: i64 = 9007199254740991;
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunStatementResult {
@@ -122,17 +125,19 @@ impl StatementSync {
     &self,
     index: i32,
     scope: &mut v8::HandleScope<'a>,
-  ) -> v8::Local<'a, v8::Value> {
+  ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
     // as it lives as long as the StatementSync instance.
     unsafe {
-      match ffi::sqlite3_column_type(self.inner, index) {
+      Ok(match ffi::sqlite3_column_type(self.inner, index) {
         ffi::SQLITE_INTEGER => {
           let value = ffi::sqlite3_column_int64(self.inner, index);
           if self.use_big_ints.get() {
             v8::BigInt::new_from_i64(scope, value).into()
-          } else {
+          } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Integer::new(scope, value as _).into()
+          } else {
+            return Err(SqliteError::NumberTooLarge(index, value));
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -155,14 +160,14 @@ impl StatementSync {
           let size = ffi::sqlite3_column_bytes(self.inner, index);
           let value =
             std::slice::from_raw_parts(value as *const u8, size as usize);
-          let value =
-            v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
-              .make_shared();
-          v8::ArrayBuffer::with_backing_store(scope, &value).into()
+          let bs = v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+            .make_shared();
+          let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+          v8::Uint8Array::new(scope, ab, 0, size as _).unwrap().into()
         }
         ffi::SQLITE_NULL => v8::null(scope).into(),
         _ => v8::undefined(scope).into(),
-      }
+      })
     }
   }
 
@@ -183,7 +188,7 @@ impl StatementSync {
     let mut values = Vec::with_capacity(num_cols);
 
     for (index, name) in iter {
-      let value = self.column_value(index, scope);
+      let value = self.column_value(index, scope)?;
       let name =
         v8::String::new_from_utf8(scope, name, v8::NewStringType::Normal)
           .unwrap()
@@ -260,6 +265,20 @@ impl StatementSync {
               size as i32,
               ffi::SQLITE_TRANSIENT(),
             );
+          }
+        } else if value.is_big_int() {
+          let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
+          let (as_int, lossless) = value.i64_value();
+          if !lossless {
+            return Err(SqliteError::FailedBind(
+              "BigInt value is too large to bind",
+            ));
+          }
+
+          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+          // as it lives as long as the StatementSync instance.
+          unsafe {
+            ffi::sqlite3_bind_int64(raw, i + 1, as_int);
           }
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));
@@ -353,5 +372,39 @@ impl StatementSync {
   #[fast]
   fn set_read_big_ints(&self, enabled: bool) {
     self.use_big_ints.set(enabled);
+  }
+
+  #[getter]
+  #[rename("sourceSQL")]
+  #[string]
+  fn source_sql(&self) -> String {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
+    unsafe {
+      let raw = ffi::sqlite3_sql(self.inner);
+      std::ffi::CStr::from_ptr(raw as _)
+        .to_string_lossy()
+        .into_owned()
+    }
+  }
+
+  #[getter]
+  #[rename("expandedSQL")]
+  #[string]
+  fn expanded_sql(&self) -> Result<String, SqliteError> {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
+    unsafe {
+      let raw = ffi::sqlite3_expanded_sql(self.inner);
+      if raw.is_null() {
+        return Err(SqliteError::InvalidExpandedSql);
+      }
+      let sql = std::ffi::CStr::from_ptr(raw as _)
+        .to_string_lossy()
+        .into_owned();
+      ffi::sqlite3_free(raw as _);
+
+      Ok(sql)
+    }
   }
 }

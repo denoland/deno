@@ -48,6 +48,7 @@ use deno_runtime::deno_web::BlobStore;
 use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
@@ -644,6 +645,7 @@ impl CliFactory {
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
           conditions_from_resolution_mode: Default::default(),
+          node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           no_sloppy_imports_cache: false,
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
@@ -711,7 +713,7 @@ impl CliFactory {
 
   pub async fn workspace_resolver(
     &self,
-  ) -> Result<&Arc<WorkspaceResolver>, AnyError> {
+  ) -> Result<&Arc<WorkspaceResolver<CliSys>>, AnyError> {
     self.initialize_npm_resolution_if_managed().await?;
     self.resolver_factory()?.workspace_resolver().await
   }
