@@ -8,6 +8,8 @@ use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
+use deno_core::OpState;
+use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
@@ -22,6 +24,7 @@ struct DatabaseSyncOptions {
   open: bool,
   #[serde(default = "true_fn")]
   enable_foreign_key_constraints: bool,
+  read_only: bool,
 }
 
 fn true_fn() -> bool {
@@ -33,6 +36,7 @@ impl Default for DatabaseSyncOptions {
     DatabaseSyncOptions {
       open: true,
       enable_foreign_key_constraints: true,
+      read_only: false,
     }
   }
 }
@@ -44,6 +48,33 @@ pub struct DatabaseSync {
 }
 
 impl GarbageCollected for DatabaseSync {}
+
+fn open_db(
+  state: &mut OpState,
+  readonly: bool,
+  location: &str,
+) -> Result<rusqlite::Connection, SqliteError> {
+  if location == ":memory:" {
+    return Ok(rusqlite::Connection::open_in_memory()?);
+  }
+
+  state
+    .borrow::<PermissionsContainer>()
+    .check_read_with_api_name(location, Some("node:sqlite"))?;
+
+  if readonly {
+    return Ok(rusqlite::Connection::open_with_flags(
+      location,
+      rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?);
+  }
+
+  state
+    .borrow::<PermissionsContainer>()
+    .check_write_with_api_name(location, Some("node:sqlite"))?;
+
+  Ok(rusqlite::Connection::open(location)?)
+}
 
 // Represents a single connection to a SQLite database.
 #[op2]
@@ -57,13 +88,15 @@ impl DatabaseSync {
   #[constructor]
   #[cppgc]
   fn new(
+    state: &mut OpState,
     #[string] location: String,
     #[serde] options: Option<DatabaseSyncOptions>,
   ) -> Result<DatabaseSync, SqliteError> {
     let options = options.unwrap_or_default();
 
     let db = if options.open {
-      let db = rusqlite::Connection::open(&location)?;
+      let db = open_db(state, options.read_only, &location)?;
+
       if options.enable_foreign_key_constraints {
         db.execute("PRAGMA foreign_keys = ON", [])?;
       }
@@ -85,12 +118,12 @@ impl DatabaseSync {
   // via the constructor. An exception is thrown if the database is
   // already opened.
   #[fast]
-  fn open(&self) -> Result<(), SqliteError> {
+  fn open(&self, state: &mut OpState) -> Result<(), SqliteError> {
     if self.conn.borrow().is_some() {
       return Err(SqliteError::AlreadyOpen);
     }
 
-    let db = rusqlite::Connection::open(&self.location)?;
+    let db = open_db(state, self.options.read_only, &self.location)?;
     if self.options.enable_foreign_key_constraints {
       db.execute("PRAGMA foreign_keys = ON", [])?;
     }

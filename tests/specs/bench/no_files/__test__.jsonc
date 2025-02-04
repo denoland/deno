@@ -1,0 +1,14 @@
+{
+  "tests": {
+    "error": {
+      "args": "bench",
+      "output": "error.out",
+      "exitCode": 1
+    },
+    "permit_no_files": {
+      "args": "bench --permit-no-files",
+      "output": "",
+      "exitCode": 0
+    }
+  }
+}

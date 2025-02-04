@@ -2,6 +2,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
+const tempDir = Deno.makeTempDirSync();
+
 Deno.test("[node/sqlite] in-memory databases", () => {
   const db1 = new DatabaseSync(":memory:");
   const db2 = new DatabaseSync(":memory:");
@@ -40,7 +42,6 @@ Deno.test(
     name: "[node/sqlite] PRAGMAs are supported",
   },
   () => {
-    const tempDir = Deno.makeTempDirSync();
     const db = new DatabaseSync(`${tempDir}/test.db`);
 
     assertEquals(db.prepare("PRAGMA journal_mode = WAL").get(), {
@@ -71,6 +72,9 @@ Deno.test("[node/sqlite] StatementSync read bigints are supported", () => {
 
   stmt.setReadBigInts(true);
   assertEquals(stmt.get(), { key: 1n, __proto__: null });
+
+  assertEquals(stmt.sourceSQL, "SELECT * FROM data");
+  assertEquals(stmt.expandedSQL, "SELECT * FROM data");
 });
 
 Deno.test("[node/sqlite] createSession and changesets", () => {
@@ -111,4 +115,40 @@ Deno.test("[node/sqlite] StatementSync blob are Uint8Array", () => {
   assertEquals(obj.length, 1);
   const row = obj[0] as Record<string, Uint8Array>;
   assert(row["cast('test' as blob)"] instanceof Uint8Array);
+});
+
+Deno.test({
+  name: "[node/sqlite] sqlite permissions",
+  permissions: { read: false, write: false },
+  fn() {
+    assertThrows(() => {
+      new DatabaseSync("test.db");
+    }, Deno.errors.NotCapable);
+    assertThrows(() => {
+      new DatabaseSync("test.db", { readOnly: true });
+    }, Deno.errors.NotCapable);
+  },
+});
+
+Deno.test({
+  name: "[node/sqlite] readOnly database",
+  permissions: { read: true, write: true },
+  fn() {
+    {
+      const db = new DatabaseSync(`${tempDir}/test3.db`);
+      db.exec("CREATE TABLE foo (id INTEGER PRIMARY KEY)");
+      db.close();
+    }
+    {
+      const db = new DatabaseSync(`${tempDir}/test3.db`, { readOnly: true });
+      assertThrows(
+        () => {
+          db.exec("CREATE TABLE test(key INTEGER PRIMARY KEY)");
+        },
+        Error,
+        "attempt to write a readonly database",
+      );
+      db.close();
+    }
+  },
 });
