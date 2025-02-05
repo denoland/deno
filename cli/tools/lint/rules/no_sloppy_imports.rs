@@ -6,8 +6,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use deno_ast::SourceRange;
-use deno_config::workspace::SloppyImportsResolutionReason;
-use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsErrorBox;
 use deno_graph::source::ResolutionKind;
 use deno_graph::source::ResolveError;
@@ -18,6 +16,8 @@ use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
 use deno_lint::tags;
+use deno_resolver::workspace::SloppyImportsResolutionReason;
+use deno_resolver::workspace::WorkspaceResolver;
 use text_lines::LineAndColumnIndex;
 
 use super::ExtendedLintRule;
@@ -192,17 +192,17 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
         &referrer_range.specifier,
         match resolution_kind {
           ResolutionKind::Execution => {
-            deno_config::workspace::ResolutionKind::Execution
+            deno_resolver::workspace::ResolutionKind::Execution
           }
           ResolutionKind::Types => {
-            deno_config::workspace::ResolutionKind::Types
+            deno_resolver::workspace::ResolutionKind::Types
           }
         },
       )
       .map_err(|err| ResolveError::Other(JsErrorBox::from_err(err)))?;
 
     match resolution {
-      deno_config::workspace::MappedResolution::Normal {
+      deno_resolver::workspace::MappedResolution::Normal {
         specifier,
         sloppy_reason,
         ..
@@ -216,13 +216,13 @@ impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
         }
         Ok(specifier)
       }
-      deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+      deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
         ..
       }
-      | deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+      | deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
         ..
       }
-      | deno_config::workspace::MappedResolution::PackageJson { .. } => {
+      | deno_resolver::workspace::MappedResolution::PackageJson { .. } => {
         // this error is ignored
         Err(ResolveError::Other(JsErrorBox::generic("")))
       }

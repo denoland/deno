@@ -15,9 +15,6 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
@@ -27,6 +24,9 @@ use deno_graph::StaticDependencyKind;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
@@ -211,7 +211,7 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
-    resolution_kind: deno_config::workspace::ResolutionKind,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
     text_info: &SourceTextInfo,
     range: &deno_graph::PositionRange,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
@@ -246,7 +246,7 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
-    resolution_kind: deno_config::workspace::ResolutionKind,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
     let resolved = if let Ok(resolved) =
       self
@@ -449,7 +449,7 @@ impl SpecifierUnfurler {
         let maybe_unfurled = self.unfurl_specifier_reporting_diagnostic(
           module_url,
           specifier,
-          deno_config::workspace::ResolutionKind::Execution, // dynamic imports are always execution
+          deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
           text_info,
           &dep.argument_range,
           diagnostic_reporter,
@@ -477,7 +477,7 @@ impl SpecifierUnfurler {
           let unfurled = self.unfurl_specifier_reporting_diagnostic(
             module_url,
             specifier,
-            deno_config::workspace::ResolutionKind::Execution, // dynamic imports are always execution
+            deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
             text_info,
             &dep.argument_range,
             diagnostic_reporter,
@@ -523,7 +523,7 @@ impl SpecifierUnfurler {
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
-       resolution_kind: deno_config::workspace::ResolutionKind,
+       resolution_kind: deno_resolver::workspace::ResolutionKind,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
         if let Some(unfurled) = self.unfurl_specifier_reporting_diagnostic(
@@ -544,18 +544,18 @@ impl SpecifierUnfurler {
       match dep {
         DependencyDescriptor::Static(dep) => {
           let resolution_kind = if parsed_source.media_type().is_declaration() {
-            deno_config::workspace::ResolutionKind::Types
+            deno_resolver::workspace::ResolutionKind::Types
           } else {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
-                deno_config::workspace::ResolutionKind::Execution
+                deno_resolver::workspace::ResolutionKind::Execution
               }
               StaticDependencyKind::ExportType
               | StaticDependencyKind::ImportType => {
-                deno_config::workspace::ResolutionKind::Types
+                deno_resolver::workspace::ResolutionKind::Types
               }
             }
           };
@@ -601,7 +601,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        deno_config::workspace::ResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -610,7 +610,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &jsdoc.specifier.text,
         &jsdoc.specifier.range,
-        deno_config::workspace::ResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -619,7 +619,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        deno_config::workspace::ResolutionKind::Execution,
+        deno_resolver::workspace::ResolutionKind::Execution,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -628,7 +628,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        deno_config::workspace::ResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -744,7 +744,7 @@ mod tests {
         exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
       }],
       vec![Arc::new(package_json)],
-      deno_config::workspace::PackageJsonDepResolution::Enabled,
+      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
       Default::default(),
       Default::default(),
       Default::default(),
@@ -906,7 +906,7 @@ export type * from "./c.d.ts";
         Arc::new(pkg_json_subtract),
         Arc::new(pkg_json_publishing),
       ],
-      deno_config::workspace::PackageJsonDepResolution::Enabled,
+      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
       Default::default(),
       Default::default(),
       Default::default(),

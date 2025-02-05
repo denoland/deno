@@ -21,18 +21,12 @@ use deno_config::deno_json::TsConfig;
 use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::CreateResolverOptions;
-use deno_config::workspace::FsCacheOptions;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::SloppyImportsOptions;
-use deno_config::workspace::SpecifiedImportMap;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -51,6 +45,12 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
+use deno_resolver::workspace::CreateResolverOptions;
+use deno_resolver::workspace::FsCacheOptions;
+use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::workspace::SpecifiedImportMap;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -1578,43 +1578,42 @@ impl ConfigData {
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()
       || unstable.contains("sloppy-imports");
-    let resolver = member_dir
-      .workspace
-      .create_resolver(
-        CliSys::default(),
-        CreateResolverOptions {
-          pkg_json_dep_resolution,
-          specified_import_map,
-          sloppy_imports_options: if unstable_sloppy_imports {
-            SloppyImportsOptions::Enabled
-          } else {
-            SloppyImportsOptions::Disabled
-          },
-          fs_cache_options: FsCacheOptions::Disabled,
+    let resolver = WorkspaceResolver::from_workspace(
+      &member_dir.workspace,
+      CliSys::default(),
+      CreateResolverOptions {
+        pkg_json_dep_resolution,
+        specified_import_map,
+        sloppy_imports_options: if unstable_sloppy_imports {
+          SloppyImportsOptions::Enabled
+        } else {
+          SloppyImportsOptions::Disabled
         },
+        fs_cache_options: FsCacheOptions::Disabled,
+      },
+    )
+    .inspect_err(|err| {
+      lsp_warn!(
+        "  Failed to load resolver: {}",
+        err // will contain the specifier
+      );
+    })
+    .ok()
+    .unwrap_or_else(|| {
+      // create a dummy resolver
+      WorkspaceResolver::new_raw(
+        scope.clone(),
+        None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
+        member_dir.workspace.package_jsons().cloned().collect(),
+        pkg_json_dep_resolution,
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        CliSys::default(),
       )
-      .inspect_err(|err| {
-        lsp_warn!(
-          "  Failed to load resolver: {}",
-          err // will contain the specifier
-        );
-      })
-      .ok()
-      .unwrap_or_else(|| {
-        // create a dummy resolver
-        WorkspaceResolver::new_raw(
-          scope.clone(),
-          None,
-          member_dir.workspace.resolver_jsr_pkgs().collect(),
-          member_dir.workspace.package_jsons().cloned().collect(),
-          pkg_json_dep_resolution,
-          Default::default(),
-          Default::default(),
-          Default::default(),
-          Default::default(),
-          CliSys::default(),
-        )
-      });
+    });
     if !resolver.diagnostics().is_empty() {
       lsp_warn!(
         "  Resolver diagnostics:\n{}",

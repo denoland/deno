@@ -12,9 +12,6 @@ use deno_cache_dir::HttpCacheRc;
 use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
-use deno_config::workspace::FsCacheOptions;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::SloppyImportsOptions;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
@@ -66,6 +63,10 @@ use crate::npmrc::ResolvedNpmRcRc;
 use crate::sync::new_rc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::workspace::FsCacheOptions;
+use crate::workspace::PackageJsonDepResolution;
+use crate::workspace::SloppyImportsOptions;
+use crate::workspace::WorkspaceResolver;
 use crate::DefaultDenoResolverRc;
 use crate::DenoResolver;
 use crate::DenoResolverOptions;
@@ -132,7 +133,7 @@ pub trait SpecifiedImportMapProvider:
 {
   async fn get(
     &self,
-  ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, anyhow::Error>;
+  ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -777,7 +778,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             Some(import_map) => import_map.get().await?,
             None => None,
           };
-          let options = deno_config::workspace::CreateResolverOptions {
+          let options = crate::workspace::CreateResolverOptions {
             pkg_json_dep_resolution: match self
               .options
               .package_json_dep_resolution
@@ -809,8 +810,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             },
             fs_cache_options: FsCacheOptions::Enabled,
           };
-          let resolver = workspace
-            .create_resolver(self.workspace_factory.sys.clone(), options)?;
+          let resolver = WorkspaceResolver::from_workspace(
+            workspace,
+            self.workspace_factory.sys.clone(),
+            options,
+          )?;
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility

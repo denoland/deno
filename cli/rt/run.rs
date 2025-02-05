@@ -7,10 +7,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::MappedResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::SloppyImportsOptions;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -60,6 +57,9 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -206,7 +206,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let mapped_resolution = self.shared.workspace_resolver.resolve(
       raw_specifier,
       &referrer,
-      deno_config::workspace::ResolutionKind::Execution,
+      deno_resolver::workspace::ResolutionKind::Execution,
     );
 
     match mapped_resolution {

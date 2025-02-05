@@ -7,13 +7,13 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::LintRulesConfig;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_lint::tags;
+use deno_resolver::workspace::WorkspaceResolver;
 
 use crate::sys::CliSys;
 

@@ -7,11 +7,6 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::MappedResolutionDiagnostic;
-use deno_config::workspace::MappedResolutionError;
-use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
-use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
@@ -38,11 +33,18 @@ use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use crate::workspace::MappedResolution;
+use crate::workspace::MappedResolutionDiagnostic;
+use crate::workspace::MappedResolutionError;
+use crate::workspace::WorkspaceResolvePkgJsonFolderError;
+use crate::workspace::WorkspaceResolver;
+
 pub mod cjs;
 pub mod factory;
 pub mod npm;
 pub mod npmrc;
 mod sync;
+pub mod workspace;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =

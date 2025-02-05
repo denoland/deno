@@ -51,7 +51,7 @@ repository = "https://github.com/denoland/deno"
 
 # TODO(nayeemrmn): Land https://github.com/denoland/deno_config/pull/156!
 [patch.crates-io]
-deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "1f6fb4e0d8ece73eeada791f2911aaa68088a076" }
+deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "04b1c9d6190cab088b657524454e04289177e606" }
 
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
@@ -159,6 +159,7 @@ hyper = { version = "1.6.0", features = ["full"] }
 hyper-rustls = { version = "0.27.2", default-features = false, features = ["http1", "http2", "tls12", "ring"] }
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
+import_map = { version = "0.21.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
