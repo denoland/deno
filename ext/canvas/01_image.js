@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { internals, primordials } from "ext:core/mod.js";
-import { op_image_decode_png, op_image_process } from "ext:core/ops";
+import { op_create_image_bitmap } from "ext:core/ops";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
@@ -11,13 +11,11 @@ const {
   ObjectPrototypeIsPrototypeOf,
   Symbol,
   SymbolFor,
-  TypeError,
   TypedArrayPrototypeGetBuffer,
   Uint8Array,
-  MathCeil,
-  PromiseResolve,
   PromiseReject,
   RangeError,
+  ArrayPrototypeJoin,
 } = primordials;
 import {
   _data,
@@ -164,6 +162,12 @@ function createImageBitmap(
   options = undefined,
 ) {
   const prefix = "Failed to execute 'createImageBitmap'";
+  // Add the value when implementing to add support for ImageBitmapSource
+  const imageBitmapSources = [
+    "Blob",
+    "ImageData",
+    "ImageBitmap",
+  ];
 
   // Overload: createImageBitmap(image [, options ])
   if (arguments.length < 3) {
@@ -184,6 +188,7 @@ function createImageBitmap(
       "Argument 6",
     );
 
+    // 1.
     if (sw === 0) {
       return PromiseReject(new RangeError("sw has to be greater than 0"));
     }
@@ -193,6 +198,7 @@ function createImageBitmap(
     }
   }
 
+  // 2.
   if (options.resizeWidth === 0) {
     return PromiseReject(
       new DOMException(
@@ -204,7 +210,7 @@ function createImageBitmap(
   if (options.resizeHeight === 0) {
     return PromiseReject(
       new DOMException(
-        "options.resizeWidth has to be greater than 0",
+        "options.resizeHeight has to be greater than 0",
         "InvalidStateError",
       ),
     );
@@ -212,139 +218,159 @@ function createImageBitmap(
 
   const imageBitmap = webidl.createBranded(ImageBitmap);
 
-  if (ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image)) {
-    const processedImage = processImage(
-      image[_data],
-      image[_width],
-      image[_height],
-      sxOrOptions,
-      sy,
-      sw,
-      sh,
-      options,
+  // 3.
+  const isBlob = ObjectPrototypeIsPrototypeOf(BlobPrototype, image);
+  const isImageData = ObjectPrototypeIsPrototypeOf(ImageDataPrototype, image);
+  const isImageBitmap = ObjectPrototypeIsPrototypeOf(
+    ImageBitmapPrototype,
+    image,
+  );
+  if (!isBlob && !isImageData && !isImageBitmap) {
+    return PromiseReject(
+      new DOMException(
+        `${prefix}: The provided value for 'image' is not of type '(${
+          ArrayPrototypeJoin(imageBitmapSources, " or ")
+        })'`,
+        "InvalidStateError",
+      ),
     );
-    imageBitmap[_bitmapData] = processedImage.data;
-    imageBitmap[_width] = processedImage.outputWidth;
-    imageBitmap[_height] = processedImage.outputHeight;
-    return PromiseResolve(imageBitmap);
   }
-  if (ObjectPrototypeIsPrototypeOf(BlobPrototype, image)) {
-    return (async () => {
-      const data = await image.arrayBuffer();
-      const mimetype = sniffImage(image.type);
-      if (mimetype !== "image/png") {
-        throw new DOMException(
-          `Unsupported type '${image.type}'`,
-          "InvalidStateError",
+
+  // 4.
+  return (async () => {
+    //
+    // For performance reasons, the arguments passed to op are represented as numbers that don't need to be serialized.
+    //
+
+    let width = 0;
+    let height = 0;
+    // If the image doesn't have a MIME type, mark it as 0.
+    let mimeType = 0;
+    let imageBitmapSource, buf;
+    if (isBlob) {
+      imageBitmapSource = 0;
+      buf = new Uint8Array(await image.arrayBuffer());
+      const mimeTypeString = sniffImage(image.type);
+
+      if (mimeTypeString === "image/png") {
+        mimeType = 1;
+      } else if (mimeTypeString === "image/jpeg") {
+        mimeType = 2;
+      } else if (mimeTypeString === "image/gif") {
+        mimeType = 3;
+        // NOTE: Temporarily not supported due to build size concerns
+        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
+        return PromiseReject(
+          new DOMException(
+            "The MIME type of source image is not supported currently",
+            "InvalidStateError",
+          ),
+        );
+      } else if (mimeTypeString === "image/bmp") {
+        mimeType = 4;
+      } else if (mimeTypeString === "image/x-icon") {
+        mimeType = 5;
+      } else if (mimeTypeString === "image/webp") {
+        mimeType = 6;
+        // NOTE: Temporarily not supported due to build size concerns
+        // https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
+        return PromiseReject(
+          new DOMException(
+            "The MIME type of source image is not supported currently",
+            "InvalidStateError",
+          ),
+        );
+      } else if (mimeTypeString === "") {
+        return PromiseReject(
+          new DOMException(
+            `The MIME type of source image is not specified\n
+hint: When you want to get a "Blob" from "fetch", make sure to go through a file server that returns the appropriate content-type response header,
+      and specify the URL to the file server like "await(await fetch('http://localhost:8000/sample.png').blob()".
+      Alternatively, if you are reading a local file using 'Deno.readFile' etc.,
+      set the appropriate MIME type like "new Blob([await Deno.readFile('sample.png')], { type: 'image/png' })".\n`,
+            "InvalidStateError",
+          ),
+        );
+      } else {
+        return PromiseReject(
+          new DOMException(
+            `The the MIME type ${mimeTypeString} of source image is not a supported format\n
+info: The following MIME types are supported.
+docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n`,
+            "InvalidStateError",
+          ),
         );
       }
-      const { data: imageData, width, height } = op_image_decode_png(
-        new Uint8Array(data),
-      );
-      const processedImage = processImage(
-        imageData,
-        width,
-        height,
-        sxOrOptions,
-        sy,
-        sw,
-        sh,
-        options,
-      );
-      imageBitmap[_bitmapData] = processedImage.data;
-      imageBitmap[_width] = processedImage.outputWidth;
-      imageBitmap[_height] = processedImage.outputHeight;
-      return imageBitmap;
-    })();
-  } else {
-    return PromiseReject(new TypeError("Invalid or unsupported image value"));
-  }
-}
+    } else if (isImageData) {
+      width = image[_width];
+      height = image[_height];
+      imageBitmapSource = 1;
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_data]));
+    } else if (isImageBitmap) {
+      width = image[_width];
+      height = image[_height];
+      imageBitmapSource = 2;
+      buf = new Uint8Array(TypedArrayPrototypeGetBuffer(image[_bitmapData]));
+    }
 
-function processImage(input, width, height, sx, sy, sw, sh, options) {
-  let sourceRectangle;
+    // If those options are not provided, assign 0 to mean undefined(None).
+    const _sx = typeof sxOrOptions === "number" ? sxOrOptions : 0;
+    const _sy = sy ?? 0;
+    const _sw = sw ?? 0;
+    const _sh = sh ?? 0;
 
-  if (
-    sx !== undefined && sy !== undefined && sw !== undefined && sh !== undefined
-  ) {
-    sourceRectangle = [
-      [sx, sy],
-      [sx + sw, sy],
-      [sx + sw, sy + sh],
-      [sx, sy + sh],
-    ];
-  } else {
-    sourceRectangle = [
-      [0, 0],
-      [width, 0],
-      [width, height],
-      [0, height],
-    ];
-  }
-  const widthOfSourceRect = sourceRectangle[1][0] - sourceRectangle[0][0];
-  const heightOfSourceRect = sourceRectangle[3][1] - sourceRectangle[0][1];
+    // If those options are not provided, assign 0 to mean undefined(None).
+    const resizeWidth = options.resizeWidth ?? 0;
+    const resizeHeight = options.resizeHeight ?? 0;
 
-  let outputWidth;
-  if (options.resizeWidth !== undefined) {
-    outputWidth = options.resizeWidth;
-  } else if (options.resizeHeight !== undefined) {
-    outputWidth = MathCeil(
-      (widthOfSourceRect * options.resizeHeight) / heightOfSourceRect,
-    );
-  } else {
-    outputWidth = widthOfSourceRect;
-  }
+    // If the imageOrientation option is set "from-image" or not set, assign 0.
+    const imageOrientation = options.imageOrientation === "flipY" ? 1 : 0;
 
-  let outputHeight;
-  if (options.resizeHeight !== undefined) {
-    outputHeight = options.resizeHeight;
-  } else if (options.resizeWidth !== undefined) {
-    outputHeight = MathCeil(
-      (heightOfSourceRect * options.resizeWidth) / widthOfSourceRect,
-    );
-  } else {
-    outputHeight = heightOfSourceRect;
-  }
+    // If the premultiplyAlpha option is "default" or not set, assign 0.
+    let premultiplyAlpha = 0;
+    if (options.premultiplyAlpha === "premultiply") {
+      premultiplyAlpha = 1;
+    } else if (options.premultiplyAlpha === "none") {
+      premultiplyAlpha = 2;
+    }
 
-  if (options.colorSpaceConversion === "none") {
-    throw new TypeError(
-      "Cannot create image: invalid colorSpaceConversion option, 'none' is not supported",
-    );
-  }
+    // If the colorSpaceConversion option is "default" or not set, assign 0.
+    const colorSpaceConversion = options.colorSpaceConversion === "none"
+      ? 1
+      : 0;
 
-  /*
-   * The cropping works differently than the spec specifies:
-   * The spec states to create an infinite surface and place the top-left corner
-   * of the image a 0,0 and crop based on sourceRectangle.
-   *
-   * We instead create a surface the size of sourceRectangle, and position
-   * the image at the correct location, which is the inverse of the x & y of
-   * sourceRectangle's top-left corner.
-   */
-  const data = op_image_process(
-    new Uint8Array(TypedArrayPrototypeGetBuffer(input)),
-    {
+    // If the resizeQuality option is "low" or not set, assign 0.
+    let resizeQuality = 0;
+    if (options.resizeQuality === "pixelated") {
+      resizeQuality = 1;
+    } else if (options.resizeQuality === "medium") {
+      resizeQuality = 2;
+    } else if (options.resizeQuality === "high") {
+      resizeQuality = 3;
+    }
+
+    const processedImage = op_create_image_bitmap(
+      buf,
       width,
       height,
-      surfaceWidth: widthOfSourceRect,
-      surfaceHeight: heightOfSourceRect,
-      inputX: sourceRectangle[0][0] * -1, // input_x
-      inputY: sourceRectangle[0][1] * -1, // input_y
-      outputWidth,
-      outputHeight,
-      resizeQuality: options.resizeQuality,
-      flipY: options.imageOrientation === "flipY",
-      premultiply: options.premultiplyAlpha === "default"
-        ? null
-        : (options.premultiplyAlpha === "premultiply"),
-    },
-  );
-
-  return {
-    data,
-    outputWidth,
-    outputHeight,
-  };
+      _sx,
+      _sy,
+      _sw,
+      _sh,
+      imageOrientation,
+      premultiplyAlpha,
+      colorSpaceConversion,
+      resizeWidth,
+      resizeHeight,
+      resizeQuality,
+      imageBitmapSource,
+      mimeType,
+    );
+    imageBitmap[_bitmapData] = processedImage[0];
+    imageBitmap[_width] = processedImage[1];
+    imageBitmap[_height] = processedImage[2];
+    return imageBitmap;
+  })();
 }
 
 function getBitmapData(imageBitmap) {
