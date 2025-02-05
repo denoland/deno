@@ -1,0 +1,16 @@
+{
+  "envs": {
+    "PLAYWRIGHT_BROWSERS_PATH": "../../../../.ms-playwright"
+  },
+  "steps": [{
+    "args": "run -A npm:playwright install chromium",
+    "output": "[WILDCARD]"
+  }, {
+    // stdio pipes beyond stdin/stdout/stderr are not currently supported on windows
+    // https://github.com/denoland/deno/issues/23524
+    // TODO(kt3k): enable this on windows when the issue is fixed
+    "if": "unix",
+    "args": "run -A main.ts",
+    "output": "chromium launched\n"
+  }]
+}

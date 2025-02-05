@@ -49,6 +49,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -385,6 +386,11 @@ impl PendingChange {
   }
 }
 
+pub type DiagnosticsMap = IndexMap<String, Vec<crate::tsc::Diagnostic>>;
+pub type ScopedAmbientModules =
+  HashMap<Option<ModuleSpecifier>, MaybeAmbientModules>;
+pub type MaybeAmbientModules = Option<Vec<String>>;
+
 impl TsServer {
   pub fn new(performance: Arc<Performance>) -> Self {
     let (tx, request_rx) = mpsc::unbounded_channel::<Request>();
@@ -466,7 +472,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifiers: Vec<ModuleSpecifier>,
     token: CancellationToken,
-  ) -> Result<IndexMap<String, Vec<crate::tsc::Diagnostic>>, AnyError> {
+  ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
     for specifier in specifiers {
@@ -489,10 +495,20 @@ impl TsServer {
     for (scope, specifiers) in specifiers_by_scope {
       let req =
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
-      results.push_back(self.request_with_cancellation::<IndexMap<String, Vec<crate::tsc::Diagnostic>>>(snapshot.clone(), req, scope, token.clone()));
+      results.push_back(
+        self
+          .request_with_cancellation::<(DiagnosticsMap, MaybeAmbientModules)>(
+            snapshot.clone(),
+            req,
+            scope.clone(),
+            token.clone(),
+          )
+          .map(|res| (scope, res)),
+      );
     }
-    while let Some(raw_diagnostics) = results.next().await {
-      let raw_diagnostics = raw_diagnostics
+    let mut ambient_modules_by_scope = HashMap::with_capacity(2);
+    while let Some((scope, raw_diagnostics)) = results.next().await {
+      let (raw_diagnostics, ambient_modules) = raw_diagnostics
         .inspect_err(|err| {
           if !token.is_cancelled() {
             lsp_warn!("Error generating TypeScript diagnostics: {err}");
@@ -506,8 +522,9 @@ impl TsServer {
         }
         diagnostics_map.insert(specifier, diagnostics);
       }
+      ambient_modules_by_scope.insert(scope, ambient_modules);
     }
-    Ok(diagnostics_map)
+    Ok((diagnostics_map, ambient_modules_by_scope))
   }
 
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
@@ -1811,8 +1828,8 @@ impl TextSpan {
 
   pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
     lsp::Range {
-      start: line_index.position_tsc(self.start.into()),
-      end: line_index.position_tsc(TextSize::from(self.start + self.length)),
+      start: line_index.position_utf16(self.start.into()),
+      end: line_index.position_utf16(TextSize::from(self.start + self.length)),
     }
   }
 }
@@ -2260,7 +2277,7 @@ impl InlayHint {
     language_server: &language_server::Inner,
   ) -> lsp::InlayHint {
     lsp::InlayHint {
-      position: line_index.position_tsc(self.position.into()),
+      position: line_index.position_utf16(self.position.into()),
       label: if let Some(display_parts) = &self.display_parts {
         lsp::InlayHintLabel::LabelParts(
           display_parts
@@ -2820,8 +2837,8 @@ impl Classifications {
           ts_classification,
         );
 
-      let start_pos = line_index.position_tsc(offset.into());
-      let end_pos = line_index.position_tsc(TextSize::from(offset + length));
+      let start_pos = line_index.position_utf16(offset.into());
+      let end_pos = line_index.position_utf16(TextSize::from(offset + length));
 
       for line in start_pos.line..(end_pos.line + 1) {
         let start_character = if line == start_pos.line {
@@ -3683,6 +3700,10 @@ impl CompletionInfo {
     position: u32,
     language_server: &language_server::Inner,
   ) -> lsp::CompletionResponse {
+    // A cache for costly resolution computations.
+    // On a test project, it was found to speed up completion requests
+    // by 10-20x and contained ~300 entries for 8000 completion items.
+    let mut cache = HashMap::with_capacity(512);
     let items = self
       .entries
       .iter()
@@ -3694,6 +3715,7 @@ impl CompletionInfo {
           specifier,
           position,
           language_server,
+          &mut cache,
         )
       })
       .collect();
@@ -3898,6 +3920,7 @@ impl CompletionEntry {
     self.insert_text.clone()
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
@@ -3906,6 +3929,7 @@ impl CompletionEntry {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
+    resolution_cache: &mut HashMap<(ModuleSpecifier, ModuleSpecifier), String>,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
@@ -3964,14 +3988,18 @@ impl CompletionEntry {
         }
       }
     }
-
     if let Some(source) = &self.source {
       let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
-        if let Some(mut new_specifier) = import_mapper
-          .check_specifier(&import_data.normalized, specifier)
+        let maybe_cached = resolution_cache
+          .get(&(import_data.normalized.clone(), specifier.clone()))
+          .cloned();
+        if let Some(mut new_specifier) = maybe_cached
+          .or_else(|| {
+            import_mapper.check_specifier(&import_data.normalized, specifier)
+          })
           .or_else(|| relative_specifier(specifier, &import_data.normalized))
           .or_else(|| {
             ModuleSpecifier::parse(&import_data.raw.module_specifier)
@@ -3979,6 +4007,10 @@ impl CompletionEntry {
               .then(|| import_data.normalized.to_string())
           })
         {
+          resolution_cache.insert(
+            (import_data.normalized.clone(), specifier.clone()),
+            new_specifier.clone(),
+          );
           if new_specifier.contains("/node_modules/") {
             return None;
           }
@@ -4568,6 +4600,9 @@ async fn op_poll_requests(
     let state = state.try_borrow_mut::<State>().unwrap();
     state.pending_requests.take().unwrap()
   };
+
+  // clear the resolution cache after each request
+  NodeResolutionThreadLocalCache::clear();
 
   let Some((request, scope, snapshot, response_tx, token, change)) =
     pending_requests.recv().await
@@ -5688,7 +5723,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5734,7 +5769,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5764,7 +5799,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5790,7 +5825,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5840,7 +5875,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5873,7 +5908,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5931,7 +5966,7 @@ mod tests {
     )
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _ambient) = ts_server
       .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
       .await
       .unwrap();
@@ -5984,11 +6019,25 @@ mod tests {
 
     // get some notification when the size of the assets grows
     let mut total_size = 0;
-    for asset in assets {
+    for asset in &assets {
       total_size += asset.text().len();
     }
     assert!(total_size > 0);
-    assert!(total_size < 2_000_000); // currently as of TS 4.6, it's 0.7MB
+    #[allow(clippy::print_stderr)]
+    // currently as of TS 5.7, it's 3MB
+    if total_size > 3_500_000 {
+      let mut sizes = Vec::new();
+      for asset in &assets {
+        sizes.push((asset.specifier(), asset.text().len()));
+      }
+      sizes.sort_by_cached_key(|(_, size)| *size);
+      sizes.reverse();
+      for (specifier, size) in &sizes {
+        eprintln!("{}: {}", specifier, size);
+      }
+      eprintln!("Total size: {}", total_size);
+      panic!("Assets were quite large.");
+    }
   }
 
   #[tokio::test]
@@ -6023,7 +6072,7 @@ mod tests {
       )
       .unwrap();
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
@@ -6073,7 +6122,7 @@ mod tests {
       None,
     );
     let specifier = temp_dir.url().join("a.ts").unwrap();
-    let diagnostics = ts_server
+    let (diagnostics, _) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],

@@ -1,0 +1,24 @@
+Check file:///[WILDLINE]/package-a/mod.ts
+Check file:///[WILDLINE]/package-c/mod.ts
+TS2552 [ERROR]: Cannot find name 'myPackageBGlobal'. Did you mean 'myPackageAGlobal'?
+console.log(myPackageBGlobal);
+            ~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/package-a/mod.ts:2:13
+
+    'myPackageAGlobal' is declared here.
+    declare var myPackageAGlobal: string;
+                ~~~~~~~~~~~~~~~~
+        at file:///[WILDLINE]/package-a/globals.d.ts:1:13
+
+Check file:///[WILDLINE]/package-b/mod.ts
+TS2552 [ERROR]: Cannot find name 'myPackageAGlobal'. Did you mean 'myPackageBGlobal'?
+console.log(myPackageAGlobal);
+            ~~~~~~~~~~~~~~~~
+    at file:///[WILDLINE]/package-b/mod.ts:1:13
+
+    'myPackageBGlobal' is declared here.
+    declare var myPackageBGlobal: string;
+                ~~~~~~~~~~~~~~~~
+        at file:///[WILDLINE]/package-b/globals.d.ts:1:13
+
+error: Type checking failed.

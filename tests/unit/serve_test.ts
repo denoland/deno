@@ -3,13 +3,15 @@
 // deno-lint-ignore-file no-console
 
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
-import { Buffer, BufReader, BufWriter, type Reader } from "@std/io";
+import { Buffer, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
   assertEquals,
   assertStringIncludes,
   assertThrows,
+  BufReader,
+  BufWriter,
   curlRequest,
   curlRequestWithStdErr,
   execCode,

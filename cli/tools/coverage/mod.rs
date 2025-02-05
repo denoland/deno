@@ -608,7 +608,7 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
-        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source) {
+        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source)? {
           Some(code) => code,
           None => {
             return Err(anyhow!(

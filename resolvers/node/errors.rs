@@ -6,9 +6,11 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_error::JsError;
+use deno_path_util::UrlToFilePathError;
 use thiserror::Error;
 use url::Url;
 
+use crate::path::UrlOrPath;
 use crate::NodeResolutionKind;
 use crate::ResolutionMode;
 
@@ -24,6 +26,7 @@ pub enum NodeJsErrorCode {
   ERR_UNKNOWN_FILE_EXTENSION,
   ERR_UNSUPPORTED_DIR_IMPORT,
   ERR_UNSUPPORTED_ESM_URL_SCHEME,
+  ERR_INVALID_FILE_URL_PATH,
   /// Deno specific since Node doesn't support TypeScript.
   ERR_TYPES_NOT_FOUND,
 }
@@ -48,6 +51,7 @@ impl NodeJsErrorCode {
       ERR_UNSUPPORTED_DIR_IMPORT => "ERR_UNSUPPORTED_DIR_IMPORT",
       ERR_UNSUPPORTED_ESM_URL_SCHEME => "ERR_UNSUPPORTED_ESM_URL_SCHEME",
       ERR_TYPES_NOT_FOUND => "ERR_TYPES_NOT_FOUND",
+      ERR_INVALID_FILE_URL_PATH => "ERR_INVALID_FILE_URL_PATH",
     }
   }
 }
@@ -109,7 +113,7 @@ impl NodeJsErrorCoded for LegacyResolveError {
 #[class(generic)]
 pub struct PackageNotFoundError {
   pub package_name: String,
-  pub referrer: Url,
+  pub referrer: UrlOrPath,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
 }
@@ -128,7 +132,7 @@ impl NodeJsErrorCoded for PackageNotFoundError {
 )]
 #[class(generic)]
 pub struct ReferrerNotFoundError {
-  pub referrer: Url,
+  pub referrer: UrlOrPath,
   /// Extra information about the referrer.
   pub referrer_extra: Option<String>,
 }
@@ -144,7 +148,7 @@ impl NodeJsErrorCoded for ReferrerNotFoundError {
 #[error("Failed resolving '{package_name}' from referrer '{referrer}'.")]
 pub struct PackageFolderResolveIoError {
   pub package_name: String,
-  pub referrer: Url,
+  pub referrer: UrlOrPath,
   #[source]
   #[inherit]
   pub source: std::io::Error,
@@ -162,6 +166,9 @@ impl NodeJsErrorCoded for PackageFolderResolveError {
       PackageFolderResolveErrorKind::PackageNotFound(e) => e.code(),
       PackageFolderResolveErrorKind::ReferrerNotFound(e) => e.code(),
       PackageFolderResolveErrorKind::Io(e) => e.code(),
+      PackageFolderResolveErrorKind::PathToUrl(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
     }
   }
 }
@@ -180,6 +187,9 @@ pub enum PackageFolderResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   Io(#[from] PackageFolderResolveIoError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
 }
 
 impl NodeJsErrorCoded for PackageSubpathResolveError {
@@ -188,6 +198,7 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
       PackageSubpathResolveErrorKind::PkgJsonLoad(e) => e.code(),
       PackageSubpathResolveErrorKind::Exports(e) => e.code(),
       PackageSubpathResolveErrorKind::LegacyResolve(e) => e.code(),
+      PackageSubpathResolveErrorKind::FinalizeResolution(e) => e.code(),
     }
   }
 }
@@ -206,6 +217,9 @@ pub enum PackageSubpathResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   LegacyResolve(LegacyResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  FinalizeResolution(#[from] FinalizeResolutionError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -232,7 +246,7 @@ pub enum PackageSubpathResolveErrorKind {
 pub struct PackageTargetNotFoundError {
   pub pkg_json_path: PathBuf,
   pub target: String,
-  pub maybe_referrer: Option<Url>,
+  pub maybe_referrer: Option<UrlOrPath>,
   pub resolution_mode: ResolutionMode,
   pub resolution_kind: NodeResolutionKind,
 }
@@ -251,6 +265,9 @@ impl NodeJsErrorCoded for PackageTargetResolveError {
       PackageTargetResolveErrorKind::InvalidModuleSpecifier(e) => e.code(),
       PackageTargetResolveErrorKind::PackageResolve(e) => e.code(),
       PackageTargetResolveErrorKind::TypesNotFound(e) => e.code(),
+      PackageTargetResolveErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
     }
   }
 }
@@ -275,6 +292,9 @@ pub enum PackageTargetResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   TypesNotFound(#[from] TypesNotFoundError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
 }
 
 impl NodeJsErrorCoded for PackageExportsResolveError {
@@ -311,8 +331,8 @@ pub struct TypesNotFoundError(pub Box<TypesNotFoundErrorData>);
 
 #[derive(Debug)]
 pub struct TypesNotFoundErrorData {
-  pub code_specifier: Url,
-  pub maybe_referrer: Option<Url>,
+  pub code_specifier: UrlOrPath,
+  pub maybe_referrer: Option<UrlOrPath>,
 }
 
 impl NodeJsErrorCoded for TypesNotFoundError {
@@ -369,7 +389,7 @@ pub enum ClosestPkgJsonErrorKind {
 pub struct PackageImportNotDefinedError {
   pub name: String,
   pub package_json_path: Option<PathBuf>,
-  pub maybe_referrer: Option<Url>,
+  pub maybe_referrer: Option<UrlOrPath>,
 }
 
 impl NodeJsErrorCoded for PackageImportNotDefinedError {
@@ -416,6 +436,9 @@ impl NodeJsErrorCoded for PackageResolveError {
       PackageResolveErrorKind::PackageFolderResolve(e) => e.code(),
       PackageResolveErrorKind::ExportsResolve(e) => e.code(),
       PackageResolveErrorKind::SubpathResolve(e) => e.code(),
+      PackageResolveErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
     }
   }
 }
@@ -440,6 +463,9 @@ pub enum PackageResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   SubpathResolve(#[from] PackageSubpathResolveError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] UrlToFilePathError),
 }
 
 #[derive(Debug, Error, JsError)]
@@ -468,6 +494,12 @@ pub enum NodeResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   RelativeJoin(#[from] NodeResolveRelativeJoinError),
+  #[class(inherit)]
+  #[error(transparent)]
+  PathToUrl(#[from] deno_path_util::PathToUrlError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
   #[class(inherit)]
   #[error(transparent)]
   PackageImportsResolve(#[from] PackageImportsResolveError),
@@ -502,6 +534,9 @@ pub enum FinalizeResolutionErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UnsupportedDirImport(#[from] UnsupportedDirImportError),
+  #[class(inherit)]
+  #[error(transparent)]
+  UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
 }
 
 impl NodeJsErrorCoded for FinalizeResolutionError {
@@ -510,6 +545,9 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
       FinalizeResolutionErrorKind::InvalidModuleSpecifierError(e) => e.code(),
       FinalizeResolutionErrorKind::ModuleNotFound(e) => e.code(),
       FinalizeResolutionErrorKind::UnsupportedDirImport(e) => e.code(),
+      FinalizeResolutionErrorKind::UrlToFilePath(_) => {
+        NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+      }
     }
   }
 }
@@ -517,16 +555,18 @@ impl NodeJsErrorCoded for FinalizeResolutionError {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Cannot find {} '{}'{}",
+  "[{}] Cannot find {} '{}'{}{}",
   self.code(),
   typ,
   specifier,
-  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default()
+  maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  suggested_ext.as_ref().map(|m| format!("\nDid you mean to import with the \".{}\" extension?", m)).unwrap_or_default()
 )]
 pub struct ModuleNotFoundError {
-  pub specifier: Url,
-  pub maybe_referrer: Option<Url>,
+  pub specifier: UrlOrPath,
+  pub maybe_referrer: Option<UrlOrPath>,
   pub typ: &'static str,
+  pub suggested_ext: Option<&'static str>,
 }
 
 impl NodeJsErrorCoded for ModuleNotFoundError {
@@ -538,14 +578,16 @@ impl NodeJsErrorCoded for ModuleNotFoundError {
 #[derive(Debug, Error, JsError)]
 #[class(generic)]
 #[error(
-  "[{}] Directory import '{}' is not supported resolving ES modules{}",
+  "[{}] Directory import '{}' is not supported resolving ES modules{}{}",
   self.code(),
   dir_url,
   maybe_referrer.as_ref().map(|referrer| format!(" imported from '{}'", referrer)).unwrap_or_default(),
+  suggested_file_name.map(|file_name| format!("\nDid you mean to import {file_name} within the directory?")).unwrap_or_default(),
 )]
 pub struct UnsupportedDirImportError {
-  pub dir_url: Url,
-  pub maybe_referrer: Option<Url>,
+  pub dir_url: UrlOrPath,
+  pub maybe_referrer: Option<UrlOrPath>,
+  pub suggested_file_name: Option<&'static str>,
 }
 
 impl NodeJsErrorCoded for UnsupportedDirImportError {
@@ -561,7 +603,7 @@ pub struct InvalidPackageTargetError {
   pub sub_path: String,
   pub target: String,
   pub is_import: bool,
-  pub maybe_referrer: Option<Url>,
+  pub maybe_referrer: Option<UrlOrPath>,
 }
 
 impl std::error::Error for InvalidPackageTargetError {}
@@ -616,7 +658,7 @@ impl NodeJsErrorCoded for InvalidPackageTargetError {
 pub struct PackagePathNotExportedError {
   pub pkg_json_path: PathBuf,
   pub subpath: String,
-  pub maybe_referrer: Option<Url>,
+  pub maybe_referrer: Option<UrlOrPath>,
   pub resolution_kind: NodeResolutionKind,
 }
 

@@ -11,6 +11,7 @@ use std::task::Poll;
 
 use bytes::Bytes;
 use deno_core::error::ResourceError;
+use deno_core::futures::channel::mpsc;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
@@ -70,9 +71,20 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct InformationalResponse {
+  status: u16,
+  status_text: String,
+  headers: Vec<(ByteString, ByteString)>,
+  version_major: u16,
+  version_minor: u16,
+}
+
 pub struct NodeHttpClientResponse {
   response: Pin<Box<dyn Future<Output = CancelableResponseResult>>>,
   url: String,
+  informational_rx: RefCell<Option<mpsc::Receiver<InformationalResponse>>>,
 }
 
 impl Debug for NodeHttpClientResponse {
@@ -100,6 +112,9 @@ pub enum ConnError {
   #[class(type)]
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
+  #[class(type)]
+  #[error("Invalid Path {0}")]
+  InvalidPath(String),
   #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
@@ -138,6 +153,7 @@ pub async fn op_node_http_request_with_conn<P>(
   state: Rc<RefCell<OpState>>,
   #[serde] method: ByteString,
   #[string] url: String,
+  #[string] request_path: Option<String>,
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
@@ -235,11 +251,17 @@ where
   *request.method_mut() = method.clone();
   let path = url_parsed.path();
   let query = url_parsed.query();
-  *request.uri_mut() = query
-    .map(|q| format!("{}?{}", path, q))
-    .unwrap_or_else(|| path.to_string())
-    .parse()
-    .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  if let Some(request_path) = request_path {
+    *request.uri_mut() = request_path
+      .parse()
+      .map_err(|_| ConnError::InvalidPath(request_path.clone()))?;
+  } else {
+    *request.uri_mut() = query
+      .map(|q| format!("{}?{}", path, q))
+      .unwrap_or_else(|| path.to_string())
+      .parse()
+      .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  }
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {
@@ -251,6 +273,36 @@ where
   if let Some(len) = con_len {
     request.headers_mut().insert(CONTENT_LENGTH, len.into());
   }
+
+  let (tx, informational_rx) = mpsc::channel(1);
+  hyper::ext::on_informational(&mut request, move |res| {
+    let mut tx = tx.clone();
+    let _ = tx.try_send(InformationalResponse {
+      status: res.status().as_u16(),
+      status_text: res.status().canonical_reason().unwrap_or("").to_string(),
+      headers: res
+        .headers()
+        .iter()
+        .map(|(k, v)| (k.as_str().into(), v.as_bytes().into()))
+        .collect(),
+      version_major: match res.version() {
+        hyper::Version::HTTP_09 => 0,
+        hyper::Version::HTTP_10 => 1,
+        hyper::Version::HTTP_11 => 1,
+        hyper::Version::HTTP_2 => 2,
+        hyper::Version::HTTP_3 => 3,
+        _ => unreachable!(),
+      },
+      version_minor: match res.version() {
+        hyper::Version::HTTP_09 => 9,
+        hyper::Version::HTTP_10 => 0,
+        hyper::Version::HTTP_11 => 1,
+        hyper::Version::HTTP_2 => 0,
+        hyper::Version::HTTP_3 => 0,
+        _ => unreachable!(),
+      },
+    });
+  });
 
   let cancel_handle = CancelHandle::new_rc();
   let cancel_handle_ = cancel_handle.clone();
@@ -264,6 +316,7 @@ where
     .add(NodeHttpClientResponse {
       response: Box::pin(fut),
       url: url.clone(),
+      informational_rx: RefCell::new(Some(informational_rx)),
     });
 
   let cancel_handle_rid = state
@@ -275,6 +328,27 @@ where
     request_rid: rid,
     cancel_handle_rid: Some(cancel_handle_rid),
   })
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_node_http_await_information(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Option<InformationalResponse> {
+  let Ok(resource) = state
+    .borrow_mut()
+    .resource_table
+    .get::<NodeHttpClientResponse>(rid)
+  else {
+    return None;
+  };
+
+  let mut rx = resource.informational_rx.borrow_mut().take()?;
+
+  drop(resource);
+
+  rx.next().await
 }
 
 #[op2(async)]

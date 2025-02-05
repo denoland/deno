@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1154 tests out of 3681 have been ported from Node 20.11.1 (31.35% ported, 69.19% remaining).
+1155 tests out of 3681 have been ported from Node 20.11.1 (31.38% ported, 69.17% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -1578,7 +1578,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-process-env-ignore-getter-setter.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-env-ignore-getter-setter.js)
 - [parallel/test-process-env-sideeffects.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-env-sideeffects.js)
 - [parallel/test-process-env-symbols.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-env-symbols.js)
-- [parallel/test-process-env-tz.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-env-tz.js)
 - [parallel/test-process-env.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-env.js)
 - [parallel/test-process-euid-egid.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-euid-egid.js)
 - [parallel/test-process-exception-capture-errors.js](https://github.com/nodejs/node/tree/v20.11.1/test/parallel/test-process-exception-capture-errors.js)
