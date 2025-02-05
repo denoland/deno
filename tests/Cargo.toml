@@ -64,6 +64,7 @@ tokio.workspace = true
 tower-lsp.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+walkdir.workspace = true
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]

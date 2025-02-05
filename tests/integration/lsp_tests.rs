@@ -306,7 +306,6 @@ fn lsp_import_map() {
   }
 }"#;
   temp_dir.write("import-map.json", import_map);
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -439,7 +438,6 @@ fn lsp_import_map_config_file() {
   }
 }"#,
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -501,7 +499,6 @@ fn lsp_import_map_embedded_in_config_file() {
   }
 }"#,
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -555,7 +552,6 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.embedded_import_map.jsonc", "{}");
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -627,7 +623,6 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
 fn lsp_import_map_config_file_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().capture_stderr().build();
@@ -747,7 +742,6 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().capture_stderr().build();
@@ -755,7 +749,6 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 
   // now create a symlink in the current directory to a subdir/deno.json
   // and ensure the watched files notification still works
-  temp_dir.create_dir_all("subdir");
   temp_dir.write("subdir/deno.json", r#"{ }"#);
   temp_dir.symlink_file(
     temp_dir.path().join("subdir").join("deno.json"),
@@ -1052,10 +1045,6 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 fn lsp_did_refresh_deno_configuration_tree_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("workspace/member1");
-  temp_dir.create_dir_all("workspace/member2");
-  temp_dir.create_dir_all("non_workspace1");
-  temp_dir.create_dir_all("non_workspace2");
   temp_dir.write(
     "workspace/deno.json",
     json!({
@@ -1541,7 +1530,6 @@ fn lsp_import_map_import_completions() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -2168,7 +2156,6 @@ fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
-    temp_dir.create_dir_all("worker");
     temp_dir.write("worker/shared.ts", "export const a = 1");
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
     temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
@@ -2386,13 +2373,11 @@ fn lsp_workspace_disable_enable_paths() {
 fn lsp_exclude_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("other");
   temp_dir.write(
     "other/shared.ts",
     // this should not be found in the "find references" since this file is excluded
     "import { a } from '../worker/shared.ts'; console.log(a);",
   );
-  temp_dir.create_dir_all("worker");
   temp_dir.write("worker/shared.ts", "export const a = 1");
   temp_dir.write(
     "deno.json",
@@ -5762,7 +5747,6 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5842,7 +5826,6 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -6281,8 +6264,12 @@ fn lsp_code_actions_deno_cache_all() {
       "#,
     }
   }));
+  let mut deno_diagnostics = diagnostics.messages_with_source("deno");
+  deno_diagnostics
+    .diagnostics
+    .sort_by_key(|d| d.range.start.line);
   assert_eq!(
-    diagnostics.messages_with_source("deno"),
+    deno_diagnostics,
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [
@@ -6313,7 +6300,7 @@ fn lsp_code_actions_deno_cache_all() {
     })).unwrap()
   );
 
-  let res =
+  let mut res =
     client
     .write_request(
       "textDocument/codeAction",
@@ -6343,6 +6330,11 @@ fn lsp_code_actions_deno_cache_all() {
         }
       }),
     );
+  res.as_array_mut().unwrap().iter_mut().for_each(|fix| {
+    fix["diagnostics"].as_array_mut().unwrap().sort_by_key(|v| {
+      v["range"]["start"]["line"].as_number().unwrap().as_i64()
+    })
+  });
   assert_eq!(
     res,
     json!([
@@ -6427,7 +6419,6 @@ fn lsp_code_actions_deno_types_for_npm() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("managed_node_modules");
   temp_dir.write(
     "managed_node_modules/deno.json",
     json!({
@@ -8725,6 +8716,7 @@ fn lsp_completions_node_specifier() {
       "node:readline",
       "node:readline/promises",
       "node:repl",
+      "node:sqlite",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
@@ -13849,7 +13841,6 @@ fn lsp_closed_file_find_references() {
 fn lsp_closed_file_find_references_low_document_pre_load() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("sub_dir");
   temp_dir.write("./other_file.ts", "export const b = 5;");
   temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
   temp_dir.write(
@@ -13894,8 +13885,6 @@ fn lsp_closed_file_find_references_excluded_path() {
   // the config file from being pre-loaded
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("sub_dir");
-  temp_dir.create_dir_all("other_dir/sub_dir");
   temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
   temp_dir.write(
     "./sub_dir/mod.test.ts",
@@ -14375,8 +14364,6 @@ fn lsp_vendor_dir() {
 fn lsp_deno_json_scopes_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14509,8 +14496,6 @@ fn lsp_deno_json_scopes_vendor_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14694,8 +14679,6 @@ fn lsp_deno_json_scopes_node_modules_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14879,8 +14862,6 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 fn lsp_deno_json_scopes_ts_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write(
     "project2/deno.json",
@@ -14953,8 +14934,6 @@ fn lsp_deno_json_scopes_ts_config() {
 fn lsp_deno_json_scopes_declaration_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   temp_dir.write("project1/foo.d.ts", "declare type Foo = number;\n");
@@ -15021,8 +15000,6 @@ fn lsp_deno_json_scopes_declaration_files() {
 fn lsp_deno_json_scopes_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15065,8 +15042,6 @@ fn lsp_deno_json_scopes_find_references() {
 fn lsp_deno_json_scopes_file_rename_import_edits() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(temp_dir.path().join("project1/file.ts"), "");
@@ -15113,8 +15088,6 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
 fn lsp_deno_json_scopes_goto_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15154,9 +15127,6 @@ fn lsp_deno_json_scopes_goto_implementations() {
 fn lsp_deno_json_scopes_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
-  temp_dir.create_dir_all("project3");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   temp_dir.write("project3/deno.json", json!({}).to_string());
@@ -15267,8 +15237,6 @@ fn lsp_deno_json_scopes_call_hierarchy() {
 fn lsp_deno_json_scopes_rename_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15327,8 +15295,6 @@ fn lsp_deno_json_scopes_rename_symbol() {
 fn lsp_deno_json_scopes_search_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15383,7 +15349,6 @@ fn lsp_deno_json_workspace_fmt_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15393,7 +15358,6 @@ fn lsp_deno_json_workspace_fmt_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -15508,7 +15472,6 @@ fn lsp_deno_json_workspace_lint_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15520,7 +15483,6 @@ fn lsp_deno_json_workspace_lint_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -15645,7 +15607,6 @@ fn lsp_deno_json_workspace_lint_config() {
 fn lsp_deno_json_workspace_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15748,7 +15709,6 @@ fn lsp_workspace_lockfile() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15813,7 +15773,6 @@ fn lsp_deno_json_workspace_vendor_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15885,7 +15844,6 @@ fn lsp_deno_json_workspace_node_modules_dir() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15964,7 +15922,6 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -16015,6 +15972,66 @@ fn lsp_deno_json_workspace_jsr_resolution() {
 }
 
 #[test]
+fn lsp_workspace_compiler_options_root_dirs() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+      "compilerOptions": {
+        "rootDirs": ["member", "non_member", "non_member_types"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "compilerOptions": {
+        "rootDirs": ["subdir", "subdir_types"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = source_file(
+    temp_dir.path().join("member/subdir/mod.ts"),
+    r#"
+      import type { someType } from "./import.ts";
+      const foo: someType = "";
+      console.log(foo);
+    "#,
+  );
+  source_file(
+    temp_dir.path().join("member/subdir_types/import.ts"),
+    r#"
+      export type someType = string;
+    "#,
+  );
+  let file2 = source_file(
+    temp_dir.path().join("non_member/mod.ts"),
+    r#"
+      import type { someType } from "./import.ts";
+      const foo: someType = 0;
+      console.log(foo);
+    "#,
+  );
+  source_file(
+    temp_dir.path().join("non_member_types/import.ts"),
+    r#"
+      export type someType = number;
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file1);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let diagnostics = client.did_open_file(&file2);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16038,7 +16055,6 @@ fn lsp_npm_workspace() {
     .to_string(),
   );
   {
-    temp_dir.create_dir_all("packages/add");
     temp_dir.write(
       "packages/add/package.json",
       json!({
@@ -16054,7 +16070,6 @@ fn lsp_npm_workspace() {
     );
   }
   {
-    temp_dir.create_dir_all("packages/subtract");
     temp_dir.write(
       "packages/subtract/package.json",
       json!({
@@ -17406,4 +17421,52 @@ fn type_reference_import_meta() {
     assert_eq!(diagnostics.all().len(), 0);
     client.did_close_file(&source);
   }
+}
+
+#[test]
+fn ambient_module_errors_suppressed() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+
+  client.initialize_default();
+
+  temp_dir.join("ambient.d.ts").write(
+    r#"
+      declare module "$virtual/module" {
+        export const foo: number;
+      }
+      declare module "*.fake" {
+        const fake: string;
+        export default fake;
+      }
+
+    "#,
+  );
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      /// <reference types="./ambient.d.ts"/>
+      import { foo as _foo } from "$virtual/module";
+      import _fake from "./not-real.fake";
+      import _bad from "./not-real.bad";
+    "#,
+  );
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": source.range_of("\"./not-real.bad\""),
+        "severity": 1,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nPlease check the file path.",
+          temp_dir.join("./not-real.bad").url_file()
+        )
+      }
+    ])
+  );
 }

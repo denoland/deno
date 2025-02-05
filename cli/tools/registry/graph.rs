@@ -123,7 +123,7 @@ impl GraphDiagnosticsCollector {
       };
 
     let options = WalkOptions {
-      check_js: true,
+      check_js: deno_graph::CheckJsOption::True,
       follow_dynamic: true,
       // search the entire graph and not just the fast check subset
       prefer_fast_check_graph: false,

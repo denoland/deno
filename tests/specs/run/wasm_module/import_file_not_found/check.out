@@ -1,4 +1,6 @@
 Download http://localhost:4545/wasm/math_with_import.wasm
 Check file:///[WILDLINE]/main.js
-error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/local_math.ts'.
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/local_math.ts'.
     at http://localhost:4545/wasm/math_with_import.wasm:1:87
+
+error: Type checking failed.

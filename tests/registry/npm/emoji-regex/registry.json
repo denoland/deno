@@ -110,6 +110,5 @@
   "bugs": {
     "url": "https://github.com/mathiasbynens/emoji-regex/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

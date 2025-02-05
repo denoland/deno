@@ -33,6 +33,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use tower_lsp::lsp_types as lsp;
@@ -897,6 +898,7 @@ impl FileSystemDocuments {
       }
     };
     if dirty {
+      NodeResolutionThreadLocalCache::clear();
       // attempt to update the file on the file system
       self.refresh_document(specifier, resolver, config, cache, file_referrer)
     } else {
@@ -1375,6 +1377,7 @@ impl Documents {
     self.resolver = resolver.clone();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
+    NodeResolutionThreadLocalCache::clear();
 
     {
       let fs_docs = &self.file_system_docs;
@@ -1440,6 +1443,7 @@ impl Documents {
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
+    NodeResolutionThreadLocalCache::clear();
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc.scope();
       let dep_info = dep_info_by_scope.entry(scope.cloned()).or_default();

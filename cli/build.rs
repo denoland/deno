@@ -13,47 +13,12 @@ mod ts {
   use std::path::PathBuf;
 
   use deno_core::op2;
+  use deno_core::v8;
   use deno_core::OpState;
   use deno_error::JsErrorBox;
   use serde::Serialize;
 
   use super::*;
-
-  #[derive(Debug, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct BuildInfoResponse {
-    build_specifier: String,
-    libs: Vec<String>,
-  }
-
-  #[op2]
-  #[serde]
-  fn op_build_info(state: &mut OpState) -> BuildInfoResponse {
-    let build_specifier = "asset:///bootstrap.ts".to_string();
-    let build_libs = state
-      .borrow::<Vec<&str>>()
-      .iter()
-      .map(|s| s.to_string())
-      .collect();
-    BuildInfoResponse {
-      build_specifier,
-      libs: build_libs,
-    }
-  }
-
-  #[op2(fast)]
-  fn op_is_node_file() -> bool {
-    false
-  }
-
-  #[op2]
-  #[string]
-  fn op_script_version(
-    _state: &mut OpState,
-    #[string] _arg: &str,
-  ) -> Result<Option<String>, JsErrorBox> {
-    Ok(Some("1".to_string()))
-  }
 
   #[derive(Debug, Serialize)]
   #[serde(rename_all = "camelCase")]
@@ -74,19 +39,10 @@ mod ts {
     let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
     let path_dts = state.borrow::<PathBuf>();
     let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
-    let build_specifier = "asset:///bootstrap.ts";
 
-    // we need a basic file to send to tsc to warm it up.
-    if load_specifier == build_specifier {
-      Ok(LoadResponse {
-        data: r#"Deno.writeTextFile("hello.txt", "hello deno!");"#.to_string(),
-        version: "1".to_string(),
-        // this corresponds to `ts.ScriptKind.TypeScript`
-        script_kind: 3,
-      })
-      // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-      // parse out just the name so we can lookup the asset.
-    } else if let Some(caps) = re_asset.captures(load_specifier) {
+    // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
+    // parse out just the name so we can lookup the asset.
+    if let Some(caps) = re_asset.captures(load_specifier) {
       if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
         // if it comes from an op crate, we were supplied with the path to the
         // file.
@@ -100,28 +56,25 @@ mod ts {
         };
         let data =
           std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
-        Ok(LoadResponse {
+        return Ok(LoadResponse {
           data,
           version: "1".to_string(),
           // this corresponds to `ts.ScriptKind.TypeScript`
           script_kind: 3,
-        })
-      } else {
-        Err(JsErrorBox::new(
-          "InvalidSpecifier",
-          format!("An invalid specifier was requested: {}", load_specifier),
-        ))
+        });
       }
-    } else {
-      Err(JsErrorBox::new(
-        "InvalidSpecifier",
-        format!("An invalid specifier was requested: {}", load_specifier),
-      ))
     }
+
+    Err(JsErrorBox::new(
+      "InvalidSpecifier",
+      format!("An invalid specifier was requested: {}", load_specifier),
+    ))
   }
 
   deno_core::extension!(deno_tsc,
-    ops = [op_build_info, op_is_node_file, op_load, op_script_version],
+    ops = [
+      op_load,
+    ],
     esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
     esm = [
       dir "tsc",
@@ -180,7 +133,10 @@ mod ts {
       // Deno built-in type libraries
       "decorators",
       "decorators.legacy",
-      "es5",
+      "dom.asynciterable",
+      "dom",
+      "dom.extras",
+      "dom.iterable",
       "es2015.collection",
       "es2015.core",
       "es2015",
@@ -192,10 +148,13 @@ mod ts {
       "es2015.symbol",
       "es2015.symbol.wellknown",
       "es2016.array.include",
-      "es2016.intl",
       "es2016",
+      "es2016.full",
+      "es2016.intl",
+      "es2017.arraybuffer",
       "es2017",
       "es2017.date",
+      "es2017.full",
       "es2017.intl",
       "es2017.object",
       "es2017.sharedmemory",
@@ -204,11 +163,13 @@ mod ts {
       "es2018.asyncgenerator",
       "es2018.asynciterable",
       "es2018",
+      "es2018.full",
       "es2018.intl",
       "es2018.promise",
       "es2018.regexp",
       "es2019.array",
       "es2019",
+      "es2019.full",
       "es2019.intl",
       "es2019.object",
       "es2019.string",
@@ -216,6 +177,7 @@ mod ts {
       "es2020.bigint",
       "es2020",
       "es2020.date",
+      "es2020.full",
       "es2020.intl",
       "es2020.number",
       "es2020.promise",
@@ -223,33 +185,48 @@ mod ts {
       "es2020.string",
       "es2020.symbol.wellknown",
       "es2021",
+      "es2021.full",
       "es2021.intl",
       "es2021.promise",
       "es2021.string",
       "es2021.weakref",
-      "es2022",
       "es2022.array",
+      "es2022",
       "es2022.error",
+      "es2022.full",
       "es2022.intl",
       "es2022.object",
       "es2022.regexp",
-      "es2022.sharedmemory",
       "es2022.string",
-      "es2023",
       "es2023.array",
       "es2023.collection",
+      "es2023",
+      "es2023.full",
       "es2023.intl",
-      "esnext",
+      "es2024.arraybuffer",
+      "es2024.collection",
+      "es2024",
+      "es2024.full",
+      "es2024.object",
+      "es2024.promise",
+      "es2024.regexp",
+      "es2024.sharedmemory",
+      "es2024.string",
+      "es5",
+      "es6",
       "esnext.array",
       "esnext.collection",
+      "esnext",
       "esnext.decorators",
       "esnext.disposable",
+      "esnext.full",
       "esnext.intl",
       "esnext.iterator",
-      "esnext.object",
-      "esnext.promise",
-      "esnext.regexp",
-      "esnext.string",
+      "scripthost",
+      "webworker.asynciterable",
+      "webworker",
+      "webworker.importscripts",
+      "webworker.iterable",
     ];
 
     let path_dts = cwd.join("tsc/dts");
@@ -277,6 +254,28 @@ mod ts {
     )
     .unwrap();
 
+    // Leak to satisfy type-checker. It's okay since it's only run once for a build script.
+    let build_libs_ = Box::leak(Box::new(build_libs.clone()));
+    let runtime_cb = Box::new(|rt: &mut deno_core::JsRuntimeForSnapshot| {
+      let scope = &mut rt.handle_scope();
+
+      let context = scope.get_current_context();
+      let global = context.global(scope);
+
+      let name = v8::String::new(scope, "snapshot").unwrap();
+      let snapshot_fn_val = global.get(scope, name.into()).unwrap();
+      let snapshot_fn: v8::Local<v8::Function> =
+        snapshot_fn_val.try_into().unwrap();
+      let undefined = v8::undefined(scope);
+      let build_libs = build_libs_.clone();
+      let build_libs_v8 =
+        deno_core::serde_v8::to_v8(scope, build_libs).unwrap();
+
+      snapshot_fn
+        .call(scope, undefined.into(), &[build_libs_v8])
+        .unwrap();
+    });
+
     let output = create_snapshot(
       CreateSnapshotOptions {
         cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
@@ -287,7 +286,7 @@ mod ts {
           path_dts,
         )],
         extension_transpiler: None,
-        with_runtime_cb: None,
+        with_runtime_cb: Some(runtime_cb),
         skip_op_registration: false,
       },
       None,

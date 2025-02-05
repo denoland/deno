@@ -18,8 +18,8 @@ use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_node::is_builtin_node_module;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_semver::package::PackageReq;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 
@@ -40,14 +40,14 @@ pub type CliSloppyImportsResolver =
   SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSloppyImportsCachedFs,
   CliSys,
 >;
 pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
   CliSys,
 >;

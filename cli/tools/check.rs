@@ -1,13 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json;
+use deno_config::deno_json::CompilerOptionTypesDeserializeError;
+use deno_config::workspace::WorkspaceDirectory;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
 use deno_graph::ModuleError;
@@ -16,15 +21,15 @@ use deno_graph::ModuleLoadError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
+use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-use crate::args::check_warn_tsconfig;
+use crate::args::deno_json::TsConfigResolver;
 use crate::args::CheckFlags;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::TsConfig;
-use crate::args::TsConfigType;
 use crate::args::TsTypeLib;
 use crate::args::TypeCheckMode;
 use crate::cache::CacheDBHash;
@@ -87,6 +92,35 @@ pub async fn check(
     .await
 }
 
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(type)]
+#[error("Type checking failed.")]
+pub struct FailedTypeCheckingError;
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum CheckError {
+  #[class(inherit)]
+  #[error(transparent)]
+  FailedTypeChecking(#[from] FailedTypeCheckingError),
+  #[class(inherit)]
+  #[error(transparent)]
+  ToMaybeJsxImportSourceConfig(
+    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+  ),
+  #[class(inherit)]
+  #[error(transparent)]
+  TscExec(#[from] tsc::ExecError),
+  #[class(inherit)]
+  #[error(transparent)]
+  CompilerOptionTypesDeserialize(#[from] CompilerOptionTypesDeserializeError),
+  #[class(inherit)]
+  #[error(transparent)]
+  CompilerOptionsParse(#[from] deno_json::CompilerOptionsParseError),
+  #[class(inherit)]
+  #[error(transparent)]
+  Other(#[from] JsErrorBox),
+}
+
 /// Options for performing a check of a module graph. Note that the decision to
 /// emit or not is determined by the `ts_config` settings.
 pub struct CheckOptions {
@@ -97,8 +131,6 @@ pub struct CheckOptions {
   pub build_fast_check_graph: bool,
   /// Default type library to type check with.
   pub lib: TsTypeLib,
-  /// Whether to log about any ignored compiler options.
-  pub log_ignored_options: bool,
   /// If true, valid `.tsbuildinfo` files will be ignored and type checking
   /// will always occur.
   pub reload: bool,
@@ -115,27 +147,7 @@ pub struct TypeChecker {
   node_resolver: Arc<CliNodeResolver>,
   npm_resolver: CliNpmResolver,
   sys: CliSys,
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum CheckError {
-  #[class(inherit)]
-  #[error(transparent)]
-  Diagnostics(#[from] Diagnostics),
-  #[class(inherit)]
-  #[error(transparent)]
-  ConfigFile(#[from] deno_json::ConfigFileError),
-  #[class(inherit)]
-  #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
-  ),
-  #[class(inherit)]
-  #[error(transparent)]
-  TscExec(#[from] tsc::ExecError),
-  #[class(inherit)]
-  #[error(transparent)]
-  Other(#[from] JsErrorBox),
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 impl TypeChecker {
@@ -149,6 +161,7 @@ impl TypeChecker {
     npm_installer: Option<Arc<NpmInstaller>>,
     npm_resolver: CliNpmResolver,
     sys: CliSys,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       caches,
@@ -159,6 +172,7 @@ impl TypeChecker {
       npm_installer,
       npm_resolver,
       sys,
+      tsconfig_resolver,
     }
   }
 
@@ -171,13 +185,20 @@ impl TypeChecker {
     graph: ModuleGraph,
     options: CheckOptions,
   ) -> Result<Arc<ModuleGraph>, CheckError> {
-    let (graph, mut diagnostics) =
-      self.check_diagnostics(graph, options).await?;
-    diagnostics.emit_warnings();
-    if diagnostics.is_empty() {
-      Ok(graph)
+    let mut diagnostics = self.check_diagnostics(graph, options).await?;
+    let mut failed = false;
+    for result in diagnostics.by_ref() {
+      let mut diagnostics = result?;
+      diagnostics.emit_warnings();
+      if diagnostics.has_diagnostic() {
+        failed = true;
+        log::error!("{}\n", diagnostics);
+      }
+    }
+    if failed {
+      Err(FailedTypeCheckingError.into())
     } else {
-      Err(diagnostics.into())
+      Ok(diagnostics.into_graph())
     }
   }
 
@@ -189,7 +210,7 @@ impl TypeChecker {
     &self,
     mut graph: ModuleGraph,
     options: CheckOptions,
-  ) -> Result<(Arc<ModuleGraph>, Diagnostics), CheckError> {
+  ) -> Result<DiagnosticsByFolderIterator, CheckError> {
     fn check_state_hash(resolver: &CliNpmResolver) -> Option<u64> {
       match resolver {
         CliNpmResolver::Byonm(_) => {
@@ -214,7 +235,9 @@ impl TypeChecker {
     }
 
     if !options.type_check_mode.is_true() || graph.roots.is_empty() {
-      return Ok((graph.into(), Default::default()));
+      return Ok(DiagnosticsByFolderIterator(
+        DiagnosticsByFolderIteratorInner::Empty(Arc::new(graph)),
+      ));
     }
 
     // node built-in specifiers use the @types/node package to determine
@@ -226,18 +249,7 @@ impl TypeChecker {
       }
     }
 
-    log::debug!("Type checking.");
-    let ts_config_result = self
-      .cli_options
-      .resolve_ts_config_for_emit(TsConfigType::Check { lib: options.lib })?;
-    if options.log_ignored_options {
-      check_warn_tsconfig(&ts_config_result);
-    }
-
-    let type_check_mode = options.type_check_mode;
-    let ts_config = ts_config_result.ts_config;
-    let cache = TypeCheckCache::new(self.caches.type_checking_cache_db());
-    let check_js = ts_config.get_check_js();
+    log::debug!("Type checking");
 
     // add fast check to the graph before getting the roots
     if options.build_fast_check_graph {
@@ -249,72 +261,299 @@ impl TypeChecker {
       )?;
     }
 
-    let filter_remote_diagnostics = |d: &tsc::Diagnostic| {
-      if self.is_remote_diagnostic(d) {
-        type_check_mode == TypeCheckMode::All && d.include_when_remote()
-      } else {
-        true
+    let graph = Arc::new(graph);
+
+    // split the roots by what we can send to the ts compiler all at once
+    let grouped_roots =
+      self.group_roots_by_compiler_options(&graph, options.lib)?;
+
+    Ok(DiagnosticsByFolderIterator(
+      DiagnosticsByFolderIteratorInner::Real(DiagnosticsByFolderRealIterator {
+        graph,
+        sys: &self.sys,
+        cjs_tracker: &self.cjs_tracker,
+        node_resolver: &self.node_resolver,
+        npm_resolver: &self.npm_resolver,
+        tsconfig_resolver: &self.tsconfig_resolver,
+        log_level: self.cli_options.log_level(),
+        npm_check_state_hash: check_state_hash(&self.npm_resolver),
+        type_check_cache: TypeCheckCache::new(
+          self.caches.type_checking_cache_db(),
+        ),
+        grouped_roots,
+        options,
+        seen_diagnotics: Default::default(),
+      }),
+    ))
+  }
+
+  /// Groups the roots based on the compiler options, which includes the
+  /// resolved TsConfig and resolved compilerOptions.types
+  fn group_roots_by_compiler_options<'a>(
+    &'a self,
+    graph: &ModuleGraph,
+    lib: TsTypeLib,
+  ) -> Result<IndexMap<CheckGroupKey<'a>, CheckGroupInfo>, CheckError> {
+    let mut imports_for_specifier: HashMap<Arc<Url>, Rc<Vec<Url>>> =
+      HashMap::with_capacity(self.tsconfig_resolver.folder_count());
+    let mut roots_by_config: IndexMap<_, CheckGroupInfo> =
+      IndexMap::with_capacity(self.tsconfig_resolver.folder_count());
+    for root in &graph.roots {
+      let folder = self.tsconfig_resolver.folder_for_specifier(root);
+      let imports =
+        match imports_for_specifier.entry(folder.dir.dir_url().clone()) {
+          std::collections::hash_map::Entry::Occupied(entry) => {
+            entry.get().clone()
+          }
+          std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+            let value = Rc::new(resolve_graph_imports_for_workspace_dir(
+              graph,
+              &folder.dir,
+            ));
+            vacant_entry.insert(value.clone());
+            value
+          }
+        };
+      let tsconfig = folder.lib_tsconfig(lib)?;
+      let key = CheckGroupKey {
+        ts_config: tsconfig,
+        imports,
+      };
+      let entry = roots_by_config.entry(key);
+      let entry = match entry {
+        indexmap::map::Entry::Occupied(entry) => entry.into_mut(),
+        indexmap::map::Entry::Vacant(entry) => entry.insert(CheckGroupInfo {
+          roots: Default::default(),
+          // this is slightly hacky. It's used as the referrer for resolving
+          // npm imports in the key
+          referrer: folder
+            .dir
+            .maybe_deno_json()
+            .map(|d| d.specifier.clone())
+            .unwrap_or_else(|| folder.dir.dir_url().as_ref().clone()),
+        }),
+      };
+      entry.roots.push(root.clone());
+    }
+    Ok(roots_by_config)
+  }
+}
+
+fn resolve_graph_imports_for_workspace_dir(
+  graph: &ModuleGraph,
+  dir: &WorkspaceDirectory,
+) -> Vec<Url> {
+  fn resolve_graph_imports_for_referrer<'a>(
+    graph: &'a ModuleGraph,
+    referrer: &'a Url,
+  ) -> Option<impl Iterator<Item = Url> + 'a> {
+    let imports = graph.imports.get(referrer)?;
+    Some(
+      imports
+        .dependencies
+        .values()
+        .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
+        .map(|url| graph.resolve(url))
+        .cloned(),
+    )
+  }
+
+  let root_deno_json = dir.workspace.root_deno_json();
+  let member_deno_json = dir.maybe_deno_json().filter(|c| {
+    Some(&c.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
+  });
+  let mut specifiers = root_deno_json
+    .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
+    .into_iter()
+    .flatten()
+    .flatten()
+    .chain(
+      member_deno_json
+        .map(|c| resolve_graph_imports_for_referrer(graph, &c.specifier))
+        .into_iter()
+        .flatten()
+        .flatten(),
+    )
+    .collect::<Vec<_>>();
+  specifiers.sort();
+  specifiers
+}
+
+/// Key to use to group roots together by config.
+#[derive(Debug, Hash, PartialEq, Eq)]
+struct CheckGroupKey<'a> {
+  ts_config: &'a Arc<TsConfig>,
+  imports: Rc<Vec<Url>>,
+}
+
+struct CheckGroupInfo {
+  roots: Vec<Url>,
+  referrer: Url,
+}
+
+pub struct DiagnosticsByFolderIterator<'a>(
+  DiagnosticsByFolderIteratorInner<'a>,
+);
+
+impl<'a> DiagnosticsByFolderIterator<'a> {
+  pub fn into_graph(self) -> Arc<ModuleGraph> {
+    match self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
+      DiagnosticsByFolderIteratorInner::Real(r) => r.graph,
+    }
+  }
+}
+
+impl<'a> Iterator for DiagnosticsByFolderIterator<'a> {
+  type Item = Result<Diagnostics, CheckError>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    match &mut self.0 {
+      DiagnosticsByFolderIteratorInner::Empty(_) => None,
+      DiagnosticsByFolderIteratorInner::Real(r) => r.next(),
+    }
+  }
+}
+
+enum DiagnosticsByFolderIteratorInner<'a> {
+  Empty(Arc<ModuleGraph>),
+  Real(DiagnosticsByFolderRealIterator<'a>),
+}
+
+struct DiagnosticsByFolderRealIterator<'a> {
+  graph: Arc<ModuleGraph>,
+  sys: &'a CliSys,
+  cjs_tracker: &'a Arc<TypeCheckingCjsTracker>,
+  node_resolver: &'a Arc<CliNodeResolver>,
+  npm_resolver: &'a CliNpmResolver,
+  tsconfig_resolver: &'a TsConfigResolver,
+  type_check_cache: TypeCheckCache,
+  grouped_roots: IndexMap<CheckGroupKey<'a>, CheckGroupInfo>,
+  log_level: Option<log::Level>,
+  npm_check_state_hash: Option<u64>,
+  seen_diagnotics: HashSet<String>,
+  options: CheckOptions,
+}
+
+impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
+  type Item = Result<Diagnostics, CheckError>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let (group_key, group_info) = self.grouped_roots.shift_remove_index(0)?;
+    let mut result = self.check_diagnostics_in_folder(&group_key, group_info);
+    if let Ok(diagnostics) = &mut result {
+      diagnostics.retain(|d| {
+        if let (Some(file_name), Some(start)) = (&d.file_name, &d.start) {
+          let data = format!(
+            "{}{}:{}:{}{}",
+            d.code,
+            file_name,
+            start.line,
+            start.character,
+            d.message_text.as_deref().unwrap_or_default()
+          );
+          self.seen_diagnotics.insert(data)
+        } else {
+          // show these for each type of config
+          true
+        }
+      });
+    }
+    Some(result)
+  }
+}
+
+impl<'a> DiagnosticsByFolderRealIterator<'a> {
+  #[allow(clippy::too_many_arguments)]
+  fn check_diagnostics_in_folder(
+    &self,
+    group_key: &'a CheckGroupKey<'a>,
+    group_info: CheckGroupInfo,
+  ) -> Result<Diagnostics, CheckError> {
+    fn log_provided_roots(provided_roots: &[Url]) {
+      for root in provided_roots {
+        log::info!(
+          "{} {}",
+          colors::green("Check"),
+          to_percent_decoded_str(root.as_str())
+        );
       }
-    };
+    }
+
+    // walk the graph
+    let ts_config = group_key.ts_config;
+    let mut graph_walker = GraphWalker::new(
+      &self.graph,
+      self.sys,
+      self.node_resolver,
+      self.npm_resolver,
+      self.tsconfig_resolver,
+      self.npm_check_state_hash,
+      ts_config.as_ref(),
+      self.options.type_check_mode,
+    );
+    let mut provided_roots = group_info.roots;
+    for import in group_key.imports.iter() {
+      graph_walker.add_config_import(import, &group_info.referrer);
+    }
+
+    for root in &provided_roots {
+      graph_walker.add_root(root);
+    }
+
     let TscRoots {
       roots: root_names,
       missing_diagnostics,
       maybe_check_hash,
-    } = get_tsc_roots(
-      &self.sys,
-      &self.npm_resolver,
-      &self.node_resolver,
-      &graph,
-      check_js,
-      check_state_hash(&self.npm_resolver),
-      type_check_mode,
-      &ts_config,
-    );
+    } = graph_walker.into_tsc_roots();
 
-    let missing_diagnostics =
-      missing_diagnostics.filter(filter_remote_diagnostics);
+    let mut missing_diagnostics = missing_diagnostics.filter(|d| {
+      self.should_include_diagnostic(self.options.type_check_mode, d)
+    });
+    missing_diagnostics.apply_fast_check_source_maps(&self.graph);
 
-    if root_names.is_empty() && missing_diagnostics.is_empty() {
-      return Ok((graph.into(), Default::default()));
+    if root_names.is_empty() {
+      if missing_diagnostics.has_diagnostic() {
+        log_provided_roots(&provided_roots);
+      }
+      return Ok(missing_diagnostics);
     }
-    if !options.reload {
+
+    if !self.options.reload && !missing_diagnostics.has_diagnostic() {
       // do not type check if we know this is type checked
       if let Some(check_hash) = maybe_check_hash {
-        if cache.has_check_hash(check_hash) {
-          log::debug!("Already type checked.");
-          return Ok((graph.into(), Default::default()));
+        if self.type_check_cache.has_check_hash(check_hash) {
+          log::debug!("Already type checked {}", group_info.referrer);
+          return Ok(Default::default());
         }
       }
     }
 
-    for root in &graph.roots {
-      let root_str = root.as_str();
-      log::info!(
-        "{} {}",
-        colors::green("Check"),
-        to_percent_decoded_str(root_str)
-      );
-    }
+    // log out the roots that we're checking
+    log_provided_roots(&provided_roots);
+
+    // the first root will always either be the specifier that the user provided
+    // or the first specifier in a directory
+    let first_root = provided_roots.remove(0);
 
     // while there might be multiple roots, we can't "merge" the build info, so we
     // try to retrieve the build info for first root, which is the most common use
     // case.
-    let maybe_tsbuildinfo = if options.reload {
+    let maybe_tsbuildinfo = if self.options.reload {
       None
     } else {
-      cache.get_tsbuildinfo(&graph.roots[0])
+      self.type_check_cache.get_tsbuildinfo(&first_root)
     };
     // to make tsc build info work, we need to consistently hash modules, so that
     // tsc can better determine if an emit is still valid or not, so we provide
     // that data here.
     let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
-      .write(&ts_config.as_bytes())
+      .write_hashable(ts_config)
       .finish();
-    let graph = Arc::new(graph);
     let response = tsc::exec(tsc::Request {
-      config: ts_config,
-      debug: self.cli_options.log_level() == Some(log::Level::Debug),
-      graph: graph.clone(),
+      config: ts_config.clone(),
+      debug: self.log_level == Some(log::Level::Debug),
+      graph: self.graph.clone(),
       hash_data: tsconfig_hash_data,
       maybe_npm: Some(tsc::RequestNpmState {
         cjs_tracker: self.cjs_tracker.clone(),
@@ -323,30 +562,46 @@ impl TypeChecker {
       }),
       maybe_tsbuildinfo,
       root_names,
-      check_mode: type_check_mode,
+      check_mode: self.options.type_check_mode,
     })?;
 
-    let response_diagnostics =
-      response.diagnostics.filter(filter_remote_diagnostics);
-
+    let mut response_diagnostics = response.diagnostics.filter(|d| {
+      self.should_include_diagnostic(self.options.type_check_mode, d)
+    });
+    response_diagnostics.apply_fast_check_source_maps(&self.graph);
     let mut diagnostics = missing_diagnostics;
     diagnostics.extend(response_diagnostics);
 
-    diagnostics.apply_fast_check_source_maps(&graph);
-
     if let Some(tsbuildinfo) = response.maybe_tsbuildinfo {
-      cache.set_tsbuildinfo(&graph.roots[0], &tsbuildinfo);
+      self
+        .type_check_cache
+        .set_tsbuildinfo(&first_root, &tsbuildinfo);
     }
 
-    if diagnostics.is_empty() {
+    if !diagnostics.has_diagnostic() {
       if let Some(check_hash) = maybe_check_hash {
-        cache.add_check_hash(check_hash);
+        self.type_check_cache.add_check_hash(check_hash);
       }
     }
 
     log::debug!("{}", response.stats);
 
-    Ok((graph, diagnostics))
+    Ok(diagnostics)
+  }
+
+  fn should_include_diagnostic(
+    &self,
+    type_check_mode: TypeCheckMode,
+    d: &tsc::Diagnostic,
+  ) -> bool {
+    // this shouldn't check for duplicate diagnostics across folders because
+    // we don't want to accidentally mark a folder as being successful and save
+    // to the check cache if a previous folder caused a diagnostic
+    if self.is_remote_diagnostic(d) {
+      type_check_mode == TypeCheckMode::All && d.include_when_remote()
+    } else {
+      true
+    }
   }
 
   fn is_remote_diagnostic(&self, d: &tsc::Diagnostic) -> bool {
@@ -370,27 +625,201 @@ struct TscRoots {
   maybe_check_hash: Option<CacheDBHash>,
 }
 
-/// Transform the graph into root specifiers that we can feed `tsc`. We have to
-/// provide the media type for root modules because `tsc` does not "resolve" the
-/// media type like other modules, as well as a root specifier needs any
-/// redirects resolved. We need to include all the emittable files in
-/// the roots, so they get type checked and optionally emitted,
-/// otherwise they would be ignored if only imported into JavaScript.
-#[allow(clippy::too_many_arguments)]
-fn get_tsc_roots(
-  sys: &CliSys,
-  npm_resolver: &CliNpmResolver,
-  node_resolver: &CliNodeResolver,
-  graph: &ModuleGraph,
-  check_js: bool,
-  npm_cache_state_hash: Option<u64>,
-  type_check_mode: TypeCheckMode,
-  ts_config: &TsConfig,
-) -> TscRoots {
+struct GraphWalker<'a> {
+  graph: &'a ModuleGraph,
+  sys: &'a CliSys,
+  node_resolver: &'a CliNodeResolver,
+  npm_resolver: &'a CliNpmResolver,
+  tsconfig_resolver: &'a TsConfigResolver,
+  maybe_hasher: Option<FastInsecureHasher>,
+  seen: HashSet<&'a Url>,
+  pending: VecDeque<(&'a Url, bool)>,
+  has_seen_node_builtin: bool,
+  roots: Vec<(ModuleSpecifier, MediaType)>,
+  missing_diagnostics: tsc::Diagnostics,
+}
+
+impl<'a> GraphWalker<'a> {
+  #[allow(clippy::too_many_arguments)]
+  pub fn new(
+    graph: &'a ModuleGraph,
+    sys: &'a CliSys,
+    node_resolver: &'a CliNodeResolver,
+    npm_resolver: &'a CliNpmResolver,
+    tsconfig_resolver: &'a TsConfigResolver,
+    npm_cache_state_hash: Option<u64>,
+    ts_config: &TsConfig,
+    type_check_mode: TypeCheckMode,
+  ) -> Self {
+    let maybe_hasher = npm_cache_state_hash.map(|npm_cache_state_hash| {
+      let mut hasher = FastInsecureHasher::new_deno_versioned();
+      hasher.write_hashable(npm_cache_state_hash);
+      hasher.write_u8(match type_check_mode {
+        TypeCheckMode::All => 0,
+        TypeCheckMode::Local => 1,
+        TypeCheckMode::None => 2,
+      });
+      hasher.write_hashable(graph.has_node_specifier);
+      hasher.write_hashable(ts_config);
+      hasher
+    });
+    Self {
+      graph,
+      sys,
+      node_resolver,
+      npm_resolver,
+      tsconfig_resolver,
+      maybe_hasher,
+      seen: HashSet::with_capacity(
+        graph.imports.len() + graph.specifiers_count(),
+      ),
+      pending: VecDeque::new(),
+      has_seen_node_builtin: false,
+      roots: Vec::with_capacity(graph.imports.len() + graph.specifiers_count()),
+      missing_diagnostics: Default::default(),
+    }
+  }
+
+  pub fn add_config_import(&mut self, specifier: &'a Url, referrer: &Url) {
+    let specifier = self.graph.resolve(specifier);
+    if self.seen.insert(specifier) {
+      if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
+        match self.resolve_npm_nv_ref(&nv_ref, referrer) {
+          Some(resolved) => {
+            let mt = MediaType::from_specifier(&resolved);
+            self.roots.push((resolved, mt));
+          }
+          None => {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                specifier,
+                None,
+                maybe_additional_sloppy_imports_message(self.sys, specifier),
+              ));
+          }
+        }
+      } else {
+        self.pending.push_back((specifier, false));
+        self.resolve_pending();
+      }
+    }
+  }
+
+  pub fn add_root(&mut self, root: &'a Url) {
+    let specifier = self.graph.resolve(root);
+    if self.seen.insert(specifier) {
+      self.pending.push_back((specifier, false));
+    }
+
+    self.resolve_pending()
+  }
+
+  /// Transform the graph into root specifiers that we can feed `tsc`. We have to
+  /// provide the media type for root modules because `tsc` does not "resolve" the
+  /// media type like other modules, as well as a root specifier needs any
+  /// redirects resolved. We need to include all the emittable files in
+  /// the roots, so they get type checked and optionally emitted,
+  /// otherwise they would be ignored if only imported into JavaScript.
+  pub fn into_tsc_roots(self) -> TscRoots {
+    TscRoots {
+      roots: self.roots,
+      missing_diagnostics: self.missing_diagnostics,
+      maybe_check_hash: self.maybe_hasher.map(|h| CacheDBHash::new(h.finish())),
+    }
+  }
+
+  fn resolve_pending(&mut self) {
+    while let Some((specifier, is_dynamic)) = self.pending.pop_front() {
+      let module = match self.graph.try_get(specifier) {
+        Ok(Some(module)) => module,
+        Ok(None) => continue,
+        Err(ModuleError::Missing(specifier, maybe_range)) => {
+          if !is_dynamic {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                specifier,
+                maybe_range.as_ref(),
+                maybe_additional_sloppy_imports_message(self.sys, specifier),
+              ));
+          }
+          continue;
+        }
+        Err(ModuleError::LoadingErr(
+          specifier,
+          maybe_range,
+          ModuleLoadError::Loader(_),
+        )) => {
+          // these will be errors like attempting to load a directory
+          if !is_dynamic {
+            self
+              .missing_diagnostics
+              .push(tsc::Diagnostic::from_missing_error(
+                specifier,
+                maybe_range.as_ref(),
+                maybe_additional_sloppy_imports_message(self.sys, specifier),
+              ));
+          }
+          continue;
+        }
+        Err(_) => continue,
+      };
+      if is_dynamic && !self.seen.insert(specifier) {
+        continue;
+      }
+      if let Some(entry) = self.maybe_get_check_entry(module) {
+        self.roots.push(entry);
+      }
+
+      let mut maybe_module_dependencies = None;
+      let mut maybe_types_dependency = None;
+      match module {
+        Module::Js(module) => {
+          maybe_module_dependencies =
+            Some(module.dependencies_prefer_fast_check());
+          maybe_types_dependency = module
+            .maybe_types_dependency
+            .as_ref()
+            .and_then(|d| d.dependency.ok());
+        }
+        Module::Wasm(module) => {
+          maybe_module_dependencies = Some(&module.dependencies);
+        }
+        Module::Json(_) | Module::Npm(_) | Module::External(_) => {}
+        Module::Node(_) => {
+          if !self.has_seen_node_builtin {
+            self.has_seen_node_builtin = true;
+            // inject a specifier that will resolve node types
+            self.roots.push((
+              ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
+              MediaType::Dts,
+            ));
+          }
+        }
+      }
+
+      if let Some(deps) = maybe_module_dependencies {
+        for dep in deps.values() {
+          // walk both the code and type dependencies
+          if let Some(specifier) = dep.get_code() {
+            self.handle_specifier(specifier, dep.is_dynamic);
+          }
+          if let Some(specifier) = dep.get_type() {
+            self.handle_specifier(specifier, dep.is_dynamic);
+          }
+        }
+      }
+
+      if let Some(dep) = maybe_types_dependency {
+        self.handle_specifier(&dep.specifier, false);
+      }
+    }
+  }
+
   fn maybe_get_check_entry(
+    &mut self,
     module: &deno_graph::Module,
-    check_js: bool,
-    hasher: Option<&mut FastInsecureHasher>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     match module {
       Module::Js(module) => {
@@ -408,7 +837,11 @@ fn get_tsc_roots(
           | MediaType::Mjs
           | MediaType::Cjs
           | MediaType::Jsx => {
-            if check_js || has_ts_check(module.media_type, &module.source) {
+            if self
+              .tsconfig_resolver
+              .check_js_for_specifier(&module.specifier)
+              || has_ts_check(module.media_type, &module.source)
+            {
               Some((module.specifier.clone(), module.media_type))
             } else {
               None
@@ -421,7 +854,7 @@ fn get_tsc_roots(
           | MediaType::Unknown => None,
         };
         if result.is_some() {
-          if let Some(hasher) = hasher {
+          if let Some(hasher) = &mut self.maybe_hasher {
             hasher.write_str(module.specifier.as_str());
             hasher.write_str(
               // the fast check module will only be set when publishing
@@ -446,21 +879,21 @@ fn get_tsc_roots(
         None
       }
       Module::Json(module) => {
-        if let Some(hasher) = hasher {
+        if let Some(hasher) = &mut self.maybe_hasher {
           hasher.write_str(module.specifier.as_str());
           hasher.write_str(&module.source);
         }
         None
       }
       Module::Wasm(module) => {
-        if let Some(hasher) = hasher {
+        if let Some(hasher) = &mut self.maybe_hasher {
           hasher.write_str(module.specifier.as_str());
           hasher.write_str(&module.source_dts);
         }
         Some((module.specifier.clone(), MediaType::Dmts))
       }
       Module::External(module) => {
-        if let Some(hasher) = hasher {
+        if let Some(hasher) = &mut self.maybe_hasher {
           hasher.write_str(module.specifier.as_str());
         }
 
@@ -469,205 +902,44 @@ fn get_tsc_roots(
     }
   }
 
-  let mut result = TscRoots {
-    roots: Vec::with_capacity(graph.specifiers_count()),
-    missing_diagnostics: Default::default(),
-    maybe_check_hash: None,
-  };
-  let mut maybe_hasher = npm_cache_state_hash.map(|npm_cache_state_hash| {
-    let mut hasher = FastInsecureHasher::new_deno_versioned();
-    hasher.write_hashable(npm_cache_state_hash);
-    hasher.write_u8(match type_check_mode {
-      TypeCheckMode::All => 0,
-      TypeCheckMode::Local => 1,
-      TypeCheckMode::None => 2,
-    });
-    hasher.write_hashable(graph.has_node_specifier);
-    hasher.write(&ts_config.as_bytes());
-    hasher
-  });
-
-  if graph.has_node_specifier {
-    // inject a specifier that will resolve node types
-    result.roots.push((
-      ModuleSpecifier::parse("asset:///node_types.d.ts").unwrap(),
-      MediaType::Dts,
-    ));
-  }
-
-  let mut seen =
-    HashSet::with_capacity(graph.imports.len() + graph.specifiers_count());
-  let mut pending = VecDeque::new();
-
-  // put in the global types first so that they're resolved before anything else
-  for (referrer, import) in graph.imports.iter() {
-    for specifier in import
-      .dependencies
-      .values()
-      .filter_map(|dep| dep.get_type().or_else(|| dep.get_code()))
-    {
-      let specifier = graph.resolve(specifier);
-      if seen.insert(specifier) {
-        if let Ok(nv_ref) = NpmPackageNvReference::from_specifier(specifier) {
-          let Some(resolved) =
-            resolve_npm_nv_ref(npm_resolver, node_resolver, &nv_ref, referrer)
-          else {
-            result.missing_diagnostics.push(
-              tsc::Diagnostic::from_missing_error(
-                specifier,
-                None,
-                maybe_additional_sloppy_imports_message(sys, specifier),
-              ),
-            );
-            continue;
-          };
-          let mt = MediaType::from_specifier(&resolved);
-          result.roots.push((resolved, mt));
-        } else {
-          pending.push_back((specifier, false));
-        }
+  fn handle_specifier(
+    &mut self,
+    specifier: &'a ModuleSpecifier,
+    is_dynamic: bool,
+  ) {
+    let specifier = self.graph.resolve(specifier);
+    if is_dynamic {
+      if !self.seen.contains(specifier) {
+        self.pending.push_back((specifier, true));
       }
+    } else if self.seen.insert(specifier) {
+      self.pending.push_back((specifier, false));
     }
   }
 
-  // then the roots
-  for root in &graph.roots {
-    let specifier = graph.resolve(root);
-    if seen.insert(specifier) {
-      pending.push_back((specifier, false));
-    }
+  fn resolve_npm_nv_ref(
+    &self,
+    nv_ref: &NpmPackageNvReference,
+    referrer: &ModuleSpecifier,
+  ) -> Option<ModuleSpecifier> {
+    let pkg_dir = self
+      .npm_resolver
+      .as_managed()
+      .unwrap()
+      .resolve_pkg_folder_from_deno_module(nv_ref.nv())
+      .ok()?;
+    let resolved = self
+      .node_resolver
+      .resolve_package_subpath_from_deno_module(
+        &pkg_dir,
+        nv_ref.sub_path(),
+        Some(referrer),
+        node_resolver::ResolutionMode::Import,
+        node_resolver::NodeResolutionKind::Types,
+      )
+      .ok()?;
+    resolved.into_url().ok()
   }
-
-  // now walk the graph that only includes the fast check dependencies
-  while let Some((specifier, is_dynamic)) = pending.pop_front() {
-    let module = match graph.try_get(specifier) {
-      Ok(Some(module)) => module,
-      Ok(None) => continue,
-      Err(ModuleError::Missing(specifier, maybe_range)) => {
-        if !is_dynamic {
-          result
-            .missing_diagnostics
-            .push(tsc::Diagnostic::from_missing_error(
-              specifier,
-              maybe_range.as_ref(),
-              maybe_additional_sloppy_imports_message(sys, specifier),
-            ));
-        }
-        continue;
-      }
-      Err(ModuleError::LoadingErr(
-        specifier,
-        maybe_range,
-        ModuleLoadError::Loader(_),
-      )) => {
-        // these will be errors like attempting to load a directory
-        if !is_dynamic {
-          result
-            .missing_diagnostics
-            .push(tsc::Diagnostic::from_missing_error(
-              specifier,
-              maybe_range.as_ref(),
-              maybe_additional_sloppy_imports_message(sys, specifier),
-            ));
-        }
-        continue;
-      }
-      Err(_) => continue,
-    };
-    if is_dynamic && !seen.insert(specifier) {
-      continue;
-    }
-    if let Some(entry) =
-      maybe_get_check_entry(module, check_js, maybe_hasher.as_mut())
-    {
-      result.roots.push(entry);
-    }
-
-    let mut maybe_module_dependencies = None;
-    let mut maybe_types_dependency = None;
-    if let Module::Js(module) = module {
-      maybe_module_dependencies = Some(module.dependencies_prefer_fast_check());
-      maybe_types_dependency = module
-        .maybe_types_dependency
-        .as_ref()
-        .and_then(|d| d.dependency.ok());
-    } else if let Module::Wasm(module) = module {
-      maybe_module_dependencies = Some(&module.dependencies);
-    }
-
-    fn handle_specifier<'a>(
-      graph: &'a ModuleGraph,
-      seen: &mut HashSet<&'a ModuleSpecifier>,
-      pending: &mut VecDeque<(&'a ModuleSpecifier, bool)>,
-      specifier: &'a ModuleSpecifier,
-      is_dynamic: bool,
-    ) {
-      let specifier = graph.resolve(specifier);
-      if is_dynamic {
-        if !seen.contains(specifier) {
-          pending.push_back((specifier, true));
-        }
-      } else if seen.insert(specifier) {
-        pending.push_back((specifier, false));
-      }
-    }
-
-    if let Some(deps) = maybe_module_dependencies {
-      for dep in deps.values() {
-        // walk both the code and type dependencies
-        if let Some(specifier) = dep.get_code() {
-          handle_specifier(
-            graph,
-            &mut seen,
-            &mut pending,
-            specifier,
-            dep.is_dynamic,
-          );
-        }
-        if let Some(specifier) = dep.get_type() {
-          handle_specifier(
-            graph,
-            &mut seen,
-            &mut pending,
-            specifier,
-            dep.is_dynamic,
-          );
-        }
-      }
-    }
-
-    if let Some(dep) = maybe_types_dependency {
-      handle_specifier(graph, &mut seen, &mut pending, &dep.specifier, false);
-    }
-  }
-
-  result.maybe_check_hash =
-    maybe_hasher.map(|hasher| CacheDBHash::new(hasher.finish()));
-
-  result
-}
-
-fn resolve_npm_nv_ref(
-  npm_resolver: &CliNpmResolver,
-  node_resolver: &CliNodeResolver,
-  nv_ref: &NpmPackageNvReference,
-  referrer: &ModuleSpecifier,
-) -> Option<ModuleSpecifier> {
-  let pkg_dir = npm_resolver
-    .as_managed()
-    .unwrap()
-    .resolve_pkg_folder_from_deno_module(nv_ref.nv())
-    .ok()?;
-  let resolved = node_resolver
-    .resolve_package_subpath_from_deno_module(
-      &pkg_dir,
-      nv_ref.sub_path(),
-      Some(referrer),
-      node_resolver::ResolutionMode::Import,
-      node_resolver::NodeResolutionKind::Types,
-    )
-    .ok()?;
-  Some(resolved)
 }
 
 /// Matches the `@ts-check` pragma.

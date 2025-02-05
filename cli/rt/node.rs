@@ -11,10 +11,10 @@ use deno_media_type::MediaType;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
@@ -25,14 +25,14 @@ pub type DenoRtNpmResolver = deno_resolver::npm::NpmResolver<DenoRtSys>;
 pub type DenoRtNpmModuleLoader = NpmModuleLoader<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;
 pub type DenoRtNodeCodeTranslator = NodeCodeTranslator<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;
@@ -43,7 +43,7 @@ pub type DenoRtNodeResolver = deno_runtime::deno_node::NodeResolver<
 >;
 pub type DenoRtNpmReqResolver = NpmReqResolver<
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;

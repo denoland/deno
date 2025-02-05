@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 37;
+const cacheVersion = 39;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -653,6 +653,14 @@ const ci = {
           },
         },
         {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v4",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+          },
+        },
+        {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
@@ -1094,6 +1102,26 @@ const ci = {
             path: prCachePath,
             key: prCacheKey,
           },
+        },
+      ]),
+    },
+    wasm: {
+      name: "build wasm32",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          name: "Install wasm target",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        {
+          name: "Cargo build",
+          // we want this crate to be wasm compatible
+          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
         },
       ]),
     },
