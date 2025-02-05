@@ -39,7 +39,7 @@ pub struct CliLinterOptions {
   pub configured_rules: ConfiguredRules,
   pub fix: bool,
   pub deno_lint_config: DenoLintConfig,
-  pub maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
+  pub maybe_plugin_runner: Option<Arc<PluginHostProxy>>,
 }
 
 #[derive(Debug)]
@@ -48,7 +48,7 @@ pub struct CliLinter {
   package_rules: Vec<Box<dyn PackageLintRule>>,
   linter: DenoLintLinter,
   deno_lint_config: DenoLintConfig,
-  maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
+  maybe_plugin_runner: Option<Arc<PluginHostProxy>>,
 }
 
 impl CliLinter {
@@ -368,28 +368,25 @@ fn apply_lint_fixes(
 }
 
 fn run_plugins(
-  plugin_runner: Arc<Mutex<PluginHostProxy>>,
+  plugin_runner: Arc<PluginHostProxy>,
   parsed_source: ParsedSource,
   file_path: PathBuf,
   maybe_token: Option<CancellationToken>,
 ) -> Result<ExternalLinterResult, AnyError> {
   let source_text_info = parsed_source.text_info_lazy().clone();
   let plugin_info = plugin_runner
-    .lock()
     .get_plugin_rules()
     .into_iter()
     .map(Cow::from)
     .collect();
 
-  #[allow(clippy::await_holding_lock)]
   let fut = async move {
-    let mut plugin_runner = plugin_runner.lock();
     let utf16_map = Utf16Map::new(parsed_source.text().as_ref());
     let serialized_ast =
       plugin_runner.serialize_ast(&parsed_source, &utf16_map)?;
 
     plugins::run_rules_for_ast(
-      &mut plugin_runner,
+      &plugin_runner,
       &file_path,
       serialized_ast,
       source_text_info,
@@ -415,7 +412,7 @@ struct ExternalLinterContainer {
 
 impl ExternalLinterContainer {
   pub fn new(
-    maybe_plugin_runner: Option<Arc<Mutex<PluginHostProxy>>>,
+    maybe_plugin_runner: Option<Arc<PluginHostProxy>>,
     maybe_token: Option<CancellationToken>,
   ) -> Self {
     let mut s = Self {

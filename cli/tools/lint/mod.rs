@@ -330,7 +330,7 @@ impl WorkspaceLinter {
         exclude,
       )
       .await?;
-      plugin_runner = Some(Arc::new(Mutex::new(runner)));
+      plugin_runner = Some(Arc::new(runner));
     }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {

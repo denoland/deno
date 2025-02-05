@@ -523,7 +523,7 @@ pub async fn create_runner_and_load_plugins(
 }
 
 pub async fn run_rules_for_ast(
-  host_proxy: &mut PluginHostProxy,
+  host_proxy: &PluginHostProxy,
   specifier: &Path,
   serialized_ast: Vec<u8>,
   source_text_info: SourceTextInfo,

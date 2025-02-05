@@ -1653,7 +1653,7 @@ impl ConfigData {
         .await;
       match plugin_load_result {
         Ok(runner) => {
-          plugin_runner = Some(Arc::new(Mutex::new(runner)));
+          plugin_runner = Some(Arc::new(runner));
         }
         Err(err) => {
           lsp_warn!("Failed to load lint plugins: {}", err);
