@@ -7,15 +7,14 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::LintRulesConfig;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::rules::LintRule;
 use deno_lint::tags;
+use deno_resolver::workspace::WorkspaceResolver;
 
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
 
 mod no_sloppy_imports;
@@ -141,19 +140,14 @@ impl ConfiguredRules {
 }
 
 pub struct LintRuleProvider {
-  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
 }
 
 impl LintRuleProvider {
   pub fn new(
-    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
     workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
   ) -> Self {
-    Self {
-      sloppy_imports_resolver,
-      workspace_resolver,
-    }
+    Self { workspace_resolver }
   }
 
   pub fn resolve_lint_rules_err_empty(
@@ -172,7 +166,6 @@ impl LintRuleProvider {
     let deno_lint_rules = deno_lint::rules::get_all_rules();
     let cli_lint_rules = vec![CliLintRule(CliLintRuleKind::Extended(
       Box::new(no_sloppy_imports::NoSloppyImportsRule::new(
-        self.sloppy_imports_resolver.clone(),
         self.workspace_resolver.clone(),
       )),
     ))];
@@ -274,7 +267,7 @@ mod test {
       include: None,
       tags: None,
     };
-    let rules_provider = LintRuleProvider::new(None, None);
+    let rules_provider = LintRuleProvider::new(None);
     let rules = rules_provider.resolve_lint_rules(rules_config, None);
     let mut rule_names = rules
       .rules

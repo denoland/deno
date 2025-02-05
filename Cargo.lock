@@ -1579,9 +1579,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.47.1"
+version = "0.48.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f7883c48549bab8e446a58c64ee3d106a13052d2ff5e864de765a60260cb02b"
+checksum = "6c486df63f7fa0f2142c7eba286c7be87a3cd8c93f66f744fb5853a77cf4347b"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -2382,10 +2382,14 @@ dependencies = [
  "deno_semver",
  "deno_terminal 0.2.0",
  "futures",
+ "import_map",
+ "indexmap 2.3.0",
  "log",
  "node_resolver",
  "once_cell",
  "parking_lot",
+ "serde",
+ "serde_json",
  "sys_traits",
  "test_server",
  "thiserror 2.0.3",
@@ -8033,6 +8037,8 @@ dependencies = [
  "getrandom",
  "libc",
  "parking_lot",
+ "serde",
+ "serde_json",
  "windows-sys 0.59.0",
 ]
 

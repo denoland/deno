@@ -499,7 +499,7 @@ fn collect_lint_files(
 
 #[allow(clippy::print_stdout)]
 pub fn print_rules_list(json: bool, maybe_rules_tags: Option<Vec<String>>) {
-  let rule_provider = LintRuleProvider::new(None, None);
+  let rule_provider = LintRuleProvider::new(None);
   let mut all_rules = rule_provider.all_rules();
   let configured_rules = rule_provider.resolve_lint_rules(
     LintRulesConfig {
@@ -686,7 +686,7 @@ mod tests {
   }
 
   fn get_all_rules() -> Vec<String> {
-    let rule_provider = LintRuleProvider::new(None, None);
+    let rule_provider = LintRuleProvider::new(None);
     let configured_rules =
       rule_provider.resolve_lint_rules(Default::default(), None);
     let mut all_rules = configured_rules
