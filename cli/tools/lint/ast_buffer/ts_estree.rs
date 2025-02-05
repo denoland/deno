@@ -2344,17 +2344,19 @@ impl TsEsTreeBuilder {
   pub fn write_ts_index_sig(
     &mut self,
     span: &Span,
+    is_static: bool,
     is_readonly: bool,
     params: Vec<NodeRef>,
     type_ann: Option<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSIndexSignature, span);
 
+    self.ctx.write_bool(AstProp::Static, is_static);
     self.ctx.write_bool(AstProp::Readonly, is_readonly);
     self.ctx.write_ref_vec(AstProp::Parameters, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
   }

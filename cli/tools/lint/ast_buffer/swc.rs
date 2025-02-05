@@ -1578,7 +1578,13 @@ fn serialize_ts_index_sig(
     .collect::<Vec<_>>();
   let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
 
-  ctx.write_ts_index_sig(&node.span, node.readonly, params, type_ann)
+  ctx.write_ts_index_sig(
+    &node.span,
+    node.is_static,
+    node.readonly,
+    params,
+    type_ann,
+  )
 }
 
 fn accessibility_to_str(accessibility: &Accessibility) -> String {

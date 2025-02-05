@@ -2463,10 +2463,10 @@ declare namespace Deno {
 
     export interface TSIndexSignature extends AstBase {
       type: "TSIndexSignature";
-      boolean: boolean;
+      readonly: boolean;
+      static: boolean;
       parameters: Parameter[];
-      typeAnnotation: TSTypeAnnotation | null; // FIXME
-      // FIXME: Accessibility?
+      typeAnnotation: TSTypeAnnotation | undefined;
     }
 
     export interface TSUnionType extends AstBase {
