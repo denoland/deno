@@ -2583,6 +2583,7 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_mapped_type(
     &mut self,
     span: &Span,
