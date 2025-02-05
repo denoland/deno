@@ -58,4 +58,10 @@ pub enum SqliteError {
   #[class(range)]
   #[error("The value of column {0} is too large to be represented as a JavaScript number: {1}")]
   NumberTooLarge(i32, i64),
+  #[class(generic)]
+  #[error("Failed to apply changeset")]
+  ChangesetApplyFailed,
+  #[class(type)]
+  #[error("Invalid callback: {0}")]
+  InvalidCallback(&'static str),
 }
