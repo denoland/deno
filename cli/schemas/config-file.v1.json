@@ -292,6 +292,13 @@
             "type": "string"
           }
         },
+        "plugins": {
+          "type": "array",
+          "description": "UNSTABLE: List of plugins to load.",
+          "items": {
+            "type": "string"
+          }
+        },
         "rules": {
           "type": "object",
           "properties": {
