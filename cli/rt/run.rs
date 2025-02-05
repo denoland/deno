@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::MappedResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
+use deno_config::workspace::SloppyImportsOptions;
 use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
@@ -861,7 +862,11 @@ pub async fn run(
         .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
-      Default::default(),
+      if metadata.unstable_config.sloppy_imports {
+        SloppyImportsOptions::Enabled
+      } else {
+        SloppyImportsOptions::Disabled
+      },
       Default::default(),
       Default::default(),
       Default::default(),
