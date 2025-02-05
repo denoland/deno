@@ -2,7 +2,6 @@
 
 use serde_json::json;
 use test_util as util;
-use url::Url;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::TestContext;
