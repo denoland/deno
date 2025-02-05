@@ -1,0 +1,11 @@
+error[test-plugin/my-rule]: should be equal to string "1"
+ --> [WILDLINE]main.ts:1:15
+  | 
+1 | const value = "𝄞";
+  |               ^^^
+
+  docs: https://docs.deno.com/lint/rules/test-plugin/my-rule
+
+
+Found 1 problem (1 fixable via --fix)
+Checked 2 files
