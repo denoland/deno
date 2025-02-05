@@ -276,7 +276,21 @@ function installPlugin(plugin) {
   if (typeof plugin.name !== "string") {
     throw new Error("Linter plugin name must be a string");
   }
-  // TODO(bartlomieju): lowercase and dashes for plugin.name
+  if (!/^[a-z-]+$/.test(plugin.name)) {
+    throw new Error(
+      "Linter plugin name must only contain lowercase letters (a-z) or hyphens (-).",
+    );
+  }
+  if (plugin.name.startsWith("-") || plugin.name.endsWith("-")) {
+    throw new Error(
+      "Linter plugin name must start and end with a lowercase letter.",
+    );
+  }
+  if (plugin.name.includes("--")) {
+    throw new Error(
+      "Linter plugin name must not have consequtive hyphens.",
+    );
+  }
   if (typeof plugin.rules !== "object") {
     throw new Error("Linter plugin rules must be an object");
   }
