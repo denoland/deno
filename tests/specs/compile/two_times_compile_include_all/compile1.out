@@ -1,12 +1,12 @@
-Check file:[WILDCARD]main.ts
-Check file:[WILDCARD]deno.json
-Compile file:[WILDCARD]main.ts to [WILDCARD]
+Check file:[WILDLINE]main.ts
+Check file:[WILDLINE]deno.json
+Compile file:[WILDLINE]main.ts to [WILDLINE]
 
 Embedded Files
 
-[WILDCARD]
-├── deno.json ([WILDCARD])
-└── main.ts ([WILDCARD])
+[WILDLINE]
+├── deno.json ([WILDLINE])
+└── main.ts ([WILDLINE])
 
 Files: [WILDCARD]
 Metadata: [WILDCARD]
