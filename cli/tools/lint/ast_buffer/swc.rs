@@ -1303,7 +1303,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
             .as_ref()
             .map(|init| serialize_expr(ctx, init.as_ref()));
 
-          ctx.write_var_declarator(&decl.span, ident, init)
+          ctx.write_var_declarator(&decl.span, ident, init, decl.definite)
         })
         .collect::<Vec<_>>();
 
@@ -1332,7 +1332,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
             .as_ref()
             .map(|init| serialize_expr(ctx, init.as_ref()));
 
-          ctx.write_var_declarator(&decl.span, ident, init)
+          ctx.write_var_declarator(&decl.span, ident, init, decl.definite)
         })
         .collect::<Vec<_>>();
 

@@ -721,11 +721,13 @@ impl TsEsTreeBuilder {
     span: &Span,
     ident: NodeRef,
     init: Option<NodeRef>,
+    definite: bool,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::VariableDeclarator, span);
 
     self.ctx.write_ref(AstProp::Id, &id, ident);
     self.ctx.write_maybe_ref(AstProp::Init, &id, init);
+    self.ctx.write_bool(AstProp::Definite, definite);
 
     self.ctx.commit_node(id)
   }
@@ -753,10 +755,10 @@ impl TsEsTreeBuilder {
     self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &id, type_param);
+      .write_maybe_undef_ref(AstProp::TypeParameters, &id, type_param);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+      .write_maybe_undef_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.write_maybe_ref(AstProp::Body, &id, body);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
 
@@ -1238,11 +1240,11 @@ impl TsEsTreeBuilder {
     self.ctx.write_maybe_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+      .write_maybe_undef_ref(AstProp::TypeParameters, &id, type_params);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+      .write_maybe_undef_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.write_maybe_ref(AstProp::Body, &id, body);
 
     self.ctx.commit_node(id)
@@ -1265,11 +1267,11 @@ impl TsEsTreeBuilder {
     self.ctx.write_bool(AstProp::Generator, is_generator);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+      .write_maybe_undef_ref(AstProp::TypeParameters, &id, type_params);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+      .write_maybe_undef_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.write_ref(AstProp::Body, &id, body);
 
     self.ctx.commit_node(id)
@@ -1311,7 +1313,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Callee, &id, callee);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_args);
     self.ctx.write_ref_vec(AstProp::Arguments, &id, args);
 
     self.ctx.commit_node(id)
@@ -1477,7 +1479,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Tag, &id, tag);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_args);
     self.ctx.write_ref(AstProp::Quasi, &id, quasi);
 
     self.ctx.commit_node(id)
@@ -1520,9 +1522,11 @@ impl TsEsTreeBuilder {
 
     self.ctx.write_str(AstProp::Name, name);
     self.ctx.write_bool(AstProp::Optional, optional);
-    self
-      .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_annotation);
+    self.ctx.write_maybe_undef_ref(
+      AstProp::TypeAnnotation,
+      &id,
+      type_annotation,
+    );
 
     self.ctx.commit_node(id)
   }
@@ -1563,7 +1567,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_bool(AstProp::Optional, optional);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Elements, &id, elems);
 
     self.ctx.commit_node(id)
@@ -1581,7 +1585,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_bool(AstProp::Optional, optional);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref_vec(AstProp::Properties, &id, props);
 
     self.ctx.commit_node(id)
@@ -1597,7 +1601,7 @@ impl TsEsTreeBuilder {
 
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
     self.ctx.write_ref(AstProp::Argument, &id, arg);
 
     self.ctx.commit_node(id)
@@ -1889,7 +1893,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_bool(AstProp::Declare, is_declare);
     self.ctx.write_bool(AstProp::Global, is_global);
     self.ctx.write_ref(AstProp::Id, &id, ident);
-    self.ctx.write_maybe_ref(AstProp::Body, &id, body);
+    self.ctx.write_maybe_undef_ref(AstProp::Body, &id, body);
     self.ctx.commit_node(id)
   }
 
@@ -1914,7 +1918,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Expression, &id, expr);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_args);
 
     self.ctx.commit_node(id)
   }
@@ -2020,7 +2024,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self
       .ctx
-      .write_maybe_ref(AstProp::ReturnType, &id, return_type);
+      .write_maybe_undef_ref(AstProp::ReturnType, &id, return_type);
 
     self.ctx.commit_node(id)
   }
@@ -2045,7 +2049,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Key, &id, key);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
   }
@@ -2087,7 +2091,9 @@ impl TsEsTreeBuilder {
     let id = self.ctx.append_node(AstNode::TSEnumMember, span);
 
     self.ctx.write_ref(AstProp::Id, &id, ident);
-    self.ctx.write_maybe_ref(AstProp::Initializer, &id, init);
+    self
+      .ctx
+      .write_maybe_undef_ref(AstProp::Initializer, &id, init);
 
     self.ctx.commit_node(id)
   }
@@ -2134,7 +2140,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Id, &id, ident);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &id, type_param);
+      .write_maybe_undef_ref(AstProp::TypeParameters, &id, type_param);
     self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
@@ -2245,7 +2251,7 @@ impl TsEsTreeBuilder {
       .append_node(AstNode::TSConstructSignatureDeclaration, span);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeParameters, &id, type_params);
+      .write_maybe_undef_ref(AstProp::TypeParameters, &id, type_params);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
     self.ctx.write_ref(AstProp::ReturnType, &id, return_type);
     self.ctx.commit_node(id)
@@ -2332,7 +2338,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::Expression, &id, expr);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_args);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_args);
 
     self.ctx.commit_node(id)
   }
@@ -2559,7 +2565,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::ExprName, &id, expr_name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_arg);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_arg);
 
     self.ctx.commit_node(id)
   }
@@ -2575,7 +2581,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::TypeName, &id, type_name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeArguments, &id, type_arg);
+      .write_maybe_undef_ref(AstProp::TypeArguments, &id, type_arg);
 
     self.ctx.commit_node(id)
   }
@@ -2593,7 +2599,7 @@ impl TsEsTreeBuilder {
     self.ctx.write_ref(AstProp::ParameterName, &id, param_name);
     self
       .ctx
-      .write_maybe_ref(AstProp::TypeAnnotation, &id, type_ann);
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
   }
