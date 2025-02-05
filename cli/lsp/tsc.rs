@@ -49,6 +49,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -1827,8 +1828,8 @@ impl TextSpan {
 
   pub fn to_range(&self, line_index: Arc<LineIndex>) -> lsp::Range {
     lsp::Range {
-      start: line_index.position_tsc(self.start.into()),
-      end: line_index.position_tsc(TextSize::from(self.start + self.length)),
+      start: line_index.position_utf16(self.start.into()),
+      end: line_index.position_utf16(TextSize::from(self.start + self.length)),
     }
   }
 }
@@ -2276,7 +2277,7 @@ impl InlayHint {
     language_server: &language_server::Inner,
   ) -> lsp::InlayHint {
     lsp::InlayHint {
-      position: line_index.position_tsc(self.position.into()),
+      position: line_index.position_utf16(self.position.into()),
       label: if let Some(display_parts) = &self.display_parts {
         lsp::InlayHintLabel::LabelParts(
           display_parts
@@ -2836,8 +2837,8 @@ impl Classifications {
           ts_classification,
         );
 
-      let start_pos = line_index.position_tsc(offset.into());
-      let end_pos = line_index.position_tsc(TextSize::from(offset + length));
+      let start_pos = line_index.position_utf16(offset.into());
+      let end_pos = line_index.position_utf16(TextSize::from(offset + length));
 
       for line in start_pos.line..(end_pos.line + 1) {
         let start_character = if line == start_pos.line {
@@ -4599,6 +4600,9 @@ async fn op_poll_requests(
     let state = state.try_borrow_mut::<State>().unwrap();
     state.pending_requests.take().unwrap()
   };
+
+  // clear the resolution cache after each request
+  NodeResolutionThreadLocalCache::clear();
 
   let Some((request, scope, snapshot, response_tx, token, change)) =
     pending_requests.recv().await
