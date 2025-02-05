@@ -122,16 +122,16 @@ impl CliLintRule {
 
 #[derive(Debug)]
 pub struct ConfiguredRules {
-  pub all_rule_codes: HashSet<&'static str>,
+  pub all_rule_codes: HashSet<Cow<'static, str>>,
   pub rules: Vec<CliLintRule>,
 }
 
 impl ConfiguredRules {
-  pub fn incremental_cache_state(&self) -> Option<impl std::hash::Hash> {
-    if self.rules.iter().any(|r| !r.supports_incremental_cache()) {
-      return None;
-    }
+  pub fn supports_incremental_cache(&self) -> bool {
+    self.rules.iter().all(|r| r.supports_incremental_cache())
+  }
 
+  pub fn incremental_cache_state(&self) -> impl std::hash::Hash {
     // use a hash of the rule names in order to bust the cache
     let mut codes = self.rules.iter().map(|r| r.code()).collect::<Vec<_>>();
     // ensure this is stable by sorting it
@@ -195,7 +195,7 @@ impl LintRuleProvider {
     let all_rules = self.all_rules();
     let mut all_rule_names = HashSet::with_capacity(all_rules.len());
     for rule in &all_rules {
-      all_rule_names.insert(rule.code());
+      all_rule_names.insert(rule.code().into());
     }
     let rules = filtered_rules(
       all_rules.into_iter(),

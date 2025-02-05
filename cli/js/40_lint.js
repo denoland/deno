@@ -10,8 +10,13 @@ import {
 import { core, internals } from "ext:core/mod.js";
 
 const {
+  op_lint_get_source,
+  op_lint_report,
   op_lint_create_serialized_ast,
+  op_is_cancelled,
 } = core.ops;
+
+let doReport = op_lint_report;
 
 // Keep these in sync with Rust
 const AST_IDX_INVALID = 0;
@@ -72,28 +77,132 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").VisitorFn} VisitorFn */
 /** @typedef {import("./40_lint_types.d.ts").CompiledVisitor} CompiledVisitor */
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
-/** @typedef {import("./40_lint_types.d.ts").RuleContext} RuleContext */
-/** @typedef {import("./40_lint_types.d.ts").NodeFacade} NodeFacade */
-/** @typedef {import("./40_lint_types.d.ts").LintPlugin} LintPlugin */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
-/** @typedef {import("./40_lint_types.d.ts").Node} Node */
 
 /** @type {LintState} */
 const state = {
   plugins: [],
   installedPlugins: new Set(),
+  ignoredRules: new Set(),
 };
+
+function resetState() {
+  state.plugins = [];
+  state.installedPlugins.clear();
+  state.ignoredRules.clear();
+}
+
+/**
+ * This implementation calls into Rust to check if Tokio's cancellation token
+ * has already been canceled.
+ */
+class CancellationToken {
+  isCancellationRequested() {
+    return op_is_cancelled();
+  }
+}
+
+/** @implements {Deno.lint.Fixer} */
+class Fixer {
+  /**
+   * @param {Deno.lint.Node} node
+   * @param {string} text
+   */
+  insertTextAfter(node, text) {
+    return {
+      range: /** @type {[number, number]} */ ([node.range[1], node.range[1]]),
+      text,
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node["range"]} range
+   * @param {string} text
+   */
+  insertTextAfterRange(range, text) {
+    return {
+      range: /** @type {[number, number]} */ ([range[1], range[1]]),
+      text,
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @param {string} text
+   */
+  insertTextBefore(node, text) {
+    return {
+      range: /** @type {[number, number]} */ ([node.range[0], node.range[0]]),
+      text,
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node["range"]} range
+   * @param {string} text
+   */
+  insertTextBeforeRange(range, text) {
+    return {
+      range: /** @type {[number, number]} */ ([range[0], range[0]]),
+      text,
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   */
+  remove(node) {
+    return {
+      range: node.range,
+      text: "",
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node["range"]} range
+   */
+  removeRange(range) {
+    return {
+      range,
+      text: "",
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   * @param {string} text
+   */
+  replaceText(node, text) {
+    return {
+      range: node.range,
+      text,
+    };
+  }
+
+  /**
+   * @param {Deno.lint.Node["range"]} range
+   * @param {string} text
+   */
+  replaceTextRange(range, text) {
+    return {
+      range,
+      text,
+    };
+  }
+}
 
 /**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
- * @implements {RuleContext}
+ * @implements {Deno.lint.RuleContext}
  */
 export class Context {
   id;
 
   fileName;
+
+  #source = null;
 
   /**
    * @param {string} id
@@ -103,17 +212,84 @@ export class Context {
     this.id = id;
     this.fileName = fileName;
   }
+
+  source() {
+    if (this.#source === null) {
+      this.#source = op_lint_get_source();
+    }
+    return /** @type {*} */ (this.#source);
+  }
+
+  /**
+   * @param {Deno.lint.ReportData} data
+   */
+  report(data) {
+    const range = data.node ? data.node.range : data.range ? data.range : null;
+    if (range == null) {
+      throw new Error(
+        "Either `node` or `range` must be provided when reporting an error",
+      );
+    }
+
+    const start = range[0];
+    const end = range[1];
+
+    let fix;
+
+    if (typeof data.fix === "function") {
+      const fixer = new Fixer();
+      fix = data.fix(fixer);
+    }
+
+    doReport(
+      this.id,
+      data.message,
+      data.hint,
+      start,
+      end,
+      fix,
+    );
+  }
 }
 
 /**
- * @param {LintPlugin} plugin
+ * @param {Deno.lint.Plugin[]} plugins
+ * @param {string[]} exclude
  */
-export function installPlugin(plugin) {
+export function installPlugins(plugins, exclude) {
+  if (Array.isArray(exclude)) {
+    for (let i = 0; i < exclude.length; i++) {
+      state.ignoredRules.add(exclude[i]);
+    }
+  }
+
+  return plugins.map((plugin) => installPlugin(plugin));
+}
+
+/**
+ * @param {Deno.lint.Plugin} plugin
+ */
+function installPlugin(plugin) {
   if (typeof plugin !== "object") {
     throw new Error("Linter plugin must be an object");
   }
   if (typeof plugin.name !== "string") {
     throw new Error("Linter plugin name must be a string");
+  }
+  if (!/^[a-z-]+$/.test(plugin.name)) {
+    throw new Error(
+      "Linter plugin name must only contain lowercase letters (a-z) or hyphens (-).",
+    );
+  }
+  if (plugin.name.startsWith("-") || plugin.name.endsWith("-")) {
+    throw new Error(
+      "Linter plugin name must start and end with a lowercase letter.",
+    );
+  }
+  if (plugin.name.includes("--")) {
+    throw new Error(
+      "Linter plugin name must not have consequtive hyphens.",
+    );
   }
   if (typeof plugin.rules !== "object") {
     throw new Error("Linter plugin rules must be an object");
@@ -123,6 +299,11 @@ export function installPlugin(plugin) {
   }
   state.plugins.push(plugin);
   state.installedPlugins.add(plugin.name);
+
+  return {
+    name: plugin.name,
+    ruleNames: Object.keys(plugin.rules),
+  };
 }
 
 /**
@@ -285,7 +466,7 @@ function readType(buf, idx) {
 /**
  * @param {AstContext} ctx
  * @param {number} idx
- * @returns {Node["range"]}
+ * @returns {Deno.lint.Node["range"]}
  */
 function readSpan(ctx, idx) {
   let offset = ctx.spansOffset + (idx * SPAN_SIZE);
@@ -765,6 +946,12 @@ export function runPluginsForFile(fileName, serializedAst) {
     for (const name of Object.keys(plugin.rules)) {
       const rule = plugin.rules[name];
       const id = `${plugin.name}/${name}`;
+
+      // Check if this rule is excluded
+      if (state.ignoredRules.has(id)) {
+        continue;
+      }
+
       const ctx = new Context(id, fileName);
       const visitor = rule.create(ctx);
 
@@ -852,10 +1039,11 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({ info, matcher });
   }
 
+  const token = new CancellationToken();
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
-    traverse(ctx, visitors, ctx.rootOffset);
+    traverse(ctx, visitors, ctx.rootOffset, token);
   } finally {
     ctx.nodes.clear();
 
@@ -870,9 +1058,11 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {AstContext} ctx
  * @param {CompiledVisitor[]} visitors
  * @param {number} idx
+ * @param {CancellationToken} cancellationToken
  */
-function traverse(ctx, visitors, idx) {
+function traverse(ctx, visitors, idx, cancellationToken) {
   if (idx === AST_IDX_INVALID) return;
+  if (cancellationToken.isCancellationRequested()) return;
 
   const { buf } = ctx;
   const nodeType = readType(ctx.buf, idx);
@@ -905,12 +1095,12 @@ function traverse(ctx, visitors, idx) {
   try {
     const childIdx = readChild(buf, idx);
     if (childIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, childIdx);
+      traverse(ctx, visitors, childIdx, cancellationToken);
     }
 
     const nextIdx = readNext(buf, idx);
     if (nextIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, nextIdx);
+      traverse(ctx, visitors, nextIdx, cancellationToken);
     }
   } finally {
     if (exits !== null) {
@@ -1064,8 +1254,12 @@ function _dump(ctx) {
   }
 }
 
-// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
-// the CLI linter
+// These are captured by Rust and called when plugins need to be loaded
+// or run.
+internals.installPlugins = installPlugins;
+internals.runPluginsForFile = runPluginsForFile;
+internals.resetState = resetState;
+
 /**
  * @param {LintPlugin} plugin
  * @param {string} fileName
@@ -1074,16 +1268,25 @@ function _dump(ctx) {
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
 
+  const diagnostics = [];
+  doReport = (id, message, hint, start, end, fix) => {
+    diagnostics.push({
+      id,
+      message,
+      hint,
+      range: [start, end],
+      fix,
+    });
+  };
   try {
     const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
     runPluginsForFile(fileName, serializedAst);
   } finally {
-    // During testing we don't want to keep plugins around
-    state.installedPlugins.clear();
+    resetState();
   }
+  doReport = op_lint_report;
+  return diagnostics;
 }
 
-// TODO(bartlomieju): this is temporary, until we get plugins plumbed through
-// the CLI linter
-internals.runLintPlugin = runLintPlugin;
+Deno.lint.runPlugin = runLintPlugin;

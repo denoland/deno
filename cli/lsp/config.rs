@@ -1629,14 +1629,46 @@ impl ConfigData {
       sloppy_imports_resolver.clone(),
       Some(resolver.clone()),
     );
+
+    let lint_options = LintOptions::resolve(
+      member_dir.dir_path(),
+      (*lint_config).clone(),
+      &LintFlags::default(),
+    )
+    .inspect_err(|err| lsp_warn!("  Failed to resolve linter options: {}", err))
+    .ok()
+    .unwrap_or_default();
+    let mut plugin_runner = None;
+    if !lint_options.plugins.is_empty() {
+      fn logger_printer(msg: &str, _is_err: bool) {
+        lsp_log!("pluggin runner - {}", msg);
+      }
+      let logger = crate::tools::lint::PluginLogger::new(logger_printer);
+      let plugin_load_result =
+        crate::tools::lint::create_runner_and_load_plugins(
+          lint_options.plugins.clone(),
+          logger,
+          lint_options.rules.exclude.clone(),
+        )
+        .await;
+      match plugin_load_result {
+        Ok(runner) => {
+          plugin_runner = Some(Arc::new(runner));
+        }
+        Err(err) => {
+          lsp_warn!("Failed to load lint plugins: {}", err);
+        }
+      }
+    }
+
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rule_provider.resolve_lint_rules(
-        LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
-          .rules,
+        lint_options.rules,
         member_dir.maybe_deno_json().map(|c| c.as_ref()),
       ),
       fix: false,
       deno_lint_config,
+      maybe_plugin_runner: plugin_runner,
     }));
 
     ConfigData {

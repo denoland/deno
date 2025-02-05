@@ -10,6 +10,7 @@ use deno_ast::view::TruePlusMinus;
 use super::buffer::AstBufSerializer;
 use super::buffer::NodeRef;
 use super::buffer::SerializeCtx;
+use crate::util::text_encoding::Utf16Map;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
@@ -486,6 +487,10 @@ impl TsEsTreeBuilder {
     Self {
       ctx: SerializeCtx::new(kind_max_count, prop_max_count),
     }
+  }
+
+  pub fn map_utf8_spans_to_utf16(&mut self, map: &Utf16Map) {
+    self.ctx.map_utf8_spans_to_utf16(map);
   }
 
   pub fn write_program(

@@ -2010,9 +2010,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.70.0"
+version = "0.71.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac94db8d8597b96c92d30a68b11d4bec6822dcbb3e8675ab1e0136816a301a34"
+checksum = "810d0f4b19cd44061bbe7252ad37cf7a81753540f97f88e1548ac9f03b3a18cc"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -4187,9 +4187,9 @@ dependencies = [
 
 [[package]]
 name = "hstr"
-version = "0.2.9"
+version = "0.2.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a9de2bdef6354361892492bab5e316b2d78a0ee9971db4d36da9b1eb0e11999"
+checksum = "dae404c0c5d4e95d4858876ab02eecd6a196bb8caa42050dfa809938833fc412"
 dependencies = [
  "hashbrown 0.14.5",
  "new_debug_unreachable",

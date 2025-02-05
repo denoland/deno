@@ -93,8 +93,12 @@ use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
 use super::ts_estree::TsEsTreeBuilder;
 use super::ts_estree::TsKeywordKind;
+use crate::util::text_encoding::Utf16Map;
 
-pub fn serialize_swc_to_buffer(parsed_source: &ParsedSource) -> Vec<u8> {
+pub fn serialize_swc_to_buffer(
+  parsed_source: &ParsedSource,
+  utf16_map: &Utf16Map,
+) -> Vec<u8> {
   let mut ctx = TsEsTreeBuilder::new();
 
   let program = &parsed_source.program();
@@ -125,6 +129,7 @@ pub fn serialize_swc_to_buffer(parsed_source: &ParsedSource) -> Vec<u8> {
     }
   }
 
+  ctx.map_utf8_spans_to_utf16(utf16_map);
   ctx.serialize()
 }
 
