@@ -92,6 +92,7 @@ use deno_ast::ParsedSource;
 use super::buffer::AstBufSerializer;
 use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
+use super::ts_estree::MethodKind as TsEstreeMethodKind;
 use super::ts_estree::PropertyKind;
 use super::ts_estree::TsEsTreeBuilder;
 use super::ts_estree::TsKeywordKind;
@@ -296,17 +297,30 @@ fn serialize_module_decl(
             .as_ref()
             .map(|block| serialize_stmt(ctx, &Stmt::Block(block.clone())));
 
-          let decl = ctx.write_fn_decl(
-            &fn_obj.span,
-            false,
-            fn_obj.is_async,
-            fn_obj.is_generator,
-            ident,
-            type_params,
-            return_type,
-            body,
-            params,
-          );
+          let decl = if let Some(body) = body {
+            ctx.write_fn_decl(
+              &fn_obj.span,
+              false,
+              fn_obj.is_async,
+              fn_obj.is_generator,
+              ident,
+              type_params,
+              return_type,
+              body,
+              params,
+            )
+          } else {
+            ctx.write_ts_decl_fn(
+              &fn_obj.span,
+              false,
+              fn_obj.is_async,
+              fn_obj.is_generator,
+              ident,
+              type_params,
+              return_type,
+              params,
+            )
+          };
 
           (false, decl)
         }
@@ -922,11 +936,20 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         .as_ref()
         .map(|ident| serialize_ident(ctx, ident, None));
 
+      let type_params =
+        maybe_serialize_ts_type_param_decl(ctx, &node.class.type_params);
+
       let super_class = node
         .class
         .super_class
         .as_ref()
         .map(|expr| serialize_expr(ctx, expr.as_ref()));
+
+      let super_type_args = node
+        .class
+        .super_type_params
+        .as_ref()
+        .map(|param| serialize_ts_param_inst(ctx, param.as_ref()));
 
       let implements = node
         .class
@@ -950,6 +973,8 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         node.class.is_abstract,
         ident,
         super_class,
+        super_type_args,
+        type_params,
         implements,
         body,
       )
@@ -1292,17 +1317,30 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
         .map(|param| serialize_pat(ctx, &param.pat))
         .collect::<Vec<_>>();
 
-      ctx.write_fn_decl(
-        &node.function.span,
-        node.declare,
-        node.function.is_async,
-        node.function.is_generator,
-        Some(ident_id),
-        type_param_id,
-        return_type,
-        body,
-        params,
-      )
+      if let Some(body) = body {
+        ctx.write_fn_decl(
+          &node.function.span,
+          node.declare,
+          node.function.is_async,
+          node.function.is_generator,
+          Some(ident_id),
+          type_param_id,
+          return_type,
+          body,
+          params,
+        )
+      } else {
+        ctx.write_ts_decl_fn(
+          &node.function.span,
+          node.declare,
+          node.function.is_async,
+          node.function.is_generator,
+          Some(ident_id),
+          type_param_id,
+          return_type,
+          params,
+        )
+      }
     }
     Decl::Var(node) => {
       let children = node
@@ -2017,7 +2055,7 @@ fn serialize_class_member(
         node.is_optional,
         false,
         false,
-        "constructor",
+        TsEstreeMethodKind::Constructor,
         a11y,
         key,
         value,
@@ -2162,9 +2200,9 @@ fn serialize_class_method(
   function: &Function,
 ) -> NodeRef {
   let kind = match method_kind {
-    MethodKind::Method => "method",
-    MethodKind::Getter => "getter",
-    MethodKind::Setter => "setter",
+    MethodKind::Method => TsEstreeMethodKind::Method,
+    MethodKind::Getter => TsEstreeMethodKind::Get,
+    MethodKind::Setter => TsEstreeMethodKind::Set,
   };
 
   let type_params =
@@ -2304,8 +2342,18 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
           .map(|param| serialize_ts_fn_param(ctx, param))
           .collect::<Vec<_>>();
 
-        // FIXME
-        ctx.write_ts_fn_type(&node.span, param_ids)
+        let type_params = node
+          .type_params
+          .as_ref()
+          .map(|param| serialize_ts_type_param_decl(ctx, param));
+        let return_type = serialize_ts_type_ann(ctx, node.type_ann.as_ref());
+
+        ctx.write_ts_fn_type(
+          &node.span,
+          type_params,
+          param_ids,
+          Some(return_type),
+        )
       }
       TsFnOrConstructorType::TsConstructorType(node) => {
         // interface Foo { new<T>(arg1: any): any }

@@ -1656,7 +1656,7 @@ declare namespace Deno {
         | TSAsExpression
         | TSNonNullExpression
         | TSTypeAssertion
-        | null; // FIXME
+        | null;
       implements: TSClassImplements[];
       body: ClassBody;
     }
@@ -1665,9 +1665,34 @@ declare namespace Deno {
       type: "ClassExpression";
       declare: boolean;
       abstract: boolean;
-      id: any | null; // FIXME
-      superClass: any | null; // FIXME
-      implements: any[]; // FIXME
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      superTypeArguments: TSTypeParameterInstantiation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      implements: TSClassImplements[];
       body: ClassBody;
     }
 
@@ -1678,9 +1703,11 @@ declare namespace Deno {
         | MethodDefinition
         | PropertyDefinition
         | StaticBlock
-        | TSAbstractAccessorProperty
+        // Stage 1 Proposal:
+        // https://github.com/tc39/proposal-grouped-and-auto-accessors
+        // | TSAbstractAccessorProperty
         | TSAbstractMethodDefinition
-        | TSAbstractPropertyDefinition
+        | TSAbstractPropertyDefinition // FIXME
         | TSIndexSignature
       >;
     }
@@ -1690,6 +1717,9 @@ declare namespace Deno {
       body: Statement[];
     }
 
+    // Stage 1 Proposal:
+    // https://github.com/tc39/proposal-grouped-and-auto-accessors
+    // | TSAbstractAccessorProperty
     export interface AccessorProperty extends AstBase {
       type: "AccessorProperty";
       declare: boolean;
@@ -1700,8 +1730,8 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: any; // FIXME
-      value: any | null; // FIXME
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
     }
 
     export interface PropertyDefinition extends AstBase {
@@ -1714,8 +1744,8 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: any; // FIXME
-      value: any | null; // FIXME
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
     }
 
     export interface MethodDefinition extends AstBase {
@@ -1726,10 +1756,16 @@ declare namespace Deno {
       override: boolean;
       readonly: boolean;
       static: boolean;
+      kind: "constructor" | "get" | "method" | "set";
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: any; // FIXME
-      value: any | null; // FIXME
+      key:
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | Expression;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
     }
 
     export interface BlockStatement extends AstBase {
@@ -2353,6 +2389,18 @@ declare namespace Deno {
       typeAnnotation: TSTypeAnnotation | undefined;
     }
 
+    export interface TSDeclareFunction extends AstBase {
+      type: "TSDeclareFunction";
+      async: boolean;
+      declare: boolean;
+      generator: boolean;
+      body: undefined;
+      id: Identifier | null;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
     export interface TSEnumDeclaration extends AstBase {
       type: "TSEnumDeclaration";
       declare: boolean;
@@ -2566,8 +2614,8 @@ declare namespace Deno {
       // FIXME: updated spec
       readonly: boolean;
       optional: boolean;
-      nameType: any | null; // FIXME
-      typeAnnotation: any | null; // FIXME
+      nameType: TypeNode | null;
+      typeAnnotation: TypeNode | undefined;
       typeParameter: any; // FIXME
     }
 
@@ -2669,7 +2717,8 @@ declare namespace Deno {
     export interface TSFunctionType extends AstBase {
       type: "TSFunctionType";
       params: Parameter[];
-      // FIXME: missing properties
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
     }
 
     export interface TSQualifiedName extends AstBase {
