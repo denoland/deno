@@ -4,9 +4,10 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::fmt;
+use std::path::Path;
+use std::path::PathBuf;
 
-use crate::sync::new_rc;
-use crate::sync::MaybeDashMap;
 use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::ConfigFileError;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
@@ -36,14 +37,14 @@ use indexmap::IndexMap;
 use node_resolver::NodeResolutionKind;
 use serde::Deserialize;
 use serde::Serialize;
-use std::fmt;
-use std::path::Path;
-use std::path::PathBuf;
 use sys_traits::FsMetadata;
 use sys_traits::FsMetadataValue;
 use sys_traits::FsRead;
 use thiserror::Error;
 use url::Url;
+
+use crate::sync::new_rc;
+use crate::sync::MaybeDashMap;
 
 #[allow(clippy::disallowed_types)]
 type UrlRc = crate::sync::MaybeArc<Url>;
@@ -1636,6 +1637,9 @@ mod test {
   use std::path::Path;
   use std::path::PathBuf;
 
+  use deno_config::workspace::WorkspaceDirectory;
+  use deno_config::workspace::WorkspaceDiscoverOptions;
+  use deno_config::workspace::WorkspaceDiscoverStart;
   use deno_path_util::url_from_directory_path;
   use deno_path_util::url_from_file_path;
   use deno_semver::VersionReq;
@@ -1645,9 +1649,6 @@ mod test {
   use url::Url;
 
   use super::*;
-  use deno_config::workspace::WorkspaceDirectory;
-  use deno_config::workspace::WorkspaceDiscoverOptions;
-  use deno_config::workspace::WorkspaceDiscoverStart;
 
   pub struct UnreachableSys;
 

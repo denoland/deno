@@ -46,5 +46,5 @@ thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-test_util.workspace = true
 sys_traits = { workspace = true, features = ["memory", "real", "serde_json"] }
+test_util.workspace = true
