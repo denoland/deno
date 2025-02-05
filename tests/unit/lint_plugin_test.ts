@@ -751,28 +751,60 @@ Deno.test("Plugin - TSEnumDeclaration", async (t) => {
   );
 });
 
-Deno.test("Plugin - TSInterface", async (t) => {
-  await testSnapshot(t, "interface A {}", "TSInterface");
-  await testSnapshot(t, "interface A<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A extends Foo<T>, Bar<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A { foo: any, bar?: any }", "TSInterface");
+Deno.test("Plugin - TSInterfaceDeclaration", async (t) => {
+  await testSnapshot(t, "interface A {}", "TSInterfaceDeclaration");
+  await testSnapshot(t, "interface A<T> {}", "TSInterfaceDeclaration");
+  await testSnapshot(
+    t,
+    "interface A extends Foo<T>, Bar<T> {}",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { foo: any, bar?: any }",
+    "TSInterfaceDeclaration",
+  );
   await testSnapshot(
     t,
     "interface A { readonly [key: string]: any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 
-  await testSnapshot(t, "interface A { readonly a: any }", "TSInterface");
-  await testSnapshot(t, "interface A { <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { new <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { a: new <T>(a: T) => T }", "TSInterface");
-  await testSnapshot(t, "interface A { get a(): string }", "TSInterface");
-  await testSnapshot(t, "interface A { set a(v: string) }", "TSInterface");
+  await testSnapshot(
+    t,
+    "interface A { readonly a: any }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { new <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { a: new <T>(a: T) => T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { get a(): string }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { set a(v: string) }",
+    "TSInterfaceDeclaration",
+  );
 
   await testSnapshot(
     t,
     "interface A { a<T>(arg?: any, ...args: any[]): any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 });
 
