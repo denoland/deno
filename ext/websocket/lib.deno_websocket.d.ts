@@ -82,8 +82,17 @@ interface WebSocket extends EventTarget {
    * Returns the extensions selected by the server, if any.
    *
    * ```ts
-   * const ws = new WebSocket("ws://localhost:8080");
-   * console.log(ws.extensions); // ""
+   * // Server (running with permessage-deflate extension)
+   * const wss = new WebSocketServer({
+   *   port: 8080,
+   *   perMessageDeflate: true
+   * });
+   * 
+   * // Client
+   * const ws = new WebSocket("ws://localhost:8080", {
+   *   perMessageDeflate: true
+   * });
+   * console.log(ws.extensions); // "permessage-deflate"
    * ```
    */
   readonly extensions: string;
