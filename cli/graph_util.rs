@@ -10,6 +10,7 @@ use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_config::workspace::sloppy_imports_resolve;
 use deno_config::workspace::JsrPackageConfig;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -34,8 +35,6 @@ use deno_graph::SpecifierError;
 use deno_graph::WorkspaceFastCheckOption;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
 use deno_runtime::deno_node;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::jsr::JsrDepPackageReq;
@@ -62,7 +61,6 @@ use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
 use crate::tools::check;
 use crate::tools::check::CheckError;
@@ -949,11 +947,14 @@ pub fn maybe_additional_sloppy_imports_message(
   sys: &CliSys,
   specifier: &ModuleSpecifier,
 ) -> Option<String> {
+  let (resolved, sloppy_reason) = sloppy_imports_resolve(
+    specifier,
+    deno_config::workspace::ResolutionKind::Execution,
+    sys.clone(),
+  )?;
   Some(format!(
     "{} {}",
-    CliSloppyImportsResolver::new(SloppyImportsCachedFs::new(sys.clone()))
-      .resolve(specifier, SloppyImportsResolutionKind::Execution)?
-      .as_suggestion_message(),
+    sloppy_reason.suggestion_message_for_specifier(&resolved),
     RUN_WITH_SLOPPY_IMPORTS_MSG
   ))
 }

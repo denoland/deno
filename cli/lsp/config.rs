@@ -22,7 +22,9 @@ use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
 use deno_config::workspace::CreateResolverOptions;
+use deno_config::workspace::FsCacheOptions;
 use deno_config::workspace::PackageJsonDepResolution;
+use deno_config::workspace::SloppyImportsOptions;
 use deno_config::workspace::SpecifiedImportMap;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
@@ -49,7 +51,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -65,7 +66,6 @@ use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
@@ -1206,7 +1206,6 @@ pub struct ConfigData {
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
   pub resolver: Arc<WorkspaceResolver<CliSys>>,
-  pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
@@ -1569,6 +1568,16 @@ impl ConfigData {
         None
       }
     };
+    let unstable = member_dir
+      .workspace
+      .unstable_features()
+      .iter()
+      .chain(settings.unstable.as_deref())
+      .cloned()
+      .collect::<BTreeSet<_>>();
+    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
+      .is_ok()
+      || unstable.contains("sloppy-imports");
     let resolver = member_dir
       .workspace
       .create_resolver(
@@ -1576,6 +1585,12 @@ impl ConfigData {
         CreateResolverOptions {
           pkg_json_dep_resolution,
           specified_import_map,
+          sloppy_imports_options: if unstable_sloppy_imports {
+            SloppyImportsOptions::Enabled
+          } else {
+            SloppyImportsOptions::Disabled
+          },
+          fs_cache_options: FsCacheOptions::Disabled,
         },
       )
       .inspect_err(|err| {
@@ -1595,6 +1610,8 @@ impl ConfigData {
           pkg_json_dep_resolution,
           Default::default(),
           Default::default(),
+          Default::default(),
+          Default::default(),
           CliSys::default(),
         )
       });
@@ -1609,26 +1626,8 @@ impl ConfigData {
           .join("\n")
       );
     }
-    let unstable = member_dir
-      .workspace
-      .unstable_features()
-      .iter()
-      .chain(settings.unstable.as_deref())
-      .cloned()
-      .collect::<BTreeSet<_>>();
-    let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
-      .is_ok()
-      || unstable.contains("sloppy-imports");
-    let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
-      Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new_without_stat_cache(CliSys::default()),
-      ))
-    });
     let resolver = Arc::new(resolver);
-    let lint_rule_provider = LintRuleProvider::new(
-      sloppy_imports_resolver.clone(),
-      Some(resolver.clone()),
-    );
+    let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rule_provider.resolve_lint_rules(
         LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
@@ -1644,7 +1643,6 @@ impl ConfigData {
       canonicalized_scope,
       member_dir,
       resolver,
-      sloppy_imports_resolver,
       fmt_config,
       lint_config,
       test_config,

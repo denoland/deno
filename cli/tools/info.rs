@@ -65,10 +65,6 @@ pub async fn info(
         deno_config::workspace::MappedResolution::Normal {
           specifier, ..
         }
-        | deno_config::workspace::MappedResolution::ImportMap {
-          specifier,
-          ..
-        }
         | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
           specifier,
           ..

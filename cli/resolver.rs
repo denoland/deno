@@ -14,8 +14,6 @@ use deno_graph::NpmLoadError;
 use deno_graph::NpmResolvePkgReqsResult;
 use deno_npm::resolution::NpmResolutionError;
 use deno_resolver::npm::DenoInNpmPackageChecker;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
-use deno_resolver::sloppy_imports::SloppyImportsResolver;
 use deno_runtime::colors;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::package::PackageReq;
@@ -35,14 +33,10 @@ pub type CliCjsTracker =
   deno_resolver::cjs::CjsTracker<DenoInNpmPackageChecker, CliSys>;
 pub type CliIsCjsResolver =
   deno_resolver::cjs::IsCjsResolver<DenoInNpmPackageChecker, CliSys>;
-pub type CliSloppyImportsCachedFs = SloppyImportsCachedFs<CliSys>;
-pub type CliSloppyImportsResolver =
-  SloppyImportsResolver<CliSloppyImportsCachedFs>;
 pub type CliDenoResolver = deno_resolver::DenoResolver<
   DenoInNpmPackageChecker,
   DenoIsBuiltInNodeModuleChecker,
   CliNpmResolver,
-  CliSloppyImportsCachedFs,
   CliSys,
 >;
 pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<

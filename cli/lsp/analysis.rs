@@ -1349,8 +1349,7 @@ impl CodeActionCollection {
         deno_config::workspace::ResolutionKind::Execution,
       ) {
         let specifier = match resolution {
-          MappedResolution::Normal { specifier, .. }
-          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          MappedResolution::Normal { specifier, .. } => specifier,
           _ => {
             return None;
           }

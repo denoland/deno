@@ -49,6 +49,10 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/denoland/deno"
 
+# TODO(nayeemrmn): Land https://github.com/denoland/deno_config/pull/156!
+[patch.crates-io]
+deno_config = { git = "https://github.com/denoland/deno_config.git", rev = "1f6fb4e0d8ece73eeada791f2911aaa68088a076" }
+
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 deno_core = { version = "0.333.0" }

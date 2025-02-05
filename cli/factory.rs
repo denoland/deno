@@ -97,7 +97,6 @@ use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
@@ -646,7 +645,6 @@ impl CliFactory {
         ResolverFactoryOptions {
           conditions_from_resolution_mode: Default::default(),
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
-          no_sloppy_imports_cache: false,
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
             cli_options: self.cli_options()?.clone(),
@@ -670,12 +668,6 @@ impl CliFactory {
         },
       )))
     })
-  }
-
-  pub fn sloppy_imports_resolver(
-    &self,
-  ) -> Result<Option<&Arc<CliSloppyImportsResolver>>, AnyError> {
-    self.resolver_factory()?.sloppy_imports_resolver()
   }
 
   pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
@@ -790,10 +782,9 @@ impl CliFactory {
   }
 
   pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
-    Ok(LintRuleProvider::new(
-      self.sloppy_imports_resolver()?.cloned(),
-      Some(self.workspace_resolver().await?.clone()),
-    ))
+    Ok(LintRuleProvider::new(Some(
+      self.workspace_resolver().await?.clone(),
+    )))
   }
 
   pub async fn node_resolver(&self) -> Result<&Arc<CliNodeResolver>, AnyError> {

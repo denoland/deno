@@ -844,9 +844,6 @@ impl<'a> ResolverFactory<'a> {
           }
           _ => None,
         },
-        sloppy_imports_resolver: self
-          .config_data
-          .and_then(|d| d.sloppy_imports_resolver.clone()),
         workspace_resolver: self
           .config_data
           .map(|d| d.resolver.clone())
@@ -858,6 +855,8 @@ impl<'a> ResolverFactory<'a> {
               Vec::new(),
               Vec::new(),
               PackageJsonDepResolution::Disabled,
+              Default::default(),
+              Default::default(),
               Default::default(),
               Default::default(),
               self.sys.clone(),
