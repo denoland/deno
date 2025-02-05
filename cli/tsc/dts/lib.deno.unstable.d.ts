@@ -2637,7 +2637,7 @@ declare namespace Deno {
       type: "TSNamedTupleMember";
       label: Identifier;
       elementType: TypeNode;
-      // FIXME: optional?
+      optional: boolean;
     }
 
     export interface TSTypeParameterDeclaration extends AstBase {

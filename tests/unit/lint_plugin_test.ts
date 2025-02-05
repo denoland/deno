@@ -871,6 +871,7 @@ Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
   await testSnapshot(t, "type A = [number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
+  await testSnapshot(t, "type A = [x?: number]", "TSTupleType");
   await testSnapshot(t, "type A = [...x: number[]]", "TSTupleType");
 });
 

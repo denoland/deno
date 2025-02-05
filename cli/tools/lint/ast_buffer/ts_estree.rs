@@ -2617,9 +2617,11 @@ impl TsEsTreeBuilder {
     span: &Span,
     label: NodeRef,
     elem_type: NodeRef,
+    optional: bool,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSNamedTupleMember, span);
 
+    self.ctx.write_bool(AstProp::Optional, optional);
     self.ctx.write_ref(AstProp::Label, &id, label);
     self.ctx.write_ref(AstProp::ElementType, &id, elem_type);
 

@@ -2349,10 +2349,17 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
         .iter()
         .map(|elem| {
           if let Some(label) = &elem.label {
+            let optional = match label {
+              Pat::Ident(binding_ident) => binding_ident.optional,
+              Pat::Array(array_pat) => array_pat.optional,
+              Pat::Object(object_pat) => object_pat.optional,
+              _ => false,
+            };
             let label = serialize_pat(ctx, label);
             let type_id = serialize_ts_type(ctx, elem.ty.as_ref());
 
-            ctx.write_ts_named_tuple_member(&elem.span, label, type_id)
+            ctx
+              .write_ts_named_tuple_member(&elem.span, label, type_id, optional)
           } else {
             serialize_ts_type(ctx, elem.ty.as_ref())
           }
