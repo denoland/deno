@@ -180,6 +180,7 @@ pub enum AstNode {
   TSOptionalType,
   TSTemplateLiteralType,
   TSDeclareFunction,
+  TSInstantiationExpression,
 
   TSAnyKeyword,
   TSBigIntKeyword,
@@ -757,7 +758,7 @@ impl TsEsTreeBuilder {
     self
       .ctx
       .write_maybe_undef_ref(AstProp::ReturnType, &id, return_type);
-    self.ctx.write_maybe_ref(AstProp::Body, &id, body);
+    self.ctx.write_undefined(AstProp::Body);
     self.ctx.write_ref_vec(AstProp::Params, &id, params);
 
     self.ctx.commit_node(id)
@@ -2220,6 +2221,22 @@ impl TsEsTreeBuilder {
 
     self.ctx.write_ref(AstProp::Expression, &id, expr);
     self.ctx.write_ref(AstProp::TypeAnnotation, &id, type_ann);
+
+    self.ctx.commit_node(id)
+  }
+
+  pub fn write_ts_inst_expr(
+    &mut self,
+    span: &Span,
+    expr: NodeRef,
+    type_arg: NodeRef,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSInstantiationExpression, span);
+
+    self.ctx.write_ref(AstProp::Expression, &id, expr);
+    self.ctx.write_ref(AstProp::TypeArguments, &id, type_arg);
 
     self.ctx.commit_node(id)
   }

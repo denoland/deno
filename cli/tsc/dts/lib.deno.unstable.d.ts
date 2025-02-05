@@ -1865,7 +1865,6 @@ declare namespace Deno {
 
     export interface ExpressionStatement extends AstBase {
       type: "ExpressionStatement";
-      // FIXME: Directive?
       expression: Expression;
     }
 
@@ -2454,6 +2453,12 @@ declare namespace Deno {
       typeAnnotation: TypeNode;
     }
 
+    export interface TSInstantiationExpression extends AstBase {
+      type: "TSInstantiationExpression";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation;
+    }
+
     export interface TSNonNullExpression extends AstBase {
       type: "TSNonNullExpression";
       expression: Expression;
@@ -2791,7 +2796,7 @@ declare namespace Deno {
       | TemplateLiteral
       | ThisExpression
       | TSAsExpression
-      | TSInstantiationExpression // FIXME: add this
+      | TSInstantiationExpression
       | TSNonNullExpression
       | TSSatisfiesExpression
       | TSTypeAssertion

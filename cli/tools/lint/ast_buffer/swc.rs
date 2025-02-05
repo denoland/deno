@@ -1038,9 +1038,10 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
 
       ctx.write_ts_as_expr(&node.span, expr, type_ann)
     }
-    Expr::TsInstantiation(_) => {
-      // Invalid syntax
-      unreachable!()
+    Expr::TsInstantiation(node) => {
+      let expr = serialize_expr(ctx, &node.expr);
+      let type_args = serialize_ts_param_inst(ctx, node.type_args.as_ref());
+      ctx.write_ts_inst_expr(&node.span, expr, type_args)
     }
     Expr::TsSatisfies(node) => {
       let expr = serialize_expr(ctx, node.expr.as_ref());
