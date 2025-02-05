@@ -1939,7 +1939,7 @@ declare namespace Deno {
     export interface ImportExpression extends AstBase {
       type: "ImportExpression";
       source: Expression;
-      options: Expression | null; // FIXME: non optional?
+      options: Expression | null;
     }
 
     export interface CallExpression extends AstBase {
@@ -2041,8 +2041,8 @@ declare namespace Deno {
 
     export interface MetaProperty extends AstBase {
       type: "MetaProperty";
-      // FIXME: meta?
-      property: Identifier; // FIXME
+      meta: Identifier;
+      property: Identifier;
     }
 
     export interface Identifier extends AstBase {
@@ -2058,8 +2058,6 @@ declare namespace Deno {
     }
 
     export interface AssignmentPattern extends AstBase {
-      // FIXME: Decorators?
-      // FIXME: typeAnnotations?
       type: "AssignmentPattern";
       left: ArrayPattern | ObjectPattern | Identifier;
       right: Expression;
@@ -2089,7 +2087,6 @@ declare namespace Deno {
 
     export interface RestElement extends AstBase {
       type: "RestElement";
-      // FIXME: more properties?
       typeAnnotation: TSTypeAnnotation | undefined;
       argument:
         | ArrayPattern
@@ -2110,9 +2107,15 @@ declare namespace Deno {
       shorthand: boolean;
       computed: boolean;
       method: boolean;
-      kind: any; // FIXME
-      key: any; // FIXME
-      value: any; // FIXME
+      kind: "get" | "init" | "set";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | Expression
+        | TSEmptyBodyFunctionExpression;
     }
 
     export interface BigIntLiteral {
@@ -2194,7 +2197,7 @@ declare namespace Deno {
         | JSXMemberExpression
         | JSXNamespacedName;
       attributes: Array<JSXAttribute | JSXSpreadAttribute>;
-      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+      typeArguments: TSTypeParameterInstantiation | undefined;
     }
 
     export interface JSXAttribute extends AstBase {
@@ -2264,10 +2267,9 @@ declare namespace Deno {
     export interface TSModuleDeclaration extends AstBase {
       type: "TSModuleDeclaration";
       declare: boolean;
-      global: boolean;
+      kind: "global" | "module" | "namespace";
       id: Identifier | Literal | TSQualifiedName;
       body: TSModuleBlock | undefined;
-      // FIXME: kind?
     }
 
     export interface TSModuleBlock extends AstBase {
@@ -2297,8 +2299,8 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       kind: "method";
-      key: any; // FIXME
-      value: any; // FIXME
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
     }
 
     export interface TSEmptyBodyFunctionExpression extends AstBase {
@@ -2307,10 +2309,11 @@ declare namespace Deno {
       expression: boolean;
       async: boolean;
       generator: boolean;
-      id: any | null; // FIXME
-      typeParameters: any | null; // FIXME
-      params: any[]; // FIXME
-      returnType: any | null; // FIXME
+      id: null;
+      body: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
     }
 
     export interface TSParameterProperty extends AstBase {
@@ -2330,7 +2333,7 @@ declare namespace Deno {
 
     export interface TSCallSignatureDeclaration extends AstBase {
       type: "TSCallSignatureDeclaration";
-      typeAnnotation: any | null; // FIXME
+      typeParameters: TSTypeParameterDeclaration | undefined;
       params: Parameter[];
       returnType: TSTypeAnnotation | undefined;
     }
@@ -2341,8 +2344,13 @@ declare namespace Deno {
       optional: boolean;
       readonly: boolean;
       static: boolean;
-      key: any; // FIXME
-      typeAnnotation: TSTypeAnnotation | undefined; // FIXME
+      key:
+        | PrivateIdentifier
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
     }
 
     export interface TSEnumDeclaration extends AstBase {
@@ -2407,22 +2415,12 @@ declare namespace Deno {
       type: "TSThisType";
     }
 
-    // FIXME: Where is this used?
-    export interface TSInterface extends AstBase {
-      type: "TSInterface";
-      declare: boolean;
-      id: any; // FIXME
-      extends: any | null; // FIXME
-      typeParameters: any[]; // FIXME
-      body: TSInterfaceBody;
-    }
-
     export interface TSInterfaceDeclaration extends AstBase {
       type: "TSInterfaceDeclaration";
       declare: boolean;
       id: Identifier;
-      extends: TSInterfaceHeritage | any; // FIXME: vector?
-      typeParameters: any[]; // FIXME
+      extends: TSInterfaceHeritage[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
       body: TSInterfaceBody;
     }
 
@@ -2451,10 +2449,10 @@ declare namespace Deno {
       readonly: boolean;
       static: boolean;
       kind: "get" | "set" | "method";
-      key: any; // FIXME
-      returnType: any | null; // FIXME
-      params?: any[]; // FIXME
-      typeParameters?: any | null; // FIXME
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      returnType: TSTypeAnnotation | undefined;
+      params: Parameter[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
     }
 
     export interface TSInterfaceHeritage extends AstBase {
@@ -2670,7 +2668,8 @@ declare namespace Deno {
 
     export interface TSFunctionType extends AstBase {
       type: "TSFunctionType";
-      params: any[]; // FIXME
+      params: Parameter[];
+      // FIXME: missing properties
     }
 
     export interface TSQualifiedName extends AstBase {

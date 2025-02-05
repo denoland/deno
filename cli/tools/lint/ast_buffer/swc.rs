@@ -80,6 +80,7 @@ use deno_ast::swc::common::SyntaxContext;
 use deno_ast::view::Accessibility;
 use deno_ast::view::AssignOp;
 use deno_ast::view::BinaryOp;
+use deno_ast::view::MetaPropKind;
 use deno_ast::view::MethodKind;
 use deno_ast::view::TsKeywordTypeKind;
 use deno_ast::view::TsTypeOperatorOp;
@@ -91,8 +92,10 @@ use deno_ast::ParsedSource;
 use super::buffer::AstBufSerializer;
 use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
+use super::ts_estree::PropertyKind;
 use super::ts_estree::TsEsTreeBuilder;
 use super::ts_estree::TsKeywordKind;
+use super::ts_estree::TsModuleKind;
 use crate::util::text_encoding::Utf16Map;
 
 pub fn serialize_swc_to_buffer(
@@ -797,7 +800,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         let options = node
           .args
           .get(1)
-          .map_or(NodeRef(0), |arg| serialize_expr_or_spread(ctx, arg));
+          .map(|arg| serialize_expr_or_spread(ctx, arg));
 
         ctx.write_import_expr(&node.span, source, options)
       } else {
@@ -960,8 +963,17 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
       ctx.write_yield_expr(&node.span, node.delegate, arg)
     }
     Expr::MetaProp(node) => {
-      let prop = ctx.write_identifier(&node.span, "meta", false, None);
-      ctx.write_meta_prop(&node.span, prop)
+      let (meta, prop) = match node.kind {
+        MetaPropKind::NewTarget => (
+          ctx.write_identifier(&node.span, "new", false, None),
+          ctx.write_identifier(&node.span, "target", false, None),
+        ),
+        MetaPropKind::ImportMeta => (
+          ctx.write_identifier(&node.span, "import", false, None),
+          ctx.write_identifier(&node.span, "meta", false, None),
+        ),
+      };
+      ctx.write_meta_prop(&node.span, meta, prop)
     }
     Expr::Await(node) => {
       let arg = serialize_expr(ctx, node.arg.as_ref());
@@ -1057,7 +1069,7 @@ fn serialize_prop_or_spread(
       let mut shorthand = false;
       let mut computed = false;
       let mut method = false;
-      let mut kind = "init";
+      let mut kind = PropertyKind::Init;
 
       let (key, value) = match prop.as_ref() {
         Prop::Shorthand(ident) => {
@@ -1086,7 +1098,7 @@ fn serialize_prop_or_spread(
           (left, child_pos)
         }
         Prop::Getter(getter_prop) => {
-          kind = "get";
+          kind = PropertyKind::Get;
 
           let key = serialize_prop_name(ctx, &getter_prop.key);
 
@@ -1111,7 +1123,7 @@ fn serialize_prop_or_spread(
           (key, value)
         }
         Prop::Setter(setter_prop) => {
-          kind = "set";
+          kind = PropertyKind::Set;
 
           let key_id = serialize_prop_name(ctx, &setter_prop.key);
 
@@ -1366,7 +1378,7 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
 
       let body_pos =
         ctx.write_ts_interface_body(&node.body.span, body_elem_ids);
-      ctx.write_ts_interface(
+      ctx.write_ts_interface_decl(
         &node.span,
         node.declare,
         ident_id,
@@ -1428,7 +1440,11 @@ fn serialize_decl(ctx: &mut TsEsTreeBuilder, decl: &Decl) -> NodeRef {
       ctx.write_ts_module_decl(
         &node.span,
         node.declare,
-        node.global,
+        if node.global {
+          TsModuleKind::Global
+        } else {
+          TsModuleKind::Module
+        },
         ident,
         body,
       )
@@ -1460,7 +1476,7 @@ fn serialize_ts_namespace_body(
       ctx.write_ts_module_decl(
         &node.span,
         node.declare,
-        node.global,
+        TsModuleKind::Namespace,
         ident,
         Some(body),
       )
@@ -1785,7 +1801,7 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
               false,
               computed,
               false,
-              "init",
+              PropertyKind::Init,
               key,
               value,
             )
@@ -1803,7 +1819,7 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
               false,
               false,
               false,
-              "init",
+              PropertyKind::Init,
               ident,
               value,
             )
@@ -2178,7 +2194,6 @@ fn serialize_class_method(
       false,
       function.is_async,
       function.is_generator,
-      None,
       type_params,
       params,
       return_type,
@@ -2283,6 +2298,7 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
           .map(|param| serialize_ts_fn_param(ctx, param))
           .collect::<Vec<_>>();
 
+        // FIXME
         ctx.write_ts_fn_type(&node.span, param_ids)
       }
       TsFnOrConstructorType::TsConstructorType(node) => {
