@@ -2752,16 +2752,11 @@ declare namespace Deno {
       | YieldExpression;
 
     export type TypeNode =
-      | TSAbstractKeyword
       | TSAnyKeyword
       | TSArrayType
-      | TSAsyncKeyword
       | TSBigIntKeyword
       | TSBooleanKeyword
       | TSConditionalType
-      | TSConstructorType
-      | TSDeclareKeyword
-      | TSExportKeyword
       | TSFunctionType
       | TSImportType
       | TSIndexedAccessType
@@ -2776,13 +2771,8 @@ declare namespace Deno {
       | TSNumberKeyword
       | TSObjectKeyword
       | TSOptionalType
-      | TSPrivateKeyword
-      | TSProtectedKeyword
-      | TSPublicKeyword
       | TSQualifiedName
-      | TSReadonlyKeyword
       | TSRestType
-      | TSStaticKeyword
       | TSStringKeyword
       | TSSymbolKeyword
       | TSTemplateLiteralType
