@@ -1021,6 +1021,8 @@ fn generate_lint_diagnostics(
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
+            // TODO(bartlomieju): handle linter plugins here before landing
+            maybe_plugin_runner: None,
           })),
         )
       });
@@ -1032,6 +1034,7 @@ fn generate_lint_diagnostics(
           &document,
           &lint_config,
           &linter,
+          token.clone(),
         ),
       },
     });
@@ -1043,6 +1046,7 @@ fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
   linter: &CliLinter,
+  token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
@@ -1050,7 +1054,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter)
+        analysis::get_lint_references(parsed_source, linter, token)
       {
         references
           .into_iter()
@@ -1532,6 +1536,60 @@ fn relative_specifier(specifier: &Url, referrer: &Url) -> String {
   }
 }
 
+fn maybe_ambient_import_specifier(
+  diagnostic: &DenoDiagnostic,
+) -> Option<String> {
+  match diagnostic {
+    DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => {
+      Some(url.to_string())
+    }
+    DenoDiagnostic::ResolutionError(err) => {
+      maybe_ambient_specifier_resolution_err(err)
+    }
+    _ => None,
+  }
+}
+
+fn maybe_ambient_specifier_resolution_err(
+  err: &ResolutionError,
+) -> Option<String> {
+  match err {
+    ResolutionError::InvalidDowngrade { .. }
+    | ResolutionError::InvalidJsrHttpsTypesImport { .. }
+    | ResolutionError::InvalidLocalImport { .. } => None,
+    ResolutionError::InvalidSpecifier { error, .. } => match error {
+      SpecifierError::InvalidUrl(..) => None,
+      SpecifierError::ImportPrefixMissing { specifier, .. } => {
+        Some(specifier.to_string())
+      }
+    },
+    ResolutionError::ResolverError { error, .. } => match &**error {
+      ResolveError::Specifier(specifier_error) => match specifier_error {
+        SpecifierError::InvalidUrl(..) => None,
+        SpecifierError::ImportPrefixMissing { specifier, .. } => {
+          Some(specifier.to_string())
+        }
+      },
+      ResolveError::ImportMap(import_map_error) => {
+        match import_map_error.as_kind() {
+          ImportMapErrorKind::UnmappedBareSpecifier(spec, _) => {
+            Some(spec.clone())
+          }
+          ImportMapErrorKind::JsonParse(_)
+          | ImportMapErrorKind::ImportMapNotObject
+          | ImportMapErrorKind::ImportsFieldNotObject
+          | ImportMapErrorKind::ScopesFieldNotObject
+          | ImportMapErrorKind::ScopePrefixNotObject(_)
+          | ImportMapErrorKind::BlockedByNullEntry(_)
+          | ImportMapErrorKind::SpecifierResolutionFailure { .. }
+          | ImportMapErrorKind::SpecifierBacktracksAbovePrefix { .. } => None,
+        }
+      }
+      ResolveError::Other(..) => None,
+    },
+  }
+}
+
 fn diagnose_resolution(
   snapshot: &language_server::StateSnapshot,
   dependency_key: &str,
@@ -1672,16 +1730,14 @@ fn diagnose_resolution(
     }
     // The specifier resolution resulted in an error, so we want to issue a
     // diagnostic for that.
-    Resolution::Err(err) => match &**err {
-      ResolutionError::InvalidSpecifier {
-        error: SpecifierError::ImportPrefixMissing { .. },
-        ..
-      } => {
+    Resolution::Err(err) => {
+      if maybe_ambient_specifier_resolution_err(err).is_none() {
+        diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone()))
+      } else {
         deferred_diagnostics
           .push(DenoDiagnostic::ResolutionError(*err.clone()));
       }
-      _ => diagnostics.push(DenoDiagnostic::ResolutionError(*err.clone())),
-    },
+    }
     _ => (),
   }
   (diagnostics, deferred_diagnostics)
@@ -1773,25 +1829,12 @@ fn diagnose_dependency(
   deferred_diagnostics.extend(
     deferred
       .iter()
-      .filter_map(|diag| match diag {
-        DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => Some(
-          Box::new(
-            import_ranges
-              .iter()
-              .map(|range| (url.to_string(), diag.to_lsp_diagnostic(range))),
-          ) as Box<dyn Iterator<Item = (String, lsp::Diagnostic)>>,
-        ),
-        DenoDiagnostic::ResolutionError(
-          ResolutionError::InvalidSpecifier {
-            error: SpecifierError::ImportPrefixMissing { specifier, .. },
-            ..
-          },
-        ) => {
-          Some(Box::new(import_ranges.iter().map(|range| {
-            (specifier.clone(), diag.to_lsp_diagnostic(range))
-          })))
-        }
-        _ => None,
+      .filter_map(|diag| {
+        maybe_ambient_import_specifier(diag).map(|spec| {
+          import_ranges
+            .iter()
+            .map(move |range| (spec.clone(), diag.to_lsp_diagnostic(range)))
+        })
       })
       .flatten(),
   );
@@ -1817,18 +1860,8 @@ fn diagnose_dependency(
         .map(|diag| diag.to_lsp_diagnostic(&range)),
     );
     deferred_diagnostics.extend(Box::new(deferred.iter().filter_map(|diag| {
-      match diag {
-        DenoDiagnostic::NoCache(url) | DenoDiagnostic::NoLocal(url) => {
-          Some((url.to_string(), diag.to_lsp_diagnostic(&range)))
-        }
-        DenoDiagnostic::ResolutionError(
-          ResolutionError::InvalidSpecifier {
-            error: SpecifierError::ImportPrefixMissing { specifier, .. },
-            ..
-          },
-        ) => Some((specifier.clone(), diag.to_lsp_diagnostic(&range))),
-        _ => None,
-      }
+      maybe_ambient_import_specifier(diag)
+        .map(|spec| (spec, diag.to_lsp_diagnostic(&range)))
     })));
   }
 }
