@@ -1018,6 +1018,8 @@ fn generate_lint_diagnostics(
               default_jsx_factory: None,
               default_jsx_fragment_factory: None,
             },
+            // TODO(bartlomieju): handle linter plugins here before landing
+            maybe_plugin_runner: None,
           })),
         )
       });
@@ -1029,6 +1031,7 @@ fn generate_lint_diagnostics(
           &document,
           &lint_config,
           &linter,
+          token.clone(),
         ),
       },
     });
@@ -1040,6 +1043,7 @@ fn generate_document_lint_diagnostics(
   document: &Document,
   lint_config: &LintConfig,
   linter: &CliLinter,
+  token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
   if !lint_config.files.matches_specifier(document.specifier()) {
     return Vec::new();
@@ -1047,7 +1051,7 @@ fn generate_document_lint_diagnostics(
   match document.maybe_parsed_source() {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
-        analysis::get_lint_references(parsed_source, linter)
+        analysis::get_lint_references(parsed_source, linter, token)
       {
         references
           .into_iter()
