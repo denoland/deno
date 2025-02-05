@@ -1484,7 +1484,7 @@ declare namespace Deno {
       type: "ImportSpecifier";
       imported: Identifier | StringLiteral;
       local: Identifier;
-      // FIXME: Importkind?
+      importKind: "type" | "value";
     }
 
     export interface ImportDefaultSpecifier extends AstBase {
@@ -1515,27 +1515,43 @@ declare namespace Deno {
       attributes: ImportAttribute[];
     }
 
-    export interface ExportNamedDeclaration extends AstBase {
-      type: "ExportNamedDeclaration";
-      declaration: any; // FIXME
-    }
-
     export interface ExportDefaultDeclaration extends AstBase {
       type: "ExportDefaultDeclaration";
-      declaration: any; // FIXME
+      declaration:
+        | ClassDeclaration
+        | Expression
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration;
       exportKind: "type" | "value";
     }
 
     export interface ExportNamedDeclaration extends AstBase {
       type: "ExportNamedDeclaration";
-      specifiers: any[]; // FIXME
-      source: any | null; // FIXME
-      attributes: any[]; // FIXME
+      exportKind: "type" | "value";
+      specifiers: ExportSpecifier[];
+      declaration:
+        | ClassDeclaration
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSImportEqualsDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration
+        | null;
+      source: StringLiteral | null;
+      attributes: ImportAttribute[];
     }
 
     export interface ExportAllDeclaration extends AstBase {
       type: "ExportAllDeclaration";
-      // FIXME: ExportKind
+      exportKind: "type" | "value";
       exported: Identifier | null;
       source: StringLiteral;
       attributes: ImportAttribute[];
@@ -1707,7 +1723,7 @@ declare namespace Deno {
         // https://github.com/tc39/proposal-grouped-and-auto-accessors
         // | TSAbstractAccessorProperty
         | TSAbstractMethodDefinition
-        | TSAbstractPropertyDefinition // FIXME
+        | TSAbstractPropertyDefinition
         | TSIndexSignature
       >;
     }
@@ -1746,6 +1762,7 @@ declare namespace Deno {
       decorators: Decorator[];
       key: Expression | Identifier | NumberLiteral | StringLiteral;
       value: Expression | null;
+      typeAnnotation: TSTypeAnnotation | undefined;
     }
 
     export interface MethodDefinition extends AstBase {
@@ -2338,6 +2355,27 @@ declare namespace Deno {
       value: FunctionExpression | TSEmptyBodyFunctionExpression;
     }
 
+    export interface TSAbstractPropertyDefinition extends AstBase {
+      type: "TSAbstractPropertyDefinition";
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      definite: boolean;
+      declare: boolean;
+      readonly: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | Expression
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      value: Expression | null;
+    }
+
     export interface TSEmptyBodyFunctionExpression extends AstBase {
       type: "TSEmptyBodyFunctionExpression";
       declare: boolean;
@@ -2616,12 +2654,12 @@ declare namespace Deno {
 
     export interface TSMappedType extends AstBase {
       type: "TSMappedType";
-      // FIXME: updated spec
       readonly: boolean;
       optional: boolean;
       nameType: TypeNode | null;
       typeAnnotation: TypeNode | undefined;
-      typeParameter: any; // FIXME
+      constraint: TypeNode;
+      key: Identifier;
     }
 
     export interface TSLiteralType extends AstBase {

@@ -179,8 +179,26 @@ fn serialize_module_decl(
       ctx.write_import_decl(&node.span, node.type_only, src, specifiers, attrs)
     }
     ModuleDecl::ExportDecl(node) => {
+      let is_type_only = match &node.decl {
+        Decl::Class(_) => false,
+        Decl::Fn(_) => false,
+        Decl::Var(_) => false,
+        Decl::Using(_) => false,
+        Decl::TsInterface(_) => true,
+        Decl::TsTypeAlias(_) => true,
+        Decl::TsEnum(_) => true,
+        Decl::TsModule(_) => true,
+      };
       let decl = serialize_decl(ctx, &node.decl);
-      ctx.write_export_decl(&node.span, decl)
+
+      ctx.write_export_named_decl(
+        &node.span,
+        is_type_only,
+        vec![],
+        None,
+        vec![],
+        Some(decl),
+      )
     }
     ModuleDecl::ExportNamed(node) => {
       let attrs = serialize_import_attrs(ctx, &node.with);
@@ -228,7 +246,14 @@ fn serialize_module_decl(
           })
           .collect::<Vec<_>>();
 
-        ctx.write_export_named_decl(&node.span, specifiers, source, attrs)
+        ctx.write_export_named_decl(
+          &node.span,
+          node.type_only,
+          specifiers,
+          source,
+          attrs,
+          None,
+        )
       }
     }
     ModuleDecl::ExportDefaultDecl(node) => {
@@ -2106,19 +2131,41 @@ fn serialize_class_member(
         .map(|deco| serialize_decorator(ctx, deco))
         .collect::<Vec<_>>();
 
-      Some(ctx.write_class_prop(
-        &node.span,
-        node.declare,
-        false,
-        node.is_optional,
-        node.is_override,
-        node.readonly,
-        node.is_static,
-        a11y,
-        decorators,
-        key,
-        value,
-      ))
+      let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
+
+      let out = if node.is_abstract {
+        ctx.write_ts_abstract_prop_def(
+          &node.span,
+          false,
+          node.is_optional,
+          node.is_override,
+          node.is_static,
+          node.definite,
+          node.readonly,
+          node.declare,
+          a11y,
+          decorators,
+          key,
+          type_ann,
+        )
+      } else {
+        ctx.write_class_prop(
+          &node.span,
+          node.declare,
+          false,
+          node.is_optional,
+          node.is_override,
+          node.readonly,
+          node.is_static,
+          a11y,
+          decorators,
+          key,
+          value,
+          type_ann,
+        )
+      };
+
+      Some(out)
     }
     ClassMember::PrivateProp(node) => {
       let a11y = node.accessibility.as_ref().map(accessibility_to_str);
@@ -2133,6 +2180,8 @@ fn serialize_class_member(
 
       let value = node.value.as_ref().map(|expr| serialize_expr(ctx, expr));
 
+      let type_ann = maybe_serialize_ts_type_ann(ctx, &node.type_ann);
+
       Some(ctx.write_class_prop(
         &node.span,
         false,
@@ -2145,6 +2194,7 @@ fn serialize_class_member(
         decorators,
         key,
         value,
+        type_ann,
       ))
     }
     ClassMember::TsIndexSignature(node) => {
@@ -2503,7 +2553,12 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
     TsType::TsMappedType(node) => {
       let name = maybe_serialize_ts_type(ctx, &node.name_type);
       let type_ann = maybe_serialize_ts_type(ctx, &node.type_ann);
-      let type_param = serialize_ts_type_param(ctx, &node.type_param);
+      let key = serialize_ident(ctx, &node.type_param.name, None);
+      let constraint = node
+        .type_param
+        .constraint
+        .as_ref()
+        .map_or(NodeRef(0), |node| serialize_ts_type(ctx, node));
 
       ctx.write_ts_mapped_type(
         &node.span,
@@ -2511,7 +2566,8 @@ fn serialize_ts_type(ctx: &mut TsEsTreeBuilder, node: &TsType) -> NodeRef {
         node.optional,
         name,
         type_ann,
-        type_param,
+        key,
+        constraint,
       )
     }
     TsType::TsLitType(node) => serialize_ts_lit_type(ctx, node),

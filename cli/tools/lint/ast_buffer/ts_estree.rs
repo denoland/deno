@@ -173,6 +173,7 @@ pub enum AstNode {
   TSArrayType,
   TSClassImplements,
   TSAbstractMethodDefinition,
+  TSAbstractPropertyDefinition,
   TSEmptyBodyFunctionExpression,
   TSParameterProperty,
   TSConstructSignatureDeclaration,
@@ -584,12 +585,6 @@ impl TsEsTreeBuilder {
     self.ctx.commit_node(id)
   }
 
-  pub fn write_export_decl(&mut self, span: &Span, decl: NodeRef) -> NodeRef {
-    let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
-    self.ctx.write_ref(AstProp::Declaration, &id, decl);
-    self.ctx.commit_node(id)
-  }
-
   pub fn write_export_all_decl(
     &mut self,
     span: &Span,
@@ -628,14 +623,21 @@ impl TsEsTreeBuilder {
   pub fn write_export_named_decl(
     &mut self,
     span: &Span,
+    is_type_only: bool,
     specifiers: Vec<NodeRef>,
     source: Option<NodeRef>,
     attributes: Vec<NodeRef>,
+    declaration: Option<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::ExportNamedDeclaration, span);
 
+    let value = if is_type_only { "type" } else { "value" };
+    self.ctx.write_str(AstProp::ExportKind, value);
     self.ctx.write_ref_vec(AstProp::Specifiers, &id, specifiers);
     self.ctx.write_maybe_ref(AstProp::Source, &id, source);
+    self
+      .ctx
+      .write_maybe_ref(AstProp::Declaration, &id, declaration);
     self.ctx.write_ref_vec(AstProp::Attributes, &id, attributes);
 
     self.ctx.commit_node(id)
@@ -924,6 +926,7 @@ impl TsEsTreeBuilder {
     decorators: Vec<NodeRef>,
     key: NodeRef,
     value: Option<NodeRef>,
+    type_ann: Option<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::PropertyDefinition, span);
 
@@ -939,6 +942,9 @@ impl TsEsTreeBuilder {
 
     self.ctx.write_ref(AstProp::Key, &id, key);
     self.ctx.write_maybe_ref(AstProp::Value, &id, value);
+    self
+      .ctx
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
 
     self.ctx.commit_node(id)
   }
@@ -2019,6 +2025,46 @@ impl TsEsTreeBuilder {
   }
 
   #[allow(clippy::too_many_arguments)]
+  pub fn write_ts_abstract_prop_def(
+    &mut self,
+    span: &Span,
+    is_computed: bool,
+    is_optional: bool,
+    is_override: bool,
+    is_static: bool,
+    is_definite: bool,
+    is_readonly: bool,
+    is_declare: bool,
+    accessibility: Option<String>,
+    decorators: Vec<NodeRef>,
+    key: NodeRef,
+    type_ann: Option<NodeRef>,
+  ) -> NodeRef {
+    let id = self
+      .ctx
+      .append_node(AstNode::TSAbstractPropertyDefinition, span);
+
+    self.ctx.write_bool(AstProp::Computed, is_computed);
+    self.ctx.write_bool(AstProp::Optional, is_optional);
+    self.ctx.write_bool(AstProp::Override, is_override);
+    self.ctx.write_bool(AstProp::Static, is_static);
+    self.ctx.write_bool(AstProp::Definite, is_definite);
+    self.ctx.write_bool(AstProp::Declare, is_declare);
+    self.ctx.write_bool(AstProp::Readonly, is_readonly);
+
+    self.write_accessibility(accessibility);
+    self.ctx.write_ref_vec(AstProp::Decorators, &id, decorators);
+
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_null(AstProp::Value);
+    self
+      .ctx
+      .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
+
+    self.ctx.commit_node(id)
+  }
+
+  #[allow(clippy::too_many_arguments)]
   pub fn write_ts_empty_body_fn_expr(
     &mut self,
     span: &Span,
@@ -2544,7 +2590,8 @@ impl TsEsTreeBuilder {
     optional: Option<TruePlusMinus>,
     name: Option<NodeRef>,
     type_ann: Option<NodeRef>,
-    type_param: NodeRef,
+    key: NodeRef,
+    constraint: NodeRef,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::TSMappedType, span);
 
@@ -2554,7 +2601,8 @@ impl TsEsTreeBuilder {
     self
       .ctx
       .write_maybe_undef_ref(AstProp::TypeAnnotation, &id, type_ann);
-    self.ctx.write_ref(AstProp::TypeParameter, &id, type_param);
+    self.ctx.write_ref(AstProp::Key, &id, key);
+    self.ctx.write_ref(AstProp::Constraint, &id, constraint);
 
     self.ctx.commit_node(id)
   }

@@ -703,6 +703,19 @@ Deno.test.ignore(
   },
 );
 
+Deno.test("Plugin - Abstract class", async (t) => {
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract prop: string; }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract method(): string; }`,
+    "ClassDeclaration",
+  );
+});
+
 Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
   await testSnapshot(t, "<div />", "JSXElement");
   await testSnapshot(t, "<div></div>", "JSXElement");
