@@ -552,6 +552,11 @@ Deno.test("Plugin - ClassExpression", async (t) => {
   await testSnapshot(t, "a = class { static foo = bar }", "ClassExpression");
   await testSnapshot(
     t,
+    "a = class { static [key: string]: any }",
+    "ClassExpression",
+  );
+  await testSnapshot(
+    t,
     "a = class { static foo; static { foo = bar } }",
     "ClassExpression",
   );
@@ -597,6 +602,7 @@ Deno.test("Plugin - MemberExpression", async (t) => {
 
 Deno.test("Plugin - MetaProperty", async (t) => {
   await testSnapshot(t, "import.meta", "MetaProperty");
+  await testSnapshot(t, "new.target", "MetaProperty");
 });
 
 Deno.test("Plugin - NewExpression", async (t) => {
@@ -680,6 +686,23 @@ Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "/foo/g", "Literal");
 });
 
+// Stage 1 Proposal: https://github.com/tc39/proposal-grouped-and-auto-accessors
+Deno.test.ignore(
+  "Plugin - AccessorProperty + TSAbstractAccessorProperty",
+  async (t) => {
+    await testSnapshot(
+      t,
+      `class Foo { accessor foo = 1; }`,
+      "AccessorProperty",
+    );
+    await testSnapshot(
+      t,
+      `abstract class Foo { abstract accessor foo: number = 1; }`,
+      "TSAbstractAccessorProperty",
+    );
+  },
+);
+
 Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
   await testSnapshot(t, "<div />", "JSXElement");
   await testSnapshot(t, "<div></div>", "JSXElement");
@@ -762,12 +785,31 @@ Deno.test("Plugin - TSIntersectionType", async (t) => {
   await testSnapshot(t, "type A = B & C", "TSIntersectionType");
 });
 
+Deno.test("Plugin - TSInstantiationExpression", async (t) => {
+  await testSnapshot(t, "a<b>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>?.();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a?.b<c>)<d>();", "TSInstantiationExpression");
+  await testSnapshot(t, "new (a<b>)<c>();", "TSInstantiationExpression");
+});
+
 Deno.test("Plugin - TSModuleDeclaration", async (t) => {
   await testSnapshot(t, "module A {}", "TSModuleDeclaration");
   await testSnapshot(
     t,
     "declare module A { export function A(): void }",
     "TSModuleDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSDeclareFunction", async (t) => {
+  await testSnapshot(
+    t,
+    `async function foo(): any;
+async function foo(): any {}`,
+    "TSDeclareFunction",
   );
 });
 
