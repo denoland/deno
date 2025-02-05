@@ -1475,6 +1475,1328 @@ declare namespace Deno {
       fileName: string,
       source: string,
     ): Diagnostic[];
+
+    export interface AstBase {
+      range: [number, number];
+    }
+
+    export interface ImportSpecifier extends AstBase {
+      type: "ImportSpecifier";
+      imported: Identifier | StringLiteral;
+      local: Identifier;
+      // FIXME: Importkind?
+    }
+
+    export interface ImportDefaultSpecifier extends AstBase {
+      type: "ImportDefaultSpecifier";
+      local: Identifier;
+    }
+
+    export interface ImportNamespaceSpecifier extends AstBase {
+      type: "ImportNamespaceSpecifier";
+      local: Identifier;
+    }
+
+    export interface ImportAttribute extends AstBase {
+      type: "ImportAttribute";
+      key: Identifier | Literal;
+      value: Literal;
+    }
+
+    export interface ImportDeclaration extends AstBase {
+      type: "ImportDeclaration";
+      importKind: "type" | "value";
+      source: StringLiteral; // FIXME
+      specifiers: Array<
+        | ImportDefaultSpecifier
+        | ImportNamespaceSpecifier
+        | ImportSpecifier
+      >;
+      attributes: ImportAttribute[];
+    }
+
+    export interface ExportNamedDeclaration extends AstBase {
+      type: "ExportNamedDeclaration";
+      declaration: any; // FIXME
+    }
+
+    export interface ExportDefaultDeclaration extends AstBase {
+      type: "ExportDefaultDeclaration";
+      declaration: any; // FIXME
+      exportKind: "type" | "value";
+    }
+
+    export interface ExportNamedDeclaration extends AstBase {
+      type: "ExportNamedDeclaration";
+      specifiers: any[]; // FIXME
+      source: any | null; // FIXME
+      attributes: any[]; // FIXME
+    }
+
+    export interface ExportAllDeclaration extends AstBase {
+      type: "ExportAllDeclaration";
+      // FIXME: ExportKind
+      exported: Identifier | null;
+      source: StringLiteral;
+      attributes: ImportAttribute[];
+    }
+
+    export interface TSNamespaceExportDeclaration extends AstBase {
+      type: "TSNamespaceExportDeclaration";
+      id: Identifier;
+    }
+
+    export interface TSImportEqualsDeclaration extends AstBase {
+      type: "TSImportEqualsDeclaration";
+      importKind: "type" | "value";
+      id: Identifier;
+      moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
+    }
+
+    export interface TSExternalModuleReference extends AstBase {
+      type: "TSExternalModuleReference";
+      expression: StringLiteral;
+    }
+
+    export interface ExportSpecifier extends AstBase {
+      type: "ExportSpecifier";
+      exportKind: "type" | "value";
+      exported: Identifier | StringLiteral; // FIXME
+      local: Identifier | StringLiteral;
+    }
+
+    export interface VariableDeclaration extends AstBase {
+      type: "VariableDeclaration";
+      declare: boolean;
+      kind: "let" | "var" | "const" | "await using" | "using";
+      declarations: VariableDeclarator[]; // FIXME using
+    }
+
+    export interface VariableDeclarator extends AstBase {
+      type: "VariableDeclarator";
+      id: any; // FIXME
+      // FIXME definite
+    }
+
+    export type Parameter =
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty;
+
+    export type Accessibility = "private" | "protected" | "public";
+
+    export interface FunctionDeclaration extends AstBase {
+      type: "FunctionDeclaration";
+      declare: boolean;
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | null; // FIXME
+      returnType: TSTypeAnnotation | null; // FIXME
+      body: BlockStatement | null;
+      params: Parameter[];
+    }
+
+    export interface Decorator extends AstBase {
+      type: "Decorator";
+      expression:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion;
+    }
+
+    export interface ClassDeclaration extends AstBase {
+      type: "ClassDeclaration";
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null; // FIXME
+      implements: TSClassImplements[];
+      body: ClassBody;
+    }
+
+    export interface ClassExpression extends AstBase {
+      type: "ClassExpression";
+      declare: boolean;
+      abstract: boolean;
+      id: any | null; // FIXME
+      superClass: any | null; // FIXME
+      implements: any[]; // FIXME
+      body: ClassBody;
+    }
+
+    export interface ClassBody extends AstBase {
+      type: "ClassBody";
+      body: Array<
+        | AccessorProperty
+        | MethodDefinition
+        | PropertyDefinition
+        | StaticBlock
+        | TSAbstractAccessorProperty
+        | TSAbstractMethodDefinition
+        | TSAbstractPropertyDefinition
+        | TSIndexSignature
+      >;
+    }
+
+    export interface StaticBlock extends AstBase {
+      type: "StaticBlock";
+      body: Statement[];
+    }
+
+    export interface AccessorProperty extends AstBase {
+      type: "AccessorProperty";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined; // FIXME
+      decorators: Decorator[];
+      key: any; // FIXME
+      value: any | null; // FIXME
+    }
+
+    export interface PropertyDefinition extends AstBase {
+      type: "PropertyDefinition";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined; // FIXME
+      decorators: Decorator[];
+      key: any; // FIXME
+      value: any | null; // FIXME
+    }
+
+    export interface MethodDefinition extends AstBase {
+      type: "MethodDefinition";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined; // FIXME
+      decorators: Decorator[];
+      key: any; // FIXME
+      value: any | null; // FIXME
+    }
+
+    export interface BlockStatement extends AstBase {
+      type: "BlockStatement";
+      body: Statement[];
+    }
+
+    export interface DebuggerStatement extends AstBase {
+      type: "DebuggerStatement";
+    }
+
+    export interface WithStatement extends AstBase {
+      type: "WithStatement";
+      object: Expression;
+      body: Statement;
+    }
+
+    export interface ReturnStatement extends AstBase {
+      type: "ReturnStatement";
+      argument: Expression | null;
+    }
+
+    export interface LabeledStatement extends AstBase {
+      type: "LabeledStatement";
+      label: Identifier;
+      body: Statement;
+    }
+
+    export interface BreakStatement extends AstBase {
+      type: "BreakStatement";
+      label: Identifier | null;
+    }
+
+    export interface ContinueStatement extends AstBase {
+      type: "ContinueStatement";
+      label: Identifier | null;
+    }
+
+    export interface IfStatement extends AstBase {
+      type: "IfStatement";
+      test: Expression;
+      consequent: Statement;
+      alternate: Statement | null;
+    }
+
+    export interface SwitchStatement extends AstBase {
+      type: "SwitchStatement";
+      discriminant: Expression;
+      cases: SwitchCase[];
+    }
+
+    export interface SwitchCase extends AstBase {
+      type: "SwitchCase";
+      test: Expression | null;
+      consequent: Statement[];
+    }
+
+    export interface ThrowStatement extends AstBase {
+      type: "ThrowStatement";
+      argument: Expression;
+    }
+
+    export interface WhileStatement extends AstBase {
+      type: "WhileStatement";
+      test: Expression;
+      body: Statement;
+    }
+
+    export interface DoWhileStatement extends AstBase {
+      type: "DoWhileStatement";
+      test: Expression;
+      body: Statement;
+    }
+
+    export interface ForStatement extends AstBase {
+      type: "ForStatement";
+      init: Expression | VariableDeclaration | null;
+      test: Expression | null;
+      update: Expression | null;
+      body: Statement;
+    }
+
+    export interface ForInStatement extends AstBase {
+      type: "ForInStatement";
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    export interface ForOfStatement extends AstBase {
+      type: "ForOfStatement";
+      await: boolean;
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    export interface ExpressionStatement extends AstBase {
+      type: "ExpressionStatement";
+      // FIXME: Directive?
+      expression: Expression;
+    }
+
+    export interface TryStatement extends AstBase {
+      type: "TryStatement";
+      block: BlockStatement;
+      handler: CatchClause | null;
+      finalizer: BlockStatement | null;
+    }
+
+    export interface CatchClause extends AstBase {
+      type: "CatchClause";
+      param: ArrayPattern | ObjectPattern | Identifier | null;
+      body: BlockStatement;
+    }
+
+    export interface ArrayExpression extends AstBase {
+      type: "ArrayExpression";
+      elements: Array<Expression | SpreadElement>;
+    }
+
+    export interface ObjectExpression extends AstBase {
+      type: "ObjectExpression";
+      properties: Array<Property | SpreadElement>;
+    }
+
+    export interface BinaryExpression extends AstBase {
+      type: "BinaryExpression";
+      operator:
+        | "&"
+        | "**"
+        | "*"
+        | "||"
+        | "|"
+        | "^"
+        | "==="
+        | "=="
+        | "!=="
+        | "!="
+        | ">="
+        | ">>>"
+        | ">>"
+        | ">"
+        | "in"
+        | "instanceof"
+        | "<="
+        | "<<"
+        | "<"
+        | "-"
+        | "%"
+        | "+"
+        | "/";
+      left: Expression | PrivateIdentifier;
+      right: Expression;
+    }
+
+    export interface LogicalExpression extends AstBase {
+      type: "LogicalExpression";
+      operator: "&&" | "??" | "||";
+      left: Expression;
+      right: Expression;
+    }
+
+    export interface FunctionExpression extends AstBase {
+      type: "FunctionExpression";
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | null; // FIXME
+      params: Parameter[];
+      returnType: TSTypeAnnotation | null; // FIXME
+      body: BlockStatement;
+    }
+
+    export interface ArrowFunctionExpression extends AstBase {
+      type: "ArrowFunctionExpression";
+      async: boolean;
+      generator: boolean;
+      id: null;
+      typeParameters: TSTypeParameterDeclaration | null; // FIXME
+      params: Parameter[];
+      returnType: TSTypeAnnotation | null; // FIXME
+      body: BlockStatement | Expression;
+    }
+
+    export interface ThisExpression extends AstBase {
+      type: "ThisExpression";
+    }
+
+    export interface Super extends AstBase {
+      type: "Super";
+    }
+
+    export interface UnaryExpression extends AstBase {
+      type: "UnaryExpression";
+      operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
+      argument: Expression;
+    }
+
+    export interface NewExpression extends AstBase {
+      type: "NewExpression";
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    export interface ImportExpression extends AstBase {
+      type: "ImportExpression";
+      source: Expression;
+      options: Expression | null; // FIXME: non optional?
+    }
+
+    export interface CallExpression extends AstBase {
+      type: "CallExpression";
+      optional: boolean;
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | null;
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    export interface UpdateExpression extends AstBase {
+      type: "UpdateExpression";
+      prefix: boolean;
+      operator: "++" | "--";
+      argument: Expression;
+    }
+
+    export interface AssignmentExpression extends AstBase {
+      type: "AssignmentExpression";
+      operator:
+        | "&&="
+        | "&="
+        | "**="
+        | "*="
+        | "||="
+        | "|="
+        | "^="
+        | "="
+        | ">>="
+        | ">>>="
+        | "<<="
+        | "-="
+        | "%="
+        | "+="
+        | "??="
+        | "/=";
+      left: Expression;
+      right: Expression;
+    }
+
+    export interface ConditionalExpression extends AstBase {
+      type: "ConditionalExpression";
+      test: Expression;
+      consequent: Expression;
+      alternate: Expression;
+    }
+
+    export interface MemberExpression extends AstBase {
+      type: "MemberExpression";
+      optional: boolean;
+      computed: boolean;
+      object: Expression;
+      property: Expression | Identifier | PrivateIdentifier;
+    }
+
+    export interface ChainExpression extends AstBase {
+      type: "ChainExpression";
+      expression:
+        | CallExpression
+        | MemberExpression
+        | TSNonNullExpression;
+    }
+
+    export interface SequenceExpression extends AstBase {
+      type: "SequenceExpression";
+      expressions: Expression[];
+    }
+
+    export interface TemplateLiteral extends AstBase {
+      type: "TemplateLiteral";
+      quasis: TemplateElement[];
+      expressions: Expression[];
+    }
+
+    export interface TemplateElement extends AstBase {
+      type: "TemplateElement";
+      tail: boolean;
+      raw: string;
+      cooked: string;
+    }
+
+    export interface TaggedTemplateExpression extends AstBase {
+      type: "TaggedTemplateExpression";
+      tag: Expression;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+      quasi: TemplateLiteral;
+    }
+
+    export interface YieldExpression extends AstBase {
+      type: "YieldExpression";
+      delegate: boolean;
+      argument: Expression | null; // FIXME
+    }
+
+    export interface AwaitExpression extends AstBase {
+      type: "AwaitExpression";
+      argument: Expression;
+    }
+
+    export interface MetaProperty extends AstBase {
+      type: "MetaProperty";
+      // FIXME: meta?
+      property: Identifier; // FIXME
+    }
+
+    export interface Identifier extends AstBase {
+      type: "Identifier";
+      name: string;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+    }
+
+    export interface PrivateIdentifier extends AstBase {
+      type: "PrivateIdentifier";
+      name: string;
+    }
+
+    export interface AssignmentPattern extends AstBase {
+      // FIXME: Decorators?
+      // FIXME: typeAnnotations?
+      type: "AssignmentPattern";
+      left: ArrayPattern | ObjectPattern | Identifier;
+      right: Expression;
+    }
+
+    export interface ArrayPattern extends AstBase {
+      type: "ArrayPattern";
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+      elements: Array<
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement
+        | null
+      >;
+    }
+
+    export interface ObjectPattern extends AstBase {
+      type: "ObjectPattern";
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+      properties: Array<Property | RestElement>;
+    }
+
+    export interface RestElement extends AstBase {
+      type: "RestElement";
+      // FIXME: more properties?
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+      argument:
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement;
+    }
+
+    export interface SpreadElement extends AstBase {
+      type: "SpreadElement";
+      argument: Expression;
+    }
+
+    export interface Property extends AstBase {
+      type: "Property";
+      shorthand: boolean;
+      computed: boolean;
+      method: boolean;
+      kind: any; // FIXME
+      key: any; // FIXME
+      value: any; // FIXME
+    }
+
+    export interface BigIntLiteral {
+      type: "Literal";
+      raw: string;
+      bigint: string;
+      value: bigint | null;
+    }
+
+    export interface BooleanLiteral {
+      type: "Literal";
+      raw: "false" | "true";
+      value: boolean;
+    }
+
+    export interface NumberLiteral {
+      type: "Literal";
+      raw: string;
+      value: number;
+    }
+
+    export interface NullLiteral {
+      type: "Literal";
+      raw: "null";
+      value: null;
+    }
+
+    export interface StringLiteral {
+      type: "Literal";
+      raw: string;
+      value: string;
+    }
+
+    export interface RegExpLiteral {
+      type: "Literal";
+      raw: string;
+      regex: {
+        flags: string;
+        pattern: string;
+      };
+      value: RegExp | null;
+    }
+
+    export type Literal =
+      | BigIntLiteral
+      | BooleanLiteral
+      | NullLiteral
+      | NumberLiteral
+      | RegExpLiteral
+      | StringLiteral;
+
+    export interface JSXIdentifier extends AstBase {
+      type: "JSXIdentifier";
+      name: string;
+    }
+
+    export interface JSXNamespacedName extends AstBase {
+      type: "JSXNamespacedName";
+      namespace: JSXIdentifier;
+      name: JSXIdentifier;
+    }
+
+    export interface JSXEmptyExpression extends AstBase {
+      type: "JSXEmptyExpression";
+    }
+
+    export interface JSXElement extends AstBase {
+      type: "JSXElement";
+      openingElement: JSXOpeningElement;
+      closingElement: JSXClosingElement;
+      children: JSXChild[];
+    }
+
+    export interface JSXOpeningElement extends AstBase {
+      type: "JSXOpeningElement";
+      selfClosing: boolean;
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      attributes: Array<JSXAttribute | JSXSpreadAttribute>;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+    }
+
+    export interface JSXAttribute extends AstBase {
+      type: "JSXAttribute";
+      name: JSXIdentifier | JSXNamespacedName;
+      value:
+        | JSXElement
+        | JSXExpressionContainer
+        | Literal
+        | null;
+    }
+
+    export interface JSXSpreadAttribute extends AstBase {
+      type: "JSXSpreadAttribute";
+      argument: Expression;
+    }
+
+    export interface JSXClosingElement extends AstBase {
+      type: "JSXClosingElement";
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+    }
+
+    export interface JSXFragment extends AstBase {
+      type: "JSXFragment";
+      openingFragment: JSXOpeningFragment;
+      closingFragment: JSXClosingFragment;
+      children: JSXChild[];
+    }
+
+    export interface JSXOpeningFragment extends AstBase {
+      type: "JSXOpeningFragment";
+    }
+
+    export interface JSXClosingFragment extends AstBase {
+      type: "JSXClosingFragment";
+    }
+
+    export interface JSXExpressionContainer extends AstBase {
+      type: "JSXExpressionContainer";
+      expression: Expression | JSXEmptyExpression;
+    }
+
+    export interface JSXText extends AstBase {
+      type: "JSXText";
+      raw: string;
+      value: string;
+    }
+
+    export interface JSXMemberExpression extends AstBase {
+      type: "JSXMemberExpression";
+      object:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      property: JSXIdentifier;
+    }
+
+    export type JSXChild =
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXFragment
+      | JSXText;
+
+    export interface TSModuleDeclaration extends AstBase {
+      type: "TSModuleDeclaration";
+      declare: boolean;
+      global: boolean;
+      id: Identifier | Literal | TSQualifiedName;
+      body: TSModuleBlock | null; // FIXME
+      // FIXME: kind?
+    }
+
+    export interface TSModuleBlock extends AstBase {
+      type: "TSModuleBlock";
+      body: Array<
+        | ExportAllDeclaration
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | ImportDeclaration
+        | Statement
+        | TSImportEqualsDeclaration
+        | TSNamespaceExportDeclaration
+      >;
+    }
+
+    export interface TSClassImplements extends AstBase {
+      type: "TSClassImplements";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+    }
+
+    export interface TSAbstractMethodDefinition extends AstBase {
+      type: "TSAbstractMethodDefinition";
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      kind: "method";
+      key: any; // FIXME
+      value: any; // FIXME
+    }
+
+    export interface TSEmptyBodyFunctionExpression extends AstBase {
+      type: "TSEmptyBodyFunctionExpression";
+      declare: boolean;
+      expression: boolean;
+      async: boolean;
+      generator: boolean;
+      id: any | null; // FIXME
+      typeParameters: any | null; // FIXME
+      params: any[]; // FIXME
+      returnType: any | null; // FIXME
+    }
+
+    export interface TSParameterProperty extends AstBase {
+      type: "TSParameterProperty";
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | null; // FIXME
+      decorators: Decorator[];
+      parameter:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | RestElement;
+    }
+
+    export interface TSCallSignatureDeclaration extends AstBase {
+      type: "TSCallSignatureDeclaration";
+      typeAnnotation: any | null; // FIXME
+      params: Parameter[];
+      returnType: TSTypeAnnotation | null; // FIXME
+    }
+
+    export interface TSPropertySignature extends AstBase {
+      type: "TSPropertySignature";
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      key: any; // FIXME
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+    }
+
+    export interface TSEnumDeclaration extends AstBase {
+      type: "TSEnumDeclaration";
+      declare: boolean;
+      const: boolean;
+      id: Identifier;
+      body: TSEnumBody;
+    }
+
+    export interface TSEnumBody extends AstBase {
+      type: "TSEnumBody";
+      members: TSEnumMember[];
+    }
+
+    export interface TSEnumMember extends AstBase {
+      type: "TSEnumMember";
+      id:
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      initializer: Expression | null; // FIXME
+    }
+
+    export interface TSTypeAssertion extends AstBase {
+      type: "TSTypeAssertion";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSTypeParameterInstantiation extends AstBase {
+      type: "TSTypeParameterInstantiation";
+      params: TypeNode[];
+    }
+
+    export interface TSTypeAliasDeclaration extends AstBase {
+      type: "TSTypeAliasDeclaration";
+      declare: boolean;
+      id: Identifier;
+      typeParameters: TSTypeParameterDeclaration | null; // FIXME
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSSatisfiesExpression extends AstBase {
+      type: "TSSatisfiesExpression";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSAsExpression extends AstBase {
+      type: "TSAsExpression";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSNonNullExpression extends AstBase {
+      type: "TSNonNullExpression";
+      expression: Expression;
+    }
+
+    export interface TSThisType extends AstBase {
+      type: "TSThisType";
+    }
+
+    // FIXME: Where is this used?
+    export interface TSInterface extends AstBase {
+      type: "TSInterface";
+      declare: boolean;
+      id: any; // FIXME
+      extends: any | null; // FIXME
+      typeParameters: any[]; // FIXME
+      body: TSInterfaceBody;
+    }
+
+    export interface TSInterfaceDeclaration extends AstBase {
+      type: "TSInterfaceDeclaration";
+      declare: boolean;
+      id: Identifier;
+      extends: TSInterfaceHeritage | any; // FIXME: vector?
+      typeParameters: any[]; // FIXME
+      body: TSInterfaceBody;
+    }
+
+    export interface TSInterfaceBody extends AstBase {
+      type: "TSInterfaceBody";
+      body: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    export interface TSConstructSignatureDeclaration extends AstBase {
+      type: "TSConstructSignatureDeclaration";
+      typeParameters: TSTypeParameterDeclaration | null; // FIXME
+      params: Parameter[];
+      returnType: TSTypeAnnotation | null; // FIXME: maybe?
+    }
+
+    export interface TSMethodSignature extends AstBase {
+      type: "TSMethodSignature";
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "getter" | "setter" | "method";
+      key: any; // FIXME
+      returnType: any | null; // FIXME
+      params?: any[]; // FIXME
+      typeParameters?: any | null; // FIXME
+    }
+
+    export interface TSInterfaceHeritage extends AstBase {
+      type: "TSInterfaceHeritage";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+    }
+
+    export interface TSIndexSignature extends AstBase {
+      type: "TSIndexSignature";
+      boolean: boolean;
+      parameters: Parameter[];
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+      // FIXME: Accessibility?
+    }
+
+    export interface TSUnionType extends AstBase {
+      type: "TSUnionType";
+      types: TypeNode[];
+    }
+
+    export interface TSIntersectionType extends AstBase {
+      type: "TSIntersectionType";
+      types: TypeNode[];
+    }
+
+    export interface TSInferType extends AstBase {
+      type: "TSInferType";
+      typeParameter: TSTypeParameter;
+    }
+
+    export interface TSTypeOperator extends AstBase {
+      type: "TSTypeOperator";
+      operator: "keyof" | "readonly" | "unique";
+      typeAnnotation: TypeNode | null; // FIXME
+    }
+
+    export interface TSIndexedAccessType extends AstBase {
+      type: "TSIndexedAccessType";
+      indexType: TypeNode;
+      objectType: TypeNode;
+    }
+
+    export interface TSAnyKeyword extends AstBase {
+      type: "TSAnyKeyword";
+    }
+
+    export interface TSUnknownKeyword extends AstBase {
+      type: "TSUnknownKeyword";
+    }
+
+    export interface TSNumberKeyword extends AstBase {
+      type: "TSNumberKeyword";
+    }
+
+    export interface TSObjectKeyword extends AstBase {
+      type: "TSObjectKeyword";
+    }
+
+    export interface TSBooleanKeyword extends AstBase {
+      type: "TSBooleanKeyword";
+    }
+
+    export interface TSBigIntKeyword extends AstBase {
+      type: "TSBigIntKeyword";
+    }
+
+    export interface TSStringKeyword extends AstBase {
+      type: "TSStringKeyword";
+    }
+
+    export interface TSSymbolKeyword extends AstBase {
+      type: "TSSymbolKeyword";
+    }
+
+    export interface TSVoidKeyword extends AstBase {
+      type: "TSVoidKeyword";
+    }
+
+    export interface TSUndefinedKeyword extends AstBase {
+      type: "TSUndefinedKeyword";
+    }
+
+    export interface TSNullKeyword extends AstBase {
+      type: "TSNullKeyword";
+    }
+
+    export interface TSNeverKeyword extends AstBase {
+      type: "TSNeverKeyword";
+    }
+
+    export interface TSIntrinsicKeyword extends AstBase {
+      type: "TSIntrinsicKeyword";
+    }
+
+    export interface TSRestType extends AstBase {
+      type: "TSRestType";
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSConditionalType extends AstBase {
+      type: "TSConditionalType";
+      checkType: TypeNode;
+      extendsType: TypeNode;
+      trueType: TypeNode;
+      falseType: TypeNode;
+    }
+
+    export interface TSMappedType extends AstBase {
+      type: "TSMappedType";
+      // FIXME: updated spec
+      readonly: boolean;
+      optional: boolean;
+      nameType: any | null; // FIXME
+      typeAnnotation: any | null; // FIXME
+      typeParameter: any; // FIXME
+    }
+
+    export interface TSLiteralType extends AstBase {
+      type: "TSLiteralType";
+      literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
+    }
+
+    export interface TSTemplateLiteralType extends AstBase {
+      type: "TSTemplateLiteralType";
+      quasis: TemplateElement[];
+      types: TypeNode[];
+    }
+
+    export interface TSTypeLiteral extends AstBase {
+      type: "TSTypeLiteral";
+      members: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    export interface TSOptionalType extends AstBase {
+      type: "TSOptionalType";
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSTypeAnnotation extends AstBase {
+      type: "TSTypeAnnotation";
+      typeAnnotation: TypeNode;
+    }
+
+    export interface TSArrayType extends AstBase {
+      type: "TSArrayType";
+      elementType: TypeNode;
+    }
+
+    export interface TSTypeQuery extends AstBase {
+      type: "TSTypeQuery";
+      exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+    }
+
+    export interface TSTypeReference extends AstBase {
+      type: "TSTypeReference";
+      typeName: Identifier | ThisExpression | TSQualifiedName;
+      typeArguments: TSTypeParameterInstantiation | null; // FIXME
+    }
+
+    export interface TSTypePredicate extends AstBase {
+      type: "TSTypePredicate";
+      asserts: boolean;
+      parameterName: Identifier | TSThisType;
+      typeAnnotation: TSTypeAnnotation | null; // FIXME
+    }
+
+    export interface TSTupleType extends AstBase {
+      type: "TSTupleType";
+      elementTypes: TypeNode[];
+    }
+
+    export interface TSNamedTupleMember extends AstBase {
+      type: "TSNamedTupleMember";
+      label: Identifier;
+      elementType: TypeNode;
+      // FIXME: optional?
+    }
+
+    export interface TSTypeParameterDeclaration extends AstBase {
+      type: "TSTypeParameterDeclaration";
+      params: TSTypeParameter[];
+    }
+
+    export interface TSTypeParameter extends AstBase {
+      type: "TSTypeParameter";
+      in: boolean;
+      out: boolean;
+      const: boolean;
+      name: Identifier;
+      constraint: TypeNode | null;
+      default: TypeNode | null;
+    }
+
+    export interface TSImportType extends AstBase {
+      type: "TSImportType";
+      argument: TypeNode;
+      // FIXME: Attributes?
+      qualifier: Identifier | ThisExpression | TSQualifiedName | null;
+      typeArguments: TSTypeParameterInstantiation | null;
+    }
+
+    export interface TSExportAssignment extends AstBase {
+      type: "TSExportAssignment";
+      expression: Expression;
+    }
+
+    export interface TSFunctionType extends AstBase {
+      type: "TSFunctionType";
+      params: any[]; // FIXME
+    }
+
+    export interface TSQualifiedName extends AstBase {
+      type: "TSQualifiedName";
+      left: Identifier | ThisExpression | TSQualifiedName;
+      right: Identifier;
+    }
+
+    export type Statement =
+      | BlockStatement
+      | BreakStatement
+      | ClassDeclaration
+      | ContinueStatement
+      | DebuggerStatement
+      | DoWhileStatement
+      | ExportAllDeclaration
+      | ExportDefaultDeclaration
+      | ExportNamedDeclaration
+      | ExpressionStatement
+      | ForInStatement
+      | ForOfStatement
+      | ForStatement
+      | FunctionDeclaration
+      | IfStatement
+      | ImportDeclaration
+      | LabeledStatement
+      | ReturnStatement
+      | SwitchStatement
+      | ThrowStatement
+      | TryStatement
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSExportAssignment
+      | TSImportEqualsDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSNamespaceExportDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration
+      | WhileStatement
+      | WithStatement;
+
+    export type Expression =
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | AssignmentExpression
+      | AwaitExpression
+      | BinaryExpression
+      | CallExpression
+      | ChainExpression
+      | ClassExpression
+      | ConditionalExpression
+      | FunctionExpression
+      | Identifier
+      | ImportExpression
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | LogicalExpression
+      | MemberExpression
+      | MetaProperty
+      | NewExpression
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | TemplateLiteral
+      | ThisExpression
+      | TSAsExpression
+      | TSInstantiationExpression
+      | TSNonNullExpression
+      | TSSatisfiesExpression
+      | TSTypeAssertion
+      | UnaryExpression
+      | UpdateExpression
+      | YieldExpression;
+
+    export type TypeNode =
+      | TSAbstractKeyword
+      | TSAnyKeyword
+      | TSArrayType
+      | TSAsyncKeyword
+      | TSBigIntKeyword
+      | TSBooleanKeyword
+      | TSConditionalType
+      | TSConstructorType
+      | TSDeclareKeyword
+      | TSExportKeyword
+      | TSFunctionType
+      | TSImportType
+      | TSIndexedAccessType
+      | TSInferType
+      | TSIntersectionType
+      | TSIntrinsicKeyword
+      | TSLiteralType
+      | TSMappedType
+      | TSNamedTupleMember
+      | TSNeverKeyword
+      | TSNullKeyword
+      | TSNumberKeyword
+      | TSObjectKeyword
+      | TSOptionalType
+      | TSPrivateKeyword
+      | TSProtectedKeyword
+      | TSPublicKeyword
+      | TSQualifiedName
+      | TSReadonlyKeyword
+      | TSRestType
+      | TSStaticKeyword
+      | TSStringKeyword
+      | TSSymbolKeyword
+      | TSTemplateLiteralType
+      | TSThisType
+      | TSTupleType
+      | TSTypeLiteral
+      | TSTypeOperator
+      | TSTypePredicate
+      | TSTypeQuery
+      | TSTypeReference
+      | TSUndefinedKeyword
+      | TSUnionType
+      | TSUnknownKeyword
+      | TSVoidKeyword;
   }
 
   export {}; // only export exports

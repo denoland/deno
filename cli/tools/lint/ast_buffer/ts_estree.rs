@@ -1944,7 +1944,7 @@ impl TsEsTreeBuilder {
 
     self.ctx.write_str(AstProp::Kind, "method");
     self.ctx.write_ref(AstProp::Key, &id, key);
-    self.ctx.write_ref(AstProp::Key, &id, value);
+    self.ctx.write_ref(AstProp::Value, &id, value);
 
     self.ctx.commit_node(id)
   }
