@@ -230,6 +230,52 @@ impl Utf16Map {
       column_index: col.into(),
     }
   }
+
+  /// Convert a UTF-16 byte offset to UTF-8 byte offset
+  pub fn utf16_to_utf8_offset(
+    &self,
+    utf16_offset: TextSize,
+  ) -> Option<TextSize> {
+    if utf16_offset > self.text_content_length_utf16() {
+      return None;
+    }
+    let pos = self.position_utf16(utf16_offset);
+    let line_start_utf8 = self.utf8_offsets[pos.line_index];
+    let col_utf8 =
+      self.utf16_to_utf8_col(pos.line_index as u32, pos.column_index as u32);
+    Some(line_start_utf8 + col_utf8)
+  }
+
+  /// Convert a UTF-8 byte offset to UTF-16 byte offset
+  pub fn utf8_to_utf16_offset(
+    &self,
+    utf8_offset: TextSize,
+  ) -> Option<TextSize> {
+    if utf8_offset > *self.utf8_offsets.last()? {
+      return None;
+    }
+    let line = partition_point(&self.utf8_offsets, |&it| it <= utf8_offset) - 1;
+    let line_start_utf8 = self.utf8_offsets[line];
+    let col_utf8 = utf8_offset - line_start_utf8;
+    let col_utf16 = self.utf8_to_utf16_col(line as u32, col_utf8);
+    Some(self.utf16_offsets[line] + TextSize::from(col_utf16))
+  }
+
+  fn utf8_to_utf16_col(&self, line: u32, col: TextSize) -> u32 {
+    let mut utf16_col = u32::from(col);
+
+    if let Some(utf16_chars) = self.utf16_lines.get(&line) {
+      for c in utf16_chars {
+        if col > c.start {
+          utf16_col -= u32::from(c.len()) - c.len_utf16() as u32;
+        } else {
+          break;
+        }
+      }
+    }
+
+    utf16_col
+  }
 }
 
 fn partition_point<T, P>(slice: &[T], mut predicate: P) -> usize
@@ -489,5 +535,48 @@ const C: char = \"メ メ\";
     assert_eq!(col_index.utf16_to_utf8_col(1, 19), TextSize::from(21)); // second メ at 21..24
 
     assert_eq!(col_index.utf16_to_utf8_col(2, 15), TextSize::from(15));
+  }
+
+  #[test]
+  fn test_offset_out_of_range() {
+    let text = "hello";
+    let map = Utf16Map::new(text);
+    assert_eq!(map.utf8_to_utf16_offset(TextSize::from(10)), None);
+    assert_eq!(map.utf16_to_utf8_offset(TextSize::from(10)), None);
+  }
+
+  #[test]
+  fn test_offset_basic_ascii() {
+    let text = "hello\nworld";
+    let map = Utf16Map::new(text);
+
+    let utf8_offset = TextSize::from(7);
+    let utf16_offset = map.utf8_to_utf16_offset(utf8_offset).unwrap();
+    assert_eq!(utf16_offset, TextSize::from(7));
+
+    let result = map.utf16_to_utf8_offset(utf16_offset).unwrap();
+    assert_eq!(result, utf8_offset);
+  }
+
+  #[test]
+  fn test_offset_emoji() {
+    let text = "hi 👋\nbye";
+    let map = Utf16Map::new(text);
+
+    let utf8_offset = TextSize::from(3);
+    let utf16_offset = map.utf8_to_utf16_offset(utf8_offset).unwrap();
+    assert_eq!(utf16_offset, TextSize::from(3));
+
+    let utf8_offset_after = TextSize::from(7);
+    let utf16_offset_after =
+      map.utf8_to_utf16_offset(utf8_offset_after).unwrap();
+    assert_eq!(utf16_offset_after, TextSize::from(5));
+
+    for (utf8_offset, _) in text.char_indices() {
+      let utf8_offset = TextSize::from(utf8_offset as u32);
+      let utf16_offset = map.utf8_to_utf16_offset(utf8_offset).unwrap();
+      let reverse_ut8_offset = map.utf16_to_utf8_offset(utf16_offset).unwrap();
+      assert_eq!(reverse_ut8_offset, utf8_offset);
+    }
   }
 }
