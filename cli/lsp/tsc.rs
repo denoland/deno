@@ -1283,16 +1283,20 @@ impl TsServer {
     text_span: TextSpan,
     user_preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<Option<Vec<InlayHint>>, LspError> {
     let req = TscRequest::ProvideInlayHints((
       self.specifier_map.denormalize(&specifier),
       text_span,
       user_preferences,
     ));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Unable to get inlay hints: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
+      .map_err(|err| {
+        log::error!("Unable to get inlay hints: {}", err);
+        LspError::internal_error()
+      })
   }
 
   async fn request<R>(

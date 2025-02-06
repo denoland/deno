@@ -3357,7 +3357,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.inlay_hint(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.inlay_hint(params, token).await
+      })
+      .await
   }
 
   async fn code_action(
@@ -3881,6 +3886,7 @@ impl Inner {
   async fn inlay_hint(
     &self,
     params: InlayHintParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<InlayHint>>> {
     let specifier = self
       .url_map
@@ -3913,6 +3919,7 @@ impl Inner {
           &specifier,
         ),
         asset_or_doc.scope().cloned(),
+        token,
       )
       .await?;
     let maybe_inlay_hints = maybe_inlay_hints.map(|hints| {
