@@ -333,6 +333,7 @@ export class LibuvStreamWrap extends HandleWrap {
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
+      // deno-lint-ignore no-console
       console.log(e);
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
