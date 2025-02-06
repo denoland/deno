@@ -654,6 +654,7 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Vec<CodeFixAction> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
@@ -664,7 +665,9 @@ impl TsServer {
       preferences,
     )));
     let result = self
-      .request::<Vec<CodeFixAction>>(snapshot, req, scope)
+      .request_with_cancellation::<Vec<CodeFixAction>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut actions| {
         for action in &mut actions {
@@ -695,6 +698,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
@@ -708,10 +712,13 @@ impl TsServer {
       trigger_kind,
       only,
     )));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
+      .map_err(|err| {
+        log::error!("Failed to request to tsserver {}", err);
+        LspError::invalid_request()
+      })
   }
 
   pub async fn get_combined_code_fix(

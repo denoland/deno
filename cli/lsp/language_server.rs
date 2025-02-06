@@ -1607,6 +1607,7 @@ impl Inner {
   async fn code_action(
     &self,
     params: CodeActionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
     let specifier = self
       .url_map
@@ -1688,6 +1689,7 @@ impl Inner {
                   &specifier,
                 ),
                 asset_or_doc.scope().cloned(),
+                token.clone(),
               )
               .await;
             for action in actions {
@@ -1794,6 +1796,7 @@ impl Inner {
         params.context.trigger_kind,
         only,
         asset_or_doc.scope().cloned(),
+        token,
       )
       .await?;
     let mut refactor_actions = Vec::<CodeAction>::new();
@@ -3372,7 +3375,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.code_action(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.code_action(params, token).await
+      })
+      .await
   }
 
   async fn code_action_resolve(
