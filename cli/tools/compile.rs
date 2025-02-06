@@ -37,18 +37,18 @@ pub async fn compile(
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
-  let (module_roots, include_files) = get_module_roots_and_include_files(
-    entrypoint,
-    &compile_flags,
-    cli_options.initial_cwd(),
-  )?;
-
   let output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,
     cli_options.initial_cwd(),
   )
   .await?;
+  let (module_roots, include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
 
   let graph = Arc::try_unwrap(
     module_graph_creator
@@ -198,6 +198,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
 fn get_module_roots_and_include_files(
   entrypoint: &ModuleSpecifier,
+  output_url: &ModuleSpecifier,
   compile_flags: &CompileFlags,
   initial_cwd: &Path,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
@@ -226,9 +227,8 @@ fn get_module_roots_and_include_files(
 
   fn analyze_path(
     url: &ModuleSpecifier,
-    module_roots: &mut Vec<ModuleSpecifier>,
-    include_files: &mut Vec<ModuleSpecifier>,
     searched_paths: &mut HashSet<PathBuf>,
+    mut add_url: impl FnMut(ModuleSpecifier),
   ) -> Result<(), AnyError> {
     let Ok(path) = url_to_file_path(url) else {
       return Ok(());
@@ -240,10 +240,7 @@ fn get_module_roots_and_include_files(
       }
       if !path.is_dir() {
         let url = url_from_file_path(&path)?;
-        include_files.push(url.clone());
-        if is_module_graph_module(&url) {
-          module_roots.push(url);
-        }
+        add_url(url);
         continue;
       }
       for entry in std::fs::read_dir(&path).with_context(|| {
@@ -270,12 +267,14 @@ fn get_module_roots_and_include_files(
         include_files.push(url);
       }
     } else {
-      analyze_path(
-        &url,
-        &mut module_roots,
-        &mut include_files,
-        &mut searched_paths,
-      )?;
+      analyze_path(&url, &mut searched_paths, |file_url| {
+        if file_url != *output_url {
+          include_files.push(file_url.clone());
+          if is_module_graph_module(&file_url) {
+            module_roots.push(file_url);
+          }
+        }
+      })?;
     }
   }
   Ok((module_roots, include_files))
