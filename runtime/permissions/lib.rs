@@ -2599,10 +2599,10 @@ impl PermissionsContainer {
         // paths. We pass these through.
         path.to_owned()
       } else if path.is_absolute() {
-        normalize_path(&path)
+        normalize_path(path)
       } else {
         let cwd = current_dir().unwrap();
-        normalize_path(cwd.join(&path))
+        normalize_path(cwd.join(path))
       };
 
       let desc = PathQueryDescriptor {
