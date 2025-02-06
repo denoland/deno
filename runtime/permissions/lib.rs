@@ -2616,7 +2616,6 @@ impl PermissionsContainer {
       // On Linux, /proc may contain magic links that we don't want to resolve
       let is_linux_special_path = cfg!(target_os = "linux")
         && (path.starts_with("/proc") || path.starts_with("/dev"));
-      dbg!(&path);
       let needs_canonicalization =
         !is_windows_device_path && !is_linux_special_path;
       let path = if needs_canonicalization {
@@ -2628,7 +2627,9 @@ impl PermissionsContainer {
             {
               parent.canonicalize()?.join(filename)
             } else {
-              panic!("Failed to canonicalize path: {:?}", path);
+              return Err(
+                std::io::Error::from(std::io::ErrorKind::NotFound).into(),
+              );
             }
           }
         }
