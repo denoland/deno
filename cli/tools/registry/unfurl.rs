@@ -15,9 +15,6 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
@@ -27,12 +24,13 @@ use deno_graph::StaticDependencyKind;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepWorkspaceReq;
-use deno_resolver::sloppy_imports::SloppyImportsResolutionKind;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
 
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
 
 #[derive(Debug, Clone)]
@@ -190,14 +188,12 @@ enum UnfurlSpecifierError {
 }
 
 pub struct SpecifierUnfurler {
-  sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
   workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
   bare_node_builtins: bool,
 }
 
 impl SpecifierUnfurler {
   pub fn new(
-    sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
     workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
     bare_node_builtins: bool,
   ) -> Self {
@@ -206,7 +202,6 @@ impl SpecifierUnfurler {
       PackageJsonDepResolution::Enabled
     );
     Self {
-      sloppy_imports_resolver,
       workspace_resolver,
       bare_node_builtins,
     }
@@ -216,7 +211,7 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
-    resolution_kind: SloppyImportsResolutionKind,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
     text_info: &SourceTextInfo,
     range: &deno_graph::PositionRange,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
@@ -251,16 +246,15 @@ impl SpecifierUnfurler {
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
-    resolution_kind: SloppyImportsResolutionKind,
+    resolution_kind: deno_resolver::workspace::ResolutionKind,
   ) -> Result<Option<String>, UnfurlSpecifierError> {
-    let resolved = if let Ok(resolved) = self.workspace_resolver.resolve(
-      specifier,
-      referrer,
-      resolution_kind.into(),
-    ) {
+    let resolved = if let Ok(resolved) =
+      self
+        .workspace_resolver
+        .resolve(specifier, referrer, resolution_kind)
+    {
       match resolved {
-        MappedResolution::Normal { specifier, .. }
-        | MappedResolution::ImportMap { specifier, .. } => Some(specifier),
+        MappedResolution::Normal { specifier, .. } => Some(specifier),
         MappedResolution::WorkspaceJsrPackage { pkg_req_ref, .. } => {
           Some(ModuleSpecifier::parse(&pkg_req_ref.to_string()).unwrap())
         }
@@ -398,15 +392,6 @@ impl SpecifierUnfurler {
     // } else {
     //   resolved
     // };
-    let resolved =
-      if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
-        sloppy_imports_resolver
-          .resolve(&resolved, resolution_kind)
-          .map(|res| res.into_specifier())
-          .unwrap_or(resolved)
-      } else {
-        resolved
-      };
     let relative_resolved = relative_url(&resolved, referrer);
     if relative_resolved == specifier {
       Ok(None) // nothing to unfurl
@@ -464,7 +449,7 @@ impl SpecifierUnfurler {
         let maybe_unfurled = self.unfurl_specifier_reporting_diagnostic(
           module_url,
           specifier,
-          SloppyImportsResolutionKind::Execution, // dynamic imports are always execution
+          deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
           text_info,
           &dep.argument_range,
           diagnostic_reporter,
@@ -492,7 +477,7 @@ impl SpecifierUnfurler {
           let unfurled = self.unfurl_specifier_reporting_diagnostic(
             module_url,
             specifier,
-            SloppyImportsResolutionKind::Execution, // dynamic imports are always execution
+            deno_resolver::workspace::ResolutionKind::Execution, // dynamic imports are always execution
             text_info,
             &dep.argument_range,
             diagnostic_reporter,
@@ -538,7 +523,7 @@ impl SpecifierUnfurler {
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
-       resolution_kind: SloppyImportsResolutionKind,
+       resolution_kind: deno_resolver::workspace::ResolutionKind,
        text_changes: &mut Vec<deno_ast::TextChange>,
        diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic)| {
         if let Some(unfurled) = self.unfurl_specifier_reporting_diagnostic(
@@ -559,18 +544,18 @@ impl SpecifierUnfurler {
       match dep {
         DependencyDescriptor::Static(dep) => {
           let resolution_kind = if parsed_source.media_type().is_declaration() {
-            SloppyImportsResolutionKind::Types
+            deno_resolver::workspace::ResolutionKind::Types
           } else {
             match dep.kind {
               StaticDependencyKind::Export
               | StaticDependencyKind::Import
               | StaticDependencyKind::ExportEquals
               | StaticDependencyKind::ImportEquals => {
-                SloppyImportsResolutionKind::Execution
+                deno_resolver::workspace::ResolutionKind::Execution
               }
               StaticDependencyKind::ExportType
               | StaticDependencyKind::ImportType => {
-                SloppyImportsResolutionKind::Types
+                deno_resolver::workspace::ResolutionKind::Types
               }
             }
           };
@@ -616,7 +601,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        SloppyImportsResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -625,7 +610,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &jsdoc.specifier.text,
         &jsdoc.specifier.range,
-        SloppyImportsResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -634,7 +619,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        SloppyImportsResolutionKind::Execution,
+        deno_resolver::workspace::ResolutionKind::Execution,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -643,7 +628,7 @@ impl SpecifierUnfurler {
       analyze_specifier(
         &specifier_with_range.text,
         &specifier_with_range.range,
-        SloppyImportsResolutionKind::Types,
+        deno_resolver::workspace::ResolutionKind::Types,
         &mut text_changes,
         diagnostic_reporter,
       );
@@ -700,7 +685,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
-  use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
+  use deno_resolver::workspace::SloppyImportsOptions;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
   use import_map::ImportMapWithDiagnostics;
@@ -760,18 +745,14 @@ mod tests {
         exports: IndexMap::from([(".".to_string(), "mod.ts".to_string())]),
       }],
       vec![Arc::new(package_json)],
-      deno_config::workspace::PackageJsonDepResolution::Enabled,
+      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
+      SloppyImportsOptions::Enabled,
+      Default::default(),
       Default::default(),
       Default::default(),
       CliSys::default(),
     );
-    let unfurler = SpecifierUnfurler::new(
-      Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(CliSys::default()),
-      ))),
-      Arc::new(workspace_resolver),
-      true,
-    );
+    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
 
     // Unfurling TS file should apply changes.
     {
@@ -926,18 +907,14 @@ export type * from "./c.d.ts";
         Arc::new(pkg_json_subtract),
         Arc::new(pkg_json_publishing),
       ],
-      deno_config::workspace::PackageJsonDepResolution::Enabled,
+      deno_resolver::workspace::PackageJsonDepResolution::Enabled,
+      Default::default(),
+      Default::default(),
       Default::default(),
       Default::default(),
       sys.clone(),
     );
-    let unfurler = SpecifierUnfurler::new(
-      Some(Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new(sys),
-      ))),
-      Arc::new(workspace_resolver),
-      true,
-    );
+    let unfurler = SpecifierUnfurler::new(Arc::new(workspace_resolver), true);
 
     {
       let source_code = r#"import add from "add";

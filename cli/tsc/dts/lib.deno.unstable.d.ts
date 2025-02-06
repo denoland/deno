@@ -1475,6 +1475,2360 @@ declare namespace Deno {
       fileName: string,
       source: string,
     ): Diagnostic[];
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportSpecifier {
+      type: "ImportSpecifier";
+      range: [number, number];
+      imported: Identifier | StringLiteral;
+      local: Identifier;
+      importKind: "type" | "value";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDefaultSpecifier {
+      type: "ImportDefaultSpecifier";
+      range: [number, number];
+      local: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportNamespaceSpecifier {
+      type: "ImportNamespaceSpecifier";
+      range: [number, number];
+      local: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportAttribute {
+      type: "ImportAttribute";
+      range: [number, number];
+      key: Identifier | Literal;
+      value: Literal;
+    }
+
+    /**
+     * An import declaration, examples:
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDeclaration {
+      type: "ImportDeclaration";
+      range: [number, number];
+      importKind: "type" | "value";
+      source: StringLiteral;
+      specifiers: Array<
+        | ImportDefaultSpecifier
+        | ImportNamespaceSpecifier
+        | ImportSpecifier
+      >;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportDefaultDeclaration {
+      type: "ExportDefaultDeclaration";
+      range: [number, number];
+      declaration:
+        | ClassDeclaration
+        | Expression
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration;
+      exportKind: "type" | "value";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportNamedDeclaration {
+      type: "ExportNamedDeclaration";
+      range: [number, number];
+      exportKind: "type" | "value";
+      specifiers: ExportSpecifier[];
+      declaration:
+        | ClassDeclaration
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSImportEqualsDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration
+        | null;
+      source: StringLiteral | null;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportAllDeclaration {
+      type: "ExportAllDeclaration";
+      range: [number, number];
+      exportKind: "type" | "value";
+      exported: Identifier | null;
+      source: StringLiteral;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamespaceExportDeclaration {
+      type: "TSNamespaceExportDeclaration";
+      range: [number, number];
+      id: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportEqualsDeclaration {
+      type: "TSImportEqualsDeclaration";
+      range: [number, number];
+      importKind: "type" | "value";
+      id: Identifier;
+      moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExternalModuleReference {
+      type: "TSExternalModuleReference";
+      range: [number, number];
+      expression: StringLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportSpecifier {
+      type: "ExportSpecifier";
+      range: [number, number];
+      exportKind: "type" | "value";
+      exported: Identifier | StringLiteral;
+      local: Identifier | StringLiteral;
+    }
+
+    /**
+     * Variable declaration.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclaration {
+      type: "VariableDeclaration";
+      range: [number, number];
+      declare: boolean;
+      kind: "let" | "var" | "const" | "await using" | "using";
+      declarations: VariableDeclarator[];
+    }
+
+    /**
+     * A VariableDeclaration can declare multiple variables. This node
+     * represents a single declaration out of that.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclarator {
+      type: "VariableDeclarator";
+      range: [number, number];
+      id: ArrayPattern | ObjectPattern | Identifier;
+      init: Expression | null;
+      definite: boolean;
+    }
+
+    /**
+     * Function/Method parameter
+     * @category Linter
+     * @experimental
+     */
+    export type Parameter =
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty;
+
+    /**
+     * TypeScript accessibility modifiers used in classes
+     * @category Linter
+     * @experimental
+     */
+    export type Accessibility = "private" | "protected" | "public";
+
+    /**
+     * Declares a function in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionDeclaration {
+      type: "FunctionDeclaration";
+      range: [number, number];
+      declare: boolean;
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | null;
+      params: Parameter[];
+    }
+
+    /**
+     * Experimental: Decorators
+     * @category Linter
+     * @experimental
+     */
+    export interface Decorator {
+      type: "Decorator";
+      range: [number, number];
+      expression:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion;
+    }
+
+    /**
+     * Declares a class in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassDeclaration {
+      type: "ClassDeclaration";
+      range: [number, number];
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      implements: TSClassImplements[];
+      body: ClassBody;
+    }
+
+    /**
+     * Similar to ClassDeclaration but for declaring a class as an
+     * expression. The main difference is that the class name(=id) can
+     * be omitted.
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassExpression {
+      type: "ClassExpression";
+      range: [number, number];
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      superTypeArguments: TSTypeParameterInstantiation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      implements: TSClassImplements[];
+      body: ClassBody;
+    }
+
+    /**
+     * Represents the body of a class and contains all members
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassBody {
+      type: "ClassBody";
+      range: [number, number];
+      body: Array<
+        | AccessorProperty
+        | MethodDefinition
+        | PropertyDefinition
+        | StaticBlock
+        // Stage 1 Proposal:
+        // https://github.com/tc39/proposal-grouped-and-auto-accessors
+        // | TSAbstractAccessorProperty
+        | TSAbstractMethodDefinition
+        | TSAbstractPropertyDefinition
+        | TSIndexSignature
+      >;
+    }
+
+    /**
+     * Static class initializiation block.
+     * @category Linter
+     * @experimental
+     */
+    export interface StaticBlock {
+      type: "StaticBlock";
+      range: [number, number];
+      body: Statement[];
+    }
+
+    // Stage 1 Proposal:
+    // https://github.com/tc39/proposal-grouped-and-auto-accessors
+    // | TSAbstractAccessorProperty
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface AccessorProperty {
+      type: "AccessorProperty";
+      range: [number, number];
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface PropertyDefinition {
+      type: "PropertyDefinition";
+      range: [number, number];
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface MethodDefinition {
+      type: "MethodDefinition";
+      range: [number, number];
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "constructor" | "get" | "method" | "set";
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | Expression;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface BlockStatement {
+      type: "BlockStatement";
+      range: [number, number];
+      body: Statement[];
+    }
+
+    /**
+     * The `debugger;` statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface DebuggerStatement {
+      type: "DebuggerStatement";
+      range: [number, number];
+    }
+
+    /**
+     * Legacy JavaScript feature, that's discouraged from being used today.
+     * @deprecated
+     * @category Linter
+     * @experimental
+     */
+    export interface WithStatement {
+      type: "WithStatement";
+      range: [number, number];
+      object: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Returns a value from a function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ReturnStatement {
+      type: "ReturnStatement";
+      range: [number, number];
+      argument: Expression | null;
+    }
+
+    /**
+     * Custom control flow based on labels.
+     * @category Linter
+     * @experimental
+     */
+    export interface LabeledStatement {
+      type: "LabeledStatement";
+      range: [number, number];
+      label: Identifier;
+      body: Statement;
+    }
+
+    /**
+     * Break any loop or labeled statement, example:
+     *
+     * ```ts
+     * while (true) {
+     *   break;
+     * }
+     *
+     * for (let i = 0; i < 10; i++) {
+     *   if (i > 5) break;
+     * }
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BreakStatement {
+      type: "BreakStatement";
+      range: [number, number];
+      label: Identifier | null;
+    }
+
+    /**
+     * Terminates the current loop and continues with the next iteration.
+     * @category Linter
+     * @experimental
+     */
+    export interface ContinueStatement {
+      type: "ContinueStatement";
+      range: [number, number];
+      label: Identifier | null;
+    }
+
+    /**
+     * Execute a statement the test passes, otherwise the alternate
+     * statement, if it was defined.
+     * @category Linter
+     * @experimental
+     */
+    export interface IfStatement {
+      type: "IfStatement";
+      range: [number, number];
+      test: Expression;
+      consequent: Statement;
+      alternate: Statement | null;
+    }
+
+    /**
+     * Match an expression against a series of cases.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchStatement {
+      type: "SwitchStatement";
+      range: [number, number];
+      discriminant: Expression;
+      cases: SwitchCase[];
+    }
+
+    /**
+     * A single case of a SwitchStatement.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchCase {
+      type: "SwitchCase";
+      range: [number, number];
+      test: Expression | null;
+      consequent: Statement[];
+    }
+
+    /**
+     * Throw a user defined exception. Stops execution
+     * of the current function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThrowStatement {
+      type: "ThrowStatement";
+      range: [number, number];
+      argument: Expression;
+    }
+
+    /**
+     * Run a loop while the test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface WhileStatement {
+      type: "WhileStatement";
+      range: [number, number];
+      test: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Re-run loop for as long as test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface DoWhileStatement {
+      type: "DoWhileStatement";
+      range: [number, number];
+      test: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Classic for-loop.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForStatement {
+      type: "ForStatement";
+      range: [number, number];
+      init: Expression | VariableDeclaration | null;
+      test: Expression | null;
+      update: Expression | null;
+      body: Statement;
+    }
+
+    /**
+     * Enumerate over all enumerable string properties of an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForInStatement {
+      type: "ForInStatement";
+      range: [number, number];
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Iterate over sequence of values from an iterator.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForOfStatement {
+      type: "ForOfStatement";
+      range: [number, number];
+      await: boolean;
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Statement that holds an expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface ExpressionStatement {
+      type: "ExpressionStatement";
+      range: [number, number];
+      expression: Expression;
+    }
+
+    /**
+     * Try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface TryStatement {
+      type: "TryStatement";
+      range: [number, number];
+      block: BlockStatement;
+      handler: CatchClause | null;
+      finalizer: BlockStatement | null;
+    }
+
+    /**
+     * The catch clause of a try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface CatchClause {
+      type: "CatchClause";
+      range: [number, number];
+      param: ArrayPattern | ObjectPattern | Identifier | null;
+      body: BlockStatement;
+    }
+
+    /**
+     * An array literal
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayExpression {
+      type: "ArrayExpression";
+      range: [number, number];
+      elements: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * An object literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectExpression {
+      type: "ObjectExpression";
+      range: [number, number];
+      properties: Array<Property | SpreadElement>;
+    }
+
+    /**
+     * Compare left and right value with the specifier operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface BinaryExpression {
+      type: "BinaryExpression";
+      range: [number, number];
+      operator:
+        | "&"
+        | "**"
+        | "*"
+        | "||"
+        | "|"
+        | "^"
+        | "==="
+        | "=="
+        | "!=="
+        | "!="
+        | ">="
+        | ">>>"
+        | ">>"
+        | ">"
+        | "in"
+        | "instanceof"
+        | "<="
+        | "<<"
+        | "<"
+        | "-"
+        | "%"
+        | "+"
+        | "/";
+      left: Expression | PrivateIdentifier;
+      right: Expression;
+    }
+
+    /**
+     * Chain expressions based on the operator specified
+     * @category Linter
+     * @experimental
+     */
+    export interface LogicalExpression {
+      type: "LogicalExpression";
+      range: [number, number];
+      operator: "&&" | "??" | "||";
+      left: Expression;
+      right: Expression;
+    }
+
+    /**
+     * Declare a function as an expression. Similar to `FunctionDeclaration`,
+     * with an optional name (=id).
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionExpression {
+      type: "FunctionExpression";
+      range: [number, number];
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement;
+    }
+
+    /**
+     * Arrow function expression
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrowFunctionExpression {
+      type: "ArrowFunctionExpression";
+      range: [number, number];
+      async: boolean;
+      generator: boolean;
+      id: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | Expression;
+    }
+
+    /**
+     * The `this` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThisExpression {
+      type: "ThisExpression";
+      range: [number, number];
+    }
+
+    /**
+     * The `super` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface Super {
+      type: "Super";
+      range: [number, number];
+    }
+
+    /**
+     * Apply operand on value based on the specified operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface UnaryExpression {
+      type: "UnaryExpression";
+      range: [number, number];
+      operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
+      argument: Expression;
+    }
+
+    /**
+     * Create a new instance of a class.
+     * @category Linter
+     * @experimental
+     */
+    export interface NewExpression {
+      type: "NewExpression";
+      range: [number, number];
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * Dynamically import a module.
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportExpression {
+      type: "ImportExpression";
+      range: [number, number];
+      source: Expression;
+      options: Expression | null;
+    }
+
+    /**
+     * A function call.
+     * @category Linter
+     * @experimental
+     */
+    export interface CallExpression {
+      type: "CallExpression";
+      range: [number, number];
+      optional: boolean;
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | null;
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * Syntactic sugar to increment or decrement a value.
+     * @category Linter
+     * @experimental
+     */
+    export interface UpdateExpression {
+      type: "UpdateExpression";
+      range: [number, number];
+      prefix: boolean;
+      operator: "++" | "--";
+      argument: Expression;
+    }
+
+    /**
+     * Updaate a variable or property.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentExpression {
+      type: "AssignmentExpression";
+      range: [number, number];
+      operator:
+        | "&&="
+        | "&="
+        | "**="
+        | "*="
+        | "||="
+        | "|="
+        | "^="
+        | "="
+        | ">>="
+        | ">>>="
+        | "<<="
+        | "-="
+        | "%="
+        | "+="
+        | "??="
+        | "/=";
+      left: Expression;
+      right: Expression;
+    }
+
+    /**
+     * Inline if-statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface ConditionalExpression {
+      type: "ConditionalExpression";
+      range: [number, number];
+      test: Expression;
+      consequent: Expression;
+      alternate: Expression;
+    }
+
+    /**
+     * MemberExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface MemberExpression {
+      type: "MemberExpression";
+      range: [number, number];
+      optional: boolean;
+      computed: boolean;
+      object: Expression;
+      property: Expression | Identifier | PrivateIdentifier;
+    }
+
+    /**
+     * ChainExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface ChainExpression {
+      type: "ChainExpression";
+      range: [number, number];
+      expression:
+        | CallExpression
+        | MemberExpression
+        | TSNonNullExpression;
+    }
+
+    /**
+     * Execute multiple expressions in sequence.
+     * @category Linter
+     * @experimental
+     */
+    export interface SequenceExpression {
+      type: "SequenceExpression";
+      range: [number, number];
+      expressions: Expression[];
+    }
+
+    /**
+     * A template literal string.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateLiteral {
+      type: "TemplateLiteral";
+      range: [number, number];
+      quasis: TemplateElement[];
+      expressions: Expression[];
+    }
+
+    /**
+     * The static portion of a template literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateElement {
+      type: "TemplateElement";
+      range: [number, number];
+      tail: boolean;
+      raw: string;
+      cooked: string;
+    }
+
+    /**
+     * Tagged template expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface TaggedTemplateExpression {
+      type: "TaggedTemplateExpression";
+      range: [number, number];
+      tag: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      quasi: TemplateLiteral;
+    }
+
+    /**
+     * Pause or resume a generator function.
+     * @category Linter
+     * @experimental
+     */
+    export interface YieldExpression {
+      type: "YieldExpression";
+      range: [number, number];
+      delegate: boolean;
+      argument: Expression | null;
+    }
+
+    /**
+     * Await a `Promise` and get its fulfilled value.
+     * @category Linter
+     * @experimental
+     */
+    export interface AwaitExpression {
+      type: "AwaitExpression";
+      range: [number, number];
+      argument: Expression;
+    }
+
+    /**
+     * Can either be `import.meta` or `new.target`.
+     * @category Linter
+     * @experimental
+     */
+    export interface MetaProperty {
+      type: "MetaProperty";
+      range: [number, number];
+      meta: Identifier;
+      property: Identifier;
+    }
+
+    /**
+     * Custom named node by the developer. Can be a variable name,
+     * a function name, parameter, etc.
+     * @category Linter
+     * @experimental
+     */
+    export interface Identifier {
+      type: "Identifier";
+      range: [number, number];
+      name: string;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * Private members inside of classes, must start with `#`.
+     * @category Linter
+     * @experimental
+     */
+    export interface PrivateIdentifier {
+      type: "PrivateIdentifier";
+      range: [number, number];
+      name: string;
+    }
+
+    /**
+     * Assign default values in parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentPattern {
+      type: "AssignmentPattern";
+      range: [number, number];
+      left: ArrayPattern | ObjectPattern | Identifier;
+      right: Expression;
+    }
+
+    /**
+     * Destructure an array.
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayPattern {
+      type: "ArrayPattern";
+      range: [number, number];
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      elements: Array<
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement
+        | null
+      >;
+    }
+
+    /**
+     * Destructure an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectPattern {
+      type: "ObjectPattern";
+      range: [number, number];
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      properties: Array<Property | RestElement>;
+    }
+
+    /**
+     * The rest of function parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface RestElement {
+      type: "RestElement";
+      range: [number, number];
+      typeAnnotation: TSTypeAnnotation | undefined;
+      argument:
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface SpreadElement {
+      type: "SpreadElement";
+      range: [number, number];
+      argument: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Property {
+      type: "Property";
+      range: [number, number];
+      shorthand: boolean;
+      computed: boolean;
+      method: boolean;
+      kind: "get" | "init" | "set";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | Expression
+        | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * Represents numbers that are too high or too low to be represented
+     * by the `number` type.
+     *
+     * ```ts
+     * const a = 9007199254740991n;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BigIntLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: string;
+      bigint: string;
+      value: bigint;
+    }
+
+    /**
+     * Either `true` or `false`
+     * @category Linter
+     * @experimental
+     */
+    export interface BooleanLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: "false" | "true";
+      value: boolean;
+    }
+
+    /**
+     * A number literal
+     *
+     * ```ts
+     * 1;
+     * 1.2;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface NumberLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: string;
+      value: number;
+    }
+
+    /**
+     * The `null` literal
+     * @category Linter
+     * @experimental
+     */
+    export interface NullLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: "null";
+      value: null;
+    }
+
+    /**
+     * A string literal
+     *
+     * ```ts
+     * "foo";
+     * 'foo "bar"';
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface StringLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: string;
+      value: string;
+    }
+
+    /**
+     * A regex literal:
+     *
+     * ```ts
+     * /foo(bar|baz)$/g
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface RegExpLiteral {
+      type: "Literal";
+      range: [number, number];
+      raw: string;
+      regex: {
+        flags: string;
+        pattern: string;
+      };
+      value: RegExp | null;
+    }
+
+    /**
+     * Union type of all Literals
+     * @category Linter
+     * @experimental
+     */
+    export type Literal =
+      | BigIntLiteral
+      | BooleanLiteral
+      | NullLiteral
+      | NumberLiteral
+      | RegExpLiteral
+      | StringLiteral;
+
+    /**
+     * User named identifier inside JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXIdentifier {
+      type: "JSXIdentifier";
+      range: [number, number];
+      name: string;
+    }
+
+    /**
+     * Namespaced name in JSX
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXNamespacedName {
+      type: "JSXNamespacedName";
+      range: [number, number];
+      namespace: JSXIdentifier;
+      name: JSXIdentifier;
+    }
+
+    /**
+     * Empty JSX expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXEmptyExpression {
+      type: "JSXEmptyExpression";
+      range: [number, number];
+    }
+
+    /**
+     * A JSX element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXElement {
+      type: "JSXElement";
+      range: [number, number];
+      openingElement: JSXOpeningElement;
+      closingElement: JSXClosingElement | null;
+      children: JSXChild[];
+    }
+
+    /**
+     * The opening tag of a JSXElement
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningElement {
+      type: "JSXOpeningElement";
+      range: [number, number];
+      selfClosing: boolean;
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      attributes: Array<JSXAttribute | JSXSpreadAttribute>;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * A JSX attribute
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXAttribute {
+      type: "JSXAttribute";
+      range: [number, number];
+      name: JSXIdentifier | JSXNamespacedName;
+      value:
+        | JSXElement
+        | JSXExpressionContainer
+        | Literal
+        | null;
+    }
+
+    /**
+     * Spreads an object as JSX attributes.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXSpreadAttribute {
+      type: "JSXSpreadAttribute";
+      range: [number, number];
+      argument: Expression;
+    }
+
+    /**
+     * The closing tag of a JSXElement. Only used when the element
+     * is not self-closing.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingElement {
+      type: "JSXClosingElement";
+      range: [number, number];
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+    }
+
+    /**
+     * Usually a passthrough node to pass multiple sibling elements as
+     * the JSX syntax requires one root element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXFragment {
+      type: "JSXFragment";
+      range: [number, number];
+      openingFragment: JSXOpeningFragment;
+      closingFragment: JSXClosingFragment;
+      children: JSXChild[];
+    }
+
+    /**
+     * The opening tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningFragment {
+      type: "JSXOpeningFragment";
+      range: [number, number];
+    }
+
+    /**
+     * The closing tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingFragment {
+      type: "JSXClosingFragment";
+      range: [number, number];
+    }
+
+    /**
+     * Inserts a normal JS expression into JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXExpressionContainer {
+      type: "JSXExpressionContainer";
+      range: [number, number];
+      expression: Expression | JSXEmptyExpression;
+    }
+
+    /**
+     * Plain text in JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXText {
+      type: "JSXText";
+      range: [number, number];
+      raw: string;
+      value: string;
+    }
+
+    /**
+     * JSX member expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXMemberExpression {
+      type: "JSXMemberExpression";
+      range: [number, number];
+      object:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      property: JSXIdentifier;
+    }
+
+    /**
+     * Union type of all possible child nodes in JSX
+     * @category Linter
+     * @experimental
+     */
+    export type JSXChild =
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXFragment
+      | JSXText;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleDeclaration {
+      type: "TSModuleDeclaration";
+      range: [number, number];
+      declare: boolean;
+      kind: "global" | "module" | "namespace";
+      id: Identifier | Literal | TSQualifiedName;
+      body: TSModuleBlock | undefined;
+    }
+
+    /**
+     * Body of a `TSModuleDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleBlock {
+      type: "TSModuleBlock";
+      range: [number, number];
+      body: Array<
+        | ExportAllDeclaration
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | ImportDeclaration
+        | Statement
+        | TSImportEqualsDeclaration
+        | TSNamespaceExportDeclaration
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSClassImplements {
+      type: "TSClassImplements";
+      range: [number, number];
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractMethodDefinition {
+      type: "TSAbstractMethodDefinition";
+      range: [number, number];
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      kind: "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractPropertyDefinition {
+      type: "TSAbstractPropertyDefinition";
+      range: [number, number];
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      definite: boolean;
+      declare: boolean;
+      readonly: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | Expression
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      value: Expression | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEmptyBodyFunctionExpression {
+      type: "TSEmptyBodyFunctionExpression";
+      range: [number, number];
+      declare: boolean;
+      expression: boolean;
+      async: boolean;
+      generator: boolean;
+      id: null;
+      body: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSParameterProperty {
+      type: "TSParameterProperty";
+      range: [number, number];
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      parameter:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | RestElement;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSCallSignatureDeclaration {
+      type: "TSCallSignatureDeclaration";
+      range: [number, number];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSPropertySignature {
+      type: "TSPropertySignature";
+      range: [number, number];
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      key:
+        | PrivateIdentifier
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSDeclareFunction {
+      type: "TSDeclareFunction";
+      range: [number, number];
+      async: boolean;
+      declare: boolean;
+      generator: boolean;
+      body: undefined;
+      id: Identifier | null;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * ```ts
+     * enum Foo { A, B };
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumDeclaration {
+      type: "TSEnumDeclaration";
+      range: [number, number];
+      declare: boolean;
+      const: boolean;
+      id: Identifier;
+      body: TSEnumBody;
+    }
+
+    /**
+     * The body of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumBody {
+      type: "TSEnumBody";
+      range: [number, number];
+      members: TSEnumMember[];
+    }
+
+    /**
+     * A member of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumMember {
+      type: "TSEnumMember";
+      range: [number, number];
+      id:
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      initializer: Expression | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAssertion {
+      type: "TSTypeAssertion";
+      range: [number, number];
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterInstantiation {
+      type: "TSTypeParameterInstantiation";
+      range: [number, number];
+      params: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAliasDeclaration {
+      type: "TSTypeAliasDeclaration";
+      range: [number, number];
+      declare: boolean;
+      id: Identifier;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSatisfiesExpression {
+      type: "TSSatisfiesExpression";
+      range: [number, number];
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAsExpression {
+      type: "TSAsExpression";
+      range: [number, number];
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInstantiationExpression {
+      type: "TSInstantiationExpression";
+      range: [number, number];
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNonNullExpression {
+      type: "TSNonNullExpression";
+      range: [number, number];
+      expression: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSThisType {
+      type: "TSThisType";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceDeclaration {
+      type: "TSInterfaceDeclaration";
+      range: [number, number];
+      declare: boolean;
+      id: Identifier;
+      extends: TSInterfaceHeritage[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      body: TSInterfaceBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceBody {
+      type: "TSInterfaceBody";
+      range: [number, number];
+      body: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConstructSignatureDeclaration {
+      type: "TSConstructSignatureDeclaration";
+      range: [number, number];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMethodSignature {
+      type: "TSMethodSignature";
+      range: [number, number];
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "get" | "set" | "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      returnType: TSTypeAnnotation | undefined;
+      params: Parameter[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceHeritage {
+      type: "TSInterfaceHeritage";
+      range: [number, number];
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexSignature {
+      type: "TSIndexSignature";
+      range: [number, number];
+      readonly: boolean;
+      static: boolean;
+      parameters: Parameter[];
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnionType {
+      type: "TSUnionType";
+      range: [number, number];
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntersectionType {
+      type: "TSIntersectionType";
+      range: [number, number];
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInferType {
+      type: "TSInferType";
+      range: [number, number];
+      typeParameter: TSTypeParameter;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeOperator {
+      type: "TSTypeOperator";
+      range: [number, number];
+      operator: "keyof" | "readonly" | "unique";
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexedAccessType {
+      type: "TSIndexedAccessType";
+      range: [number, number];
+      indexType: TypeNode;
+      objectType: TypeNode;
+    }
+
+    /**
+     * ```ts
+     * const a: any = null;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAnyKeyword {
+      type: "TSAnyKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnknownKeyword {
+      type: "TSUnknownKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNumberKeyword {
+      type: "TSNumberKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSObjectKeyword {
+      type: "TSObjectKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBooleanKeyword {
+      type: "TSBooleanKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBigIntKeyword {
+      type: "TSBigIntKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSStringKeyword {
+      type: "TSStringKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSymbolKeyword {
+      type: "TSSymbolKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSVoidKeyword {
+      type: "TSVoidKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUndefinedKeyword {
+      type: "TSUndefinedKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNullKeyword {
+      type: "TSNullKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNeverKeyword {
+      type: "TSNeverKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntrinsicKeyword {
+      type: "TSIntrinsicKeyword";
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSRestType {
+      type: "TSRestType";
+      range: [number, number];
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConditionalType {
+      type: "TSConditionalType";
+      range: [number, number];
+      checkType: TypeNode;
+      extendsType: TypeNode;
+      trueType: TypeNode;
+      falseType: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMappedType {
+      type: "TSMappedType";
+      range: [number, number];
+      readonly: boolean;
+      optional: boolean;
+      nameType: TypeNode | null;
+      typeAnnotation: TypeNode | undefined;
+      constraint: TypeNode;
+      key: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSLiteralType {
+      type: "TSLiteralType";
+      range: [number, number];
+      literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTemplateLiteralType {
+      type: "TSTemplateLiteralType";
+      range: [number, number];
+      quasis: TemplateElement[];
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeLiteral {
+      type: "TSTypeLiteral";
+      range: [number, number];
+      members: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSOptionalType {
+      type: "TSOptionalType";
+      range: [number, number];
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAnnotation {
+      type: "TSTypeAnnotation";
+      range: [number, number];
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSArrayType {
+      type: "TSArrayType";
+      range: [number, number];
+      elementType: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeQuery {
+      type: "TSTypeQuery";
+      range: [number, number];
+      exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeReference {
+      type: "TSTypeReference";
+      range: [number, number];
+      typeName: Identifier | ThisExpression | TSQualifiedName;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypePredicate {
+      type: "TSTypePredicate";
+      range: [number, number];
+      asserts: boolean;
+      parameterName: Identifier | TSThisType;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTupleType {
+      type: "TSTupleType";
+      range: [number, number];
+      elementTypes: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamedTupleMember {
+      type: "TSNamedTupleMember";
+      range: [number, number];
+      label: Identifier;
+      elementType: TypeNode;
+      optional: boolean;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterDeclaration {
+      type: "TSTypeParameterDeclaration";
+      range: [number, number];
+      params: TSTypeParameter[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameter {
+      type: "TSTypeParameter";
+      range: [number, number];
+      in: boolean;
+      out: boolean;
+      const: boolean;
+      name: Identifier;
+      constraint: TypeNode | null;
+      default: TypeNode | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportType {
+      type: "TSImportType";
+      range: [number, number];
+      argument: TypeNode;
+      qualifier: Identifier | ThisExpression | TSQualifiedName | null;
+      typeArguments: TSTypeParameterInstantiation | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExportAssignment {
+      type: "TSExportAssignment";
+      range: [number, number];
+      expression: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSFunctionType {
+      type: "TSFunctionType";
+      range: [number, number];
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSQualifiedName {
+      type: "TSQualifiedName";
+      range: [number, number];
+      left: Identifier | ThisExpression | TSQualifiedName;
+      right: Identifier;
+    }
+
+    /**
+     * Union type of all possible statement nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Statement =
+      | BlockStatement
+      | BreakStatement
+      | ClassDeclaration
+      | ContinueStatement
+      | DebuggerStatement
+      | DoWhileStatement
+      | ExportAllDeclaration
+      | ExportDefaultDeclaration
+      | ExportNamedDeclaration
+      | ExpressionStatement
+      | ForInStatement
+      | ForOfStatement
+      | ForStatement
+      | FunctionDeclaration
+      | IfStatement
+      | ImportDeclaration
+      | LabeledStatement
+      | ReturnStatement
+      | SwitchStatement
+      | ThrowStatement
+      | TryStatement
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSExportAssignment
+      | TSImportEqualsDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSNamespaceExportDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration
+      | WhileStatement
+      | WithStatement;
+
+    /**
+     * Union type of all possible expression nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Expression =
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | AssignmentExpression
+      | AwaitExpression
+      | BinaryExpression
+      | CallExpression
+      | ChainExpression
+      | ClassExpression
+      | ConditionalExpression
+      | FunctionExpression
+      | Identifier
+      | ImportExpression
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | LogicalExpression
+      | MemberExpression
+      | MetaProperty
+      | NewExpression
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | TemplateLiteral
+      | ThisExpression
+      | TSAsExpression
+      | TSInstantiationExpression
+      | TSNonNullExpression
+      | TSSatisfiesExpression
+      | TSTypeAssertion
+      | UnaryExpression
+      | UpdateExpression
+      | YieldExpression;
+
+    /**
+     * Union type of all possible type nodes in TypeScript
+     * @category Linter
+     * @experimental
+     */
+    export type TypeNode =
+      | TSAnyKeyword
+      | TSArrayType
+      | TSBigIntKeyword
+      | TSBooleanKeyword
+      | TSConditionalType
+      | TSFunctionType
+      | TSImportType
+      | TSIndexedAccessType
+      | TSInferType
+      | TSIntersectionType
+      | TSIntrinsicKeyword
+      | TSLiteralType
+      | TSMappedType
+      | TSNamedTupleMember
+      | TSNeverKeyword
+      | TSNullKeyword
+      | TSNumberKeyword
+      | TSObjectKeyword
+      | TSOptionalType
+      | TSQualifiedName
+      | TSRestType
+      | TSStringKeyword
+      | TSSymbolKeyword
+      | TSTemplateLiteralType
+      | TSThisType
+      | TSTupleType
+      | TSTypeLiteral
+      | TSTypeOperator
+      | TSTypePredicate
+      | TSTypeQuery
+      | TSTypeReference
+      | TSUndefinedKeyword
+      | TSUnionType
+      | TSUnknownKeyword
+      | TSVoidKeyword;
   }
 
   export {}; // only export exports

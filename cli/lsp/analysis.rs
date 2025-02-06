@@ -9,7 +9,6 @@ use std::path::Path;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_config::workspace::MappedResolution;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -20,6 +19,7 @@ use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::workspace::MappedResolution;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -1348,11 +1348,10 @@ impl CodeActionCollection {
       let npm_ref = if let Ok(resolution) = workspace_resolver.resolve(
         &dep_key,
         document.specifier(),
-        deno_config::workspace::ResolutionKind::Execution,
+        deno_resolver::workspace::ResolutionKind::Execution,
       ) {
         let specifier = match resolution {
-          MappedResolution::Normal { specifier, .. }
-          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          MappedResolution::Normal { specifier, .. } => specifier,
           _ => {
             return None;
           }
