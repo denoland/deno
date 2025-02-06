@@ -9,7 +9,6 @@ use std::sync::Arc;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -38,6 +37,7 @@ use deno_resolver::factory::ResolverFactoryOptions;
 use deno_resolver::factory::SpecifiedImportMapProvider;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::DenoInNpmPackageChecker;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_fs;
 use deno_runtime::deno_fs::RealFs;
 use deno_runtime::deno_permissions::Permissions;
@@ -97,7 +97,6 @@ use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
@@ -160,7 +159,8 @@ struct CliSpecifiedImportMapProvider {
 impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
   async fn get(
     &self,
-  ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, AnyError> {
+  ) -> Result<Option<deno_resolver::workspace::SpecifiedImportMap>, AnyError>
+  {
     async fn resolve_import_map_value_from_specifier(
       specifier: &Url,
       file_fetcher: &CliFileFetcher,
@@ -189,7 +189,7 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
         .with_context(|| {
           format!("Unable to load '{}' import map", specifier)
         })?;
-        Ok(Some(deno_config::workspace::SpecifiedImportMap {
+        Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
           base_url: specifier,
           value,
         }))
@@ -199,7 +199,7 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
           self.workspace_external_import_map_loader.get_or_load()?
         {
           let path_url = deno_path_util::url_from_file_path(&import_map.path)?;
-          Ok(Some(deno_config::workspace::SpecifiedImportMap {
+          Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
             base_url: path_url,
             value: import_map.value.clone(),
           }))
@@ -646,7 +646,6 @@ impl CliFactory {
         ResolverFactoryOptions {
           conditions_from_resolution_mode: Default::default(),
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
-          no_sloppy_imports_cache: false,
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
             cli_options: self.cli_options()?.clone(),
@@ -663,19 +662,13 @@ impl CliFactory {
             DenoSubcommand::Publish(_) => {
               // the node_modules directory is not published to jsr, so resolve
               // dependencies via the package.json rather than using node resolution
-              Some(deno_config::workspace::PackageJsonDepResolution::Enabled)
+              Some(deno_resolver::workspace::PackageJsonDepResolution::Enabled)
             }
             _ => None,
           },
         },
       )))
     })
-  }
-
-  pub fn sloppy_imports_resolver(
-    &self,
-  ) -> Result<Option<&Arc<CliSloppyImportsResolver>>, AnyError> {
-    self.resolver_factory()?.sloppy_imports_resolver()
   }
 
   pub fn workspace(&self) -> Result<&Arc<Workspace>, AnyError> {
@@ -790,10 +783,9 @@ impl CliFactory {
   }
 
   pub async fn lint_rule_provider(&self) -> Result<LintRuleProvider, AnyError> {
-    Ok(LintRuleProvider::new(
-      self.sloppy_imports_resolver()?.cloned(),
-      Some(self.workspace_resolver().await?.clone()),
-    ))
+    Ok(LintRuleProvider::new(Some(
+      self.workspace_resolver().await?.clone(),
+    )))
   }
 
   pub async fn node_resolver(&self) -> Result<&Arc<CliNodeResolver>, AnyError> {
