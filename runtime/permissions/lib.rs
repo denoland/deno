@@ -2627,9 +2627,9 @@ impl PermissionsContainer {
             {
               parent.canonicalize()?.join(filename)
             } else {
-              return Err(
-                std::io::Error::from(std::io::ErrorKind::NotFound).into(),
-              );
+              // File doesn't exit, return the original path
+              // and let the operation fail later.
+              return Ok(Cow::Owned(desc.0.resolved));
             }
           }
         }
