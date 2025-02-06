@@ -1,5 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-import { DatabaseSync } from "node:sqlite";
+import sqlite, { DatabaseSync } from "node:sqlite";
 import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const tempDir = Deno.makeTempDirSync();
@@ -173,9 +173,9 @@ Deno.test("[node/sqlite] applyChangeset across databases", () => {
 
   const changeset = session.changeset();
   targetDb.applyChangeset(changeset, {
-    filter(e) {
-      return e === "data";
-    },
+    filter: (e) => e === "data",
+    // @ts-ignore: types are not up to date
+    onConflict: () => sqlite.constants.SQLITE_CHANGESET_ABORT,
   });
 
   const stmt = targetDb.prepare("SELECT * FROM data");
