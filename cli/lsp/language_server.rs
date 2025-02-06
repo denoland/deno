@@ -3050,6 +3050,43 @@ impl Inner {
   }
 }
 
+impl LanguageServer {
+  async fn spawn(
+    &self,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+  ) {
+    self
+      .worker_runtime
+      .spawn(fut)
+      .await
+      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+      .ok();
+  }
+
+  async fn spawn_with_cancellation<
+    T: Send + 'static,
+    TFut: std::future::Future<Output = LspResult<T>> + Send,
+  >(
+    &self,
+    get_fut: impl FnOnce(CancellationToken) -> TFut + Send + 'static,
+  ) -> LspResult<T> {
+    let token = CancellationToken::new();
+    let _drop_guard = token.clone().drop_guard();
+    self
+      .worker_runtime
+      .spawn(async move {
+        tokio::select! {
+          biased;
+          result = get_fut(token.clone()) => result,
+          _ = token.cancelled() => Err(LspError::request_cancelled()),
+        }
+      })
+      .await
+      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+      .unwrap_or_else(|_| Err(LspError::internal_error()))
+  }
+}
+
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
@@ -3144,28 +3181,48 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.write().await.did_open(params).await;
+    let ls = self.clone();
+    self
+      .spawn(async move {
+        ls.inner.write().await.did_open(params).await;
+      })
+      .await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.write().await.did_change(params).await
+    let ls = self.clone();
+    self
+      .spawn(async move {
+        ls.inner.write().await.did_change(params).await;
+      })
+      .await;
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.write().await.did_save(params);
+    let ls = self.clone();
+    self
+      .spawn(async move {
+        ls.inner.write().await.did_save(params);
+      })
+      .await;
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.write().await.did_close(params).await
+    let ls = self.clone();
+    self
+      .spawn(async move {
+        ls.inner.write().await.did_close(params).await;
+      })
+      .await;
   }
 
   async fn did_change_configuration(
@@ -3175,17 +3232,21 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let mark = self
-      .performance
-      .mark_with_args("lsp.did_change_configuration", &params);
-    self.refresh_configuration().await;
+    let ls = self.clone();
     self
-      .inner
-      .write()
-      .await
-      .did_change_configuration(params)
+      .spawn(async move {
+        let mark = ls
+          .performance
+          .mark_with_args("lsp.did_change_configuration", &params);
+        ls.refresh_configuration().await;
+        ls.inner
+          .write()
+          .await
+          .did_change_configuration(params)
+          .await;
+        ls.performance.measure(mark);
+      })
       .await;
-    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -3195,12 +3256,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
+    let ls = self.clone();
     self
-      .inner
-      .write()
-      .await
-      .did_change_watched_files(params)
-      .await
+      .spawn(async move {
+        ls.inner
+          .write()
+          .await
+          .did_change_watched_files(params)
+          .await;
+      })
+      .await;
   }
 
   async fn did_change_workspace_folders(
@@ -3210,22 +3275,25 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let mark = self
-      .performance
-      .mark_with_args("lsp.did_change_workspace_folders", &params);
+    let ls = self.clone();
     self
-      .inner
-      .write()
-      .await
-      .pre_did_change_workspace_folders(params);
-    self.refresh_configuration().await;
-    self
-      .inner
-      .write()
-      .await
-      .post_did_change_workspace_folders()
+      .spawn(async move {
+        let mark = ls
+          .performance
+          .mark_with_args("lsp.did_change_workspace_folders", &params);
+        ls.inner
+          .write()
+          .await
+          .pre_did_change_workspace_folders(params);
+        ls.refresh_configuration().await;
+        ls.inner
+          .write()
+          .await
+          .post_did_change_workspace_folders()
+          .await;
+        ls.performance.measure(mark);
+      })
       .await;
-    self.performance.measure(mark);
   }
 
   async fn document_symbol(
@@ -3349,16 +3417,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let inner = self.inner.clone();
-    let token = CancellationToken::new();
-    let _drop_guard = token.clone().drop_guard();
-    self.worker_runtime.spawn(async move {
-      tokio::select! {
-        biased;
-        result = async { inner.read().await.completion(params, token.clone()).await } => result,
-        _ = token.cancelled() => Ok(None),
-      }
-    }).await.unwrap()
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.completion(params, token).await
+      })
+      .await
   }
 
   async fn completion_resolve(

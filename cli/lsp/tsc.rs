@@ -894,6 +894,7 @@ impl TsServer {
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_completions(
     &self,
     snapshot: Arc<StateSnapshot>,
