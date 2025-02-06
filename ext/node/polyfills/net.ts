@@ -1168,7 +1168,7 @@ const pkgsNeedsSockInitWorkaround = [
   "@npmcli/agent",
   "npm-check-updates",
   "playwright-core",
-  "twitter-api-v2"
+  "twitter-api-v2",
 ];
 
 /**
