@@ -1471,7 +1471,11 @@ impl Inner {
     }
   }
 
-  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(
+    &self,
+    params: HoverParams,
+    token: CancellationToken,
+  ) -> LspResult<Option<Hover>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
@@ -1549,6 +1553,7 @@ impl Inner {
           specifier.clone(),
           position,
           asset_or_doc.scope().cloned(),
+          token,
         )
         .await?;
       maybe_quick_info.map(|qi| qi.to_hover(line_index, self))
@@ -3337,7 +3342,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.hover(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.hover(params, token).await
+      })
+      .await
   }
 
   async fn inlay_hint(

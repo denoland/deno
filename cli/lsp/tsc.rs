@@ -629,15 +629,19 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<Option<QuickInfo>, LspError> {
     let req = TscRequest::GetQuickInfoAtPosition((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Unable to get quick info: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
+      .map_err(|err| {
+        log::error!("Unable to get quick info: {}", err);
+        LspError::internal_error()
+      })
   }
 
   #[allow(clippy::too_many_arguments)]
