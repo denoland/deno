@@ -552,6 +552,7 @@ impl Inner {
   pub async fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
+    token: CancellationToken,
   ) -> Result<Arc<tsc::NavigationTree>, AnyError> {
     let mark = self.performance.mark_with_args(
       "lsp.get_navigation_tree",
@@ -568,6 +569,7 @@ impl Inner {
             self.snapshot(),
             specifier.clone(),
             asset_or_doc.scope().cloned(),
+            token,
           )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
@@ -1314,6 +1316,7 @@ impl Inner {
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
+    token: CancellationToken,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     let specifier = self
       .url_map
@@ -1330,8 +1333,10 @@ impl Inner {
     let asset_or_document = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_document.line_index();
 
-    let navigation_tree =
-      self.get_navigation_tree(&specifier).await.map_err(|err| {
+    let navigation_tree = self
+      .get_navigation_tree(&specifier, token)
+      .await
+      .map_err(|err| {
         error!(
           "Error getting document symbols for \"{}\": {:#}",
           specifier, err
@@ -1986,8 +1991,10 @@ impl Inner {
       }
     }
     if settings.code_lens.implementations || settings.code_lens.references {
-      let navigation_tree =
-        self.get_navigation_tree(&specifier).await.map_err(|err| {
+      let navigation_tree = self
+        .get_navigation_tree(&specifier, Default::default())
+        .await
+        .map_err(|err| {
           error!("Error getting code lenses for \"{}\": {:#}", specifier, err);
           LspError::internal_error()
         })?;
@@ -3303,7 +3310,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.document_symbol(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.document_symbol(params, token).await
+      })
+      .await
   }
 
   async fn formatting(

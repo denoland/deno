@@ -602,11 +602,14 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
       .denormalize(&specifier),));
-    self.request(snapshot, req, scope).await
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn get_supported_code_fixes(
