@@ -28,7 +28,6 @@
 // deno-lint-ignore-file prefer-primordials
 
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIPv4 } from "ext:deno_node/internal/net.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   AsyncWrap,
@@ -36,6 +35,7 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import { op_getaddrinfo } from "ext:core/ops";
 
 interface LookupAddress {
   address: string;
@@ -67,38 +67,31 @@ export function getaddrinfo(
   _hints: number,
   verbatim: boolean,
 ): number {
-  const addresses: string[] = [];
+  type Addr = {
+    address: string;
+    family: number;
+  };
+  let addresses: Addr[] = [];
 
   // TODO(cmorten): use hints
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
 
-  const recordTypes: ("A" | "AAAA")[] = [];
-
-  if (family === 0 || family === 4) {
-    recordTypes.push("A");
-  }
-  if (family === 0 || family === 6) {
-    recordTypes.push("AAAA");
-  }
-
   (async () => {
-    await Promise.allSettled(
-      recordTypes.map((recordType) =>
-        Deno.resolveDns(hostname, recordType).then((records) => {
-          records.forEach((record) => addresses.push(record));
-        })
-      ),
-    );
+    try {
+      addresses.push(...await op_getaddrinfo(hostname));
+    } catch {
+      // pass
+    }
 
     const error = addresses.length ? 0 : codeMap.get("EAI_NODATA")!;
 
     // TODO(cmorten): needs work
     // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
     if (!verbatim) {
-      addresses.sort((a: string, b: string): number => {
-        if (isIPv4(a)) {
+      addresses.sort((a: Addr, b: Addr): number => {
+        if (a.family === 4 && b.family === 6) {
           return -1;
-        } else if (isIPv4(b)) {
+        } else if (a.family === 6 && b.family === 4) {
           return 1;
         }
 
@@ -106,7 +99,11 @@ export function getaddrinfo(
       });
     }
 
-    req.oncomplete(error, addresses);
+    if (family === 4 || family === 6) {
+      addresses = addresses.filter((addr) => addr.family === family);
+    }
+
+    req.oncomplete(error, addresses.map((addr) => addr.address));
   })();
 
   return 0;
