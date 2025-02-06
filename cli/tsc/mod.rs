@@ -620,7 +620,6 @@ fn op_load(
   state: &mut OpState,
   #[string] load_specifier: &str,
 ) -> Result<Option<LoadResponse>, LoadError> {
-  // eprintln!("op_load({load_specifier}");
   op_load_inner(state, load_specifier)
 }
 
@@ -668,7 +667,6 @@ fn op_load_inner(
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    // eprintln!("load asset: {name}");
     let maybe_source = get_lazily_loaded_asset(name);
     hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
@@ -827,11 +825,6 @@ fn op_libs() -> Vec<String> {
   }
   out
 }
-
-// #[op2(fast)]
-// fn op_log(#[string] msg: &str) {
-//   eprintln!("TSC: {msg}");
-// }
 
 #[op2]
 #[serde]
@@ -1199,12 +1192,7 @@ deno_core::extension!(deno_cli_tsc,
     op_resolve,
     op_respond,
     op_libs,
-    // op_log,
   ],
-  // esm_entry_point = "ext:deno_cli_tsc/99_main_compiler.js",
-  // lazy_loaded_esm = [dir "tsc", "99_main_compiler.js", "97_ts_host.js", "98_lsp.js"],
-  // js = [dir "tsc", "00_typescript.js"],
-  // lazy_loaded_esm = ["tsc/99_main_compiler.js", "tsc/97_ts_host.js"],
   options = {
     request: Request,
     root_map: HashMap<String, Url>,
