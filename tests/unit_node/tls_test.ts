@@ -109,9 +109,7 @@ Deno.test("tls.connect makes tls connection to example.com", async () => {
   await new Promise((resolve) => {
     socket.on("secureConnect", resolve);
   });
-  socket.write(
-    "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-  );
+  socket.write("X");
   assertStringIncludes(await text(socket), "PASS");
 });
 
