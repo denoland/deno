@@ -139,8 +139,8 @@ interface IKeyValue {
   value: IAnyValue;
 }
 
-function hrToSecs(hr: [number, number]): number {
-  return (hr[0] * 1e3 + hr[1] / 1e6) / 1000;
+function hrToMs(hr: [number, number]): number {
+  return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
 export function enterSpan(span: Span): Context | undefined {
@@ -276,7 +276,7 @@ class Tracer {
 
     let startTime = options?.startTime;
     if (startTime && ArrayIsArray(startTime)) {
-      startTime = hrToSecs(startTime);
+      startTime = hrToMs(startTime);
     } else if (startTime && isDate(startTime)) {
       startTime = DatePrototypeGetTime(startTime);
     }
@@ -383,7 +383,7 @@ class Span {
 
   end(endTime?: TimeInput): void {
     if (endTime && ArrayIsArray(endTime)) {
-      endTime = hrToSecs(endTime);
+      endTime = hrToMs(endTime);
     } else if (endTime && isDate(endTime)) {
       endTime = DatePrototypeGetTime(endTime);
     }
