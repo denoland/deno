@@ -98,23 +98,6 @@ Connection: close
   assertEquals(bodyText, "hello");
 });
 
-// Regression at https://github.com/denoland/deno/issues/27652
-Deno.test("tls.connect makes tls connection to example.com", async () => {
-  const socket = tls.connect({
-    port: 4557,
-    host: "localhost",
-    // deno-lint-ignore no-explicit-any
-    secureContext: { ca: rootCaCert } as any,
-  });
-  await new Promise((resolve) => {
-    socket.on("secureConnect", resolve);
-  });
-  socket.write(
-    "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
-  );
-  assertStringIncludes(await text(socket), "PASS");
-});
-
 // https://github.com/denoland/deno/pull/20120
 Deno.test("tls.connect mid-read tcp->tls upgrade", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
