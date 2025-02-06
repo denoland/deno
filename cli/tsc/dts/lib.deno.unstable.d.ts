@@ -1482,6 +1482,8 @@ declare namespace Deno {
      * @experimental
      */
     export interface AstBase {
+      /** The type of this node */
+      type: string;
       /** The byte start and end location of the node */
       range: [number, number];
     }
