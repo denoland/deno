@@ -1182,7 +1182,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1249,7 +1249,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1375,7 +1375,7 @@ impl OtelSpan {
       SystemTime::now()
     } else {
       SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_secs_f64(end_time))
+        .checked_add(Duration::from_secs_f64(end_time / 1000.0))
         .unwrap()
     };
 
