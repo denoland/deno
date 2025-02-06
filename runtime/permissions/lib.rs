@@ -2625,9 +2625,15 @@ impl PermissionsContainer {
             if let (Some(parent), Some(filename)) =
               (path.parent(), path.file_name())
             {
-              parent.canonicalize()?.join(filename)
+              let Ok(path) = parent.canonicalize() else {
+                // File doesn't exist, return the original path
+                // and let the operation fail later.
+                return Ok(Cow::Owned(desc.0.resolved));
+              };
+
+              path.join(filename)
             } else {
-              // File doesn't exit, return the original path
+              // File doesn't exist, return the original path
               // and let the operation fail later.
               return Ok(Cow::Owned(desc.0.resolved));
             }
