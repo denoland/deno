@@ -2585,8 +2585,8 @@ impl PermissionsContainer {
     path: &'a Path,
     api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    let mut inner = self.inner.lock();
-    let inner = &mut inner.read;
+    let mut lock = self.inner.lock();
+    let inner = &mut lock.read;
     if inner.is_allow_all() {
       Ok(Cow::Borrowed(path))
     } else {
@@ -2636,6 +2636,7 @@ impl PermissionsContainer {
         path
       };
 
+      drop(lock);
       self
         .check_special_file(&path, api_name.unwrap_or("read"))
         .map_err(PermissionCheckError::NotCapable)?;
