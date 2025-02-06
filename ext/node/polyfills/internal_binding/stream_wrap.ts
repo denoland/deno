@@ -334,7 +334,6 @@ export class LibuvStreamWrap extends HandleWrap {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
       // deno-lint-ignore no-console
-      console.error(e);
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
       if (
@@ -352,6 +351,7 @@ export class LibuvStreamWrap extends HandleWrap {
         e instanceof Deno.errors.ConnectionReset ||
         e instanceof Deno.errors.ConnectionAborted
       ) {
+        console.error(e);
         nread = codeMap.get("ECONNRESET")!;
       } else {
         this[ownerSymbol].destroy(e);
