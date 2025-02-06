@@ -96,6 +96,9 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   assertThrows(() => session.changeset(), Error, "Session is already closed");
   // Close after close should throw.
   assertThrows(() => session.close(), Error, "Session is already closed");
+
+  db.close();
+  assertThrows(() => session.close(), Error, "Database is already closed");
 });
 
 Deno.test("[node/sqlite] StatementSync integer too large", () => {

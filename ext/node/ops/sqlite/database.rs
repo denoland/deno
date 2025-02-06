@@ -376,7 +376,7 @@ impl DatabaseSync {
     Ok(Session {
       inner: raw_session,
       freed: Cell::new(false),
-      _db: self.conn.clone(),
+      db: self.conn.clone(),
     })
   }
 }
