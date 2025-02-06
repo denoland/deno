@@ -96,6 +96,9 @@ Deno.test("[node/sqlite] createSession and changesets", () => {
   assertThrows(() => session.changeset(), Error, "Session is already closed");
   // Close after close should throw.
   assertThrows(() => session.close(), Error, "Session is already closed");
+
+  db.close();
+  assertThrows(() => session.close(), Error, "Database is already closed");
 });
 
 Deno.test("[node/sqlite] StatementSync integer too large", () => {
@@ -151,4 +154,33 @@ Deno.test({
       db.close();
     }
   },
+});
+
+Deno.test("[node/sqlite] applyChangeset across databases", () => {
+  const sourceDb = new DatabaseSync(":memory:");
+  const targetDb = new DatabaseSync(":memory:");
+
+  sourceDb.exec("CREATE TABLE data(key INTEGER PRIMARY KEY, value TEXT)");
+  targetDb.exec("CREATE TABLE data(key INTEGER PRIMARY KEY, value TEXT)");
+
+  const session = sourceDb.createSession();
+
+  const insert = sourceDb.prepare(
+    "INSERT INTO data (key, value) VALUES (?, ?)",
+  );
+  insert.run(1, "hello");
+  insert.run(2, "world");
+
+  const changeset = session.changeset();
+  targetDb.applyChangeset(changeset, {
+    filter(e) {
+      return e === "data";
+    },
+  });
+
+  const stmt = targetDb.prepare("SELECT * FROM data");
+  assertEquals(stmt.all(), [
+    { key: 1, value: "hello", __proto__: null },
+    { key: 2, value: "world", __proto__: null },
+  ]);
 });

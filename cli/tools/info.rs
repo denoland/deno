@@ -59,21 +59,18 @@ pub async fn info(
     let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
       &specifier,
       &cwd_url,
-      deno_config::workspace::ResolutionKind::Execution,
+      deno_resolver::workspace::ResolutionKind::Execution,
     ) {
       match resolved {
-        deno_config::workspace::MappedResolution::Normal {
-          specifier, ..
-        }
-        | deno_config::workspace::MappedResolution::ImportMap {
+        deno_resolver::workspace::MappedResolution::Normal {
           specifier,
           ..
         }
-        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+        | deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
           specifier,
           ..
         } => Some(specifier),
-        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+        deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
           target_pkg_json,
           sub_path,
           ..
@@ -88,7 +85,7 @@ pub async fn info(
             )?
             .into_url()?,
         ),
-        deno_config::workspace::MappedResolution::PackageJson {
+        deno_resolver::workspace::MappedResolution::PackageJson {
           alias,
           sub_path,
           dep_result,

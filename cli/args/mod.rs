@@ -366,6 +366,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub fix: bool,
+  pub plugins: Vec<Url>,
 }
 
 impl Default for LintOptions {
@@ -380,20 +381,41 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       fix: false,
+      plugins: vec![],
     }
   }
 
-  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
-    Self {
+  pub fn resolve(
+    dir_path: PathBuf,
+    lint_config: LintConfig,
+    lint_flags: &LintFlags,
+  ) -> Result<Self, AnyError> {
+    let rules = resolve_lint_rules_options(
+      lint_config.options.rules,
+      lint_flags.maybe_rules_tags.clone(),
+      lint_flags.maybe_rules_include.clone(),
+      lint_flags.maybe_rules_exclude.clone(),
+    );
+
+    let plugins = {
+      let plugin_specifiers = lint_config.options.plugins;
+      let mut plugins = Vec::with_capacity(plugin_specifiers.len());
+      for plugin in &plugin_specifiers {
+        // TODO(bartlomieju): handle import-mapped specifiers
+        let url = resolve_url_or_path(plugin, &dir_path)?;
+        plugins.push(url);
+      }
+      // ensure stability for hasher
+      plugins.sort_unstable();
+      plugins
+    };
+
+    Ok(Self {
       files: lint_config.files,
-      rules: resolve_lint_rules_options(
-        lint_config.options.rules,
-        lint_flags.maybe_rules_tags.clone(),
-        lint_flags.maybe_rules_include.clone(),
-        lint_flags.maybe_rules_exclude.clone(),
-      ),
+      rules,
       fix: lint_flags.fix,
-    }
+      plugins,
+    })
   }
 }
 
@@ -759,7 +781,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(config, lint_flags);
+      let options = LintOptions::resolve(ctx.dir_path(), config, lint_flags)?;
       result.push((ctx, options));
     }
     Ok(result)
