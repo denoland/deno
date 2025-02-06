@@ -728,6 +728,7 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<CombinedCodeActions, LspError> {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
@@ -739,7 +740,9 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<CombinedCodeActions>(snapshot, req, scope)
+      .request_with_cancellation::<CombinedCodeActions>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut actions| {
         actions.normalize(&self.specifier_map)?;
@@ -762,6 +765,7 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<RefactorEditInfo, LspError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
       self.specifier_map.denormalize(&specifier),
@@ -772,7 +776,9 @@ impl TsServer {
       preferences,
     )));
     self
-      .request::<RefactorEditInfo>(snapshot, req, scope)
+      .request_with_cancellation::<RefactorEditInfo>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut info| {
         info.normalize(&self.specifier_map)?;

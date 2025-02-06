@@ -1829,6 +1829,7 @@ impl Inner {
   async fn code_action_resolve(
     &self,
     params: CodeAction,
+    token: CancellationToken,
   ) -> LspResult<CodeAction> {
     if params.kind.is_none() || params.data.is_none() {
       return Ok(params);
@@ -1866,6 +1867,7 @@ impl Inner {
             &code_action_data.specifier,
           ),
           scope,
+          token,
         )
         .await?;
       if combined_code_actions.commands.is_some() {
@@ -1921,6 +1923,7 @@ impl Inner {
             &action_data.specifier,
           )),
           asset_or_doc.scope().cloned(),
+          token,
         )
         .await?;
       if kind_suffix == ".rewrite.function.returnType"
@@ -3390,7 +3393,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.code_action_resolve(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .code_action_resolve(params, token)
+          .await
+      })
+      .await
   }
 
   async fn code_lens(
