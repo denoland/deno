@@ -1477,23 +1477,12 @@ declare namespace Deno {
     ): Diagnostic[];
 
     /**
-     * Shared properties of an ast node
      * @category Linter
      * @experimental
      */
-    export interface AstBase {
-      /** The type of this node */
-      type: string;
-      /** The byte start and end location of the node */
-      range: [number, number];
-    }
-
-    /**
-     * @category Linter
-     * @experimental
-     */
-    export interface ImportSpecifier extends AstBase {
+    export interface ImportSpecifier {
       type: "ImportSpecifier";
+      range: [number, number];
       imported: Identifier | StringLiteral;
       local: Identifier;
       importKind: "type" | "value";
@@ -1503,8 +1492,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ImportDefaultSpecifier extends AstBase {
+    export interface ImportDefaultSpecifier {
       type: "ImportDefaultSpecifier";
+      range: [number, number];
       local: Identifier;
     }
 
@@ -1512,8 +1502,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ImportNamespaceSpecifier extends AstBase {
+    export interface ImportNamespaceSpecifier {
       type: "ImportNamespaceSpecifier";
+      range: [number, number];
       local: Identifier;
     }
 
@@ -1521,8 +1512,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ImportAttribute extends AstBase {
+    export interface ImportAttribute {
       type: "ImportAttribute";
+      range: [number, number];
       key: Identifier | Literal;
       value: Literal;
     }
@@ -1532,8 +1524,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ImportDeclaration extends AstBase {
+    export interface ImportDeclaration {
       type: "ImportDeclaration";
+      range: [number, number];
       importKind: "type" | "value";
       source: StringLiteral;
       specifiers: Array<
@@ -1548,8 +1541,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ExportDefaultDeclaration extends AstBase {
+    export interface ExportDefaultDeclaration {
       type: "ExportDefaultDeclaration";
+      range: [number, number];
       declaration:
         | ClassDeclaration
         | Expression
@@ -1567,8 +1561,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ExportNamedDeclaration extends AstBase {
+    export interface ExportNamedDeclaration {
       type: "ExportNamedDeclaration";
+      range: [number, number];
       exportKind: "type" | "value";
       specifiers: ExportSpecifier[];
       declaration:
@@ -1590,8 +1585,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ExportAllDeclaration extends AstBase {
+    export interface ExportAllDeclaration {
       type: "ExportAllDeclaration";
+      range: [number, number];
       exportKind: "type" | "value";
       exported: Identifier | null;
       source: StringLiteral;
@@ -1602,8 +1598,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSNamespaceExportDeclaration extends AstBase {
+    export interface TSNamespaceExportDeclaration {
       type: "TSNamespaceExportDeclaration";
+      range: [number, number];
       id: Identifier;
     }
 
@@ -1611,8 +1608,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSImportEqualsDeclaration extends AstBase {
+    export interface TSImportEqualsDeclaration {
       type: "TSImportEqualsDeclaration";
+      range: [number, number];
       importKind: "type" | "value";
       id: Identifier;
       moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
@@ -1622,8 +1620,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSExternalModuleReference extends AstBase {
+    export interface TSExternalModuleReference {
       type: "TSExternalModuleReference";
+      range: [number, number];
       expression: StringLiteral;
     }
 
@@ -1631,8 +1630,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ExportSpecifier extends AstBase {
+    export interface ExportSpecifier {
       type: "ExportSpecifier";
+      range: [number, number];
       exportKind: "type" | "value";
       exported: Identifier | StringLiteral;
       local: Identifier | StringLiteral;
@@ -1643,8 +1643,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface VariableDeclaration extends AstBase {
+    export interface VariableDeclaration {
       type: "VariableDeclaration";
+      range: [number, number];
       declare: boolean;
       kind: "let" | "var" | "const" | "await using" | "using";
       declarations: VariableDeclarator[];
@@ -1656,8 +1657,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface VariableDeclarator extends AstBase {
+    export interface VariableDeclarator {
       type: "VariableDeclarator";
+      range: [number, number];
       id: ArrayPattern | ObjectPattern | Identifier;
       init: Expression | null;
       definite: boolean;
@@ -1688,8 +1690,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface FunctionDeclaration extends AstBase {
+    export interface FunctionDeclaration {
       type: "FunctionDeclaration";
+      range: [number, number];
       declare: boolean;
       async: boolean;
       generator: boolean;
@@ -1705,8 +1708,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Decorator extends AstBase {
+    export interface Decorator {
       type: "Decorator";
+      range: [number, number];
       expression:
         | ArrayExpression
         | ArrayPattern
@@ -1737,8 +1741,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ClassDeclaration extends AstBase {
+    export interface ClassDeclaration {
       type: "ClassDeclaration";
+      range: [number, number];
       declare: boolean;
       abstract: boolean;
       id: Identifier | null;
@@ -1777,8 +1782,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ClassExpression extends AstBase {
+    export interface ClassExpression {
       type: "ClassExpression";
+      range: [number, number];
       declare: boolean;
       abstract: boolean;
       id: Identifier | null;
@@ -1817,8 +1823,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ClassBody extends AstBase {
+    export interface ClassBody {
       type: "ClassBody";
+      range: [number, number];
       body: Array<
         | AccessorProperty
         | MethodDefinition
@@ -1838,8 +1845,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface StaticBlock extends AstBase {
+    export interface StaticBlock {
       type: "StaticBlock";
+      range: [number, number];
       body: Statement[];
     }
 
@@ -1850,8 +1858,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface AccessorProperty extends AstBase {
+    export interface AccessorProperty {
       type: "AccessorProperty";
+      range: [number, number];
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1868,8 +1877,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface PropertyDefinition extends AstBase {
+    export interface PropertyDefinition {
       type: "PropertyDefinition";
+      range: [number, number];
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1887,8 +1897,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface MethodDefinition extends AstBase {
+    export interface MethodDefinition {
       type: "MethodDefinition";
+      range: [number, number];
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1911,8 +1922,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface BlockStatement extends AstBase {
+    export interface BlockStatement {
       type: "BlockStatement";
+      range: [number, number];
       body: Statement[];
     }
 
@@ -1921,8 +1933,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface DebuggerStatement extends AstBase {
+    export interface DebuggerStatement {
       type: "DebuggerStatement";
+      range: [number, number];
     }
 
     /**
@@ -1931,8 +1944,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface WithStatement extends AstBase {
+    export interface WithStatement {
       type: "WithStatement";
+      range: [number, number];
       object: Expression;
       body: Statement;
     }
@@ -1942,8 +1956,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ReturnStatement extends AstBase {
+    export interface ReturnStatement {
       type: "ReturnStatement";
+      range: [number, number];
       argument: Expression | null;
     }
 
@@ -1952,8 +1967,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface LabeledStatement extends AstBase {
+    export interface LabeledStatement {
       type: "LabeledStatement";
+      range: [number, number];
       label: Identifier;
       body: Statement;
     }
@@ -1973,8 +1989,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface BreakStatement extends AstBase {
+    export interface BreakStatement {
       type: "BreakStatement";
+      range: [number, number];
       label: Identifier | null;
     }
 
@@ -1983,8 +2000,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ContinueStatement extends AstBase {
+    export interface ContinueStatement {
       type: "ContinueStatement";
+      range: [number, number];
       label: Identifier | null;
     }
 
@@ -1994,8 +2012,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface IfStatement extends AstBase {
+    export interface IfStatement {
       type: "IfStatement";
+      range: [number, number];
       test: Expression;
       consequent: Statement;
       alternate: Statement | null;
@@ -2006,8 +2025,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface SwitchStatement extends AstBase {
+    export interface SwitchStatement {
       type: "SwitchStatement";
+      range: [number, number];
       discriminant: Expression;
       cases: SwitchCase[];
     }
@@ -2017,8 +2037,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface SwitchCase extends AstBase {
+    export interface SwitchCase {
       type: "SwitchCase";
+      range: [number, number];
       test: Expression | null;
       consequent: Statement[];
     }
@@ -2029,8 +2050,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ThrowStatement extends AstBase {
+    export interface ThrowStatement {
       type: "ThrowStatement";
+      range: [number, number];
       argument: Expression;
     }
 
@@ -2039,8 +2061,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface WhileStatement extends AstBase {
+    export interface WhileStatement {
       type: "WhileStatement";
+      range: [number, number];
       test: Expression;
       body: Statement;
     }
@@ -2050,8 +2073,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface DoWhileStatement extends AstBase {
+    export interface DoWhileStatement {
       type: "DoWhileStatement";
+      range: [number, number];
       test: Expression;
       body: Statement;
     }
@@ -2061,8 +2085,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ForStatement extends AstBase {
+    export interface ForStatement {
       type: "ForStatement";
+      range: [number, number];
       init: Expression | VariableDeclaration | null;
       test: Expression | null;
       update: Expression | null;
@@ -2074,8 +2099,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ForInStatement extends AstBase {
+    export interface ForInStatement {
       type: "ForInStatement";
+      range: [number, number];
       left: Expression | VariableDeclaration;
       right: Expression;
       body: Statement;
@@ -2086,8 +2112,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ForOfStatement extends AstBase {
+    export interface ForOfStatement {
       type: "ForOfStatement";
+      range: [number, number];
       await: boolean;
       left: Expression | VariableDeclaration;
       right: Expression;
@@ -2099,8 +2126,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ExpressionStatement extends AstBase {
+    export interface ExpressionStatement {
       type: "ExpressionStatement";
+      range: [number, number];
       expression: Expression;
     }
 
@@ -2109,8 +2137,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TryStatement extends AstBase {
+    export interface TryStatement {
       type: "TryStatement";
+      range: [number, number];
       block: BlockStatement;
       handler: CatchClause | null;
       finalizer: BlockStatement | null;
@@ -2121,8 +2150,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface CatchClause extends AstBase {
+    export interface CatchClause {
       type: "CatchClause";
+      range: [number, number];
       param: ArrayPattern | ObjectPattern | Identifier | null;
       body: BlockStatement;
     }
@@ -2132,8 +2162,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ArrayExpression extends AstBase {
+    export interface ArrayExpression {
       type: "ArrayExpression";
+      range: [number, number];
       elements: Array<Expression | SpreadElement>;
     }
 
@@ -2142,8 +2173,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ObjectExpression extends AstBase {
+    export interface ObjectExpression {
       type: "ObjectExpression";
+      range: [number, number];
       properties: Array<Property | SpreadElement>;
     }
 
@@ -2152,8 +2184,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface BinaryExpression extends AstBase {
+    export interface BinaryExpression {
       type: "BinaryExpression";
+      range: [number, number];
       operator:
         | "&"
         | "**"
@@ -2187,8 +2220,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface LogicalExpression extends AstBase {
+    export interface LogicalExpression {
       type: "LogicalExpression";
+      range: [number, number];
       operator: "&&" | "??" | "||";
       left: Expression;
       right: Expression;
@@ -2200,8 +2234,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface FunctionExpression extends AstBase {
+    export interface FunctionExpression {
       type: "FunctionExpression";
+      range: [number, number];
       async: boolean;
       generator: boolean;
       id: Identifier | null;
@@ -2216,8 +2251,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ArrowFunctionExpression extends AstBase {
+    export interface ArrowFunctionExpression {
       type: "ArrowFunctionExpression";
+      range: [number, number];
       async: boolean;
       generator: boolean;
       id: null;
@@ -2232,8 +2268,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ThisExpression extends AstBase {
+    export interface ThisExpression {
       type: "ThisExpression";
+      range: [number, number];
     }
 
     /**
@@ -2241,8 +2278,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Super extends AstBase {
+    export interface Super {
       type: "Super";
+      range: [number, number];
     }
 
     /**
@@ -2250,8 +2288,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface UnaryExpression extends AstBase {
+    export interface UnaryExpression {
       type: "UnaryExpression";
+      range: [number, number];
       operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
       argument: Expression;
     }
@@ -2261,8 +2300,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface NewExpression extends AstBase {
+    export interface NewExpression {
       type: "NewExpression";
+      range: [number, number];
       callee: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
       arguments: Array<Expression | SpreadElement>;
@@ -2273,8 +2313,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ImportExpression extends AstBase {
+    export interface ImportExpression {
       type: "ImportExpression";
+      range: [number, number];
       source: Expression;
       options: Expression | null;
     }
@@ -2284,8 +2325,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface CallExpression extends AstBase {
+    export interface CallExpression {
       type: "CallExpression";
+      range: [number, number];
       optional: boolean;
       callee: Expression;
       typeArguments: TSTypeParameterInstantiation | null;
@@ -2297,8 +2339,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface UpdateExpression extends AstBase {
+    export interface UpdateExpression {
       type: "UpdateExpression";
+      range: [number, number];
       prefix: boolean;
       operator: "++" | "--";
       argument: Expression;
@@ -2309,8 +2352,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface AssignmentExpression extends AstBase {
+    export interface AssignmentExpression {
       type: "AssignmentExpression";
+      range: [number, number];
       operator:
         | "&&="
         | "&="
@@ -2337,8 +2381,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ConditionalExpression extends AstBase {
+    export interface ConditionalExpression {
       type: "ConditionalExpression";
+      range: [number, number];
       test: Expression;
       consequent: Expression;
       alternate: Expression;
@@ -2349,8 +2394,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface MemberExpression extends AstBase {
+    export interface MemberExpression {
       type: "MemberExpression";
+      range: [number, number];
       optional: boolean;
       computed: boolean;
       object: Expression;
@@ -2362,8 +2408,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ChainExpression extends AstBase {
+    export interface ChainExpression {
       type: "ChainExpression";
+      range: [number, number];
       expression:
         | CallExpression
         | MemberExpression
@@ -2375,8 +2422,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface SequenceExpression extends AstBase {
+    export interface SequenceExpression {
       type: "SequenceExpression";
+      range: [number, number];
       expressions: Expression[];
     }
 
@@ -2385,8 +2433,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TemplateLiteral extends AstBase {
+    export interface TemplateLiteral {
       type: "TemplateLiteral";
+      range: [number, number];
       quasis: TemplateElement[];
       expressions: Expression[];
     }
@@ -2396,8 +2445,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TemplateElement extends AstBase {
+    export interface TemplateElement {
       type: "TemplateElement";
+      range: [number, number];
       tail: boolean;
       raw: string;
       cooked: string;
@@ -2408,8 +2458,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TaggedTemplateExpression extends AstBase {
+    export interface TaggedTemplateExpression {
       type: "TaggedTemplateExpression";
+      range: [number, number];
       tag: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
       quasi: TemplateLiteral;
@@ -2420,8 +2471,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface YieldExpression extends AstBase {
+    export interface YieldExpression {
       type: "YieldExpression";
+      range: [number, number];
       delegate: boolean;
       argument: Expression | null;
     }
@@ -2431,8 +2483,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface AwaitExpression extends AstBase {
+    export interface AwaitExpression {
       type: "AwaitExpression";
+      range: [number, number];
       argument: Expression;
     }
 
@@ -2441,8 +2494,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface MetaProperty extends AstBase {
+    export interface MetaProperty {
       type: "MetaProperty";
+      range: [number, number];
       meta: Identifier;
       property: Identifier;
     }
@@ -2453,8 +2507,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Identifier extends AstBase {
+    export interface Identifier {
       type: "Identifier";
+      range: [number, number];
       name: string;
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
@@ -2465,8 +2520,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface PrivateIdentifier extends AstBase {
+    export interface PrivateIdentifier {
       type: "PrivateIdentifier";
+      range: [number, number];
       name: string;
     }
 
@@ -2475,8 +2531,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface AssignmentPattern extends AstBase {
+    export interface AssignmentPattern {
       type: "AssignmentPattern";
+      range: [number, number];
       left: ArrayPattern | ObjectPattern | Identifier;
       right: Expression;
     }
@@ -2486,8 +2543,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ArrayPattern extends AstBase {
+    export interface ArrayPattern {
       type: "ArrayPattern";
+      range: [number, number];
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
       elements: Array<
@@ -2506,8 +2564,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface ObjectPattern extends AstBase {
+    export interface ObjectPattern {
       type: "ObjectPattern";
+      range: [number, number];
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
       properties: Array<Property | RestElement>;
@@ -2518,8 +2577,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface RestElement extends AstBase {
+    export interface RestElement {
       type: "RestElement";
+      range: [number, number];
       typeAnnotation: TSTypeAnnotation | undefined;
       argument:
         | ArrayPattern
@@ -2534,8 +2594,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface SpreadElement extends AstBase {
+    export interface SpreadElement {
       type: "SpreadElement";
+      range: [number, number];
       argument: Expression;
     }
 
@@ -2543,8 +2604,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Property extends AstBase {
+    export interface Property {
       type: "Property";
+      range: [number, number];
       shorthand: boolean;
       computed: boolean;
       method: boolean;
@@ -2571,6 +2633,7 @@ declare namespace Deno {
      */
     export interface BigIntLiteral {
       type: "Literal";
+      range: [number, number];
       raw: string;
       bigint: string;
       value: bigint;
@@ -2583,6 +2646,7 @@ declare namespace Deno {
      */
     export interface BooleanLiteral {
       type: "Literal";
+      range: [number, number];
       raw: "false" | "true";
       value: boolean;
     }
@@ -2599,6 +2663,7 @@ declare namespace Deno {
      */
     export interface NumberLiteral {
       type: "Literal";
+      range: [number, number];
       raw: string;
       value: number;
     }
@@ -2610,6 +2675,7 @@ declare namespace Deno {
      */
     export interface NullLiteral {
       type: "Literal";
+      range: [number, number];
       raw: "null";
       value: null;
     }
@@ -2626,6 +2692,7 @@ declare namespace Deno {
      */
     export interface StringLiteral {
       type: "Literal";
+      range: [number, number];
       raw: string;
       value: string;
     }
@@ -2641,6 +2708,7 @@ declare namespace Deno {
      */
     export interface RegExpLiteral {
       type: "Literal";
+      range: [number, number];
       raw: string;
       regex: {
         flags: string;
@@ -2667,8 +2735,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXIdentifier extends AstBase {
+    export interface JSXIdentifier {
       type: "JSXIdentifier";
+      range: [number, number];
       name: string;
     }
 
@@ -2677,8 +2746,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXNamespacedName extends AstBase {
+    export interface JSXNamespacedName {
       type: "JSXNamespacedName";
+      range: [number, number];
       namespace: JSXIdentifier;
       name: JSXIdentifier;
     }
@@ -2688,8 +2758,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXEmptyExpression extends AstBase {
+    export interface JSXEmptyExpression {
       type: "JSXEmptyExpression";
+      range: [number, number];
     }
 
     /**
@@ -2697,8 +2768,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXElement extends AstBase {
+    export interface JSXElement {
       type: "JSXElement";
+      range: [number, number];
       openingElement: JSXOpeningElement;
       closingElement: JSXClosingElement | null;
       children: JSXChild[];
@@ -2709,8 +2781,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXOpeningElement extends AstBase {
+    export interface JSXOpeningElement {
       type: "JSXOpeningElement";
+      range: [number, number];
       selfClosing: boolean;
       name:
         | JSXIdentifier
@@ -2725,8 +2798,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXAttribute extends AstBase {
+    export interface JSXAttribute {
       type: "JSXAttribute";
+      range: [number, number];
       name: JSXIdentifier | JSXNamespacedName;
       value:
         | JSXElement
@@ -2740,8 +2814,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXSpreadAttribute extends AstBase {
+    export interface JSXSpreadAttribute {
       type: "JSXSpreadAttribute";
+      range: [number, number];
       argument: Expression;
     }
 
@@ -2751,8 +2826,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXClosingElement extends AstBase {
+    export interface JSXClosingElement {
       type: "JSXClosingElement";
+      range: [number, number];
       name:
         | JSXIdentifier
         | JSXMemberExpression
@@ -2765,8 +2841,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXFragment extends AstBase {
+    export interface JSXFragment {
       type: "JSXFragment";
+      range: [number, number];
       openingFragment: JSXOpeningFragment;
       closingFragment: JSXClosingFragment;
       children: JSXChild[];
@@ -2777,8 +2854,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXOpeningFragment extends AstBase {
+    export interface JSXOpeningFragment {
       type: "JSXOpeningFragment";
+      range: [number, number];
     }
 
     /**
@@ -2786,8 +2864,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXClosingFragment extends AstBase {
+    export interface JSXClosingFragment {
       type: "JSXClosingFragment";
+      range: [number, number];
     }
 
     /**
@@ -2795,8 +2874,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXExpressionContainer extends AstBase {
+    export interface JSXExpressionContainer {
       type: "JSXExpressionContainer";
+      range: [number, number];
       expression: Expression | JSXEmptyExpression;
     }
 
@@ -2805,8 +2885,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXText extends AstBase {
+    export interface JSXText {
       type: "JSXText";
+      range: [number, number];
       raw: string;
       value: string;
     }
@@ -2816,8 +2897,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface JSXMemberExpression extends AstBase {
+    export interface JSXMemberExpression {
       type: "JSXMemberExpression";
+      range: [number, number];
       object:
         | JSXIdentifier
         | JSXMemberExpression
@@ -2840,8 +2922,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSModuleDeclaration extends AstBase {
+    export interface TSModuleDeclaration {
       type: "TSModuleDeclaration";
+      range: [number, number];
       declare: boolean;
       kind: "global" | "module" | "namespace";
       id: Identifier | Literal | TSQualifiedName;
@@ -2853,8 +2936,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSModuleBlock extends AstBase {
+    export interface TSModuleBlock {
       type: "TSModuleBlock";
+      range: [number, number];
       body: Array<
         | ExportAllDeclaration
         | ExportDefaultDeclaration
@@ -2870,8 +2954,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSClassImplements extends AstBase {
+    export interface TSClassImplements {
       type: "TSClassImplements";
+      range: [number, number];
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -2880,8 +2965,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSAbstractMethodDefinition extends AstBase {
+    export interface TSAbstractMethodDefinition {
       type: "TSAbstractMethodDefinition";
+      range: [number, number];
       computed: boolean;
       optional: boolean;
       override: boolean;
@@ -2896,8 +2982,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSAbstractPropertyDefinition extends AstBase {
+    export interface TSAbstractPropertyDefinition {
       type: "TSAbstractPropertyDefinition";
+      range: [number, number];
       computed: boolean;
       optional: boolean;
       override: boolean;
@@ -2921,8 +3008,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSEmptyBodyFunctionExpression extends AstBase {
+    export interface TSEmptyBodyFunctionExpression {
       type: "TSEmptyBodyFunctionExpression";
+      range: [number, number];
       declare: boolean;
       expression: boolean;
       async: boolean;
@@ -2938,8 +3026,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSParameterProperty extends AstBase {
+    export interface TSParameterProperty {
       type: "TSParameterProperty";
+      range: [number, number];
       override: boolean;
       readonly: boolean;
       static: boolean;
@@ -2957,8 +3046,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSCallSignatureDeclaration extends AstBase {
+    export interface TSCallSignatureDeclaration {
       type: "TSCallSignatureDeclaration";
+      range: [number, number];
       typeParameters: TSTypeParameterDeclaration | undefined;
       params: Parameter[];
       returnType: TSTypeAnnotation | undefined;
@@ -2968,8 +3058,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSPropertySignature extends AstBase {
+    export interface TSPropertySignature {
       type: "TSPropertySignature";
+      range: [number, number];
       computed: boolean;
       optional: boolean;
       readonly: boolean;
@@ -2987,8 +3078,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSDeclareFunction extends AstBase {
+    export interface TSDeclareFunction {
       type: "TSDeclareFunction";
+      range: [number, number];
       async: boolean;
       declare: boolean;
       generator: boolean;
@@ -3006,8 +3098,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSEnumDeclaration extends AstBase {
+    export interface TSEnumDeclaration {
       type: "TSEnumDeclaration";
+      range: [number, number];
       declare: boolean;
       const: boolean;
       id: Identifier;
@@ -3019,8 +3112,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSEnumBody extends AstBase {
+    export interface TSEnumBody {
       type: "TSEnumBody";
+      range: [number, number];
       members: TSEnumMember[];
     }
 
@@ -3029,8 +3123,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSEnumMember extends AstBase {
+    export interface TSEnumMember {
       type: "TSEnumMember";
+      range: [number, number];
       id:
         | Identifier
         | NumberLiteral
@@ -3042,8 +3137,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeAssertion extends AstBase {
+    export interface TSTypeAssertion {
       type: "TSTypeAssertion";
+      range: [number, number];
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3052,8 +3148,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeParameterInstantiation extends AstBase {
+    export interface TSTypeParameterInstantiation {
       type: "TSTypeParameterInstantiation";
+      range: [number, number];
       params: TypeNode[];
     }
 
@@ -3061,8 +3158,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeAliasDeclaration extends AstBase {
+    export interface TSTypeAliasDeclaration {
       type: "TSTypeAliasDeclaration";
+      range: [number, number];
       declare: boolean;
       id: Identifier;
       typeParameters: TSTypeParameterDeclaration | undefined;
@@ -3073,8 +3171,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSSatisfiesExpression extends AstBase {
+    export interface TSSatisfiesExpression {
       type: "TSSatisfiesExpression";
+      range: [number, number];
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3083,8 +3182,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSAsExpression extends AstBase {
+    export interface TSAsExpression {
       type: "TSAsExpression";
+      range: [number, number];
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3093,8 +3193,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSInstantiationExpression extends AstBase {
+    export interface TSInstantiationExpression {
       type: "TSInstantiationExpression";
+      range: [number, number];
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation;
     }
@@ -3103,8 +3204,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSNonNullExpression extends AstBase {
+    export interface TSNonNullExpression {
       type: "TSNonNullExpression";
+      range: [number, number];
       expression: Expression;
     }
 
@@ -3112,16 +3214,18 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSThisType extends AstBase {
+    export interface TSThisType {
       type: "TSThisType";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSInterfaceDeclaration extends AstBase {
+    export interface TSInterfaceDeclaration {
       type: "TSInterfaceDeclaration";
+      range: [number, number];
       declare: boolean;
       id: Identifier;
       extends: TSInterfaceHeritage[];
@@ -3133,8 +3237,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSInterfaceBody extends AstBase {
+    export interface TSInterfaceBody {
       type: "TSInterfaceBody";
+      range: [number, number];
       body: Array<
         | TSCallSignatureDeclaration
         | TSConstructSignatureDeclaration
@@ -3148,8 +3253,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSConstructSignatureDeclaration extends AstBase {
+    export interface TSConstructSignatureDeclaration {
       type: "TSConstructSignatureDeclaration";
+      range: [number, number];
       typeParameters: TSTypeParameterDeclaration | undefined;
       params: Parameter[];
       returnType: TSTypeAnnotation;
@@ -3159,8 +3265,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSMethodSignature extends AstBase {
+    export interface TSMethodSignature {
       type: "TSMethodSignature";
+      range: [number, number];
       computed: boolean;
       optional: boolean;
       readonly: boolean;
@@ -3176,8 +3283,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSInterfaceHeritage extends AstBase {
+    export interface TSInterfaceHeritage {
       type: "TSInterfaceHeritage";
+      range: [number, number];
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3186,8 +3294,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSIndexSignature extends AstBase {
+    export interface TSIndexSignature {
       type: "TSIndexSignature";
+      range: [number, number];
       readonly: boolean;
       static: boolean;
       parameters: Parameter[];
@@ -3198,8 +3307,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSUnionType extends AstBase {
+    export interface TSUnionType {
       type: "TSUnionType";
+      range: [number, number];
       types: TypeNode[];
     }
 
@@ -3207,8 +3317,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSIntersectionType extends AstBase {
+    export interface TSIntersectionType {
       type: "TSIntersectionType";
+      range: [number, number];
       types: TypeNode[];
     }
 
@@ -3216,8 +3327,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSInferType extends AstBase {
+    export interface TSInferType {
       type: "TSInferType";
+      range: [number, number];
       typeParameter: TSTypeParameter;
     }
 
@@ -3225,8 +3337,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeOperator extends AstBase {
+    export interface TSTypeOperator {
       type: "TSTypeOperator";
+      range: [number, number];
       operator: "keyof" | "readonly" | "unique";
       typeAnnotation: TypeNode;
     }
@@ -3235,8 +3348,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSIndexedAccessType extends AstBase {
+    export interface TSIndexedAccessType {
       type: "TSIndexedAccessType";
+      range: [number, number];
       indexType: TypeNode;
       objectType: TypeNode;
     }
@@ -3248,112 +3362,126 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSAnyKeyword extends AstBase {
+    export interface TSAnyKeyword {
       type: "TSAnyKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSUnknownKeyword extends AstBase {
+    export interface TSUnknownKeyword {
       type: "TSUnknownKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSNumberKeyword extends AstBase {
+    export interface TSNumberKeyword {
       type: "TSNumberKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSObjectKeyword extends AstBase {
+    export interface TSObjectKeyword {
       type: "TSObjectKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSBooleanKeyword extends AstBase {
+    export interface TSBooleanKeyword {
       type: "TSBooleanKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSBigIntKeyword extends AstBase {
+    export interface TSBigIntKeyword {
       type: "TSBigIntKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSStringKeyword extends AstBase {
+    export interface TSStringKeyword {
       type: "TSStringKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSSymbolKeyword extends AstBase {
+    export interface TSSymbolKeyword {
       type: "TSSymbolKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSVoidKeyword extends AstBase {
+    export interface TSVoidKeyword {
       type: "TSVoidKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSUndefinedKeyword extends AstBase {
+    export interface TSUndefinedKeyword {
       type: "TSUndefinedKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSNullKeyword extends AstBase {
+    export interface TSNullKeyword {
       type: "TSNullKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSNeverKeyword extends AstBase {
+    export interface TSNeverKeyword {
       type: "TSNeverKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSIntrinsicKeyword extends AstBase {
+    export interface TSIntrinsicKeyword {
       type: "TSIntrinsicKeyword";
+      range: [number, number];
     }
 
     /**
      * @category Linter
      * @experimental
      */
-    export interface TSRestType extends AstBase {
+    export interface TSRestType {
       type: "TSRestType";
+      range: [number, number];
       typeAnnotation: TypeNode;
     }
 
@@ -3361,8 +3489,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSConditionalType extends AstBase {
+    export interface TSConditionalType {
       type: "TSConditionalType";
+      range: [number, number];
       checkType: TypeNode;
       extendsType: TypeNode;
       trueType: TypeNode;
@@ -3373,8 +3502,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSMappedType extends AstBase {
+    export interface TSMappedType {
       type: "TSMappedType";
+      range: [number, number];
       readonly: boolean;
       optional: boolean;
       nameType: TypeNode | null;
@@ -3387,8 +3517,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSLiteralType extends AstBase {
+    export interface TSLiteralType {
       type: "TSLiteralType";
+      range: [number, number];
       literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
     }
 
@@ -3396,8 +3527,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTemplateLiteralType extends AstBase {
+    export interface TSTemplateLiteralType {
       type: "TSTemplateLiteralType";
+      range: [number, number];
       quasis: TemplateElement[];
       types: TypeNode[];
     }
@@ -3406,8 +3538,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeLiteral extends AstBase {
+    export interface TSTypeLiteral {
       type: "TSTypeLiteral";
+      range: [number, number];
       members: Array<
         | TSCallSignatureDeclaration
         | TSConstructSignatureDeclaration
@@ -3421,8 +3554,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSOptionalType extends AstBase {
+    export interface TSOptionalType {
       type: "TSOptionalType";
+      range: [number, number];
       typeAnnotation: TypeNode;
     }
 
@@ -3430,8 +3564,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeAnnotation extends AstBase {
+    export interface TSTypeAnnotation {
       type: "TSTypeAnnotation";
+      range: [number, number];
       typeAnnotation: TypeNode;
     }
 
@@ -3439,8 +3574,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSArrayType extends AstBase {
+    export interface TSArrayType {
       type: "TSArrayType";
+      range: [number, number];
       elementType: TypeNode;
     }
 
@@ -3448,8 +3584,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeQuery extends AstBase {
+    export interface TSTypeQuery {
       type: "TSTypeQuery";
+      range: [number, number];
       exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3458,8 +3595,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeReference extends AstBase {
+    export interface TSTypeReference {
       type: "TSTypeReference";
+      range: [number, number];
       typeName: Identifier | ThisExpression | TSQualifiedName;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3468,8 +3606,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypePredicate extends AstBase {
+    export interface TSTypePredicate {
       type: "TSTypePredicate";
+      range: [number, number];
       asserts: boolean;
       parameterName: Identifier | TSThisType;
       typeAnnotation: TSTypeAnnotation | undefined;
@@ -3479,8 +3618,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTupleType extends AstBase {
+    export interface TSTupleType {
       type: "TSTupleType";
+      range: [number, number];
       elementTypes: TypeNode[];
     }
 
@@ -3488,8 +3628,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSNamedTupleMember extends AstBase {
+    export interface TSNamedTupleMember {
       type: "TSNamedTupleMember";
+      range: [number, number];
       label: Identifier;
       elementType: TypeNode;
       optional: boolean;
@@ -3499,8 +3640,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeParameterDeclaration extends AstBase {
+    export interface TSTypeParameterDeclaration {
       type: "TSTypeParameterDeclaration";
+      range: [number, number];
       params: TSTypeParameter[];
     }
 
@@ -3508,8 +3650,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSTypeParameter extends AstBase {
+    export interface TSTypeParameter {
       type: "TSTypeParameter";
+      range: [number, number];
       in: boolean;
       out: boolean;
       const: boolean;
@@ -3522,8 +3665,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSImportType extends AstBase {
+    export interface TSImportType {
       type: "TSImportType";
+      range: [number, number];
       argument: TypeNode;
       qualifier: Identifier | ThisExpression | TSQualifiedName | null;
       typeArguments: TSTypeParameterInstantiation | null;
@@ -3533,8 +3677,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSExportAssignment extends AstBase {
+    export interface TSExportAssignment {
       type: "TSExportAssignment";
+      range: [number, number];
       expression: Expression;
     }
 
@@ -3542,8 +3687,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSFunctionType extends AstBase {
+    export interface TSFunctionType {
       type: "TSFunctionType";
+      range: [number, number];
       params: Parameter[];
       returnType: TSTypeAnnotation | undefined;
       typeParameters: TSTypeParameterDeclaration | undefined;
@@ -3553,8 +3699,9 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface TSQualifiedName extends AstBase {
+    export interface TSQualifiedName {
       type: "TSQualifiedName";
+      range: [number, number];
       left: Identifier | ThisExpression | TSQualifiedName;
       right: Identifier;
     }
