@@ -2573,7 +2573,7 @@ declare namespace Deno {
       type: "Literal";
       raw: string;
       bigint: string;
-      value: bigint | null;
+      value: bigint;
     }
 
     /**
