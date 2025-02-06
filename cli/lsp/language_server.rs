@@ -3325,7 +3325,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.formatting(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |_| async move {
+        self.inner.read().await.formatting(params).await
+      })
+      .await
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
