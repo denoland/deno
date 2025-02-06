@@ -1475,6 +1475,2211 @@ declare namespace Deno {
       fileName: string,
       source: string,
     ): Diagnostic[];
+
+    /**
+     * Shared properties of an ast node
+     * @category Linter
+     * @experimental
+     */
+    export interface AstBase {
+      /** The byte start and end location of the node */
+      range: [number, number];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportSpecifier extends AstBase {
+      type: "ImportSpecifier";
+      imported: Identifier | StringLiteral;
+      local: Identifier;
+      importKind: "type" | "value";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDefaultSpecifier extends AstBase {
+      type: "ImportDefaultSpecifier";
+      local: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportNamespaceSpecifier extends AstBase {
+      type: "ImportNamespaceSpecifier";
+      local: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportAttribute extends AstBase {
+      type: "ImportAttribute";
+      key: Identifier | Literal;
+      value: Literal;
+    }
+
+    /**
+     * An import declaration, examples:
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportDeclaration extends AstBase {
+      type: "ImportDeclaration";
+      importKind: "type" | "value";
+      source: StringLiteral;
+      specifiers: Array<
+        | ImportDefaultSpecifier
+        | ImportNamespaceSpecifier
+        | ImportSpecifier
+      >;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportDefaultDeclaration extends AstBase {
+      type: "ExportDefaultDeclaration";
+      declaration:
+        | ClassDeclaration
+        | Expression
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration;
+      exportKind: "type" | "value";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportNamedDeclaration extends AstBase {
+      type: "ExportNamedDeclaration";
+      exportKind: "type" | "value";
+      specifiers: ExportSpecifier[];
+      declaration:
+        | ClassDeclaration
+        | FunctionDeclaration
+        | TSDeclareFunction
+        | TSEnumDeclaration
+        | TSImportEqualsDeclaration
+        | TSInterfaceDeclaration
+        | TSModuleDeclaration
+        | TSTypeAliasDeclaration
+        | VariableDeclaration
+        | null;
+      source: StringLiteral | null;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportAllDeclaration extends AstBase {
+      type: "ExportAllDeclaration";
+      exportKind: "type" | "value";
+      exported: Identifier | null;
+      source: StringLiteral;
+      attributes: ImportAttribute[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamespaceExportDeclaration extends AstBase {
+      type: "TSNamespaceExportDeclaration";
+      id: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportEqualsDeclaration extends AstBase {
+      type: "TSImportEqualsDeclaration";
+      importKind: "type" | "value";
+      id: Identifier;
+      moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExternalModuleReference extends AstBase {
+      type: "TSExternalModuleReference";
+      expression: StringLiteral;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface ExportSpecifier extends AstBase {
+      type: "ExportSpecifier";
+      exportKind: "type" | "value";
+      exported: Identifier | StringLiteral;
+      local: Identifier | StringLiteral;
+    }
+
+    /**
+     * Variable declaration.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclaration extends AstBase {
+      type: "VariableDeclaration";
+      declare: boolean;
+      kind: "let" | "var" | "const" | "await using" | "using";
+      declarations: VariableDeclarator[];
+    }
+
+    /**
+     * A VariableDeclaration can declare multiple variables. This node
+     * represents a single declaration out of that.
+     * @category Linter
+     * @experimental
+     */
+    export interface VariableDeclarator extends AstBase {
+      type: "VariableDeclarator";
+      id: ArrayPattern | ObjectPattern | Identifier;
+      init: Expression | null;
+      definite: boolean;
+    }
+
+    /**
+     * Function/Method parameter
+     * @category Linter
+     * @experimental
+     */
+    export type Parameter =
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | ObjectPattern
+      | RestElement
+      | TSParameterProperty;
+
+    /**
+     * TypeScript accessibility modifiers used in classes
+     * @category Linter
+     * @experimental
+     */
+    export type Accessibility = "private" | "protected" | "public";
+
+    /**
+     * Declares a function in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionDeclaration extends AstBase {
+      type: "FunctionDeclaration";
+      declare: boolean;
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | null;
+      params: Parameter[];
+    }
+
+    /**
+     * Experimental: Decorators
+     * @category Linter
+     * @experimental
+     */
+    export interface Decorator extends AstBase {
+      type: "Decorator";
+      expression:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion;
+    }
+
+    /**
+     * Declares a class in the current scope
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassDeclaration extends AstBase {
+      type: "ClassDeclaration";
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      implements: TSClassImplements[];
+      body: ClassBody;
+    }
+
+    /**
+     * Similar to ClassDeclaration but for declaring a class as an
+     * expression. The main difference is that the class name(=id) can
+     * be omitted.
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassExpression extends AstBase {
+      type: "ClassExpression";
+      declare: boolean;
+      abstract: boolean;
+      id: Identifier | null;
+      superClass:
+        | ArrayExpression
+        | ArrayPattern
+        | ArrowFunctionExpression
+        | CallExpression
+        | ClassExpression
+        | FunctionExpression
+        | Identifier
+        | JSXElement
+        | JSXFragment
+        | Literal
+        | TemplateLiteral
+        | MemberExpression
+        | MetaProperty
+        | ObjectExpression
+        | ObjectPattern
+        | SequenceExpression
+        | Super
+        | TaggedTemplateExpression
+        | ThisExpression
+        | TSAsExpression
+        | TSNonNullExpression
+        | TSTypeAssertion
+        | null;
+      superTypeArguments: TSTypeParameterInstantiation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      implements: TSClassImplements[];
+      body: ClassBody;
+    }
+
+    /**
+     * Represents the body of a class and contains all members
+     * @category Linter
+     * @experimental
+     */
+    export interface ClassBody extends AstBase {
+      type: "ClassBody";
+      body: Array<
+        | AccessorProperty
+        | MethodDefinition
+        | PropertyDefinition
+        | StaticBlock
+        // Stage 1 Proposal:
+        // https://github.com/tc39/proposal-grouped-and-auto-accessors
+        // | TSAbstractAccessorProperty
+        | TSAbstractMethodDefinition
+        | TSAbstractPropertyDefinition
+        | TSIndexSignature
+      >;
+    }
+
+    /**
+     * Static class initializiation block.
+     * @category Linter
+     * @experimental
+     */
+    export interface StaticBlock extends AstBase {
+      type: "StaticBlock";
+      body: Statement[];
+    }
+
+    // Stage 1 Proposal:
+    // https://github.com/tc39/proposal-grouped-and-auto-accessors
+    // | TSAbstractAccessorProperty
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface AccessorProperty extends AstBase {
+      type: "AccessorProperty";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface PropertyDefinition extends AstBase {
+      type: "PropertyDefinition";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: Expression | null;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface MethodDefinition extends AstBase {
+      type: "MethodDefinition";
+      declare: boolean;
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "constructor" | "get" | "method" | "set";
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | Expression;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface BlockStatement extends AstBase {
+      type: "BlockStatement";
+      body: Statement[];
+    }
+
+    /**
+     * The `debugger;` statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface DebuggerStatement extends AstBase {
+      type: "DebuggerStatement";
+    }
+
+    /**
+     * Legacy JavaScript feature, that's discouraged from being used today.
+     * @deprecated
+     * @category Linter
+     * @experimental
+     */
+    export interface WithStatement extends AstBase {
+      type: "WithStatement";
+      object: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Returns a value from a function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ReturnStatement extends AstBase {
+      type: "ReturnStatement";
+      argument: Expression | null;
+    }
+
+    /**
+     * Custom control flow based on labels.
+     * @category Linter
+     * @experimental
+     */
+    export interface LabeledStatement extends AstBase {
+      type: "LabeledStatement";
+      label: Identifier;
+      body: Statement;
+    }
+
+    /**
+     * Break any loop or labeled statement, example:
+     *
+     * ```ts
+     * while (true) {
+     *   break;
+     * }
+     *
+     * for (let i = 0; i < 10; i++) {
+     *   if (i > 5) break;
+     * }
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BreakStatement extends AstBase {
+      type: "BreakStatement";
+      label: Identifier | null;
+    }
+
+    /**
+     * Terminates the current loop and continues with the next iteration.
+     * @category Linter
+     * @experimental
+     */
+    export interface ContinueStatement extends AstBase {
+      type: "ContinueStatement";
+      label: Identifier | null;
+    }
+
+    /**
+     * Execute a statement the test passes, otherwise the alternate
+     * statement, if it was defined.
+     * @category Linter
+     * @experimental
+     */
+    export interface IfStatement extends AstBase {
+      type: "IfStatement";
+      test: Expression;
+      consequent: Statement;
+      alternate: Statement | null;
+    }
+
+    /**
+     * Match an expression against a series of cases.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchStatement extends AstBase {
+      type: "SwitchStatement";
+      discriminant: Expression;
+      cases: SwitchCase[];
+    }
+
+    /**
+     * A single case of a SwitchStatement.
+     * @category Linter
+     * @experimental
+     */
+    export interface SwitchCase extends AstBase {
+      type: "SwitchCase";
+      test: Expression | null;
+      consequent: Statement[];
+    }
+
+    /**
+     * Throw a user defined exception. Stops execution
+     * of the current function.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThrowStatement extends AstBase {
+      type: "ThrowStatement";
+      argument: Expression;
+    }
+
+    /**
+     * Run a loop while the test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface WhileStatement extends AstBase {
+      type: "WhileStatement";
+      test: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Re-run loop for as long as test expression is truthy.
+     * @category Linter
+     * @experimental
+     */
+    export interface DoWhileStatement extends AstBase {
+      type: "DoWhileStatement";
+      test: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Classic for-loop.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForStatement extends AstBase {
+      type: "ForStatement";
+      init: Expression | VariableDeclaration | null;
+      test: Expression | null;
+      update: Expression | null;
+      body: Statement;
+    }
+
+    /**
+     * Enumerate over all enumerable string properties of an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForInStatement extends AstBase {
+      type: "ForInStatement";
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Iterate over sequence of values from an iterator.
+     * @category Linter
+     * @experimental
+     */
+    export interface ForOfStatement extends AstBase {
+      type: "ForOfStatement";
+      await: boolean;
+      left: Expression | VariableDeclaration;
+      right: Expression;
+      body: Statement;
+    }
+
+    /**
+     * Statement that holds an expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface ExpressionStatement extends AstBase {
+      type: "ExpressionStatement";
+      expression: Expression;
+    }
+
+    /**
+     * Try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface TryStatement extends AstBase {
+      type: "TryStatement";
+      block: BlockStatement;
+      handler: CatchClause | null;
+      finalizer: BlockStatement | null;
+    }
+
+    /**
+     * The catch clause of a try/catch statement
+     * @category Linter
+     * @experimental
+     */
+    export interface CatchClause extends AstBase {
+      type: "CatchClause";
+      param: ArrayPattern | ObjectPattern | Identifier | null;
+      body: BlockStatement;
+    }
+
+    /**
+     * An array literal
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayExpression extends AstBase {
+      type: "ArrayExpression";
+      elements: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * An object literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectExpression extends AstBase {
+      type: "ObjectExpression";
+      properties: Array<Property | SpreadElement>;
+    }
+
+    /**
+     * Compare left and right value with the specifier operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface BinaryExpression extends AstBase {
+      type: "BinaryExpression";
+      operator:
+        | "&"
+        | "**"
+        | "*"
+        | "||"
+        | "|"
+        | "^"
+        | "==="
+        | "=="
+        | "!=="
+        | "!="
+        | ">="
+        | ">>>"
+        | ">>"
+        | ">"
+        | "in"
+        | "instanceof"
+        | "<="
+        | "<<"
+        | "<"
+        | "-"
+        | "%"
+        | "+"
+        | "/";
+      left: Expression | PrivateIdentifier;
+      right: Expression;
+    }
+
+    /**
+     * Chain expressions based on the operator specified
+     * @category Linter
+     * @experimental
+     */
+    export interface LogicalExpression extends AstBase {
+      type: "LogicalExpression";
+      operator: "&&" | "??" | "||";
+      left: Expression;
+      right: Expression;
+    }
+
+    /**
+     * Declare a function as an expression. Similar to `FunctionDeclaration`,
+     * with an optional name (=id).
+     * @category Linter
+     * @experimental
+     */
+    export interface FunctionExpression extends AstBase {
+      type: "FunctionExpression";
+      async: boolean;
+      generator: boolean;
+      id: Identifier | null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement;
+    }
+
+    /**
+     * Arrow function expression
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrowFunctionExpression extends AstBase {
+      type: "ArrowFunctionExpression";
+      async: boolean;
+      generator: boolean;
+      id: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      body: BlockStatement | Expression;
+    }
+
+    /**
+     * The `this` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface ThisExpression extends AstBase {
+      type: "ThisExpression";
+    }
+
+    /**
+     * The `super` keyword used in classes.
+     * @category Linter
+     * @experimental
+     */
+    export interface Super extends AstBase {
+      type: "Super";
+    }
+
+    /**
+     * Apply operand on value based on the specified operator.
+     * @category Linter
+     * @experimental
+     */
+    export interface UnaryExpression extends AstBase {
+      type: "UnaryExpression";
+      operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
+      argument: Expression;
+    }
+
+    /**
+     * Create a new instance of a class.
+     * @category Linter
+     * @experimental
+     */
+    export interface NewExpression extends AstBase {
+      type: "NewExpression";
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * Dynamically import a module.
+     * @category Linter
+     * @experimental
+     */
+    export interface ImportExpression extends AstBase {
+      type: "ImportExpression";
+      source: Expression;
+      options: Expression | null;
+    }
+
+    /**
+     * A function call.
+     * @category Linter
+     * @experimental
+     */
+    export interface CallExpression extends AstBase {
+      type: "CallExpression";
+      optional: boolean;
+      callee: Expression;
+      typeArguments: TSTypeParameterInstantiation | null;
+      arguments: Array<Expression | SpreadElement>;
+    }
+
+    /**
+     * Syntactic sugar to increment or decrement a value.
+     * @category Linter
+     * @experimental
+     */
+    export interface UpdateExpression extends AstBase {
+      type: "UpdateExpression";
+      prefix: boolean;
+      operator: "++" | "--";
+      argument: Expression;
+    }
+
+    /**
+     * Updaate a variable or property.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentExpression extends AstBase {
+      type: "AssignmentExpression";
+      operator:
+        | "&&="
+        | "&="
+        | "**="
+        | "*="
+        | "||="
+        | "|="
+        | "^="
+        | "="
+        | ">>="
+        | ">>>="
+        | "<<="
+        | "-="
+        | "%="
+        | "+="
+        | "??="
+        | "/=";
+      left: Expression;
+      right: Expression;
+    }
+
+    /**
+     * Inline if-statement.
+     * @category Linter
+     * @experimental
+     */
+    export interface ConditionalExpression extends AstBase {
+      type: "ConditionalExpression";
+      test: Expression;
+      consequent: Expression;
+      alternate: Expression;
+    }
+
+    /**
+     * MemberExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface MemberExpression extends AstBase {
+      type: "MemberExpression";
+      optional: boolean;
+      computed: boolean;
+      object: Expression;
+      property: Expression | Identifier | PrivateIdentifier;
+    }
+
+    /**
+     * ChainExpression
+     * @category Linter
+     * @experimental
+     */
+    export interface ChainExpression extends AstBase {
+      type: "ChainExpression";
+      expression:
+        | CallExpression
+        | MemberExpression
+        | TSNonNullExpression;
+    }
+
+    /**
+     * Execute multiple expressions in sequence.
+     * @category Linter
+     * @experimental
+     */
+    export interface SequenceExpression extends AstBase {
+      type: "SequenceExpression";
+      expressions: Expression[];
+    }
+
+    /**
+     * A template literal string.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateLiteral extends AstBase {
+      type: "TemplateLiteral";
+      quasis: TemplateElement[];
+      expressions: Expression[];
+    }
+
+    /**
+     * The static portion of a template literal.
+     * @category Linter
+     * @experimental
+     */
+    export interface TemplateElement extends AstBase {
+      type: "TemplateElement";
+      tail: boolean;
+      raw: string;
+      cooked: string;
+    }
+
+    /**
+     * Tagged template expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface TaggedTemplateExpression extends AstBase {
+      type: "TaggedTemplateExpression";
+      tag: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+      quasi: TemplateLiteral;
+    }
+
+    /**
+     * Pause or resume a generator function.
+     * @category Linter
+     * @experimental
+     */
+    export interface YieldExpression extends AstBase {
+      type: "YieldExpression";
+      delegate: boolean;
+      argument: Expression | null;
+    }
+
+    /**
+     * Await a `Promise` and get its fulfilled value.
+     * @category Linter
+     * @experimental
+     */
+    export interface AwaitExpression extends AstBase {
+      type: "AwaitExpression";
+      argument: Expression;
+    }
+
+    /**
+     * Can either be `import.meta` or `new.target`.
+     * @category Linter
+     * @experimental
+     */
+    export interface MetaProperty extends AstBase {
+      type: "MetaProperty";
+      meta: Identifier;
+      property: Identifier;
+    }
+
+    /**
+     * Custom named node by the developer. Can be a variable name,
+     * a function name, parameter, etc.
+     * @category Linter
+     * @experimental
+     */
+    export interface Identifier extends AstBase {
+      type: "Identifier";
+      name: string;
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * Private members inside of classes, must start with `#`.
+     * @category Linter
+     * @experimental
+     */
+    export interface PrivateIdentifier extends AstBase {
+      type: "PrivateIdentifier";
+      name: string;
+    }
+
+    /**
+     * Assign default values in parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface AssignmentPattern extends AstBase {
+      type: "AssignmentPattern";
+      left: ArrayPattern | ObjectPattern | Identifier;
+      right: Expression;
+    }
+
+    /**
+     * Destructure an array.
+     * @category Linter
+     * @experimental
+     */
+    export interface ArrayPattern extends AstBase {
+      type: "ArrayPattern";
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      elements: Array<
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement
+        | null
+      >;
+    }
+
+    /**
+     * Destructure an object.
+     * @category Linter
+     * @experimental
+     */
+    export interface ObjectPattern extends AstBase {
+      type: "ObjectPattern";
+      optional: boolean;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      properties: Array<Property | RestElement>;
+    }
+
+    /**
+     * The rest of function parameters.
+     * @category Linter
+     * @experimental
+     */
+    export interface RestElement extends AstBase {
+      type: "RestElement";
+      typeAnnotation: TSTypeAnnotation | undefined;
+      argument:
+        | ArrayPattern
+        | AssignmentPattern
+        | Identifier
+        | MemberExpression
+        | ObjectPattern
+        | RestElement;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface SpreadElement extends AstBase {
+      type: "SpreadElement";
+      argument: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Property extends AstBase {
+      type: "Property";
+      shorthand: boolean;
+      computed: boolean;
+      method: boolean;
+      kind: "get" | "init" | "set";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | Expression
+        | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * Represents numbers that are too high or too low to be represented
+     * by the `number` type.
+     *
+     * ```ts
+     * const a = 9007199254740991n;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface BigIntLiteral {
+      type: "Literal";
+      raw: string;
+      bigint: string;
+      value: bigint | null;
+    }
+
+    /**
+     * Either `true` or `false`
+     * @category Linter
+     * @experimental
+     */
+    export interface BooleanLiteral {
+      type: "Literal";
+      raw: "false" | "true";
+      value: boolean;
+    }
+
+    /**
+     * A number literal
+     *
+     * ```ts
+     * 1;
+     * 1.2;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface NumberLiteral {
+      type: "Literal";
+      raw: string;
+      value: number;
+    }
+
+    /**
+     * The `null` literal
+     * @category Linter
+     * @experimental
+     */
+    export interface NullLiteral {
+      type: "Literal";
+      raw: "null";
+      value: null;
+    }
+
+    /**
+     * A string literal
+     *
+     * ```ts
+     * "foo";
+     * 'foo "bar"';
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface StringLiteral {
+      type: "Literal";
+      raw: string;
+      value: string;
+    }
+
+    /**
+     * A regex literal:
+     *
+     * ```ts
+     * /foo(bar|baz)$/g
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface RegExpLiteral {
+      type: "Literal";
+      raw: string;
+      regex: {
+        flags: string;
+        pattern: string;
+      };
+      value: RegExp | null;
+    }
+
+    /**
+     * Union type of all Literals
+     * @category Linter
+     * @experimental
+     */
+    export type Literal =
+      | BigIntLiteral
+      | BooleanLiteral
+      | NullLiteral
+      | NumberLiteral
+      | RegExpLiteral
+      | StringLiteral;
+
+    /**
+     * User named identifier inside JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXIdentifier extends AstBase {
+      type: "JSXIdentifier";
+      name: string;
+    }
+
+    /**
+     * Namespaced name in JSX
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXNamespacedName extends AstBase {
+      type: "JSXNamespacedName";
+      namespace: JSXIdentifier;
+      name: JSXIdentifier;
+    }
+
+    /**
+     * Empty JSX expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXEmptyExpression extends AstBase {
+      type: "JSXEmptyExpression";
+    }
+
+    /**
+     * A JSX element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXElement extends AstBase {
+      type: "JSXElement";
+      openingElement: JSXOpeningElement;
+      closingElement: JSXClosingElement | null;
+      children: JSXChild[];
+    }
+
+    /**
+     * The opening tag of a JSXElement
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningElement extends AstBase {
+      type: "JSXOpeningElement";
+      selfClosing: boolean;
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      attributes: Array<JSXAttribute | JSXSpreadAttribute>;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * A JSX attribute
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXAttribute extends AstBase {
+      type: "JSXAttribute";
+      name: JSXIdentifier | JSXNamespacedName;
+      value:
+        | JSXElement
+        | JSXExpressionContainer
+        | Literal
+        | null;
+    }
+
+    /**
+     * Spreads an object as JSX attributes.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXSpreadAttribute extends AstBase {
+      type: "JSXSpreadAttribute";
+      argument: Expression;
+    }
+
+    /**
+     * The closing tag of a JSXElement. Only used when the element
+     * is not self-closing.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingElement extends AstBase {
+      type: "JSXClosingElement";
+      name:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+    }
+
+    /**
+     * Usually a passthrough node to pass multiple sibling elements as
+     * the JSX syntax requires one root element.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXFragment extends AstBase {
+      type: "JSXFragment";
+      openingFragment: JSXOpeningFragment;
+      closingFragment: JSXClosingFragment;
+      children: JSXChild[];
+    }
+
+    /**
+     * The opening tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXOpeningFragment extends AstBase {
+      type: "JSXOpeningFragment";
+    }
+
+    /**
+     * The closing tag of a JSXFragment.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXClosingFragment extends AstBase {
+      type: "JSXClosingFragment";
+    }
+
+    /**
+     * Inserts a normal JS expression into JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXExpressionContainer extends AstBase {
+      type: "JSXExpressionContainer";
+      expression: Expression | JSXEmptyExpression;
+    }
+
+    /**
+     * Plain text in JSX.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXText extends AstBase {
+      type: "JSXText";
+      raw: string;
+      value: string;
+    }
+
+    /**
+     * JSX member expression.
+     * @category Linter
+     * @experimental
+     */
+    export interface JSXMemberExpression extends AstBase {
+      type: "JSXMemberExpression";
+      object:
+        | JSXIdentifier
+        | JSXMemberExpression
+        | JSXNamespacedName;
+      property: JSXIdentifier;
+    }
+
+    /**
+     * Union type of all possible child nodes in JSX
+     * @category Linter
+     * @experimental
+     */
+    export type JSXChild =
+      | JSXElement
+      | JSXExpressionContainer
+      | JSXFragment
+      | JSXText;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleDeclaration extends AstBase {
+      type: "TSModuleDeclaration";
+      declare: boolean;
+      kind: "global" | "module" | "namespace";
+      id: Identifier | Literal | TSQualifiedName;
+      body: TSModuleBlock | undefined;
+    }
+
+    /**
+     * Body of a `TSModuleDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSModuleBlock extends AstBase {
+      type: "TSModuleBlock";
+      body: Array<
+        | ExportAllDeclaration
+        | ExportDefaultDeclaration
+        | ExportNamedDeclaration
+        | ImportDeclaration
+        | Statement
+        | TSImportEqualsDeclaration
+        | TSNamespaceExportDeclaration
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSClassImplements extends AstBase {
+      type: "TSClassImplements";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractMethodDefinition extends AstBase {
+      type: "TSAbstractMethodDefinition";
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      kind: "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      value: FunctionExpression | TSEmptyBodyFunctionExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAbstractPropertyDefinition extends AstBase {
+      type: "TSAbstractPropertyDefinition";
+      computed: boolean;
+      optional: boolean;
+      override: boolean;
+      static: boolean;
+      definite: boolean;
+      declare: boolean;
+      readonly: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      key:
+        | Expression
+        | PrivateIdentifier
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+      value: Expression | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEmptyBodyFunctionExpression extends AstBase {
+      type: "TSEmptyBodyFunctionExpression";
+      declare: boolean;
+      expression: boolean;
+      async: boolean;
+      generator: boolean;
+      id: null;
+      body: null;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSParameterProperty extends AstBase {
+      type: "TSParameterProperty";
+      override: boolean;
+      readonly: boolean;
+      static: boolean;
+      accessibility: Accessibility | undefined;
+      decorators: Decorator[];
+      parameter:
+        | AssignmentPattern
+        | ArrayPattern
+        | ObjectPattern
+        | Identifier
+        | RestElement;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSCallSignatureDeclaration extends AstBase {
+      type: "TSCallSignatureDeclaration";
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSPropertySignature extends AstBase {
+      type: "TSPropertySignature";
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      key:
+        | PrivateIdentifier
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSDeclareFunction extends AstBase {
+      type: "TSDeclareFunction";
+      async: boolean;
+      declare: boolean;
+      generator: boolean;
+      body: undefined;
+      id: Identifier | null;
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * ```ts
+     * enum Foo { A, B };
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumDeclaration extends AstBase {
+      type: "TSEnumDeclaration";
+      declare: boolean;
+      const: boolean;
+      id: Identifier;
+      body: TSEnumBody;
+    }
+
+    /**
+     * The body of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumBody extends AstBase {
+      type: "TSEnumBody";
+      members: TSEnumMember[];
+    }
+
+    /**
+     * A member of a `TSEnumDeclaration`
+     * @category Linter
+     * @experimental
+     */
+    export interface TSEnumMember extends AstBase {
+      type: "TSEnumMember";
+      id:
+        | Identifier
+        | NumberLiteral
+        | StringLiteral;
+      initializer: Expression | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAssertion extends AstBase {
+      type: "TSTypeAssertion";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterInstantiation extends AstBase {
+      type: "TSTypeParameterInstantiation";
+      params: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAliasDeclaration extends AstBase {
+      type: "TSTypeAliasDeclaration";
+      declare: boolean;
+      id: Identifier;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSatisfiesExpression extends AstBase {
+      type: "TSSatisfiesExpression";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAsExpression extends AstBase {
+      type: "TSAsExpression";
+      expression: Expression;
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInstantiationExpression extends AstBase {
+      type: "TSInstantiationExpression";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNonNullExpression extends AstBase {
+      type: "TSNonNullExpression";
+      expression: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSThisType extends AstBase {
+      type: "TSThisType";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceDeclaration extends AstBase {
+      type: "TSInterfaceDeclaration";
+      declare: boolean;
+      id: Identifier;
+      extends: TSInterfaceHeritage[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      body: TSInterfaceBody;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceBody extends AstBase {
+      type: "TSInterfaceBody";
+      body: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConstructSignatureDeclaration extends AstBase {
+      type: "TSConstructSignatureDeclaration";
+      typeParameters: TSTypeParameterDeclaration | undefined;
+      params: Parameter[];
+      returnType: TSTypeAnnotation;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMethodSignature extends AstBase {
+      type: "TSMethodSignature";
+      computed: boolean;
+      optional: boolean;
+      readonly: boolean;
+      static: boolean;
+      kind: "get" | "set" | "method";
+      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      returnType: TSTypeAnnotation | undefined;
+      params: Parameter[];
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInterfaceHeritage extends AstBase {
+      type: "TSInterfaceHeritage";
+      expression: Expression;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexSignature extends AstBase {
+      type: "TSIndexSignature";
+      readonly: boolean;
+      static: boolean;
+      parameters: Parameter[];
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnionType extends AstBase {
+      type: "TSUnionType";
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntersectionType extends AstBase {
+      type: "TSIntersectionType";
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSInferType extends AstBase {
+      type: "TSInferType";
+      typeParameter: TSTypeParameter;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeOperator extends AstBase {
+      type: "TSTypeOperator";
+      operator: "keyof" | "readonly" | "unique";
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIndexedAccessType extends AstBase {
+      type: "TSIndexedAccessType";
+      indexType: TypeNode;
+      objectType: TypeNode;
+    }
+
+    /**
+     * ```ts
+     * const a: any = null;
+     * ```
+     * @category Linter
+     * @experimental
+     */
+    export interface TSAnyKeyword extends AstBase {
+      type: "TSAnyKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUnknownKeyword extends AstBase {
+      type: "TSUnknownKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNumberKeyword extends AstBase {
+      type: "TSNumberKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSObjectKeyword extends AstBase {
+      type: "TSObjectKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBooleanKeyword extends AstBase {
+      type: "TSBooleanKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSBigIntKeyword extends AstBase {
+      type: "TSBigIntKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSStringKeyword extends AstBase {
+      type: "TSStringKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSSymbolKeyword extends AstBase {
+      type: "TSSymbolKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSVoidKeyword extends AstBase {
+      type: "TSVoidKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSUndefinedKeyword extends AstBase {
+      type: "TSUndefinedKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNullKeyword extends AstBase {
+      type: "TSNullKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNeverKeyword extends AstBase {
+      type: "TSNeverKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSIntrinsicKeyword extends AstBase {
+      type: "TSIntrinsicKeyword";
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSRestType extends AstBase {
+      type: "TSRestType";
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSConditionalType extends AstBase {
+      type: "TSConditionalType";
+      checkType: TypeNode;
+      extendsType: TypeNode;
+      trueType: TypeNode;
+      falseType: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSMappedType extends AstBase {
+      type: "TSMappedType";
+      readonly: boolean;
+      optional: boolean;
+      nameType: TypeNode | null;
+      typeAnnotation: TypeNode | undefined;
+      constraint: TypeNode;
+      key: Identifier;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSLiteralType extends AstBase {
+      type: "TSLiteralType";
+      literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTemplateLiteralType extends AstBase {
+      type: "TSTemplateLiteralType";
+      quasis: TemplateElement[];
+      types: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeLiteral extends AstBase {
+      type: "TSTypeLiteral";
+      members: Array<
+        | TSCallSignatureDeclaration
+        | TSConstructSignatureDeclaration
+        | TSIndexSignature
+        | TSMethodSignature
+        | TSPropertySignature
+      >;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSOptionalType extends AstBase {
+      type: "TSOptionalType";
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeAnnotation extends AstBase {
+      type: "TSTypeAnnotation";
+      typeAnnotation: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSArrayType extends AstBase {
+      type: "TSArrayType";
+      elementType: TypeNode;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeQuery extends AstBase {
+      type: "TSTypeQuery";
+      exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeReference extends AstBase {
+      type: "TSTypeReference";
+      typeName: Identifier | ThisExpression | TSQualifiedName;
+      typeArguments: TSTypeParameterInstantiation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypePredicate extends AstBase {
+      type: "TSTypePredicate";
+      asserts: boolean;
+      parameterName: Identifier | TSThisType;
+      typeAnnotation: TSTypeAnnotation | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTupleType extends AstBase {
+      type: "TSTupleType";
+      elementTypes: TypeNode[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSNamedTupleMember extends AstBase {
+      type: "TSNamedTupleMember";
+      label: Identifier;
+      elementType: TypeNode;
+      optional: boolean;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameterDeclaration extends AstBase {
+      type: "TSTypeParameterDeclaration";
+      params: TSTypeParameter[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSTypeParameter extends AstBase {
+      type: "TSTypeParameter";
+      in: boolean;
+      out: boolean;
+      const: boolean;
+      name: Identifier;
+      constraint: TypeNode | null;
+      default: TypeNode | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSImportType extends AstBase {
+      type: "TSImportType";
+      argument: TypeNode;
+      qualifier: Identifier | ThisExpression | TSQualifiedName | null;
+      typeArguments: TSTypeParameterInstantiation | null;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSExportAssignment extends AstBase {
+      type: "TSExportAssignment";
+      expression: Expression;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSFunctionType extends AstBase {
+      type: "TSFunctionType";
+      params: Parameter[];
+      returnType: TSTypeAnnotation | undefined;
+      typeParameters: TSTypeParameterDeclaration | undefined;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface TSQualifiedName extends AstBase {
+      type: "TSQualifiedName";
+      left: Identifier | ThisExpression | TSQualifiedName;
+      right: Identifier;
+    }
+
+    /**
+     * Union type of all possible statement nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Statement =
+      | BlockStatement
+      | BreakStatement
+      | ClassDeclaration
+      | ContinueStatement
+      | DebuggerStatement
+      | DoWhileStatement
+      | ExportAllDeclaration
+      | ExportDefaultDeclaration
+      | ExportNamedDeclaration
+      | ExpressionStatement
+      | ForInStatement
+      | ForOfStatement
+      | ForStatement
+      | FunctionDeclaration
+      | IfStatement
+      | ImportDeclaration
+      | LabeledStatement
+      | ReturnStatement
+      | SwitchStatement
+      | ThrowStatement
+      | TryStatement
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSExportAssignment
+      | TSImportEqualsDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSNamespaceExportDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration
+      | WhileStatement
+      | WithStatement;
+
+    /**
+     * Union type of all possible expression nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Expression =
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | AssignmentExpression
+      | AwaitExpression
+      | BinaryExpression
+      | CallExpression
+      | ChainExpression
+      | ClassExpression
+      | ConditionalExpression
+      | FunctionExpression
+      | Identifier
+      | ImportExpression
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | LogicalExpression
+      | MemberExpression
+      | MetaProperty
+      | NewExpression
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | TemplateLiteral
+      | ThisExpression
+      | TSAsExpression
+      | TSInstantiationExpression
+      | TSNonNullExpression
+      | TSSatisfiesExpression
+      | TSTypeAssertion
+      | UnaryExpression
+      | UpdateExpression
+      | YieldExpression;
+
+    /**
+     * Union type of all possible type nodes in TypeScript
+     * @category Linter
+     * @experimental
+     */
+    export type TypeNode =
+      | TSAnyKeyword
+      | TSArrayType
+      | TSBigIntKeyword
+      | TSBooleanKeyword
+      | TSConditionalType
+      | TSFunctionType
+      | TSImportType
+      | TSIndexedAccessType
+      | TSInferType
+      | TSIntersectionType
+      | TSIntrinsicKeyword
+      | TSLiteralType
+      | TSMappedType
+      | TSNamedTupleMember
+      | TSNeverKeyword
+      | TSNullKeyword
+      | TSNumberKeyword
+      | TSObjectKeyword
+      | TSOptionalType
+      | TSQualifiedName
+      | TSRestType
+      | TSStringKeyword
+      | TSSymbolKeyword
+      | TSTemplateLiteralType
+      | TSThisType
+      | TSTupleType
+      | TSTypeLiteral
+      | TSTypeOperator
+      | TSTypePredicate
+      | TSTypeQuery
+      | TSTypeReference
+      | TSUndefinedKeyword
+      | TSUnionType
+      | TSUnknownKeyword
+      | TSVoidKeyword;
   }
 
   export {}; // only export exports
