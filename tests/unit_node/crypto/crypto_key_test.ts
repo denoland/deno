@@ -755,3 +755,16 @@ Deno.test("X509Certificate checkHost", function () {
   assertEquals(cert.checkHost("www.google.com"), undefined);
   assertEquals(cert.checkHost("agent1"), "agent1");
 });
+
+// https://github.com/denoland/deno/issues/27972
+Deno.test("curve25519 generate valid private jwk", function () {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519", {
+    publicKeyEncoding: { format: "jwk" },
+    privateKeyEncoding: { format: "jwk" },
+  });
+
+  // @ts-ignore @types/node broken
+  assert(!publicKey.d);
+  // @ts-ignore @types/node broken
+  assert(privateKey.d);
+});
