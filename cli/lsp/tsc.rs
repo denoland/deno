@@ -902,6 +902,7 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
@@ -910,7 +911,9 @@ impl TsServer {
       format_code_settings,
     )));
     self
-      .request::<Option<CompletionInfo>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<CompletionInfo>>(
+        snapshot, req, scope, token,
+      )
       .await
       .map(|mut info| {
         if let Some(info) = &mut info {
@@ -3699,26 +3702,29 @@ impl CompletionInfo {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
+    token: CancellationToken,
   ) -> lsp::CompletionResponse {
     // A cache for costly resolution computations.
     // On a test project, it was found to speed up completion requests
     // by 10-20x and contained ~300 entries for 8000 completion items.
     let mut cache = HashMap::with_capacity(512);
-    let items = self
-      .entries
-      .iter()
-      .flat_map(|entry| {
-        entry.as_completion_item(
-          line_index.clone(),
-          self,
-          settings,
-          specifier,
-          position,
-          language_server,
-          &mut cache,
-        )
-      })
-      .collect();
+    let mut items = Vec::with_capacity(self.entries.len());
+    for entry in &self.entries {
+      if token.is_cancelled() {
+        break;
+      }
+      if let Some(item) = entry.as_completion_item(
+        line_index.clone(),
+        self,
+        settings,
+        specifier,
+        position,
+        language_server,
+        &mut cache,
+      ) {
+        items.push(item);
+      }
+    }
     let is_incomplete = self
       .metadata
       .clone()
@@ -6208,6 +6214,7 @@ mod tests {
         },
         Default::default(),
         Some(temp_dir.url()),
+        Default::default(),
       )
       .await
       .unwrap()
@@ -6401,6 +6408,7 @@ mod tests {
         },
         FormatCodeSettings::from(&fmt_options_config),
         Some(temp_dir.url()),
+        Default::default(),
       )
       .await
       .unwrap()

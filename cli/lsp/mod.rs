@@ -82,7 +82,7 @@ pub async fn start() -> Result<(), AnyError> {
   // Force end the server 8 seconds after receiving a shutdown request.
   tokio::select! {
     biased;
-    _ = Server::new(stdin, stdout, socket).serve(service) => {}
+    _ = Server::new(stdin, stdout, socket).concurrency_level(32).serve(service) => {}
     _ = spawn(async move {
       shutdown_flag.wait_raised().await;
       tokio::time::sleep(std::time::Duration::from_secs(8)).await;
