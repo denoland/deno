@@ -3328,7 +3328,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     let ls = self.clone();
     self
       .spawn_with_cancellation(move |_| async move {
-        self.inner.read().await.formatting(params).await
+        ls.inner.read().await.formatting(params).await
       })
       .await
   }
