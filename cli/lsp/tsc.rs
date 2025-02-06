@@ -3699,26 +3699,29 @@ impl CompletionInfo {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
+    token: CancellationToken,
   ) -> lsp::CompletionResponse {
     // A cache for costly resolution computations.
     // On a test project, it was found to speed up completion requests
     // by 10-20x and contained ~300 entries for 8000 completion items.
     let mut cache = HashMap::with_capacity(512);
-    let items = self
-      .entries
-      .iter()
-      .flat_map(|entry| {
-        entry.as_completion_item(
-          line_index.clone(),
-          self,
-          settings,
-          specifier,
-          position,
-          language_server,
-          &mut cache,
-        )
-      })
-      .collect();
+    let mut items = Vec::with_capacity(self.entries.len());
+    for entry in &self.entries {
+      if token.is_cancelled() {
+        break;
+      }
+      if let Some(item) = entry.as_completion_item(
+        line_index.clone(),
+        self,
+        settings,
+        specifier,
+        position,
+        language_server,
+        &mut cache,
+      ) {
+        items.push(item);
+      }
+    }
     let is_incomplete = self
       .metadata
       .clone()

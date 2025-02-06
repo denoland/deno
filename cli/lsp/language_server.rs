@@ -43,6 +43,7 @@ use serde_json::from_value;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::mpsc::UnboundedSender;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types::request::*;
@@ -137,6 +138,7 @@ pub struct LanguageServer {
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
   shutdown_flag: AsyncFlag,
+  worker_runtime: Arc<tokio::runtime::Runtime>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -239,6 +241,12 @@ impl LanguageServer {
       init_flag: Default::default(),
       performance,
       shutdown_flag,
+      worker_runtime: Arc::new(
+        tokio::runtime::Builder::new_multi_thread()
+          .worker_threads(1)
+          .build()
+          .unwrap(),
+      ),
     }
   }
 
@@ -2219,6 +2227,7 @@ impl Inner {
   async fn completion(
     &self,
     params: CompletionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
@@ -2320,6 +2329,7 @@ impl Inner {
             &specifier,
             position,
             self,
+            token,
           ),
         );
       }
@@ -3338,7 +3348,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.completion(params).await
+    let inner = self.inner.clone();
+    let token = CancellationToken::new();
+    let _drop_guard = token.clone().drop_guard();
+    self.worker_runtime.spawn(async move {
+      tokio::select! {
+        biased;
+        result = async { inner.read().await.completion(params, token.clone()).await } => result,
+        _ = token.cancelled() => Ok(None),
+      }
+    }).await.unwrap()
   }
 
   async fn completion_resolve(
