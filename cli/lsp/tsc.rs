@@ -3999,10 +3999,9 @@ impl CompletionEntry {
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
-        // let maybe_cached = resolution_cache
-        //   .get(&(import_data.normalized.clone(), specifier.clone()))
-        //   .cloned();
-        let maybe_cached = None;
+        let maybe_cached = resolution_cache
+          .get(&(import_data.normalized.clone(), specifier.clone()))
+          .cloned();
         if let Some(mut new_specifier) = maybe_cached
           .or_else(|| {
             import_mapper.check_specifier(&import_data.normalized, specifier)
