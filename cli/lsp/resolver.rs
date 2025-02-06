@@ -12,8 +12,6 @@ use deno_ast::MediaType;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
 use deno_config::deno_json::JsxImportSourceConfig;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::GraphImport;
@@ -29,6 +27,8 @@ use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npmrc::create_default_npmrc;
+use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_resolver::DenoResolverOptions;
 use deno_resolver::NodeAndNpmReqResolver;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -844,9 +844,6 @@ impl<'a> ResolverFactory<'a> {
           }
           _ => None,
         },
-        sloppy_imports_resolver: self
-          .config_data
-          .and_then(|d| d.sloppy_imports_resolver.clone()),
         workspace_resolver: self
           .config_data
           .map(|d| d.resolver.clone())
@@ -858,6 +855,8 @@ impl<'a> ResolverFactory<'a> {
               Vec::new(),
               Vec::new(),
               PackageJsonDepResolution::Disabled,
+              Default::default(),
+              Default::default(),
               Default::default(),
               Default::default(),
               self.sys.clone(),

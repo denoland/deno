@@ -3,8 +3,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_media_type::MediaType;
+use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_semver::Version;
