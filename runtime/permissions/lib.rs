@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
+use std::env::current_dir;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
@@ -2353,6 +2354,12 @@ pub enum PermissionCheckError {
   #[class(uri)]
   #[error(transparent)]
   HostParse(#[from] HostParseError),
+  #[class("NotCapable")]
+  #[error("Permission denied {0}")]
+  NotCapable(&'static str),
+  #[class(inherit)]
+  #[error(transparent)]
+  IoError(#[from] std::io::Error),
 }
 
 /// Wrapper struct for `Permissions` that can be shared across threads.
@@ -2583,12 +2590,55 @@ impl PermissionsContainer {
     if inner.is_allow_all() {
       Ok(Cow::Borrowed(path))
     } else {
+      let path_bytes = path.as_os_str().as_encoded_bytes();
+      let is_windows_device_path = cfg!(windows)
+        && path_bytes.starts_with(br"\\.\")
+        && !path_bytes.contains(&b':');
+      let path = if is_windows_device_path {
+        // On Windows, normalize_path doesn't work with device-prefix-style
+        // paths. We pass these through.
+        path.to_owned()
+      } else if path.is_absolute() {
+        normalize_path(&path)
+      } else {
+        let cwd = current_dir().unwrap();
+        normalize_path(cwd.join(&path))
+      };
+
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
         resolved: path.to_path_buf(),
       }
       .into_read();
+
       inner.check(&desc, api_name)?;
+
+      // On Linux, /proc may contain magic links that we don't want to resolve
+      let is_linux_special_path = cfg!(target_os = "linux")
+        && (path.starts_with("/proc") || path.starts_with("/dev"));
+      dbg!(&path);
+      let needs_canonicalization =
+        !is_windows_device_path && !is_linux_special_path;
+      let path = if needs_canonicalization {
+        match path.canonicalize() {
+          Ok(path) => path,
+          Err(_) => {
+            if let (Some(parent), Some(filename)) =
+              (path.parent(), path.file_name())
+            {
+              parent.canonicalize()?.join(filename)
+            } else {
+              panic!("Failed to canonicalize path: {:?}", path);
+            }
+          }
+        }
+      } else {
+        path
+      };
+
+      self
+        .check_special_file(&path, api_name.unwrap_or("read"))
+        .map_err(PermissionCheckError::NotCapable)?;
       Ok(Cow::Owned(desc.0.resolved))
     }
   }
@@ -2597,7 +2647,7 @@ impl PermissionsContainer {
   /// by replacing it with the given `display`.
   #[inline(always)]
   pub fn check_read_blind(
-    &mut self,
+    &self,
     path: &Path,
     display: &str,
     api_name: &str,
@@ -2714,7 +2764,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_write_partial(
-    &mut self,
+    &self,
     path: &str,
     api_name: &str,
   ) -> Result<PathBuf, PermissionCheckError> {
@@ -2731,7 +2781,7 @@ impl PermissionsContainer {
 
   #[inline(always)]
   pub fn check_run(
-    &mut self,
+    &self,
     cmd: &RunQueryDescriptor,
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
@@ -2767,25 +2817,25 @@ impl PermissionsContainer {
   }
 
   #[inline(always)]
-  pub fn check_env(&mut self, var: &str) -> Result<(), PermissionCheckError> {
+  pub fn check_env(&self, var: &str) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check(var, None)?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_env_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_env_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().env.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_sys_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_sys_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().sys.check_all()?;
     Ok(())
   }
 
   #[inline(always)]
-  pub fn check_ffi_all(&mut self) -> Result<(), PermissionCheckError> {
+  pub fn check_ffi_all(&self) -> Result<(), PermissionCheckError> {
     self.inner.lock().ffi.check_all()?;
     Ok(())
   }
@@ -2794,7 +2844,7 @@ impl PermissionsContainer {
   /// permissions are enabled!
   #[inline(always)]
   pub fn check_was_allow_all_flag_passed(
-    &mut self,
+    &self,
   ) -> Result<(), PermissionCheckError> {
     self.inner.lock().all.check()?;
     Ok(())
@@ -2803,7 +2853,7 @@ impl PermissionsContainer {
   /// Checks special file access, returning the failed permission type if
   /// not successful.
   pub fn check_special_file(
-    &mut self,
+    &self,
     path: &Path,
     _api_name: &str,
   ) -> Result<(), &'static str> {
