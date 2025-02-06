@@ -2309,6 +2309,7 @@ impl Inner {
             .options)
             .into(),
           scope.cloned(),
+          token.clone(),
         )
         .await
         .unwrap_or_else(|err| {

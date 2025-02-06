@@ -902,6 +902,7 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
+    token: CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
@@ -910,7 +911,9 @@ impl TsServer {
       format_code_settings,
     )));
     self
-      .request::<Option<CompletionInfo>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<CompletionInfo>>(
+        snapshot, req, scope, token,
+      )
       .await
       .map(|mut info| {
         if let Some(info) = &mut info {
@@ -3996,9 +3999,10 @@ impl CompletionEntry {
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
           language_server.get_ts_response_import_mapper(specifier);
-        let maybe_cached = resolution_cache
-          .get(&(import_data.normalized.clone(), specifier.clone()))
-          .cloned();
+        // let maybe_cached = resolution_cache
+        //   .get(&(import_data.normalized.clone(), specifier.clone()))
+        //   .cloned();
+        let maybe_cached = None;
         if let Some(mut new_specifier) = maybe_cached
           .or_else(|| {
             import_mapper.check_specifier(&import_data.normalized, specifier)
@@ -6211,6 +6215,7 @@ mod tests {
         },
         Default::default(),
         Some(temp_dir.url()),
+        Default::default(),
       )
       .await
       .unwrap()
@@ -6404,6 +6409,7 @@ mod tests {
         },
         FormatCodeSettings::from(&fmt_options_config),
         Some(temp_dir.url()),
+        Default::default(),
       )
       .await
       .unwrap()
