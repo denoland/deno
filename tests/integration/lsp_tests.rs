@@ -9743,6 +9743,7 @@ fn lsp_completions_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // check importing a cjs default import
   client.write_notification(
