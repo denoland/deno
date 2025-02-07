@@ -1459,7 +1459,7 @@ impl Inner {
           LspError::request_cancelled()
         } else {
           error!(
-            "Error getting document symbols for \"{}\": {:#}",
+            "Error getting navigation tree for \"{}\": {:#}",
             specifier, err
           );
           LspError::internal_error()
@@ -2207,8 +2207,15 @@ impl Inner {
         .get_navigation_tree(&specifier, token)
         .await
         .map_err(|err| {
-        error!("Error getting code lenses for \"{}\": {:#}", specifier, err);
-        LspError::internal_error()
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Error getting navigation tree for \"{}\": {:#}",
+            specifier, err
+          );
+          LspError::internal_error()
+        }
       })?;
       let line_index = asset_or_doc.line_index();
       code_lenses.extend(
