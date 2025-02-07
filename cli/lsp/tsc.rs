@@ -497,7 +497,7 @@ impl TsServer {
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
       results.push_back(
         self
-          .request_with_cancellation::<(DiagnosticsMap, MaybeAmbientModules)>(
+          .request::<(DiagnosticsMap, MaybeAmbientModules)>(
             snapshot.clone(),
             req,
             scope.clone(),
@@ -543,7 +543,12 @@ impl TsServer {
     {
       let req = TscRequest::CleanupSemanticCache;
       self
-        .request::<()>(snapshot.clone(), req, scope.cloned())
+        .request::<()>(
+          snapshot.clone(),
+          req,
+          scope.cloned(),
+          &Default::default(),
+        )
         .await
         .map_err(|err| {
           log::error!("Failed to request to tsserver {}", err);
@@ -573,14 +578,12 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(
-        self.request_with_cancellation::<Option<Vec<ReferencedSymbol>>>(
-          snapshot.clone(),
-          req.clone(),
-          scope.cloned(),
-          token,
-        ),
-      );
+      results.push_back(self.request::<Option<Vec<ReferencedSymbol>>>(
+        snapshot.clone(),
+        req.clone(),
+        scope.cloned(),
+        token,
+      ));
     }
     let mut all_symbols = IndexSet::new();
     while let Some(symbols) = results.next().await {
@@ -619,9 +622,7 @@ impl TsServer {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
       .denormalize(&specifier),));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_supported_code_fixes(
@@ -629,10 +630,13 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
   ) -> Result<Vec<String>, LspError> {
     let req = TscRequest::GetSupportedCodeFixes;
-    self.request(snapshot, req, None).await.map_err(|err| {
-      log::error!("Unable to get fixable diagnostics: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request(snapshot, req, None, &Default::default())
+      .await
+      .map_err(|err| {
+        log::error!("Unable to get fixable diagnostics: {}", err);
+        LspError::internal_error()
+      })
   }
 
   pub async fn get_quick_info(
@@ -647,9 +651,7 @@ impl TsServer {
       self.specifier_map.denormalize(&specifier),
       position,
     ));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -673,9 +675,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request_with_cancellation::<Vec<CodeFixAction>>(
-        snapshot, req, scope, token,
-      )
+      .request::<Vec<CodeFixAction>>(snapshot, req, scope, token)
       .await
       .and_then(|mut actions| {
         for action in &mut actions {
@@ -710,7 +710,7 @@ impl TsServer {
       only,
     )));
     self
-      .request_with_cancellation(snapshot, req, scope, token)
+      .request(snapshot, req, scope, token)
       .await
       .map_err(|err| {
         log::error!("Failed to request to tsserver {}", err);
@@ -737,9 +737,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request_with_cancellation::<CombinedCodeActions>(
-        snapshot, req, scope, token,
-      )
+      .request::<CombinedCodeActions>(snapshot, req, scope, token)
       .await
       .and_then(|mut actions| {
         actions.normalize(&self.specifier_map)?;
@@ -769,9 +767,7 @@ impl TsServer {
       preferences,
     )));
     self
-      .request_with_cancellation::<RefactorEditInfo>(
-        snapshot, req, scope, token,
-      )
+      .request::<RefactorEditInfo>(snapshot, req, scope, token)
       .await
       .and_then(|mut info| {
         info.normalize(&self.specifier_map)?;
@@ -803,14 +799,12 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(
-        self.request_with_cancellation::<Vec<FileTextChanges>>(
-          snapshot.clone(),
-          req.clone(),
-          scope.cloned(),
-          token,
-        ),
-      );
+      results.push_back(self.request::<Vec<FileTextChanges>>(
+        snapshot.clone(),
+        req.clone(),
+        scope.cloned(),
+        token,
+      ));
     }
     let mut all_changes = IndexSet::new();
     while let Some(changes) = results.next().await {
@@ -856,9 +850,7 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<_>>(),
     )));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_definition(
@@ -874,7 +866,7 @@ impl TsServer {
       position,
     ));
     self
-      .request_with_cancellation::<Option<DefinitionInfoAndBoundSpan>>(
+      .request::<Option<DefinitionInfoAndBoundSpan>>(
         snapshot, req, scope, token,
       )
       .await
@@ -899,9 +891,7 @@ impl TsServer {
       position,
     ));
     self
-      .request_with_cancellation::<Option<Vec<DefinitionInfo>>>(
-        snapshot, req, scope, token,
-      )
+      .request::<Option<Vec<DefinitionInfo>>>(snapshot, req, scope, token)
       .await
       .and_then(|mut infos| {
         for info in infos.iter_mut().flatten() {
@@ -932,9 +922,7 @@ impl TsServer {
       format_code_settings,
     )));
     self
-      .request_with_cancellation::<Option<CompletionInfo>>(
-        snapshot, req, scope, token,
-      )
+      .request::<Option<CompletionInfo>>(snapshot, req, scope, token)
       .await
       .and_then(|mut info| {
         if let Some(info) = &mut info {
@@ -961,9 +949,7 @@ impl TsServer {
       args.data,
     )));
     self
-      .request_with_cancellation::<Option<CompletionEntryDetails>>(
-        snapshot, req, scope, token,
-      )
+      .request::<Option<CompletionEntryDetails>>(snapshot, req, scope, token)
       .await
       .and_then(|mut details| {
         if let Some(details) = &mut details {
@@ -993,14 +979,12 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(
-        self.request_with_cancellation::<Option<Vec<ImplementationLocation>>>(
-          snapshot.clone(),
-          req.clone(),
-          scope.cloned(),
-          token,
-        ),
-      );
+      results.push_back(self.request::<Option<Vec<ImplementationLocation>>>(
+        snapshot.clone(),
+        req.clone(),
+        scope.cloned(),
+        token,
+      ));
     }
     let mut all_locations = IndexSet::new();
     while let Some(locations) = results.next().await {
@@ -1039,9 +1023,7 @@ impl TsServer {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
       .denormalize(&specifier),));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn provide_call_hierarchy_incoming_calls(
@@ -1068,6 +1050,7 @@ impl TsServer {
         snapshot.clone(),
         req.clone(),
         scope.cloned(),
+        token,
       ));
     }
     let mut all_calls = IndexSet::new();
@@ -1104,9 +1087,7 @@ impl TsServer {
       position,
     ));
     self
-      .request_with_cancellation::<Vec<CallHierarchyOutgoingCall>>(
-        snapshot, req, scope, token,
-      )
+      .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req, scope, token)
       .await
       .and_then(|mut calls| {
         for call in &mut calls {
@@ -1132,7 +1113,7 @@ impl TsServer {
       position,
     ));
     self
-      .request_with_cancellation::<Option<OneOrMany<CallHierarchyItem>>>(
+      .request::<Option<OneOrMany<CallHierarchyItem>>>(
         snapshot, req, scope, token,
       )
       .await
@@ -1175,14 +1156,12 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(
-        self.request_with_cancellation::<Option<Vec<RenameLocation>>>(
-          snapshot.clone(),
-          req.clone(),
-          scope.cloned(),
-          token,
-        ),
-      );
+      results.push_back(self.request::<Option<Vec<RenameLocation>>>(
+        snapshot.clone(),
+        req.clone(),
+        scope.cloned(),
+        token,
+      ));
     }
     let mut all_locations = IndexSet::new();
     while let Some(locations) = results.next().await {
@@ -1223,9 +1202,7 @@ impl TsServer {
       self.specifier_map.denormalize(&specifier),
       position,
     ));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_encoded_semantic_classifications(
@@ -1244,9 +1221,7 @@ impl TsServer {
       },
       "2020",
     ));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_signature_help_items(
@@ -1263,9 +1238,7 @@ impl TsServer {
       position,
       options,
     ));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_navigate_to_items(
@@ -1295,6 +1268,7 @@ impl TsServer {
         snapshot.clone(),
         req.clone(),
         scope.cloned(),
+        token,
       ));
     }
     let mut all_items = IndexSet::new();
@@ -1332,31 +1306,10 @@ impl TsServer {
       text_span,
       user_preferences,
     ));
-    self
-      .request_with_cancellation(snapshot, req, scope, token)
-      .await
+    self.request(snapshot, req, scope, token).await
   }
 
   async fn request<R>(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    req: TscRequest,
-    scope: Option<ModuleSpecifier>,
-  ) -> Result<R, AnyError>
-  where
-    R: de::DeserializeOwned,
-  {
-    let mark = self
-      .performance
-      .mark(format!("tsc.request.{}", req.method()));
-    let r = self
-      .request_with_cancellation(snapshot, req, scope, &Default::default())
-      .await;
-    self.performance.measure(mark);
-    r
-  }
-
-  async fn request_with_cancellation<R>(
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
@@ -1366,6 +1319,9 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    let mark = self
+      .performance
+      .mark(format!("tsc.request.{}", req.method()));
     // When an LSP request is cancelled by the client, the future this is being
     // executed under and any local variables here will be dropped at the next
     // await point. To pass on that cancellation to the TS thread, we use drop_guard
@@ -1386,7 +1342,9 @@ impl TsServer {
       value = &mut rx => {
         let value = value??;
         droppable_token.disarm();
-        Ok(serde_json::from_str(&value)?)
+        let r = Ok(serde_json::from_str(&value)?);
+        self.performance.measure(mark);
+        r
       }
       _ = token.cancelled() => {
         Err(anyhow!("request cancelled"))
@@ -1532,7 +1490,10 @@ async fn get_isolate_assets(
   state_snapshot: Arc<StateSnapshot>,
 ) -> Vec<AssetDocument> {
   let req = TscRequest::GetAssets;
-  let res: Value = ts_server.request(state_snapshot, req, None).await.unwrap();
+  let res: Value = ts_server
+    .request(state_snapshot, req, None, &Default::default())
+    .await
+    .unwrap();
   let response_assets = match res {
     Value::Array(value) => value,
     _ => unreachable!(),

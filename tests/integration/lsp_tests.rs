@@ -761,6 +761,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
       "type": 2
     }]
   }));
+  client.read_diagnostics();
 
   // this will discover the deno.json in the root
   let search_line = format!(
@@ -11456,6 +11457,7 @@ fn lsp_performance() {
       "tsc.op.op_load",
       "tsc.op.op_script_names",
       "tsc.request.$getAssets",
+      "tsc.request.$getDiagnostics",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
@@ -14087,6 +14089,7 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
+  client.read_diagnostics();
   cache(&mut client);
 
   let diagnostics = client.read_diagnostics();
