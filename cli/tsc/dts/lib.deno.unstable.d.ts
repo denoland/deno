@@ -3847,6 +3847,11 @@ declare namespace Deno {
       | TSUnknownKeyword
       | TSVoidKeyword;
 
+    /**
+     * Union type of all possible AST nodes
+     * @category Linter
+     * @experimental
+     */
     export type AstNode =
       | Expression
       | Statement
