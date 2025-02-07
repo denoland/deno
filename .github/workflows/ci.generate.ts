@@ -155,6 +155,11 @@ RUSTDOCFLAGS<<__1
 __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=$CFLAGS
+if [ "$(uname -s)" = "Linux" ]; then
+  if [ "$(uname -m)" = "aarch64" ]; then
+    export PKG_CONFIG_LIBDIR=/sysroot/usr/lib/aarch64-linux-gnu/pkgconfig
+  fi
+fi
 " > $GITHUB_ENV`,
 };
 
@@ -295,9 +300,8 @@ function handleMatrixItems(items: {
       let runner =
         "${{ (!contains(github.event.pull_request.labels.*.name, 'ci-full') && (";
       runner += removeSurroundingExpression(item.skip.toString()) + ")) && ";
-      runner += `'${ubuntuX86Runner}' || ${
-        removeSurroundingExpression(item.runner)
-      } }}`;
+      runner += `'${ubuntuX86Runner}' || ${removeSurroundingExpression(item.runner)
+        } }}`;
 
       // deno-lint-ignore no-explicit-any
       (item as any).runner = runner;
