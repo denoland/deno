@@ -508,13 +508,15 @@ impl TsServer {
     }
     let mut ambient_modules_by_scope = HashMap::with_capacity(2);
     while let Some((scope, raw_diagnostics)) = results.next().await {
-      let (raw_diagnostics, ambient_modules) = raw_diagnostics
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            lsp_warn!("Error generating TypeScript diagnostics: {err}");
-          }
-        })
-        .unwrap_or_default();
+      if let Some(err) = raw_diagnostics.as_ref().err() {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        } else {
+          lsp_warn!("Error generating TypeScript diagnostics: {err}");
+        }
+      }
+      let (raw_diagnostics, ambient_modules) =
+        raw_diagnostics.unwrap_or_default();
       for (mut specifier, mut diagnostics) in raw_diagnostics {
         specifier = self.specifier_map.normalize(&specifier)?.to_string();
         for diagnostic in &mut diagnostics {
@@ -812,19 +814,17 @@ impl TsServer {
     }
     let mut all_changes = IndexSet::new();
     while let Some(changes) = results.next().await {
-      let mut changes = changes
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            lsp_warn!(
-              "Unable to get edits for file rename from TypeScript: {err}"
-            );
-          }
-        })
-        .unwrap_or_default();
-      for changes in &mut changes {
+      if let Some(err) = changes.as_ref().err() {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
+        } else {
+          lsp_warn!(
+            "Unable to get edits for file rename from TypeScript: {err}"
+          );
         }
+      }
+      let mut changes = changes.unwrap_or_default();
+      for changes in &mut changes {
         changes.normalize(&self.specifier_map)?;
         for text_changes in &mut changes.text_changes {
           if token.is_cancelled() {
@@ -1072,16 +1072,14 @@ impl TsServer {
     }
     let mut all_calls = IndexSet::new();
     while let Some(calls) = results.next().await {
-      let mut calls = calls
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            let err = err.to_string();
-            if !err.contains("Could not find source file") {
-              lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
-            }
-          }
-        })
-        .unwrap_or_default();
+      if let Some(err) = calls.as_ref().err() {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        } else {
+          lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
+        }
+      }
+      let mut calls = calls.unwrap_or_default();
       for call in &mut calls {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
@@ -1188,18 +1186,14 @@ impl TsServer {
     }
     let mut all_locations = IndexSet::new();
     while let Some(locations) = results.next().await {
-      let locations = locations
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            let err = err.to_string();
-            if !err.contains("Could not find source file") {
-              lsp_warn!(
-                "Unable to get rename locations from TypeScript: {err}"
-              );
-            }
-          }
-        })
-        .unwrap_or_default();
+      if let Some(err) = locations.as_ref().err() {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        } else {
+          lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+        }
+      }
+      let locations = locations.unwrap_or_default();
       let Some(mut locations) = locations else {
         continue;
       };
@@ -1305,15 +1299,14 @@ impl TsServer {
     }
     let mut all_items = IndexSet::new();
     while let Some(items) = results.next().await {
-      let mut items = items
-        .inspect_err(|err| {
-          if !token.is_cancelled() {
-            lsp_warn!(
-              "Unable to get 'navigate to' items from TypeScript: {err}"
-            );
-          }
-        })
-        .unwrap_or_default();
+      if let Some(err) = items.as_ref().err() {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        } else {
+          lsp_warn!("Unable to get 'navigate to' items from TypeScript: {err}");
+        }
+      }
+      let mut items = items.unwrap_or_default();
       for item in &mut items {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
