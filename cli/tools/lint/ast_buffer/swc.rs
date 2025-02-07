@@ -241,7 +241,10 @@ fn serialize_module_decl(
               // Already handled earlier
               ExportSpecifier::Namespace(_) => unreachable!(),
               // this is not syntactically valid
-              ExportSpecifier::Default(_) => unreachable!(),
+              ExportSpecifier::Default(_) => {
+                // Ignore syntax errors
+                NodeRef(0)
+              }
             }
           })
           .collect::<Vec<_>>();
@@ -444,7 +447,10 @@ fn serialize_import_attrs(
       .map(|prop| {
         let (key, value) = match prop {
           // Invalid syntax
-          PropOrSpread::Spread(_) => unreachable!(),
+          PropOrSpread::Spread(_) => {
+            // Ignore syntax errors
+            (NodeRef(0), NodeRef(0))
+          }
           PropOrSpread::Prop(prop) => {
             match prop.as_ref() {
               Prop::Shorthand(ident) => (
@@ -459,7 +465,10 @@ fn serialize_import_attrs(
               Prop::Assign(_)
               | Prop::Getter(_)
               | Prop::Setter(_)
-              | Prop::Method(_) => unreachable!(),
+              | Prop::Method(_) => {
+                // Ignore syntax errors
+                (NodeRef(0), NodeRef(0))
+              }
             }
           }
         };
@@ -770,7 +779,10 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
             SimpleAssignTarget::TsInstantiation(target) => {
               serialize_expr(ctx, &Expr::TsInstantiation(target.clone()))
             }
-            SimpleAssignTarget::Invalid(_) => unreachable!(),
+            SimpleAssignTarget::Invalid(_) => {
+              // Ignore syntax errors
+              NodeRef(0)
+            }
           }
         }
         AssignTarget::Pat(target) => match target {
@@ -780,7 +792,10 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
           AssignTargetPat::Object(object_pat) => {
             serialize_pat(ctx, &Pat::Object(object_pat.clone()))
           }
-          AssignTargetPat::Invalid(_) => unreachable!(),
+          AssignTargetPat::Invalid(_) => {
+            // Ignore syntax errors
+            NodeRef(0)
+          }
         },
       };
 
@@ -1101,7 +1116,8 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
       ctx.write_chain_expr(&node.span, expr)
     }
     Expr::Invalid(_) => {
-      unreachable!()
+      // Ignore syntax errors
+      NodeRef(0)
     }
   }
 }
@@ -1908,7 +1924,10 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
 
       ctx.write_assign_pat(&node.span, left, right)
     }
-    Pat::Invalid(_) => unreachable!(),
+    Pat::Invalid(_) => {
+      // Ignore syntax errors
+      NodeRef(0)
+    }
     Pat::Expr(node) => serialize_expr(ctx, node),
   }
 }
