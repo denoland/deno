@@ -52,9 +52,10 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
+  //  /opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib (compatibility version 3.0.0, current version 3.16.0)
 
   // path and whether its weak or not
-  const EXPECTED: [(&str, bool); 9] = [
+  const EXPECTED: [(&str, bool); 10] = [
     ("/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", false),
     ("/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices", false),
     ("/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore", true),
@@ -64,6 +65,7 @@ fn macos_shared_libraries() {
     ("/usr/lib/libiconv.2.dylib", false),
     ("/usr/lib/libSystem.B.dylib", false),
     ("/usr/lib/libobjc.A.dylib", false),
+    ("/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib", false), 
   ];
 
   let otool = std::process::Command::new("otool")
