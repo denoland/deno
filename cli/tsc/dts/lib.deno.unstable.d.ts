@@ -1414,8 +1414,25 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
+    export type LintVisitor =
+      & {
+        [P in AstNode["type"]]?: (node: Extract<AstNode, { type: P }>) => void;
+      }
+      & {
+        [P in AstNode["type"] as `${P}:exit`]?: (
+          node: Extract<AstNode, { type: P }>,
+        ) => void;
+      }
+      & // Custom selectors which cannot be typed by us
+      // deno-lint-ignore no-explicit-any
+      Partial<{ [key: string]: (node: any) => void }>;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
     export interface Rule {
-      create(ctx: RuleContext): Record<string, (node: unknown) => void>;
+      create(ctx: RuleContext): LintVisitor;
       destroy?(ctx: RuleContext): void;
     }
 
@@ -3829,6 +3846,61 @@ declare namespace Deno {
       | TSUnionType
       | TSUnknownKeyword
       | TSVoidKeyword;
+
+    export type AstNode =
+      | Expression
+      | Statement
+      | TypeNode
+      | ImportSpecifier
+      | ImportDefaultSpecifier
+      | ImportNamespaceSpecifier
+      | ImportAttribute
+      | TSExternalModuleReference
+      | ExportSpecifier
+      | VariableDeclarator
+      | Decorator
+      | ClassBody
+      | StaticBlock
+      | PropertyDefinition
+      | MethodDefinition
+      | SwitchCase
+      | CatchClause
+      | TemplateElement
+      | PrivateIdentifier
+      | AssignmentPattern
+      | RestElement
+      | SpreadElement
+      | Property
+      | JSXIdentifier
+      | JSXNamespacedName
+      | JSXEmptyExpression
+      | JSXOpeningElement
+      | JSXAttribute
+      | JSXSpreadAttribute
+      | JSXClosingElement
+      | JSXOpeningFragment
+      | JSXClosingFragment
+      | JSXExpressionContainer
+      | JSXText
+      | JSXMemberExpression
+      | TSModuleBlock
+      | TSClassImplements
+      | TSAbstractMethodDefinition
+      | TSAbstractPropertyDefinition
+      | TSEmptyBodyFunctionExpression
+      | TSCallSignatureDeclaration
+      | TSPropertySignature
+      | TSEnumBody
+      | TSEnumMember
+      | TSTypeParameterInstantiation
+      | TSInterfaceBody
+      | TSConstructSignatureDeclaration
+      | TSMethodSignature
+      | TSInterfaceHeritage
+      | TSIndexSignature
+      | TSTypeAnnotation
+      | TSTypeParameterDeclaration
+      | TSTypeParameter;
   }
 
   export {}; // only export exports
