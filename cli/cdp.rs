@@ -291,8 +291,10 @@ pub type UnserializableValue = String;
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setScriptSource>
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SetScriptSourceResponse {
   pub status: Status,
+  pub exception_details: Option<ExceptionDetails>,
 }
 
 #[derive(Debug, Deserialize)]
