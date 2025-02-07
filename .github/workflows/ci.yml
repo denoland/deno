@@ -338,6 +338,7 @@ jobs:
           __1
           CC=/usr/bin/clang-19
           CFLAGS=$CFLAGS
+          PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR
           " > $GITHUB_ENV
       - name: Remove macOS cURL --ipv4 flag
         run: |-

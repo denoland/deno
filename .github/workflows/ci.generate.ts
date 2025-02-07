@@ -161,6 +161,7 @@ RUSTDOCFLAGS<<__1
 __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=$CFLAGS
+PKG_CONFIG_LIBDIR=$PKG_CONFIG_LIBDIR
 " > $GITHUB_ENV`,
 };
 
