@@ -1369,13 +1369,13 @@ declare namespace Deno {
      * @experimental
      */
     export interface Fixer {
-      insertTextAfter(node: AstNode, text: string): FixData;
+      insertTextAfter(node: Node, text: string): FixData;
       insertTextAfterRange(range: Range, text: string): FixData;
-      insertTextBefore(node: AstNode, text: string): FixData;
+      insertTextBefore(node: Node, text: string): FixData;
       insertTextBeforeRange(range: Range, text: string): FixData;
-      remove(node: AstNode): FixData;
+      remove(node: Node): FixData;
       removeRange(range: Range): FixData;
-      replaceText(node: AstNode, text: string): FixData;
+      replaceText(node: Node, text: string): FixData;
       replaceTextRange(range: Range, text: string): FixData;
     }
 
@@ -1384,7 +1384,7 @@ declare namespace Deno {
      * @experimental
      */
     export interface ReportData {
-      node?: AstNode;
+      node?: Node;
       range?: Range;
       message: string;
       hint?: string;
@@ -1406,11 +1406,11 @@ declare namespace Deno {
      */
     export type LintVisitor =
       & {
-        [P in AstNode["type"]]?: (node: Extract<AstNode, { type: P }>) => void;
+        [P in Node["type"]]?: (node: Extract<Node, { type: P }>) => void;
       }
       & {
-        [P in AstNode["type"] as `${P}:exit`]?: (
-          node: Extract<AstNode, { type: P }>,
+        [P in Node["type"] as `${P}:exit`]?: (
+          node: Extract<Node, { type: P }>,
         ) => void;
       }
       & // Custom selectors which cannot be typed by us
@@ -3842,7 +3842,7 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export type AstNode =
+    export type Node =
       | Expression
       | Statement
       | TypeNode
