@@ -642,6 +642,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  client.read_diagnostics();
 
   let uri = temp_dir.url().join("a.ts").unwrap();
 
@@ -703,6 +704,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -728,7 +730,6 @@ fn lsp_import_map_config_file_auto_discovered() {
       }
     })
   );
-  assert_eq!(client.read_diagnostics().all().len(), 0);
 
   client.shutdown();
 }
@@ -1120,6 +1121,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
@@ -1269,6 +1271,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1290,6 +1293,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1311,6 +1315,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1332,6 +1337,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -7620,6 +7626,7 @@ fn lsp_quote_style_from_workspace_settings() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
 
   let res = client.write_request("textDocument/codeAction", code_action_params);
   // Expect double quotes in the auto-import.
@@ -17372,6 +17379,7 @@ fn compiler_options_types() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     eprintln!("{:#?}", diagnostics.all());
@@ -17445,6 +17453,7 @@ fn type_reference_import_meta() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     assert_eq!(diagnostics.all().len(), 0);
