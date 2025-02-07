@@ -1395,7 +1395,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
     .map(|(k, v)| {
       let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(specifier.clone(), v);
+      let asset = AssetDocument::new(specifier.clone(), v.get());
       (specifier, asset)
     })
     .collect::<AssetsMap>();
@@ -4953,11 +4953,10 @@ deno_core::extension!(deno_tsc,
   },
   customizer = |ext: &mut deno_core::Extension| {
     use deno_core::ExtensionFileSource;
-    use crate::tsc::ascii_str_include_unsafe;
-    ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_tsc/99_main_compiler.js", ascii_str_include_unsafe!("../tsc/99_main_compiler.js")));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_tsc/97_ts_host.js", ascii_str_include_unsafe!("../tsc/97_ts_host.js")));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_tsc/98_lsp.js", ascii_str_include_unsafe!("../tsc/98_lsp.js")));
-    ext.js_files.to_mut().push(ExtensionFileSource::new("ext:deno_tsc/00_typescript.js", ascii_str_include_unsafe!("../tsc/00_typescript.js")));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_COMPRESSED.get()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_COMPRESSED.get()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_COMPRESSED.get()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_COMPRESSED.get()));
     ext.esm_entry_point = Some("ext:deno_tsc/99_main_compiler.js");
 }
 );

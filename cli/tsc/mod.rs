@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::OnceLock;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
@@ -104,25 +105,38 @@ fn get_asset_texts() -> Result<Vec<AssetText>, AnyError> {
   Ok(out)
 }
 
-macro_rules! inc {
-  ($e:expr) => {
-    include_str!(concat!("./dts/", $e))
-  };
-}
-
-macro_rules! lib {
-  ($e: expr) => {
-    ($e, inc!($e))
-  };
-}
-
-macro_rules! ext_lib {
+macro_rules! compressed_lib {
   ($name: expr, $file: expr) => {
     (
       $name,
-      include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ext/", $file,)),
+      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
+        concat!(env!("OUT_DIR"), "/", $file, ".zstd")
+      ))),
     )
   };
+  ($e: expr) => {
+    compressed_lib!($e, $e)
+  };
+}
+
+#[derive(Clone)]
+pub enum StaticAssetSource {
+  Compressed(CompressedSource),
+  Uncompressed(&'static str),
+}
+
+impl StaticAssetSource {
+  pub fn get(&self) -> Cow<'static, str> {
+    match self {
+      StaticAssetSource::Compressed(compressed_source) => {
+        Cow::Owned(String::from(&*compressed_source.get()))
+      }
+      StaticAssetSource::Uncompressed(src) => Cow::Borrowed(src),
+    }
+  }
+  pub fn to_string(&self) -> String {
+    self.get().into()
+  }
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
@@ -130,136 +144,133 @@ macro_rules! ext_lib {
 /// We lazily load these because putting them in the compiler snapshot will
 /// increase memory usage when not used (last time checked by about 0.5MB).
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
-  HashMap<&'static str, &'static str>,
+  HashMap<&'static str, StaticAssetSource>,
 > = Lazy::new(|| {
   ([
-    ("lib.deno.webgpu.d.ts", inc!("lib.deno_webgpu.d.ts")),
-    ext_lib!("lib.deno.console.d.ts", "console/lib.deno_console.d.ts"),
-    ext_lib!("lib.deno.url.d.ts", "url/lib.deno_url.d.ts"),
-    ext_lib!("lib.deno.web.d.ts", "web/lib.deno_web.d.ts"),
-    ext_lib!("lib.deno.fetch.d.ts", "fetch/lib.deno_fetch.d.ts"),
-    ext_lib!(
-      "lib.deno.websocket.d.ts",
-      "websocket/lib.deno_websocket.d.ts"
-    ),
-    ext_lib!(
-      "lib.deno.webstorage.d.ts",
-      "webstorage/lib.deno_webstorage.d.ts"
-    ),
-    ext_lib!("lib.deno.canvas.d.ts", "canvas/lib.deno_canvas.d.ts"),
-    ext_lib!("lib.deno.crypto.d.ts", "crypto/lib.deno_crypto.d.ts"),
-    ext_lib!(
+    // compressed in build.rs
+    compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
+    compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
+    compressed_lib!("lib.deno.web.d.ts", "lib.deno_web.d.ts"),
+    compressed_lib!("lib.deno.fetch.d.ts", "lib.deno_fetch.d.ts"),
+    compressed_lib!("lib.deno.websocket.d.ts", "lib.deno_websocket.d.ts"),
+    compressed_lib!("lib.deno.webstorage.d.ts", "lib.deno_webstorage.d.ts"),
+    compressed_lib!("lib.deno.canvas.d.ts", "lib.deno_canvas.d.ts"),
+    compressed_lib!("lib.deno.crypto.d.ts", "lib.deno_crypto.d.ts"),
+    compressed_lib!(
       "lib.deno.broadcast_channel.d.ts",
-      "broadcast_channel/lib.deno_broadcast_channel.d.ts"
+      "lib.deno_broadcast_channel.d.ts"
     ),
-    ext_lib!("lib.deno.net.d.ts", "net/lib.deno_net.d.ts"),
-    ext_lib!("lib.deno.cache.d.ts", "cache/lib.deno_cache.d.ts"),
-    lib!("lib.deno.window.d.ts"),
-    lib!("lib.deno.worker.d.ts"),
-    lib!("lib.deno.shared_globals.d.ts"),
-    lib!("lib.deno.ns.d.ts"),
-    lib!("lib.deno.unstable.d.ts"),
-    lib!("lib.decorators.d.ts"),
-    lib!("lib.decorators.legacy.d.ts"),
-    lib!("lib.dom.asynciterable.d.ts"),
-    lib!("lib.dom.d.ts"),
-    lib!("lib.dom.extras.d.ts"),
-    lib!("lib.dom.iterable.d.ts"),
-    lib!("lib.es2015.collection.d.ts"),
-    lib!("lib.es2015.core.d.ts"),
-    lib!("lib.es2015.d.ts"),
-    lib!("lib.es2015.generator.d.ts"),
-    lib!("lib.es2015.iterable.d.ts"),
-    lib!("lib.es2015.promise.d.ts"),
-    lib!("lib.es2015.proxy.d.ts"),
-    lib!("lib.es2015.reflect.d.ts"),
-    lib!("lib.es2015.symbol.d.ts"),
-    lib!("lib.es2015.symbol.wellknown.d.ts"),
-    lib!("lib.es2016.array.include.d.ts"),
-    lib!("lib.es2016.d.ts"),
-    lib!("lib.es2016.full.d.ts"),
-    lib!("lib.es2016.intl.d.ts"),
-    lib!("lib.es2017.arraybuffer.d.ts"),
-    lib!("lib.es2017.d.ts"),
-    lib!("lib.es2017.date.d.ts"),
-    lib!("lib.es2017.full.d.ts"),
-    lib!("lib.es2017.intl.d.ts"),
-    lib!("lib.es2017.object.d.ts"),
-    lib!("lib.es2017.sharedmemory.d.ts"),
-    lib!("lib.es2017.string.d.ts"),
-    lib!("lib.es2017.typedarrays.d.ts"),
-    lib!("lib.es2018.asyncgenerator.d.ts"),
-    lib!("lib.es2018.asynciterable.d.ts"),
-    lib!("lib.es2018.d.ts"),
-    lib!("lib.es2018.full.d.ts"),
-    lib!("lib.es2018.intl.d.ts"),
-    lib!("lib.es2018.promise.d.ts"),
-    lib!("lib.es2018.regexp.d.ts"),
-    lib!("lib.es2019.array.d.ts"),
-    lib!("lib.es2019.d.ts"),
-    lib!("lib.es2019.full.d.ts"),
-    lib!("lib.es2019.intl.d.ts"),
-    lib!("lib.es2019.object.d.ts"),
-    lib!("lib.es2019.string.d.ts"),
-    lib!("lib.es2019.symbol.d.ts"),
-    lib!("lib.es2020.bigint.d.ts"),
-    lib!("lib.es2020.d.ts"),
-    lib!("lib.es2020.date.d.ts"),
-    lib!("lib.es2020.full.d.ts"),
-    lib!("lib.es2020.intl.d.ts"),
-    lib!("lib.es2020.number.d.ts"),
-    lib!("lib.es2020.promise.d.ts"),
-    lib!("lib.es2020.sharedmemory.d.ts"),
-    lib!("lib.es2020.string.d.ts"),
-    lib!("lib.es2020.symbol.wellknown.d.ts"),
-    lib!("lib.es2021.d.ts"),
-    lib!("lib.es2021.full.d.ts"),
-    lib!("lib.es2021.intl.d.ts"),
-    lib!("lib.es2021.promise.d.ts"),
-    lib!("lib.es2021.string.d.ts"),
-    lib!("lib.es2021.weakref.d.ts"),
-    lib!("lib.es2022.array.d.ts"),
-    lib!("lib.es2022.d.ts"),
-    lib!("lib.es2022.error.d.ts"),
-    lib!("lib.es2022.full.d.ts"),
-    lib!("lib.es2022.intl.d.ts"),
-    lib!("lib.es2022.object.d.ts"),
-    lib!("lib.es2022.regexp.d.ts"),
-    lib!("lib.es2022.string.d.ts"),
-    lib!("lib.es2023.array.d.ts"),
-    lib!("lib.es2023.collection.d.ts"),
-    lib!("lib.es2023.d.ts"),
-    lib!("lib.es2023.full.d.ts"),
-    lib!("lib.es2023.intl.d.ts"),
-    lib!("lib.es2024.arraybuffer.d.ts"),
-    lib!("lib.es2024.collection.d.ts"),
-    lib!("lib.es2024.d.ts"),
-    lib!("lib.es2024.full.d.ts"),
-    lib!("lib.es2024.object.d.ts"),
-    lib!("lib.es2024.promise.d.ts"),
-    lib!("lib.es2024.regexp.d.ts"),
-    lib!("lib.es2024.sharedmemory.d.ts"),
-    lib!("lib.es2024.string.d.ts"),
-    lib!("lib.es5.d.ts"),
-    lib!("lib.es6.d.ts"),
-    lib!("lib.esnext.array.d.ts"),
-    lib!("lib.esnext.collection.d.ts"),
-    lib!("lib.esnext.d.ts"),
-    lib!("lib.esnext.decorators.d.ts"),
-    lib!("lib.esnext.disposable.d.ts"),
-    lib!("lib.esnext.full.d.ts"),
-    lib!("lib.esnext.intl.d.ts"),
-    lib!("lib.esnext.iterator.d.ts"),
-    lib!("lib.scripthost.d.ts"),
-    lib!("lib.webworker.asynciterable.d.ts"),
-    lib!("lib.webworker.d.ts"),
-    lib!("lib.webworker.importscripts.d.ts"),
-    lib!("lib.webworker.iterable.d.ts"),
+    compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
+    compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
+    compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
+    compressed_lib!("lib.deno.window.d.ts"),
+    compressed_lib!("lib.deno.worker.d.ts"),
+    compressed_lib!("lib.deno.shared_globals.d.ts"),
+    compressed_lib!("lib.deno.ns.d.ts"),
+    compressed_lib!("lib.deno.unstable.d.ts"),
+    compressed_lib!("lib.decorators.d.ts"),
+    compressed_lib!("lib.decorators.legacy.d.ts"),
+    compressed_lib!("lib.dom.asynciterable.d.ts"),
+    compressed_lib!("lib.dom.d.ts"),
+    compressed_lib!("lib.dom.extras.d.ts"),
+    compressed_lib!("lib.dom.iterable.d.ts"),
+    compressed_lib!("lib.es2015.collection.d.ts"),
+    compressed_lib!("lib.es2015.core.d.ts"),
+    compressed_lib!("lib.es2015.d.ts"),
+    compressed_lib!("lib.es2015.generator.d.ts"),
+    compressed_lib!("lib.es2015.iterable.d.ts"),
+    compressed_lib!("lib.es2015.promise.d.ts"),
+    compressed_lib!("lib.es2015.proxy.d.ts"),
+    compressed_lib!("lib.es2015.reflect.d.ts"),
+    compressed_lib!("lib.es2015.symbol.d.ts"),
+    compressed_lib!("lib.es2015.symbol.wellknown.d.ts"),
+    compressed_lib!("lib.es2016.array.include.d.ts"),
+    compressed_lib!("lib.es2016.d.ts"),
+    compressed_lib!("lib.es2016.full.d.ts"),
+    compressed_lib!("lib.es2016.intl.d.ts"),
+    compressed_lib!("lib.es2017.arraybuffer.d.ts"),
+    compressed_lib!("lib.es2017.d.ts"),
+    compressed_lib!("lib.es2017.date.d.ts"),
+    compressed_lib!("lib.es2017.full.d.ts"),
+    compressed_lib!("lib.es2017.intl.d.ts"),
+    compressed_lib!("lib.es2017.object.d.ts"),
+    compressed_lib!("lib.es2017.sharedmemory.d.ts"),
+    compressed_lib!("lib.es2017.string.d.ts"),
+    compressed_lib!("lib.es2017.typedarrays.d.ts"),
+    compressed_lib!("lib.es2018.asyncgenerator.d.ts"),
+    compressed_lib!("lib.es2018.asynciterable.d.ts"),
+    compressed_lib!("lib.es2018.d.ts"),
+    compressed_lib!("lib.es2018.full.d.ts"),
+    compressed_lib!("lib.es2018.intl.d.ts"),
+    compressed_lib!("lib.es2018.promise.d.ts"),
+    compressed_lib!("lib.es2018.regexp.d.ts"),
+    compressed_lib!("lib.es2019.array.d.ts"),
+    compressed_lib!("lib.es2019.d.ts"),
+    compressed_lib!("lib.es2019.full.d.ts"),
+    compressed_lib!("lib.es2019.intl.d.ts"),
+    compressed_lib!("lib.es2019.object.d.ts"),
+    compressed_lib!("lib.es2019.string.d.ts"),
+    compressed_lib!("lib.es2019.symbol.d.ts"),
+    compressed_lib!("lib.es2020.bigint.d.ts"),
+    compressed_lib!("lib.es2020.d.ts"),
+    compressed_lib!("lib.es2020.date.d.ts"),
+    compressed_lib!("lib.es2020.full.d.ts"),
+    compressed_lib!("lib.es2020.intl.d.ts"),
+    compressed_lib!("lib.es2020.number.d.ts"),
+    compressed_lib!("lib.es2020.promise.d.ts"),
+    compressed_lib!("lib.es2020.sharedmemory.d.ts"),
+    compressed_lib!("lib.es2020.string.d.ts"),
+    compressed_lib!("lib.es2020.symbol.wellknown.d.ts"),
+    compressed_lib!("lib.es2021.d.ts"),
+    compressed_lib!("lib.es2021.full.d.ts"),
+    compressed_lib!("lib.es2021.intl.d.ts"),
+    compressed_lib!("lib.es2021.promise.d.ts"),
+    compressed_lib!("lib.es2021.string.d.ts"),
+    compressed_lib!("lib.es2021.weakref.d.ts"),
+    compressed_lib!("lib.es2022.array.d.ts"),
+    compressed_lib!("lib.es2022.d.ts"),
+    compressed_lib!("lib.es2022.error.d.ts"),
+    compressed_lib!("lib.es2022.full.d.ts"),
+    compressed_lib!("lib.es2022.intl.d.ts"),
+    compressed_lib!("lib.es2022.object.d.ts"),
+    compressed_lib!("lib.es2022.regexp.d.ts"),
+    compressed_lib!("lib.es2022.string.d.ts"),
+    compressed_lib!("lib.es2023.array.d.ts"),
+    compressed_lib!("lib.es2023.collection.d.ts"),
+    compressed_lib!("lib.es2023.d.ts"),
+    compressed_lib!("lib.es2023.full.d.ts"),
+    compressed_lib!("lib.es2023.intl.d.ts"),
+    compressed_lib!("lib.es2024.arraybuffer.d.ts"),
+    compressed_lib!("lib.es2024.collection.d.ts"),
+    compressed_lib!("lib.es2024.d.ts"),
+    compressed_lib!("lib.es2024.full.d.ts"),
+    compressed_lib!("lib.es2024.object.d.ts"),
+    compressed_lib!("lib.es2024.promise.d.ts"),
+    compressed_lib!("lib.es2024.regexp.d.ts"),
+    compressed_lib!("lib.es2024.sharedmemory.d.ts"),
+    compressed_lib!("lib.es2024.string.d.ts"),
+    compressed_lib!("lib.es5.d.ts"),
+    compressed_lib!("lib.es6.d.ts"),
+    compressed_lib!("lib.esnext.array.d.ts"),
+    compressed_lib!("lib.esnext.collection.d.ts"),
+    compressed_lib!("lib.esnext.d.ts"),
+    compressed_lib!("lib.esnext.decorators.d.ts"),
+    compressed_lib!("lib.esnext.disposable.d.ts"),
+    compressed_lib!("lib.esnext.full.d.ts"),
+    compressed_lib!("lib.esnext.intl.d.ts"),
+    compressed_lib!("lib.esnext.iterator.d.ts"),
+    compressed_lib!("lib.scripthost.d.ts"),
+    compressed_lib!("lib.webworker.asynciterable.d.ts"),
+    compressed_lib!("lib.webworker.d.ts"),
+    compressed_lib!("lib.webworker.importscripts.d.ts"),
+    compressed_lib!("lib.webworker.iterable.d.ts"),
     (
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
       "node_types.d.ts",
-      "/// <reference types=\"npm:@types/node\" />\n",
+      StaticAssetSource::Uncompressed(
+        "/// <reference types=\"npm:@types/node\" />\n",
+      ),
     ),
   ])
   .iter()
@@ -309,8 +320,8 @@ pub struct AssetText {
 }
 
 /// Retrieve a static asset that are included in the binary.
-fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
-  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.to_owned())
+fn get_lazily_loaded_asset(asset: &str) -> Option<Cow<'static, str>> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.get())
 }
 
 fn get_maybe_hash(
@@ -668,9 +679,9 @@ fn op_load_inner(
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
     let maybe_source = get_lazily_loaded_asset(name);
-    hash = get_maybe_hash(maybe_source, state.hash_data);
+    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     media_type = MediaType::from_str(load_specifier);
-    maybe_source.map(Cow::Borrowed)
+    maybe_source
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -1165,22 +1176,54 @@ pub enum ExecError {
   Core(deno_core::error::CoreError),
 }
 
-// using `deno_core::ascii_str_include` makes compile times explode
-// because it checks whether the source is ascii at compile time.
-// TODO(nathanwhit): add a test that asserts that the sources are actually ascii
-macro_rules! _ascii_str_include_unsafe {
-  ($file:expr) => {{
-    // SAFETY: not really safe, TODO(nathanwhit)
-    const STR: deno_core::v8::OneByteConst = unsafe {
-      deno_core::v8::String::create_external_onebyte_const_unchecked(
-        ::std::include_str!($file).as_bytes(),
-      )
-    };
-    let s: &'static deno_core::v8::OneByteConst = &STR;
-    deno_core::FastStaticString::new(s)
-  }};
+#[derive(Clone)]
+pub(crate) struct CompressedSource {
+  bytes: &'static [u8],
+  uncompressed: OnceLock<Arc<str>>,
 }
-pub(crate) use _ascii_str_include_unsafe as ascii_str_include_unsafe;
+
+impl CompressedSource {
+  pub(crate) const fn new(bytes: &'static [u8]) -> Self {
+    Self {
+      bytes,
+      uncompressed: OnceLock::new(),
+    }
+  }
+  pub(crate) fn get(&self) -> Arc<str> {
+    self
+      .uncompressed
+      .get_or_init(|| decompress_source(self.bytes))
+      .clone()
+  }
+}
+
+macro_rules! compressed_source {
+  ($file: literal) => {
+    CompressedSource::new(include_bytes!(concat!(
+      env!("OUT_DIR"),
+      "/",
+      $file,
+      ".zstd"
+    )))
+  };
+}
+
+pub(crate) static MAIN_COMPILER_COMPRESSED: CompressedSource =
+  compressed_source!("99_main_compiler.js");
+pub(crate) static LSP_COMPRESSED: CompressedSource =
+  compressed_source!("98_lsp.js");
+pub(crate) static TS_HOST_COMPRESSED: CompressedSource =
+  compressed_source!("97_ts_host.js");
+pub(crate) static TYPESCRIPT_COMPRESSED: CompressedSource =
+  compressed_source!("00_typescript.js");
+
+pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
+  let len_bytes = contents[0..4].try_into().unwrap();
+  let len = u32::from_le_bytes(len_bytes);
+  let uncompressed =
+    zstd::bulk::decompress(&contents[4..], len as usize).unwrap();
+  String::from_utf8(uncompressed).unwrap().into()
+}
 
 deno_core::extension!(deno_cli_tsc,
   ops = [
@@ -1213,10 +1256,10 @@ deno_core::extension!(deno_cli_tsc,
   },
   customizer = |ext: &mut deno_core::Extension| {
       use deno_core::ExtensionFileSource;
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_cli_tsc/99_main_compiler.js", ascii_str_include_unsafe!("./99_main_compiler.js")));
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_cli_tsc/97_ts_host.js", ascii_str_include_unsafe!("./97_ts_host.js")));
-      ext.esm_files.to_mut().push(ExtensionFileSource::new("ext:deno_cli_tsc/98_lsp.js", ascii_str_include_unsafe!("./98_lsp.js")));
-      ext.js_files.to_mut().push(ExtensionFileSource::new("ext:deno_cli_tsc/00_typescript.js", ascii_str_include_unsafe!("./00_typescript.js")));
+      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", MAIN_COMPILER_COMPRESSED.get()));
+      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", TS_HOST_COMPRESSED.get()));
+      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", LSP_COMPRESSED.get()));
+      ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", TYPESCRIPT_COMPRESSED.get()));
       ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
   }
 );
