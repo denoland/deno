@@ -383,6 +383,7 @@ fn lsp_import_map_remote() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -829,6 +830,7 @@ fn lsp_deno_json_imports_comments_cache() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -920,6 +922,7 @@ fn lsp_format_vendor_path() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   assert!(temp_dir
     .path()
     .join("vendor/http_localhost_4545/run/002_hello.ts")
@@ -2781,6 +2784,7 @@ fn lsp_hover_dependency() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3165,6 +3169,7 @@ fn lsp_hover_typescript_types() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3214,6 +3219,7 @@ fn lsp_hover_jsr() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -5736,6 +5742,7 @@ fn lsp_jsr_auto_import_completion() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5815,6 +5822,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5954,6 +5962,7 @@ fn lsp_jsr_code_action_missing_declaration() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let res = client.write_request(
     "textDocument/codeAction",
@@ -6074,6 +6083,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let list = client
     .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
@@ -6493,6 +6503,7 @@ fn lsp_code_actions_deno_types_for_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
@@ -6660,6 +6671,7 @@ fn lsp_cache_then_definition() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -8093,6 +8105,7 @@ fn lsp_completions_auto_import_node_builtin() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -8887,6 +8900,7 @@ fn lsp_npm_types_nested_js_dts() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -8986,6 +9000,7 @@ fn lsp_npm_always_caches() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // now open a new file and chalk should be working
   let new_file_uri = temp_dir_path.join("new_file.ts").url_file();
@@ -9961,6 +9976,7 @@ fn lsp_auto_imports_remote_dts() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -10263,6 +10279,7 @@ fn lsp_completions_node_builtin() {
       "arguments": [["npm:@types/node"], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
 
   client.write_notification(
     "textDocument/didChange",
@@ -10330,6 +10347,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   client.write_notification(
     "textDocument/didChange",
     json!({
@@ -10565,6 +10583,7 @@ fn lsp_cache_location() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10659,6 +10678,7 @@ fn lsp_tls_cert() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10757,6 +10777,7 @@ fn lsp_npmrc() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -11153,6 +11174,7 @@ fn lsp_root_with_global_reference_types() {
       "arguments": [[], file2.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
 }
@@ -13194,6 +13216,7 @@ export function B() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -13216,10 +13239,6 @@ export function B() {
       }
     })
   );
-
-  let diagnostics = client.read_diagnostics();
-  println!("{:?}", diagnostics);
-
   client.shutdown();
 }
 
@@ -14045,6 +14064,7 @@ fn lsp_node_modules_dir() {
   };
 
   cache(&mut client);
+  client.read_diagnostics();
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
@@ -14083,6 +14103,7 @@ fn lsp_node_modules_dir() {
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
+  client.read_diagnostics();
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
@@ -14542,6 +14563,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14592,6 +14614,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14642,6 +14665,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14725,6 +14749,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14778,6 +14803,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14828,6 +14854,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15807,6 +15834,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15878,6 +15906,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
