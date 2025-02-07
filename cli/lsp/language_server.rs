@@ -2259,6 +2259,7 @@ impl Inner {
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
@@ -2282,11 +2283,30 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get definition info from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
 
     if let Some(definition) = maybe_definition {
-      let results = definition.to_definition(line_index, self);
+      let results =
+        definition
+          .to_definition(line_index, self, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to convert definition info: {:#}", err);
+              LspError::internal_error()
+            }
+          })?;
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -2298,6 +2318,7 @@ impl Inner {
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
@@ -2321,12 +2342,27 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Unable to get type definition info from TypeScript: {:#}",
+            err
+          );
+          LspError::internal_error()
+        }
+      })?;
 
     let response = if let Some(definition_info) = maybe_definition_info {
       let mut location_links = Vec::new();
       for info in definition_info {
+        if token.is_cancelled() {
+          return Err(LspError::request_cancelled());
+        }
         if let Some(link) = info.document_span.to_link(line_index.clone(), self)
         {
           location_links.push(link);
@@ -2470,6 +2506,7 @@ impl Inner {
   async fn completion_resolve(
     &self,
     params: CompletionItem,
+    token: &CancellationToken,
   ) -> LspResult<CompletionItem> {
     let mark = self
       .performance
@@ -2506,6 +2543,7 @@ impl Inner {
               ..data.into()
             },
             scope,
+            token,
           )
           .await;
         match result {
@@ -2582,7 +2620,10 @@ impl Inner {
         if token.is_cancelled() {
           LspError::request_cancelled()
         } else {
-          lsp_warn!("{:#}", err);
+          lsp_warn!(
+            "Unable to get implementation locations from TypeScript: {:#}",
+            err
+          );
           LspError::internal_error()
         }
       })?;
@@ -2609,6 +2650,7 @@ impl Inner {
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     let specifier = self
       .url_map
@@ -2630,21 +2672,33 @@ impl Inner {
         self.snapshot(),
         specifier,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to get outlining spans from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
 
     let response = if !outlining_spans.is_empty() {
       Some(
         outlining_spans
           .iter()
           .map(|span| {
-            span.to_folding_range(
+            if token.is_cancelled() {
+              return Err(LspError::request_cancelled());
+            }
+            Ok(span.to_folding_range(
               asset_or_doc.line_index(),
               asset_or_doc.text().as_bytes(),
               self.config.line_folding_only_capable(),
-            )
+            ))
           })
-          .collect::<Vec<FoldingRange>>(),
+          .collect::<Result<Vec<_>, _>>()?,
       )
     } else {
       None
@@ -2656,6 +2710,7 @@ impl Inner {
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     let specifier = self
       .url_map
@@ -2678,11 +2733,16 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
+        token,
       )
       .await
       .map_err(|err| {
-        lsp_warn!("{:#}", err);
-        LspError::internal_error()
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to get incoming calls from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
       })?;
 
     let maybe_root_path_owned = self
@@ -2691,6 +2751,9 @@ impl Inner {
       .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyIncomingCall>::new();
     for item in incoming_calls.iter() {
+      if token.is_cancelled() {
+        return Err(LspError::request_cancelled());
+      }
       if let Some(resolved) = item.try_resolve_call_hierarchy_incoming_call(
         self,
         maybe_root_path_owned.as_deref(),
@@ -2705,6 +2768,7 @@ impl Inner {
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     let specifier = self
       .url_map
@@ -2728,8 +2792,17 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.item.selection_range.start)?,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to get outgoing calls from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
 
     let maybe_root_path_owned = self
       .config
@@ -2737,6 +2810,9 @@ impl Inner {
       .and_then(|uri| url_to_file_path(uri).ok());
     let mut resolved_items = Vec::<CallHierarchyOutgoingCall>::new();
     for item in outgoing_calls.iter() {
+      if token.is_cancelled() {
+        return Err(LspError::request_cancelled());
+      }
       if let Some(resolved) = item.try_resolve_call_hierarchy_outgoing_call(
         line_index.clone(),
         self,
@@ -3598,7 +3674,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.goto_definition(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.goto_definition(params, &token).await
+      })
+      .await
   }
 
   async fn goto_type_definition(
@@ -3608,7 +3689,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.goto_type_definition(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .goto_type_definition(params, &token)
+          .await
+      })
+      .await
   }
 
   async fn completion(
@@ -3633,7 +3723,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.completion_resolve(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .completion_resolve(params, &token)
+          .await
+      })
+      .await
   }
 
   async fn goto_implementation(
@@ -3662,7 +3761,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.folding_range(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.folding_range(params, &token).await
+      })
+      .await
   }
 
   async fn incoming_calls(
@@ -3672,7 +3776,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.incoming_calls(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.incoming_calls(params, &token).await
+      })
+      .await
   }
 
   async fn outgoing_calls(
@@ -3682,7 +3791,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.outgoing_calls(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.outgoing_calls(params, &token).await
+      })
+      .await
   }
 
   async fn prepare_call_hierarchy(

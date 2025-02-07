@@ -867,23 +867,22 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Option<DefinitionInfoAndBoundSpan>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<DefinitionInfoAndBoundSpan>, AnyError> {
     let req = TscRequest::GetDefinitionAndBoundSpan((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
     self
-      .request::<Option<DefinitionInfoAndBoundSpan>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<DefinitionInfoAndBoundSpan>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut info| {
         if let Some(info) = &mut info {
           info.normalize(&self.specifier_map)?;
         }
         Ok(info)
-      })
-      .map_err(|err| {
-        log::error!("Unable to get definition from TypeScript: {}", err);
-        LspError::internal_error()
       })
   }
 
@@ -893,23 +892,25 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Option<Vec<DefinitionInfo>>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<DefinitionInfo>>, AnyError> {
     let req = TscRequest::GetTypeDefinitionAtPosition((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
     self
-      .request::<Option<Vec<DefinitionInfo>>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<Vec<DefinitionInfo>>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut infos| {
         for info in infos.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
           info.normalize(&self.specifier_map)?;
         }
         Ok(infos)
-      })
-      .map_err(|err| {
-        log::error!("Unable to get type definition from TypeScript: {}", err);
-        LspError::internal_error()
       })
   }
 
@@ -948,6 +949,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     args: GetCompletionDetailsArgs,
     scope: Option<ModuleSpecifier>,
+    token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
       self.specifier_map.denormalize(&args.specifier),
@@ -959,7 +961,9 @@ impl TsServer {
       args.data,
     )));
     self
-      .request::<Option<CompletionEntryDetails>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<CompletionEntryDetails>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut details| {
         if let Some(details) = &mut details {
@@ -1030,14 +1034,14 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Vec<OutliningSpan>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Vec<OutliningSpan>, AnyError> {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
       .denormalize(&specifier),));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn provide_call_hierarchy_incoming_calls(
@@ -1045,6 +1049,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
       self.specifier_map.denormalize(&specifier),
@@ -1069,13 +1074,18 @@ impl TsServer {
     while let Some(calls) = results.next().await {
       let mut calls = calls
         .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
+          if !token.is_cancelled() {
+            let err = err.to_string();
+            if !err.contains("Could not find source file") {
+              lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
+            }
           }
         })
         .unwrap_or_default();
       for call in &mut calls {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         call.normalize(&self.specifier_map)?;
       }
       all_calls.extend(calls)
@@ -1089,23 +1099,25 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Vec<CallHierarchyOutgoingCall>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Vec<CallHierarchyOutgoingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyOutgoingCalls((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
     self
-      .request::<Vec<CallHierarchyOutgoingCall>>(snapshot, req, scope)
+      .request_with_cancellation::<Vec<CallHierarchyOutgoingCall>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut calls| {
         for call in &mut calls {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
           call.normalize(&self.specifier_map)?;
         }
         Ok(calls)
-      })
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
       })
   }
 
@@ -2683,10 +2695,14 @@ impl DefinitionInfoAndBoundSpan {
     &self,
     line_index: Arc<LineIndex>,
     language_server: &language_server::Inner,
-  ) -> Option<lsp::GotoDefinitionResponse> {
+    token: &CancellationToken,
+  ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
     if let Some(definitions) = &self.definitions {
       let mut location_links = Vec::<lsp::LocationLink>::new();
       for di in definitions {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         if let Some(link) = di
           .document_span
           .to_link(line_index.clone(), language_server)
@@ -2694,9 +2710,9 @@ impl DefinitionInfoAndBoundSpan {
           location_links.push(link);
         }
       }
-      Some(lsp::GotoDefinitionResponse::Link(location_links))
+      Ok(Some(lsp::GotoDefinitionResponse::Link(location_links)))
     } else {
-      None
+      Ok(None)
     }
   }
 }
@@ -6285,6 +6301,7 @@ mod tests {
           data: None,
         },
         Some(temp_dir.url()),
+        &Default::default(),
       )
       .await
       .unwrap()
@@ -6488,6 +6505,7 @@ mod tests {
           data: entry.data.clone(),
         },
         Some(temp_dir.url()),
+        &Default::default(),
       )
       .await
       .unwrap()
