@@ -1990,7 +1990,7 @@ impl Inner {
               "Unable to get refactor edit info from TypeScript: {:#}",
               err
             );
-            LspError::internal_error()
+            LspError::invalid_request()
           }
         })?;
       if kind_suffix == ".rewrite.function.returnType"
@@ -2680,7 +2680,7 @@ impl Inner {
           LspError::request_cancelled()
         } else {
           lsp_warn!("Unable to get outlining spans from TypeScript: {:#}", err);
-          LspError::internal_error()
+          LspError::invalid_request()
         }
       })?;
 
@@ -2800,7 +2800,7 @@ impl Inner {
           LspError::request_cancelled()
         } else {
           lsp_warn!("Unable to get outgoing calls from TypeScript: {:#}", err);
-          LspError::internal_error()
+          LspError::invalid_request()
         }
       })?;
 
@@ -2828,6 +2828,7 @@ impl Inner {
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
@@ -2852,8 +2853,17 @@ impl Inner {
         specifier,
         line_index.offset_tsc(params.text_document_position_params.position)?,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to get call hierarchy from TypeScript: {:#}", err);
+          LspError::invalid_request()
+        }
+      })?;
 
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let maybe_root_path_owned = self
@@ -2872,6 +2882,9 @@ impl Inner {
         }
         tsc::OneOrMany::Many(items) => {
           for item in items.iter() {
+            if token.is_cancelled() {
+              return Err(LspError::request_cancelled());
+            }
             if let Some(resolved) = item.try_resolve_call_hierarchy_item(
               self,
               maybe_root_path_owned.as_deref(),
@@ -2892,6 +2905,7 @@ impl Inner {
   async fn rename(
     &self,
     params: RenameParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
@@ -2913,20 +2927,32 @@ impl Inner {
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
+        token,
       )
       .await
       .map_err(|err| {
-        lsp_warn!("{:#}", err);
-        LspError::internal_error()
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get rename locations from TypeScript: {:#}",
+            err
+          );
+          LspError::internal_error()
+        }
       })?;
 
     if let Some(locations) = maybe_locations {
       let rename_locations = tsc::RenameLocations { locations };
       let workspace_edits = rename_locations
-        .into_workspace_edit(&params.new_name, self)
+        .into_workspace_edit(&params.new_name, self, token)
         .map_err(|err| {
-          error!("Failed to get workspace edits: {:#}", err);
-          LspError::internal_error()
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            lsp_warn!("Unable to covert rename locations: {:#}", err);
+            LspError::internal_error()
+          }
         })?;
       self.performance.measure(mark);
       Ok(Some(workspace_edits))
@@ -2939,6 +2965,7 @@ impl Inner {
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     let specifier = self
       .url_map
@@ -2957,6 +2984,9 @@ impl Inner {
 
     let mut selection_ranges = Vec::<SelectionRange>::new();
     for position in params.positions {
+      if token.is_cancelled() {
+        return Err(LspError::request_cancelled());
+      }
       let selection_range: tsc::SelectionRange = self
         .ts_server
         .get_smart_selection_range(
@@ -2964,8 +2994,20 @@ impl Inner {
           specifier.clone(),
           line_index.offset_tsc(position)?,
           asset_or_doc.scope().cloned(),
+          token,
         )
-        .await?;
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            lsp_warn!(
+              "Unable to get selection ranges from TypeScript: {:#}",
+              err
+            );
+            LspError::invalid_request()
+          }
+        })?;
 
       selection_ranges
         .push(selection_range.to_selection_range(line_index.clone()));
@@ -2977,6 +3019,7 @@ impl Inner {
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<SemanticTokensResult>> {
     let specifier = self
       .url_map
@@ -3008,11 +3051,23 @@ impl Inner {
         specifier,
         0..line_index.text_content_length_utf16().into(),
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get semantic classifications from TypeScript: {:#}",
+            err
+          );
+          LspError::invalid_request()
+        }
+      })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index)?;
+      semantic_classification.to_semantic_tokens(line_index, token)?;
 
     if let Some(doc) = asset_or_doc.document() {
       doc.cache_semantic_tokens_full(semantic_tokens.clone());
@@ -3030,6 +3085,7 @@ impl Inner {
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     let specifier = self
       .url_map
@@ -3064,11 +3120,23 @@ impl Inner {
         line_index.offset_tsc(params.range.start)?
           ..line_index.offset_tsc(params.range.end)?,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get semantic classifications from TypeScript: {:#}",
+            err
+          );
+          LspError::invalid_request()
+        }
+      })?;
 
     let semantic_tokens =
-      semantic_classification.to_semantic_tokens(line_index)?;
+      semantic_classification.to_semantic_tokens(line_index, token)?;
     let response = if !semantic_tokens.data.is_empty() {
       Some(SemanticTokensRangeResult::Tokens(semantic_tokens))
     } else {
@@ -3081,6 +3149,7 @@ impl Inner {
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<SignatureHelp>> {
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
@@ -3117,11 +3186,32 @@ impl Inner {
         line_index.offset_tsc(params.text_document_position_params.position)?,
         options,
         asset_or_doc.scope().cloned(),
+        token,
       )
-      .await?;
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get signature help items from TypeScript: {:#}",
+            err
+          );
+          LspError::invalid_request()
+        }
+      })?;
 
     if let Some(signature_help_items) = maybe_signature_help_items {
-      let signature_help = signature_help_items.into_signature_help(self);
+      let signature_help = signature_help_items
+        .into_signature_help(self, token)
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            lsp_warn!("Unable to convert signature help items: {:#}", err);
+            LspError::internal_error()
+          }
+        })?;
       self.performance.measure(mark);
       Ok(Some(signature_help))
     } else {
@@ -3176,8 +3266,15 @@ impl Inner {
           )
           .await
           .map_err(|err| {
-            lsp_warn!("{:#}", err);
-            LspError::internal_error()
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              lsp_warn!(
+                "Unable to get edits for file rename from TypeScript: {:#}",
+                err
+              );
+              LspError::internal_error()
+            }
           })?,
       );
     }
@@ -3187,6 +3284,7 @@ impl Inner {
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
+    token: &CancellationToken,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
 
@@ -3200,11 +3298,19 @@ impl Inner {
           max_result_count: Some(256),
           file: None,
         },
+        token,
       )
       .await
       .map_err(|err| {
-        error!("{:#}", err);
-        LspError::invalid_request()
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!(
+            "Unable to get signature help items from TypeScript: {:#}",
+            err
+          );
+          LspError::invalid_request()
+        }
       })?;
 
     let maybe_symbol_information = if navigate_to_items.is_empty() {
@@ -3212,6 +3318,9 @@ impl Inner {
     } else {
       let mut symbol_information = Vec::new();
       for item in navigate_to_items {
+        if token.is_cancelled() {
+          return Err(LspError::request_cancelled());
+        }
         if let Some(info) = item.to_symbol_information(self) {
           symbol_information.push(info);
         }
@@ -3806,7 +3915,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.prepare_call_hierarchy(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .prepare_call_hierarchy(params, &token)
+          .await
+      })
+      .await
   }
 
   async fn rename(
@@ -3816,7 +3934,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.rename(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.rename(params, &token).await
+      })
+      .await
   }
 
   async fn selection_range(
@@ -3826,7 +3949,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.selection_range(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.selection_range(params, &token).await
+      })
+      .await
   }
 
   async fn semantic_tokens_full(
@@ -3836,7 +3964,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.semantic_tokens_full(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .semantic_tokens_full(params, &token)
+          .await
+      })
+      .await
   }
 
   async fn semantic_tokens_range(
@@ -3846,7 +3983,16 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.semantic_tokens_range(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner
+          .read()
+          .await
+          .semantic_tokens_range(params, &token)
+          .await
+      })
+      .await
   }
 
   async fn signature_help(
@@ -3856,7 +4002,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.signature_help(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.signature_help(params, &token).await
+      })
+      .await
   }
 
   async fn will_rename_files(
@@ -3885,7 +4036,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.symbol(params).await
+    let ls = self.clone();
+    self
+      .spawn_with_cancellation(move |token| async move {
+        ls.inner.read().await.symbol(params, &token).await
+      })
+      .await
   }
 }
 

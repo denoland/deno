@@ -1127,13 +1127,16 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Option<OneOrMany<CallHierarchyItem>>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<OneOrMany<CallHierarchyItem>>, AnyError> {
     let req = TscRequest::PrepareCallHierarchy((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
     self
-      .request::<Option<OneOrMany<CallHierarchyItem>>>(snapshot, req, scope)
+      .request_with_cancellation::<Option<OneOrMany<CallHierarchyItem>>>(
+        snapshot, req, scope, token,
+      )
       .await
       .and_then(|mut items| {
         match &mut items {
@@ -1149,10 +1152,6 @@ impl TsServer {
         }
         Ok(items)
       })
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   pub async fn find_rename_locations(
@@ -1160,6 +1159,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
       self.specifier_map.denormalize(&specifier),
@@ -1177,19 +1177,26 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(self.request::<Option<Vec<RenameLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-      ));
+      results.push_back(
+        self.request_with_cancellation::<Option<Vec<RenameLocation>>>(
+          snapshot.clone(),
+          req.clone(),
+          scope.cloned(),
+          token,
+        ),
+      );
     }
     let mut all_locations = IndexSet::new();
     while let Some(locations) = results.next().await {
       let locations = locations
         .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+          if !token.is_cancelled() {
+            let err = err.to_string();
+            if !err.contains("Could not find source file") {
+              lsp_warn!(
+                "Unable to get rename locations from TypeScript: {err}"
+              );
+            }
           }
         })
         .unwrap_or_default();
@@ -1197,6 +1204,9 @@ impl TsServer {
         continue;
       };
       for symbol in &mut locations {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         symbol.normalize(&self.specifier_map)?;
       }
       all_locations.extend(locations);
@@ -1213,15 +1223,15 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<SelectionRange, LspError> {
+    token: &CancellationToken,
+  ) -> Result<SelectionRange, AnyError> {
     let req = TscRequest::GetSmartSelectionRange((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn get_encoded_semantic_classifications(
@@ -1230,7 +1240,8 @@ impl TsServer {
     specifier: ModuleSpecifier,
     range: Range<u32>,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Classifications, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Classifications, AnyError> {
     let req = TscRequest::GetEncodedSemanticClassifications((
       self.specifier_map.denormalize(&specifier),
       TextSpan {
@@ -1239,10 +1250,9 @@ impl TsServer {
       },
       "2020",
     ));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Failed to request to tsserver {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn get_signature_help_items(
@@ -1252,22 +1262,23 @@ impl TsServer {
     position: u32,
     options: SignatureHelpItemsOptions,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Option<SignatureHelpItems>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<SignatureHelpItems>, AnyError> {
     let req = TscRequest::GetSignatureHelpItems((
       self.specifier_map.denormalize(&specifier),
       position,
       options,
     ));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Failed to request to tsserver: {}", err);
-      LspError::invalid_request()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn get_navigate_to_items(
     &self,
     snapshot: Arc<StateSnapshot>,
     args: GetNavigateToItemsArgs,
+    token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
       args.search,
@@ -1296,10 +1307,17 @@ impl TsServer {
     while let Some(items) = results.next().await {
       let mut items = items
         .inspect_err(|err| {
-          lsp_warn!("Unable to get 'navigate to' items from TypeScript: {err}");
+          if !token.is_cancelled() {
+            lsp_warn!(
+              "Unable to get 'navigate to' items from TypeScript: {err}"
+            );
+          }
         })
         .unwrap_or_default();
       for item in &mut items {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         item.normalize(&self.specifier_map)?;
       }
       all_items.extend(items)
@@ -2574,10 +2592,14 @@ impl RenameLocations {
     self,
     new_name: &str,
     language_server: &language_server::Inner,
+    token: &CancellationToken,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map = IndexMap::new();
     let mut includes_non_files = false;
     for location in self.locations.iter() {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
       let specifier = resolve_url(&location.document_span.file_name)?;
       if specifier.scheme() != "file" {
         includes_non_files = true;
@@ -2870,11 +2892,15 @@ impl Classifications {
   pub fn to_semantic_tokens(
     &self,
     line_index: Arc<LineIndex>,
+    token: &CancellationToken,
   ) -> LspResult<lsp::SemanticTokens> {
     // https://github.com/microsoft/vscode/blob/1.89.0/extensions/typescript-language-features/src/languageFeatures/semanticTokens.ts#L89-L115
     let token_count = self.spans.len() / 3;
     let mut builder = SemanticTokensBuilder::new();
     for i in 0..token_count {
+      if token.is_cancelled() {
+        return Err(LspError::request_cancelled());
+      }
       let src_offset = 3 * i;
       let offset = self.spans[src_offset];
       let length = self.spans[src_offset + 1];
@@ -4281,16 +4307,23 @@ impl SignatureHelpItems {
   pub fn into_signature_help(
     self,
     language_server: &language_server::Inner,
-  ) -> lsp::SignatureHelp {
-    lsp::SignatureHelp {
-      signatures: self
-        .items
-        .into_iter()
-        .map(|item| item.into_signature_information(language_server))
-        .collect(),
+    token: &CancellationToken,
+  ) -> Result<lsp::SignatureHelp, AnyError> {
+    let signatures = self
+      .items
+      .into_iter()
+      .map(|item| {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
+        Ok(item.into_signature_information(language_server))
+      })
+      .collect::<Result<_, _>>()?;
+    Ok(lsp::SignatureHelp {
+      signatures,
       active_parameter: Some(self.argument_index),
       active_signature: Some(self.selected_item_index),
-    }
+    })
   }
 }
 
@@ -6529,8 +6562,9 @@ mod tests {
     let classifications = Classifications {
       spans: vec![2, 6, 2057],
     };
-    let semantic_tokens =
-      classifications.to_semantic_tokens(line_index).unwrap();
+    let semantic_tokens = classifications
+      .to_semantic_tokens(line_index, &Default::default())
+      .unwrap();
     assert_eq!(
       &semantic_tokens.data,
       &[
