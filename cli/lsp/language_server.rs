@@ -138,6 +138,8 @@ pub struct LanguageServer {
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
   shutdown_flag: AsyncFlag,
+  /// This is used to move all request handling to a separate thread so blocking
+  /// code there won't block cancellations from being flagged.
   worker_thread: Arc<WorkerThread>,
 }
 
@@ -2631,7 +2633,12 @@ impl Inner {
             }
           }
           Err(err) => {
-            error!("Unable to get completion info from TypeScript: {:#}", err);
+            if !token.is_cancelled() {
+              error!(
+                "Unable to get completion info from TypeScript: {:#}",
+                err
+              );
+            }
             return Ok(params);
           }
         }
