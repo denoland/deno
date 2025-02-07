@@ -122,6 +122,12 @@ echo "sysroot env:"
 cat /sysroot/.env
 . /sysroot/.env
 
+if [ "$(uname -s)" = "Linux" ]; then
+  if [ "$(uname -m)" = "aarch64" ]; then
+    export PKG_CONFIG_LIBDIR=/sysroot/usr/lib/aarch64-linux-gnu/pkgconfig
+  fi
+fi
+
 # Important notes:
 #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
 #      to be in the Rust default flags in the smoketest, so uncertain why we need
@@ -155,11 +161,6 @@ RUSTDOCFLAGS<<__1
 __1
 CC=/usr/bin/clang-${llvmVersion}
 CFLAGS=$CFLAGS
-if [ "$(uname -s)" = "Linux" ]; then
-  if [ "$(uname -m)" = "aarch64" ]; then
-    export PKG_CONFIG_LIBDIR=/sysroot/usr/lib/aarch64-linux-gnu/pkgconfig
-  fi
-fi
 " > $GITHUB_ENV`,
 };
 
