@@ -45,6 +45,7 @@ interface LookupAddress {
 export class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
+  port: number | undefined;
 
   callback!: (
     err: ErrnoException | null,
@@ -78,7 +79,7 @@ export function getaddrinfo(
 
   (async () => {
     try {
-      addresses.push(...await op_getaddrinfo(hostname));
+      addresses.push(...await op_getaddrinfo(hostname, req.port || undefined));
     } catch {
       // pass
     }

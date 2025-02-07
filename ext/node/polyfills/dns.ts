@@ -189,6 +189,7 @@ export function lookup(
   let family = 0;
   let all = false;
   let verbatim = getDefaultVerbatim();
+  let port = undefined;
 
   // Parse arguments
   if (hostname) {
@@ -230,6 +231,11 @@ export function lookup(
       validateBoolean(options.verbatim, "options.verbatim");
       verbatim = options.verbatim;
     }
+
+    if (options?.port != null) {
+      validateNumber(options.port, "options.port");
+      port = options.port;
+    }
   }
 
   if (!hostname) {
@@ -263,6 +269,7 @@ export function lookup(
   req.family = family;
   req.hostname = hostname;
   req.oncomplete = all ? onlookupall : onlookup;
+  req.port = port;
 
   const err = getaddrinfo(
     req,

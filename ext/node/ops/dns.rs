@@ -35,6 +35,7 @@ pub enum GetAddrInfoError {
 pub async fn op_getaddrinfo<P>(
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
+  port: Option<u16>,
 ) -> Result<Vec<GetAddrInfoResult>, GetAddrInfoError>
 where
   P: crate::NodePermissions + 'static,
@@ -42,7 +43,7 @@ where
   {
     let mut state_ = state.borrow_mut();
     let permissions = state_.borrow_mut::<P>();
-    permissions.check_net((hostname.as_str(), None), "lookup")?;
+    permissions.check_net((hostname.as_str(), port), "lookup")?;
   }
 
   let mut resolver = GaiResolver::new();
@@ -58,7 +59,7 @@ where
       addrs
         .into_iter()
         .map(|addr| {
-          permissions.grant_net(&addr.ip().to_string(), None);
+          permissions.grant_net(&addr.ip().to_string(), port);
           GetAddrInfoResult {
             family: match addr {
               std::net::SocketAddr::V4(_) => 4,

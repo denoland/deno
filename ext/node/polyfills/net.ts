@@ -913,6 +913,7 @@ function _lookupAndConnect(
     family: options.family,
     hints: options.hints || 0,
     all: false,
+    port,
   };
 
   if (
@@ -2178,7 +2179,7 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
-  dnsLookup(address, function doListen(err, ip, addressType) {
+  dnsLookup(address, { port }, function doListen(err, ip, addressType) {
     if (err) {
       server.emit("error", err);
     } else {
