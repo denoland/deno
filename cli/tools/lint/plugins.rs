@@ -325,8 +325,8 @@ impl PluginHost {
         ModuleSpecifier::from_file_path(file_path).unwrap(),
         source_text_info,
         utf16_map,
+        maybe_token,
       );
-      container.set_cancellation_token(maybe_token);
     }
 
     let scope = &mut self.worker.js_runtime.handle_scope();
