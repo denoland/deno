@@ -1322,12 +1322,6 @@ impl TsServer {
     let mark = self
       .performance
       .mark(format!("tsc.request.{}", req.method()));
-    // When an LSP request is cancelled by the client, the future this is being
-    // executed under and any local variables here will be dropped at the next
-    // await point. To pass on that cancellation to the TS thread, we use drop_guard
-    // which cancels the request's token on drop.
-    let token = token.child_token();
-    let droppable_token = token.clone().drop_guard();
     let (tx, mut rx) = oneshot::channel::<Result<String, AnyError>>();
     let change = self.pending_change.lock().take();
 
@@ -1341,7 +1335,6 @@ impl TsServer {
     tokio::select! {
       value = &mut rx => {
         let value = value??;
-        droppable_token.disarm();
         let r = Ok(serde_json::from_str(&value)?);
         self.performance.measure(mark);
         r
