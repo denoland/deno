@@ -2439,28 +2439,45 @@ impl NavigationTree {
     !self.text.is_empty() && self.text != "<function>" && self.text != "<class>"
   }
 
-  pub fn walk<F>(&self, callback: &F)
+  pub fn walk<F>(
+    &self,
+    token: &CancellationToken,
+    callback: &F,
+  ) -> Result<(), AnyError>
   where
     F: Fn(&NavigationTree, Option<&NavigationTree>),
   {
     callback(self, None);
     if let Some(child_items) = &self.child_items {
       for child in child_items {
-        child.walk_child(callback, self);
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
+        child.walk_child(token, callback, self)?;
       }
     }
+    Ok(())
   }
 
-  fn walk_child<F>(&self, callback: &F, parent: &NavigationTree)
+  fn walk_child<F>(
+    &self,
+    token: &CancellationToken,
+    callback: &F,
+    parent: &NavigationTree,
+  ) -> Result<(), AnyError>
   where
     F: Fn(&NavigationTree, Option<&NavigationTree>),
   {
     callback(self, Some(parent));
     if let Some(child_items) = &self.child_items {
       for child in child_items {
-        child.walk_child(callback, self);
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
+        child.walk_child(token, callback, self)?;
       }
     }
+    Ok(())
   }
 }
 

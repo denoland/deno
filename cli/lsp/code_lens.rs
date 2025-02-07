@@ -442,7 +442,9 @@ pub async fn resolve_code_lens(
 pub fn collect_test(
   specifier: &ModuleSpecifier,
   parsed_source: &ParsedSource,
+  _token: &CancellationToken,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
+  // TODO(nayeemrmn): Do cancellation checks while collecting tests.
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
   parsed_source.program().visit_with(&mut collector);
@@ -455,9 +457,10 @@ pub fn collect_tsc(
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
+  token: &CancellationToken,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
-  navigation_tree.walk(&|i, mp| {
+  navigation_tree.walk(token, &|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
 
     // TSC Implementations Code Lens
@@ -565,7 +568,7 @@ pub fn collect_tsc(
         _ => (),
       }
     }
-  });
+  })?;
   Ok(Rc::try_unwrap(code_lenses).unwrap().into_inner())
 }
 

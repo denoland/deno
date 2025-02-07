@@ -2186,7 +2186,7 @@ impl Inner {
     {
       if let Some(Ok(parsed_source)) = asset_or_doc.maybe_parsed_source() {
         code_lenses.extend(
-          code_lens::collect_test(&specifier, parsed_source).map_err(
+          code_lens::collect_test(&specifier, parsed_source, token).map_err(
             |err| {
               error!(
                 "Error getting test code lenses for \"{}\": {:#}",
@@ -2213,13 +2213,18 @@ impl Inner {
           &settings.code_lens,
           line_index,
           &navigation_tree,
+          token,
         )
         .map_err(|err| {
-          error!(
-            "Error getting ts code lenses for \"{:#}\": {:#}",
-            &specifier, err
-          );
-          LspError::internal_error()
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Error getting ts code lenses for \"{:#}\": {:#}",
+              &specifier, err
+            );
+            LspError::internal_error()
+          }
         })?,
       );
     }
