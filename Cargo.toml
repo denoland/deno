@@ -283,12 +283,6 @@ opt-level = 3
 [profile.dev.package.v8]
 opt-level = 1
 
-# speed up compression in the build script
-[profile.dev.package.zstd]
-opt-level = 3
-[profile.dev.package.zstd-sys]
-opt-level = 3
-
 [profile.release.package.async-compression]
 opt-level = 3
 [profile.release.package.base64-simd]

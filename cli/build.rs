@@ -140,13 +140,12 @@ fn compress_source(out_dir: &Path, file: &str) {
   let path = Path::new(file)
     .canonicalize()
     .unwrap_or_else(|_| panic!("expected file \"{file}\" to exist"));
-  let file_name = path.file_name().unwrap().to_string_lossy();
   let contents = std::fs::read(&path).unwrap();
 
   println!("cargo:rerun-if-changed={}", path.display());
 
   let compressed = zstd::bulk::compress(&contents, 19).unwrap();
-  let mut out = out_dir.join(file_name.as_ref());
+  let mut out = out_dir.join(file.trim_start_matches("../"));
   let mut ext = out
     .extension()
     .map(|s| s.to_string_lossy())
@@ -154,6 +153,7 @@ fn compress_source(out_dir: &Path, file: &str) {
     .into_owned();
   ext.push_str(".zstd");
   out.set_extension(ext);
+  std::fs::create_dir_all(out.parent().unwrap()).unwrap();
   let mut file = std::fs::OpenOptions::new()
     .create(true)
     .truncate(true)
@@ -202,8 +202,11 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
-  let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-  compress_sources(&out_dir);
+  if !cfg!(debug_assertions) {
+    let out_dir =
+      std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    compress_sources(&out_dir);
+  }
 
   if let Ok(c) = env::var("DENO_CANARY") {
     println!("cargo:rustc-env=DENO_CANARY={c}");

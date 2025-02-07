@@ -105,35 +105,131 @@ fn get_asset_texts() -> Result<Vec<AssetText>, AnyError> {
   Ok(out)
 }
 
-macro_rules! compressed_lib {
+macro_rules! maybe_compressed_source {
+  ($file: expr) => {{
+    #[cfg(debug_assertions)]
+    {
+      StaticAssetSource::Uncompressed(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/",
+        $file
+      )))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
+        concat!(env!("OUT_DIR"), "/", $file, ".zstd")
+      )))
+    }
+  }};
+  (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
+    #[cfg(debug_assertions)]
+    {
+      StaticAssetSource::Uncompressed(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/",
+        $uncomp
+      )))
+    }
+    #[cfg(not(debug_assertions))]
+    {
+      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
+        concat!(env!("OUT_DIR"), "/", $comp, ".zstd")
+      )))
+    }
+  }};
+}
+
+macro_rules! maybe_compressed_lib {
+  ($name: expr, $file: expr) => {
+    ($name, maybe_compressed_source!(concat!("tsc/dts/", $file)))
+  };
+  ($e: expr) => {
+    maybe_compressed_lib!($e, $e)
+  };
+}
+
+macro_rules! maybe_compressed_ext_lib {
   ($name: expr, $file: expr) => {
     (
       $name,
-      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
-        concat!(env!("OUT_DIR"), "/", $file, ".zstd")
-      ))),
+      maybe_compressed_source!(
+        compressed = concat!("ext/", $file),
+        uncompressed = concat!("../ext/", $file)
+      ),
     )
-  };
-  ($e: expr) => {
-    compressed_lib!($e, $e)
   };
 }
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
+  #[cfg_attr(debug_assertions, allow(dead_code))]
   Compressed(CompressedSource),
   Uncompressed(&'static str),
 }
 
-impl StaticAssetSource {
-  pub fn get(&self) -> Cow<'static, str> {
+/// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
+#[derive(Debug, Clone)]
+pub enum MaybeStaticSource {
+  Computed(Arc<str>),
+  Static(&'static str),
+}
+
+impl std::fmt::Display for MaybeStaticSource {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
-      StaticAssetSource::Compressed(compressed_source) => {
-        Cow::Owned(String::from(&*compressed_source.get()))
-      }
-      StaticAssetSource::Uncompressed(src) => Cow::Borrowed(src),
+      MaybeStaticSource::Computed(arc) => write!(f, "{}", arc),
+      MaybeStaticSource::Static(s) => write!(f, "{}", s),
     }
   }
+}
+
+impl From<MaybeStaticSource> for Cow<'static, str> {
+  fn from(value: MaybeStaticSource) -> Self {
+    match value {
+      MaybeStaticSource::Computed(arc) => Cow::Owned(arc.to_string()),
+      MaybeStaticSource::Static(s) => Cow::Borrowed(s),
+    }
+  }
+}
+
+impl AsRef<str> for MaybeStaticSource {
+  fn as_ref(&self) -> &str {
+    match self {
+      MaybeStaticSource::Computed(arc) => arc.as_ref(),
+      MaybeStaticSource::Static(s) => s,
+    }
+  }
+}
+
+impl From<MaybeStaticSource> for String {
+  fn from(value: MaybeStaticSource) -> Self {
+    match value {
+      MaybeStaticSource::Computed(arc) => arc.to_string(),
+      MaybeStaticSource::Static(s) => s.into(),
+    }
+  }
+}
+
+impl From<MaybeStaticSource> for Arc<str> {
+  fn from(value: MaybeStaticSource) -> Self {
+    match value {
+      MaybeStaticSource::Computed(arc) => arc,
+      MaybeStaticSource::Static(s) => Arc::from(s),
+    }
+  }
+}
+
+impl StaticAssetSource {
+  pub fn get(&self) -> MaybeStaticSource {
+    match self {
+      StaticAssetSource::Compressed(compressed_source) => {
+        MaybeStaticSource::Computed(compressed_source.get())
+      }
+      StaticAssetSource::Uncompressed(src) => MaybeStaticSource::Static(src),
+    }
+  }
+
   #[allow(clippy::inherent_to_string)]
   pub fn to_string(&self) -> String {
     self.get().into()
@@ -149,122 +245,143 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
 > = Lazy::new(|| {
   ([
     // compressed in build.rs
-    compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
-    compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
-    compressed_lib!("lib.deno.web.d.ts", "lib.deno_web.d.ts"),
-    compressed_lib!("lib.deno.fetch.d.ts", "lib.deno_fetch.d.ts"),
-    compressed_lib!("lib.deno.websocket.d.ts", "lib.deno_websocket.d.ts"),
-    compressed_lib!("lib.deno.webstorage.d.ts", "lib.deno_webstorage.d.ts"),
-    compressed_lib!("lib.deno.canvas.d.ts", "lib.deno_canvas.d.ts"),
-    compressed_lib!("lib.deno.crypto.d.ts", "lib.deno_crypto.d.ts"),
-    compressed_lib!(
-      "lib.deno.broadcast_channel.d.ts",
-      "lib.deno_broadcast_channel.d.ts"
+    maybe_compressed_ext_lib!(
+      "lib.deno.console.d.ts",
+      "console/lib.deno_console.d.ts"
     ),
-    compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
-    compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
-    compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
-    compressed_lib!("lib.deno.window.d.ts"),
-    compressed_lib!("lib.deno.worker.d.ts"),
-    compressed_lib!("lib.deno.shared_globals.d.ts"),
-    compressed_lib!("lib.deno.ns.d.ts"),
-    compressed_lib!("lib.deno.unstable.d.ts"),
-    compressed_lib!("lib.decorators.d.ts"),
-    compressed_lib!("lib.decorators.legacy.d.ts"),
-    compressed_lib!("lib.dom.asynciterable.d.ts"),
-    compressed_lib!("lib.dom.d.ts"),
-    compressed_lib!("lib.dom.extras.d.ts"),
-    compressed_lib!("lib.dom.iterable.d.ts"),
-    compressed_lib!("lib.es2015.collection.d.ts"),
-    compressed_lib!("lib.es2015.core.d.ts"),
-    compressed_lib!("lib.es2015.d.ts"),
-    compressed_lib!("lib.es2015.generator.d.ts"),
-    compressed_lib!("lib.es2015.iterable.d.ts"),
-    compressed_lib!("lib.es2015.promise.d.ts"),
-    compressed_lib!("lib.es2015.proxy.d.ts"),
-    compressed_lib!("lib.es2015.reflect.d.ts"),
-    compressed_lib!("lib.es2015.symbol.d.ts"),
-    compressed_lib!("lib.es2015.symbol.wellknown.d.ts"),
-    compressed_lib!("lib.es2016.array.include.d.ts"),
-    compressed_lib!("lib.es2016.d.ts"),
-    compressed_lib!("lib.es2016.full.d.ts"),
-    compressed_lib!("lib.es2016.intl.d.ts"),
-    compressed_lib!("lib.es2017.arraybuffer.d.ts"),
-    compressed_lib!("lib.es2017.d.ts"),
-    compressed_lib!("lib.es2017.date.d.ts"),
-    compressed_lib!("lib.es2017.full.d.ts"),
-    compressed_lib!("lib.es2017.intl.d.ts"),
-    compressed_lib!("lib.es2017.object.d.ts"),
-    compressed_lib!("lib.es2017.sharedmemory.d.ts"),
-    compressed_lib!("lib.es2017.string.d.ts"),
-    compressed_lib!("lib.es2017.typedarrays.d.ts"),
-    compressed_lib!("lib.es2018.asyncgenerator.d.ts"),
-    compressed_lib!("lib.es2018.asynciterable.d.ts"),
-    compressed_lib!("lib.es2018.d.ts"),
-    compressed_lib!("lib.es2018.full.d.ts"),
-    compressed_lib!("lib.es2018.intl.d.ts"),
-    compressed_lib!("lib.es2018.promise.d.ts"),
-    compressed_lib!("lib.es2018.regexp.d.ts"),
-    compressed_lib!("lib.es2019.array.d.ts"),
-    compressed_lib!("lib.es2019.d.ts"),
-    compressed_lib!("lib.es2019.full.d.ts"),
-    compressed_lib!("lib.es2019.intl.d.ts"),
-    compressed_lib!("lib.es2019.object.d.ts"),
-    compressed_lib!("lib.es2019.string.d.ts"),
-    compressed_lib!("lib.es2019.symbol.d.ts"),
-    compressed_lib!("lib.es2020.bigint.d.ts"),
-    compressed_lib!("lib.es2020.d.ts"),
-    compressed_lib!("lib.es2020.date.d.ts"),
-    compressed_lib!("lib.es2020.full.d.ts"),
-    compressed_lib!("lib.es2020.intl.d.ts"),
-    compressed_lib!("lib.es2020.number.d.ts"),
-    compressed_lib!("lib.es2020.promise.d.ts"),
-    compressed_lib!("lib.es2020.sharedmemory.d.ts"),
-    compressed_lib!("lib.es2020.string.d.ts"),
-    compressed_lib!("lib.es2020.symbol.wellknown.d.ts"),
-    compressed_lib!("lib.es2021.d.ts"),
-    compressed_lib!("lib.es2021.full.d.ts"),
-    compressed_lib!("lib.es2021.intl.d.ts"),
-    compressed_lib!("lib.es2021.promise.d.ts"),
-    compressed_lib!("lib.es2021.string.d.ts"),
-    compressed_lib!("lib.es2021.weakref.d.ts"),
-    compressed_lib!("lib.es2022.array.d.ts"),
-    compressed_lib!("lib.es2022.d.ts"),
-    compressed_lib!("lib.es2022.error.d.ts"),
-    compressed_lib!("lib.es2022.full.d.ts"),
-    compressed_lib!("lib.es2022.intl.d.ts"),
-    compressed_lib!("lib.es2022.object.d.ts"),
-    compressed_lib!("lib.es2022.regexp.d.ts"),
-    compressed_lib!("lib.es2022.string.d.ts"),
-    compressed_lib!("lib.es2023.array.d.ts"),
-    compressed_lib!("lib.es2023.collection.d.ts"),
-    compressed_lib!("lib.es2023.d.ts"),
-    compressed_lib!("lib.es2023.full.d.ts"),
-    compressed_lib!("lib.es2023.intl.d.ts"),
-    compressed_lib!("lib.es2024.arraybuffer.d.ts"),
-    compressed_lib!("lib.es2024.collection.d.ts"),
-    compressed_lib!("lib.es2024.d.ts"),
-    compressed_lib!("lib.es2024.full.d.ts"),
-    compressed_lib!("lib.es2024.object.d.ts"),
-    compressed_lib!("lib.es2024.promise.d.ts"),
-    compressed_lib!("lib.es2024.regexp.d.ts"),
-    compressed_lib!("lib.es2024.sharedmemory.d.ts"),
-    compressed_lib!("lib.es2024.string.d.ts"),
-    compressed_lib!("lib.es5.d.ts"),
-    compressed_lib!("lib.es6.d.ts"),
-    compressed_lib!("lib.esnext.array.d.ts"),
-    compressed_lib!("lib.esnext.collection.d.ts"),
-    compressed_lib!("lib.esnext.d.ts"),
-    compressed_lib!("lib.esnext.decorators.d.ts"),
-    compressed_lib!("lib.esnext.disposable.d.ts"),
-    compressed_lib!("lib.esnext.full.d.ts"),
-    compressed_lib!("lib.esnext.intl.d.ts"),
-    compressed_lib!("lib.esnext.iterator.d.ts"),
-    compressed_lib!("lib.scripthost.d.ts"),
-    compressed_lib!("lib.webworker.asynciterable.d.ts"),
-    compressed_lib!("lib.webworker.d.ts"),
-    compressed_lib!("lib.webworker.importscripts.d.ts"),
-    compressed_lib!("lib.webworker.iterable.d.ts"),
+    maybe_compressed_ext_lib!("lib.deno.url.d.ts", "url/lib.deno_url.d.ts"),
+    maybe_compressed_ext_lib!("lib.deno.web.d.ts", "web/lib.deno_web.d.ts"),
+    maybe_compressed_ext_lib!(
+      "lib.deno.fetch.d.ts",
+      "fetch/lib.deno_fetch.d.ts"
+    ),
+    maybe_compressed_ext_lib!(
+      "lib.deno.websocket.d.ts",
+      "websocket/lib.deno_websocket.d.ts"
+    ),
+    maybe_compressed_ext_lib!(
+      "lib.deno.webstorage.d.ts",
+      "webstorage/lib.deno_webstorage.d.ts"
+    ),
+    maybe_compressed_ext_lib!(
+      "lib.deno.canvas.d.ts",
+      "canvas/lib.deno_canvas.d.ts"
+    ),
+    maybe_compressed_ext_lib!(
+      "lib.deno.crypto.d.ts",
+      "crypto/lib.deno_crypto.d.ts"
+    ),
+    maybe_compressed_ext_lib!(
+      "lib.deno.broadcast_channel.d.ts",
+      "broadcast_channel/lib.deno_broadcast_channel.d.ts"
+    ),
+    maybe_compressed_ext_lib!("lib.deno.net.d.ts", "net/lib.deno_net.d.ts"),
+    maybe_compressed_ext_lib!(
+      "lib.deno.cache.d.ts",
+      "cache/lib.deno_cache.d.ts"
+    ),
+    maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
+    maybe_compressed_lib!("lib.deno.window.d.ts"),
+    maybe_compressed_lib!("lib.deno.worker.d.ts"),
+    maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
+    maybe_compressed_lib!("lib.deno.ns.d.ts"),
+    maybe_compressed_lib!("lib.deno.unstable.d.ts"),
+    maybe_compressed_lib!("lib.decorators.d.ts"),
+    maybe_compressed_lib!("lib.decorators.legacy.d.ts"),
+    maybe_compressed_lib!("lib.dom.asynciterable.d.ts"),
+    maybe_compressed_lib!("lib.dom.d.ts"),
+    maybe_compressed_lib!("lib.dom.extras.d.ts"),
+    maybe_compressed_lib!("lib.dom.iterable.d.ts"),
+    maybe_compressed_lib!("lib.es2015.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2015.core.d.ts"),
+    maybe_compressed_lib!("lib.es2015.d.ts"),
+    maybe_compressed_lib!("lib.es2015.generator.d.ts"),
+    maybe_compressed_lib!("lib.es2015.iterable.d.ts"),
+    maybe_compressed_lib!("lib.es2015.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2015.proxy.d.ts"),
+    maybe_compressed_lib!("lib.es2015.reflect.d.ts"),
+    maybe_compressed_lib!("lib.es2015.symbol.d.ts"),
+    maybe_compressed_lib!("lib.es2015.symbol.wellknown.d.ts"),
+    maybe_compressed_lib!("lib.es2016.array.include.d.ts"),
+    maybe_compressed_lib!("lib.es2016.d.ts"),
+    maybe_compressed_lib!("lib.es2016.full.d.ts"),
+    maybe_compressed_lib!("lib.es2016.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2017.arraybuffer.d.ts"),
+    maybe_compressed_lib!("lib.es2017.d.ts"),
+    maybe_compressed_lib!("lib.es2017.date.d.ts"),
+    maybe_compressed_lib!("lib.es2017.full.d.ts"),
+    maybe_compressed_lib!("lib.es2017.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2017.object.d.ts"),
+    maybe_compressed_lib!("lib.es2017.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.es2017.string.d.ts"),
+    maybe_compressed_lib!("lib.es2017.typedarrays.d.ts"),
+    maybe_compressed_lib!("lib.es2018.asyncgenerator.d.ts"),
+    maybe_compressed_lib!("lib.es2018.asynciterable.d.ts"),
+    maybe_compressed_lib!("lib.es2018.d.ts"),
+    maybe_compressed_lib!("lib.es2018.full.d.ts"),
+    maybe_compressed_lib!("lib.es2018.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2018.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2018.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2019.array.d.ts"),
+    maybe_compressed_lib!("lib.es2019.d.ts"),
+    maybe_compressed_lib!("lib.es2019.full.d.ts"),
+    maybe_compressed_lib!("lib.es2019.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2019.object.d.ts"),
+    maybe_compressed_lib!("lib.es2019.string.d.ts"),
+    maybe_compressed_lib!("lib.es2019.symbol.d.ts"),
+    maybe_compressed_lib!("lib.es2020.bigint.d.ts"),
+    maybe_compressed_lib!("lib.es2020.d.ts"),
+    maybe_compressed_lib!("lib.es2020.date.d.ts"),
+    maybe_compressed_lib!("lib.es2020.full.d.ts"),
+    maybe_compressed_lib!("lib.es2020.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2020.number.d.ts"),
+    maybe_compressed_lib!("lib.es2020.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2020.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.es2020.string.d.ts"),
+    maybe_compressed_lib!("lib.es2020.symbol.wellknown.d.ts"),
+    maybe_compressed_lib!("lib.es2021.d.ts"),
+    maybe_compressed_lib!("lib.es2021.full.d.ts"),
+    maybe_compressed_lib!("lib.es2021.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2021.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2021.string.d.ts"),
+    maybe_compressed_lib!("lib.es2021.weakref.d.ts"),
+    maybe_compressed_lib!("lib.es2022.array.d.ts"),
+    maybe_compressed_lib!("lib.es2022.d.ts"),
+    maybe_compressed_lib!("lib.es2022.error.d.ts"),
+    maybe_compressed_lib!("lib.es2022.full.d.ts"),
+    maybe_compressed_lib!("lib.es2022.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2022.object.d.ts"),
+    maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2022.string.d.ts"),
+    maybe_compressed_lib!("lib.es2023.array.d.ts"),
+    maybe_compressed_lib!("lib.es2023.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2023.d.ts"),
+    maybe_compressed_lib!("lib.es2023.full.d.ts"),
+    maybe_compressed_lib!("lib.es2023.intl.d.ts"),
+    maybe_compressed_lib!("lib.es2024.arraybuffer.d.ts"),
+    maybe_compressed_lib!("lib.es2024.collection.d.ts"),
+    maybe_compressed_lib!("lib.es2024.d.ts"),
+    maybe_compressed_lib!("lib.es2024.full.d.ts"),
+    maybe_compressed_lib!("lib.es2024.object.d.ts"),
+    maybe_compressed_lib!("lib.es2024.promise.d.ts"),
+    maybe_compressed_lib!("lib.es2024.regexp.d.ts"),
+    maybe_compressed_lib!("lib.es2024.sharedmemory.d.ts"),
+    maybe_compressed_lib!("lib.es2024.string.d.ts"),
+    maybe_compressed_lib!("lib.es5.d.ts"),
+    maybe_compressed_lib!("lib.es6.d.ts"),
+    maybe_compressed_lib!("lib.esnext.array.d.ts"),
+    maybe_compressed_lib!("lib.esnext.collection.d.ts"),
+    maybe_compressed_lib!("lib.esnext.d.ts"),
+    maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
+    maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
+    maybe_compressed_lib!("lib.esnext.full.d.ts"),
+    maybe_compressed_lib!("lib.esnext.intl.d.ts"),
+    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
+    maybe_compressed_lib!("lib.scripthost.d.ts"),
+    maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
+    maybe_compressed_lib!("lib.webworker.d.ts"),
+    maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
+    maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
     (
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
@@ -321,7 +438,7 @@ pub struct AssetText {
 }
 
 /// Retrieve a static asset that are included in the binary.
-fn get_lazily_loaded_asset(asset: &str) -> Option<Cow<'static, str>> {
+fn get_lazily_loaded_asset(asset: &str) -> Option<MaybeStaticSource> {
   LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.get())
 }
 
@@ -679,7 +796,7 @@ fn op_load_inner(
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name);
+    let maybe_source = get_lazily_loaded_asset(name).map(Cow::from);
     hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
     media_type = MediaType::from_str(load_specifier);
     maybe_source
@@ -1184,6 +1301,7 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
+  #[cfg_attr(debug_assertions, allow(dead_code))]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
@@ -1198,25 +1316,14 @@ impl CompressedSource {
   }
 }
 
-macro_rules! compressed_source {
-  ($file: literal) => {
-    CompressedSource::new(include_bytes!(concat!(
-      env!("OUT_DIR"),
-      "/",
-      $file,
-      ".zstd"
-    )))
-  };
-}
-
-pub(crate) static MAIN_COMPILER_COMPRESSED: CompressedSource =
-  compressed_source!("99_main_compiler.js");
-pub(crate) static LSP_COMPRESSED: CompressedSource =
-  compressed_source!("98_lsp.js");
-pub(crate) static TS_HOST_COMPRESSED: CompressedSource =
-  compressed_source!("97_ts_host.js");
-pub(crate) static TYPESCRIPT_COMPRESSED: CompressedSource =
-  compressed_source!("00_typescript.js");
+pub(crate) static MAIN_COMPILER_SOURCE: StaticAssetSource =
+  maybe_compressed_source!("tsc/99_main_compiler.js");
+pub(crate) static LSP_SOURCE: StaticAssetSource =
+  maybe_compressed_source!("tsc/98_lsp.js");
+pub(crate) static TS_HOST_SOURCE: StaticAssetSource =
+  maybe_compressed_source!("tsc/97_ts_host.js");
+pub(crate) static TYPESCRIPT_SOURCE: StaticAssetSource =
+  maybe_compressed_source!("tsc/00_typescript.js");
 
 pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
   let len_bytes = contents[0..4].try_into().unwrap();
@@ -1256,12 +1363,12 @@ deno_core::extension!(deno_cli_tsc,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
-      use deno_core::ExtensionFileSource;
-      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", MAIN_COMPILER_COMPRESSED.get()));
-      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", TS_HOST_COMPRESSED.get()));
-      ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", LSP_COMPRESSED.get()));
-      ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", TYPESCRIPT_COMPRESSED.get()));
-      ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
+    use deno_core::ExtensionFileSource;
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
   }
 );
 
@@ -1563,7 +1670,7 @@ mod tests {
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data, expected);
+    assert_eq!(actual.data, expected.to_string());
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
