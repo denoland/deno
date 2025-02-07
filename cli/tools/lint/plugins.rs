@@ -19,6 +19,7 @@ use deno_core::resolve_url_or_path;
 use deno_core::v8;
 use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_path_util::url_from_file_path;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
@@ -322,11 +323,11 @@ impl PluginHost {
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
       container.set_info_for_file(
-        ModuleSpecifier::from_file_path(file_path).unwrap(),
+        url_from_file_path(file_path)?,
         source_text_info,
         utf16_map,
+        maybe_token,
       );
-      container.set_cancellation_token(maybe_token);
     }
 
     let scope = &mut self.worker.js_runtime.handle_scope();
