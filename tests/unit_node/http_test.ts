@@ -15,7 +15,7 @@ import net, { Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
 
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -1916,3 +1916,31 @@ Deno.test("[node/http] supports proxy http request", async () => {
   await promise;
   await server.finished;
 });
+
+Deno.test("[node/http] `request` requires net permission to host and port", {
+  permissions: { net: ["localhost:4545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  http.request("http://localhost:4545/echo.ts", async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
+});
+
+Deno.test(
+  "[node/http] `request` errors with EPERM error when permission is not granted",
+  { permissions: { net: ["localhost:4321"] } }, // wrong permission
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    http.request("http://localhost:4545/echo.ts", async () => {})
+      .on("error", (e) => {
+        assertEquals(e.message, "getaddrinfo EPERM localhost");
+        // deno-lint-ignore no-explicit-any
+        assertEquals((e as any).code, "EPERM");
+        resolve();
+      }).end();
+    await promise;
+  },
+);

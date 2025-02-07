@@ -78,13 +78,19 @@ export function getaddrinfo(
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
 
   (async () => {
+    let error = 0;
     try {
       addresses.push(...await op_getaddrinfo(hostname, req.port || undefined));
-    } catch {
-      // pass
+      if (addresses.length === 0) {
+        error = codeMap.get("EAI_NODATA")!;
+      }
+    } catch (e) {
+      if (e instanceof Deno.errors.NotCapable) {
+        error = codeMap.get("EPERM")!;
+      } else {
+        error = codeMap.get("EAI_NODATA")!;
+      }
     }
-
-    const error = addresses.length ? 0 : codeMap.get("EAI_NODATA")!;
 
     // TODO(cmorten): needs work
     // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
