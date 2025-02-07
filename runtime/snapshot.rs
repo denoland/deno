@@ -121,6 +121,9 @@ impl deno_node::NodePermissions for Permissions {
   ) -> Result<(), PermissionCheckError> {
     unreachable!("snapshotting!")
   }
+  fn grant_net(&mut self, _host: &str, _port: Option<u16>) {
+    unreachable!("snapshotting!")
+  }
 }
 
 impl deno_net::NetPermissions for Permissions {

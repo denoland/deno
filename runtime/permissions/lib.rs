@@ -3344,6 +3344,20 @@ impl PermissionsContainer {
       ),
     )
   }
+
+  pub fn grant_net(
+    &self,
+    host: &str,
+    port: Option<u16>,
+  ) -> Result<bool, NetDescriptorParseError> {
+    Ok(
+      self
+        .inner
+        .lock()
+        .net
+        .insert_granted(Some(&NetDescriptor(Host::parse(host)?, port))),
+    )
+  }
 }
 
 const fn unit_permission_from_flag_bools(
