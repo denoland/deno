@@ -1415,7 +1415,7 @@ fn lsp_import_attributes() {
     },
   }));
 
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": "file:///a/test.json",
       "languageId": "json",
@@ -2092,7 +2092,6 @@ fn lsp_suggestion_actions_disabled() {
       },
     },
   }));
-  client.read_diagnostics();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -14061,10 +14060,10 @@ fn lsp_node_modules_dir() {
         "arguments": [["npm:chalk", "npm:@types/node"], file_uri],
       }),
     );
+    client.read_diagnostics()
   };
 
   cache(&mut client);
-  client.read_diagnostics();
 
   assert!(!temp_dir.path().join("node_modules").exists());
 
@@ -14095,15 +14094,12 @@ fn lsp_node_modules_dir() {
         "imports": {},
       },
       "unstable": [],
-    } }));
+    } }))
   };
-  refresh_config(&mut client);
-
-  let diagnostics = client.read_diagnostics();
+  let diagnostics = refresh_config(&mut client);
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
-  client.read_diagnostics();
 
   assert!(temp_dir.path().join("node_modules/chalk").exists());
   assert!(temp_dir.path().join("node_modules/@types/node").exists());
@@ -14115,10 +14111,7 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
-  client.read_diagnostics();
-  cache(&mut client);
-
-  let diagnostics = client.read_diagnostics();
+  let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   assert!(lockfile_path.exists());
@@ -14195,7 +14188,7 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  client.change_configuration(json!({ "deno": {
+  let diagnostics = client.change_configuration(json!({ "deno": {
     "enable": true,
     "config": "./deno.json",
     "codeLens": {
@@ -14214,7 +14207,6 @@ fn lsp_vendor_dir() {
     "unstable": [],
   } }));
 
-  let diagnostics = client.read_diagnostics();
   // won't be cached until a manual cache occurs
   assert_eq!(
     diagnostics
