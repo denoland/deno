@@ -227,6 +227,7 @@ pub fn global_object_middleware<'s>(
   scope.get_current_context().set_slot(storage);
 }
 
+#[allow(deprecated)]
 fn is_managed_key(
   scope: &mut v8::HandleScope,
   key: v8::Local<v8::Name>,

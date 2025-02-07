@@ -2074,6 +2074,7 @@ fn napi_get_value_bool(
 }
 
 #[napi_sym]
+#[allow(deprecated)]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
   value: napi_value,
@@ -2122,6 +2123,7 @@ fn napi_get_value_string_latin1(
 }
 
 #[napi_sym]
+#[allow(deprecated)]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
   value: napi_value,
@@ -2171,6 +2173,7 @@ fn napi_get_value_string_utf8(
 }
 
 #[napi_sym]
+#[allow(deprecated)]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,
   value: napi_value,
