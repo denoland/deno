@@ -52,7 +52,8 @@ repository = "https://github.com/denoland/deno"
 [workspace.dependencies]
 deno_ast = { version = "=0.44.0", features = ["transpiling"] }
 # deno_core = { version = "0.333.0" }
-deno_core = { git = "https://github.com/bartlomieju/deno_core.git", branch = "upgrade_v8" }
+# deno_core = { git = "https://github.com/bartlomieju/deno_core.git", branch = "upgrade_v8" }
+deno_core = { path = "../deno_core/core" }
 
 deno_bench_util = { version = "0.183.0", path = "./bench_util" }
 deno_config = { version = "=0.48.0", features = ["workspace"] }

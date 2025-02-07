@@ -58,14 +58,18 @@ where
   }
 }
 
-#[op2(fast)]
-pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8])
+// TODO(bartlomieju): remove return type, it's there just to force
+// the op to not be `(fast)` which triggers an assertion in V8
+#[op2]
+#[buffer]
+pub fn op_now<TP>(state: &mut OpState, #[buffer] buf: &mut [u8]) -> Vec<u8>
 where
   TP: TimersPermission + 'static,
 {
   let start_time = state.borrow::<StartTime>();
   let elapsed = start_time.elapsed();
   expose_time::<TP>(state, elapsed, buf);
+  vec![]
 }
 
 #[op2(fast)]
