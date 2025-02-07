@@ -1396,7 +1396,21 @@ declare namespace Deno {
      * @experimental
      */
     export interface RuleContext {
+      /**
+       * The running rule id: `<plugin-name>/<rule-name>`
+       */
       id: string;
+      /**
+       * Name of the file that's currently being linted.
+       */
+      fileName: string;
+      /**
+       * Retrieve the source code of the current file.
+       */
+      source(): string;
+      /**
+       * Report a lint error.
+       */
       report(data: ReportData): void;
     }
 
