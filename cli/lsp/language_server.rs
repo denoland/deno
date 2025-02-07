@@ -325,6 +325,22 @@ impl LanguageServer {
     referrer: ModuleSpecifier,
     force_global_cache: bool,
   ) -> LspResult<Option<Value>> {
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        ls.cache_inner(specifiers, referrer, force_global_cache)
+          .await
+      })
+      .await
+  }
+
+  async fn cache_inner(
+    &self,
+    specifiers: Vec<ModuleSpecifier>,
+    referrer: ModuleSpecifier,
+    force_global_cache: bool,
+  ) -> LspResult<Option<Value>> {
     async fn create_graph_for_caching(
       factory: CliFactory,
       roots: Vec<ModuleSpecifier>,
@@ -424,29 +440,46 @@ impl LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    Ok(
-      self
-        .inner
-        .read()
-        .await
-        .diagnostics_server
-        .latest_batch_index()
-        .map(|v| v.into()),
-    )
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        Ok(
+          ls.inner
+            .read()
+            .await
+            .diagnostics_server
+            .latest_batch_index()
+            .map(|v| v.into()),
+        )
+      })
+      .await
   }
 
   pub async fn performance_request(&self) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    Ok(Some(self.inner.read().await.get_performance()))
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        Ok(Some(ls.inner.read().await.get_performance()))
+      })
+      .await
   }
 
   pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.task_definitions()
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        ls.inner.read().await.task_definitions()
+      })
+      .await
   }
 
   pub async fn test_run_request(
@@ -456,7 +489,13 @@ impl LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.test_run_request(params).await
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        ls.inner.read().await.test_run_request(params).await
+      })
+      .await
   }
 
   pub async fn test_run_cancel_request(
@@ -466,7 +505,13 @@ impl LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    self.inner.read().await.test_run_cancel_request(params)
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        ls.inner.read().await.test_run_cancel_request(params)
+      })
+      .await
   }
 
   pub async fn virtual_text_document(
@@ -476,22 +521,28 @@ impl LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    match params.map(serde_json::from_value) {
-      Some(Ok(params)) => Ok(Some(
-        serde_json::to_value(
-          self.inner.read().await.virtual_text_document(params)?,
-        )
-        .map_err(|err| {
-          error!(
-            "Failed to serialize virtual_text_document response: {:#}",
-            err
-          );
-          LspError::internal_error()
-        })?,
-      )),
-      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-      None => Err(LspError::invalid_params("Missing parameters")),
-    }
+    let ls = self.clone();
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |_| async move {
+        match params.map(serde_json::from_value) {
+          Some(Ok(params)) => Ok(Some(
+            serde_json::to_value(
+              ls.inner.read().await.virtual_text_document(params)?,
+            )
+            .map_err(|err| {
+              error!(
+                "Failed to serialize virtual_text_document response: {:#}",
+                err
+              );
+              LspError::internal_error()
+            })?,
+          )),
+          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+          None => Err(LspError::invalid_params("Missing parameters")),
+        }
+      })
+      .await
   }
 
   pub async fn refresh_configuration(&self) {
