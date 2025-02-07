@@ -2188,11 +2188,15 @@ impl Inner {
         code_lenses.extend(
           code_lens::collect_test(&specifier, parsed_source, token).map_err(
             |err| {
-              error!(
-                "Error getting test code lenses for \"{}\": {:#}",
-                &specifier, err
-              );
-              LspError::internal_error()
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!(
+                  "Error getting test code lenses for \"{}\": {:#}",
+                  &specifier, err
+                );
+                LspError::internal_error()
+              }
             },
           )?,
         );
