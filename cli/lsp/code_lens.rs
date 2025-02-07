@@ -21,6 +21,7 @@ use deno_core::ModuleSpecifier;
 use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::lsp_types as lsp;
 
@@ -253,6 +254,7 @@ async fn resolve_implementation_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
@@ -262,6 +264,7 @@ async fn resolve_implementation_code_lens(
       language_server.snapshot(),
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
+      token,
     )
     .await
     .map_err(|err| {
@@ -271,6 +274,9 @@ async fn resolve_implementation_code_lens(
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
     for implementation in implementations {
+      if token.is_cancelled() {
+        break;
+      }
       let implementation_specifier =
         resolve_url(&implementation.document_span.file_name)?;
       let implementation_location =
@@ -326,10 +332,12 @@ async fn resolve_references_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   fn get_locations(
     maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
     language_server: &language_server::Inner,
+    token: &CancellationToken,
   ) -> Result<Vec<lsp::Location>, AnyError> {
     let symbols = match maybe_referenced_symbols {
       Some(symbols) => symbols,
@@ -337,6 +345,9 @@ async fn resolve_references_code_lens(
     };
     let mut locations = Vec::new();
     for reference in symbols.iter().flat_map(|s| &s.references) {
+      if token.is_cancelled() {
+        break;
+      }
       if reference.is_definition {
         continue;
       }
@@ -363,13 +374,15 @@ async fn resolve_references_code_lens(
       language_server.snapshot(),
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
+      token,
     )
     .await
     .map_err(|err| {
       lsp_warn!("Unable to find references: {err}");
       LspError::internal_error()
     })?;
-  let locations = get_locations(maybe_referenced_symbols, language_server)?;
+  let locations =
+    get_locations(maybe_referenced_symbols, language_server, token)?;
   let title = if locations.len() == 1 {
     "1 reference".to_string()
   } else {
@@ -402,15 +415,18 @@ async fn resolve_references_code_lens(
 pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap())?;
   match data.source {
     CodeLensSource::Implementations => {
-      resolve_implementation_code_lens(code_lens, data, language_server).await
+      resolve_implementation_code_lens(code_lens, data, language_server, token)
+        .await
     }
     CodeLensSource::References => {
-      resolve_references_code_lens(code_lens, data, language_server).await
+      resolve_references_code_lens(code_lens, data, language_server, token)
+        .await
     }
   }
 }

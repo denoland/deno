@@ -471,7 +471,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     specifiers: Vec<ModuleSpecifier>,
-    token: CancellationToken,
+    token: &CancellationToken,
   ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
@@ -501,7 +501,7 @@ impl TsServer {
             snapshot.clone(),
             req,
             scope.clone(),
-            token.clone(),
+            token,
           )
           .map(|res| (scope, res)),
       );
@@ -518,6 +518,9 @@ impl TsServer {
       for (mut specifier, mut diagnostics) in raw_diagnostics {
         specifier = self.specifier_map.normalize(&specifier)?.to_string();
         for diagnostic in &mut diagnostics {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
           normalize_diagnostic(diagnostic, &self.specifier_map)?;
         }
         diagnostics_map.insert(specifier, diagnostics);
@@ -553,6 +556,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    token: &CancellationToken,
   ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
     let req = TscRequest::FindReferences((
       self.specifier_map.denormalize(&specifier),
@@ -567,11 +571,14 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(self.request::<Option<Vec<ReferencedSymbol>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-      ));
+      results.push_back(
+        self.request_with_cancellation::<Option<Vec<ReferencedSymbol>>>(
+          snapshot.clone(),
+          req.clone(),
+          scope.cloned(),
+          token,
+        ),
+      );
     }
     let mut all_symbols = IndexSet::new();
     while let Some(symbols) = results.next().await {
@@ -587,6 +594,9 @@ impl TsServer {
         continue;
       };
       for symbol in &mut symbols {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         symbol.normalize(&self.specifier_map)?;
       }
       all_symbols.extend(symbols);
@@ -602,7 +612,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
+    token: &CancellationToken,
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
@@ -629,8 +639,8 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
-  ) -> Result<Option<QuickInfo>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<QuickInfo>, AnyError> {
     let req = TscRequest::GetQuickInfoAtPosition((
       self.specifier_map.denormalize(&specifier),
       position,
@@ -638,10 +648,6 @@ impl TsServer {
     self
       .request_with_cancellation(snapshot, req, scope, token)
       .await
-      .map_err(|err| {
-        log::error!("Unable to get quick info: {}", err);
-        LspError::internal_error()
-      })
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -654,8 +660,8 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
-  ) -> Vec<CodeFixAction> {
+    token: &CancellationToken,
+  ) -> Result<Vec<CodeFixAction>, AnyError> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
       range.start,
@@ -664,28 +670,17 @@ impl TsServer {
       format_code_settings,
       preferences,
     )));
-    let result = self
+    self
       .request_with_cancellation::<Vec<CodeFixAction>>(
         snapshot, req, scope, token,
       )
       .await
       .and_then(|mut actions| {
         for action in &mut actions {
-          action.normalize(&self.specifier_map)?;
+          action.normalize(&self.specifier_map, token)?;
         }
         Ok(actions)
-      });
-    match result {
-      Ok(items) => items,
-      Err(err) => {
-        // sometimes tsc reports errors when retrieving code actions
-        // because they don't reflect the current state of the document
-        // so we will log them to the output, but we won't send an error
-        // message back to the client.
-        log::error!("Error getting actions from TypeScript: {}", err);
-        Vec::new()
-      }
-    }
+      })
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -698,7 +693,7 @@ impl TsServer {
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
+    token: &CancellationToken,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
@@ -728,8 +723,8 @@ impl TsServer {
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
-  ) -> Result<CombinedCodeActions, LspError> {
+    token: &CancellationToken,
+  ) -> Result<CombinedCodeActions, AnyError> {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
         r#type: "file",
@@ -748,10 +743,6 @@ impl TsServer {
         actions.normalize(&self.specifier_map)?;
         Ok(actions)
       })
-      .map_err(|err| {
-        log::error!("Unable to get combined fix from TypeScript: {}", err);
-        LspError::internal_error()
-      })
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -765,8 +756,8 @@ impl TsServer {
     action_name: String,
     preferences: Option<UserPreferences>,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
-  ) -> Result<RefactorEditInfo, LspError> {
+    token: &CancellationToken,
+  ) -> Result<RefactorEditInfo, AnyError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
       self.specifier_map.denormalize(&specifier),
       format_code_settings,
@@ -784,10 +775,6 @@ impl TsServer {
         info.normalize(&self.specifier_map)?;
         Ok(info)
       })
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
   }
 
   pub async fn get_edits_for_file_rename(
@@ -797,6 +784,7 @@ impl TsServer {
     new_specifier: ModuleSpecifier,
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
+    token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
       self.specifier_map.denormalize(&old_specifier),
@@ -813,24 +801,35 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(self.request::<Vec<FileTextChanges>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-      ));
+      results.push_back(
+        self.request_with_cancellation::<Vec<FileTextChanges>>(
+          snapshot.clone(),
+          req.clone(),
+          scope.cloned(),
+          token,
+        ),
+      );
     }
     let mut all_changes = IndexSet::new();
     while let Some(changes) = results.next().await {
       let mut changes = changes
         .inspect_err(|err| {
-          lsp_warn!(
-            "Unable to get edits for file rename from TypeScript: {err}"
-          );
+          if !token.is_cancelled() {
+            lsp_warn!(
+              "Unable to get edits for file rename from TypeScript: {err}"
+            );
+          }
         })
         .unwrap_or_default();
       for changes in &mut changes {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         changes.normalize(&self.specifier_map)?;
         for text_changes in &mut changes.text_changes {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
           text_changes.new_text =
             to_percent_decoded_str(&text_changes.new_text);
         }
@@ -847,7 +846,8 @@ impl TsServer {
     position: u32,
     files_to_search: Vec<ModuleSpecifier>,
     scope: Option<ModuleSpecifier>,
-  ) -> Result<Option<Vec<DocumentHighlights>>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<DocumentHighlights>>, AnyError> {
     let req = TscRequest::GetDocumentHighlights(Box::new((
       self.specifier_map.denormalize(&specifier),
       position,
@@ -856,10 +856,9 @@ impl TsServer {
         .map(|s| self.specifier_map.denormalize(&s))
         .collect::<Vec<_>>(),
     )));
-    self.request(snapshot, req, scope).await.map_err(|err| {
-      log::error!("Unable to get document highlights from TypeScript: {}", err);
-      LspError::internal_error()
-    })
+    self
+      .request_with_cancellation(snapshot, req, scope, token)
+      .await
   }
 
   pub async fn get_definition(
@@ -923,7 +922,7 @@ impl TsServer {
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
+    token: &CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
       self.specifier_map.denormalize(&specifier),
@@ -936,11 +935,11 @@ impl TsServer {
         snapshot, req, scope, token,
       )
       .await
-      .map(|mut info| {
+      .and_then(|mut info| {
         if let Some(info) = &mut info {
-          info.normalize(&self.specifier_map);
+          info.normalize(&self.specifier_map, token)?;
         }
-        info
+        Ok(info)
       })
   }
 
@@ -975,6 +974,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    token: &CancellationToken,
   ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
     let req = TscRequest::GetImplementationAtPosition((
       self.specifier_map.denormalize(&specifier),
@@ -989,11 +989,14 @@ impl TsServer {
       .map(Some)
       .chain(std::iter::once(None))
     {
-      results.push_back(self.request::<Option<Vec<ImplementationLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-      ));
+      results.push_back(
+        self.request_with_cancellation::<Option<Vec<ImplementationLocation>>>(
+          snapshot.clone(),
+          req.clone(),
+          scope.cloned(),
+          token,
+        ),
+      );
     }
     let mut all_locations = IndexSet::new();
     while let Some(locations) = results.next().await {
@@ -1009,6 +1012,9 @@ impl TsServer {
         continue;
       };
       for location in &mut locations {
+        if token.is_cancelled() {
+          return Err(anyhow!("request cancelled"));
+        }
         location.normalize(&self.specifier_map)?;
       }
       all_locations.extend(locations);
@@ -1296,8 +1302,8 @@ impl TsServer {
     text_span: TextSpan,
     user_preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
-  ) -> Result<Option<Vec<InlayHint>>, LspError> {
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<InlayHint>>, AnyError> {
     let req = TscRequest::ProvideInlayHints((
       self.specifier_map.denormalize(&specifier),
       text_span,
@@ -1306,10 +1312,6 @@ impl TsServer {
     self
       .request_with_cancellation(snapshot, req, scope, token)
       .await
-      .map_err(|err| {
-        log::error!("Unable to get inlay hints: {}", err);
-        LspError::internal_error()
-      })
   }
 
   async fn request<R>(
@@ -1325,7 +1327,7 @@ impl TsServer {
       .performance
       .mark(format!("tsc.request.{}", req.method()));
     let r = self
-      .request_with_cancellation(snapshot, req, scope, Default::default())
+      .request_with_cancellation(snapshot, req, scope, &Default::default())
       .await;
     self.performance.measure(mark);
     r
@@ -1336,7 +1338,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
     scope: Option<ModuleSpecifier>,
-    token: CancellationToken,
+    token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
     R: de::DeserializeOwned,
@@ -2710,11 +2712,14 @@ impl DocumentHighlights {
   pub fn to_highlight(
     &self,
     line_index: Arc<LineIndex>,
-  ) -> Vec<lsp::DocumentHighlight> {
-    self
-      .highlight_spans
-      .iter()
-      .map(|hs| lsp::DocumentHighlight {
+    token: &CancellationToken,
+  ) -> Result<Vec<lsp::DocumentHighlight>, AnyError> {
+    let mut highlights = Vec::with_capacity(self.highlight_spans.len());
+    for hs in &self.highlight_spans {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
+      highlights.push(lsp::DocumentHighlight {
         range: hs.text_span.to_range(line_index.clone()),
         kind: match hs.kind {
           HighlightSpanKind::WrittenReference => {
@@ -2722,8 +2727,9 @@ impl DocumentHighlights {
           }
           _ => Some(lsp::DocumentHighlightKind::READ),
         },
-      })
-      .collect()
+      });
+    }
+    Ok(highlights)
   }
 }
 
@@ -2976,14 +2982,18 @@ impl ApplicableRefactorInfo {
     &self,
     specifier: &ModuleSpecifier,
     range: &lsp::Range,
-  ) -> Vec<lsp::CodeAction> {
+    token: &CancellationToken,
+  ) -> Result<Vec<lsp::CodeAction>, AnyError> {
     let mut code_actions = Vec::<lsp::CodeAction>::new();
     // All typescript refactoring actions are inlineable
     for action in self.actions.iter() {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
       code_actions
         .push(self.as_inline_code_action(action, specifier, range, &self.name));
     }
-    code_actions
+    Ok(code_actions)
   }
 
   fn as_inline_code_action(
@@ -3021,9 +3031,13 @@ impl ApplicableRefactorInfo {
 pub fn file_text_changes_to_workspace_edit(
   changes: &[FileTextChanges],
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> LspResult<Option<lsp::WorkspaceEdit>> {
   let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
   for change in changes {
+    if token.is_cancelled() {
+      return Err(LspError::request_cancelled());
+    }
     let ops = match change.to_text_document_change_ops(language_server) {
       Ok(op) => op,
       Err(err) => {
@@ -3062,8 +3076,9 @@ impl RefactorEditInfo {
   pub fn to_workspace_edit(
     &self,
     language_server: &language_server::Inner,
+    token: &CancellationToken,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {
-    file_text_changes_to_workspace_edit(&self.edits, language_server)
+    file_text_changes_to_workspace_edit(&self.edits, language_server, token)
   }
 }
 
@@ -3113,8 +3128,12 @@ impl CodeFixAction {
   fn normalize(
     &mut self,
     specifier_map: &TscSpecifierMap,
+    token: &CancellationToken,
   ) -> Result<(), AnyError> {
     for changes in &mut self.changes {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
       changes.normalize(specifier_map)?;
     }
     Ok(())
@@ -3714,10 +3733,18 @@ pub struct CompletionInfo {
 }
 
 impl CompletionInfo {
-  fn normalize(&mut self, specifier_map: &TscSpecifierMap) {
+  fn normalize(
+    &mut self,
+    specifier_map: &TscSpecifierMap,
+    token: &CancellationToken,
+  ) -> Result<(), AnyError> {
     for entry in &mut self.entries {
+      if token.is_cancelled() {
+        return Err(anyhow!("request cancelled"));
+      }
       entry.normalize(specifier_map);
     }
+    Ok(())
   }
 
   pub fn as_completion_response(
@@ -3727,8 +3754,8 @@ impl CompletionInfo {
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
-    token: CancellationToken,
-  ) -> lsp::CompletionResponse {
+    token: &CancellationToken,
+  ) -> Result<lsp::CompletionResponse, AnyError> {
     // A cache for costly resolution computations.
     // On a test project, it was found to speed up completion requests
     // by 10-20x and contained ~300 entries for 8000 completion items.
@@ -3736,7 +3763,7 @@ impl CompletionInfo {
     let mut items = Vec::with_capacity(self.entries.len());
     for entry in &self.entries {
       if token.is_cancelled() {
-        break;
+        return Err(anyhow!("request cancelled"));
       }
       if let Some(item) = entry.as_completion_item(
         line_index.clone(),
@@ -3762,10 +3789,10 @@ impl CompletionInfo {
           .unwrap()
       })
       .unwrap_or(false);
-    lsp::CompletionResponse::List(lsp::CompletionList {
+    Ok(lsp::CompletionResponse::List(lsp::CompletionList {
       is_incomplete,
       items,
-    })
+    }))
   }
 }
 
@@ -5755,7 +5782,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -5801,7 +5828,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!({ specifier: [] }));
@@ -5831,7 +5858,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!({ specifier: [] }));
@@ -5857,7 +5884,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -5907,7 +5934,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(json!(diagnostics), json!({ specifier: [] }));
@@ -5940,7 +5967,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -5998,7 +6025,7 @@ mod tests {
     .await;
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
-      .get_diagnostics(snapshot, vec![specifier.clone()], Default::default())
+      .get_diagnostics(snapshot, vec![specifier.clone()], &Default::default())
       .await
       .unwrap();
     assert_eq!(
@@ -6107,7 +6134,7 @@ mod tests {
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
-        Default::default(),
+        &Default::default(),
       )
       .await
       .unwrap();
@@ -6157,7 +6184,7 @@ mod tests {
       .get_diagnostics(
         snapshot.clone(),
         vec![specifier.clone()],
-        Default::default(),
+        &Default::default(),
       )
       .await
       .unwrap();
@@ -6239,7 +6266,7 @@ mod tests {
         },
         Default::default(),
         Some(temp_dir.url()),
-        Default::default(),
+        &Default::default(),
       )
       .await
       .unwrap()
@@ -6433,7 +6460,7 @@ mod tests {
         },
         FormatCodeSettings::from(&fmt_options_config),
         Some(temp_dir.url()),
-        Default::default(),
+        &Default::default(),
       )
       .await
       .unwrap()
@@ -6528,6 +6555,7 @@ mod tests {
         temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
+        &Default::default(),
       )
       .await
       .unwrap();
