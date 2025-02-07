@@ -1359,16 +1359,6 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Node {
-      type: string;
-      range: Range;
-      [key: string]: unknown;
-    }
-
-    /**
-     * @category Linter
-     * @experimental
-     */
     export interface FixData {
       range: Range;
       text?: string;
@@ -1379,13 +1369,13 @@ declare namespace Deno {
      * @experimental
      */
     export interface Fixer {
-      insertTextAfter(node: Node, text: string): FixData;
+      insertTextAfter(node: AstNode, text: string): FixData;
       insertTextAfterRange(range: Range, text: string): FixData;
-      insertTextBefore(node: Node, text: string): FixData;
+      insertTextBefore(node: AstNode, text: string): FixData;
       insertTextBeforeRange(range: Range, text: string): FixData;
-      remove(node: Node): FixData;
+      remove(node: AstNode): FixData;
       removeRange(range: Range): FixData;
-      replaceText(node: Node, text: string): FixData;
+      replaceText(node: AstNode, text: string): FixData;
       replaceTextRange(range: Range, text: string): FixData;
     }
 
@@ -1394,7 +1384,7 @@ declare namespace Deno {
      * @experimental
      */
     export interface ReportData {
-      node?: Node;
+      node?: AstNode;
       range?: Range;
       message: string;
       hint?: string;
