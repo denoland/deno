@@ -1404,11 +1404,15 @@ impl Inner {
       .get_navigation_tree(&specifier, token)
       .await
       .map_err(|err| {
-        error!(
-          "Error getting document symbols for \"{}\": {:#}",
-          specifier, err
-        );
-        LspError::internal_error()
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Error getting document symbols for \"{}\": {:#}",
+            specifier, err
+          );
+          LspError::internal_error()
+        }
       })?;
 
     let response = if let Some(child_items) = &navigation_tree.child_items {
@@ -2002,8 +2006,12 @@ impl Inner {
       let changes = if code_action_data.fix_id == "fixMissingImport" {
         fix_ts_import_changes(&combined_code_actions.changes, self, token)
           .map_err(|err| {
-            error!("Unable to remap changes: {:#}", err);
-            LspError::internal_error()
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to fix import changes: {:#}", err);
+              LspError::internal_error()
+            }
           })?
       } else {
         combined_code_actions.changes
@@ -2066,8 +2074,12 @@ impl Inner {
         refactor_edit_info.edits =
           fix_ts_import_changes(&refactor_edit_info.edits, self, token)
             .map_err(|err| {
-              error!("Unable to remap changes: {:#}", err);
-              LspError::internal_error()
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!("Unable to fix import changes: {:#}", err);
+                LspError::internal_error()
+              }
             })?
       }
       code_action.edit = refactor_edit_info.to_workspace_edit(self, token)?;
@@ -2180,8 +2192,12 @@ impl Inner {
       code_lens::resolve_code_lens(code_lens, self, token)
         .await
         .map_err(|err| {
-          error!("Error resolving code lens: {:#}", err);
-          LspError::internal_error()
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to get resolved code lens: {:#}", err);
+            LspError::internal_error()
+          }
         })
     } else {
       Err(LspError::invalid_params(

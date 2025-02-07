@@ -11,6 +11,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -22,7 +23,6 @@ use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
-use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis::source_range_to_lsp_range;
@@ -31,7 +31,6 @@ use super::language_server;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::NavigationTree;
-use crate::lsp::logging::lsp_warn;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
@@ -268,8 +267,14 @@ async fn resolve_implementation_code_lens(
     )
     .await
     .map_err(|err| {
-      lsp_warn!("{err}");
-      LspError::internal_error()
+      if token.is_cancelled() {
+        anyhow!("request cancelled")
+      } else {
+        anyhow!(
+          "Unable to get implementation locations from TypeScript: {:#}",
+          err
+        )
+      }
     })?;
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
@@ -378,8 +383,11 @@ async fn resolve_references_code_lens(
     )
     .await
     .map_err(|err| {
-      lsp_warn!("Unable to find references: {err}");
-      LspError::internal_error()
+      if token.is_cancelled() {
+        anyhow!("request cancelled")
+      } else {
+        anyhow!("Unable to get references from TypeScript: {:#}", err)
+      }
     })?;
   let locations =
     get_locations(maybe_referenced_symbols, language_server, token)?;
