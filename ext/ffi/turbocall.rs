@@ -51,13 +51,13 @@ pub(crate) struct Turbocall {
 }
 
 pub(crate) fn make_template(sym: &Symbol, trampoline: Trampoline) -> Turbocall {
-  let param_info = once(fast_api::Type::V8Value.scalar()) // Receiver
+  let param_info = once(fast_api::Type::V8Value.as_info()) // Receiver
     .chain(sym.parameter_types.iter().map(|t| t.into()))
     .collect::<Box<_>>();
 
   let ret = if sym.result_type == NativeType::Buffer {
     // Buffer can be used as a return type and converts differently than in parameters.
-    fast_api::Type::Pointer.scalar()
+    fast_api::Type::Pointer.as_info()
   } else {
     (&sym.result_type).into()
   };
@@ -89,25 +89,25 @@ impl Trampoline {
 impl From<&NativeType> for fast_api::CTypeInfo {
   fn from(native_type: &NativeType) -> Self {
     match native_type {
-      NativeType::Bool => fast_api::Type::Bool.scalar(),
+      NativeType::Bool => fast_api::Type::Bool.as_info(),
       NativeType::U8 | NativeType::U16 | NativeType::U32 => {
-        fast_api::Type::Uint32.scalar()
+        fast_api::Type::Uint32.as_info()
       }
       NativeType::I8 | NativeType::I16 | NativeType::I32 => {
-        fast_api::Type::Int32.scalar()
+        fast_api::Type::Int32.as_info()
       }
-      NativeType::F32 => fast_api::Type::Float32.scalar(),
-      NativeType::F64 => fast_api::Type::Float64.scalar(),
-      NativeType::Void => fast_api::Type::Void.scalar(),
-      NativeType::I64 => fast_api::Type::Int64.scalar(),
-      NativeType::U64 => fast_api::Type::Uint64.scalar(),
-      NativeType::ISize => fast_api::Type::Int64.scalar(),
-      NativeType::USize => fast_api::Type::Uint64.scalar(),
+      NativeType::F32 => fast_api::Type::Float32.as_info(),
+      NativeType::F64 => fast_api::Type::Float64.as_info(),
+      NativeType::Void => fast_api::Type::Void.as_info(),
+      NativeType::I64 => fast_api::Type::Int64.as_info(),
+      NativeType::U64 => fast_api::Type::Uint64.as_info(),
+      NativeType::ISize => fast_api::Type::Int64.as_info(),
+      NativeType::USize => fast_api::Type::Uint64.as_info(),
       NativeType::Pointer | NativeType::Function => {
-        fast_api::Type::Pointer.scalar()
+        fast_api::Type::Pointer.as_info()
       }
-      NativeType::Buffer => fast_api::Type::Uint8.typed_array(),
-      NativeType::Struct(_) => fast_api::Type::Uint8.typed_array(),
+      NativeType::Buffer => fast_api::Type::Uint8.as_info(),
+      NativeType::Struct(_) => fast_api::Type::Uint8.as_info(),
     }
   }
 }
