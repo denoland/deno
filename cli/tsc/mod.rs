@@ -134,6 +134,7 @@ impl StaticAssetSource {
       StaticAssetSource::Uncompressed(src) => Cow::Borrowed(src),
     }
   }
+  #[allow(clippy::inherent_to_string)]
   pub fn to_string(&self) -> String {
     self.get().into()
   }
