@@ -138,7 +138,7 @@ pub struct LanguageServer {
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
   shutdown_flag: AsyncFlag,
-  worker_runtime: Arc<tokio::runtime::Runtime>,
+  worker_thread: Arc<WorkerThread>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -186,6 +186,76 @@ impl LanguageServerTaskQueue {
         task_fn(ls.clone());
       }
     });
+  }
+}
+
+#[derive(Debug)]
+struct WorkerThread {
+  runtime_handle: tokio::runtime::Handle,
+  shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
+  join_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl WorkerThread {
+  fn create() -> Self {
+    let (handle_tx, handle_rx) = std::sync::mpsc::channel();
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let join_handle = std::thread::spawn(move || {
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+      handle_tx.send(runtime.handle().clone()).unwrap();
+      runtime.block_on(shutdown_rx).unwrap();
+    });
+    let runtime_handle = handle_rx.recv().unwrap();
+    Self {
+      runtime_handle,
+      shutdown_tx: Some(shutdown_tx),
+      join_handle: Some(join_handle),
+    }
+  }
+
+  async fn spawn(
+    &self,
+    fut: impl std::future::Future<Output = ()> + Send + 'static,
+  ) {
+    self
+      .runtime_handle
+      .spawn(fut)
+      .await
+      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+      .ok();
+  }
+
+  async fn spawn_with_cancellation<
+    T: Send + 'static,
+    TFut: std::future::Future<Output = LspResult<T>> + Send,
+  >(
+    &self,
+    get_fut: impl FnOnce(CancellationToken) -> TFut + Send + 'static,
+  ) -> LspResult<T> {
+    let token = CancellationToken::new();
+    let _drop_guard = token.clone().drop_guard();
+    self
+      .runtime_handle
+      .spawn(async move {
+        tokio::select! {
+          biased;
+          _ = token.cancelled() => Err(LspError::request_cancelled()),
+          result = get_fut(token.clone()) => result,
+        }
+      })
+      .await
+      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+      .unwrap_or_else(|_| Err(LspError::internal_error()))
+  }
+}
+
+impl Drop for WorkerThread {
+  fn drop(&mut self) {
+    self.shutdown_tx.take().unwrap().send(()).unwrap();
+    self.join_handle.take().unwrap().join().unwrap();
   }
 }
 
@@ -241,12 +311,7 @@ impl LanguageServer {
       init_flag: Default::default(),
       performance,
       shutdown_flag,
-      worker_runtime: Arc::new(
-        tokio::runtime::Builder::new_multi_thread()
-          .worker_threads(1)
-          .build()
-          .unwrap(),
-      ),
+      worker_thread: Arc::new(WorkerThread::create()),
     }
   }
 
@@ -3374,43 +3439,6 @@ impl Inner {
   }
 }
 
-impl LanguageServer {
-  async fn spawn(
-    &self,
-    fut: impl std::future::Future<Output = ()> + Send + 'static,
-  ) {
-    self
-      .worker_runtime
-      .spawn(fut)
-      .await
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .ok();
-  }
-
-  async fn spawn_with_cancellation<
-    T: Send + 'static,
-    TFut: std::future::Future<Output = LspResult<T>> + Send,
-  >(
-    &self,
-    get_fut: impl FnOnce(CancellationToken) -> TFut + Send + 'static,
-  ) -> LspResult<T> {
-    let token = CancellationToken::new();
-    let _drop_guard = token.clone().drop_guard();
-    self
-      .worker_runtime
-      .spawn(async move {
-        tokio::select! {
-          biased;
-          _ = token.cancelled() => Err(LspError::request_cancelled()),
-          result = get_fut(token.clone()) => result,
-        }
-      })
-      .await
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .unwrap_or_else(|_| Err(LspError::internal_error()))
-  }
-}
-
 #[tower_lsp::async_trait]
 impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
@@ -3507,6 +3535,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         ls.inner.write().await.did_open(params).await;
       })
@@ -3519,6 +3548,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         ls.inner.write().await.did_change(params).await;
       })
@@ -3531,6 +3561,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         ls.inner.write().await.did_save(params);
       })
@@ -3543,6 +3574,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         ls.inner.write().await.did_close(params).await;
       })
@@ -3558,6 +3590,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         let mark = ls
           .performance
@@ -3582,6 +3615,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         ls.inner
           .write()
@@ -3601,6 +3635,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn(async move {
         let mark = ls
           .performance
@@ -3629,6 +3664,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.document_symbol(params, &token).await
       })
@@ -3644,6 +3680,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.formatting(params, &token).await
       })
@@ -3656,6 +3693,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.hover(params, &token).await
       })
@@ -3671,6 +3709,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.inlay_hint(params, &token).await
       })
@@ -3686,6 +3725,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.code_action(params, &token).await
       })
@@ -3701,6 +3741,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3720,6 +3761,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.code_lens(params, &token).await
       })
@@ -3732,6 +3774,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3751,6 +3794,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3770,6 +3814,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.references(params, &token).await
       })
@@ -3785,6 +3830,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.goto_definition(params, &token).await
       })
@@ -3800,6 +3846,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3819,6 +3866,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.completion(params, &token).await
       })
@@ -3834,6 +3882,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3853,6 +3902,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3872,6 +3922,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.folding_range(params, &token).await
       })
@@ -3887,6 +3938,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.incoming_calls(params, &token).await
       })
@@ -3902,6 +3954,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.outgoing_calls(params, &token).await
       })
@@ -3917,6 +3970,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3936,6 +3990,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.rename(params, &token).await
       })
@@ -3951,6 +4006,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.selection_range(params, &token).await
       })
@@ -3966,6 +4022,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -3985,6 +4042,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -4004,6 +4062,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.signature_help(params, &token).await
       })
@@ -4019,6 +4078,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner
           .read()
@@ -4038,6 +4098,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     }
     let ls = self.clone();
     self
+      .worker_thread
       .spawn_with_cancellation(move |token| async move {
         ls.inner.read().await.symbol(params, &token).await
       })
