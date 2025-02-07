@@ -209,6 +209,7 @@ fn unadded_dependency_message_with_import_map() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -9107,6 +9108,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // try auto-import with path
   client.did_open(json!({
