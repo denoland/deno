@@ -1929,6 +1929,20 @@ Deno.test("[node/http] `request` requires net permission to host and port", {
   await promise;
 });
 
+const ca = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+
+Deno.test("[node/https] `request` requires net permission to host and port", {
+  permissions: { net: ["localhost:5545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
+});
+
 Deno.test(
   "[node/http] `request` errors with EPERM error when permission is not granted",
   { permissions: { net: ["localhost:4321"] } }, // wrong permission
