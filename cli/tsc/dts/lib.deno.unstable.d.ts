@@ -1359,16 +1359,6 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Node {
-      type: string;
-      range: Range;
-      [key: string]: unknown;
-    }
-
-    /**
-     * @category Linter
-     * @experimental
-     */
     export interface FixData {
       range: Range;
       text?: string;
@@ -1414,8 +1404,25 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
+    export type LintVisitor =
+      & {
+        [P in Node["type"]]?: (node: Extract<Node, { type: P }>) => void;
+      }
+      & {
+        [P in Node["type"] as `${P}:exit`]?: (
+          node: Extract<Node, { type: P }>,
+        ) => void;
+      }
+      & // Custom selectors which cannot be typed by us
+      // deno-lint-ignore no-explicit-any
+      Partial<{ [key: string]: (node: any) => void }>;
+
+    /**
+     * @category Linter
+     * @experimental
+     */
     export interface Rule {
-      create(ctx: RuleContext): Record<string, (node: unknown) => void>;
+      create(ctx: RuleContext): LintVisitor;
       destroy?(ctx: RuleContext): void;
     }
 
@@ -1482,7 +1489,7 @@ declare namespace Deno {
      */
     export interface ImportSpecifier {
       type: "ImportSpecifier";
-      range: [number, number];
+      range: Range;
       imported: Identifier | StringLiteral;
       local: Identifier;
       importKind: "type" | "value";
@@ -1494,7 +1501,7 @@ declare namespace Deno {
      */
     export interface ImportDefaultSpecifier {
       type: "ImportDefaultSpecifier";
-      range: [number, number];
+      range: Range;
       local: Identifier;
     }
 
@@ -1504,7 +1511,7 @@ declare namespace Deno {
      */
     export interface ImportNamespaceSpecifier {
       type: "ImportNamespaceSpecifier";
-      range: [number, number];
+      range: Range;
       local: Identifier;
     }
 
@@ -1514,7 +1521,7 @@ declare namespace Deno {
      */
     export interface ImportAttribute {
       type: "ImportAttribute";
-      range: [number, number];
+      range: Range;
       key: Identifier | Literal;
       value: Literal;
     }
@@ -1526,7 +1533,7 @@ declare namespace Deno {
      */
     export interface ImportDeclaration {
       type: "ImportDeclaration";
-      range: [number, number];
+      range: Range;
       importKind: "type" | "value";
       source: StringLiteral;
       specifiers: Array<
@@ -1543,7 +1550,7 @@ declare namespace Deno {
      */
     export interface ExportDefaultDeclaration {
       type: "ExportDefaultDeclaration";
-      range: [number, number];
+      range: Range;
       declaration:
         | ClassDeclaration
         | Expression
@@ -1563,7 +1570,7 @@ declare namespace Deno {
      */
     export interface ExportNamedDeclaration {
       type: "ExportNamedDeclaration";
-      range: [number, number];
+      range: Range;
       exportKind: "type" | "value";
       specifiers: ExportSpecifier[];
       declaration:
@@ -1587,7 +1594,7 @@ declare namespace Deno {
      */
     export interface ExportAllDeclaration {
       type: "ExportAllDeclaration";
-      range: [number, number];
+      range: Range;
       exportKind: "type" | "value";
       exported: Identifier | null;
       source: StringLiteral;
@@ -1600,7 +1607,7 @@ declare namespace Deno {
      */
     export interface TSNamespaceExportDeclaration {
       type: "TSNamespaceExportDeclaration";
-      range: [number, number];
+      range: Range;
       id: Identifier;
     }
 
@@ -1610,7 +1617,7 @@ declare namespace Deno {
      */
     export interface TSImportEqualsDeclaration {
       type: "TSImportEqualsDeclaration";
-      range: [number, number];
+      range: Range;
       importKind: "type" | "value";
       id: Identifier;
       moduleReference: Identifier | TSExternalModuleReference | TSQualifiedName;
@@ -1622,7 +1629,7 @@ declare namespace Deno {
      */
     export interface TSExternalModuleReference {
       type: "TSExternalModuleReference";
-      range: [number, number];
+      range: Range;
       expression: StringLiteral;
     }
 
@@ -1632,7 +1639,7 @@ declare namespace Deno {
      */
     export interface ExportSpecifier {
       type: "ExportSpecifier";
-      range: [number, number];
+      range: Range;
       exportKind: "type" | "value";
       exported: Identifier | StringLiteral;
       local: Identifier | StringLiteral;
@@ -1645,7 +1652,7 @@ declare namespace Deno {
      */
     export interface VariableDeclaration {
       type: "VariableDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       kind: "let" | "var" | "const" | "await using" | "using";
       declarations: VariableDeclarator[];
@@ -1659,7 +1666,7 @@ declare namespace Deno {
      */
     export interface VariableDeclarator {
       type: "VariableDeclarator";
-      range: [number, number];
+      range: Range;
       id: ArrayPattern | ObjectPattern | Identifier;
       init: Expression | null;
       definite: boolean;
@@ -1692,7 +1699,7 @@ declare namespace Deno {
      */
     export interface FunctionDeclaration {
       type: "FunctionDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       async: boolean;
       generator: boolean;
@@ -1710,7 +1717,7 @@ declare namespace Deno {
      */
     export interface Decorator {
       type: "Decorator";
-      range: [number, number];
+      range: Range;
       expression:
         | ArrayExpression
         | ArrayPattern
@@ -1743,7 +1750,7 @@ declare namespace Deno {
      */
     export interface ClassDeclaration {
       type: "ClassDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       abstract: boolean;
       id: Identifier | null;
@@ -1784,7 +1791,7 @@ declare namespace Deno {
      */
     export interface ClassExpression {
       type: "ClassExpression";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       abstract: boolean;
       id: Identifier | null;
@@ -1825,7 +1832,7 @@ declare namespace Deno {
      */
     export interface ClassBody {
       type: "ClassBody";
-      range: [number, number];
+      range: Range;
       body: Array<
         | AccessorProperty
         | MethodDefinition
@@ -1847,7 +1854,7 @@ declare namespace Deno {
      */
     export interface StaticBlock {
       type: "StaticBlock";
-      range: [number, number];
+      range: Range;
       body: Statement[];
     }
 
@@ -1860,7 +1867,7 @@ declare namespace Deno {
      */
     export interface AccessorProperty {
       type: "AccessorProperty";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1879,7 +1886,7 @@ declare namespace Deno {
      */
     export interface PropertyDefinition {
       type: "PropertyDefinition";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1899,7 +1906,7 @@ declare namespace Deno {
      */
     export interface MethodDefinition {
       type: "MethodDefinition";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       computed: boolean;
       optional: boolean;
@@ -1924,7 +1931,7 @@ declare namespace Deno {
      */
     export interface BlockStatement {
       type: "BlockStatement";
-      range: [number, number];
+      range: Range;
       body: Statement[];
     }
 
@@ -1935,7 +1942,7 @@ declare namespace Deno {
      */
     export interface DebuggerStatement {
       type: "DebuggerStatement";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -1946,7 +1953,7 @@ declare namespace Deno {
      */
     export interface WithStatement {
       type: "WithStatement";
-      range: [number, number];
+      range: Range;
       object: Expression;
       body: Statement;
     }
@@ -1958,7 +1965,7 @@ declare namespace Deno {
      */
     export interface ReturnStatement {
       type: "ReturnStatement";
-      range: [number, number];
+      range: Range;
       argument: Expression | null;
     }
 
@@ -1969,7 +1976,7 @@ declare namespace Deno {
      */
     export interface LabeledStatement {
       type: "LabeledStatement";
-      range: [number, number];
+      range: Range;
       label: Identifier;
       body: Statement;
     }
@@ -1991,7 +1998,7 @@ declare namespace Deno {
      */
     export interface BreakStatement {
       type: "BreakStatement";
-      range: [number, number];
+      range: Range;
       label: Identifier | null;
     }
 
@@ -2002,7 +2009,7 @@ declare namespace Deno {
      */
     export interface ContinueStatement {
       type: "ContinueStatement";
-      range: [number, number];
+      range: Range;
       label: Identifier | null;
     }
 
@@ -2014,7 +2021,7 @@ declare namespace Deno {
      */
     export interface IfStatement {
       type: "IfStatement";
-      range: [number, number];
+      range: Range;
       test: Expression;
       consequent: Statement;
       alternate: Statement | null;
@@ -2027,7 +2034,7 @@ declare namespace Deno {
      */
     export interface SwitchStatement {
       type: "SwitchStatement";
-      range: [number, number];
+      range: Range;
       discriminant: Expression;
       cases: SwitchCase[];
     }
@@ -2039,7 +2046,7 @@ declare namespace Deno {
      */
     export interface SwitchCase {
       type: "SwitchCase";
-      range: [number, number];
+      range: Range;
       test: Expression | null;
       consequent: Statement[];
     }
@@ -2052,7 +2059,7 @@ declare namespace Deno {
      */
     export interface ThrowStatement {
       type: "ThrowStatement";
-      range: [number, number];
+      range: Range;
       argument: Expression;
     }
 
@@ -2063,7 +2070,7 @@ declare namespace Deno {
      */
     export interface WhileStatement {
       type: "WhileStatement";
-      range: [number, number];
+      range: Range;
       test: Expression;
       body: Statement;
     }
@@ -2075,7 +2082,7 @@ declare namespace Deno {
      */
     export interface DoWhileStatement {
       type: "DoWhileStatement";
-      range: [number, number];
+      range: Range;
       test: Expression;
       body: Statement;
     }
@@ -2087,7 +2094,7 @@ declare namespace Deno {
      */
     export interface ForStatement {
       type: "ForStatement";
-      range: [number, number];
+      range: Range;
       init: Expression | VariableDeclaration | null;
       test: Expression | null;
       update: Expression | null;
@@ -2101,7 +2108,7 @@ declare namespace Deno {
      */
     export interface ForInStatement {
       type: "ForInStatement";
-      range: [number, number];
+      range: Range;
       left: Expression | VariableDeclaration;
       right: Expression;
       body: Statement;
@@ -2114,7 +2121,7 @@ declare namespace Deno {
      */
     export interface ForOfStatement {
       type: "ForOfStatement";
-      range: [number, number];
+      range: Range;
       await: boolean;
       left: Expression | VariableDeclaration;
       right: Expression;
@@ -2128,7 +2135,7 @@ declare namespace Deno {
      */
     export interface ExpressionStatement {
       type: "ExpressionStatement";
-      range: [number, number];
+      range: Range;
       expression: Expression;
     }
 
@@ -2139,7 +2146,7 @@ declare namespace Deno {
      */
     export interface TryStatement {
       type: "TryStatement";
-      range: [number, number];
+      range: Range;
       block: BlockStatement;
       handler: CatchClause | null;
       finalizer: BlockStatement | null;
@@ -2152,7 +2159,7 @@ declare namespace Deno {
      */
     export interface CatchClause {
       type: "CatchClause";
-      range: [number, number];
+      range: Range;
       param: ArrayPattern | ObjectPattern | Identifier | null;
       body: BlockStatement;
     }
@@ -2164,7 +2171,7 @@ declare namespace Deno {
      */
     export interface ArrayExpression {
       type: "ArrayExpression";
-      range: [number, number];
+      range: Range;
       elements: Array<Expression | SpreadElement>;
     }
 
@@ -2175,7 +2182,7 @@ declare namespace Deno {
      */
     export interface ObjectExpression {
       type: "ObjectExpression";
-      range: [number, number];
+      range: Range;
       properties: Array<Property | SpreadElement>;
     }
 
@@ -2186,7 +2193,7 @@ declare namespace Deno {
      */
     export interface BinaryExpression {
       type: "BinaryExpression";
-      range: [number, number];
+      range: Range;
       operator:
         | "&"
         | "**"
@@ -2222,7 +2229,7 @@ declare namespace Deno {
      */
     export interface LogicalExpression {
       type: "LogicalExpression";
-      range: [number, number];
+      range: Range;
       operator: "&&" | "??" | "||";
       left: Expression;
       right: Expression;
@@ -2236,7 +2243,7 @@ declare namespace Deno {
      */
     export interface FunctionExpression {
       type: "FunctionExpression";
-      range: [number, number];
+      range: Range;
       async: boolean;
       generator: boolean;
       id: Identifier | null;
@@ -2253,7 +2260,7 @@ declare namespace Deno {
      */
     export interface ArrowFunctionExpression {
       type: "ArrowFunctionExpression";
-      range: [number, number];
+      range: Range;
       async: boolean;
       generator: boolean;
       id: null;
@@ -2270,7 +2277,7 @@ declare namespace Deno {
      */
     export interface ThisExpression {
       type: "ThisExpression";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -2280,7 +2287,7 @@ declare namespace Deno {
      */
     export interface Super {
       type: "Super";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -2290,7 +2297,7 @@ declare namespace Deno {
      */
     export interface UnaryExpression {
       type: "UnaryExpression";
-      range: [number, number];
+      range: Range;
       operator: "!" | "+" | "~" | "-" | "delete" | "typeof" | "void";
       argument: Expression;
     }
@@ -2302,7 +2309,7 @@ declare namespace Deno {
      */
     export interface NewExpression {
       type: "NewExpression";
-      range: [number, number];
+      range: Range;
       callee: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
       arguments: Array<Expression | SpreadElement>;
@@ -2315,7 +2322,7 @@ declare namespace Deno {
      */
     export interface ImportExpression {
       type: "ImportExpression";
-      range: [number, number];
+      range: Range;
       source: Expression;
       options: Expression | null;
     }
@@ -2327,7 +2334,7 @@ declare namespace Deno {
      */
     export interface CallExpression {
       type: "CallExpression";
-      range: [number, number];
+      range: Range;
       optional: boolean;
       callee: Expression;
       typeArguments: TSTypeParameterInstantiation | null;
@@ -2341,7 +2348,7 @@ declare namespace Deno {
      */
     export interface UpdateExpression {
       type: "UpdateExpression";
-      range: [number, number];
+      range: Range;
       prefix: boolean;
       operator: "++" | "--";
       argument: Expression;
@@ -2354,7 +2361,7 @@ declare namespace Deno {
      */
     export interface AssignmentExpression {
       type: "AssignmentExpression";
-      range: [number, number];
+      range: Range;
       operator:
         | "&&="
         | "&="
@@ -2383,7 +2390,7 @@ declare namespace Deno {
      */
     export interface ConditionalExpression {
       type: "ConditionalExpression";
-      range: [number, number];
+      range: Range;
       test: Expression;
       consequent: Expression;
       alternate: Expression;
@@ -2396,7 +2403,7 @@ declare namespace Deno {
      */
     export interface MemberExpression {
       type: "MemberExpression";
-      range: [number, number];
+      range: Range;
       optional: boolean;
       computed: boolean;
       object: Expression;
@@ -2410,7 +2417,7 @@ declare namespace Deno {
      */
     export interface ChainExpression {
       type: "ChainExpression";
-      range: [number, number];
+      range: Range;
       expression:
         | CallExpression
         | MemberExpression
@@ -2424,7 +2431,7 @@ declare namespace Deno {
      */
     export interface SequenceExpression {
       type: "SequenceExpression";
-      range: [number, number];
+      range: Range;
       expressions: Expression[];
     }
 
@@ -2435,7 +2442,7 @@ declare namespace Deno {
      */
     export interface TemplateLiteral {
       type: "TemplateLiteral";
-      range: [number, number];
+      range: Range;
       quasis: TemplateElement[];
       expressions: Expression[];
     }
@@ -2447,7 +2454,7 @@ declare namespace Deno {
      */
     export interface TemplateElement {
       type: "TemplateElement";
-      range: [number, number];
+      range: Range;
       tail: boolean;
       raw: string;
       cooked: string;
@@ -2460,7 +2467,7 @@ declare namespace Deno {
      */
     export interface TaggedTemplateExpression {
       type: "TaggedTemplateExpression";
-      range: [number, number];
+      range: Range;
       tag: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
       quasi: TemplateLiteral;
@@ -2473,7 +2480,7 @@ declare namespace Deno {
      */
     export interface YieldExpression {
       type: "YieldExpression";
-      range: [number, number];
+      range: Range;
       delegate: boolean;
       argument: Expression | null;
     }
@@ -2485,7 +2492,7 @@ declare namespace Deno {
      */
     export interface AwaitExpression {
       type: "AwaitExpression";
-      range: [number, number];
+      range: Range;
       argument: Expression;
     }
 
@@ -2496,7 +2503,7 @@ declare namespace Deno {
      */
     export interface MetaProperty {
       type: "MetaProperty";
-      range: [number, number];
+      range: Range;
       meta: Identifier;
       property: Identifier;
     }
@@ -2509,7 +2516,7 @@ declare namespace Deno {
      */
     export interface Identifier {
       type: "Identifier";
-      range: [number, number];
+      range: Range;
       name: string;
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
@@ -2522,7 +2529,7 @@ declare namespace Deno {
      */
     export interface PrivateIdentifier {
       type: "PrivateIdentifier";
-      range: [number, number];
+      range: Range;
       name: string;
     }
 
@@ -2533,7 +2540,7 @@ declare namespace Deno {
      */
     export interface AssignmentPattern {
       type: "AssignmentPattern";
-      range: [number, number];
+      range: Range;
       left: ArrayPattern | ObjectPattern | Identifier;
       right: Expression;
     }
@@ -2545,7 +2552,7 @@ declare namespace Deno {
      */
     export interface ArrayPattern {
       type: "ArrayPattern";
-      range: [number, number];
+      range: Range;
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
       elements: Array<
@@ -2566,7 +2573,7 @@ declare namespace Deno {
      */
     export interface ObjectPattern {
       type: "ObjectPattern";
-      range: [number, number];
+      range: Range;
       optional: boolean;
       typeAnnotation: TSTypeAnnotation | undefined;
       properties: Array<Property | RestElement>;
@@ -2579,7 +2586,7 @@ declare namespace Deno {
      */
     export interface RestElement {
       type: "RestElement";
-      range: [number, number];
+      range: Range;
       typeAnnotation: TSTypeAnnotation | undefined;
       argument:
         | ArrayPattern
@@ -2596,7 +2603,7 @@ declare namespace Deno {
      */
     export interface SpreadElement {
       type: "SpreadElement";
-      range: [number, number];
+      range: Range;
       argument: Expression;
     }
 
@@ -2606,7 +2613,7 @@ declare namespace Deno {
      */
     export interface Property {
       type: "Property";
-      range: [number, number];
+      range: Range;
       shorthand: boolean;
       computed: boolean;
       method: boolean;
@@ -2633,7 +2640,7 @@ declare namespace Deno {
      */
     export interface BigIntLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: string;
       bigint: string;
       value: bigint;
@@ -2646,7 +2653,7 @@ declare namespace Deno {
      */
     export interface BooleanLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: "false" | "true";
       value: boolean;
     }
@@ -2663,7 +2670,7 @@ declare namespace Deno {
      */
     export interface NumberLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: string;
       value: number;
     }
@@ -2675,7 +2682,7 @@ declare namespace Deno {
      */
     export interface NullLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: "null";
       value: null;
     }
@@ -2692,7 +2699,7 @@ declare namespace Deno {
      */
     export interface StringLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: string;
       value: string;
     }
@@ -2708,7 +2715,7 @@ declare namespace Deno {
      */
     export interface RegExpLiteral {
       type: "Literal";
-      range: [number, number];
+      range: Range;
       raw: string;
       regex: {
         flags: string;
@@ -2737,7 +2744,7 @@ declare namespace Deno {
      */
     export interface JSXIdentifier {
       type: "JSXIdentifier";
-      range: [number, number];
+      range: Range;
       name: string;
     }
 
@@ -2748,7 +2755,7 @@ declare namespace Deno {
      */
     export interface JSXNamespacedName {
       type: "JSXNamespacedName";
-      range: [number, number];
+      range: Range;
       namespace: JSXIdentifier;
       name: JSXIdentifier;
     }
@@ -2760,7 +2767,7 @@ declare namespace Deno {
      */
     export interface JSXEmptyExpression {
       type: "JSXEmptyExpression";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -2770,7 +2777,7 @@ declare namespace Deno {
      */
     export interface JSXElement {
       type: "JSXElement";
-      range: [number, number];
+      range: Range;
       openingElement: JSXOpeningElement;
       closingElement: JSXClosingElement | null;
       children: JSXChild[];
@@ -2783,7 +2790,7 @@ declare namespace Deno {
      */
     export interface JSXOpeningElement {
       type: "JSXOpeningElement";
-      range: [number, number];
+      range: Range;
       selfClosing: boolean;
       name:
         | JSXIdentifier
@@ -2800,7 +2807,7 @@ declare namespace Deno {
      */
     export interface JSXAttribute {
       type: "JSXAttribute";
-      range: [number, number];
+      range: Range;
       name: JSXIdentifier | JSXNamespacedName;
       value:
         | JSXElement
@@ -2816,7 +2823,7 @@ declare namespace Deno {
      */
     export interface JSXSpreadAttribute {
       type: "JSXSpreadAttribute";
-      range: [number, number];
+      range: Range;
       argument: Expression;
     }
 
@@ -2828,7 +2835,7 @@ declare namespace Deno {
      */
     export interface JSXClosingElement {
       type: "JSXClosingElement";
-      range: [number, number];
+      range: Range;
       name:
         | JSXIdentifier
         | JSXMemberExpression
@@ -2843,7 +2850,7 @@ declare namespace Deno {
      */
     export interface JSXFragment {
       type: "JSXFragment";
-      range: [number, number];
+      range: Range;
       openingFragment: JSXOpeningFragment;
       closingFragment: JSXClosingFragment;
       children: JSXChild[];
@@ -2856,7 +2863,7 @@ declare namespace Deno {
      */
     export interface JSXOpeningFragment {
       type: "JSXOpeningFragment";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -2866,7 +2873,7 @@ declare namespace Deno {
      */
     export interface JSXClosingFragment {
       type: "JSXClosingFragment";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -2876,7 +2883,7 @@ declare namespace Deno {
      */
     export interface JSXExpressionContainer {
       type: "JSXExpressionContainer";
-      range: [number, number];
+      range: Range;
       expression: Expression | JSXEmptyExpression;
     }
 
@@ -2887,7 +2894,7 @@ declare namespace Deno {
      */
     export interface JSXText {
       type: "JSXText";
-      range: [number, number];
+      range: Range;
       raw: string;
       value: string;
     }
@@ -2899,7 +2906,7 @@ declare namespace Deno {
      */
     export interface JSXMemberExpression {
       type: "JSXMemberExpression";
-      range: [number, number];
+      range: Range;
       object:
         | JSXIdentifier
         | JSXMemberExpression
@@ -2924,7 +2931,7 @@ declare namespace Deno {
      */
     export interface TSModuleDeclaration {
       type: "TSModuleDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       kind: "global" | "module" | "namespace";
       id: Identifier | Literal | TSQualifiedName;
@@ -2938,7 +2945,7 @@ declare namespace Deno {
      */
     export interface TSModuleBlock {
       type: "TSModuleBlock";
-      range: [number, number];
+      range: Range;
       body: Array<
         | ExportAllDeclaration
         | ExportDefaultDeclaration
@@ -2956,7 +2963,7 @@ declare namespace Deno {
      */
     export interface TSClassImplements {
       type: "TSClassImplements";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -2967,7 +2974,7 @@ declare namespace Deno {
      */
     export interface TSAbstractMethodDefinition {
       type: "TSAbstractMethodDefinition";
-      range: [number, number];
+      range: Range;
       computed: boolean;
       optional: boolean;
       override: boolean;
@@ -2984,7 +2991,7 @@ declare namespace Deno {
      */
     export interface TSAbstractPropertyDefinition {
       type: "TSAbstractPropertyDefinition";
-      range: [number, number];
+      range: Range;
       computed: boolean;
       optional: boolean;
       override: boolean;
@@ -3010,7 +3017,7 @@ declare namespace Deno {
      */
     export interface TSEmptyBodyFunctionExpression {
       type: "TSEmptyBodyFunctionExpression";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       expression: boolean;
       async: boolean;
@@ -3028,7 +3035,7 @@ declare namespace Deno {
      */
     export interface TSParameterProperty {
       type: "TSParameterProperty";
-      range: [number, number];
+      range: Range;
       override: boolean;
       readonly: boolean;
       static: boolean;
@@ -3048,7 +3055,7 @@ declare namespace Deno {
      */
     export interface TSCallSignatureDeclaration {
       type: "TSCallSignatureDeclaration";
-      range: [number, number];
+      range: Range;
       typeParameters: TSTypeParameterDeclaration | undefined;
       params: Parameter[];
       returnType: TSTypeAnnotation | undefined;
@@ -3060,7 +3067,7 @@ declare namespace Deno {
      */
     export interface TSPropertySignature {
       type: "TSPropertySignature";
-      range: [number, number];
+      range: Range;
       computed: boolean;
       optional: boolean;
       readonly: boolean;
@@ -3080,7 +3087,7 @@ declare namespace Deno {
      */
     export interface TSDeclareFunction {
       type: "TSDeclareFunction";
-      range: [number, number];
+      range: Range;
       async: boolean;
       declare: boolean;
       generator: boolean;
@@ -3100,7 +3107,7 @@ declare namespace Deno {
      */
     export interface TSEnumDeclaration {
       type: "TSEnumDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       const: boolean;
       id: Identifier;
@@ -3114,7 +3121,7 @@ declare namespace Deno {
      */
     export interface TSEnumBody {
       type: "TSEnumBody";
-      range: [number, number];
+      range: Range;
       members: TSEnumMember[];
     }
 
@@ -3125,7 +3132,7 @@ declare namespace Deno {
      */
     export interface TSEnumMember {
       type: "TSEnumMember";
-      range: [number, number];
+      range: Range;
       id:
         | Identifier
         | NumberLiteral
@@ -3139,7 +3146,7 @@ declare namespace Deno {
      */
     export interface TSTypeAssertion {
       type: "TSTypeAssertion";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3150,7 +3157,7 @@ declare namespace Deno {
      */
     export interface TSTypeParameterInstantiation {
       type: "TSTypeParameterInstantiation";
-      range: [number, number];
+      range: Range;
       params: TypeNode[];
     }
 
@@ -3160,7 +3167,7 @@ declare namespace Deno {
      */
     export interface TSTypeAliasDeclaration {
       type: "TSTypeAliasDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       id: Identifier;
       typeParameters: TSTypeParameterDeclaration | undefined;
@@ -3173,7 +3180,7 @@ declare namespace Deno {
      */
     export interface TSSatisfiesExpression {
       type: "TSSatisfiesExpression";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3184,7 +3191,7 @@ declare namespace Deno {
      */
     export interface TSAsExpression {
       type: "TSAsExpression";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeAnnotation: TypeNode;
     }
@@ -3195,7 +3202,7 @@ declare namespace Deno {
      */
     export interface TSInstantiationExpression {
       type: "TSInstantiationExpression";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation;
     }
@@ -3206,7 +3213,7 @@ declare namespace Deno {
      */
     export interface TSNonNullExpression {
       type: "TSNonNullExpression";
-      range: [number, number];
+      range: Range;
       expression: Expression;
     }
 
@@ -3216,7 +3223,7 @@ declare namespace Deno {
      */
     export interface TSThisType {
       type: "TSThisType";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3225,7 +3232,7 @@ declare namespace Deno {
      */
     export interface TSInterfaceDeclaration {
       type: "TSInterfaceDeclaration";
-      range: [number, number];
+      range: Range;
       declare: boolean;
       id: Identifier;
       extends: TSInterfaceHeritage[];
@@ -3239,7 +3246,7 @@ declare namespace Deno {
      */
     export interface TSInterfaceBody {
       type: "TSInterfaceBody";
-      range: [number, number];
+      range: Range;
       body: Array<
         | TSCallSignatureDeclaration
         | TSConstructSignatureDeclaration
@@ -3255,7 +3262,7 @@ declare namespace Deno {
      */
     export interface TSConstructSignatureDeclaration {
       type: "TSConstructSignatureDeclaration";
-      range: [number, number];
+      range: Range;
       typeParameters: TSTypeParameterDeclaration | undefined;
       params: Parameter[];
       returnType: TSTypeAnnotation;
@@ -3267,7 +3274,7 @@ declare namespace Deno {
      */
     export interface TSMethodSignature {
       type: "TSMethodSignature";
-      range: [number, number];
+      range: Range;
       computed: boolean;
       optional: boolean;
       readonly: boolean;
@@ -3285,7 +3292,7 @@ declare namespace Deno {
      */
     export interface TSInterfaceHeritage {
       type: "TSInterfaceHeritage";
-      range: [number, number];
+      range: Range;
       expression: Expression;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3296,7 +3303,7 @@ declare namespace Deno {
      */
     export interface TSIndexSignature {
       type: "TSIndexSignature";
-      range: [number, number];
+      range: Range;
       readonly: boolean;
       static: boolean;
       parameters: Parameter[];
@@ -3309,7 +3316,7 @@ declare namespace Deno {
      */
     export interface TSUnionType {
       type: "TSUnionType";
-      range: [number, number];
+      range: Range;
       types: TypeNode[];
     }
 
@@ -3319,7 +3326,7 @@ declare namespace Deno {
      */
     export interface TSIntersectionType {
       type: "TSIntersectionType";
-      range: [number, number];
+      range: Range;
       types: TypeNode[];
     }
 
@@ -3329,7 +3336,7 @@ declare namespace Deno {
      */
     export interface TSInferType {
       type: "TSInferType";
-      range: [number, number];
+      range: Range;
       typeParameter: TSTypeParameter;
     }
 
@@ -3339,7 +3346,7 @@ declare namespace Deno {
      */
     export interface TSTypeOperator {
       type: "TSTypeOperator";
-      range: [number, number];
+      range: Range;
       operator: "keyof" | "readonly" | "unique";
       typeAnnotation: TypeNode;
     }
@@ -3350,7 +3357,7 @@ declare namespace Deno {
      */
     export interface TSIndexedAccessType {
       type: "TSIndexedAccessType";
-      range: [number, number];
+      range: Range;
       indexType: TypeNode;
       objectType: TypeNode;
     }
@@ -3364,7 +3371,7 @@ declare namespace Deno {
      */
     export interface TSAnyKeyword {
       type: "TSAnyKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3373,7 +3380,7 @@ declare namespace Deno {
      */
     export interface TSUnknownKeyword {
       type: "TSUnknownKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3382,7 +3389,7 @@ declare namespace Deno {
      */
     export interface TSNumberKeyword {
       type: "TSNumberKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3391,7 +3398,7 @@ declare namespace Deno {
      */
     export interface TSObjectKeyword {
       type: "TSObjectKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3400,7 +3407,7 @@ declare namespace Deno {
      */
     export interface TSBooleanKeyword {
       type: "TSBooleanKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3409,7 +3416,7 @@ declare namespace Deno {
      */
     export interface TSBigIntKeyword {
       type: "TSBigIntKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3418,7 +3425,7 @@ declare namespace Deno {
      */
     export interface TSStringKeyword {
       type: "TSStringKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3427,7 +3434,7 @@ declare namespace Deno {
      */
     export interface TSSymbolKeyword {
       type: "TSSymbolKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3436,7 +3443,7 @@ declare namespace Deno {
      */
     export interface TSVoidKeyword {
       type: "TSVoidKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3445,7 +3452,7 @@ declare namespace Deno {
      */
     export interface TSUndefinedKeyword {
       type: "TSUndefinedKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3454,7 +3461,7 @@ declare namespace Deno {
      */
     export interface TSNullKeyword {
       type: "TSNullKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3463,7 +3470,7 @@ declare namespace Deno {
      */
     export interface TSNeverKeyword {
       type: "TSNeverKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3472,7 +3479,7 @@ declare namespace Deno {
      */
     export interface TSIntrinsicKeyword {
       type: "TSIntrinsicKeyword";
-      range: [number, number];
+      range: Range;
     }
 
     /**
@@ -3481,7 +3488,7 @@ declare namespace Deno {
      */
     export interface TSRestType {
       type: "TSRestType";
-      range: [number, number];
+      range: Range;
       typeAnnotation: TypeNode;
     }
 
@@ -3491,7 +3498,7 @@ declare namespace Deno {
      */
     export interface TSConditionalType {
       type: "TSConditionalType";
-      range: [number, number];
+      range: Range;
       checkType: TypeNode;
       extendsType: TypeNode;
       trueType: TypeNode;
@@ -3504,7 +3511,7 @@ declare namespace Deno {
      */
     export interface TSMappedType {
       type: "TSMappedType";
-      range: [number, number];
+      range: Range;
       readonly: boolean;
       optional: boolean;
       nameType: TypeNode | null;
@@ -3519,7 +3526,7 @@ declare namespace Deno {
      */
     export interface TSLiteralType {
       type: "TSLiteralType";
-      range: [number, number];
+      range: Range;
       literal: Literal | TemplateLiteral | UnaryExpression | UpdateExpression;
     }
 
@@ -3529,7 +3536,7 @@ declare namespace Deno {
      */
     export interface TSTemplateLiteralType {
       type: "TSTemplateLiteralType";
-      range: [number, number];
+      range: Range;
       quasis: TemplateElement[];
       types: TypeNode[];
     }
@@ -3540,7 +3547,7 @@ declare namespace Deno {
      */
     export interface TSTypeLiteral {
       type: "TSTypeLiteral";
-      range: [number, number];
+      range: Range;
       members: Array<
         | TSCallSignatureDeclaration
         | TSConstructSignatureDeclaration
@@ -3556,7 +3563,7 @@ declare namespace Deno {
      */
     export interface TSOptionalType {
       type: "TSOptionalType";
-      range: [number, number];
+      range: Range;
       typeAnnotation: TypeNode;
     }
 
@@ -3566,7 +3573,7 @@ declare namespace Deno {
      */
     export interface TSTypeAnnotation {
       type: "TSTypeAnnotation";
-      range: [number, number];
+      range: Range;
       typeAnnotation: TypeNode;
     }
 
@@ -3576,7 +3583,7 @@ declare namespace Deno {
      */
     export interface TSArrayType {
       type: "TSArrayType";
-      range: [number, number];
+      range: Range;
       elementType: TypeNode;
     }
 
@@ -3586,7 +3593,7 @@ declare namespace Deno {
      */
     export interface TSTypeQuery {
       type: "TSTypeQuery";
-      range: [number, number];
+      range: Range;
       exprName: Identifier | ThisExpression | TSQualifiedName | TSImportType;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3597,7 +3604,7 @@ declare namespace Deno {
      */
     export interface TSTypeReference {
       type: "TSTypeReference";
-      range: [number, number];
+      range: Range;
       typeName: Identifier | ThisExpression | TSQualifiedName;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -3608,7 +3615,7 @@ declare namespace Deno {
      */
     export interface TSTypePredicate {
       type: "TSTypePredicate";
-      range: [number, number];
+      range: Range;
       asserts: boolean;
       parameterName: Identifier | TSThisType;
       typeAnnotation: TSTypeAnnotation | undefined;
@@ -3620,7 +3627,7 @@ declare namespace Deno {
      */
     export interface TSTupleType {
       type: "TSTupleType";
-      range: [number, number];
+      range: Range;
       elementTypes: TypeNode[];
     }
 
@@ -3630,7 +3637,7 @@ declare namespace Deno {
      */
     export interface TSNamedTupleMember {
       type: "TSNamedTupleMember";
-      range: [number, number];
+      range: Range;
       label: Identifier;
       elementType: TypeNode;
       optional: boolean;
@@ -3642,7 +3649,7 @@ declare namespace Deno {
      */
     export interface TSTypeParameterDeclaration {
       type: "TSTypeParameterDeclaration";
-      range: [number, number];
+      range: Range;
       params: TSTypeParameter[];
     }
 
@@ -3652,7 +3659,7 @@ declare namespace Deno {
      */
     export interface TSTypeParameter {
       type: "TSTypeParameter";
-      range: [number, number];
+      range: Range;
       in: boolean;
       out: boolean;
       const: boolean;
@@ -3667,7 +3674,7 @@ declare namespace Deno {
      */
     export interface TSImportType {
       type: "TSImportType";
-      range: [number, number];
+      range: Range;
       argument: TypeNode;
       qualifier: Identifier | ThisExpression | TSQualifiedName | null;
       typeArguments: TSTypeParameterInstantiation | null;
@@ -3679,7 +3686,7 @@ declare namespace Deno {
      */
     export interface TSExportAssignment {
       type: "TSExportAssignment";
-      range: [number, number];
+      range: Range;
       expression: Expression;
     }
 
@@ -3689,7 +3696,7 @@ declare namespace Deno {
      */
     export interface TSFunctionType {
       type: "TSFunctionType";
-      range: [number, number];
+      range: Range;
       params: Parameter[];
       returnType: TSTypeAnnotation | undefined;
       typeParameters: TSTypeParameterDeclaration | undefined;
@@ -3701,7 +3708,7 @@ declare namespace Deno {
      */
     export interface TSQualifiedName {
       type: "TSQualifiedName";
-      range: [number, number];
+      range: Range;
       left: Identifier | ThisExpression | TSQualifiedName;
       right: Identifier;
     }
@@ -3829,6 +3836,66 @@ declare namespace Deno {
       | TSUnionType
       | TSUnknownKeyword
       | TSVoidKeyword;
+
+    /**
+     * Union type of all possible AST nodes
+     * @category Linter
+     * @experimental
+     */
+    export type Node =
+      | Expression
+      | Statement
+      | TypeNode
+      | ImportSpecifier
+      | ImportDefaultSpecifier
+      | ImportNamespaceSpecifier
+      | ImportAttribute
+      | TSExternalModuleReference
+      | ExportSpecifier
+      | VariableDeclarator
+      | Decorator
+      | ClassBody
+      | StaticBlock
+      | PropertyDefinition
+      | MethodDefinition
+      | SwitchCase
+      | CatchClause
+      | TemplateElement
+      | PrivateIdentifier
+      | AssignmentPattern
+      | RestElement
+      | SpreadElement
+      | Property
+      | JSXIdentifier
+      | JSXNamespacedName
+      | JSXEmptyExpression
+      | JSXOpeningElement
+      | JSXAttribute
+      | JSXSpreadAttribute
+      | JSXClosingElement
+      | JSXOpeningFragment
+      | JSXClosingFragment
+      | JSXExpressionContainer
+      | JSXText
+      | JSXMemberExpression
+      | TSModuleBlock
+      | TSClassImplements
+      | TSAbstractMethodDefinition
+      | TSAbstractPropertyDefinition
+      | TSEmptyBodyFunctionExpression
+      | TSCallSignatureDeclaration
+      | TSPropertySignature
+      | TSEnumBody
+      | TSEnumMember
+      | TSTypeParameterInstantiation
+      | TSInterfaceBody
+      | TSConstructSignatureDeclaration
+      | TSMethodSignature
+      | TSInterfaceHeritage
+      | TSIndexSignature
+      | TSTypeAnnotation
+      | TSTypeParameterDeclaration
+      | TSTypeParameter;
   }
 
   export {}; // only export exports
