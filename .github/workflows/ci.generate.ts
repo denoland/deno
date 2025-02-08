@@ -122,11 +122,12 @@ echo "sysroot env:"
 cat /sysroot/.env
 . /sysroot/.env
 
-if [ "$(uname -s)" = "Linux" ]; then
-  if [ "$(uname -m)" = "aarch64" ]; then
-    export PKG_CONFIG_LIBDIR=/sysroot/usr/lib/aarch64-linux-gnu/pkgconfig
-  fi
-fi
+# Fix pkg-config enviroment variables to use the sysroot for linking dynamic library correctly
+# This is a workaround for pkg-config for aaarch64-linux-gnu that inspired from the below script
+# https://github.com/raspberrypi/tools/blob/439b6198a9b340de5998dd14a26a0d9d38a6bcac/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/bin/arm-linux-gnueabihf-pkg-config
+# NOTE: The crate lcms2 described in ext/canvas/Cargo.toml depends on lcms2-sys, which in turn depends on pkg-config
+MACHINE="clang -dumpmachine"
+PKG_CONFIG_LIBDIR="/sysroot/usr/lib/\${MACHINE}/pkgconfig":"/sysroot/usr/lib/pkgconfig":"/sysroot/usr/share/pkgconfig"
 
 # Important notes:
 #   1. -ldl seems to be required to avoid a failure in FFI tests. This flag seems
