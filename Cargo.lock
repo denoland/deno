@@ -899,7 +899,6 @@ dependencies = [
  "nix",
  "once_cell",
  "os_pipe",
- "pkg-config",
  "pretty_assertions",
  "regex",
  "reqwest",

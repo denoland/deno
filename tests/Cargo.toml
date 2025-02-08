@@ -69,6 +69,3 @@ zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]
 nix.workspace = true
-
-[target.'cfg(target_os = "macos")'.dev-dependencies]
-pkg-config = "0.3.31"

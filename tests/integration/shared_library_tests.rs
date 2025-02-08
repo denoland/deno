@@ -40,7 +40,6 @@ fn linux_shared_libraries() {
 // This test is to prevent inadvertently linking to more shared system libraries that usually
 // increases dyld startup time.
 fn macos_shared_libraries() {
-  use pkg_config;
   use test_util as util;
 
   // target/release/deno:
@@ -53,16 +52,20 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libiconv.2.dylib (compatibility version 7.0.0, current version 7.0.0)
   // 	/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1319.0.0)
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
-  //  lcms2: on x86
+  //  lcms2: on x86_64
   //  /usr/local/opt/little-cms2/lib/liblcms2.2.dylib (compatibility version 3.0.0, current version 3.16.0)
   //  lcms2: on arm64
   //  /opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib (compatibility version 3.0.0, current version 3.16.0)
 
-  let lcms2_probe = pkg_config::probe_library("lcms2").unwrap();
-  let lcms2_lib_path = lcms2_probe.link_paths[0].to_str().unwrap();
+  #[cfg(target_arch = "x86_64")]
+  const LCMS2_LIB_PATH: &str =
+    &"/usr/local/opt/little-cms2/lib/liblcms2.2.dylib";
+  #[cfg(target_arch = "aarch64")]
+  const LCMS2_LIB_PATH: &str =
+    &"/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib";
 
   // path and whether its weak or not
-  let expected: [(&str, bool); 10] = [
+  const EXPECTED: [(&str, bool); 10] = [
     ("/System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation", false),
     ("/System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices", false),
     ("/System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore", true),
@@ -72,7 +75,7 @@ fn macos_shared_libraries() {
     ("/usr/lib/libiconv.2.dylib", false),
     ("/usr/lib/libSystem.B.dylib", false),
     ("/usr/lib/libobjc.A.dylib", false),
-    (lcms2_lib_path, false),
+    (LCMS2_LIB_PATH, false),
   ];
 
   let otool = std::process::Command::new("otool")
@@ -86,7 +89,7 @@ fn macos_shared_libraries() {
   for line in output.lines().skip(1) {
     let (path, attributes) = line.trim().split_once(' ').unwrap();
     assert!(
-      expected.contains(&(path, attributes.ends_with("weak)"))),
+      EXPECTED.contains(&(path, attributes.ends_with("weak)"))),
       "Unexpected shared library: {}",
       path
     );
