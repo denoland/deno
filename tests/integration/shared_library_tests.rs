@@ -59,10 +59,10 @@ fn macos_shared_libraries() {
 
   #[cfg(target_arch = "x86_64")]
   const LCMS2_LIB_PATH: &str =
-    &"/usr/local/opt/little-cms2/lib/liblcms2.2.dylib";
+    "/usr/local/opt/little-cms2/lib/liblcms2.2.dylib";
   #[cfg(target_arch = "aarch64")]
   const LCMS2_LIB_PATH: &str =
-    &"/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib";
+    "/opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib";
 
   // path and whether its weak or not
   const EXPECTED: [(&str, bool); 10] = [
