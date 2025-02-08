@@ -54,7 +54,7 @@ fn macos_shared_libraries() {
   // 	/usr/lib/libobjc.A.dylib (compatibility version 1.0.0, current version 228.0.0)
   //  lcms2: on x86_64
   //  /usr/local/opt/little-cms2/lib/liblcms2.2.dylib (compatibility version 3.0.0, current version 3.16.0)
-  //  lcms2: on arm64
+  //  lcms2: on aarch64
   //  /opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib (compatibility version 3.0.0, current version 3.16.0)
 
   #[cfg(target_arch = "x86_64")]
