@@ -18,9 +18,12 @@ rustflags = [
 ]
 
 [target.aarch64-apple-darwin]
+# The purpose of lzld is to reduce startup time on Mac
+# by lazy loading frameworks. See tools/lzld/README.md
+linker = "tools/lzld/lzld"
 rustflags = [
   "-C",
-  "link-args=-fuse-ld=lld -weak_framework Metal -weak_framework MetalPerformanceShaders -weak_framework QuartzCore -weak_framework CoreGraphics",
+  "linker-flavor=ld64.lld",
 ]
 
 [target.'cfg(all())']
