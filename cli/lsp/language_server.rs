@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -129,7 +130,7 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
   client: Client,
-  pub inner: Arc<tokio::sync::RwLock<Inner>>,
+  pub inner: Rc<tokio::sync::RwLock<Inner>>,
   /// This is used to block out standard request handling until the complete
   /// user configuration has been fetched. This is done in the `initialized`
   /// handler which normally may occur concurrently with those other requests.
@@ -141,7 +142,7 @@ pub struct LanguageServer {
   shutdown_flag: AsyncFlag,
   /// This is used to move all request handling to a separate thread so blocking
   /// code there won't block cancellations from being flagged.
-  worker_thread: Arc<WorkerThread>,
+  worker_thread: Rc<WorkerThread>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -216,38 +217,42 @@ impl WorkerThread {
     }
   }
 
-  async fn spawn(
-    &self,
-    fut: impl std::future::Future<Output = ()> + Send + 'static,
-  ) {
+  async fn spawn(&self, fut: impl std::future::Future<Output = ()> + 'static) {
+    // SAFETY: we're running in a current thread runtime
+    let fut = unsafe { deno_core::unsync::MaskFutureAsSend::new(fut) };
     self
       .runtime_handle
       .spawn(fut)
       .await
+      .map(|r| r.into_inner())
       .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
       .ok();
   }
 
   async fn spawn_with_cancellation<
     T: Send + 'static,
-    TFut: std::future::Future<Output = LspResult<T>> + Send,
+    TFut: std::future::Future<Output = LspResult<T>>,
   >(
     &self,
-    get_fut: impl FnOnce(CancellationToken) -> TFut + Send + 'static,
+    get_fut: impl FnOnce(CancellationToken) -> TFut + 'static,
   ) -> LspResult<T> {
     let token = CancellationToken::new();
     let _drop_guard = token.clone().drop_guard();
-    self
-      .runtime_handle
-      .spawn(async move {
-        tokio::select! {
-          biased;
-          _ = token.cancelled() => Err(LspError::request_cancelled()),
-          result = get_fut(token.clone()) => result,
-        }
-      })
-      .await
+
+    let future = async move {
+      tokio::select! {
+        biased;
+        _ = token.cancelled() => Err(LspError::request_cancelled()),
+        result = get_fut(token.clone()) => result,
+      }
+    };
+    // SAFETY: we're running in a current thread runtime
+    let future = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
+
+    let result = self.runtime_handle.spawn(future).await;
+    result
       .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+      .map(|r| r.into_inner())
       .unwrap_or_else(|_| Err(LspError::internal_error()))
   }
 }
@@ -304,14 +309,14 @@ impl LanguageServer {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
-      inner: Arc::new(tokio::sync::RwLock::new(Inner::new(
+      inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
       ))),
       init_flag: Default::default(),
       performance,
       shutdown_flag,
-      worker_thread: Arc::new(WorkerThread::create()),
+      worker_thread: Rc::new(WorkerThread::create()),
     }
   }
 
@@ -1279,13 +1284,10 @@ impl Inner {
 
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.documents.dep_info_by_scope();
-    let resolver = self.resolver.clone();
-    // spawn due to the lsp's `Send` requirement
-    spawn(
-      async move { resolver.set_dep_info_by_scope(&dep_info_by_scope).await },
-    )
-    .await
-    .ok();
+    self
+      .resolver
+      .set_dep_info_by_scope(&dep_info_by_scope)
+      .await;
   }
 
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
@@ -3527,7 +3529,7 @@ impl Inner {
   }
 }
 
-#[tower_lsp::async_trait]
+#[tower_lsp::async_trait(?Send)]
 impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
     &self,

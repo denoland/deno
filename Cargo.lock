@@ -1428,17 +1428,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "deno-tower-lsp-macros"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05d59a1cfd445fd86f63616127a434aabca000e03d963b01b03ce813520565b9"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.87",
-]
-
-[[package]]
 name = "deno_ast"
 version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2572,15 +2561,14 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afb4d257c084fd889e8cf1ba3ad58db0002428c819cc7717815f996f97777a"
+checksum = "64d843af04d27242622074bb7a60bdc808807bb11d24c5f9a04cd4aad7bf74a5"
 dependencies = [
  "async-trait",
  "auto_impl",
  "bytes",
  "dashmap",
- "deno-tower-lsp-macros",
  "futures",
  "httparse",
  "lsp-types",
@@ -2590,6 +2578,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tower 0.4.13",
+ "tower-lsp-macros",
  "tracing",
 ]
 
@@ -8504,6 +8493,17 @@ name = "tower-layer"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
+
+[[package]]
+name = "tower-lsp-macros"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84fd902d4e0b9a4b27f2f440108dc034e1758628a9b702f8ec61ad66355422fa"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
 
 [[package]]
 name = "tower-service"

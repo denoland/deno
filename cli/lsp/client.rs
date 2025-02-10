@@ -165,7 +165,7 @@ impl OutsideLockClient {
 }
 
 #[async_trait]
-trait ClientTrait: Send + Sync {
+trait ClientTrait: Send + Sync + 'static {
   async fn publish_diagnostics(
     &self,
     uri: lsp::Uri,
