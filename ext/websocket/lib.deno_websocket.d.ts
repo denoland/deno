@@ -81,18 +81,21 @@ interface WebSocket extends EventTarget {
   /**
    * Returns the extensions selected by the server, if any.
    *
+   * WebSocket extensions add optional features negotiated during the handshake via
+   * the `Sec-WebSocket-Extensions` header.
+   *
+   * At the time of writing, there are two registered extensions:
+   *
+   * - [`permessage-deflate`](https://www.rfc-editor.org/rfc/rfc7692.html): Enables per-message compression using DEFLATE.
+   * - [`bbf-usp-protocol`](https://usp.technology/): Used by the Broadband Forum's User Services Platform (USP).
+   *
+   * See the full list at [IANA WebSocket Extensions](https://www.iana.org/assignments/websocket/websocket.xml#extension-name).
+   *
+   * Example:
+   *
    * ```ts
-   * // Server (running with permessage-deflate extension)
-   * const wss = new WebSocketServer({
-   *   port: 8080,
-   *   perMessageDeflate: true
-   * });
-   * 
-   * // Client
-   * const ws = new WebSocket("ws://localhost:8080", {
-   *   perMessageDeflate: true
-   * });
-   * console.log(ws.extensions); // "permessage-deflate"
+   * const ws = new WebSocket("ws://localhost:8080");
+   * console.log(ws.extensions); // e.g., "permessage-deflate"
    * ```
    */
   readonly extensions: string;
