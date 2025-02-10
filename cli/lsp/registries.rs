@@ -476,7 +476,7 @@ impl ModuleRegistry {
   ) -> Result<Vec<RegistryConfiguration>, AnyError> {
     let fetch_result = self.file_fetcher
       .fetch_with_options(
-        &specifier,
+        specifier,
         FetchPermissionsOptionRef::AllowAll,
         FetchOptions {
           maybe_auth: None,

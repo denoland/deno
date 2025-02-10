@@ -1537,7 +1537,7 @@ impl ConfigData {
         let fetch_result = file_fetcher
           .as_ref()
           .unwrap()
-          .fetch_bypass_permissions(&import_map_url)
+          .fetch_bypass_permissions(import_map_url)
           .await;
 
         let value_result = fetch_result.and_then(|f| {
