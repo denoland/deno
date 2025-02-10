@@ -258,7 +258,7 @@ struct OtelInfoAttributes {
   url_scheme: String,
   server_address: Option<String>,
   server_port: Option<i64>,
-  error_type: OnceCell<String>,
+  error_type: OnceCell<&'static str>,
   http_response_status_code: OnceCell<i64>,
 }
 
@@ -403,7 +403,24 @@ impl Drop for OtelInfo {
 
 fn handle_error_otel(otel: &Option<Rc<OtelInfo>>, error: &HttpError) {
   if let Some(otel) = otel {
-    let _ = otel.attributes.error_type.set(error.to_string());
+    let _ = otel.attributes.error_type.set(match error {
+      HttpError::Resource(_) => "resource",
+      HttpError::Canceled(_) => "cancelled",
+      HttpError::HyperV014(_) => "hyper",
+      HttpError::InvalidHeaderName(_) => "invalid header name",
+      HttpError::InvalidHeaderValue(_) => "invalid header value",
+      HttpError::Http(_) => "http",
+      HttpError::ResponseHeadersAlreadySent => "response headers already sent",
+      HttpError::ConnectionClosedWhileSendingResponse => {
+        "connection closed while sending response"
+      }
+      HttpError::AlreadyInUse => "already in use",
+      HttpError::Io(_) => "io",
+      HttpError::NoResponseHeaders => "no response headers",
+      HttpError::ResponseAlreadyCompleted => "response already completed",
+      HttpError::UpgradeBodyUsed => "upgrade body used",
+      HttpError::Other(_) => "other",
+    });
   }
 }
 
