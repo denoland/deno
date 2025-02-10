@@ -306,6 +306,7 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
     http.response_parts().status = code;
+    http.otel_info_set_status(status);
   }
   http.complete();
 }

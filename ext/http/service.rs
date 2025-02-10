@@ -26,13 +26,12 @@ use hyper::upgrade::OnUpgrade;
 use scopeguard::guard;
 use scopeguard::ScopeGuard;
 use tokio::sync::oneshot;
-use deno_telemetry::MeterProvider;
+
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
-use crate::{OtelInfo};
-use crate::{OTEL_COLLECTORS};
-
+use crate::OtelInfo;
+use crate::OtelInfoAttributes;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -189,27 +188,25 @@ pub(crate) async fn handle_request(
 ) -> Result<Response, hyper_v014::Error> {
   let otel_info = if deno_telemetry::OTEL_GLOBALS.get().is_some() {
     let instant = std::time::Instant::now();
-
-    let mut attributes = vec![
-      deno_telemetry::KeyValue::new("http.request.method", request.method().as_str().to_string()),
-      deno_telemetry::KeyValue::new("network.protocol.version", format!("{:?}", request.version()).trim_start_matches("HTTP/").to_string()),
-    ];
-
-    attributes.push(deno_telemetry::KeyValue::new("url.scheme", request.uri().scheme_str().unwrap_or("http").to_string()));
-
-    if let Some(host) = request.uri().host() {
-      attributes.push(deno_telemetry::KeyValue::new("server.address", host.to_string()));
-    }
-
-    if let Some(port) = request.uri().port_u16() {
-      attributes.push(deno_telemetry::KeyValue::new("server.port", port as i64));
-    }
-
-    Some(OtelInfo::new(instant, attributes))
+    let size_hint = request.size_hint();
+    Some(OtelInfo::new(
+      instant,
+      size_hint.upper().unwrap_or(size_hint.lower()),
+      OtelInfoAttributes {
+        http_request_method: request.method().as_str().to_string(),
+        url_scheme: request.uri().scheme_str().unwrap_or("http").to_string(),
+        network_rotocol_version: format!("{:?}", request.version())
+          .trim_start_matches("HTTP/")
+          .to_string(),
+        server_address: request.uri().host().map(|host| host.to_string()),
+        server_port: request.uri().port_u16().map(|port| port as i64),
+        error_type: Default::default(),
+        http_response_status_code: Default::default(),
+      },
+    ))
   } else {
     None
   };
-
 
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
@@ -553,6 +550,13 @@ impl HttpRecord {
 
     HttpRecordFinished(self)
   }
+
+  pub fn otel_info_set_status(&self, status: u16) {
+    let info = self.0.borrow();
+    if let Some(info) = &info.as_ref().unwrap().otel_info {
+      let _ = info.attributes.http_response_status_code.set(status as _);
+    }
+  }
 }
 
 #[repr(transparent)]
@@ -609,6 +613,14 @@ impl Body for HttpRecordResponse {
       }
       record.take_response_body();
     }
+
+    if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
+      let http = self.0 .0.borrow();
+      if let Some(otel_info) = &http.as_ref().unwrap().otel_info {
+        *otel_info.response_size.borrow_mut() += buf.len() as u64;
+      }
+    }
+
     Poll::Ready(res.into())
   }
 

@@ -53,8 +53,10 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
-use deno_telemetry::{Histogram, UpDownCounter, OTEL_GLOBALS};
+use deno_telemetry::Histogram;
 use deno_telemetry::MeterProvider;
+use deno_telemetry::UpDownCounter;
+use deno_telemetry::OTEL_GLOBALS;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -103,7 +105,14 @@ pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 pub use websocket_upgrade::WebSocketUpgradeError;
 
-pub static OTEL_COLLECTORS: OnceCell<(Histogram<f64>, UpDownCounter<i64>)> = OnceCell::new();
+struct OtelCollectors {
+  duration: Histogram<f64>,
+  active_requests: UpDownCounter<i64>,
+  request_size: Histogram<u64>,
+  response_size: Histogram<u64>,
+}
+
+static OTEL_COLLECTORS: OnceCell<OtelCollectors> = OnceCell::new();
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
@@ -238,17 +247,91 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
 
 struct OtelInfo {
   instant: std::time::Instant,
-  error: OnceCell<String>,
-  attributes: Vec<deno_telemetry::KeyValue>,
+  attributes: OtelInfoAttributes,
+  request_size: u64,
+  response_size: RefCell<u64>,
+}
+
+struct OtelInfoAttributes {
+  http_request_method: String,
+  network_rotocol_version: String,
+  url_scheme: String,
+  server_address: Option<String>,
+  server_port: Option<i64>,
+  error_type: OnceCell<String>,
+  http_response_status_code: OnceCell<i64>,
+}
+
+impl OtelInfoAttributes {
+  fn for_counter(&self) -> Vec<deno_telemetry::KeyValue> {
+    let mut attributes = vec![
+      deno_telemetry::KeyValue::new(
+        "http.request.method",
+        self.http_request_method.clone(),
+      ),
+      deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
+    ];
+
+    if let Some(address) = self.server_address.clone() {
+      attributes.push(deno_telemetry::KeyValue::new("server.address", address));
+    }
+    if let Some(port) = self.server_port {
+      attributes.push(deno_telemetry::KeyValue::new("server.port", port));
+    }
+
+    attributes
+  }
+
+  fn for_histogram(&self) -> Vec<deno_telemetry::KeyValue> {
+    let mut histogram_attributes = vec![
+      deno_telemetry::KeyValue::new(
+        "http.request.method",
+        self.http_request_method.clone(),
+      ),
+      deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
+      deno_telemetry::KeyValue::new(
+        "network.protocol.version",
+        self.network_rotocol_version.clone(),
+      ),
+    ];
+
+    if let Some(address) = self.server_address.clone() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("server.address", address));
+    }
+    if let Some(port) = self.server_port {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("server.port", port));
+    }
+    if let Some(status_code) = self.http_response_status_code.clone().get() {
+      histogram_attributes.push(deno_telemetry::KeyValue::new(
+        "http.response.status_code",
+        *status_code,
+      ));
+    }
+
+    if let Some(error) = self.error_type.get().cloned() {
+      histogram_attributes
+        .push(deno_telemetry::KeyValue::new("error.type", error));
+    }
+
+    histogram_attributes
+  }
 }
 
 impl OtelInfo {
-  fn new(instant: std::time::Instant, attributes: Vec<deno_telemetry::KeyValue>) -> Self {
+  fn new(
+    instant: std::time::Instant,
+    request_size: u64,
+    attributes: OtelInfoAttributes,
+  ) -> Self {
     let otel = OTEL_GLOBALS.get().unwrap();
-    let (_, counter) = OTEL_COLLECTORS.get_or_init(|| {
-      let meter = otel.meter_provider.meter_with_scope(otel.builtin_instrumentation_scope.clone());
-      
-      let histogram = meter
+    let collectors = OTEL_COLLECTORS.get_or_init(|| {
+      let meter = otel
+        .meter_provider
+        .meter_with_scope(otel.builtin_instrumentation_scope.clone());
+
+      let duration = meter
         .f64_histogram("http.server.request.duration")
         .with_unit("s")
         .with_description("Duration of HTTP server requests.")
@@ -258,45 +341,70 @@ impl OtelInfo {
         ])
         .build();
 
-      let counter = meter
+      let active_requests = meter
         .i64_up_down_counter("http.server.active_requests")
         .with_unit("{request}")
         .with_description("Number of active HTTP server requests.")
         .build();
 
-      (histogram, counter)
+      let request_size = meter
+        .u64_histogram("http.server.request.body.size")
+        .with_unit("By")
+        .with_description("Size of HTTP server request bodies.")
+        .build();
+
+      let response_size = meter
+        .u64_histogram("http.server.response.body.size")
+        .with_unit("By")
+        .with_description("Size of HTTP server response bodies.")
+        .build();
+
+      OtelCollectors {
+        duration,
+        active_requests,
+        request_size,
+        response_size,
+      }
     });
-    
-    counter.add(1, &attributes);
-    
+
+    collectors.active_requests.add(1, &attributes.for_counter());
+
     Self {
       instant,
-      error: Default::default(),
       attributes,
+      request_size,
+      response_size: RefCell::new(0),
     }
   }
 }
-
 
 impl Drop for OtelInfo {
   fn drop(&mut self) {
     let duration = self.instant.elapsed();
-    let (histogram, counter) = OTEL_COLLECTORS.get().unwrap();
+    let collectors = OTEL_COLLECTORS.get().unwrap();
 
-    if let Some(error) = self.error.take() {
-      self.attributes.push(deno_telemetry::KeyValue::new("error.type", error));
-    }
-    
-    counter.add(-1, &self.attributes);
-    
-    histogram.record(duration.as_secs_f64(), &self.attributes);
+    collectors
+      .active_requests
+      .add(-1, &self.attributes.for_counter());
+
+    collectors
+      .duration
+      .record(duration.as_secs_f64(), &self.attributes.for_histogram());
+
+    collectors
+      .request_size
+      .record(self.request_size, &self.attributes.for_histogram());
+    collectors.response_size.record(
+      *self.response_size.borrow(),
+      &self.attributes.for_histogram(),
+    );
   }
 }
 
 fn handle_error_otel(otel: &Option<Rc<OtelInfo>>, error: &HttpError) {
- if let Some(otel) = otel {
-   let _ = otel.error.set(error.to_string());
- } 
+  if let Some(otel) = otel {
+    let _ = otel.attributes.error_type.set(error.to_string());
+  }
 }
 
 struct HttpConnResource {
@@ -388,29 +496,34 @@ impl HttpConnResource {
       };
 
       let otel_info = OTEL_GLOBALS.get().map(|_| {
-        let mut attributes = vec![
-          deno_telemetry::KeyValue::new("http.request.method", request.method().as_str().to_string()),
-          deno_telemetry::KeyValue::new("url.scheme", self.scheme),
-          deno_telemetry::KeyValue::new("network.protocol.version", format!("{:?}", request.version()).trim_start_matches("HTTP/").to_string()),
-        ];
-
-        if let Some(host) = request.uri().host() {
-          attributes.push(deno_telemetry::KeyValue::new("server.address", host.to_string()));
-        }
-
-        if let Some(port) = request.uri().port_u16() {
-          attributes.push(deno_telemetry::KeyValue::new("server.port", port as i64));
-        }
-        
-
-        Rc::new(OtelInfo::new(otel_instant.unwrap(), attributes))
+        let size_hint = request.size_hint();
+        Rc::new(OtelInfo::new(
+          otel_instant.unwrap(),
+          size_hint.upper().unwrap_or(size_hint.lower()),
+          OtelInfoAttributes {
+            http_request_method: request.method().as_str().to_string(),
+            url_scheme: self.scheme.to_string(),
+            network_rotocol_version: format!("{:?}", request.version())
+              .trim_start_matches("HTTP/")
+              .to_string(),
+            server_address: request.uri().host().map(|host| host.to_string()),
+            server_port: request.uri().port_u16().map(|port| port as i64),
+            error_type: Default::default(),
+            http_response_status_code: Default::default(),
+          },
+        ))
       });
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let read_stream = HttpStreamReadResource::new(self, request, otel_info.clone());
-      let write_stream =
-        HttpStreamWriteResource::new(self, response_tx, accept_encoding, otel_info);
+      let read_stream =
+        HttpStreamReadResource::new(self, request, otel_info.clone());
+      let write_stream = HttpStreamWriteResource::new(
+        self,
+        response_tx,
+        accept_encoding,
+        otel_info,
+      );
       Some((read_stream, write_stream, method, url))
     };
 
@@ -534,11 +647,15 @@ pub struct HttpStreamWriteResource {
   conn: Rc<HttpConnResource>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
-  _otel_info: Option<Rc<OtelInfo>>,
+  otel_info: Option<Rc<OtelInfo>>,
 }
 
 impl HttpStreamReadResource {
-  fn new(conn: &Rc<HttpConnResource>, request: Request<Body>, otel_info: Option<Rc<OtelInfo>>) -> Self {
+  fn new(
+    conn: &Rc<HttpConnResource>,
+    request: Request<Body>,
+    otel_info: Option<Rc<OtelInfo>>,
+  ) -> Self {
     let size = request.body().size_hint();
     Self {
       _conn: conn.clone(),
@@ -628,7 +745,7 @@ impl HttpStreamWriteResource {
       conn: conn.clone(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
-      _otel_info: otel_info,
+      otel_info,
     }
   }
 }
@@ -880,6 +997,13 @@ async fn op_http_write_headers(
   let (new_wr, body) = http_response(data, compressing, encoding)?;
   let body = builder.status(status).body(body)?;
 
+  if let Some(otel_info) = &stream.otel_info {
+    let _ = otel_info
+      .attributes
+      .http_response_status_code
+      .set(status as _);
+  }
+
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
   let response_tx = match replace(&mut *old_wr, new_wr) {
     HttpResponseWriter::Headers(response_tx) => response_tx,
@@ -1120,6 +1244,10 @@ async fn op_http_write(
     .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
+  if let Some(otel_info) = &stream.otel_info {
+    *otel_info.response_size.borrow_mut() += buf.len() as u64;
+  }
+
   match &mut *wr {
     HttpResponseWriter::Headers(_) => Err(HttpError::NoResponseHeaders),
     HttpResponseWriter::Closed => Err(HttpError::ResponseAlreadyCompleted),
@@ -1220,7 +1348,10 @@ async fn op_http_upgrade_websocket(
 
   let request = match &mut *rd {
     HttpRequestReader::Headers(request) => request,
-    _ => return Err(HttpError::UpgradeBodyUsed).inspect_err(|e| handle_error_otel(&stream.otel_info, e)),
+    _ => {
+      return Err(HttpError::UpgradeBodyUsed)
+        .inspect_err(|e| handle_error_otel(&stream.otel_info, e))
+    }
   };
 
   let (transport, bytes) = extract_network_stream(
