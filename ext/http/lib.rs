@@ -254,7 +254,7 @@ struct OtelInfo {
 
 struct OtelInfoAttributes {
   http_request_method: String,
-  network_rotocol_version: String,
+  network_protocol_version: String,
   url_scheme: String,
   server_address: Option<String>,
   server_port: Option<i64>,
@@ -291,7 +291,7 @@ impl OtelInfoAttributes {
       deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
       deno_telemetry::KeyValue::new(
         "network.protocol.version",
-        self.network_rotocol_version.clone(),
+        self.network_protocol_version.clone(),
       ),
     ];
 
@@ -503,7 +503,7 @@ impl HttpConnResource {
           OtelInfoAttributes {
             http_request_method: request.method().as_str().to_string(),
             url_scheme: self.scheme.to_string(),
-            network_rotocol_version: format!("{:?}", request.version())
+            network_protocol_version: format!("{:?}", request.version())
               .trim_start_matches("HTTP/")
               .to_string(),
             server_address: request.uri().host().map(|host| host.to_string()),

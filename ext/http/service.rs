@@ -195,7 +195,7 @@ pub(crate) async fn handle_request(
       OtelInfoAttributes {
         http_request_method: request.method().as_str().to_string(),
         url_scheme: request.uri().scheme_str().unwrap_or("http").to_string(),
-        network_rotocol_version: format!("{:?}", request.version())
+        network_protocol_version: format!("{:?}", request.version())
           .trim_start_matches("HTTP/")
           .to_string(),
         server_address: request.uri().host().map(|host| host.to_string()),
