@@ -108,7 +108,7 @@
       "test-zlib-zero-byte.js",
       "test-zlib-zero-windowBits.js"
     ],
-    "pummel": [],
+    "pummel": []
   },
   "tests": {
     "abort": [
