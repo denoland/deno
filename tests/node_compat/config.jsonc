@@ -1327,6 +1327,7 @@
       "test-net-pipe-connect-errors.js",
       "test-net-server-listen-path.js",
       "test-net-socket-close-after-end.js",
+      "test-spawn-cmd-named-pipe.js",
       "test-util-inspect-long-running.js",
       "test-util-inspect.js",
       "test-vm-low-stack-space.js"
