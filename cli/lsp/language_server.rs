@@ -32,6 +32,7 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
+use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -203,10 +204,7 @@ impl WorkerThread {
     let (handle_tx, handle_rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let join_handle = std::thread::spawn(move || {
-      let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
+      let runtime = create_basic_runtime();
       handle_tx.send(runtime.handle().clone()).unwrap();
       runtime.block_on(shutdown_rx).unwrap();
     });
