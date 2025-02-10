@@ -918,7 +918,10 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
-  pub fn change_configuration(&mut self, config: Value) {
+  pub fn change_configuration(
+    &mut self,
+    config: Value,
+  ) -> CollectedDiagnostics {
     self.config = config;
     if self.supports_workspace_configuration {
       self.write_notification(
@@ -932,6 +935,7 @@ impl LspClient {
         json!({ "settings": &self.config }),
       );
     }
+    self.read_diagnostics()
   }
 
   pub fn handle_configuration_request(&mut self) {
