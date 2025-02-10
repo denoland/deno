@@ -53,6 +53,8 @@ use deno_core::ResourceId;
 use deno_core::StringOrBuffer;
 use deno_error::JsErrorBox;
 use deno_net::raw::NetworkStream;
+use deno_telemetry::{Histogram, UpDownCounter, OTEL_GLOBALS};
+use deno_telemetry::MeterProvider;
 use deno_websocket::ws_create_server_stream;
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -70,6 +72,7 @@ use hyper_v014::Body;
 use hyper_v014::HeaderMap;
 use hyper_v014::Request;
 use hyper_v014::Response;
+use once_cell::sync::OnceCell;
 use serde::Serialize;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
@@ -99,6 +102,8 @@ pub use request_properties::HttpPropertyExtractor;
 pub use request_properties::HttpRequestProperties;
 pub use service::UpgradeUnavailableError;
 pub use websocket_upgrade::WebSocketUpgradeError;
+
+pub static OTEL_COLLECTORS: OnceCell<(Histogram<f64>, UpDownCounter<i64>)> = OnceCell::new();
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Options {
@@ -231,6 +236,69 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
   }
 }
 
+struct OtelInfo {
+  instant: std::time::Instant,
+  error: OnceCell<String>,
+  attributes: Vec<deno_telemetry::KeyValue>,
+}
+
+impl OtelInfo {
+  fn new(instant: std::time::Instant, attributes: Vec<deno_telemetry::KeyValue>) -> Self {
+    let otel = OTEL_GLOBALS.get().unwrap();
+    let (_, counter) = OTEL_COLLECTORS.get_or_init(|| {
+      let meter = otel.meter_provider.meter_with_scope(otel.builtin_instrumentation_scope.clone());
+      
+      let histogram = meter
+        .f64_histogram("http.server.request.duration")
+        .with_unit("s")
+        .with_description("Duration of HTTP server requests.")
+        .with_boundaries(vec![
+          0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0,
+          7.5, 10.0,
+        ])
+        .build();
+
+      let counter = meter
+        .i64_up_down_counter("http.server.active_requests")
+        .with_unit("{request}")
+        .with_description("Number of active HTTP server requests.")
+        .build();
+
+      (histogram, counter)
+    });
+    
+    counter.add(1, &attributes);
+    
+    Self {
+      instant,
+      error: Default::default(),
+      attributes,
+    }
+  }
+}
+
+
+impl Drop for OtelInfo {
+  fn drop(&mut self) {
+    let duration = self.instant.elapsed();
+    let (histogram, counter) = OTEL_COLLECTORS.get().unwrap();
+
+    if let Some(error) = self.error.take() {
+      self.attributes.push(deno_telemetry::KeyValue::new("error.type", error));
+    }
+    
+    counter.add(-1, &self.attributes);
+    
+    histogram.record(duration.as_secs_f64(), &self.attributes);
+  }
+}
+
+fn handle_error_otel(otel: &Option<Rc<OtelInfo>>, error: &HttpError) {
+ if let Some(otel) = otel {
+   let _ = otel.error.set(error.to_string());
+ } 
+}
+
 struct HttpConnResource {
   addr: HttpSocketAddr,
   scheme: &'static str,
@@ -300,6 +368,8 @@ impl HttpConnResource {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
+      let otel_instant = OTEL_GLOBALS.get().map(|_| std::time::Instant::now());
+
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
 
@@ -317,11 +387,30 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
+      let otel_info = OTEL_GLOBALS.get().map(|_| {
+        let mut attributes = vec![
+          deno_telemetry::KeyValue::new("http.request.method", request.method().as_str().to_string()),
+          deno_telemetry::KeyValue::new("url.scheme", self.scheme),
+          deno_telemetry::KeyValue::new("network.protocol.version", format!("{:?}", request.version()).trim_start_matches("HTTP/").to_string()),
+        ];
+
+        if let Some(host) = request.uri().host() {
+          attributes.push(deno_telemetry::KeyValue::new("server.address", host.to_string()));
+        }
+
+        if let Some(port) = request.uri().port_u16() {
+          attributes.push(deno_telemetry::KeyValue::new("server.port", port as i64));
+        }
+        
+
+        Rc::new(OtelInfo::new(otel_instant.unwrap(), attributes))
+      });
+
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
-      let read_stream = HttpStreamReadResource::new(self, request);
+      let read_stream = HttpStreamReadResource::new(self, request, otel_info.clone());
       let write_stream =
-        HttpStreamWriteResource::new(self, response_tx, accept_encoding);
+        HttpStreamWriteResource::new(self, response_tx, accept_encoding, otel_info);
       Some((read_stream, write_stream, method, url))
     };
 
@@ -438,22 +527,25 @@ pub struct HttpStreamReadResource {
   pub rd: AsyncRefCell<HttpRequestReader>,
   cancel_handle: CancelHandle,
   size: SizeHint,
+  otel_info: Option<Rc<OtelInfo>>,
 }
 
 pub struct HttpStreamWriteResource {
   conn: Rc<HttpConnResource>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
+  _otel_info: Option<Rc<OtelInfo>>,
 }
 
 impl HttpStreamReadResource {
-  fn new(conn: &Rc<HttpConnResource>, request: Request<Body>) -> Self {
+  fn new(conn: &Rc<HttpConnResource>, request: Request<Body>, otel_info: Option<Rc<OtelInfo>>) -> Self {
     let size = request.body().size_hint();
     Self {
       _conn: conn.clone(),
       rd: HttpRequestReader::Headers(request).into(),
       size,
       cancel_handle: CancelHandle::new(),
+      otel_info,
     }
   }
 }
@@ -530,11 +622,13 @@ impl HttpStreamWriteResource {
     conn: &Rc<HttpConnResource>,
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
+    otel_info: Option<Rc<OtelInfo>>,
   ) -> Self {
     Self {
       conn: conn.clone(),
       wr: HttpResponseWriter::Headers(response_tx).into(),
       accept_encoding,
+      _otel_info: otel_info,
     }
   }
 }
@@ -810,7 +904,8 @@ fn op_http_headers(
   let stream = state.resource_table.get::<HttpStreamReadResource>(rid)?;
   let rd = RcRef::map(&stream, |r| &r.rd)
     .try_borrow()
-    .ok_or(HttpError::AlreadyInUse)?;
+    .ok_or(HttpError::AlreadyInUse)
+    .inspect_err(|e| handle_error_otel(&stream.otel_info, e))?;
   match &*rd {
     HttpRequestReader::Headers(request) => Ok(req_headers(request.headers())),
     HttpRequestReader::Body(headers, _) => Ok(req_headers(headers)),
@@ -1125,13 +1220,14 @@ async fn op_http_upgrade_websocket(
 
   let request = match &mut *rd {
     HttpRequestReader::Headers(request) => request,
-    _ => return Err(HttpError::UpgradeBodyUsed),
+    _ => return Err(HttpError::UpgradeBodyUsed).inspect_err(|e| handle_error_otel(&stream.otel_info, e)),
   };
 
   let (transport, bytes) = extract_network_stream(
     hyper_v014::upgrade::on(request)
       .await
-      .map_err(|err| HttpError::HyperV014(Arc::new(err)))?,
+      .map_err(|err| HttpError::HyperV014(Arc::new(err)))
+      .inspect_err(|e| handle_error_otel(&stream.otel_info, e))?,
   );
   Ok(ws_create_server_stream(
     &mut state.borrow_mut(),

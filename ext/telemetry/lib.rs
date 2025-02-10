@@ -38,8 +38,10 @@ use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
+pub use opentelemetry::metrics::Histogram;
+pub use opentelemetry::metrics::UpDownCounter;
 use opentelemetry::metrics::InstrumentBuilder;
-use opentelemetry::metrics::MeterProvider as _;
+pub use opentelemetry::metrics::MeterProvider;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
 use opentelemetry::trace::Link;
@@ -51,10 +53,10 @@ use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
 use opentelemetry::InstrumentationScope;
-use opentelemetry::Key;
-use opentelemetry::KeyValue;
-use opentelemetry::StringValue;
-use opentelemetry::Value;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
@@ -196,7 +198,7 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
 }
 
 #[derive(Clone, Copy)]
-struct OtelSharedRuntime;
+pub struct OtelSharedRuntime;
 
 impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
   fn execute(&self, fut: BoxFuture<'static, ()>) {
@@ -586,15 +588,16 @@ mod hyper_client {
   }
 }
 
-struct OtelGlobals {
-  span_processor: BatchSpanProcessor<OtelSharedRuntime>,
-  log_processor: BatchLogProcessor<OtelSharedRuntime>,
-  id_generator: DenoIdGenerator,
-  meter_provider: SdkMeterProvider,
-  builtin_instrumentation_scope: InstrumentationScope,
+#[derive(Debug)]
+pub struct OtelGlobals {
+  pub span_processor: BatchSpanProcessor<OtelSharedRuntime>,
+  pub log_processor: BatchLogProcessor<OtelSharedRuntime>,
+  pub id_generator: DenoIdGenerator,
+  pub meter_provider: SdkMeterProvider,
+  pub builtin_instrumentation_scope: InstrumentationScope,
 }
 
-static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
+pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 pub fn init(
   rt_config: OtelRuntimeConfig,
@@ -808,7 +811,7 @@ pub fn handle_log(record: &log::Record) {
 }
 
 #[derive(Debug)]
-enum DenoIdGenerator {
+pub enum DenoIdGenerator {
   Random(RandomIdGenerator),
   Deterministic {
     next_trace_id: AtomicU64,
@@ -1708,9 +1711,9 @@ impl OtelMeter {
 
 enum Instrument {
   Counter(opentelemetry::metrics::Counter<f64>),
-  UpDownCounter(opentelemetry::metrics::UpDownCounter<f64>),
+  UpDownCounter(UpDownCounter<f64>),
   Gauge(opentelemetry::metrics::Gauge<f64>),
-  Histogram(opentelemetry::metrics::Histogram<f64>),
+  Histogram(Histogram<f64>),
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 

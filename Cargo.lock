@@ -1889,6 +1889,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_net",
+ "deno_telemetry",
  "deno_websocket",
  "flate2",
  "http 0.2.12",

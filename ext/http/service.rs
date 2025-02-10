@@ -26,10 +26,13 @@ use hyper::upgrade::OnUpgrade;
 use scopeguard::guard;
 use scopeguard::ScopeGuard;
 use tokio::sync::oneshot;
-
+use deno_telemetry::MeterProvider;
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
+use crate::{OtelInfo};
+use crate::{OTEL_COLLECTORS};
+
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -184,12 +187,36 @@ pub(crate) async fn handle_request(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> Result<Response, hyper_v014::Error> {
+  let otel_info = if deno_telemetry::OTEL_GLOBALS.get().is_some() {
+    let instant = std::time::Instant::now();
+
+    let mut attributes = vec![
+      deno_telemetry::KeyValue::new("http.request.method", request.method().as_str().to_string()),
+      deno_telemetry::KeyValue::new("network.protocol.version", format!("{:?}", request.version()).trim_start_matches("HTTP/").to_string()),
+    ];
+
+    attributes.push(deno_telemetry::KeyValue::new("url.scheme", request.uri().scheme_str().unwrap_or("http").to_string()));
+
+    if let Some(host) = request.uri().host() {
+      attributes.push(deno_telemetry::KeyValue::new("server.address", host.to_string()));
+    }
+
+    if let Some(port) = request.uri().port_u16() {
+      attributes.push(deno_telemetry::KeyValue::new("server.port", port as i64));
+    }
+
+    Some(OtelInfo::new(instant, attributes))
+  } else {
+    None
+  };
+
+
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state),
+    HttpRecord::new(request, request_info, server_state, otel_info),
     HttpRecord::cancel,
   );
 
@@ -228,6 +255,7 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
+  otel_info: Option<OtelInfo>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -248,6 +276,7 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
+    otel_info: Option<OtelInfo>,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
@@ -284,6 +313,7 @@ impl HttpRecord {
       been_dropped: false,
       finished: false,
       needs_close_after_finish: false,
+      otel_info,
     });
     record
   }
