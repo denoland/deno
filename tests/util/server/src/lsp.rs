@@ -556,6 +556,8 @@ impl LspClientBuilder {
       command.stderr(Stdio::null());
     }
     let mut child = command.spawn()?;
+
+    eprintln!("lsp process id {}", child.id());
     let stdout = child.stdout.take().unwrap();
     let buf_reader = io::BufReader::new(stdout);
     let reader = LspStdoutReader::new(buf_reader);
