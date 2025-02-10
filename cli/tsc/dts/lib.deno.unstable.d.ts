@@ -1388,7 +1388,7 @@ declare namespace Deno {
       range?: Range;
       message: string;
       hint?: string;
-      fix?(fixer: Fixer): FixData;
+      fix?(fixer: Fixer): FixData | Iterable<FixData>;
     }
 
     /**
