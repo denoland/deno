@@ -13539,8 +13539,8 @@ Deno.test({
   temp_dir.write("./test.ts", contents);
   temp_dir.write("./deno.jsonc", "{}");
   let specifier = temp_dir.url().join("test.ts").unwrap();
-
-  let mut client = context.new_lsp_command().build();
+  eprintln!("here 1");
+  let mut client = context.new_lsp_command().print_stderr().build();
   client.initialize_default();
   client.change_configuration(json!({
     "deno": {
@@ -13548,7 +13548,7 @@ Deno.test({
       "unstable": ["kv"],
     },
   }));
-
+  eprintln!("here 2");
   client.did_open(json!({
     "textDocument": {
       "uri": specifier,
@@ -13557,11 +13557,12 @@ Deno.test({
       "text": contents,
     }
   }));
-
+  eprintln!("here 3");
   let notification =
     client.read_notification_with_method::<Value>("deno/testModule");
   let params: TestModuleNotificationParams =
     serde_json::from_value(notification.unwrap()).unwrap();
+  eprintln!("here 4");
   assert_eq!(params.text_document.uri.as_str(), specifier.as_str());
   assert_eq!(params.kind, TestModuleNotificationKind::Replace);
   assert_eq!(params.label, "test.ts");
@@ -13599,6 +13600,8 @@ Deno.test({
     })
   );
 
+  eprintln!("here 5");
+
   let res = client.write_request_with_res_as::<TestRunResponseParams>(
     "deno/testRun",
     json!({
@@ -13611,10 +13614,12 @@ Deno.test({
     res.enqueued[0].text_document.uri.as_str(),
     specifier.as_str()
   );
+  eprintln!("here 6");
   assert_eq!(res.enqueued[0].ids.len(), 1);
   let id = res.enqueued[0].ids[0].clone();
   let notification =
     client.read_notification_with_method::<Value>("deno/testRunProgress");
+  eprintln!("here 7");
   assert_eq!(
     notification,
     Some(json!({
@@ -13630,7 +13635,7 @@ Deno.test({
       }
     }))
   );
-
+  eprintln!("here 8");
   let notification =
     client.read_notification_with_method::<Value>("deno/testRunProgress");
   let notification_value = notification
@@ -13646,6 +13651,7 @@ Deno.test({
     .unwrap()
     .as_str()
     .unwrap();
+  eprintln!("here 9");
   // deno test's output capturing flushes with a zero-width space in order to
   // synchronize the output pipes. Occasionally this zero width space
   // might end up in the output so strip it from the output comparison here.
@@ -13666,7 +13672,7 @@ Deno.test({
       }
     }))
   );
-
+  eprintln!("here 10");
   let notification =
     client.read_notification_with_method::<Value>("deno/testRunProgress");
   assert_eq!(
@@ -13685,7 +13691,7 @@ Deno.test({
       }
     }))
   );
-
+  eprintln!("here 11");
   let notification =
     client.read_notification_with_method::<Value>("deno/testRunProgress");
   let mut notification = notification.unwrap();
@@ -13714,7 +13720,7 @@ Deno.test({
       }
     })
   );
-
+  eprintln!("here 12");
   let notification =
     client.read_notification_with_method::<Value>("deno/testRunProgress");
   let notification = notification.unwrap();
@@ -13752,7 +13758,7 @@ Deno.test({
     Some("end") => (),
     _ => panic!("unexpected message {}", json!(notification)),
   }
-
+  eprintln!("here 13");
   // Regression test for https://github.com/denoland/vscode_deno/issues/899.
   temp_dir.write("./test.ts", "");
   client.write_notification(
@@ -13767,7 +13773,7 @@ Deno.test({
   );
 
   assert_eq!(client.read_diagnostics().all().len(), 0);
-
+  eprintln!("here 14");
   let notification =
     client.read_notification_with_method::<Value>("deno/testModuleDelete");
   assert_eq!(
