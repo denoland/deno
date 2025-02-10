@@ -628,7 +628,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   let temp_dir = context.temp_dir();
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   // add the deno.json
@@ -748,7 +748,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
   let temp_dir = context.temp_dir();
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   // now create a symlink in the current directory to a subdir/deno.json
@@ -16179,7 +16179,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   temp_dir.write("deno.json", r#"{ "unstable": ["bare-node-builtins"] }"#);
   let main_script = temp_dir.url().join("main.ts").unwrap();
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -16896,11 +16896,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   // remove one of the npm packages and let the other one be found via the lockfile
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
   assert!(temp_dir.path().join("deno.lock").exists());
-  let mut client = context
-    .new_lsp_command()
-    .capture_stderr()
-    .log_debug()
-    .build();
+  let mut client = context.new_lsp_command().log_debug().build();
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
