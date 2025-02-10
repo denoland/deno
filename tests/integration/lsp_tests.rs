@@ -11488,6 +11488,7 @@ fn lsp_performance() {
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
+      "tsc.request.$getDiagnostics",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
