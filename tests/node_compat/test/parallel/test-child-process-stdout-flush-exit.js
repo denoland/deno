@@ -36,7 +36,7 @@ const assert = require('assert');
 
 // If child process output to console and exit
 // The console.log statements here are part of the test.
-if (process.argv[3] === 'child') {
+if (process.argv[2] === 'child') {
   console.log('hello');
   for (let i = 0; i < 200; i++) {
     console.log('filler');
@@ -48,7 +48,7 @@ if (process.argv[3] === 'child') {
   const spawn = require('child_process').spawn;
 
   // spawn self as child
-  const child = spawn(process.argv[0], ['runner.ts', process.argv[2], 'child']);
+  const child = spawn(process.argv[0], [process.argv[1], 'child']);
 
   let stdout = '';
 
