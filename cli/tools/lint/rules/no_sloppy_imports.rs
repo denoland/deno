@@ -12,6 +12,7 @@ use deno_graph::source::ResolveError;
 use deno_graph::Range;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use deno_lint::rules::LintRule;
@@ -118,7 +119,7 @@ impl LintRule for NoSloppyImportsRule {
         LintDiagnosticDetails {
           message: "Sloppy imports are not allowed.".to_string(),
           code: CODE.to_string(),
-          custom_docs_url: Some(DOCS_URL.to_string()),
+          custom_docs_url: LintDocsUrl::Custom(DOCS_URL.to_string()),
           fixes: context
             .specifier()
             .make_relative(&specifier)
