@@ -209,6 +209,7 @@ fn unadded_dependency_message_with_import_map() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -268,6 +269,7 @@ fn unadded_dependency_message() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -381,6 +383,7 @@ fn lsp_import_map_remote() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -639,6 +642,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  client.read_diagnostics();
 
   let uri = temp_dir.url().join("a.ts").unwrap();
 
@@ -700,6 +704,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -725,7 +730,6 @@ fn lsp_import_map_config_file_auto_discovered() {
       }
     })
   );
-  assert_eq!(client.read_diagnostics().all().len(), 0);
 
   client.shutdown();
 }
@@ -761,6 +765,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
       "type": 2
     }]
   }));
+  client.read_diagnostics();
 
   // this will discover the deno.json in the root
   let search_line = format!(
@@ -826,6 +831,7 @@ fn lsp_deno_json_imports_comments_cache() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -917,6 +923,7 @@ fn lsp_format_vendor_path() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   assert!(temp_dir
     .path()
     .join("vendor/http_localhost_4545/run/002_hello.ts")
@@ -1114,6 +1121,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
@@ -1263,6 +1271,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1284,6 +1293,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1305,6 +1315,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1326,6 +1337,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1409,7 +1421,7 @@ fn lsp_import_attributes() {
     },
   }));
 
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": "file:///a/test.json",
       "languageId": "json",
@@ -2086,7 +2098,6 @@ fn lsp_suggestion_actions_disabled() {
       },
     },
   }));
-  client.read_diagnostics();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -2778,6 +2789,7 @@ fn lsp_hover_dependency() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3162,6 +3174,7 @@ fn lsp_hover_typescript_types() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3211,6 +3224,7 @@ fn lsp_hover_jsr() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -5733,6 +5747,7 @@ fn lsp_jsr_auto_import_completion() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5812,6 +5827,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5951,6 +5967,7 @@ fn lsp_jsr_code_action_missing_declaration() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let res = client.write_request(
     "textDocument/codeAction",
@@ -6071,6 +6088,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let list = client
     .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
@@ -6490,6 +6508,7 @@ fn lsp_code_actions_deno_types_for_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
@@ -6657,6 +6676,7 @@ fn lsp_cache_then_definition() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -7606,6 +7626,7 @@ fn lsp_quote_style_from_workspace_settings() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
 
   let res = client.write_request("textDocument/codeAction", code_action_params);
   // Expect double quotes in the auto-import.
@@ -8090,6 +8111,7 @@ fn lsp_completions_auto_import_node_builtin() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -8158,6 +8180,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // try auto-import with path
   client.did_open(json!({
@@ -8883,6 +8906,7 @@ fn lsp_npm_types_nested_js_dts() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -8982,6 +9006,7 @@ fn lsp_npm_always_caches() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // now open a new file and chalk should be working
   let new_file_uri = temp_dir_path.join("new_file.ts").url_file();
@@ -9104,6 +9129,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // try auto-import with path
   client.did_open(json!({
@@ -9742,6 +9768,7 @@ fn lsp_completions_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // check importing a cjs default import
   client.write_notification(
@@ -9955,6 +9982,7 @@ fn lsp_auto_imports_remote_dts() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -10257,6 +10285,7 @@ fn lsp_completions_node_builtin() {
       "arguments": [["npm:@types/node"], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
 
   client.write_notification(
     "textDocument/didChange",
@@ -10324,6 +10353,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   client.write_notification(
     "textDocument/didChange",
     json!({
@@ -10559,6 +10589,7 @@ fn lsp_cache_location() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10653,6 +10684,7 @@ fn lsp_tls_cert() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10751,6 +10783,7 @@ fn lsp_npmrc() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -11147,6 +11180,7 @@ fn lsp_root_with_global_reference_types() {
       "arguments": [[], file2.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
 }
@@ -11456,6 +11490,7 @@ fn lsp_performance() {
       "tsc.op.op_load",
       "tsc.op.op_script_names",
       "tsc.request.$getAssets",
+      "tsc.request.$getDiagnostics",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
@@ -13187,6 +13222,7 @@ export function B() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -13209,10 +13245,6 @@ export function B() {
       }
     })
   );
-
-  let diagnostics = client.read_diagnostics();
-  println!("{:?}", diagnostics);
-
   client.shutdown();
 }
 
@@ -14035,6 +14067,7 @@ fn lsp_node_modules_dir() {
         "arguments": [["npm:chalk", "npm:@types/node"], file_uri],
       }),
     );
+    client.read_diagnostics()
   };
 
   cache(&mut client);
@@ -14068,11 +14101,9 @@ fn lsp_node_modules_dir() {
         "imports": {},
       },
       "unstable": [],
-    } }));
+    } }))
   };
-  refresh_config(&mut client);
-
-  let diagnostics = client.read_diagnostics();
+  let diagnostics = refresh_config(&mut client);
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
@@ -14087,9 +14118,7 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
-  cache(&mut client);
-
-  let diagnostics = client.read_diagnostics();
+  let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   assert!(lockfile_path.exists());
@@ -14166,7 +14195,7 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  client.change_configuration(json!({ "deno": {
+  let diagnostics = client.change_configuration(json!({ "deno": {
     "enable": true,
     "config": "./deno.json",
     "codeLens": {
@@ -14185,7 +14214,6 @@ fn lsp_vendor_dir() {
     "unstable": [],
   } }));
 
-  let diagnostics = client.read_diagnostics();
   // won't be cached until a manual cache occurs
   assert_eq!(
     diagnostics
@@ -14534,6 +14562,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14584,6 +14613,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14634,6 +14664,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14717,6 +14748,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14770,6 +14802,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14820,6 +14853,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15799,6 +15833,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15870,6 +15905,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -17343,6 +17379,7 @@ fn compiler_options_types() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     eprintln!("{:#?}", diagnostics.all());
@@ -17416,6 +17453,7 @@ fn type_reference_import_meta() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     assert_eq!(diagnostics.all().len(), 0);
