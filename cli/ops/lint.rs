@@ -11,6 +11,7 @@ use deno_core::OpState;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::diagnostic::LintFix;
 use deno_lint::diagnostic::LintFixChange;
 use tokio_util::sync::CancellationToken;
@@ -154,7 +155,8 @@ impl LintPluginContainer {
         code: id,
         hint,
         fixes,
-        custom_docs_url: None,
+        // TODO(bartlomieju): allow plugins to actually specify custom url for docs
+        custom_docs_url: LintDocsUrl::None,
         info: vec![],
       },
     };
