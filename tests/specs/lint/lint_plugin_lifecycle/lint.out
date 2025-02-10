@@ -1,0 +1,5 @@
+create: test-plugin/my-rule
+create: test-plugin/my-rule-2
+destroy: test-plugin/my-rule
+destroy: test-plugin/my-rule-2
+Checked 1 file

@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+mod interactive;
+
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -13,6 +15,7 @@ use deno_semver::VersionReq;
 use deno_terminal::colors;
 
 use super::deps::Dep;
+use super::deps::DepId;
 use super::deps::DepManager;
 use super::deps::DepManagerArgs;
 use super::deps::PackageLatestVersion;
@@ -240,8 +243,11 @@ pub async fn outdated(
   deps.resolve_versions().await?;
 
   match update_flags.kind {
-    crate::args::OutdatedKind::Update { latest } => {
-      update(deps, latest, &filter_set, flags).await?;
+    crate::args::OutdatedKind::Update {
+      latest,
+      interactive,
+    } => {
+      update(deps, latest, &filter_set, interactive, flags).await?;
     }
     crate::args::OutdatedKind::PrintOutdated { compatible } => {
       print_outdated(&mut deps, compatible)?;
@@ -299,9 +305,10 @@ async fn update(
   mut deps: DepManager,
   update_to_latest: bool,
   filter_set: &filter::FilterSet,
+  interactive: bool,
   flags: Arc<Flags>,
 ) -> Result<(), AnyError> {
-  let mut updated = Vec::new();
+  let mut to_update = Vec::new();
 
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
@@ -320,19 +327,54 @@ async fn update(
       continue;
     };
 
-    updated.push((
+    to_update.push((
       dep_id,
       format!("{}:{}", dep.kind.scheme(), dep.req.name),
       deps.resolved_version(dep.id).cloned(),
       new_version_req.clone(),
     ));
-
-    deps.update_dep(dep_id, new_version_req);
   }
 
-  deps.commit_changes()?;
+  if interactive && !to_update.is_empty() {
+    let selected = interactive::select_interactive(
+      to_update
+        .iter()
+        .map(
+          |(dep_id, _, current_version, new_req): &(
+            DepId,
+            String,
+            Option<PackageNv>,
+            VersionReq,
+          )| {
+            let dep = deps.get_dep(*dep_id);
+            interactive::PackageInfo {
+              id: *dep_id,
+              current_version: current_version
+                .as_ref()
+                .map(|nv| nv.version.clone()),
+              name: dep.alias_or_name().into(),
+              kind: dep.kind,
+              new_version: new_req.clone(),
+            }
+          },
+        )
+        .collect(),
+    )?;
+    if let Some(selected) = selected {
+      to_update.retain(|(id, _, _, _)| selected.contains(id));
+    } else {
+      log::info!("Cancelled, not updating");
+      return Ok(());
+    }
+  }
 
-  if !updated.is_empty() {
+  if !to_update.is_empty() {
+    for (dep_id, _, _, new_version_req) in &to_update {
+      deps.update_dep(*dep_id, new_version_req.clone());
+    }
+
+    deps.commit_changes()?;
+
     let factory = super::npm_install_after_modification(
       flags.clone(),
       Some(deps.jsr_fetch_resolver.clone()),
@@ -352,7 +394,7 @@ async fn update(
     let mut deps = deps.reloaded_after_modification(args);
     deps.resolve_current_versions().await?;
     for (dep_id, package_name, maybe_current_version, new_version_req) in
-      updated
+      to_update
     {
       if let Some(nv) = deps.resolved_version(dep_id) {
         updated_to_versions.insert((

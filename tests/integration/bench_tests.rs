@@ -2,7 +2,6 @@
 
 use serde_json::json;
 use test_util as util;
-use url::Url;
 use util::assert_contains;
 use util::assert_not_contains;
 use util::TestContext;
@@ -20,20 +19,6 @@ fn recursive_permissions_pledge() {
     output.combined_output(),
     "pledge test permissions called before restoring previous pledge"
   );
-}
-
-#[test]
-fn file_protocol() {
-  let file_url =
-    Url::from_file_path(util::testdata_path().join("bench/file_protocol.ts"))
-      .unwrap()
-      .to_string();
-  let context = TestContext::default();
-  context
-    .new_command()
-    .args(format!("bench bench/file_protocol.ts {file_url}"))
-    .run()
-    .assert_matches_file("bench/file_protocol.out");
 }
 
 #[test]

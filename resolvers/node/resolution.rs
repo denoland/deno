@@ -110,15 +110,6 @@ pub enum NodeResolutionKind {
   Types,
 }
 
-impl From<NodeResolutionKind> for deno_config::workspace::ResolutionKind {
-  fn from(value: NodeResolutionKind) -> Self {
-    match value {
-      NodeResolutionKind::Execution => Self::Execution,
-      NodeResolutionKind::Types => Self::Types,
-    }
-  }
-}
-
 impl NodeResolutionKind {
   pub fn is_types(&self) -> bool {
     matches!(self, NodeResolutionKind::Types)
