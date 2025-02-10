@@ -295,8 +295,9 @@ impl WorkspaceLinter {
     )?;
     let mut maybe_incremental_cache = None;
 
-    // TODO(bartlomieju): how do we decide if plugins support incremental cache?
-    if lint_rules.supports_incremental_cache() {
+    // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
+    // https://github.com/denoland/deno/issues/28025
+    if lint_rules.supports_incremental_cache() && plugin_specifiers.is_empty() {
       let mut hasher = FastInsecureHasher::new_deno_versioned();
       hasher.write_hashable(lint_rules.incremental_cache_state());
       if !plugin_specifiers.is_empty() {
