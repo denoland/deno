@@ -8,7 +8,6 @@ import {
   error,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
-  getAssets,
   getCreateSourceFileOptions,
   host,
   IS_NODE_SOURCE_FILE_CACHE,
@@ -445,9 +444,6 @@ function serverRequest(id, method, args, scope, maybeChange) {
         id,
         ts.getSupportedCodeFixes(),
       );
-    }
-    case "$getAssets": {
-      return respond(id, getAssets());
     }
     case "$getDiagnostics": {
       const projectVersion = args[1];
