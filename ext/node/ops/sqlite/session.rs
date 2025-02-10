@@ -24,7 +24,7 @@ pub struct Session {
   pub(crate) freed: Cell<bool>,
 
   // Hold a strong reference to the database.
-  pub(crate) _db: Rc<RefCell<Option<rusqlite::Connection>>>,
+  pub(crate) db: Rc<RefCell<Option<rusqlite::Connection>>>,
 }
 
 impl GarbageCollected for Session {}
@@ -57,6 +57,10 @@ impl Session {
   // Closes the session.
   #[fast]
   fn close(&self) -> Result<(), SqliteError> {
+    if self.db.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
+
     self.delete()
   }
 
@@ -66,6 +70,9 @@ impl Session {
   // This method is a wrapper around `sqlite3session_changeset()`.
   #[buffer]
   fn changeset(&self) -> Result<Box<[u8]>, SqliteError> {
+    if self.db.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
     if self.freed.get() {
       return Err(SqliteError::SessionClosed);
     }
@@ -78,6 +85,9 @@ impl Session {
   // This method is a wrapper around `sqlite3session_patchset()`.
   #[buffer]
   fn patchset(&self) -> Result<Box<[u8]>, SqliteError> {
+    if self.db.borrow().is_none() {
+      return Err(SqliteError::AlreadyClosed);
+    }
     if self.freed.get() {
       return Err(SqliteError::SessionClosed);
     }

@@ -552,6 +552,11 @@ Deno.test("Plugin - ClassExpression", async (t) => {
   await testSnapshot(t, "a = class { static foo = bar }", "ClassExpression");
   await testSnapshot(
     t,
+    "a = class { static [key: string]: any }",
+    "ClassExpression",
+  );
+  await testSnapshot(
+    t,
     "a = class { static foo; static { foo = bar } }",
     "ClassExpression",
   );
@@ -597,6 +602,7 @@ Deno.test("Plugin - MemberExpression", async (t) => {
 
 Deno.test("Plugin - MetaProperty", async (t) => {
   await testSnapshot(t, "import.meta", "MetaProperty");
+  await testSnapshot(t, "new.target", "MetaProperty");
 });
 
 Deno.test("Plugin - NewExpression", async (t) => {
@@ -680,6 +686,36 @@ Deno.test("Plugin - Literal", async (t) => {
   await testSnapshot(t, "/foo/g", "Literal");
 });
 
+// Stage 1 Proposal: https://github.com/tc39/proposal-grouped-and-auto-accessors
+Deno.test.ignore(
+  "Plugin - AccessorProperty + TSAbstractAccessorProperty",
+  async (t) => {
+    await testSnapshot(
+      t,
+      `class Foo { accessor foo = 1; }`,
+      "AccessorProperty",
+    );
+    await testSnapshot(
+      t,
+      `abstract class Foo { abstract accessor foo: number = 1; }`,
+      "TSAbstractAccessorProperty",
+    );
+  },
+);
+
+Deno.test("Plugin - Abstract class", async (t) => {
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract prop: string; }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `abstract class SomeClass { abstract method(): string; }`,
+    "ClassDeclaration",
+  );
+});
+
 Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
   await testSnapshot(t, "<div />", "JSXElement");
   await testSnapshot(t, "<div></div>", "JSXElement");
@@ -715,28 +751,60 @@ Deno.test("Plugin - TSEnumDeclaration", async (t) => {
   );
 });
 
-Deno.test("Plugin - TSInterface", async (t) => {
-  await testSnapshot(t, "interface A {}", "TSInterface");
-  await testSnapshot(t, "interface A<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A extends Foo<T>, Bar<T> {}", "TSInterface");
-  await testSnapshot(t, "interface A { foo: any, bar?: any }", "TSInterface");
+Deno.test("Plugin - TSInterfaceDeclaration", async (t) => {
+  await testSnapshot(t, "interface A {}", "TSInterfaceDeclaration");
+  await testSnapshot(t, "interface A<T> {}", "TSInterfaceDeclaration");
+  await testSnapshot(
+    t,
+    "interface A extends Foo<T>, Bar<T> {}",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { foo: any, bar?: any }",
+    "TSInterfaceDeclaration",
+  );
   await testSnapshot(
     t,
     "interface A { readonly [key: string]: any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 
-  await testSnapshot(t, "interface A { readonly a: any }", "TSInterface");
-  await testSnapshot(t, "interface A { <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { new <T>(a: T): T }", "TSInterface");
-  await testSnapshot(t, "interface A { a: new <T>(a: T) => T }", "TSInterface");
-  await testSnapshot(t, "interface A { get a(): string }", "TSInterface");
-  await testSnapshot(t, "interface A { set a(v: string) }", "TSInterface");
+  await testSnapshot(
+    t,
+    "interface A { readonly a: any }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { new <T>(a: T): T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { a: new <T>(a: T) => T }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { get a(): string }",
+    "TSInterfaceDeclaration",
+  );
+  await testSnapshot(
+    t,
+    "interface A { set a(v: string) }",
+    "TSInterfaceDeclaration",
+  );
 
   await testSnapshot(
     t,
     "interface A { a<T>(arg?: any, ...args: any[]): any }",
-    "TSInterface",
+    "TSInterfaceDeclaration",
   );
 });
 
@@ -762,12 +830,31 @@ Deno.test("Plugin - TSIntersectionType", async (t) => {
   await testSnapshot(t, "type A = B & C", "TSIntersectionType");
 });
 
+Deno.test("Plugin - TSInstantiationExpression", async (t) => {
+  await testSnapshot(t, "a<b>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>;", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a<b>)<c>?.();", "TSInstantiationExpression");
+  await testSnapshot(t, "(a?.b<c>)<d>();", "TSInstantiationExpression");
+  await testSnapshot(t, "new (a<b>)<c>();", "TSInstantiationExpression");
+});
+
 Deno.test("Plugin - TSModuleDeclaration", async (t) => {
   await testSnapshot(t, "module A {}", "TSModuleDeclaration");
   await testSnapshot(
     t,
     "declare module A { export function A(): void }",
     "TSModuleDeclaration",
+  );
+});
+
+Deno.test("Plugin - TSDeclareFunction", async (t) => {
+  await testSnapshot(
+    t,
+    `async function foo(): any;
+async function foo(): any {}`,
+    "TSDeclareFunction",
   );
 });
 
@@ -871,6 +958,7 @@ Deno.test("Plugin - TSTupleType + TSArrayType", async (t) => {
   await testSnapshot(t, "type A = [number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
   await testSnapshot(t, "type A = [x: number]", "TSTupleType");
+  await testSnapshot(t, "type A = [x?: number]", "TSTupleType");
   await testSnapshot(t, "type A = [...x: number[]]", "TSTupleType");
 });
 

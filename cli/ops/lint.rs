@@ -60,23 +60,18 @@ pub struct LintPluginContainer {
 }
 
 impl LintPluginContainer {
-  pub fn set_cancellation_token(
-    &mut self,
-    maybe_token: Option<CancellationToken>,
-  ) {
-    let token = maybe_token.unwrap_or_default();
-    self.token = token;
-  }
-
   pub fn set_info_for_file(
     &mut self,
     specifier: ModuleSpecifier,
     source_text_info: SourceTextInfo,
     utf16_map: Utf16Map,
+    maybe_token: Option<CancellationToken>,
   ) {
     self.specifier = Some(specifier);
     self.utf_16_map = Some(utf16_map);
     self.source_text_info = Some(source_text_info);
+    self.diagnostics.clear();
+    self.token = maybe_token.unwrap_or_default();
   }
 
   fn report(

@@ -485,6 +485,22 @@ impl SerializeCtx {
     };
   }
 
+  /// Helper for writing optional node offsets with undefined as empty value
+  pub fn write_maybe_undef_ref<P>(
+    &mut self,
+    prop: P,
+    parent: &PendingRef,
+    value: Option<NodeRef>,
+  ) where
+    P: Into<u8> + Display + Clone,
+  {
+    if let Some(v) = value {
+      self.write_ref(prop, parent, v);
+    } else {
+      self.write_undefined(prop);
+    };
+  }
+
   /// Write a vec of node offsets into the property. The necessary space
   /// has been reserved earlier.
   pub fn write_ref_vec<P>(
