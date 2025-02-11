@@ -386,17 +386,19 @@ impl Drop for OtelInfo {
     collectors
       .active_requests
       .add(-1, &self.attributes.for_counter());
+    
+    let histogram_attributes = self.attributes.for_histogram();
 
     collectors
       .duration
-      .record(duration.as_secs_f64(), &self.attributes.for_histogram());
+      .record(duration.as_secs_f64(), &histogram_attributes);
 
     collectors
       .request_size
-      .record(self.request_size, &self.attributes.for_histogram());
+      .record(self.request_size, &histogram_attributes);
     collectors.response_size.record(
       *self.response_size.borrow(),
-      &self.attributes.for_histogram(),
+      &histogram_attributes,
     );
   }
 }
