@@ -458,8 +458,8 @@ interface DOMStringList {
 /** @category Platform */
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
-/** @category I/O */
 /**
+ * @category I/O
  * A global console object that provides methods for logging, debugging, and error reporting.
  * The console object provides access to the browser's or runtime's debugging console functionality.
  * It allows developers to output text and data for debugging purposes.
