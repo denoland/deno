@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::fs::OpenOptions;
 use std::rc::Rc;
 
 use deno_core::futures::FutureExt;
@@ -9,6 +10,7 @@ use deno_core::url::Url;
 use deno_core::CancelFuture;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
+use deno_fs::open_with_access_check;
 use http::StatusCode;
 use http_body_util::BodyExt;
 use tokio_util::io::ReaderStream;
@@ -32,7 +34,13 @@ impl FetchHandler for FsFetchHandler {
     let path_result = url.to_file_path();
     let response_fut = async move {
       let path = path_result?;
-      let file = tokio::fs::File::open(path).map_err(|_| ()).await?;
+      let file = open_with_access_check(
+        OpenOptions {
+          read: true,
+          ..Default::default()
+        },
+        &path,
+      )?;
       let stream = ReaderStream::new(file)
         .map_ok(hyper::body::Frame::data)
         .map_err(JsErrorBox::from_err);

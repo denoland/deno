@@ -390,6 +390,7 @@ pub trait FetchPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
+    resolved: bool,
     p: &'a Path,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError>;
@@ -408,9 +409,17 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read<'a>(
     &mut self,
+    resolved: bool,
     path: &'a Path,
     api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+    if resolved {
+      self
+        .check_special_file(path, api_name)
+        .map_err(PermissionCheckError::NotCapable)?;
+      return Ok(Cow::Borrowed(path));
+    }
+
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
@@ -451,7 +460,16 @@ where
     "file" => {
       let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
       let permissions = state.borrow_mut::<FP>();
-      let path = permissions.check_read(&path, "fetch()")?;
+
+      fn sync_permission_check<'a, P: FetchPermissions + 'static>(
+        permissions: &'a mut P,
+        api_name: &'static str,
+      ) -> impl AccessCheckFn + 'a {
+        move |resolved, path, _options| {
+          permissions.check_read(resolved, path, api_name)
+        }
+      }
+
       let url = match path {
         Cow::Owned(path) => url_from_file_path(&path)?,
         Cow::Borrowed(_) => url,

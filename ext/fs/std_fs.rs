@@ -1063,7 +1063,7 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
 }
 
 #[inline(always)]
-fn open_with_access_check(
+pub fn open_with_access_check(
   options: OpenOptions,
   path: &Path,
   access_check: Option<AccessCheckCb>,
