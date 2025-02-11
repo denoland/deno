@@ -219,7 +219,63 @@ declare var sessionStorage: Storage;
  *
  * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage | MDN CacheStorage}
  */
+declare var caches: CacheStorage;
 
+/** @category Platform */
+interface Navigator {
+  readonly gpu: GPU;
+  readonly hardwareConcurrency: number;
+  readonly userAgent: string;
+  readonly language: string;
+  readonly languages: string[];
+}
+
+/** @category Platform */
+declare var Navigator: {
+  readonly prototype: Navigator;
+  new (): never;
+};
+
+/** @category Platform */
+declare var navigator: Navigator;
+
+/**
+ * Shows the given message and waits for the enter key pressed.
+ *
+ * If the stdin is not interactive, it does nothing.
+ *
+ * @example
+ * ```ts
+ * // Displays the message "Acknowledge me! [Enter]" and waits for the enter key to be pressed before continuing.
+ * alert("Acknowledge me!");
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/alert
+ * @category Platform
+ *
+ * @param message
+ */
+declare function alert(message?: string): void;
+
+/**
+ * Shows the given message and waits for the answer. Returns the user's answer as boolean.
+ *
+ * Only `y` and `Y` are considered as true.
+ *
+ * If the stdin is not interactive, it returns false.
+ *
+ * @example
+ * ```ts
+ * const shouldProceed = confirm("Do you want to proceed?");
+ *
+ * // If the user presses 'y' or 'Y', the result will be true
+ * // If the user presses 'n' or 'N', the result will be false
+ * console.log("Should proceed?", shouldProceed);
+ * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/confirm
+ * @category Platform
+ *
+ * @param message
+ */
 declare function confirm(message?: string): boolean;
 
 /**
