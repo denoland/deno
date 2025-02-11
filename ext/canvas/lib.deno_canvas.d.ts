@@ -190,5 +190,5 @@ interface ImageBitmap {
  */
 declare var ImageBitmap: {
   prototype: ImageBitmap;
-  new(): ImageBitmap;
+  new (): ImageBitmap;
 };
