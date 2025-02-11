@@ -1,3 +1,3 @@
-function foo(   ): any   {
- console.log(  "hello")
-    }
+function foo(): any {
+  console.log("hello");
+}

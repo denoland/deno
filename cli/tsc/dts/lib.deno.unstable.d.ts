@@ -23,7 +23,7 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
-   *  * ```ts
+   * ```ts
    * const surface = Deno.UnsafeWindowSurface.create(
    *   "win32",    // system
    *   hwnd,       // window handle
@@ -1400,7 +1400,7 @@ declare namespace Deno {
       range?: Range;
       message: string;
       hint?: string;
-      fix?(fixer: Fixer): FixData;
+      fix?(fixer: Fixer): FixData | Iterable<FixData>;
     }
 
     /**

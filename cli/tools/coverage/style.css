@@ -8,10 +8,7 @@ html {
   height: 100%;
 }
 body {
-  font-family:
-    Helvetica Neue,
-    Helvetica,
-    Arial;
+  font-family: Helvetica Neue, Helvetica, Arial;
   font-size: 14px;
   color: #333;
 }
@@ -33,12 +30,7 @@ h2 {
   font-size: 14px;
 }
 pre {
-  font:
-    12px/1.4 Consolas,
-    "Liberation Mono",
-    Menlo,
-    Courier,
-    monospace;
+  font: 12px/1.4 Consolas, "Liberation Mono", Menlo, Courier, monospace;
   margin: 0;
   padding: 0;
   -moz-tab-size: 2;
@@ -212,8 +204,7 @@ table.coverage td span.cline-any {
 .coverage-summary th.file {
   border-right: none !important;
 }
-.coverage-summary th.pct {
-}
+.coverage-summary th.pct {}
 .coverage-summary th.pic,
 .coverage-summary th.abs,
 .coverage-summary td.pct,
@@ -226,8 +217,7 @@ table.coverage td span.cline-any {
 .coverage-summary td.pic {
   min-width: 120px !important;
 }
-.coverage-summary tfoot td {
-}
+.coverage-summary tfoot td {}
 
 .coverage-summary .sorter {
   height: 10px;

@@ -855,17 +855,3 @@ const setTypesNodeIgnorableNames = new Set([
   "WritableStreamDefaultWriter",
 ]);
 ts.deno.setTypesNodeIgnorableNames(setTypesNodeIgnorableNames);
-
-export function getAssets() {
-  /** @type {{ specifier: string; text: string; }[]} */
-  const assets = [];
-  for (const sourceFile of SOURCE_FILE_CACHE.values()) {
-    if (sourceFile.fileName.startsWith(ASSETS_URL_PREFIX)) {
-      assets.push({
-        specifier: sourceFile.fileName,
-        text: sourceFile.text,
-      });
-    }
-  }
-  return assets;
-}

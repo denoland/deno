@@ -1399,7 +1399,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
     .map(|(k, v)| {
       let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(specifier.clone(), v);
+      let asset = AssetDocument::new(specifier.clone(), v.get());
       (specifier, asset)
     })
     .collect::<AssetsMap>();
@@ -1430,26 +1430,13 @@ impl AssetsSnapshot {
 /// multiple threads without needing to worry about race conditions.
 #[derive(Debug, Clone)]
 pub struct Assets {
-  ts_server: Arc<TsServer>,
   assets: Arc<Mutex<AssetsMap>>,
 }
 
 impl Assets {
-  pub fn new(ts_server: Arc<TsServer>) -> Self {
+  pub fn new() -> Self {
     Self {
-      ts_server,
       assets: new_assets_map(),
-    }
-  }
-
-  /// Initializes with the assets in the isolate.
-  pub async fn initialize(&self, state_snapshot: Arc<StateSnapshot>) {
-    let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
-    let mut assets_map = self.assets.lock();
-    for asset in assets {
-      if !assets_map.contains_key(asset.specifier()) {
-        assets_map.insert(asset.specifier().clone(), asset);
-      }
     }
   }
 
@@ -1475,39 +1462,6 @@ impl Assets {
     *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
-}
-
-/// Get all the assets stored in the tsc isolate.
-async fn get_isolate_assets(
-  ts_server: &TsServer,
-  state_snapshot: Arc<StateSnapshot>,
-) -> Vec<AssetDocument> {
-  let req = TscRequest::GetAssets;
-  let res: Value = ts_server
-    .request(state_snapshot, req, None, &Default::default())
-    .await
-    .unwrap();
-  let response_assets = match res {
-    Value::Array(value) => value,
-    _ => unreachable!(),
-  };
-  let mut assets = Vec::with_capacity(response_assets.len());
-
-  for asset in response_assets {
-    let mut obj = match asset {
-      Value::Object(obj) => obj,
-      _ => unreachable!(),
-    };
-    let specifier_str = obj.get("specifier").unwrap().as_str().unwrap();
-    let specifier = ModuleSpecifier::parse(specifier_str).unwrap();
-    let text = match obj.remove("text").unwrap() {
-      Value::String(text) => text,
-      _ => unreachable!(),
-    };
-    assets.push(AssetDocument::new(specifier, text));
-  }
-
-  assets
 }
 
 fn get_tag_body_text(
@@ -4547,6 +4501,21 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   r
 }
 
+#[op2]
+#[serde]
+fn op_libs() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for key in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.keys() {
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum LoadError {
   #[error("{0}")]
@@ -4947,13 +4916,13 @@ fn run_tsc_thread(
   // supplied snapshot is an isolate that contains the TypeScript language
   // server.
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(
+    extensions: vec![deno_tsc::init_ops_and_esm(
       performance,
       specifier_map,
       request_rx,
     )],
     create_params: create_isolate_create_params(),
-    startup_snapshot: Some(tsc::compiler_snapshot()),
+    startup_snapshot: None,
     inspector: has_inspector_server,
     ..Default::default()
   });
@@ -5035,6 +5004,7 @@ deno_core::extension!(deno_tsc,
     op_script_version,
     op_project_version,
     op_poll_requests,
+    op_libs,
   ],
   options = {
     performance: Arc<Performance>,
@@ -5049,6 +5019,14 @@ deno_core::extension!(deno_tsc,
       options.request_rx,
     ));
   },
+  customizer = |ext: &mut deno_core::Extension| {
+    use deno_core::ExtensionFileSource;
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_entry_point = Some("ext:deno_tsc/99_main_compiler.js");
+  }
 );
 
 #[derive(Debug, Clone, Deserialize_repr, Serialize_repr)]
@@ -5428,7 +5406,6 @@ pub struct JsNull;
 #[derive(Debug, Clone, Serialize)]
 pub enum TscRequest {
   GetDiagnostics((Vec<String>, usize)),
-  GetAssets,
 
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
@@ -5634,7 +5611,6 @@ impl TscRequest {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
       TscRequest::CleanupSemanticCache => ("cleanupSemanticCache", None),
-      TscRequest::GetAssets => ("$getAssets", None),
     };
 
     Ok(args)
@@ -5679,7 +5655,6 @@ impl TscRequest {
       TscRequest::GetSignatureHelpItems(_) => "getSignatureHelpItems",
       TscRequest::GetNavigateToItems(_) => "getNavigateToItems",
       TscRequest::ProvideInlayHints(_) => "provideInlayHints",
-      TscRequest::GetAssets => "$getAssets",
     }
   }
 }
@@ -6063,52 +6038,6 @@ mod tests {
         ]
       })
     );
-  }
-
-  #[tokio::test]
-  async fn test_request_assets() {
-    let (_, ts_server, snapshot, _) = setup(json!({}), &[]).await;
-    let assets = get_isolate_assets(&ts_server, snapshot).await;
-    let mut asset_names = assets
-      .iter()
-      .map(|a| {
-        a.specifier()
-          .to_string()
-          .replace("asset:///lib.", "")
-          .replace(".d.ts", "")
-      })
-      .collect::<Vec<_>>();
-    let mut expected_asset_names: Vec<String> = serde_json::from_str(
-      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
-    )
-    .unwrap();
-    asset_names.sort();
-
-    // if this test fails, update build.rs
-    expected_asset_names.sort();
-    assert_eq!(asset_names, expected_asset_names);
-
-    // get some notification when the size of the assets grows
-    let mut total_size = 0;
-    for asset in &assets {
-      total_size += asset.text().len();
-    }
-    assert!(total_size > 0);
-    #[allow(clippy::print_stderr)]
-    // currently as of TS 5.7, it's 3MB
-    if total_size > 3_500_000 {
-      let mut sizes = Vec::new();
-      for asset in &assets {
-        sizes.push((asset.specifier(), asset.text().len()));
-      }
-      sizes.sort_by_cached_key(|(_, size)| *size);
-      sizes.reverse();
-      for (specifier, size) in &sizes {
-        eprintln!("{}: {}", specifier, size);
-      }
-      eprintln!("Total size: {}", total_size);
-      panic!("Assets were quite large.");
-    }
   }
 
   #[tokio::test]

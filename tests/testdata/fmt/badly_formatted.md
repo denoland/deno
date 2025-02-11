@@ -1,61 +1,54 @@
-# Hello      Markdown
+# Hello Markdown
 
 ```js
-console.log("Hello World"
-
-)
+console.log("Hello World");
 ```
 
 ```javascript
-console.log("Hello World2"
-
-)
+console.log("Hello World2");
 ```
 
 ```ts
+function hello(name: string) {
+  console.log(name);
+}
 
-function hello(name: string    ) {
-                  console.log(name);
-};
-
-hello(        "alice");
+hello("alice");
 ```
 
 ```typescript
 function foo(): number {
-  return       2;
+  return 2;
 }
 ```
 
 ```jsonc
-
 {
   // Comment in JSON
-  "key":          "value",
-                "key2":
-                "value2",
+  "key": "value",
+  "key2": "value2"
 }
-
 ```
 
 ```json
 {
-  "numbers":
-  ["1",      "2"]
+  "numbers": ["1", "2"]
 }
 ```
 
 ```yaml
--  item1
--  item2
+- item1
+- item2
 ```
 
 ```css
-#app>.btn{ color : #000 }
+#app > .btn {
+  color: #000;
+}
 ```
 
 ```html
-<div class=container > content </div>
+<div class="container">content</div>
 ```
 
 ```svelte
@@ -63,7 +56,6 @@ function foo(): number {
 let a:number
 </script>
 ```
-
 
 ```sql
   seLect * , biz, buz

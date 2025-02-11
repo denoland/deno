@@ -13,17 +13,16 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
 /// <reference no-default-lib="true"/>
 
 interface String {
-    /**
-     * Returns true if all leading surrogates and trailing surrogates appear paired and in order.
-     */
-    isWellFormed(): boolean;
+  /**
+   * Returns true if all leading surrogates and trailing surrogates appear paired and in order.
+   */
+  isWellFormed(): boolean;
 
-    /**
-     * Returns a string where all lone or out-of-order surrogates have been replaced by the Unicode replacement character (U+FFFD).
-     */
-    toWellFormed(): string;
+  /**
+   * Returns a string where all lone or out-of-order surrogates have been replaced by the Unicode replacement character (U+FFFD).
+   */
+  toWellFormed(): string;
 }

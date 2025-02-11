@@ -13,32 +13,31 @@ See the Apache Version 2.0 License for specific language governing permissions
 and limitations under the License.
 ***************************************************************************** */
 
-
 /// <reference no-default-lib="true"/>
 
 declare namespace Intl {
-    interface DateTimeFormatPartTypesRegistry {
-        day: any;
-        dayPeriod: any;
-        era: any;
-        hour: any;
-        literal: any;
-        minute: any;
-        month: any;
-        second: any;
-        timeZoneName: any;
-        weekday: any;
-        year: any;
-    }
+  interface DateTimeFormatPartTypesRegistry {
+    day: any;
+    dayPeriod: any;
+    era: any;
+    hour: any;
+    literal: any;
+    minute: any;
+    month: any;
+    second: any;
+    timeZoneName: any;
+    weekday: any;
+    year: any;
+  }
 
-    type DateTimeFormatPartTypes = keyof DateTimeFormatPartTypesRegistry;
+  type DateTimeFormatPartTypes = keyof DateTimeFormatPartTypesRegistry;
 
-    interface DateTimeFormatPart {
-        type: DateTimeFormatPartTypes;
-        value: string;
-    }
+  interface DateTimeFormatPart {
+    type: DateTimeFormatPartTypes;
+    value: string;
+  }
 
-    interface DateTimeFormat {
-        formatToParts(date?: Date | number): DateTimeFormatPart[];
-    }
+  interface DateTimeFormat {
+    formatToParts(date?: Date | number): DateTimeFormatPart[];
+  }
 }

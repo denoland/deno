@@ -1,1 +1,1 @@
-console.log("root")
+console.log("root");

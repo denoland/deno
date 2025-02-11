@@ -1,5 +1,5 @@
 const assert = require("assert");
-const debug = require('util').debuglog('test');
+const debug = require("util").debuglog("test");
 const process = require("process");
 
 function onmessage(m) {
