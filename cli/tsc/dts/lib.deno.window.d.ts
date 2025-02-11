@@ -23,11 +23,11 @@ interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
   onrejectionhandled:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
   close: () => void;
   readonly closed: boolean;
   alert: (message?: string) => void;
@@ -74,7 +74,7 @@ interface Window extends EventTarget {
 /** @category Platform */
 declare var Window: {
   readonly prototype: Window;
-  new (): never;
+  new(): never;
 };
 
 /** @category Platform */
@@ -201,63 +201,25 @@ declare var localStorage: Storage;
  */
 declare var sessionStorage: Storage;
 /** @category Cache */
-declare var caches: CacheStorage;
-
-/** @category Platform */
-interface Navigator {
-  readonly gpu: GPU;
-  readonly hardwareConcurrency: number;
-  readonly userAgent: string;
-  readonly language: string;
-  readonly languages: string[];
-}
-
-/** @category Platform */
-declare var Navigator: {
-  readonly prototype: Navigator;
-  new (): never;
-};
-
-/** @category Platform */
-declare var navigator: Navigator;
-
 /**
- * Shows the given message and waits for the enter key pressed.
- *
- * If the stdin is not interactive, it does nothing.
- *
+ * Provides access to the Cache API, allowing you to store and retrieve network requests and responses.
+ * 
+ * The global `caches` property returns a CacheStorage object, which enables storing, retrieving,
+ * and managing request/response pairs in a cache.
+ * 
  * @example
  * ```ts
- * // Displays the message "Acknowledge me! [Enter]" and waits for the enter key to be pressed before continuing.
- * alert("Acknowledge me!");
+ * // Open a cache and store a response
+ * const cache = await caches.open('my-cache');
+ * await cache.put('/api/data', new Response('cached data'));
+ * 
+ * // Retrieve from cache
+ * const response = await caches.match('/api/data');
  * ```
- * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/alert
- * @category Platform
- *
- * @param message
+ * 
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage | MDN CacheStorage}
  */
-declare function alert(message?: string): void;
 
-/**
- * Shows the given message and waits for the answer. Returns the user's answer as boolean.
- *
- * Only `y` and `Y` are considered as true.
- *
- * If the stdin is not interactive, it returns false.
- *
- * @example
- * ```ts
- * const shouldProceed = confirm("Do you want to proceed?");
- *
- * // If the user presses 'y' or 'Y', the result will be true
- * // If the user presses 'n' or 'N', the result will be false
- * console.log("Should proceed?", shouldProceed);
- * ```
- * @see https://developer.mozilla.org/en-US/docs/Web/API/Window/confirm
- * @category Platform
- *
- * @param message
- */
 declare function confirm(message?: string): boolean;
 
 /**
@@ -416,7 +378,7 @@ interface Location {
  */
 declare var Location: {
   readonly prototype: Location;
-  new (): never;
+  new(): never;
 };
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
