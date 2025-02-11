@@ -19,14 +19,14 @@ use deno_core::resolve_url_or_path;
 use deno_core::v8;
 use deno_core::PollEventLoopOptions;
 use deno_lint::diagnostic::LintDiagnostic;
+use deno_path_util::url_from_file_path;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::tokio_util;
 use deno_runtime::worker::MainWorker;
 use deno_runtime::WorkerExecutionMode;
-use tokio::sync::mpsc::channel;
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
 use crate::args::DenoSubcommand;
 use crate::args::Flags;
@@ -41,6 +41,7 @@ pub enum PluginHostRequest {
   LoadPlugins {
     specifiers: Vec<ModuleSpecifier>,
     exclude_rules: Option<Vec<String>>,
+    tx: oneshot::Sender<PluginHostResponse>,
   },
   Run {
     serialized_ast: Vec<u8>,
@@ -48,6 +49,7 @@ pub enum PluginHostRequest {
     source_text_info: SourceTextInfo,
     utf16_map: Utf16Map,
     maybe_token: Option<CancellationToken>,
+    tx: oneshot::Sender<PluginHostResponse>,
   },
 }
 
@@ -101,8 +103,7 @@ v8_static_strings! {
 
 #[derive(Debug)]
 pub struct PluginHostProxy {
-  tx: Sender<PluginHostRequest>,
-  rx: Arc<tokio::sync::Mutex<Receiver<PluginHostResponse>>>,
+  tx: mpsc::Sender<PluginHostRequest>,
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
   #[allow(unused)]
   join_handle: std::thread::JoinHandle<Result<(), AnyError>>,
@@ -126,14 +127,12 @@ pub struct PluginHost {
   worker: MainWorker,
   install_plugins_fn: Rc<v8::Global<v8::Function>>,
   run_plugins_for_file_fn: Rc<v8::Global<v8::Function>>,
-  tx: Sender<PluginHostResponse>,
-  rx: Receiver<PluginHostRequest>,
+  rx: mpsc::Receiver<PluginHostRequest>,
 }
 
 async fn create_plugin_runner_inner(
   logger: PluginLogger,
-  rx_req: Receiver<PluginHostRequest>,
-  tx_res: Sender<PluginHostResponse>,
+  rx_req: mpsc::Receiver<PluginHostRequest>,
 ) -> Result<PluginHost, AnyError> {
   let flags = Flags {
     subcommand: DenoSubcommand::Lint(LintFlags::default()),
@@ -201,7 +200,6 @@ async fn create_plugin_runner_inner(
     worker,
     install_plugins_fn,
     run_plugins_for_file_fn,
-    tx: tx_res,
     rx: rx_req,
   })
 }
@@ -227,8 +225,7 @@ impl PluginInfo {
 
 impl PluginHost {
   fn create(logger: PluginLogger) -> Result<PluginHostProxy, AnyError> {
-    let (tx_req, rx_req) = channel(10);
-    let (tx_res, rx_res) = channel(10);
+    let (tx_req, rx_req) = mpsc::channel(10);
 
     let logger_ = logger.clone();
     let join_handle = std::thread::spawn(move || {
@@ -236,8 +233,7 @@ impl PluginHost {
       log::debug!("Lint PluginHost thread spawned");
       let start = std::time::Instant::now();
       let fut = async move {
-        let runner =
-          create_plugin_runner_inner(logger.clone(), rx_req, tx_res).await?;
+        let runner = create_plugin_runner_inner(logger.clone(), rx_req).await?;
         log::debug!("Lint PlugibnHost running loop");
         runner.run_loop().await?;
         log::debug!(
@@ -252,7 +248,6 @@ impl PluginHost {
 
     let proxy = PluginHostProxy {
       tx: tx_req,
-      rx: Arc::new(tokio::sync::Mutex::new(rx_res)),
       plugin_info: Arc::new(Mutex::new(vec![])),
       join_handle,
     };
@@ -268,9 +263,10 @@ impl PluginHost {
         PluginHostRequest::LoadPlugins {
           specifiers,
           exclude_rules,
+          tx,
         } => {
           let r = self.load_plugins(specifiers, exclude_rules).await;
-          let _ = self.tx.send(PluginHostResponse::LoadPlugin(r)).await;
+          let _ = tx.send(PluginHostResponse::LoadPlugin(r));
         }
         PluginHostRequest::Run {
           serialized_ast,
@@ -278,6 +274,7 @@ impl PluginHost {
           source_text_info,
           utf16_map,
           maybe_token,
+          tx,
         } => {
           let start = std::time::Instant::now();
           let r = match self.run_plugins(
@@ -294,7 +291,7 @@ impl PluginHost {
             "Running plugins lint rules took {:?}",
             std::time::Instant::now() - start
           );
-          let _ = self.tx.send(PluginHostResponse::Run(r)).await;
+          let _ = tx.send(PluginHostResponse::Run(r));
         }
       }
     }
@@ -322,11 +319,11 @@ impl PluginHost {
       let mut state = state.borrow_mut();
       let container = state.borrow_mut::<LintPluginContainer>();
       container.set_info_for_file(
-        ModuleSpecifier::from_file_path(file_path).unwrap(),
+        url_from_file_path(file_path)?,
         source_text_info,
         utf16_map,
+        maybe_token,
       );
-      container.set_cancellation_token(maybe_token);
     }
 
     let scope = &mut self.worker.js_runtime.handle_scope();
@@ -451,16 +448,17 @@ impl PluginHostProxy {
     specifiers: Vec<ModuleSpecifier>,
     exclude_rules: Option<Vec<String>>,
   ) -> Result<(), AnyError> {
+    let (tx, rx) = oneshot::channel();
     self
       .tx
       .send(PluginHostRequest::LoadPlugins {
         specifiers,
         exclude_rules,
+        tx,
       })
       .await?;
-    let mut rx = self.rx.lock().await;
 
-    if let Some(val) = rx.recv().await {
+    if let Ok(val) = rx.await {
       let PluginHostResponse::LoadPlugin(result) = val else {
         unreachable!()
       };
@@ -479,6 +477,7 @@ impl PluginHostProxy {
     utf16_map: Utf16Map,
     maybe_token: Option<CancellationToken>,
   ) -> Result<Vec<LintDiagnostic>, AnyError> {
+    let (tx, rx) = oneshot::channel();
     self
       .tx
       .send(PluginHostRequest::Run {
@@ -487,11 +486,11 @@ impl PluginHostProxy {
         source_text_info,
         utf16_map,
         maybe_token,
+        tx,
       })
       .await?;
-    let mut rx = self.rx.lock().await;
 
-    if let Some(PluginHostResponse::Run(diagnostics_result)) = rx.recv().await {
+    if let Ok(PluginHostResponse::Run(diagnostics_result)) = rx.await {
       return diagnostics_result;
     }
     bail!("Plugin host has closed")

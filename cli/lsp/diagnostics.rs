@@ -1087,7 +1087,7 @@ async fn generate_ts_diagnostics(
   let (ts_diagnostics_map, ambient_modules_by_scope) =
     if !enabled_specifiers.is_empty() {
       ts_server
-        .get_diagnostics(snapshot.clone(), enabled_specifiers, token)
+        .get_diagnostics(snapshot.clone(), enabled_specifiers, &token)
         .await?
     } else {
       Default::default()
