@@ -1428,7 +1428,7 @@ declare namespace Deno {
       /**
        * Name of the file that's currently being linted.
        */
-      fileName: string;
+      filename: string;
       /**
        * Helper methods for working with the raw source code.
        */
@@ -1437,6 +1437,14 @@ declare namespace Deno {
        * Report a lint error.
        */
       report(data: ReportData): void;
+      /**
+       * @deprecated Use `ctx.filename` instead.
+       */
+      getFilename(): string;
+      /**
+       * @deprecated Use `ctx.sourceCode` instead.
+       */
+      getSourceCode(): SourceCode;
     }
 
     /**
