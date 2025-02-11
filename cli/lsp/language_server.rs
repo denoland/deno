@@ -606,7 +606,7 @@ impl Inner {
       ts_server.clone(),
       diagnostics_state.clone(),
     );
-    let assets = Assets::new();
+    let assets = Assets::new(ts_server.clone());
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
@@ -913,6 +913,7 @@ impl Inner {
         .await?;
       self.ts_fixable_diagnostics = fixable_diagnostics;
     }
+    self.assets.initialize(self.snapshot()).await;
 
     self.performance.measure(mark);
     Ok(InitializeResult {
