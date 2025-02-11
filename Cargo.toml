@@ -133,6 +133,7 @@ deno_error = "=0.5.5"
 deno_package_json = { version = "=0.4.2", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
+dotenvy = "0.15.7"
 ecb = "=0.1.2"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "=0.8.33"

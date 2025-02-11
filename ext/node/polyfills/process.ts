@@ -9,6 +9,7 @@ import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   op_getegid,
   op_geteuid,
+  op_node_load_env_file,
   op_node_process_kill,
   op_process_abort,
 } from "ext:core/ops";
@@ -763,6 +764,10 @@ Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
     return ALLOWED_FLAGS;
   },
 });
+
+process.loadEnvFile = (path = ".env") => {
+  return op_node_load_env_file(path);
+};
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
