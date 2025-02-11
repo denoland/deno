@@ -696,7 +696,7 @@ impl TsServer {
     only: String,
     scope: Option<ModuleSpecifier>,
     token: &CancellationToken,
-  ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
+  ) -> Result<Vec<ApplicableRefactorInfo>, AnyError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
       lsp::CodeActionTriggerKind::INVOKED => "invoked",
       lsp::CodeActionTriggerKind::AUTOMATIC => "implicit",
@@ -709,13 +709,7 @@ impl TsServer {
       trigger_kind,
       only,
     )));
-    self
-      .request(snapshot, req, scope, token)
-      .await
-      .map_err(|err| {
-        log::error!("Failed to request to tsserver {}", err);
-        LspError::invalid_request()
-      })
+    self.request(snapshot, req, scope, token).await
   }
 
   pub async fn get_combined_code_fix(
