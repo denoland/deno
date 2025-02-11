@@ -7,7 +7,7 @@
 /// <reference lib="es2022.intl" />
 
 declare namespace Deno {
-  export {}; // stop default export type behavior
+  export { }; // stop default export type behavior
 
   /** **UNSTABLE**: New API, yet to be vetted.
    *
@@ -23,6 +23,25 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
+   *  * ```ts
+   * // Windows example
+   * const { hwnd, hinstance } = await Deno.createWindow({ 
+   *   title: "WebGPU Window",
+   *   width: 800,
+   *   height: 600 
+   * });
+   * 
+   * const surface = Deno.UnsafeWindowSurface.create(
+   *   "win32",    // system
+   *   hwnd,       // window handle
+   *   hinstance   // display handle
+   * );
+   * 
+   * const adapter = await navigator.gpu.requestAdapter({
+   *   compatibleSurface: surface
+   * });
+   * ```
+   * 
    * @category GPU
    * @experimental
    */
@@ -1252,7 +1271,7 @@ declare namespace Deno {
       },
     ): Promise<void>;
 
-    export {}; // only export exports
+    export { }; // only export exports
   }
 
   /**
@@ -1341,7 +1360,7 @@ declare namespace Deno {
     // deno-lint-ignore no-explicit-any
     export const meterProvider: any;
 
-    export {}; // only export exports
+    export { }; // only export exports
   }
 
   /**
@@ -1409,7 +1428,7 @@ declare namespace Deno {
         [P in Node["type"]]?: (node: Extract<Node, { type: P }>) => void;
       }
       & {
-        [P in Node["type"] as `${P}:exit`]?: (
+        [P in Node["type"]as `${P}:exit`]?: (
           node: Extract<Node, { type: P }>,
         ) => void;
       }
@@ -1552,15 +1571,15 @@ declare namespace Deno {
       type: "ExportDefaultDeclaration";
       range: Range;
       declaration:
-        | ClassDeclaration
-        | Expression
-        | FunctionDeclaration
-        | TSDeclareFunction
-        | TSEnumDeclaration
-        | TSInterfaceDeclaration
-        | TSModuleDeclaration
-        | TSTypeAliasDeclaration
-        | VariableDeclaration;
+      | ClassDeclaration
+      | Expression
+      | FunctionDeclaration
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration;
       exportKind: "type" | "value";
     }
 
@@ -1574,16 +1593,16 @@ declare namespace Deno {
       exportKind: "type" | "value";
       specifiers: ExportSpecifier[];
       declaration:
-        | ClassDeclaration
-        | FunctionDeclaration
-        | TSDeclareFunction
-        | TSEnumDeclaration
-        | TSImportEqualsDeclaration
-        | TSInterfaceDeclaration
-        | TSModuleDeclaration
-        | TSTypeAliasDeclaration
-        | VariableDeclaration
-        | null;
+      | ClassDeclaration
+      | FunctionDeclaration
+      | TSDeclareFunction
+      | TSEnumDeclaration
+      | TSImportEqualsDeclaration
+      | TSInterfaceDeclaration
+      | TSModuleDeclaration
+      | TSTypeAliasDeclaration
+      | VariableDeclaration
+      | null;
       source: StringLiteral | null;
       attributes: ImportAttribute[];
     }
@@ -1719,28 +1738,28 @@ declare namespace Deno {
       type: "Decorator";
       range: Range;
       expression:
-        | ArrayExpression
-        | ArrayPattern
-        | ArrowFunctionExpression
-        | CallExpression
-        | ClassExpression
-        | FunctionExpression
-        | Identifier
-        | JSXElement
-        | JSXFragment
-        | Literal
-        | TemplateLiteral
-        | MemberExpression
-        | MetaProperty
-        | ObjectExpression
-        | ObjectPattern
-        | SequenceExpression
-        | Super
-        | TaggedTemplateExpression
-        | ThisExpression
-        | TSAsExpression
-        | TSNonNullExpression
-        | TSTypeAssertion;
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | CallExpression
+      | ClassExpression
+      | FunctionExpression
+      | Identifier
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | MemberExpression
+      | MetaProperty
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | ThisExpression
+      | TSAsExpression
+      | TSNonNullExpression
+      | TSTypeAssertion;
     }
 
     /**
@@ -1755,29 +1774,29 @@ declare namespace Deno {
       abstract: boolean;
       id: Identifier | null;
       superClass:
-        | ArrayExpression
-        | ArrayPattern
-        | ArrowFunctionExpression
-        | CallExpression
-        | ClassExpression
-        | FunctionExpression
-        | Identifier
-        | JSXElement
-        | JSXFragment
-        | Literal
-        | TemplateLiteral
-        | MemberExpression
-        | MetaProperty
-        | ObjectExpression
-        | ObjectPattern
-        | SequenceExpression
-        | Super
-        | TaggedTemplateExpression
-        | ThisExpression
-        | TSAsExpression
-        | TSNonNullExpression
-        | TSTypeAssertion
-        | null;
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | CallExpression
+      | ClassExpression
+      | FunctionExpression
+      | Identifier
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | MemberExpression
+      | MetaProperty
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | ThisExpression
+      | TSAsExpression
+      | TSNonNullExpression
+      | TSTypeAssertion
+      | null;
       implements: TSClassImplements[];
       body: ClassBody;
     }
@@ -1796,29 +1815,29 @@ declare namespace Deno {
       abstract: boolean;
       id: Identifier | null;
       superClass:
-        | ArrayExpression
-        | ArrayPattern
-        | ArrowFunctionExpression
-        | CallExpression
-        | ClassExpression
-        | FunctionExpression
-        | Identifier
-        | JSXElement
-        | JSXFragment
-        | Literal
-        | TemplateLiteral
-        | MemberExpression
-        | MetaProperty
-        | ObjectExpression
-        | ObjectPattern
-        | SequenceExpression
-        | Super
-        | TaggedTemplateExpression
-        | ThisExpression
-        | TSAsExpression
-        | TSNonNullExpression
-        | TSTypeAssertion
-        | null;
+      | ArrayExpression
+      | ArrayPattern
+      | ArrowFunctionExpression
+      | CallExpression
+      | ClassExpression
+      | FunctionExpression
+      | Identifier
+      | JSXElement
+      | JSXFragment
+      | Literal
+      | TemplateLiteral
+      | MemberExpression
+      | MetaProperty
+      | ObjectExpression
+      | ObjectPattern
+      | SequenceExpression
+      | Super
+      | TaggedTemplateExpression
+      | ThisExpression
+      | TSAsExpression
+      | TSNonNullExpression
+      | TSTypeAssertion
+      | null;
       superTypeArguments: TSTypeParameterInstantiation | undefined;
       typeParameters: TSTypeParameterDeclaration | undefined;
       implements: TSClassImplements[];
@@ -1917,11 +1936,11 @@ declare namespace Deno {
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
       key:
-        | PrivateIdentifier
-        | Identifier
-        | NumberLiteral
-        | StringLiteral
-        | Expression;
+      | PrivateIdentifier
+      | Identifier
+      | NumberLiteral
+      | StringLiteral
+      | Expression;
       value: FunctionExpression | TSEmptyBodyFunctionExpression;
     }
 
@@ -2195,29 +2214,29 @@ declare namespace Deno {
       type: "BinaryExpression";
       range: Range;
       operator:
-        | "&"
-        | "**"
-        | "*"
-        | "||"
-        | "|"
-        | "^"
-        | "==="
-        | "=="
-        | "!=="
-        | "!="
-        | ">="
-        | ">>>"
-        | ">>"
-        | ">"
-        | "in"
-        | "instanceof"
-        | "<="
-        | "<<"
-        | "<"
-        | "-"
-        | "%"
-        | "+"
-        | "/";
+      | "&"
+      | "**"
+      | "*"
+      | "||"
+      | "|"
+      | "^"
+      | "==="
+      | "=="
+      | "!=="
+      | "!="
+      | ">="
+      | ">>>"
+      | ">>"
+      | ">"
+      | "in"
+      | "instanceof"
+      | "<="
+      | "<<"
+      | "<"
+      | "-"
+      | "%"
+      | "+"
+      | "/";
       left: Expression | PrivateIdentifier;
       right: Expression;
     }
@@ -2363,22 +2382,22 @@ declare namespace Deno {
       type: "AssignmentExpression";
       range: Range;
       operator:
-        | "&&="
-        | "&="
-        | "**="
-        | "*="
-        | "||="
-        | "|="
-        | "^="
-        | "="
-        | ">>="
-        | ">>>="
-        | "<<="
-        | "-="
-        | "%="
-        | "+="
-        | "??="
-        | "/=";
+      | "&&="
+      | "&="
+      | "**="
+      | "*="
+      | "||="
+      | "|="
+      | "^="
+      | "="
+      | ">>="
+      | ">>>="
+      | "<<="
+      | "-="
+      | "%="
+      | "+="
+      | "??="
+      | "/=";
       left: Expression;
       right: Expression;
     }
@@ -2419,9 +2438,9 @@ declare namespace Deno {
       type: "ChainExpression";
       range: Range;
       expression:
-        | CallExpression
-        | MemberExpression
-        | TSNonNullExpression;
+      | CallExpression
+      | MemberExpression
+      | TSNonNullExpression;
     }
 
     /**
@@ -2589,12 +2608,12 @@ declare namespace Deno {
       range: Range;
       typeAnnotation: TSTypeAnnotation | undefined;
       argument:
-        | ArrayPattern
-        | AssignmentPattern
-        | Identifier
-        | MemberExpression
-        | ObjectPattern
-        | RestElement;
+      | ArrayPattern
+      | AssignmentPattern
+      | Identifier
+      | MemberExpression
+      | ObjectPattern
+      | RestElement;
     }
 
     /**
@@ -2620,12 +2639,12 @@ declare namespace Deno {
       kind: "get" | "init" | "set";
       key: Expression | Identifier | NumberLiteral | StringLiteral;
       value:
-        | AssignmentPattern
-        | ArrayPattern
-        | ObjectPattern
-        | Identifier
-        | Expression
-        | TSEmptyBodyFunctionExpression;
+      | AssignmentPattern
+      | ArrayPattern
+      | ObjectPattern
+      | Identifier
+      | Expression
+      | TSEmptyBodyFunctionExpression;
     }
 
     /**
@@ -2793,9 +2812,9 @@ declare namespace Deno {
       range: Range;
       selfClosing: boolean;
       name:
-        | JSXIdentifier
-        | JSXMemberExpression
-        | JSXNamespacedName;
+      | JSXIdentifier
+      | JSXMemberExpression
+      | JSXNamespacedName;
       attributes: Array<JSXAttribute | JSXSpreadAttribute>;
       typeArguments: TSTypeParameterInstantiation | undefined;
     }
@@ -2810,10 +2829,10 @@ declare namespace Deno {
       range: Range;
       name: JSXIdentifier | JSXNamespacedName;
       value:
-        | JSXElement
-        | JSXExpressionContainer
-        | Literal
-        | null;
+      | JSXElement
+      | JSXExpressionContainer
+      | Literal
+      | null;
     }
 
     /**
@@ -2837,9 +2856,9 @@ declare namespace Deno {
       type: "JSXClosingElement";
       range: Range;
       name:
-        | JSXIdentifier
-        | JSXMemberExpression
-        | JSXNamespacedName;
+      | JSXIdentifier
+      | JSXMemberExpression
+      | JSXNamespacedName;
     }
 
     /**
@@ -2908,9 +2927,9 @@ declare namespace Deno {
       type: "JSXMemberExpression";
       range: Range;
       object:
-        | JSXIdentifier
-        | JSXMemberExpression
-        | JSXNamespacedName;
+      | JSXIdentifier
+      | JSXMemberExpression
+      | JSXNamespacedName;
       property: JSXIdentifier;
     }
 
@@ -3002,11 +3021,11 @@ declare namespace Deno {
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
       key:
-        | Expression
-        | PrivateIdentifier
-        | Identifier
-        | NumberLiteral
-        | StringLiteral;
+      | Expression
+      | PrivateIdentifier
+      | Identifier
+      | NumberLiteral
+      | StringLiteral;
       typeAnnotation: TSTypeAnnotation | undefined;
       value: Expression | null;
     }
@@ -3042,11 +3061,11 @@ declare namespace Deno {
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
       parameter:
-        | AssignmentPattern
-        | ArrayPattern
-        | ObjectPattern
-        | Identifier
-        | RestElement;
+      | AssignmentPattern
+      | ArrayPattern
+      | ObjectPattern
+      | Identifier
+      | RestElement;
     }
 
     /**
@@ -3073,11 +3092,11 @@ declare namespace Deno {
       readonly: boolean;
       static: boolean;
       key:
-        | PrivateIdentifier
-        | Expression
-        | Identifier
-        | NumberLiteral
-        | StringLiteral;
+      | PrivateIdentifier
+      | Expression
+      | Identifier
+      | NumberLiteral
+      | StringLiteral;
       typeAnnotation: TSTypeAnnotation | undefined;
     }
 
@@ -3134,9 +3153,9 @@ declare namespace Deno {
       type: "TSEnumMember";
       range: Range;
       id:
-        | Identifier
-        | NumberLiteral
-        | StringLiteral;
+      | Identifier
+      | NumberLiteral
+      | StringLiteral;
       initializer: Expression | undefined;
     }
 
@@ -3898,7 +3917,7 @@ declare namespace Deno {
       | TSTypeParameter;
   }
 
-  export {}; // only export exports
+  export { }; // only export exports
 }
 
 /** **UNSTABLE**: New API, yet to be vetted.
@@ -3996,7 +4015,7 @@ interface WebSocketStream {
  */
 declare var WebSocketStream: {
   readonly prototype: WebSocketStream;
-  new (url: string, options?: WebSocketStreamOptions): WebSocketStream;
+  new(url: string, options?: WebSocketStreamOptions): WebSocketStream;
 };
 
 /** **UNSTABLE**: New API, yet to be vetted.
@@ -4018,7 +4037,7 @@ interface WebSocketError extends DOMException {
  */
 declare var WebSocketError: {
   readonly prototype: WebSocketError;
-  new (message?: string, init?: WebSocketCloseInfo): WebSocketError;
+  new(message?: string, init?: WebSocketCloseInfo): WebSocketError;
 };
 
 // Adapted from `tc39/proposal-temporal`: https://github.com/tc39/proposal-temporal/blob/main/polyfill/index.d.ts
@@ -4549,11 +4568,11 @@ declare namespace Temporal {
          * long.
          */
         relativeTo?:
-          | Temporal.PlainDateTime
-          | Temporal.ZonedDateTime
-          | PlainDateTimeLike
-          | ZonedDateTimeLike
-          | string;
+        | Temporal.PlainDateTime
+        | Temporal.ZonedDateTime
+        | PlainDateTimeLike
+        | ZonedDateTimeLike
+        | string;
       }
     );
 
@@ -4594,11 +4613,11 @@ declare namespace Temporal {
        * transitions and all days will be assumed to be 24 hours long.
        */
       relativeTo?:
-        | Temporal.ZonedDateTime
-        | Temporal.PlainDateTime
-        | ZonedDateTimeLike
-        | PlainDateTimeLike
-        | string;
+      | Temporal.ZonedDateTime
+      | Temporal.PlainDateTime
+      | ZonedDateTimeLike
+      | PlainDateTimeLike
+      | string;
     };
 
   /**
@@ -4629,11 +4648,11 @@ declare namespace Temporal {
      * transitions and all days will be assumed to be 24 hours long.
      */
     relativeTo?:
-      | Temporal.ZonedDateTime
-      | Temporal.PlainDateTime
-      | ZonedDateTimeLike
-      | PlainDateTimeLike
-      | string;
+    | Temporal.ZonedDateTime
+    | Temporal.PlainDateTime
+    | ZonedDateTimeLike
+    | PlainDateTimeLike
+    | string;
   }
 
   /**
@@ -6091,8 +6110,8 @@ interface Float16Array<TArrayBuffer extends ArrayBufferLike = ArrayBufferLike> {
  */
 interface Float16ArrayConstructor {
   readonly prototype: Float16Array<ArrayBufferLike>;
-  new (length?: number): Float16Array<ArrayBuffer>;
-  new (array: ArrayLike<number> | Iterable<number>): Float16Array<ArrayBuffer>;
+  new(length?: number): Float16Array<ArrayBuffer>;
+  new(array: ArrayLike<number> | Iterable<number>): Float16Array<ArrayBuffer>;
   new <TArrayBuffer extends ArrayBufferLike = ArrayBuffer>(
     buffer: TArrayBuffer,
     byteOffset?: number,
