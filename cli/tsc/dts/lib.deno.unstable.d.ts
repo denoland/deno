@@ -1501,6 +1501,17 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
+    export interface Program {
+      type: "Program";
+      range: Range;
+      sourceType: "module" | "script";
+      body: Statement[];
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
     export interface ImportSpecifier {
       type: "ImportSpecifier";
       range: Range;
@@ -3857,6 +3868,7 @@ declare namespace Deno {
      * @experimental
      */
     export type Node =
+      | Program
       | Expression
       | Statement
       | TypeNode
