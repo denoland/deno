@@ -23,7 +23,7 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
-   *  * ```ts
+   *  ```ts
    * // Windows example
    * const { hwnd, hinstance } = await Deno.createWindow({
    *   title: "WebGPU Window",
