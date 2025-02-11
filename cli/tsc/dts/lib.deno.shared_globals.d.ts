@@ -464,10 +464,6 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
  * The console object provides access to the browser's or runtime's debugging console functionality.
  * It allows developers to output text and data for debugging purposes.
  *
- * @global
- * @var
- * @type {Console}
- *
  * @example
  * ```typescript
  * console.log("Hello, world!");
