@@ -23,11 +23,11 @@ interface Window extends EventTarget {
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
   onunload: ((this: Window, ev: Event) => any) | null;
   onunhandledrejection:
-  | ((this: Window, ev: PromiseRejectionEvent) => any)
-  | null;
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
   onrejectionhandled:
-  | ((this: Window, ev: PromiseRejectionEvent) => any)
-  | null;
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
   close: () => void;
   readonly closed: boolean;
   alert: (message?: string) => void;
@@ -74,7 +74,7 @@ interface Window extends EventTarget {
 /** @category Platform */
 declare var Window: {
   readonly prototype: Window;
-  new(): never;
+  new (): never;
 };
 
 /** @category Platform */
@@ -203,20 +203,20 @@ declare var sessionStorage: Storage;
 /** @category Cache */
 /**
  * Provides access to the Cache API, allowing you to store and retrieve network requests and responses.
- * 
+ *
  * The global `caches` property returns a CacheStorage object, which enables storing, retrieving,
  * and managing request/response pairs in a cache.
- * 
+ *
  * @example
  * ```ts
  * // Open a cache and store a response
  * const cache = await caches.open('my-cache');
  * await cache.put('/api/data', new Response('cached data'));
- * 
+ *
  * // Retrieve from cache
  * const response = await caches.match('/api/data');
  * ```
- * 
+ *
  * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/CacheStorage | MDN CacheStorage}
  */
 
@@ -378,7 +378,7 @@ interface Location {
  */
 declare var Location: {
   readonly prototype: Location;
-  new(): never;
+  new (): never;
 };
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
