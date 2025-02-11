@@ -1410,13 +1410,17 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
   });
   let exec_source = format!("globalThis.exec({request_value})");
 
+  let mut extensions =
+    deno_runtime::snapshot_info::get_extensions_in_snapshot();
+  extensions.push(deno_cli_tsc::init_ops_and_esm(
+    request,
+    root_map,
+    remapped_specifiers,
+  ));
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_cli_tsc::init_ops_and_esm(
-      request,
-      root_map,
-      remapped_specifiers,
-    )],
+    extensions,
     create_params: create_isolate_create_params(),
+    startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     ..Default::default()
   });
 
@@ -1560,47 +1564,6 @@ mod tests {
       check_mode: TypeCheckMode::All,
     };
     exec(request)
-  }
-
-  // TODO(bartlomieju): this test is segfaulting in V8, saying that there are too
-  // few external references registered. It seems to be a bug in our snapshotting
-  // logic. Because when we create TSC snapshot we register a few ops that
-  // are called during snapshotting time, V8 expects at least as many references
-  // when it starts up. The thing is that these ops are one-off - ie. they will never
-  // be used again after the snapshot is taken. We should figure out a mechanism
-  // to allow removing some of the ops before taking a snapshot.
-  #[ignore]
-  #[tokio::test]
-  async fn test_compiler_snapshot() {
-    let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      startup_snapshot: None,
-      extensions: vec![super::deno_cli_tsc::init_ops_and_esm(
-        Request {
-          check_mode: TypeCheckMode::All,
-          config: Arc::new(TsConfig(json!({}))),
-          debug: false,
-          graph: Arc::new(ModuleGraph::new(GraphKind::TypesOnly)),
-          hash_data: 0,
-          maybe_npm: None,
-          maybe_tsbuildinfo: None,
-          root_names: vec![],
-        },
-        HashMap::new(),
-        HashMap::new(),
-      )],
-      ..Default::default()
-    });
-    js_runtime
-      .execute_script(
-        "<anon>",
-        r#"
-      if (!(globalThis.exec)) {
-          throw Error("bad");
-        }
-        console.log(`ts version: ${ts.version}`);
-      "#,
-      )
-      .unwrap();
   }
 
   #[tokio::test]

@@ -1194,7 +1194,7 @@ impl CliFactory {
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: self.cli_options()?.otel_config(),
-      startup_snapshot: crate::js::deno_isolate_init(),
+      startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     })
   }
 

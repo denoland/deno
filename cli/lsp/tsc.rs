@@ -4912,17 +4912,17 @@ fn run_tsc_thread(
   maybe_inspector_server: Option<Arc<InspectorServer>>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
-  // Create and setup a JsRuntime based on a snapshot. It is expected that the
-  // supplied snapshot is an isolate that contains the TypeScript language
-  // server.
+  let mut extensions =
+    deno_runtime::snapshot_info::get_extensions_in_snapshot();
+  extensions.push(deno_tsc::init_ops_and_esm(
+    performance,
+    specifier_map,
+    request_rx,
+  ));
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops_and_esm(
-      performance,
-      specifier_map,
-      request_rx,
-    )],
+    extensions,
     create_params: create_isolate_create_params(),
-    startup_snapshot: None,
+    startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
   });
