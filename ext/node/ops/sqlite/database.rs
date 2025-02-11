@@ -166,8 +166,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    let mut stmt = db.prepare_cached(sql)?;
-    stmt.raw_execute()?;
+    db.execute_batch(sql)?;
 
     Ok(())
   }
