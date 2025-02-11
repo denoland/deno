@@ -1410,12 +1410,15 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
   });
   let exec_source = format!("globalThis.exec({request_value})");
 
+  let mut extensions =
+    deno_runtime::snapshot_info::get_extensions_in_snapshot();
+  extensions.push(deno_cli_tsc::init_ops_and_esm(
+    request,
+    root_map,
+    remapped_specifiers,
+  ));
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_cli_tsc::init_ops_and_esm(
-      request,
-      root_map,
-      remapped_specifiers,
-    )],
+    extensions,
     create_params: create_isolate_create_params(),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     ..Default::default()

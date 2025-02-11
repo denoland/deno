@@ -257,7 +257,8 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 
 pub fn get_extensions_in_snapshot() -> Vec<Extension> {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+  // and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   vec![
     deno_telemetry::deno_telemetry::init_ops(),

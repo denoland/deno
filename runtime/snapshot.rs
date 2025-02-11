@@ -24,7 +24,8 @@ pub fn create_runtime_snapshot(
   custom_extensions: Vec<Extension>,
 ) {
   // NOTE(bartlomieju): ordering is important here, keep it in sync with
-  // `runtime/worker.rs`, `runtime/web_worker.rs` and `runtime/snapshot.rs`!
+  // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+  // and `runtime/snapshot.rs`!
   let fs = std::sync::Arc::new(deno_fs::RealFs);
   let mut extensions: Vec<Extension> = vec![
     deno_telemetry::deno_telemetry::init_ops_and_esm(),
