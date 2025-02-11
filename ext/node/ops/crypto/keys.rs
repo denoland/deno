@@ -1463,19 +1463,28 @@ impl AsymmetricPrivateKey {
       AsymmetricPrivateKey::X25519(static_secret) => {
         let bytes = static_secret.to_bytes();
 
+        let AsymmetricPublicKey::X25519(x) = self.to_public_key() else {
+          unreachable!();
+        };
+
         Ok(deno_core::serde_json::json!({
-            "kty": "OKP",
             "crv": "X25519",
+            "x": bytes_to_b64(x.as_bytes()),
             "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
         }))
       }
       AsymmetricPrivateKey::Ed25519(key) => {
         let bytes = key.to_bytes();
+        let AsymmetricPublicKey::Ed25519(x) = self.to_public_key() else {
+          unreachable!();
+        };
 
         Ok(deno_core::serde_json::json!({
-            "kty": "OKP",
             "crv": "Ed25519",
+            "x": bytes_to_b64(x.as_bytes()),
             "d": bytes_to_b64(&bytes),
+            "kty": "OKP",
         }))
       }
       _ => Err(AsymmetricPrivateKeyJwkError::JwkExportNotImplementedForKeyType),

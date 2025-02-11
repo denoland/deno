@@ -161,14 +161,11 @@ export async function runNodeCompatTestCase(
     "--unstable-unsafe-proto",
     "--unstable-bare-node-builtins",
     "--unstable-fs",
+    "--unstable-node-globals",
     "--v8-flags=" + v8Flags.join(),
+    "--no-check",
+    testCase,
   ];
-  if (usesNodeTest) {
-    // deno test typechecks by default + we want to pass script args
-    args.push("--no-check", "runner.ts", "--", testCase);
-  } else {
-    args.push("runner.ts", testCase);
-  }
 
   // Pipe stdout in order to output each test result as Deno.test output
   // That way the tests will respect the `--quiet` option when provided

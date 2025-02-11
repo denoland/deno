@@ -373,4 +373,38 @@ impl StatementSync {
   fn set_read_big_ints(&self, enabled: bool) {
     self.use_big_ints.set(enabled);
   }
+
+  #[getter]
+  #[rename("sourceSQL")]
+  #[string]
+  fn source_sql(&self) -> String {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
+    unsafe {
+      let raw = ffi::sqlite3_sql(self.inner);
+      std::ffi::CStr::from_ptr(raw as _)
+        .to_string_lossy()
+        .into_owned()
+    }
+  }
+
+  #[getter]
+  #[rename("expandedSQL")]
+  #[string]
+  fn expanded_sql(&self) -> Result<String, SqliteError> {
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
+    unsafe {
+      let raw = ffi::sqlite3_expanded_sql(self.inner);
+      if raw.is_null() {
+        return Err(SqliteError::InvalidExpandedSql);
+      }
+      let sql = std::ffi::CStr::from_ptr(raw as _)
+        .to_string_lossy()
+        .into_owned();
+      ffi::sqlite3_free(raw as _);
+
+      Ok(sql)
+    }
+  }
 }
