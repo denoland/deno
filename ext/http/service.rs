@@ -552,9 +552,9 @@ impl HttpRecord {
   }
 
   pub fn otel_info_set_status(&self, status: u16) {
-    let info = self.0.borrow();
-    if let Some(info) = &info.as_ref().unwrap().otel_info {
-      let _ = info.attributes.http_response_status_code.set(status as _);
+    let mut info = self.0.borrow_mut();
+    if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
+      info.attributes.http_response_status_code = Some(status as _);
     }
   }
 }

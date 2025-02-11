@@ -249,7 +249,7 @@ struct OtelInfo {
   instant: std::time::Instant,
   attributes: OtelInfoAttributes,
   request_size: u64,
-  response_size: RefCell<u64>,
+  response_size: u64,
 }
 
 struct OtelInfoAttributes {
@@ -258,8 +258,8 @@ struct OtelInfoAttributes {
   url_scheme: String,
   server_address: Option<String>,
   server_port: Option<i64>,
-  error_type: OnceCell<&'static str>,
-  http_response_status_code: OnceCell<i64>,
+  error_type: Option<&'static str>,
+  http_response_status_code: Option<i64>,
 }
 
 impl OtelInfoAttributes {
@@ -303,14 +303,14 @@ impl OtelInfoAttributes {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("server.port", port));
     }
-    if let Some(status_code) = self.http_response_status_code.clone().get() {
+    if let Some(status_code) = self.http_response_status_code.clone() {
       histogram_attributes.push(deno_telemetry::KeyValue::new(
         "http.response.status_code",
-        *status_code,
+        status_code,
       ));
     }
 
-    if let Some(error) = self.error_type.get().cloned() {
+    if let Some(error) = self.error_type {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("error.type", error));
     }
@@ -373,7 +373,7 @@ impl OtelInfo {
       instant,
       attributes,
       request_size,
-      response_size: RefCell::new(0),
+      response_size: 0,
     }
   }
 }
@@ -386,7 +386,7 @@ impl Drop for OtelInfo {
     collectors
       .active_requests
       .add(-1, &self.attributes.for_counter());
-    
+
     let histogram_attributes = self.attributes.for_histogram();
 
     collectors
@@ -396,33 +396,35 @@ impl Drop for OtelInfo {
     collectors
       .request_size
       .record(self.request_size, &histogram_attributes);
-    collectors.response_size.record(
-      *self.response_size.borrow(),
-      &histogram_attributes,
-    );
+    collectors
+      .response_size
+      .record(self.response_size, &histogram_attributes);
   }
 }
 
-fn handle_error_otel(otel: &Option<Rc<OtelInfo>>, error: &HttpError) {
-  if let Some(otel) = otel {
-    let _ = otel.attributes.error_type.set(match error {
-      HttpError::Resource(_) => "resource",
-      HttpError::Canceled(_) => "cancelled",
-      HttpError::HyperV014(_) => "hyper",
-      HttpError::InvalidHeaderName(_) => "invalid header name",
-      HttpError::InvalidHeaderValue(_) => "invalid header value",
-      HttpError::Http(_) => "http",
-      HttpError::ResponseHeadersAlreadySent => "response headers already sent",
-      HttpError::ConnectionClosedWhileSendingResponse => {
-        "connection closed while sending response"
-      }
-      HttpError::AlreadyInUse => "already in use",
-      HttpError::Io(_) => "io",
-      HttpError::NoResponseHeaders => "no response headers",
-      HttpError::ResponseAlreadyCompleted => "response already completed",
-      HttpError::UpgradeBodyUsed => "upgrade body used",
-      HttpError::Other(_) => "other",
-    });
+fn handle_error_otel(otel: &Option<Rc<RefCell<Option<OtelInfo>>>>, error: &HttpError) {
+  if let Some(otel) = otel.as_ref() {
+    let mut maybe_otel_info = otel.borrow_mut();
+    if let Some(otel_info) = maybe_otel_info.as_mut() {
+      otel_info.attributes.error_type = Some(match error {
+        HttpError::Resource(_) => "resource",
+        HttpError::Canceled(_) => "cancelled",
+        HttpError::HyperV014(_) => "hyper",
+        HttpError::InvalidHeaderName(_) => "invalid header name",
+        HttpError::InvalidHeaderValue(_) => "invalid header value",
+        HttpError::Http(_) => "http",
+        HttpError::ResponseHeadersAlreadySent => "response headers already sent",
+        HttpError::ConnectionClosedWhileSendingResponse => {
+          "connection closed while sending response"
+        }
+        HttpError::AlreadyInUse => "already in use",
+        HttpError::Io(_) => "io",
+        HttpError::NoResponseHeaders => "no response headers",
+        HttpError::ResponseAlreadyCompleted => "response already completed",
+        HttpError::UpgradeBodyUsed => "upgrade body used",
+        HttpError::Other(_) => "other",
+      });
+    }
   }
 }
 
@@ -516,7 +518,7 @@ impl HttpConnResource {
 
       let otel_info = OTEL_GLOBALS.get().map(|_| {
         let size_hint = request.size_hint();
-        Rc::new(OtelInfo::new(
+        Rc::new(RefCell::new(Some(OtelInfo::new(
           otel_instant.unwrap(),
           size_hint.upper().unwrap_or(size_hint.lower()),
           OtelInfoAttributes {
@@ -530,7 +532,7 @@ impl HttpConnResource {
             error_type: Default::default(),
             http_response_status_code: Default::default(),
           },
-        ))
+        ))))
       });
 
       let method = request.method().to_string();
@@ -659,21 +661,21 @@ pub struct HttpStreamReadResource {
   pub rd: AsyncRefCell<HttpRequestReader>,
   cancel_handle: CancelHandle,
   size: SizeHint,
-  otel_info: Option<Rc<OtelInfo>>,
+  otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
 }
 
 pub struct HttpStreamWriteResource {
   conn: Rc<HttpConnResource>,
   wr: AsyncRefCell<HttpResponseWriter>,
   accept_encoding: Encoding,
-  otel_info: Option<Rc<OtelInfo>>,
+  otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
 }
 
 impl HttpStreamReadResource {
   fn new(
     conn: &Rc<HttpConnResource>,
     request: Request<Body>,
-    otel_info: Option<Rc<OtelInfo>>,
+    otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
   ) -> Self {
     let size = request.body().size_hint();
     Self {
@@ -758,7 +760,7 @@ impl HttpStreamWriteResource {
     conn: &Rc<HttpConnResource>,
     response_tx: oneshot::Sender<Response<Body>>,
     accept_encoding: Encoding,
-    otel_info: Option<Rc<OtelInfo>>,
+    otel_info: Option<Rc<RefCell<Option<OtelInfo>>>>,
   ) -> Self {
     Self {
       conn: conn.clone(),
@@ -1016,11 +1018,10 @@ async fn op_http_write_headers(
   let (new_wr, body) = http_response(data, compressing, encoding)?;
   let body = builder.status(status).body(body)?;
 
-  if let Some(otel_info) = &stream.otel_info {
-    let _ = otel_info
-      .attributes
-      .http_response_status_code
-      .set(status as _);
+  if let Some(otel) = stream.otel_info.as_ref() {
+    if let Some(mut otel_info) = otel.take() {
+      otel_info.attributes.http_response_status_code = Some(status as _);
+    }
   }
 
   let mut old_wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
@@ -1263,8 +1264,11 @@ async fn op_http_write(
     .get::<HttpStreamWriteResource>(rid)?;
   let mut wr = RcRef::map(&stream, |r| &r.wr).borrow_mut().await;
 
-  if let Some(otel_info) = &stream.otel_info {
-    *otel_info.response_size.borrow_mut() += buf.len() as u64;
+  if let Some(otel) = stream.otel_info.as_ref() {
+    let mut maybe_otel_info = otel.borrow_mut();
+    if let Some(otel_info) = maybe_otel_info.as_mut() {
+      otel_info.response_size += buf.len() as u64;
+    }
   }
 
   match &mut *wr {
