@@ -227,6 +227,21 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
+  #[class("NotCapable")]
+  #[error("requires {0} access")]
+  NotCapable(&'static str),
+}
+
+impl From<deno_fs::FsError> for FetchError {
+  fn from(value: deno_fs::FsError) -> Self {
+    match value {
+      deno_fs::FsError::Io(err) => FetchError::Io(err),
+      deno_fs::FsError::FileBusy | deno_fs::FsError::NotSupported => {
+        FetchError::NetworkError
+      }
+      deno_fs::FsError::NotCapable(err) => FetchError::NotCapable(err),
+    }
+  }
 }
 
 pub type CancelableResponseFuture =

@@ -21,10 +21,6 @@ use crate::CancelableResponseFuture;
 use crate::FetchHandler;
 use crate::FetchPermissions;
 
-/// An implementation which tries to read file URLs from the file system via
-/// tokio::fs.
-#[derive(Clone)]
-pub struct FsFetchHandler;
 fn sync_permission_check<'a, P: FetchPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
@@ -33,6 +29,12 @@ fn sync_permission_check<'a, P: FetchPermissions + 'static>(
     permissions.check_read(resolved, path, api_name)
   }
 }
+
+/// An implementation which tries to read file URLs from the file system via
+/// tokio::fs.
+#[derive(Clone)]
+pub struct FsFetchHandler;
+
 impl FetchHandler for FsFetchHandler {
   fn fetch_file(
     &self,
@@ -66,18 +68,18 @@ impl FetchHandler for FsFetchHandler {
       Some(&mut access_check),
     );
     let response_fut = async move {
-      let file = tokio::fs::File::from_std(file.map_err(|_| ())?);
+      let file = tokio::fs::File::from_std(file?);
       let stream = ReaderStream::new(file)
         .map_ok(hyper::body::Frame::data)
         .map_err(JsErrorBox::from_err);
+
       let body = http_body_util::StreamBody::new(stream).boxed();
       let response = http::Response::builder()
         .status(StatusCode::OK)
         .body(body)
-        .map_err(|_| ())?;
-      Ok::<_, ()>(response)
+        .map_err(move |_| super::FetchError::NetworkError)?;
+      Ok::<_, _>(response)
     }
-    .map_err(move |_| super::FetchError::NetworkError)
     .or_cancel(&cancel_handle)
     .boxed_local();
 
