@@ -9,6 +9,7 @@ use std::path::Path;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -620,9 +621,13 @@ fn try_reverse_map_package_json_exports(
 pub fn fix_ts_import_changes(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
   for change in changes {
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
     let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
       continue;
     };
