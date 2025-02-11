@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::env::current_dir;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::Debug;
@@ -2357,9 +2356,6 @@ pub enum PermissionCheckError {
   #[class("NotCapable")]
   #[error("Permission denied {0}")]
   NotCapable(&'static str),
-  #[class(inherit)]
-  #[error(transparent)]
-  IoError(#[from] std::io::Error),
 }
 
 /// Wrapper struct for `Permissions` that can be shared across threads.
@@ -2585,68 +2581,18 @@ impl PermissionsContainer {
     path: &'a Path,
     api_name: Option<&str>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
-    let mut lock = self.inner.lock();
-    let inner = &mut lock.read;
+    let mut inner = self.inner.lock();
+    let inner = &mut inner.read;
     if inner.is_allow_all() {
       Ok(Cow::Borrowed(path))
     } else {
-      let path_bytes = path.as_os_str().as_encoded_bytes();
-      let is_windows_device_path = cfg!(windows)
-        && path_bytes.starts_with(br"\\.\")
-        && !path_bytes.contains(&b':');
-      let path = if is_windows_device_path {
-        // On Windows, normalize_path doesn't work with device-prefix-style
-        // paths. We pass these through.
-        path.to_owned()
-      } else if path.is_absolute() {
-        normalize_path(path)
-      } else {
-        let cwd = current_dir().unwrap();
-        normalize_path(cwd.join(path))
-      };
-
       let desc = PathQueryDescriptor {
         requested: path.to_string_lossy().into_owned(),
         resolved: path.to_path_buf(),
       }
       .into_read();
-
       inner.check(&desc, api_name)?;
 
-      // On Linux, /proc may contain magic links that we don't want to resolve
-      let is_linux_special_path = cfg!(target_os = "linux")
-        && (path.starts_with("/proc") || path.starts_with("/dev"));
-      let needs_canonicalization =
-        !is_windows_device_path && !is_linux_special_path;
-      let path = if needs_canonicalization {
-        match path.canonicalize() {
-          Ok(path) => path,
-          Err(_) => {
-            if let (Some(parent), Some(filename)) =
-              (path.parent(), path.file_name())
-            {
-              let Ok(path) = parent.canonicalize() else {
-                // File doesn't exist, return the original path
-                // and let the operation fail later.
-                return Ok(Cow::Owned(desc.0.resolved));
-              };
-
-              path.join(filename)
-            } else {
-              // File doesn't exist, return the original path
-              // and let the operation fail later.
-              return Ok(Cow::Owned(desc.0.resolved));
-            }
-          }
-        }
-      } else {
-        path
-      };
-
-      drop(lock);
-      self
-        .check_special_file(&path, api_name.unwrap_or("read"))
-        .map_err(PermissionCheckError::NotCapable)?;
       Ok(Cow::Owned(desc.0.resolved))
     }
   }
