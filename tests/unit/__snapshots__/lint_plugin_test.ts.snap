@@ -61,7 +61,7 @@ snapshot[`Plugin - ImportDeclaration 2`] = `
           10,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         7,
@@ -101,7 +101,7 @@ snapshot[`Plugin - ImportDeclaration 3`] = `
           15,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         7,
@@ -142,7 +142,7 @@ snapshot[`Plugin - ImportDeclaration 4`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       local: {
         name: "foo",
@@ -152,7 +152,7 @@ snapshot[`Plugin - ImportDeclaration 4`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         9,
@@ -170,7 +170,7 @@ snapshot[`Plugin - ImportDeclaration 4`] = `
           17,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       local: {
         name: "baz",
@@ -180,7 +180,7 @@ snapshot[`Plugin - ImportDeclaration 4`] = `
           24,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         14,
@@ -205,7 +205,7 @@ snapshot[`Plugin - ImportDeclaration 5`] = `
           33,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         29,
@@ -247,7 +247,7 @@ snapshot[`Plugin - ImportDeclaration 5`] = `
           10,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         7,
@@ -263,6 +263,8 @@ snapshot[`Plugin - ImportDeclaration 5`] = `
 snapshot[`Plugin - ExportNamedDeclaration 1`] = `
 {
   attributes: [],
+  declaration: null,
+  exportKind: "value",
   range: [
     0,
     26,
@@ -287,7 +289,7 @@ snapshot[`Plugin - ExportNamedDeclaration 1`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       local: {
         name: "foo",
@@ -297,7 +299,7 @@ snapshot[`Plugin - ExportNamedDeclaration 1`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         9,
@@ -313,6 +315,8 @@ snapshot[`Plugin - ExportNamedDeclaration 1`] = `
 snapshot[`Plugin - ExportNamedDeclaration 2`] = `
 {
   attributes: [],
+  declaration: null,
+  exportKind: "value",
   range: [
     0,
     33,
@@ -337,7 +341,7 @@ snapshot[`Plugin - ExportNamedDeclaration 2`] = `
           19,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       local: {
         name: "bar",
@@ -347,7 +351,7 @@ snapshot[`Plugin - ExportNamedDeclaration 2`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         9,
@@ -372,7 +376,7 @@ snapshot[`Plugin - ExportNamedDeclaration 3`] = `
           37,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         33,
@@ -390,6 +394,8 @@ snapshot[`Plugin - ExportNamedDeclaration 3`] = `
       },
     },
   ],
+  declaration: null,
+  exportKind: "value",
   range: [
     0,
     48,
@@ -414,7 +420,7 @@ snapshot[`Plugin - ExportNamedDeclaration 3`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       local: {
         name: "foo",
@@ -424,7 +430,7 @@ snapshot[`Plugin - ExportNamedDeclaration 3`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         9,
@@ -459,16 +465,16 @@ snapshot[`Plugin - ExportDefaultDeclaration 1`] = `
         27,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     params: [],
     range: [
       15,
       32,
     ],
-    returnType: null,
+    returnType: undefined,
     type: "FunctionDeclaration",
-    typeParameters: null,
+    typeParameters: undefined,
   },
   exportKind: "value",
   range: [
@@ -499,9 +505,9 @@ snapshot[`Plugin - ExportDefaultDeclaration 2`] = `
       15,
       29,
     ],
-    returnType: null,
+    returnType: undefined,
     type: "FunctionDeclaration",
-    typeParameters: null,
+    typeParameters: undefined,
   },
   exportKind: "value",
   range: [
@@ -533,7 +539,7 @@ snapshot[`Plugin - ExportDefaultDeclaration 3`] = `
         24,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     implements: [],
     range: [
@@ -593,7 +599,7 @@ snapshot[`Plugin - ExportDefaultDeclaration 5`] = `
       18,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   exportKind: "value",
   range: [
@@ -616,7 +622,7 @@ snapshot[`Plugin - ExportDefaultDeclaration 6`] = `
       type: "TSInterfaceBody",
     },
     declare: false,
-    extends: null,
+    extends: [],
     id: {
       name: "Foo",
       optional: false,
@@ -625,14 +631,14 @@ snapshot[`Plugin - ExportDefaultDeclaration 6`] = `
         28,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     range: [
       15,
       31,
     ],
     type: "TSInterfaceDeclaration",
-    typeParameters: [],
+    typeParameters: undefined,
   },
   exportKind: "type",
   range: [
@@ -690,7 +696,7 @@ snapshot[`Plugin - ExportAllDeclaration 2`] = `
       15,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ExportAllDeclaration",
 }
@@ -708,7 +714,7 @@ snapshot[`Plugin - ExportAllDeclaration 3`] = `
           31,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         27,
@@ -755,7 +761,7 @@ snapshot[`Plugin - TSExportAssignment 1`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -775,7 +781,7 @@ snapshot[`Plugin - TSNamespaceExportDeclaration 1`] = `
       21,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -795,7 +801,7 @@ snapshot[`Plugin - TSImportEqualsDeclaration 1`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   importKind: "value",
   moduleReference: {
@@ -806,7 +812,7 @@ snapshot[`Plugin - TSImportEqualsDeclaration 1`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -826,7 +832,7 @@ snapshot[`Plugin - TSImportEqualsDeclaration 2`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   importKind: "value",
   moduleReference: {
@@ -865,7 +871,7 @@ snapshot[`Plugin - BlockStatement 1`] = `
           5,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         2,
@@ -903,7 +909,7 @@ snapshot[`Plugin - BreakStatement 2`] = `
       28,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     19,
@@ -934,7 +940,7 @@ snapshot[`Plugin - ContinueStatement 2`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -976,7 +982,7 @@ snapshot[`Plugin - DoWhileStatement 1`] = `
       16,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "DoWhileStatement",
 }
@@ -992,7 +998,7 @@ snapshot[`Plugin - ExpressionStatement 1`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1020,7 +1026,7 @@ snapshot[`Plugin - ForInStatement 1`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1034,7 +1040,7 @@ snapshot[`Plugin - ForInStatement 1`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ForInStatement",
 }
@@ -1059,7 +1065,7 @@ snapshot[`Plugin - ForOfStatement 1`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1073,7 +1079,7 @@ snapshot[`Plugin - ForOfStatement 1`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ForOfStatement",
 }
@@ -1098,7 +1104,7 @@ snapshot[`Plugin - ForOfStatement 2`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1112,7 +1118,7 @@ snapshot[`Plugin - ForOfStatement 2`] = `
       17,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ForOfStatement",
 }
@@ -1157,7 +1163,7 @@ snapshot[`Plugin - ForStatement 2`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1171,7 +1177,7 @@ snapshot[`Plugin - ForStatement 2`] = `
       9,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ForStatement",
   update: {
@@ -1182,7 +1188,7 @@ snapshot[`Plugin - ForStatement 2`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
 }
 `;
@@ -1210,7 +1216,7 @@ snapshot[`Plugin - IfStatement 1`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "IfStatement",
 }
@@ -1246,7 +1252,7 @@ snapshot[`Plugin - IfStatement 2`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "IfStatement",
 }
@@ -1270,7 +1276,7 @@ snapshot[`Plugin - LabeledStatement 1`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1301,7 +1307,7 @@ snapshot[`Plugin - ReturnStatement 2`] = `
       10,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1328,7 +1334,7 @@ snapshot[`Plugin - SwitchStatement 1`] = `
           29,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       type: "SwitchCase",
     },
@@ -1355,7 +1361,7 @@ snapshot[`Plugin - SwitchStatement 1`] = `
           45,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       type: "SwitchCase",
     },
@@ -1386,7 +1392,7 @@ snapshot[`Plugin - SwitchStatement 1`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1406,7 +1412,7 @@ snapshot[`Plugin - ThrowStatement 1`] = `
       9,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1479,7 +1485,7 @@ snapshot[`Plugin - TryStatement 2`] = `
         15,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     range: [
       7,
@@ -1544,7 +1550,7 @@ snapshot[`Plugin - WhileStatement 1`] = `
       10,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "WhileStatement",
 }
@@ -1613,9 +1619,9 @@ snapshot[`Plugin - ArrowFunctionExpression 1`] = `
     0,
     8,
   ],
-  returnType: null,
+  returnType: undefined,
   type: "ArrowFunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -1636,9 +1642,9 @@ snapshot[`Plugin - ArrowFunctionExpression 2`] = `
     0,
     14,
   ],
-  returnType: null,
+  returnType: undefined,
   type: "ArrowFunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -1687,7 +1693,7 @@ snapshot[`Plugin - ArrowFunctionExpression 3`] = `
           16,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         12,
@@ -1736,7 +1742,7 @@ snapshot[`Plugin - ArrowFunctionExpression 3`] = `
     },
   },
   type: "ArrowFunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -1750,7 +1756,7 @@ snapshot[`Plugin - AssignmentExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "=",
   range: [
@@ -1765,7 +1771,7 @@ snapshot[`Plugin - AssignmentExpression 1`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "AssignmentExpression",
 }
@@ -1781,7 +1787,7 @@ snapshot[`Plugin - AssignmentExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "=",
   range: [
@@ -1797,7 +1803,7 @@ snapshot[`Plugin - AssignmentExpression 2`] = `
         5,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     operator: "??=",
     range: [
@@ -1812,7 +1818,7 @@ snapshot[`Plugin - AssignmentExpression 2`] = `
         11,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     type: "AssignmentExpression",
   },
@@ -1830,7 +1836,7 @@ snapshot[`Plugin - AwaitExpression 1`] = `
       9,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -1850,7 +1856,7 @@ snapshot[`Plugin - BinaryExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: ">",
   range: [
@@ -1865,7 +1871,7 @@ snapshot[`Plugin - BinaryExpression 1`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -1881,7 +1887,7 @@ snapshot[`Plugin - BinaryExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: ">=",
   range: [
@@ -1896,7 +1902,7 @@ snapshot[`Plugin - BinaryExpression 2`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -1912,7 +1918,7 @@ snapshot[`Plugin - BinaryExpression 3`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "<",
   range: [
@@ -1927,7 +1933,7 @@ snapshot[`Plugin - BinaryExpression 3`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -1943,7 +1949,7 @@ snapshot[`Plugin - BinaryExpression 4`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "<=",
   range: [
@@ -1958,7 +1964,7 @@ snapshot[`Plugin - BinaryExpression 4`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -1974,7 +1980,7 @@ snapshot[`Plugin - BinaryExpression 5`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "==",
   range: [
@@ -1989,7 +1995,7 @@ snapshot[`Plugin - BinaryExpression 5`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2005,7 +2011,7 @@ snapshot[`Plugin - BinaryExpression 6`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "===",
   range: [
@@ -2020,7 +2026,7 @@ snapshot[`Plugin - BinaryExpression 6`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2036,7 +2042,7 @@ snapshot[`Plugin - BinaryExpression 7`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "!=",
   range: [
@@ -2051,7 +2057,7 @@ snapshot[`Plugin - BinaryExpression 7`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2067,7 +2073,7 @@ snapshot[`Plugin - BinaryExpression 8`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "!=",
   range: [
@@ -2082,7 +2088,7 @@ snapshot[`Plugin - BinaryExpression 8`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2098,7 +2104,7 @@ snapshot[`Plugin - BinaryExpression 9`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "<<",
   range: [
@@ -2113,7 +2119,7 @@ snapshot[`Plugin - BinaryExpression 9`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2129,7 +2135,7 @@ snapshot[`Plugin - BinaryExpression 10`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: ">>",
   range: [
@@ -2144,7 +2150,7 @@ snapshot[`Plugin - BinaryExpression 10`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2160,7 +2166,7 @@ snapshot[`Plugin - BinaryExpression 11`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: ">>>",
   range: [
@@ -2175,7 +2181,7 @@ snapshot[`Plugin - BinaryExpression 11`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2191,7 +2197,7 @@ snapshot[`Plugin - BinaryExpression 12`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "+",
   range: [
@@ -2206,7 +2212,7 @@ snapshot[`Plugin - BinaryExpression 12`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2222,7 +2228,7 @@ snapshot[`Plugin - BinaryExpression 13`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "-",
   range: [
@@ -2237,7 +2243,7 @@ snapshot[`Plugin - BinaryExpression 13`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2253,7 +2259,7 @@ snapshot[`Plugin - BinaryExpression 14`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "*",
   range: [
@@ -2268,7 +2274,7 @@ snapshot[`Plugin - BinaryExpression 14`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2284,7 +2290,7 @@ snapshot[`Plugin - BinaryExpression 15`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "/",
   range: [
@@ -2299,7 +2305,7 @@ snapshot[`Plugin - BinaryExpression 15`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2315,7 +2321,7 @@ snapshot[`Plugin - BinaryExpression 16`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "%",
   range: [
@@ -2330,7 +2336,7 @@ snapshot[`Plugin - BinaryExpression 16`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2346,7 +2352,7 @@ snapshot[`Plugin - BinaryExpression 17`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "|",
   range: [
@@ -2361,7 +2367,7 @@ snapshot[`Plugin - BinaryExpression 17`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2377,7 +2383,7 @@ snapshot[`Plugin - BinaryExpression 18`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "^",
   range: [
@@ -2392,7 +2398,7 @@ snapshot[`Plugin - BinaryExpression 18`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2408,7 +2414,7 @@ snapshot[`Plugin - BinaryExpression 19`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "&",
   range: [
@@ -2423,7 +2429,7 @@ snapshot[`Plugin - BinaryExpression 19`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2439,7 +2445,7 @@ snapshot[`Plugin - BinaryExpression 20`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "in",
   range: [
@@ -2454,7 +2460,7 @@ snapshot[`Plugin - BinaryExpression 20`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2470,7 +2476,7 @@ snapshot[`Plugin - BinaryExpression 21`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "**",
   range: [
@@ -2485,7 +2491,7 @@ snapshot[`Plugin - BinaryExpression 21`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "BinaryExpression",
 }
@@ -2502,7 +2508,7 @@ snapshot[`Plugin - CallExpression 1`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: false,
   range: [
@@ -2525,7 +2531,7 @@ snapshot[`Plugin - CallExpression 2`] = `
         5,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     {
       argument: {
@@ -2536,7 +2542,7 @@ snapshot[`Plugin - CallExpression 2`] = `
           11,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         7,
@@ -2553,7 +2559,7 @@ snapshot[`Plugin - CallExpression 2`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: false,
   range: [
@@ -2576,7 +2582,7 @@ snapshot[`Plugin - CallExpression 3`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: true,
   range: [
@@ -2599,7 +2605,7 @@ snapshot[`Plugin - CallExpression 4`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: false,
   range: [
@@ -2615,7 +2621,7 @@ snapshot[`Plugin - CallExpression 4`] = `
           5,
         ],
         type: "TSTypeReference",
-        typeArguments: null,
+        typeArguments: undefined,
         typeName: {
           name: "T",
           optional: false,
@@ -2624,7 +2630,7 @@ snapshot[`Plugin - CallExpression 4`] = `
             5,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
       },
     ],
@@ -2649,7 +2655,7 @@ snapshot[`Plugin - ChainExpression 1`] = `
         1,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     optional: true,
     property: {
@@ -2660,7 +2666,7 @@ snapshot[`Plugin - ChainExpression 1`] = `
         4,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     range: [
       0,
@@ -2695,7 +2701,9 @@ snapshot[`Plugin - ClassExpression 1`] = `
     12,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -2719,7 +2727,7 @@ snapshot[`Plugin - ClassExpression 2`] = `
       13,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   implements: [],
   range: [
@@ -2727,7 +2735,9 @@ snapshot[`Plugin - ClassExpression 2`] = `
     16,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -2751,7 +2761,7 @@ snapshot[`Plugin - ClassExpression 3`] = `
       13,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   implements: [],
   range: [
@@ -2766,9 +2776,11 @@ snapshot[`Plugin - ClassExpression 3`] = `
       25,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -2792,7 +2804,7 @@ snapshot[`Plugin - ClassExpression 4`] = `
       13,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   implements: [
     {
@@ -2804,14 +2816,14 @@ snapshot[`Plugin - ClassExpression 4`] = `
           40,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         37,
         40,
       ],
       type: "TSClassImplements",
-      typeArguments: null,
+      typeArguments: undefined,
     },
     {
       expression: {
@@ -2822,14 +2834,14 @@ snapshot[`Plugin - ClassExpression 4`] = `
           46,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         42,
         46,
       ],
       type: "TSClassImplements",
-      typeArguments: null,
+      typeArguments: undefined,
     },
   ],
   range: [
@@ -2844,9 +2856,11 @@ snapshot[`Plugin - ClassExpression 4`] = `
       25,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -2870,7 +2884,7 @@ snapshot[`Plugin - ClassExpression 5`] = `
       13,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   implements: [],
   range: [
@@ -2878,7 +2892,39 @@ snapshot[`Plugin - ClassExpression 5`] = `
     19,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: {
+    params: [
+      {
+        const: false,
+        constraint: null,
+        default: null,
+        in: false,
+        name: {
+          name: "T",
+          optional: false,
+          range: [
+            14,
+            15,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        out: false,
+        range: [
+          14,
+          15,
+        ],
+        type: "TSTypeParameter",
+      },
+    ],
+    range: [
+      13,
+      16,
+    ],
+    type: "TSTypeParameterDeclaration",
+  },
 }
 `;
 
@@ -2891,6 +2937,7 @@ snapshot[`Plugin - ClassExpression 6`] = `
         accessibility: undefined,
         computed: false,
         declare: false,
+        decorators: [],
         key: {
           name: "foo",
           optional: false,
@@ -2899,7 +2946,7 @@ snapshot[`Plugin - ClassExpression 6`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         kind: "method",
         optional: false,
@@ -2927,9 +2974,9 @@ snapshot[`Plugin - ClassExpression 6`] = `
             12,
             20,
           ],
-          returnType: null,
+          returnType: undefined,
           type: "FunctionExpression",
-          typeParameters: null,
+          typeParameters: undefined,
         },
       },
     ],
@@ -2947,7 +2994,9 @@ snapshot[`Plugin - ClassExpression 6`] = `
     22,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -2960,6 +3009,7 @@ snapshot[`Plugin - ClassExpression 7`] = `
         accessibility: undefined,
         computed: false,
         declare: false,
+        decorators: [],
         key: {
           name: "foo",
           range: [
@@ -2994,9 +3044,9 @@ snapshot[`Plugin - ClassExpression 7`] = `
             12,
             21,
           ],
-          returnType: null,
+          returnType: undefined,
           type: "FunctionExpression",
-          typeParameters: null,
+          typeParameters: undefined,
         },
       },
     ],
@@ -3014,7 +3064,9 @@ snapshot[`Plugin - ClassExpression 7`] = `
     23,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3036,7 +3088,7 @@ snapshot[`Plugin - ClassExpression 8`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         override: false,
@@ -3047,6 +3099,20 @@ snapshot[`Plugin - ClassExpression 8`] = `
         readonly: false,
         static: false,
         type: "PropertyDefinition",
+        typeAnnotation: {
+          range: [
+            15,
+            23,
+          ],
+          type: "TSTypeAnnotation",
+          typeAnnotation: {
+            range: [
+              17,
+              23,
+            ],
+            type: "TSNumberKeyword",
+          },
+        },
         value: null,
       },
     ],
@@ -3064,7 +3130,9 @@ snapshot[`Plugin - ClassExpression 8`] = `
     25,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3086,7 +3154,7 @@ snapshot[`Plugin - ClassExpression 9`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         override: false,
@@ -3097,6 +3165,7 @@ snapshot[`Plugin - ClassExpression 9`] = `
         readonly: false,
         static: false,
         type: "PropertyDefinition",
+        typeAnnotation: undefined,
         value: {
           name: "bar",
           optional: false,
@@ -3105,7 +3174,7 @@ snapshot[`Plugin - ClassExpression 9`] = `
             21,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
       },
     ],
@@ -3123,7 +3192,9 @@ snapshot[`Plugin - ClassExpression 9`] = `
     23,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3136,6 +3207,7 @@ snapshot[`Plugin - ClassExpression 10`] = `
         accessibility: undefined,
         computed: false,
         declare: false,
+        decorators: [],
         key: {
           name: "constructor",
           optional: false,
@@ -3144,7 +3216,7 @@ snapshot[`Plugin - ClassExpression 10`] = `
             23,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         kind: "constructor",
         optional: false,
@@ -3208,9 +3280,9 @@ snapshot[`Plugin - ClassExpression 10`] = `
             12,
             46,
           ],
-          returnType: null,
+          returnType: undefined,
           type: "FunctionExpression",
-          typeParameters: null,
+          typeParameters: undefined,
         },
       },
     ],
@@ -3228,7 +3300,9 @@ snapshot[`Plugin - ClassExpression 10`] = `
     48,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3259,6 +3333,20 @@ snapshot[`Plugin - ClassExpression 11`] = `
         readonly: false,
         static: false,
         type: "PropertyDefinition",
+        typeAnnotation: {
+          range: [
+            16,
+            24,
+          ],
+          type: "TSTypeAnnotation",
+          typeAnnotation: {
+            range: [
+              18,
+              24,
+            ],
+            type: "TSNumberKeyword",
+          },
+        },
         value: {
           name: "bar",
           optional: false,
@@ -3267,7 +3355,7 @@ snapshot[`Plugin - ClassExpression 11`] = `
             30,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
       },
     ],
@@ -3285,7 +3373,9 @@ snapshot[`Plugin - ClassExpression 11`] = `
     32,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3307,7 +3397,7 @@ snapshot[`Plugin - ClassExpression 12`] = `
             22,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         override: false,
@@ -3318,6 +3408,7 @@ snapshot[`Plugin - ClassExpression 12`] = `
         readonly: false,
         static: true,
         type: "PropertyDefinition",
+        typeAnnotation: undefined,
         value: {
           name: "bar",
           optional: false,
@@ -3326,7 +3417,7 @@ snapshot[`Plugin - ClassExpression 12`] = `
             28,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
       },
     ],
@@ -3344,11 +3435,87 @@ snapshot[`Plugin - ClassExpression 12`] = `
     30,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
 snapshot[`Plugin - ClassExpression 13`] = `
+{
+  abstract: false,
+  body: {
+    body: [
+      {
+        parameters: [
+          {
+            name: "key",
+            optional: false,
+            range: [
+              20,
+              31,
+            ],
+            type: "Identifier",
+            typeAnnotation: {
+              range: [
+                23,
+                31,
+              ],
+              type: "TSTypeAnnotation",
+              typeAnnotation: {
+                range: [
+                  25,
+                  31,
+                ],
+                type: "TSStringKeyword",
+              },
+            },
+          },
+        ],
+        range: [
+          12,
+          37,
+        ],
+        readonly: false,
+        static: true,
+        type: "TSIndexSignature",
+        typeAnnotation: {
+          range: [
+            32,
+            37,
+          ],
+          type: "TSTypeAnnotation",
+          typeAnnotation: {
+            range: [
+              34,
+              37,
+            ],
+            type: "TSAnyKeyword",
+          },
+        },
+      },
+    ],
+    range: [
+      4,
+      39,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  id: null,
+  implements: [],
+  range: [
+    4,
+    39,
+  ],
+  superClass: null,
+  superTypeArguments: undefined,
+  type: "ClassExpression",
+  typeParameters: undefined,
+}
+`;
+
+snapshot[`Plugin - ClassExpression 14`] = `
 {
   abstract: false,
   body: {
@@ -3366,7 +3533,7 @@ snapshot[`Plugin - ClassExpression 13`] = `
             22,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         override: false,
@@ -3377,6 +3544,7 @@ snapshot[`Plugin - ClassExpression 13`] = `
         readonly: false,
         static: true,
         type: "PropertyDefinition",
+        typeAnnotation: undefined,
         value: null,
       },
       {
@@ -3392,7 +3560,7 @@ snapshot[`Plugin - ClassExpression 13`] = `
                     36,
                   ],
                   type: "Identifier",
-                  typeAnnotation: null,
+                  typeAnnotation: undefined,
                 },
                 operator: "=",
                 range: [
@@ -3407,7 +3575,7 @@ snapshot[`Plugin - ClassExpression 13`] = `
                     42,
                   ],
                   type: "Identifier",
-                  typeAnnotation: null,
+                  typeAnnotation: undefined,
                 },
                 type: "AssignmentExpression",
               },
@@ -3445,7 +3613,9 @@ snapshot[`Plugin - ClassExpression 13`] = `
     46,
   ],
   superClass: null,
+  superTypeArguments: undefined,
   type: "ClassExpression",
+  typeParameters: undefined,
 }
 `;
 
@@ -3459,7 +3629,7 @@ snapshot[`Plugin - ConditionalExpression 1`] = `
       9,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   consequent: {
     name: "b",
@@ -3469,7 +3639,7 @@ snapshot[`Plugin - ConditionalExpression 1`] = `
       5,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -3483,7 +3653,7 @@ snapshot[`Plugin - ConditionalExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "ConditionalExpression",
 }
@@ -3507,9 +3677,9 @@ snapshot[`Plugin - FunctionExpression 1`] = `
     4,
     18,
   ],
-  returnType: null,
+  returnType: undefined,
   type: "FunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -3533,16 +3703,16 @@ snapshot[`Plugin - FunctionExpression 2`] = `
       16,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   params: [],
   range: [
     4,
     21,
   ],
-  returnType: null,
+  returnType: undefined,
   type: "FunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -3592,7 +3762,7 @@ snapshot[`Plugin - FunctionExpression 3`] = `
           30,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         26,
@@ -3641,7 +3811,7 @@ snapshot[`Plugin - FunctionExpression 3`] = `
     },
   },
   type: "FunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -3663,9 +3833,9 @@ snapshot[`Plugin - FunctionExpression 4`] = `
     4,
     25,
   ],
-  returnType: null,
+  returnType: undefined,
   type: "FunctionExpression",
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -3678,7 +3848,7 @@ snapshot[`Plugin - Identifier 1`] = `
     1,
   ],
   type: "Identifier",
-  typeAnnotation: null,
+  typeAnnotation: undefined,
 }
 `;
 
@@ -3696,7 +3866,7 @@ snapshot[`Plugin - ImportExpression 1`] = `
             20,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         kind: "init",
         method: false,
@@ -3718,7 +3888,7 @@ snapshot[`Plugin - ImportExpression 1`] = `
                   28,
                 ],
                 type: "Identifier",
-                typeAnnotation: null,
+                typeAnnotation: undefined,
               },
               kind: "init",
               method: false,
@@ -3780,7 +3950,7 @@ snapshot[`Plugin - LogicalExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "&&",
   range: [
@@ -3795,7 +3965,7 @@ snapshot[`Plugin - LogicalExpression 1`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "LogicalExpression",
 }
@@ -3811,7 +3981,7 @@ snapshot[`Plugin - LogicalExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "||",
   range: [
@@ -3826,7 +3996,7 @@ snapshot[`Plugin - LogicalExpression 2`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "LogicalExpression",
 }
@@ -3842,7 +4012,7 @@ snapshot[`Plugin - LogicalExpression 3`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "??",
   range: [
@@ -3857,7 +4027,7 @@ snapshot[`Plugin - LogicalExpression 3`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "LogicalExpression",
 }
@@ -3874,7 +4044,7 @@ snapshot[`Plugin - MemberExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: false,
   property: {
@@ -3885,7 +4055,7 @@ snapshot[`Plugin - MemberExpression 1`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -3906,7 +4076,7 @@ snapshot[`Plugin - MemberExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   optional: false,
   property: {
@@ -3928,6 +4098,16 @@ snapshot[`Plugin - MemberExpression 2`] = `
 
 snapshot[`Plugin - MetaProperty 1`] = `
 {
+  meta: {
+    name: "import",
+    optional: false,
+    range: [
+      0,
+      11,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   property: {
     name: "meta",
     optional: false,
@@ -3936,11 +4116,41 @@ snapshot[`Plugin - MetaProperty 1`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     11,
+  ],
+  type: "MetaProperty",
+}
+`;
+
+snapshot[`Plugin - MetaProperty 2`] = `
+{
+  meta: {
+    name: "new",
+    optional: false,
+    range: [
+      0,
+      10,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  property: {
+    name: "target",
+    optional: false,
+    range: [
+      0,
+      10,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    10,
   ],
   type: "MetaProperty",
 }
@@ -3957,14 +4167,14 @@ snapshot[`Plugin - NewExpression 1`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     9,
   ],
   type: "NewExpression",
-  typeArguments: null,
+  typeArguments: undefined,
 }
 `;
 
@@ -3979,7 +4189,7 @@ snapshot[`Plugin - NewExpression 2`] = `
         12,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     {
       argument: {
@@ -3990,7 +4200,7 @@ snapshot[`Plugin - NewExpression 2`] = `
           18,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         14,
@@ -4007,7 +4217,7 @@ snapshot[`Plugin - NewExpression 2`] = `
       7,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -4022,7 +4232,7 @@ snapshot[`Plugin - NewExpression 2`] = `
           9,
         ],
         type: "TSTypeReference",
-        typeArguments: null,
+        typeArguments: undefined,
         typeName: {
           name: "T",
           optional: false,
@@ -4031,7 +4241,7 @@ snapshot[`Plugin - NewExpression 2`] = `
             9,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
       },
     ],
@@ -4068,7 +4278,7 @@ snapshot[`Plugin - ObjectExpression 2`] = `
           7,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       kind: "init",
       method: false,
@@ -4086,7 +4296,7 @@ snapshot[`Plugin - ObjectExpression 2`] = `
           7,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
   ],
@@ -4111,7 +4321,7 @@ snapshot[`Plugin - ObjectExpression 3`] = `
           7,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       kind: "init",
       method: false,
@@ -4129,7 +4339,7 @@ snapshot[`Plugin - ObjectExpression 3`] = `
           10,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
     {
@@ -4142,7 +4352,7 @@ snapshot[`Plugin - ObjectExpression 3`] = `
           14,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       kind: "init",
       method: false,
@@ -4160,7 +4370,7 @@ snapshot[`Plugin - ObjectExpression 3`] = `
           18,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
   ],
@@ -4194,7 +4404,7 @@ snapshot[`Plugin - SequenceExpression 1`] = `
         2,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     {
       name: "b",
@@ -4204,7 +4414,7 @@ snapshot[`Plugin - SequenceExpression 1`] = `
         5,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   ],
   range: [
@@ -4237,7 +4447,7 @@ snapshot[`Plugin - TaggedTemplateExpression 1`] = `
           13,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     ],
     quasis: [
@@ -4280,10 +4490,10 @@ snapshot[`Plugin - TaggedTemplateExpression 1`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "TaggedTemplateExpression",
-  typeArguments: null,
+  typeArguments: undefined,
 }
 `;
 
@@ -4298,7 +4508,7 @@ snapshot[`Plugin - TemplateLiteral 1`] = `
         10,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   ],
   quasis: [
@@ -4351,7 +4561,7 @@ snapshot[`Plugin - TSAsExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -4364,7 +4574,7 @@ snapshot[`Plugin - TSAsExpression 1`] = `
       6,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "b",
       optional: false,
@@ -4373,7 +4583,7 @@ snapshot[`Plugin - TSAsExpression 1`] = `
         6,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -4389,7 +4599,7 @@ snapshot[`Plugin - TSAsExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -4402,7 +4612,7 @@ snapshot[`Plugin - TSAsExpression 2`] = `
       10,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "const",
       optional: false,
@@ -4411,7 +4621,7 @@ snapshot[`Plugin - TSAsExpression 2`] = `
         10,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -4427,7 +4637,7 @@ snapshot[`Plugin - TSNonNullExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -4447,7 +4657,7 @@ snapshot[`Plugin - TSSatisfiesExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -4460,7 +4670,7 @@ snapshot[`Plugin - TSSatisfiesExpression 1`] = `
       13,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "b",
       optional: false,
@@ -4469,7 +4679,7 @@ snapshot[`Plugin - TSSatisfiesExpression 1`] = `
         13,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -4485,7 +4695,7 @@ snapshot[`Plugin - UnaryExpression 1`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "typeof",
   range: [
@@ -4526,7 +4736,7 @@ snapshot[`Plugin - UnaryExpression 3`] = `
       2,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "-",
   range: [
@@ -4547,7 +4757,7 @@ snapshot[`Plugin - UnaryExpression 4`] = `
       2,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "+",
   range: [
@@ -4568,7 +4778,7 @@ snapshot[`Plugin - UpdateExpression 1`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "++",
   prefix: false,
@@ -4590,7 +4800,7 @@ snapshot[`Plugin - UpdateExpression 2`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "++",
   prefix: true,
@@ -4612,7 +4822,7 @@ snapshot[`Plugin - UpdateExpression 3`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "--",
   prefix: false,
@@ -4634,7 +4844,7 @@ snapshot[`Plugin - UpdateExpression 4`] = `
       3,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   operator: "--",
   prefix: true,
@@ -4656,7 +4866,7 @@ snapshot[`Plugin - YieldExpression 1`] = `
       27,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   delegate: false,
   range: [
@@ -4768,6 +4978,165 @@ snapshot[`Plugin - Literal 8`] = `
 }
 `;
 
+snapshot[`Plugin - Abstract class 1`] = `
+{
+  abstract: true,
+  body: {
+    body: [
+      {
+        accessibility: undefined,
+        computed: false,
+        declare: false,
+        decorators: [],
+        definite: false,
+        key: {
+          name: "prop",
+          optional: false,
+          range: [
+            36,
+            40,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        optional: false,
+        override: false,
+        range: [
+          27,
+          49,
+        ],
+        readonly: false,
+        static: false,
+        type: "TSAbstractPropertyDefinition",
+        typeAnnotation: {
+          range: [
+            40,
+            48,
+          ],
+          type: "TSTypeAnnotation",
+          typeAnnotation: {
+            range: [
+              42,
+              48,
+            ],
+            type: "TSStringKeyword",
+          },
+        },
+        value: null,
+      },
+    ],
+    range: [
+      0,
+      51,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  id: {
+    name: "SomeClass",
+    optional: false,
+    range: [
+      15,
+      24,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    0,
+    51,
+  ],
+  superClass: null,
+  type: "ClassDeclaration",
+}
+`;
+
+snapshot[`Plugin - Abstract class 2`] = `
+{
+  abstract: true,
+  body: {
+    body: [
+      {
+        accessibility: undefined,
+        computed: false,
+        key: {
+          name: "method",
+          optional: false,
+          range: [
+            36,
+            42,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+        kind: "method",
+        optional: false,
+        override: false,
+        range: [
+          27,
+          53,
+        ],
+        static: false,
+        type: "TSAbstractMethodDefinition",
+        value: {
+          async: false,
+          body: null,
+          declare: false,
+          expression: false,
+          generator: false,
+          id: null,
+          params: [],
+          range: [
+            27,
+            53,
+          ],
+          returnType: {
+            range: [
+              44,
+              52,
+            ],
+            type: "TSTypeAnnotation",
+            typeAnnotation: {
+              range: [
+                46,
+                52,
+              ],
+              type: "TSStringKeyword",
+            },
+          },
+          type: "TSEmptyBodyFunctionExpression",
+          typeParameters: undefined,
+        },
+      },
+    ],
+    range: [
+      0,
+      55,
+    ],
+    type: "ClassBody",
+  },
+  declare: false,
+  id: {
+    name: "SomeClass",
+    optional: false,
+    range: [
+      15,
+      24,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  implements: [],
+  range: [
+    0,
+    55,
+  ],
+  superClass: null,
+  type: "ClassDeclaration",
+}
+`;
+
 snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 1`] = `
 {
   children: [],
@@ -4788,7 +5157,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -4832,7 +5201,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: false,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -4893,7 +5262,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: false,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -4948,7 +5317,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5010,7 +5379,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5080,7 +5449,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: false,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5125,7 +5494,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5202,7 +5571,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5232,7 +5601,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
     ],
     selfClosing: true,
     type: "JSXOpeningElement",
-    typeArguments: null,
+    typeArguments: undefined,
   },
   range: [
     0,
@@ -5270,7 +5639,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
             6,
           ],
           type: "TSTypeReference",
-          typeArguments: null,
+          typeArguments: undefined,
           typeName: {
             name: "T",
             optional: false,
@@ -5279,7 +5648,7 @@ snapshot[`Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr 
               6,
             ],
             type: "Identifier",
-            typeAnnotation: null,
+            typeAnnotation: undefined,
           },
         },
       ],
@@ -5384,7 +5753,7 @@ snapshot[`Plugin - TSAsExpression 3`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5423,7 +5792,7 @@ snapshot[`Plugin - TSAsExpression 4`] = `
       14,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "const",
       optional: false,
@@ -5432,7 +5801,7 @@ snapshot[`Plugin - TSAsExpression 4`] = `
         14,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -5458,7 +5827,7 @@ snapshot[`Plugin - TSEnumDeclaration 1`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5488,7 +5857,7 @@ snapshot[`Plugin - TSEnumDeclaration 2`] = `
       14,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5511,9 +5880,9 @@ snapshot[`Plugin - TSEnumDeclaration 3`] = `
             12,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
-        initializer: null,
+        initializer: undefined,
         range: [
           11,
           12,
@@ -5529,9 +5898,9 @@ snapshot[`Plugin - TSEnumDeclaration 3`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
-        initializer: null,
+        initializer: undefined,
         range: [
           14,
           15,
@@ -5555,7 +5924,7 @@ snapshot[`Plugin - TSEnumDeclaration 3`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5579,7 +5948,7 @@ snapshot[`Plugin - TSEnumDeclaration 4`] = `
           type: "Literal",
           value: "a-b",
         },
-        initializer: null,
+        initializer: undefined,
         range: [
           11,
           16,
@@ -5603,7 +5972,7 @@ snapshot[`Plugin - TSEnumDeclaration 4`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5626,7 +5995,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
             12,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         initializer: {
           range: [
@@ -5652,7 +6021,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
             19,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         initializer: {
           range: [
@@ -5678,7 +6047,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
             26,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         initializer: {
           left: {
@@ -5689,7 +6058,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
               30,
             ],
             type: "Identifier",
-            typeAnnotation: null,
+            typeAnnotation: undefined,
           },
           operator: "|",
           range: [
@@ -5704,7 +6073,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
               34,
             ],
             type: "Identifier",
-            typeAnnotation: null,
+            typeAnnotation: undefined,
           },
           type: "BinaryExpression",
         },
@@ -5731,7 +6100,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -5741,7 +6110,7 @@ snapshot[`Plugin - TSEnumDeclaration 5`] = `
 }
 `;
 
-snapshot[`Plugin - TSInterface 1`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 1`] = `
 {
   body: {
     body: [],
@@ -5752,7 +6121,7 @@ snapshot[`Plugin - TSInterface 1`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -5761,18 +6130,18 @@ snapshot[`Plugin - TSInterface 1`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     14,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 2`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 2`] = `
 {
   body: {
     body: [],
@@ -5783,7 +6152,23 @@ snapshot[`Plugin - TSInterface 2`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: {
+  extends: [],
+  id: {
+    name: "A",
+    optional: false,
+    range: [
+      10,
+      11,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    17,
+  ],
+  type: "TSInterfaceDeclaration",
+  typeParameters: {
     params: [
       {
         const: false,
@@ -5798,7 +6183,7 @@ snapshot[`Plugin - TSInterface 2`] = `
             13,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         out: false,
         range: [
@@ -5814,26 +6199,10 @@ snapshot[`Plugin - TSInterface 2`] = `
     ],
     type: "TSTypeParameterDeclaration",
   },
-  id: {
-    name: "A",
-    optional: false,
-    range: [
-      10,
-      11,
-    ],
-    type: "Identifier",
-    typeAnnotation: null,
-  },
-  range: [
-    0,
-    17,
-  ],
-  type: "TSInterface",
-  typeParameters: [],
 }
 `;
 
-snapshot[`Plugin - TSInterface 3`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 3`] = `
 {
   body: {
     body: [],
@@ -5844,23 +6213,7 @@ snapshot[`Plugin - TSInterface 3`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
-  id: {
-    name: "A",
-    optional: false,
-    range: [
-      10,
-      11,
-    ],
-    type: "Identifier",
-    typeAnnotation: null,
-  },
-  range: [
-    0,
-    37,
-  ],
-  type: "TSInterface",
-  typeParameters: [
+  extends: [
     {
       expression: {
         name: "Foo",
@@ -5870,7 +6223,7 @@ snapshot[`Plugin - TSInterface 3`] = `
           23,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         20,
@@ -5885,7 +6238,7 @@ snapshot[`Plugin - TSInterface 3`] = `
               25,
             ],
             type: "TSTypeReference",
-            typeArguments: null,
+            typeArguments: undefined,
             typeName: {
               name: "T",
               optional: false,
@@ -5894,7 +6247,7 @@ snapshot[`Plugin - TSInterface 3`] = `
                 25,
               ],
               type: "Identifier",
-              typeAnnotation: null,
+              typeAnnotation: undefined,
             },
           },
         ],
@@ -5914,7 +6267,7 @@ snapshot[`Plugin - TSInterface 3`] = `
           31,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       range: [
         28,
@@ -5929,7 +6282,7 @@ snapshot[`Plugin - TSInterface 3`] = `
               33,
             ],
             type: "TSTypeReference",
-            typeArguments: null,
+            typeArguments: undefined,
             typeName: {
               name: "T",
               optional: false,
@@ -5938,7 +6291,7 @@ snapshot[`Plugin - TSInterface 3`] = `
                 33,
               ],
               type: "Identifier",
-              typeAnnotation: null,
+              typeAnnotation: undefined,
             },
           },
         ],
@@ -5950,10 +6303,26 @@ snapshot[`Plugin - TSInterface 3`] = `
       },
     },
   ],
+  id: {
+    name: "A",
+    optional: false,
+    range: [
+      10,
+      11,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    37,
+  ],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 4`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 4`] = `
 {
   body: {
     body: [
@@ -5967,7 +6336,7 @@ snapshot[`Plugin - TSInterface 4`] = `
             17,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         range: [
@@ -6002,7 +6371,7 @@ snapshot[`Plugin - TSInterface 4`] = `
             27,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: true,
         range: [
@@ -6035,7 +6404,7 @@ snapshot[`Plugin - TSInterface 4`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6044,18 +6413,18 @@ snapshot[`Plugin - TSInterface 4`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     35,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 5`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 5`] = `
 {
   body: {
     body: [
@@ -6090,6 +6459,7 @@ snapshot[`Plugin - TSInterface 5`] = `
           41,
         ],
         readonly: true,
+        static: false,
         type: "TSIndexSignature",
         typeAnnotation: {
           range: [
@@ -6114,7 +6484,7 @@ snapshot[`Plugin - TSInterface 5`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6123,18 +6493,18 @@ snapshot[`Plugin - TSInterface 5`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     43,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 6`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 6`] = `
 {
   body: {
     body: [
@@ -6148,7 +6518,7 @@ snapshot[`Plugin - TSInterface 6`] = `
             24,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         range: [
@@ -6181,7 +6551,7 @@ snapshot[`Plugin - TSInterface 6`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6190,18 +6560,18 @@ snapshot[`Plugin - TSInterface 6`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     31,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 7`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 7`] = `
 {
   body: {
     body: [
@@ -6227,7 +6597,7 @@ snapshot[`Plugin - TSInterface 7`] = `
                   22,
                 ],
                 type: "TSTypeReference",
-                typeArguments: null,
+                typeArguments: undefined,
                 typeName: {
                   name: "T",
                   optional: false,
@@ -6236,7 +6606,7 @@ snapshot[`Plugin - TSInterface 7`] = `
                     22,
                   ],
                   type: "Identifier",
-                  typeAnnotation: null,
+                  typeAnnotation: undefined,
                 },
               },
             },
@@ -6258,7 +6628,7 @@ snapshot[`Plugin - TSInterface 7`] = `
               26,
             ],
             type: "TSTypeReference",
-            typeArguments: null,
+            typeArguments: undefined,
             typeName: {
               name: "T",
               optional: false,
@@ -6267,12 +6637,12 @@ snapshot[`Plugin - TSInterface 7`] = `
                 26,
               ],
               type: "Identifier",
-              typeAnnotation: null,
+              typeAnnotation: undefined,
             },
           },
         },
         type: "TSCallSignatureDeclaration",
-        typeAnnotation: {
+        typeParameters: {
           params: [
             {
               const: false,
@@ -6287,7 +6657,7 @@ snapshot[`Plugin - TSInterface 7`] = `
                   16,
                 ],
                 type: "Identifier",
-                typeAnnotation: null,
+                typeAnnotation: undefined,
               },
               out: false,
               range: [
@@ -6312,7 +6682,7 @@ snapshot[`Plugin - TSInterface 7`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6321,18 +6691,18 @@ snapshot[`Plugin - TSInterface 7`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     28,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 8`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 8`] = `
 {
   body: {
     body: [
@@ -6358,7 +6728,7 @@ snapshot[`Plugin - TSInterface 8`] = `
                   26,
                 ],
                 type: "TSTypeReference",
-                typeArguments: null,
+                typeArguments: undefined,
                 typeName: {
                   name: "T",
                   optional: false,
@@ -6367,7 +6737,7 @@ snapshot[`Plugin - TSInterface 8`] = `
                     26,
                   ],
                   type: "Identifier",
-                  typeAnnotation: null,
+                  typeAnnotation: undefined,
                 },
               },
             },
@@ -6389,7 +6759,7 @@ snapshot[`Plugin - TSInterface 8`] = `
               30,
             ],
             type: "TSTypeReference",
-            typeArguments: null,
+            typeArguments: undefined,
             typeName: {
               name: "T",
               optional: false,
@@ -6398,7 +6768,7 @@ snapshot[`Plugin - TSInterface 8`] = `
                 30,
               ],
               type: "Identifier",
-              typeAnnotation: null,
+              typeAnnotation: undefined,
             },
           },
         },
@@ -6418,7 +6788,7 @@ snapshot[`Plugin - TSInterface 8`] = `
                   20,
                 ],
                 type: "Identifier",
-                typeAnnotation: null,
+                typeAnnotation: undefined,
               },
               out: false,
               range: [
@@ -6443,7 +6813,7 @@ snapshot[`Plugin - TSInterface 8`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6452,18 +6822,18 @@ snapshot[`Plugin - TSInterface 8`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     32,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 9`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 9`] = `
 {
   body: {
     body: [
@@ -6477,7 +6847,7 @@ snapshot[`Plugin - TSInterface 9`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         optional: false,
         range: [
@@ -6515,7 +6885,7 @@ snapshot[`Plugin - TSInterface 9`] = `
                       29,
                     ],
                     type: "TSTypeReference",
-                    typeArguments: null,
+                    typeArguments: undefined,
                     typeName: {
                       name: "T",
                       optional: false,
@@ -6524,7 +6894,7 @@ snapshot[`Plugin - TSInterface 9`] = `
                         29,
                       ],
                       type: "Identifier",
-                      typeAnnotation: null,
+                      typeAnnotation: undefined,
                     },
                   },
                 },
@@ -6546,7 +6916,7 @@ snapshot[`Plugin - TSInterface 9`] = `
                   35,
                 ],
                 type: "TSTypeReference",
-                typeArguments: null,
+                typeArguments: undefined,
                 typeName: {
                   name: "T",
                   optional: false,
@@ -6555,7 +6925,7 @@ snapshot[`Plugin - TSInterface 9`] = `
                     35,
                   ],
                   type: "Identifier",
-                  typeAnnotation: null,
+                  typeAnnotation: undefined,
                 },
               },
             },
@@ -6575,7 +6945,7 @@ snapshot[`Plugin - TSInterface 9`] = `
                       23,
                     ],
                     type: "Identifier",
-                    typeAnnotation: null,
+                    typeAnnotation: undefined,
                   },
                   out: false,
                   range: [
@@ -6602,7 +6972,7 @@ snapshot[`Plugin - TSInterface 9`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6611,18 +6981,18 @@ snapshot[`Plugin - TSInterface 9`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     37,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 10`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 10`] = `
 {
   body: {
     body: [
@@ -6636,10 +7006,11 @@ snapshot[`Plugin - TSInterface 10`] = `
             19,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
-        kind: "getter",
+        kind: "get",
         optional: false,
+        params: [],
         range: [
           14,
           29,
@@ -6661,6 +7032,7 @@ snapshot[`Plugin - TSInterface 10`] = `
         },
         static: false,
         type: "TSMethodSignature",
+        typeParameters: undefined,
       },
     ],
     range: [
@@ -6670,7 +7042,7 @@ snapshot[`Plugin - TSInterface 10`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6679,18 +7051,18 @@ snapshot[`Plugin - TSInterface 10`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     31,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 11`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 11`] = `
 {
   body: {
     body: [
@@ -6704,9 +7076,9 @@ snapshot[`Plugin - TSInterface 11`] = `
             19,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
-        kind: "setter",
+        kind: "set",
         optional: false,
         params: [
           {
@@ -6738,8 +7110,10 @@ snapshot[`Plugin - TSInterface 11`] = `
           30,
         ],
         readonly: false,
+        returnType: undefined,
         static: false,
         type: "TSMethodSignature",
+        typeParameters: undefined,
       },
     ],
     range: [
@@ -6749,7 +7123,7 @@ snapshot[`Plugin - TSInterface 11`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6758,18 +7132,18 @@ snapshot[`Plugin - TSInterface 11`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     32,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
-snapshot[`Plugin - TSInterface 12`] = `
+snapshot[`Plugin - TSInterfaceDeclaration 12`] = `
 {
   body: {
     body: [
@@ -6783,7 +7157,7 @@ snapshot[`Plugin - TSInterface 12`] = `
             15,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         kind: "method",
         optional: false,
@@ -6820,7 +7194,7 @@ snapshot[`Plugin - TSInterface 12`] = `
                 37,
               ],
               type: "Identifier",
-              typeAnnotation: null,
+              typeAnnotation: undefined,
             },
             range: [
               30,
@@ -6886,7 +7260,7 @@ snapshot[`Plugin - TSInterface 12`] = `
                   17,
                 ],
                 type: "Identifier",
-                typeAnnotation: null,
+                typeAnnotation: undefined,
               },
               out: false,
               range: [
@@ -6911,7 +7285,7 @@ snapshot[`Plugin - TSInterface 12`] = `
     type: "TSInterfaceBody",
   },
   declare: false,
-  extends: null,
+  extends: [],
   id: {
     name: "A",
     optional: false,
@@ -6920,14 +7294,14 @@ snapshot[`Plugin - TSInterface 12`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
     52,
   ],
-  type: "TSInterface",
-  typeParameters: [],
+  type: "TSInterfaceDeclaration",
+  typeParameters: undefined,
 }
 `;
 
@@ -6952,7 +7326,7 @@ snapshot[`Plugin - TSSatisfiesExpression 2`] = `
       24,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "A",
       optional: false,
@@ -6961,7 +7335,7 @@ snapshot[`Plugin - TSSatisfiesExpression 2`] = `
         24,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -6978,7 +7352,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 1`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -6992,7 +7366,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 1`] = `
     ],
     type: "TSAnyKeyword",
   },
-  typeParameters: null,
+  typeParameters: undefined,
 }
 `;
 
@@ -7007,7 +7381,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 2`] = `
       6,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -7036,7 +7410,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 2`] = `
             8,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         out: false,
         range: [
@@ -7066,7 +7440,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 3`] = `
       14,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -7095,7 +7469,7 @@ snapshot[`Plugin - TSTypeAliasDeclaration 3`] = `
             16,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         out: false,
         range: [
@@ -7124,7 +7498,7 @@ snapshot[`Plugin - TSNonNullExpression 2`] = `
       1,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     0,
@@ -7148,7 +7522,7 @@ snapshot[`Plugin - TSUnionType 1`] = `
         10,
       ],
       type: "TSTypeReference",
-      typeArguments: null,
+      typeArguments: undefined,
       typeName: {
         name: "B",
         optional: false,
@@ -7157,7 +7531,7 @@ snapshot[`Plugin - TSUnionType 1`] = `
           10,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
     {
@@ -7166,7 +7540,7 @@ snapshot[`Plugin - TSUnionType 1`] = `
         14,
       ],
       type: "TSTypeReference",
-      typeArguments: null,
+      typeArguments: undefined,
       typeName: {
         name: "C",
         optional: false,
@@ -7175,7 +7549,7 @@ snapshot[`Plugin - TSUnionType 1`] = `
           14,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
   ],
@@ -7196,7 +7570,7 @@ snapshot[`Plugin - TSIntersectionType 1`] = `
         10,
       ],
       type: "TSTypeReference",
-      typeArguments: null,
+      typeArguments: undefined,
       typeName: {
         name: "B",
         optional: false,
@@ -7205,7 +7579,7 @@ snapshot[`Plugin - TSIntersectionType 1`] = `
           10,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
     {
@@ -7214,7 +7588,7 @@ snapshot[`Plugin - TSIntersectionType 1`] = `
         14,
       ],
       type: "TSTypeReference",
-      typeArguments: null,
+      typeArguments: undefined,
       typeName: {
         name: "C",
         optional: false,
@@ -7223,10 +7597,433 @@ snapshot[`Plugin - TSIntersectionType 1`] = `
           14,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
     },
   ],
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 1`] = `
+{
+  expression: {
+    name: "a",
+    optional: false,
+    range: [
+      0,
+      1,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    4,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          2,
+          3,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "b",
+          optional: false,
+          range: [
+            2,
+            3,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      1,
+      4,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 2`] = `
+{
+  expression: {
+    expression: {
+      name: "a",
+      optional: false,
+      range: [
+        1,
+        2,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+    range: [
+      1,
+      5,
+    ],
+    type: "TSInstantiationExpression",
+    typeArguments: {
+      params: [
+        {
+          range: [
+            3,
+            4,
+          ],
+          type: "TSTypeReference",
+          typeArguments: undefined,
+          typeName: {
+            name: "b",
+            optional: false,
+            range: [
+              3,
+              4,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+        },
+      ],
+      range: [
+        2,
+        5,
+      ],
+      type: "TSTypeParameterInstantiation",
+    },
+  },
+  range: [
+    0,
+    9,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          7,
+          8,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "c",
+          optional: false,
+          range: [
+            7,
+            8,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      6,
+      9,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 3`] = `
+{
+  expression: {
+    name: "a",
+    optional: false,
+    range: [
+      1,
+      2,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    1,
+    5,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          3,
+          4,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "b",
+          optional: false,
+          range: [
+            3,
+            4,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      2,
+      5,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 4`] = `
+{
+  expression: {
+    name: "a",
+    optional: false,
+    range: [
+      1,
+      2,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    1,
+    5,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          3,
+          4,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "b",
+          optional: false,
+          range: [
+            3,
+            4,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      2,
+      5,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 5`] = `
+{
+  expression: {
+    expression: {
+      name: "a",
+      optional: false,
+      range: [
+        1,
+        2,
+      ],
+      type: "Identifier",
+      typeAnnotation: undefined,
+    },
+    range: [
+      1,
+      5,
+    ],
+    type: "TSInstantiationExpression",
+    typeArguments: {
+      params: [
+        {
+          range: [
+            3,
+            4,
+          ],
+          type: "TSTypeReference",
+          typeArguments: undefined,
+          typeName: {
+            name: "b",
+            optional: false,
+            range: [
+              3,
+              4,
+            ],
+            type: "Identifier",
+            typeAnnotation: undefined,
+          },
+        },
+      ],
+      range: [
+        2,
+        5,
+      ],
+      type: "TSTypeParameterInstantiation",
+    },
+  },
+  range: [
+    0,
+    9,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          7,
+          8,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "c",
+          optional: false,
+          range: [
+            7,
+            8,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      6,
+      9,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 6`] = `
+{
+  expression: {
+    expression: {
+      computed: false,
+      object: {
+        name: "a",
+        optional: false,
+        range: [
+          1,
+          2,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      optional: true,
+      property: {
+        name: "b",
+        optional: false,
+        range: [
+          4,
+          5,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      range: [
+        1,
+        5,
+      ],
+      type: "MemberExpression",
+    },
+    range: [
+      1,
+      8,
+    ],
+    type: "ChainExpression",
+  },
+  range: [
+    1,
+    8,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          6,
+          7,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "c",
+          optional: false,
+          range: [
+            6,
+            7,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      5,
+      8,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
+}
+`;
+
+snapshot[`Plugin - TSInstantiationExpression 7`] = `
+{
+  expression: {
+    name: "a",
+    optional: false,
+    range: [
+      5,
+      6,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  range: [
+    5,
+    9,
+  ],
+  type: "TSInstantiationExpression",
+  typeArguments: {
+    params: [
+      {
+        range: [
+          7,
+          8,
+        ],
+        type: "TSTypeReference",
+        typeArguments: undefined,
+        typeName: {
+          name: "b",
+          optional: false,
+          range: [
+            7,
+            8,
+          ],
+          type: "Identifier",
+          typeAnnotation: undefined,
+        },
+      },
+    ],
+    range: [
+      6,
+      9,
+    ],
+    type: "TSTypeParameterInstantiation",
+  },
 }
 `;
 
@@ -7241,7 +8038,6 @@ snapshot[`Plugin - TSModuleDeclaration 1`] = `
     type: "TSModuleBlock",
   },
   declare: false,
-  global: false,
   id: {
     name: "A",
     optional: false,
@@ -7250,8 +8046,9 @@ snapshot[`Plugin - TSModuleDeclaration 1`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  kind: "module",
   range: [
     0,
     11,
@@ -7265,9 +8062,10 @@ snapshot[`Plugin - TSModuleDeclaration 2`] = `
   body: {
     body: [
       {
+        attributes: [],
         declaration: {
           async: false,
-          body: null,
+          body: undefined,
           declare: false,
           generator: false,
           id: {
@@ -7278,7 +8076,7 @@ snapshot[`Plugin - TSModuleDeclaration 2`] = `
               36,
             ],
             type: "Identifier",
-            typeAnnotation: null,
+            typeAnnotation: undefined,
           },
           params: [],
           range: [
@@ -7299,13 +8097,16 @@ snapshot[`Plugin - TSModuleDeclaration 2`] = `
               type: "TSVoidKeyword",
             },
           },
-          type: "FunctionDeclaration",
-          typeParameters: null,
+          type: "TSDeclareFunction",
+          typeParameters: undefined,
         },
+        exportKind: "value",
         range: [
           19,
           44,
         ],
+        source: null,
+        specifiers: [],
         type: "ExportNamedDeclaration",
       },
     ],
@@ -7316,7 +8117,6 @@ snapshot[`Plugin - TSModuleDeclaration 2`] = `
     type: "TSModuleBlock",
   },
   declare: true,
-  global: false,
   id: {
     name: "A",
     optional: false,
@@ -7325,13 +8125,54 @@ snapshot[`Plugin - TSModuleDeclaration 2`] = `
       16,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  kind: "module",
   range: [
     0,
     46,
   ],
   type: "TSModuleDeclaration",
+}
+`;
+
+snapshot[`Plugin - TSDeclareFunction 1`] = `
+{
+  async: true,
+  body: undefined,
+  declare: false,
+  generator: false,
+  id: {
+    name: "foo",
+    optional: false,
+    range: [
+      15,
+      18,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
+  params: [],
+  range: [
+    0,
+    26,
+  ],
+  returnType: {
+    range: [
+      20,
+      25,
+    ],
+    type: "TSTypeAnnotation",
+    typeAnnotation: {
+      range: [
+        22,
+        25,
+      ],
+      type: "TSAnyKeyword",
+    },
+  },
+  type: "TSDeclareFunction",
+  typeParameters: undefined,
 }
 `;
 
@@ -7346,7 +8187,6 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 1`] = `
     type: "TSModuleBlock",
   },
   declare: false,
-  global: false,
   id: {
     name: "A",
     optional: false,
@@ -7355,8 +8195,9 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 1`] = `
       8,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  kind: "module",
   range: [
     0,
     11,
@@ -7379,7 +8220,6 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 2`] = `
           type: "TSModuleBlock",
         },
         declare: false,
-        global: false,
         id: {
           name: "B",
           optional: false,
@@ -7388,8 +8228,9 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 2`] = `
             25,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
+        kind: "module",
         range: [
           14,
           28,
@@ -7404,7 +8245,6 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 2`] = `
     type: "TSModuleBlock",
   },
   declare: false,
-  global: false,
   id: {
     name: "A",
     optional: false,
@@ -7413,8 +8253,9 @@ snapshot[`Plugin - TSModuleDeclaration + TSModuleBlock 2`] = `
       11,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
+  kind: "module",
   range: [
     0,
     30,
@@ -7433,7 +8274,7 @@ snapshot[`Plugin - TSQualifiedName 1`] = `
       10,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     9,
@@ -7447,7 +8288,7 @@ snapshot[`Plugin - TSQualifiedName 1`] = `
       12,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   type: "TSQualifiedName",
 }
@@ -7466,7 +8307,7 @@ snapshot[`Plugin - TSTypeLiteral 1`] = `
           12,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
       optional: false,
       range: [
@@ -7558,7 +8399,7 @@ snapshot[`Plugin - TSConditionalType 1`] = `
       10,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "B",
       optional: false,
@@ -7567,7 +8408,7 @@ snapshot[`Plugin - TSConditionalType 1`] = `
         10,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
   extendsType: {
@@ -7576,7 +8417,7 @@ snapshot[`Plugin - TSConditionalType 1`] = `
       20,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "C",
       optional: false,
@@ -7585,7 +8426,7 @@ snapshot[`Plugin - TSConditionalType 1`] = `
         20,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
   falseType: {
@@ -7630,7 +8471,7 @@ snapshot[`Plugin - TSInferType 1`] = `
         38,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
     out: false,
     range: [
@@ -7656,7 +8497,7 @@ snapshot[`Plugin - TSTypeOperator 1`] = `
       16,
     ],
     type: "TSTypeReference",
-    typeArguments: null,
+    typeArguments: undefined,
     typeName: {
       name: "B",
       optional: false,
@@ -7665,7 +8506,7 @@ snapshot[`Plugin - TSTypeOperator 1`] = `
         16,
       ],
       type: "Identifier",
-      typeAnnotation: null,
+      typeAnnotation: undefined,
     },
   },
 }
@@ -7710,6 +8551,42 @@ snapshot[`Plugin - TSTypeOperator 3`] = `
 
 snapshot[`Plugin - TSMappedType 1`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      20,
+      27,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        26,
+        27,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          26,
+          27,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      15,
+      16,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: undefined,
   range: [
@@ -7725,58 +8602,47 @@ snapshot[`Plugin - TSMappedType 1`] = `
     ],
     type: "TSBooleanKeyword",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        20,
-        27,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          26,
-          27,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            26,
-            27,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        15,
-        16,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      15,
-      27,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 2`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      29,
+      36,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        35,
+        36,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          35,
+          36,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      24,
+      25,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: undefined,
   range: [
@@ -7793,58 +8659,47 @@ snapshot[`Plugin - TSMappedType 2`] = `
     ],
     type: "TSTupleType",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        29,
-        36,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          35,
-          36,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            35,
-            36,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        24,
-        25,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      24,
-      36,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 3`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      30,
+      37,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        36,
+        37,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          36,
+          37,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      25,
+      26,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: undefined,
   range: [
@@ -7861,58 +8716,47 @@ snapshot[`Plugin - TSMappedType 3`] = `
     ],
     type: "TSTupleType",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        30,
-        37,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          36,
-          37,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            36,
-            37,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        25,
-        26,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      25,
-      37,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 4`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      30,
+      37,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        36,
+        37,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          36,
+          37,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      25,
+      26,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: undefined,
   range: [
@@ -7929,58 +8773,47 @@ snapshot[`Plugin - TSMappedType 4`] = `
     ],
     type: "TSTupleType",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        30,
-        37,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          36,
-          37,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            36,
-            37,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        25,
-        26,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      25,
-      37,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 5`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      20,
+      27,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        26,
+        27,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          26,
+          27,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      15,
+      16,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: true,
   range: [
@@ -7996,58 +8829,47 @@ snapshot[`Plugin - TSMappedType 5`] = `
     ],
     type: "TSBooleanKeyword",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        20,
-        27,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          26,
-          27,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            26,
-            27,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        15,
-        16,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      15,
-      27,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 6`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      20,
+      27,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        26,
+        27,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          26,
+          27,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      15,
+      16,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: "-",
   range: [
@@ -8063,58 +8885,47 @@ snapshot[`Plugin - TSMappedType 6`] = `
     ],
     type: "TSBooleanKeyword",
   },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        20,
-        27,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          26,
-          27,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            26,
-            27,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        15,
-        16,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      15,
-      27,
-    ],
-    type: "TSTypeParameter",
-  },
 }
 `;
 
 snapshot[`Plugin - TSMappedType 7`] = `
 {
+  constraint: {
+    operator: "keyof",
+    range: [
+      20,
+      27,
+    ],
+    type: "TSTypeOperator",
+    typeAnnotation: {
+      range: [
+        26,
+        27,
+      ],
+      type: "TSTypeReference",
+      typeArguments: undefined,
+      typeName: {
+        name: "T",
+        optional: false,
+        range: [
+          26,
+          27,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+    },
+  },
+  key: {
+    name: "P",
+    optional: false,
+    range: [
+      15,
+      16,
+    ],
+    type: "Identifier",
+    typeAnnotation: undefined,
+  },
   nameType: null,
   optional: "+",
   range: [
@@ -8129,53 +8940,6 @@ snapshot[`Plugin - TSMappedType 7`] = `
       39,
     ],
     type: "TSBooleanKeyword",
-  },
-  typeParameter: {
-    const: false,
-    constraint: {
-      operator: "keyof",
-      range: [
-        20,
-        27,
-      ],
-      type: "TSTypeOperator",
-      typeAnnotation: {
-        range: [
-          26,
-          27,
-        ],
-        type: "TSTypeReference",
-        typeArguments: null,
-        typeName: {
-          name: "T",
-          optional: false,
-          range: [
-            26,
-            27,
-          ],
-          type: "Identifier",
-          typeAnnotation: null,
-        },
-      },
-    },
-    default: null,
-    in: false,
-    name: {
-      name: "P",
-      optional: false,
-      range: [
-        15,
-        16,
-      ],
-      type: "Identifier",
-      typeAnnotation: null,
-    },
-    out: false,
-    range: [
-      15,
-      27,
-    ],
-    type: "TSTypeParameter",
   },
 }
 `;
@@ -8335,8 +9099,9 @@ snapshot[`Plugin - TSTupleType + TSArrayType 2`] = `
           11,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
+      optional: false,
       range: [
         10,
         19,
@@ -8371,8 +9136,9 @@ snapshot[`Plugin - TSTupleType + TSArrayType 3`] = `
           11,
         ],
         type: "Identifier",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
+      optional: false,
       range: [
         10,
         19,
@@ -8389,6 +9155,43 @@ snapshot[`Plugin - TSTupleType + TSArrayType 3`] = `
 `;
 
 snapshot[`Plugin - TSTupleType + TSArrayType 4`] = `
+{
+  elementTypes: [
+    {
+      elementType: {
+        range: [
+          14,
+          20,
+        ],
+        type: "TSNumberKeyword",
+      },
+      label: {
+        name: "x",
+        optional: true,
+        range: [
+          10,
+          12,
+        ],
+        type: "Identifier",
+        typeAnnotation: undefined,
+      },
+      optional: true,
+      range: [
+        10,
+        20,
+      ],
+      type: "TSNamedTupleMember",
+    },
+  ],
+  range: [
+    9,
+    21,
+  ],
+  type: "TSTupleType",
+}
+`;
+
+snapshot[`Plugin - TSTupleType + TSArrayType 5`] = `
 {
   elementTypes: [
     {
@@ -8415,15 +9218,16 @@ snapshot[`Plugin - TSTupleType + TSArrayType 4`] = `
             14,
           ],
           type: "Identifier",
-          typeAnnotation: null,
+          typeAnnotation: undefined,
         },
         range: [
           10,
           15,
         ],
         type: "RestElement",
-        typeAnnotation: null,
+        typeAnnotation: undefined,
       },
+      optional: false,
       range: [
         10,
         24,
@@ -8466,14 +9270,14 @@ snapshot[`Plugin - TSTypeQuery 1`] = `
       17,
     ],
     type: "Identifier",
-    typeAnnotation: null,
+    typeAnnotation: undefined,
   },
   range: [
     9,
     17,
   ],
   type: "TSTypeQuery",
-  typeArguments: null,
+  typeArguments: undefined,
 }
 `;
 
