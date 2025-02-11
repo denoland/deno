@@ -82,7 +82,7 @@ impl LintPluginContainer {
     hint: Option<String>,
     start_utf16: usize,
     end_utf16: usize,
-    fix: Option<LintReportFix>,
+    raw_fixes: Vec<LintReportFix>,
   ) -> Result<(), LintReportError> {
     fn out_of_range_err(
       map: &Utf16Map,
@@ -129,23 +129,27 @@ impl LintPluginContainer {
       text_info: source_text_info.clone(),
     };
 
-    let mut fixes: Vec<LintFix> = vec![];
+    let changes = raw_fixes
+      .into_iter()
+      .map(|fix| {
+        let fix_range = utf16_to_utf8_range(
+          utf16_map,
+          source_text_info,
+          fix.range.0,
+          fix.range.1,
+        )?;
 
-    if let Some(fix) = fix {
-      let fix_range = utf16_to_utf8_range(
-        utf16_map,
-        source_text_info,
-        fix.range.0,
-        fix.range.1,
-      )?;
-      fixes.push(LintFix {
-        changes: vec![LintFixChange {
+        Ok(LintFixChange {
           new_text: fix.text.into(),
           range: fix_range,
-        }],
-        description: format!("Fix this {} problem", id).into(),
-      });
-    }
+        })
+      })
+      .collect::<Result<Vec<LintFixChange>, LintReportError>>()?;
+
+    let fixes = vec![LintFix {
+      changes,
+      description: format!("Fix this {} problem", id).into(),
+    }];
 
     let lint_diagnostic = LintDiagnostic {
       specifier,
@@ -243,7 +247,7 @@ fn op_lint_report(
   #[string] hint: Option<String>,
   #[smi] start_utf16: usize,
   #[smi] end_utf16: usize,
-  #[serde] fix: Option<LintReportFix>,
+  #[serde] fix: Vec<LintReportFix>,
 ) -> Result<(), LintReportError> {
   let container = state.borrow_mut::<LintPluginContainer>();
   container.report(id, message, hint, start_utf16, end_utf16, fix)?;
