@@ -10,6 +10,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::sync::atomic::AtomicPtr;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
@@ -127,24 +128,6 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct LanguageServer {
-  client: Client,
-  pub inner: Rc<tokio::sync::RwLock<Inner>>,
-  /// This is used to block out standard request handling until the complete
-  /// user configuration has been fetched. This is done in the `initialized`
-  /// handler which normally may occur concurrently with those other requests.
-  /// TODO(nayeemrmn): This wouldn't be necessary if LSP allowed
-  /// `workspace/configuration` requests in the `initialize` handler. See:
-  /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
-  init_flag: AsyncFlag,
-  performance: Arc<Performance>,
-  shutdown_flag: AsyncFlag,
-  /// This is used to move all request handling to a separate thread so blocking
-  /// code there won't block cancellations from being flagged.
-  worker_thread: Rc<WorkerThread>,
-}
-
 /// Snapshot of the state used by TSC.
 #[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
@@ -155,7 +138,7 @@ pub struct StateSnapshot {
   pub resolver: Arc<LspResolver>,
 }
 
-type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
+type LanguageServerTaskFn = Box<dyn FnOnce(WorkerLanguageServer) + Send + Sync>;
 
 /// Used to queue tasks from inside of the language server lock that must be
 /// commenced from outside of it. For example, queue a request to cache a module
@@ -183,7 +166,7 @@ impl LanguageServerTaskQueue {
   }
 
   /// Panics if called more than once.
-  fn start(&mut self, ls: LanguageServer) {
+  fn start(&mut self, ls: WorkerLanguageServer) {
     let mut task_rx = self.task_rx.take().unwrap();
     spawn(async move {
       while let Some(task_fn) = task_rx.recv().await {
@@ -196,63 +179,89 @@ impl LanguageServerTaskQueue {
 #[derive(Debug)]
 struct WorkerThread {
   runtime_handle: tokio::runtime::Handle,
+  worker_ls_ptr: Arc<AtomicPtr<WorkerLanguageServer>>,
   shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
   join_handle: Option<std::thread::JoinHandle<()>>,
 }
 
 impl WorkerThread {
-  fn create() -> Self {
+  fn create(client: Client) -> Self {
     let (handle_tx, handle_rx) = std::sync::mpsc::channel();
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     let join_handle = std::thread::spawn(move || {
       let runtime = create_basic_runtime();
-      handle_tx.send(runtime.handle().clone()).unwrap();
+      let worker_ls_ptr =
+        Box::into_raw(Box::new(WorkerLanguageServer::new(client)));
+      handle_tx
+        .send((
+          runtime.handle().clone(),
+          Arc::new(AtomicPtr::new(worker_ls_ptr)),
+        ))
+        .unwrap();
       runtime.block_on(shutdown_rx).unwrap();
+      drop(runtime);
+      // SAFETY: The pointer is created above and is not dropped elsewhere.
+      drop(unsafe { Box::from_raw(worker_ls_ptr) });
     });
-    let runtime_handle = handle_rx.recv().unwrap();
+    let (runtime_handle, worker_ls_ptr) = handle_rx.recv().unwrap();
     Self {
       runtime_handle,
+      worker_ls_ptr,
       shutdown_tx: Some(shutdown_tx),
       join_handle: Some(join_handle),
     }
   }
 
-  async fn spawn(&self, fut: impl std::future::Future<Output = ()> + 'static) {
-    // SAFETY: we're running in a current thread runtime
-    let fut = unsafe { deno_core::unsync::MaskFutureAsSend::new(fut) };
+  async fn spawn<TFut: std::future::Future<Output = ()> + 'static>(
+    &self,
+    get_fut: impl FnOnce(WorkerLanguageServer) -> TFut + Send + 'static,
+  ) {
+    let worker_ls_ptr = self.worker_ls_ptr.clone();
     self
       .runtime_handle
-      .spawn(fut)
+      .spawn(async move {
+        // SAFETY: The contained data will outlive the executing runtime.
+        let worker_ls = unsafe { (**worker_ls_ptr.as_ptr()).clone() };
+        deno_core::unsync::spawn(get_fut(worker_ls))
+          .await
+          .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+          .ok();
+      })
       .await
-      .map(|r| r.into_inner())
       .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
       .ok();
   }
 
   async fn spawn_with_cancellation<
     T: Send + 'static,
-    TFut: std::future::Future<Output = LspResult<T>>,
+    TFut: std::future::Future<Output = LspResult<T>> + 'static,
   >(
     &self,
-    get_fut: impl FnOnce(CancellationToken) -> TFut + 'static,
+    get_fut: impl FnOnce(WorkerLanguageServer, CancellationToken) -> TFut
+      + Send
+      + 'static,
   ) -> LspResult<T> {
     let token = CancellationToken::new();
     let _drop_guard = token.clone().drop_guard();
-
-    let future = async move {
-      tokio::select! {
-        biased;
-        _ = token.cancelled() => Err(LspError::request_cancelled()),
-        result = get_fut(token.clone()) => result,
-      }
-    };
-    // SAFETY: we're running in a current thread runtime
-    let future = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
-
-    let result = self.runtime_handle.spawn(future).await;
+    let worker_ls_ptr = self.worker_ls_ptr.clone();
+    let result = self
+      .runtime_handle
+      .spawn(async move {
+        // SAFETY: The contained data will outlive the executing runtime.
+        let worker_ls = unsafe { (**worker_ls_ptr.as_ptr()).clone() };
+        tokio::select! {
+          biased;
+          _ = token.cancelled() => Err(LspError::request_cancelled()),
+          result = deno_core::unsync::spawn(get_fut(worker_ls, token.clone())) => {
+            result
+              .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
+              .unwrap_or_else(|_| Err(LspError::internal_error()))
+          }
+        }
+      })
+      .await;
     result
       .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .map(|r| r.into_inner())
       .unwrap_or_else(|_| Err(LspError::internal_error()))
   }
 }
@@ -302,291 +311,6 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-}
-
-impl LanguageServer {
-  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
-    let performance = Arc::new(Performance::default());
-    Self {
-      client: client.clone(),
-      inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
-        client,
-        performance.clone(),
-      ))),
-      init_flag: Default::default(),
-      performance,
-      shutdown_flag,
-      worker_thread: Rc::new(WorkerThread::create()),
-    }
-  }
-
-  /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
-  /// in the Deno cache, including any of their dependencies.
-  pub async fn cache(
-    &self,
-    specifiers: Vec<ModuleSpecifier>,
-    referrer: ModuleSpecifier,
-    force_global_cache: bool,
-  ) -> LspResult<Option<Value>> {
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.cache_inner(specifiers, referrer, force_global_cache)
-          .await
-      })
-      .await
-  }
-
-  async fn cache_inner(
-    &self,
-    specifiers: Vec<ModuleSpecifier>,
-    referrer: ModuleSpecifier,
-    force_global_cache: bool,
-  ) -> LspResult<Option<Value>> {
-    async fn create_graph_for_caching(
-      factory: CliFactory,
-      roots: Vec<ModuleSpecifier>,
-      open_docs: Vec<Arc<Document>>,
-    ) -> Result<(), AnyError> {
-      let open_docs = open_docs
-        .into_iter()
-        .map(|d| (d.specifier().clone(), d))
-        .collect::<HashMap<_, _>>();
-      let module_graph_builder = factory.module_graph_builder().await?;
-      let module_graph_creator = factory.module_graph_creator().await?;
-      let mut inner_loader = module_graph_builder.create_graph_loader();
-      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
-        inner_loader: &mut inner_loader,
-        open_docs: &open_docs,
-      };
-      let graph = module_graph_creator
-        .create_graph_with_loader(
-          GraphKind::All,
-          roots.clone(),
-          &mut loader,
-          graph_util::NpmCachingStrategy::Eager,
-        )
-        .await?;
-      graph_util::graph_valid(
-        &graph,
-        &CliSys::default(),
-        &roots,
-        graph_util::GraphValidOptions {
-          kind: GraphKind::All,
-          check_js: CheckJsOption::False,
-          exit_integrity_errors: false,
-        },
-      )?;
-
-      // Update the lockfile on the file system with anything new
-      // found after caching
-      if let Ok(cli_options) = factory.cli_options() {
-        if let Some(lockfile) = cli_options.maybe_lockfile() {
-          if let Err(err) = &lockfile.write_if_changed() {
-            lsp_warn!("{:#}", err);
-          }
-        }
-      }
-
-      Ok(())
-    }
-
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-
-    // prepare the cache inside the lock
-    let mark = self
-      .performance
-      .mark_with_args("lsp.cache", (&specifiers, &referrer));
-    let prepare_cache_result = self.inner.write().await.prepare_cache(
-      specifiers,
-      referrer,
-      force_global_cache,
-    );
-
-    match prepare_cache_result {
-      Ok(result) => {
-        // cache outside the lock
-        let cli_factory = result.cli_factory;
-        let roots = result.roots;
-        let open_docs = result.open_docs;
-        let handle = spawn(async move {
-          create_graph_for_caching(cli_factory, roots, open_docs).await
-        });
-
-        if let Err(err) = handle.await.unwrap() {
-          lsp_warn!("Error caching: {:#}", err);
-          self.client.show_message(MessageType::WARNING, err);
-        }
-
-        // now get the lock back to update with the new information
-        self.inner.write().await.post_cache().await;
-        self.performance.measure(mark);
-      }
-      Err(err) => {
-        lsp_warn!("Error preparing caching: {:#}", err);
-        self.client.show_message(MessageType::WARNING, err);
-        return Err(LspError::internal_error());
-      }
-    }
-
-    Ok(Some(json!(true)))
-  }
-
-  /// This request is only used by the lsp integration tests to
-  /// coordinate the tests receiving the latest diagnostics.
-  pub async fn latest_diagnostic_batch_index_request(
-    &self,
-  ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(
-          ls.inner
-            .read()
-            .await
-            .diagnostics_server
-            .latest_batch_index()
-            .map(|v| v.into()),
-        )
-      })
-      .await
-  }
-
-  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(Some(ls.inner.read().await.get_performance()))
-      })
-      .await
-  }
-
-  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.task_definitions()
-      })
-      .await
-  }
-
-  pub async fn test_run_request(
-    &self,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_request(params).await
-      })
-      .await
-  }
-
-  pub async fn test_run_cancel_request(
-    &self,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_cancel_request(params)
-      })
-      .await
-  }
-
-  pub async fn virtual_text_document(
-    &self,
-    params: Option<Value>,
-  ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        match params.map(serde_json::from_value) {
-          Some(Ok(params)) => Ok(Some(
-            serde_json::to_value(
-              ls.inner.read().await.virtual_text_document(params)?,
-            )
-            .map_err(|err| {
-              error!(
-                "Failed to serialize virtual_text_document response: {:#}",
-                err
-              );
-              LspError::internal_error()
-            })?,
-          )),
-          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-          None => Err(LspError::invalid_params("Missing parameters")),
-        }
-      })
-      .await
-  }
-
-  pub async fn refresh_configuration(&self) {
-    let (folders, capable) = {
-      let inner = self.inner.read().await;
-      (
-        inner.config.workspace_folders.clone(),
-        inner.config.workspace_configuration_capable(),
-      )
-    };
-    if capable {
-      let mut scopes = Vec::with_capacity(folders.len() + 1);
-      scopes.push(None);
-      for (_, folder) in folders.as_ref() {
-        scopes.push(Some(folder.uri.clone()));
-      }
-      let configs = self
-        .client
-        .when_outside_lsp_lock()
-        .workspace_configuration(scopes)
-        .await;
-      if let Ok(configs) = configs {
-        if configs.len() != folders.len() + 1 {
-          lsp_warn!("Incorrect number of configurations received.");
-          return;
-        }
-        let mut configs = configs.into_iter();
-        let unscoped = configs.next().unwrap();
-        let mut folder_settings = Vec::with_capacity(folders.len());
-        for (folder_uri, _) in folders.as_ref() {
-          folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
-        }
-        self
-          .inner
-          .write()
-          .await
-          .config
-          .set_workspace_settings(unscoped, folder_settings);
-      }
-    }
-  }
 }
 
 impl Inner {
@@ -1116,7 +840,7 @@ impl Inner {
         let jsx_import_source = jsx_import_source.as_str()?.to_string();
         let referrer = config_file.specifier.clone();
         let specifier = format!("{jsx_import_source}/jsx-runtime");
-        self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+        self.task_queue.queue_task(Box::new(|ls| {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
@@ -1273,7 +997,7 @@ impl Inner {
       Ok(path) if is_importable_ext(&path) => {}
       _ => return,
     }
-    self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+    self.task_queue.queue_task(Box::new(|ls| {
       spawn(async move {
         if let Err(err) = ls.cache(vec![], specifier.clone(), false).await {
           lsp_warn!("Failed to cache \"{}\" on save: {:#}", &specifier, err);
@@ -3529,89 +3253,391 @@ impl Inner {
   }
 }
 
+#[derive(Debug, Clone)]
+struct WorkerLanguageServer {
+  client: Client,
+  pub inner: Rc<tokio::sync::RwLock<Inner>>,
+  /// This is used to block out standard request handling until the complete
+  /// user configuration has been fetched. This is done in the `initialized`
+  /// handler which normally may occur concurrently with those other requests.
+  /// TODO(nayeemrmn): This wouldn't be necessary if LSP allowed
+  /// `workspace/configuration` requests in the `initialize` handler. See:
+  /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
+  init_flag: AsyncFlag,
+  performance: Arc<Performance>,
+}
+
+impl WorkerLanguageServer {
+  pub fn new(client: Client) -> Self {
+    let performance = Arc::new(Performance::default());
+    Self {
+      client: client.clone(),
+      inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
+        client,
+        performance.clone(),
+      ))),
+      init_flag: Default::default(),
+      performance,
+    }
+  }
+
+  async fn cache(
+    &self,
+    specifiers: Vec<ModuleSpecifier>,
+    referrer: ModuleSpecifier,
+    force_global_cache: bool,
+  ) -> LspResult<Option<Value>> {
+    async fn create_graph_for_caching(
+      factory: CliFactory,
+      roots: Vec<ModuleSpecifier>,
+      open_docs: Vec<Arc<Document>>,
+    ) -> Result<(), AnyError> {
+      let open_docs = open_docs
+        .into_iter()
+        .map(|d| (d.specifier().clone(), d))
+        .collect::<HashMap<_, _>>();
+      let module_graph_builder = factory.module_graph_builder().await?;
+      let module_graph_creator = factory.module_graph_creator().await?;
+      let mut inner_loader = module_graph_builder.create_graph_loader();
+      let mut loader = crate::lsp::documents::OpenDocumentsGraphLoader {
+        inner_loader: &mut inner_loader,
+        open_docs: &open_docs,
+      };
+      let graph = module_graph_creator
+        .create_graph_with_loader(
+          GraphKind::All,
+          roots.clone(),
+          &mut loader,
+          graph_util::NpmCachingStrategy::Eager,
+        )
+        .await?;
+      graph_util::graph_valid(
+        &graph,
+        &CliSys::default(),
+        &roots,
+        graph_util::GraphValidOptions {
+          kind: GraphKind::All,
+          check_js: CheckJsOption::False,
+          exit_integrity_errors: false,
+        },
+      )?;
+
+      // Update the lockfile on the file system with anything new
+      // found after caching
+      if let Ok(cli_options) = factory.cli_options() {
+        if let Some(lockfile) = cli_options.maybe_lockfile() {
+          if let Err(err) = &lockfile.write_if_changed() {
+            lsp_warn!("{:#}", err);
+          }
+        }
+      }
+
+      Ok(())
+    }
+
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+
+    // prepare the cache inside the lock
+    let mark = self
+      .performance
+      .mark_with_args("lsp.cache", (&specifiers, &referrer));
+    let prepare_cache_result = self.inner.write().await.prepare_cache(
+      specifiers,
+      referrer,
+      force_global_cache,
+    );
+
+    match prepare_cache_result {
+      Ok(result) => {
+        // cache outside the lock
+        let cli_factory = result.cli_factory;
+        let roots = result.roots;
+        let open_docs = result.open_docs;
+        let handle = spawn(async move {
+          create_graph_for_caching(cli_factory, roots, open_docs).await
+        });
+
+        if let Err(err) = handle.await.unwrap() {
+          lsp_warn!("Error caching: {:#}", err);
+          self.client.show_message(MessageType::WARNING, err);
+        }
+
+        // now get the lock back to update with the new information
+        self.inner.write().await.post_cache().await;
+        self.performance.measure(mark);
+      }
+      Err(err) => {
+        lsp_warn!("Error preparing caching: {:#}", err);
+        self.client.show_message(MessageType::WARNING, err);
+        return Err(LspError::internal_error());
+      }
+    }
+
+    Ok(Some(json!(true)))
+  }
+
+  pub async fn refresh_configuration(&self) {
+    let (folders, capable) = {
+      let inner = self.inner.read().await;
+      (
+        inner.config.workspace_folders.clone(),
+        inner.config.workspace_configuration_capable(),
+      )
+    };
+    if capable {
+      let mut scopes = Vec::with_capacity(folders.len() + 1);
+      scopes.push(None);
+      for (_, folder) in folders.as_ref() {
+        scopes.push(Some(folder.uri.clone()));
+      }
+      let configs = self
+        .client
+        .when_outside_lsp_lock()
+        .workspace_configuration(scopes)
+        .await;
+      if let Ok(configs) = configs {
+        if configs.len() != folders.len() + 1 {
+          lsp_warn!("Incorrect number of configurations received.");
+          return;
+        }
+        let mut configs = configs.into_iter();
+        let unscoped = configs.next().unwrap();
+        let mut folder_settings = Vec::with_capacity(folders.len());
+        for (folder_uri, _) in folders.as_ref() {
+          folder_settings.push((folder_uri.clone(), configs.next().unwrap()));
+        }
+        self
+          .inner
+          .write()
+          .await
+          .config
+          .set_workspace_settings(unscoped, folder_settings);
+      }
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct LanguageServer {
+  shutdown_flag: AsyncFlag,
+  worker_thread: Rc<WorkerThread>,
+}
+
+impl LanguageServer {
+  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
+    Self {
+      worker_thread: Rc::new(WorkerThread::create(client)),
+      shutdown_flag,
+    }
+  }
+
+  /// This request is only used by the lsp integration tests to
+  /// coordinate the tests receiving the latest diagnostics.
+  pub async fn latest_diagnostic_batch_index_request(
+    &self,
+  ) -> LspResult<Option<Value>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        Ok(
+          ls.inner
+            .read()
+            .await
+            .diagnostics_server
+            .latest_batch_index()
+            .map(|v| v.into()),
+        )
+      })
+      .await
+  }
+
+  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        Ok(Some(ls.inner.read().await.get_performance()))
+      })
+      .await
+  }
+
+  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        ls.inner.read().await.task_definitions()
+      })
+      .await
+  }
+
+  pub async fn test_run_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        ls.inner.read().await.test_run_request(params).await
+      })
+      .await
+  }
+
+  pub async fn test_run_cancel_request(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        ls.inner.read().await.test_run_cancel_request(params)
+      })
+      .await
+  }
+
+  pub async fn virtual_text_document(
+    &self,
+    params: Option<Value>,
+  ) -> LspResult<Option<Value>> {
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        match params.map(serde_json::from_value) {
+          Some(Ok(params)) => Ok(Some(
+            serde_json::to_value(
+              ls.inner.read().await.virtual_text_document(params)?,
+            )
+            .map_err(|err| {
+              error!(
+                "Failed to serialize virtual_text_document response: {:#}",
+                err
+              );
+              LspError::internal_error()
+            })?,
+          )),
+          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+          None => Err(LspError::invalid_params("Missing parameters")),
+        }
+      })
+      .await
+  }
+}
+
 #[tower_lsp::async_trait(?Send)]
 impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
     &self,
     params: ExecuteCommandParams,
   ) -> LspResult<Option<Value>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    if params.command == "deno.cache" {
-      #[derive(Default, Deserialize)]
-      #[serde(rename_all = "camelCase")]
-      struct Options {
-        #[serde(default)]
-        force_global_cache: bool,
-      }
-      #[derive(Deserialize)]
-      struct Arguments(Vec<Url>, Url, #[serde(default)] Options);
-      let Arguments(specifiers, referrer, options) =
-        serde_json::from_value(json!(params.arguments))
-          .map_err(|err| LspError::invalid_params(err.to_string()))?;
-      self
-        .cache(specifiers, referrer, options.force_global_cache)
-        .await
-    } else if params.command == "deno.reloadImportRegistries" {
-      self.inner.write().await.reload_import_registries().await
-    } else {
-      Ok(None)
-    }
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
+        if params.command == "deno.cache" {
+          #[derive(Default, Deserialize)]
+          #[serde(rename_all = "camelCase")]
+          struct Options {
+            #[serde(default)]
+            force_global_cache: bool,
+          }
+          #[derive(Deserialize)]
+          struct Arguments(Vec<Url>, Url, #[serde(default)] Options);
+          let Arguments(specifiers, referrer, options) =
+            serde_json::from_value(json!(params.arguments))
+              .map_err(|err| LspError::invalid_params(err.to_string()))?;
+          ls.cache(specifiers, referrer, options.force_global_cache)
+            .await
+        } else if params.command == "deno.reloadImportRegistries" {
+          ls.inner.write().await.reload_import_registries().await
+        } else {
+          Ok(None)
+        }
+      })
+      .await
   }
 
   async fn initialize(
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    self.inner.write().await.initialize(params).await
+    self
+      .worker_thread
+      .spawn_with_cancellation(move |ls, _| async move {
+        ls.inner.write().await.initialize(params).await
+      })
+      .await
   }
 
   async fn initialized(&self, _: InitializedParams) {
-    self.refresh_configuration().await;
-    let (registrations, http_client) = {
-      let mut inner = self.inner.write().await;
-      let registrations = inner.initialized().await;
-      inner.task_queue.start(self.clone());
-      (registrations, inner.http_client_provider.clone())
-    };
-    self.init_flag.raise();
+    self
+      .worker_thread
+      .spawn(move |ls| async move {
+        ls.refresh_configuration().await;
+        let (registrations, http_client) = {
+          let mut inner = ls.inner.write().await;
+          let registrations = inner.initialized().await;
+          inner.task_queue.start(ls.clone());
+          (registrations, inner.http_client_provider.clone())
+        };
+        ls.init_flag.raise();
 
-    for registration in registrations {
-      if let Err(err) = self
-        .client
-        .when_outside_lsp_lock()
-        .register_capability(vec![registration])
-        .await
-      {
-        lsp_warn!("Client errored on capabilities.\n{:#}", err);
-      }
-    }
-
-    if upgrade_check_enabled() {
-      let client = self.client.clone();
-      // spawn to avoid lsp send/sync requirement, but also just
-      // to ensure this initialized method returns quickly
-      spawn(async move {
-        match check_for_upgrades_for_lsp(http_client).await {
-          Ok(version_info) => {
-            client.send_did_upgrade_check_notification(
-              lsp_custom::DidUpgradeCheckNotificationParams {
-                upgrade_available: version_info.map(|info| {
-                  lsp_custom::UpgradeAvailable {
-                    latest_version: info.latest_version,
-                    is_canary: info.is_canary,
-                  }
-                }),
-              },
-            );
+        for registration in registrations {
+          if let Err(err) = ls
+            .client
+            .when_outside_lsp_lock()
+            .register_capability(vec![registration])
+            .await
+          {
+            lsp_warn!("Client errored on capabilities.\n{:#}", err);
           }
-          Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
         }
-      });
-    }
 
-    lsp_log!("Server ready.");
+        if upgrade_check_enabled() {
+          let client = ls.client.clone();
+          // spawn to avoid lsp send/sync requirement, but also just
+          // to ensure this initialized method returns quickly
+          spawn(async move {
+            match check_for_upgrades_for_lsp(http_client).await {
+              Ok(version_info) => {
+                client.send_did_upgrade_check_notification(
+                  lsp_custom::DidUpgradeCheckNotificationParams {
+                    upgrade_available: version_info.map(|info| {
+                      lsp_custom::UpgradeAvailable {
+                        latest_version: info.latest_version,
+                        is_canary: info.is_canary,
+                      }
+                    }),
+                  },
+                );
+              }
+              Err(err) => lsp_warn!("Failed to check for upgrades: {err}"),
+            }
+          });
+        }
+
+        lsp_log!("Server ready.");
+      })
+      .await
   }
 
   async fn shutdown(&self) -> LspResult<()> {
@@ -3620,52 +3646,48 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn did_open(&self, params: DidOpenTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.write().await.did_open(params).await;
       })
       .await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.write().await.did_change(params).await;
       })
       .await;
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.write().await.did_save(params);
       })
       .await;
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.write().await.did_close(params).await;
       })
       .await;
@@ -3675,13 +3697,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeConfigurationParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         let mark = ls
           .performance
           .mark_with_args("lsp.did_change_configuration", &params);
@@ -3700,13 +3721,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWatchedFilesParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .write()
           .await
@@ -3720,13 +3740,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DidChangeWorkspaceFoldersParams,
   ) {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn(async move {
+      .spawn(|ls| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         let mark = ls
           .performance
           .mark_with_args("lsp.did_change_workspace_folders", &params);
@@ -3749,13 +3768,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentSymbolParams,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.document_symbol(params, &token).await
       })
       .await
@@ -3765,26 +3783,24 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentFormattingParams,
   ) -> LspResult<Option<Vec<TextEdit>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.formatting(params, &token).await
       })
       .await
   }
 
   async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.hover(params, &token).await
       })
       .await
@@ -3794,13 +3810,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InlayHintParams,
   ) -> LspResult<Option<Vec<InlayHint>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.inlay_hint(params, &token).await
       })
       .await
@@ -3810,13 +3825,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeActionParams,
   ) -> LspResult<Option<CodeActionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.code_action(params, &token).await
       })
       .await
@@ -3826,13 +3840,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeAction,
   ) -> LspResult<CodeAction> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -3846,26 +3859,24 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CodeLensParams,
   ) -> LspResult<Option<Vec<CodeLens>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.code_lens(params, &token).await
       })
       .await
   }
 
   async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -3879,13 +3890,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: DocumentHighlightParams,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -3899,13 +3909,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: ReferenceParams,
   ) -> LspResult<Option<Vec<Location>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.references(params, &token).await
       })
       .await
@@ -3915,13 +3924,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoDefinitionParams,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.goto_definition(params, &token).await
       })
       .await
@@ -3931,13 +3939,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoTypeDefinitionParams,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -3951,13 +3958,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CompletionParams,
   ) -> LspResult<Option<CompletionResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.completion(params, &token).await
       })
       .await
@@ -3967,13 +3973,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CompletionItem,
   ) -> LspResult<CompletionItem> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -3987,13 +3992,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: GotoImplementationParams,
   ) -> LspResult<Option<GotoImplementationResponse>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -4007,13 +4011,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: FoldingRangeParams,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.folding_range(params, &token).await
       })
       .await
@@ -4023,13 +4026,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyIncomingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.incoming_calls(params, &token).await
       })
       .await
@@ -4039,13 +4041,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyOutgoingCallsParams,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.outgoing_calls(params, &token).await
       })
       .await
@@ -4055,13 +4056,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: CallHierarchyPrepareParams,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -4075,13 +4075,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: RenameParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.rename(params, &token).await
       })
       .await
@@ -4091,13 +4090,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SelectionRangeParams,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.selection_range(params, &token).await
       })
       .await
@@ -4107,13 +4105,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SemanticTokensParams,
   ) -> LspResult<Option<SemanticTokensResult>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -4127,13 +4124,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SemanticTokensRangeParams,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -4147,13 +4143,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: SignatureHelpParams,
   ) -> LspResult<Option<SignatureHelp>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.signature_help(params, &token).await
       })
       .await
@@ -4163,13 +4158,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: RenameFilesParams,
   ) -> LspResult<Option<WorkspaceEdit>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner
           .read()
           .await
@@ -4183,13 +4177,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: WorkspaceSymbolParams,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
-    if !self.init_flag.is_raised() {
-      self.init_flag.wait_raised().await;
-    }
-    let ls = self.clone();
     self
       .worker_thread
-      .spawn_with_cancellation(move |token| async move {
+      .spawn_with_cancellation(move |ls, token| async move {
+        if !ls.init_flag.is_raised() {
+          ls.init_flag.wait_raised().await;
+        }
         ls.inner.read().await.symbol(params, &token).await
       })
       .await
