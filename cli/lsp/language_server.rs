@@ -3218,7 +3218,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
@@ -3284,7 +3283,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
@@ -3360,7 +3358,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
@@ -3423,7 +3420,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -4232,7 +4228,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
@@ -4274,7 +4269,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
@@ -4354,6 +4348,7 @@ impl Inner {
     Ok(result)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn inlay_hint(
     &self,
     params: InlayHintParams,

@@ -396,7 +396,7 @@ export function clearScriptNamesCache() {
  * specific "bindings" to the Deno environment that tsc needs to work.
  *
  * @type {ts.CompilerHost & ts.LanguageServiceHost} */
-const hosty = {
+const hostImpl = {
   fileExists(specifier) {
     if (logDebug) {
       debug(`host.fileExists("${specifier}")`);
@@ -732,11 +732,9 @@ const hosty = {
     }
     return scriptSnapshot;
   },
-  // getModuleResolutionCache() {
-  //   return resolutionCache;
-  // }
 };
-// resolutionCache = ts.createResolutionCache(host, host.getCurrentDirectory(), true);
+
+// these host methods are super noisy (often thousands of calls per TSC request)
 const excluded = new Set([
   "getScriptVersion",
   "fileExists",
@@ -748,13 +746,13 @@ const excluded = new Set([
   "getGlobalTypingsCacheLocation",
   "getSourceFile",
 ]);
-/** @type {typeof hosty} */
+/** @type {typeof hostImpl} */
 export const host = {
   log(msg) {
     ops.op_log_event(msg);
   },
 };
-for (const [key, value] of Object.entries(hosty)) {
+for (const [key, value] of Object.entries(hostImpl)) {
   if (typeof value === "function" && !excluded.has(key)) {
     host[key] = (...args) => {
       return spanned(key, () => value.bind(host)(...args));
