@@ -23,6 +23,18 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
+   * ```ts
+   * const surface = Deno.UnsafeWindowSurface.create(
+   *   "win32",    // system
+   *   hwnd,       // window handle
+   *   hinstance   // display handle
+   * );
+   *
+   * const adapter = await navigator.gpu.requestAdapter({
+   *   compatibleSurface: surface
+   * });
+   * ```
+   *
    * @category GPU
    * @experimental
    */
@@ -1396,21 +1408,7 @@ declare namespace Deno {
      * @experimental
      */
     export interface RuleContext {
-      /**
-       * The running rule id: `<plugin-name>/<rule-name>`
-       */
       id: string;
-      /**
-       * Name of the file that's currently being linted.
-       */
-      fileName: string;
-      /**
-       * Retrieve the source code of the current file.
-       */
-      source(): string;
-      /**
-       * Report a lint error.
-       */
       report(data: ReportData): void;
     }
 
