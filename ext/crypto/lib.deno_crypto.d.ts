@@ -237,18 +237,106 @@ declare var CryptoKeyPair: {
  * @category Crypto
  */
 interface SubtleCrypto {
+  /**
+   * The SubtleCrypto.generateKey() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations. This method is used to generate a cryptographic key.
+   *
+   * Use Cases
+   * 
+   * - Generating symmetric keys for encryption/decryption.
+   * - Creating public/private key pairs for asymmetric encryption.
+   * - Ensuring secure communication in web applications.
+   * 
+   * @example
+   * ```ts
+   * // RSA key generation
+   * const key = await.crypto.subtle.generateKey(
+   *  {
+      name: "RSA-OAEP",
+      modulusLength: 4096,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+   *  },
+   *  true,
+   *  ["encrypt", "decrypt"]
+   * );
+   * ```
+   * 
+   * @example
+   * ```ts
+   * // Elliptic curve (ECDSA) key pair generation
+   * const key = await.crypto.subtle.generateKey(
+   *  {
+   *    name: "ECDSA",
+   *    namedCurve: "P-384",
+   *  },
+   *  true,
+   *  ["sign", "verify"]
+   * );
+   * ```
+  *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
     algorithm: RsaHashedKeyGenParams | EcKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
+    /**
+   * The SubtleCrypto.generateKey() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations. This method is used to generate a cryptographic key.
+   *
+   * Use Cases
+   * 
+   * - Generating symmetric keys for encryption/decryption.
+   * - Creating public/private key pairs for asymmetric encryption.
+   * - Ensuring secure communication in web applications.
+   * 
+   * 
+   * @example
+   * ```ts
+   * const key = await.crypto.subtle.generateKey(
+   *  {
+   *    name: "AES-GCM",
+   *    length: 256,
+   *  },
+   *  true,
+   *  ["encrypt", "decrypt"]
+   * );
+   * ```
+   * 
+   * @example
+   * ```ts
+   * // HMAC key generation
+   * const key = await.crypto.subtle.generateKey(
+   *  {
+   *    name: "HMAC",
+   *    hash: { name: "SHA-512" },
+   *  },
+   *  true,
+   *  ["sign", "verify"]
+   * );
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
     algorithm: AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+      /**
+   * The SubtleCrypto.generateKey() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations. This method is used to generate a cryptographic key.
+   *
+   * Use Cases
+   * 
+   * - Generating symmetric keys for encryption/decryption.
+   * - Creating public/private key pairs for asymmetric encryption.
+   * - Ensuring secure communication in web applications.
+   * 
+   * 
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
-    algorithm: AlgorithmIdentifier,
+    // algorithm: AlgorithmIdentifier,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
