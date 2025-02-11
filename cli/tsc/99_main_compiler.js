@@ -13,13 +13,10 @@
 delete Object.prototype.__proto__;
 
 import {
-  assert,
   AssertionError,
-  ASSETS_URL_PREFIX,
   debug,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
-  getAssets,
   host,
   setLogDebug,
 } from "./97_ts_host.js";
@@ -214,31 +211,20 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
   debug("<<< exec stop");
 }
 
-globalThis.snapshot = function (libs) {
-  for (const lib of libs) {
-    const specifier = `lib.${lib}.d.ts`;
-    // we are using internal APIs here to "inject" our custom libraries into
-    // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
-    if (!ts.libs.includes(lib)) {
-      ts.libs.push(lib);
-      ts.libMap.set(lib, `lib.${lib}.d.ts`);
-    }
-    // we are caching in memory common type libraries that will be re-used by
-    // tsc on when the snapshot is restored
-    assert(
-      !!host.getSourceFile(
-        `${ASSETS_URL_PREFIX}${specifier}`,
-        ts.ScriptTarget.ESNext,
-      ),
-      `failed to load '${ASSETS_URL_PREFIX}${specifier}'`,
-    );
+const libs = ops.op_libs();
+for (const lib of libs) {
+  const specifier = `lib.${lib}.d.ts`;
+  // we are using internal APIs here to "inject" our custom libraries into
+  // tsc, so things like `"lib": [ "deno.ns" ]` are supported.
+  if (!ts.libs.includes(lib)) {
+    ts.libs.push(lib);
+    ts.libMap.set(lib, specifier);
   }
-};
+}
 
 // exposes the functions that are called by `tsc::exec()` when type
 // checking TypeScript.
 globalThis.exec = exec;
-globalThis.getAssets = getAssets;
 
 // exposes the functions that are called when the compiler is used as a
 // language service.
