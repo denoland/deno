@@ -11,6 +11,7 @@ use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 
@@ -246,6 +247,7 @@ pub struct TsServer {
   pub specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
+  enable_tracing: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -404,7 +406,14 @@ impl TsServer {
       specifier_map: Arc::new(TscSpecifierMap::new()),
       inspector_server: Mutex::new(None),
       pending_change: Mutex::new(None),
+      enable_tracing: Default::default(),
     }
+  }
+
+  pub fn set_tracing_enabled(&self, enabled: bool) {
+    self
+      .enable_tracing
+      .store(enabled, std::sync::atomic::Ordering::Relaxed);
   }
 
   pub fn start(
@@ -430,12 +439,14 @@ impl TsServer {
     let receiver = self.receiver.lock().take().unwrap();
     let performance = self.performance.clone();
     let specifier_map = self.specifier_map.clone();
+    let enable_tracing = self.enable_tracing.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
         performance,
         specifier_map,
         maybe_inspector_server,
+        enable_tracing,
       )
     });
     Ok(())
@@ -4469,6 +4480,7 @@ struct State {
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
   context: Option<opentelemetry::Context>,
+  enable_tracing: Arc<AtomicBool>,
 }
 
 impl State {
@@ -4477,6 +4489,7 @@ impl State {
     specifier_map: Arc<TscSpecifierMap>,
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
+    enable_tracing: Arc<AtomicBool>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4489,7 +4502,14 @@ impl State {
       mark: None,
       pending_requests: Some(pending_requests),
       context: None,
+      enable_tracing,
     }
+  }
+
+  fn tracing_enabled(&self) -> bool {
+    self
+      .enable_tracing
+      .load(std::sync::atomic::Ordering::Relaxed)
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
@@ -4775,7 +4795,7 @@ fn op_respond(
   }
 }
 
-struct TracingSpan(#[allow(dead_code)] tracing::span::EnteredSpan);
+struct TracingSpan(#[allow(dead_code)] Option<tracing::span::EnteredSpan>);
 
 deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
@@ -4796,18 +4816,24 @@ fn op_make_span(
   needs_context: bool,
 ) -> *const c_void {
   let state = op_state.borrow_mut::<State>();
+  if !state.tracing_enabled() {
+    return deno_core::ExternalPointer::new(TracingSpan(None)).into_raw();
+  }
   let sp = tracing::info_span!("js", otel.name = format!("js::{s}").as_str());
   let span = if needs_context {
     span_with_context(state, sp)
   } else {
     sp.entered()
   };
-  deno_core::ExternalPointer::new(TracingSpan(span)).into_raw()
+  deno_core::ExternalPointer::new(TracingSpan(Some(span))).into_raw()
 }
 
 #[op2(fast)]
-fn op_log_event(#[string] msg: &str) {
-  tracing::info!(msg = msg);
+fn op_log_event(op_state: &OpState, #[string] msg: &str) {
+  let state = op_state.borrow::<State>();
+  if state.tracing_enabled() {
+    tracing::info!(msg = msg);
+  }
 }
 
 #[op2(fast)]
@@ -4815,8 +4841,8 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
   let ptr = deno_core::ExternalPointer::<TracingSpan>::from_raw(span);
   // SAFETY: trust me
   let _span = unsafe { ptr.unsafely_take().0 };
+  let state = op_state.borrow_mut::<State>();
   if root {
-    let state = op_state.borrow_mut::<State>();
     state.context = None;
   }
 }
@@ -5005,6 +5031,7 @@ fn run_tsc_thread(
   performance: Arc<Performance>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
   let mut extensions =
@@ -5013,6 +5040,7 @@ fn run_tsc_thread(
     performance,
     specifier_map,
     request_rx,
+    enable_tracing,
   ));
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
     extensions,
@@ -5108,6 +5136,7 @@ deno_core::extension!(deno_tsc,
     performance: Arc<Performance>,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
+    enable_tracing: Arc<AtomicBool>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5115,6 +5144,7 @@ deno_core::extension!(deno_tsc,
       options.specifier_map,
       options.performance,
       options.request_rx,
+      options.enable_tracing,
     ));
   },
   customizer = |ext: &mut deno_core::Extension| {
@@ -5828,8 +5858,13 @@ mod tests {
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
     let (_tx, rx) = mpsc::unbounded_channel();
-    let state =
-      State::new(state_snapshot, Default::default(), Default::default(), rx);
+    let state = State::new(
+      state_snapshot,
+      Default::default(),
+      Default::default(),
+      rx,
+      Arc::new(AtomicBool::new(true)),
+    );
     let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state

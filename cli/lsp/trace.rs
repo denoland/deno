@@ -34,8 +34,7 @@ pub(crate) fn make_tracer(
 }
 
 pub(crate) struct TracingGuard(
-  // #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
-  (),
+  #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
 );
 
 impl fmt::Debug for TracingGuard {
@@ -144,15 +143,12 @@ pub(crate) fn init_tracing_subscriber(
     _ => None,
   };
 
-  tracing::subscriber::set_global_default(
+  let guard = tracing::subscriber::set_default(
     tracing_subscriber::registry()
       .with(filter)
       .with(logging_layer)
       .with(open_telemetry_layer),
-  )
-  .unwrap();
-  // let guard =
-  //   .set_global_default();
-  let guard = ();
+  );
+
   Ok(TracingGuard(guard))
 }

@@ -650,6 +650,9 @@ impl Inner {
             .into()
           })
         });
+    self
+      .ts_server
+      .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
     self._tracing = tracing.and_then(|conf| {
       if !conf.enabled() {
         return None;
