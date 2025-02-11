@@ -459,6 +459,23 @@ interface DOMStringList {
 type BufferSource = ArrayBufferView | ArrayBuffer;
 
 /** @category I/O */
+/**
+ * A global console object that provides methods for logging, debugging, and error reporting.
+ * The console object provides access to the browser's or runtime's debugging console functionality.
+ * It allows developers to output text and data for debugging purposes.
+ *
+ * @global
+ * @var
+ * @type {Console}
+ *
+ * @example
+ * ```typescript
+ * console.log("Hello, world!");
+ * console.error("An error occurred");
+ * console.warn("Warning message");
+ * console.debug("Debug information");
+ * ```
+ */
 declare var console: Console;
 
 /** @category Events */
