@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
 
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
+use deno_core::ascii_str;
 use deno_core::error::AnyError;
 use deno_core::located_script_name;
 use deno_core::op2;
@@ -18,6 +18,7 @@ use deno_core::serde::Deserializer;
 use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
+use deno_core::serde_v8;
 use deno_core::url::Url;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -58,8 +59,33 @@ pub use self::diagnostics::DiagnosticCategory;
 pub use self::diagnostics::Diagnostics;
 pub use self::diagnostics::Position;
 
+pub static COMPILER_SNAPSHOT: Lazy<Box<[u8]>> = Lazy::new(
+  #[cold]
+  #[inline(never)]
+  || {
+    static COMPRESSED_COMPILER_SNAPSHOT: &[u8] =
+      include_bytes!(concat!(env!("OUT_DIR"), "/COMPILER_SNAPSHOT.bin"));
+
+    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
+    // ~45s on M1 MacBook Pro; without compression it took ~1s.
+    // Thus we're not using compressed snapshot, trading off
+    // a lot of build time for some startup time in debug build.
+    #[cfg(debug_assertions)]
+    return COMPRESSED_COMPILER_SNAPSHOT.to_vec().into_boxed_slice();
+
+    #[cfg(not(debug_assertions))]
+    zstd::bulk::decompress(
+      &COMPRESSED_COMPILER_SNAPSHOT[4..],
+      u32::from_le_bytes(COMPRESSED_COMPILER_SNAPSHOT[0..4].try_into().unwrap())
+        as usize,
+    )
+    .unwrap()
+    .into_boxed_slice()
+  },
+);
+
 pub fn get_types_declaration_file_text() -> String {
-  let mut assets = get_asset_texts()
+  let mut assets = get_asset_texts_from_new_runtime()
     .unwrap()
     .into_iter()
     .map(|a| (a.specifier, a.text))
@@ -94,146 +120,41 @@ pub fn get_types_declaration_file_text() -> String {
     .join("\n")
 }
 
-fn get_asset_texts() -> Result<Vec<AssetText>, AnyError> {
-  let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for (name, text) in LAZILY_LOADED_STATIC_ASSETS.iter() {
-    out.push(AssetText {
-      specifier: format!("asset:///{name}"),
-      text: text.to_string(),
-    });
-  }
-  Ok(out)
+fn get_asset_texts_from_new_runtime() -> Result<Vec<AssetText>, AnyError> {
+  deno_core::extension!(
+    deno_cli_tsc,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_remap_specifier,
+      op_resolve,
+      op_respond,
+    ]
+  );
+
+  // the assets are stored within the typescript isolate, so take them out of there
+  let mut runtime = JsRuntime::new(RuntimeOptions {
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![deno_cli_tsc::init_ops()],
+    ..Default::default()
+  });
+  let global = runtime
+    .execute_script("get_assets.js", ascii_str!("globalThis.getAssets()"))?;
+  let scope = &mut runtime.handle_scope();
+  let local = deno_core::v8::Local::new(scope, global);
+  Ok(serde_v8::from_v8::<Vec<AssetText>>(scope, local)?)
 }
 
-macro_rules! maybe_compressed_source {
-  ($file: expr) => {{
-    #[cfg(debug_assertions)]
-    {
-      StaticAssetSource::Uncompressed(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/",
-        $file
-      )))
-    }
-    #[cfg(not(debug_assertions))]
-    {
-      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
-        concat!(env!("OUT_DIR"), "/", $file, ".zstd")
-      )))
-    }
-  }};
-  (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
-    #[cfg(debug_assertions)]
-    {
-      StaticAssetSource::Uncompressed(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/",
-        $uncomp
-      )))
-    }
-    #[cfg(not(debug_assertions))]
-    {
-      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
-        concat!(env!("OUT_DIR"), "/", $comp, ".zstd")
-      )))
-    }
-  }};
+pub fn compiler_snapshot() -> &'static [u8] {
+  &COMPILER_SNAPSHOT
 }
 
-macro_rules! maybe_compressed_lib {
-  ($name: expr, $file: expr) => {
-    ($name, maybe_compressed_source!(concat!("tsc/dts/", $file)))
+macro_rules! inc {
+  ($e:expr) => {
+    include_str!(concat!("./dts/", $e))
   };
-  ($e: expr) => {
-    maybe_compressed_lib!($e, $e)
-  };
-}
-
-macro_rules! maybe_compressed_ext_lib {
-  ($name: expr, $file: expr) => {
-    (
-      $name,
-      maybe_compressed_source!(
-        compressed = concat!("ext/", $file),
-        uncompressed = concat!("../ext/", $file)
-      ),
-    )
-  };
-}
-
-#[derive(Clone)]
-pub enum StaticAssetSource {
-  #[cfg_attr(debug_assertions, allow(dead_code))]
-  Compressed(CompressedSource),
-  Uncompressed(&'static str),
-}
-
-/// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
-#[derive(Debug, Clone)]
-pub enum MaybeStaticSource {
-  Computed(Arc<str>),
-  Static(&'static str),
-}
-
-impl std::fmt::Display for MaybeStaticSource {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      MaybeStaticSource::Computed(arc) => write!(f, "{}", arc),
-      MaybeStaticSource::Static(s) => write!(f, "{}", s),
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for Cow<'static, str> {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => Cow::Owned(arc.to_string()),
-      MaybeStaticSource::Static(s) => Cow::Borrowed(s),
-    }
-  }
-}
-
-impl AsRef<str> for MaybeStaticSource {
-  fn as_ref(&self) -> &str {
-    match self {
-      MaybeStaticSource::Computed(arc) => arc.as_ref(),
-      MaybeStaticSource::Static(s) => s,
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for String {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => arc.to_string(),
-      MaybeStaticSource::Static(s) => s.into(),
-    }
-  }
-}
-
-impl From<MaybeStaticSource> for Arc<str> {
-  fn from(value: MaybeStaticSource) -> Self {
-    match value {
-      MaybeStaticSource::Computed(arc) => arc,
-      MaybeStaticSource::Static(s) => Arc::from(s),
-    }
-  }
-}
-
-impl StaticAssetSource {
-  pub fn get(&self) -> MaybeStaticSource {
-    match self {
-      StaticAssetSource::Compressed(compressed_source) => {
-        MaybeStaticSource::Computed(compressed_source.get())
-      }
-      StaticAssetSource::Uncompressed(src) => MaybeStaticSource::Static(src),
-    }
-  }
-
-  #[allow(clippy::inherent_to_string)]
-  pub fn to_string(&self) -> String {
-    self.get().into()
-  }
 }
 
 /// Contains static assets that are not preloaded in the compiler snapshot.
@@ -241,154 +162,40 @@ impl StaticAssetSource {
 /// We lazily load these because putting them in the compiler snapshot will
 /// increase memory usage when not used (last time checked by about 0.5MB).
 pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
-  HashMap<&'static str, StaticAssetSource>,
+  HashMap<&'static str, &'static str>,
 > = Lazy::new(|| {
   ([
-    // compressed in build.rs
-    maybe_compressed_ext_lib!(
-      "lib.deno.console.d.ts",
-      "console/lib.deno_console.d.ts"
+    (
+      "lib.dom.asynciterable.d.ts",
+      inc!("lib.dom.asynciterable.d.ts"),
     ),
-    maybe_compressed_ext_lib!("lib.deno.url.d.ts", "url/lib.deno_url.d.ts"),
-    maybe_compressed_ext_lib!("lib.deno.web.d.ts", "web/lib.deno_web.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.fetch.d.ts",
-      "fetch/lib.deno_fetch.d.ts"
+    ("lib.dom.d.ts", inc!("lib.dom.d.ts")),
+    ("lib.dom.extras.d.ts", inc!("lib.dom.extras.d.ts")),
+    ("lib.dom.iterable.d.ts", inc!("lib.dom.iterable.d.ts")),
+    ("lib.es6.d.ts", inc!("lib.es6.d.ts")),
+    ("lib.es2016.full.d.ts", inc!("lib.es2016.full.d.ts")),
+    ("lib.es2017.full.d.ts", inc!("lib.es2017.full.d.ts")),
+    ("lib.es2018.full.d.ts", inc!("lib.es2018.full.d.ts")),
+    ("lib.es2019.full.d.ts", inc!("lib.es2019.full.d.ts")),
+    ("lib.es2020.full.d.ts", inc!("lib.es2020.full.d.ts")),
+    ("lib.es2021.full.d.ts", inc!("lib.es2021.full.d.ts")),
+    ("lib.es2022.full.d.ts", inc!("lib.es2022.full.d.ts")),
+    ("lib.esnext.full.d.ts", inc!("lib.esnext.full.d.ts")),
+    ("lib.scripthost.d.ts", inc!("lib.scripthost.d.ts")),
+    ("lib.webworker.d.ts", inc!("lib.webworker.d.ts")),
+    (
+      "lib.webworker.importscripts.d.ts",
+      inc!("lib.webworker.importscripts.d.ts"),
     ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.websocket.d.ts",
-      "websocket/lib.deno_websocket.d.ts"
+    (
+      "lib.webworker.iterable.d.ts",
+      inc!("lib.webworker.iterable.d.ts"),
     ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.webstorage.d.ts",
-      "webstorage/lib.deno_webstorage.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.canvas.d.ts",
-      "canvas/lib.deno_canvas.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.crypto.d.ts",
-      "crypto/lib.deno_crypto.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.broadcast_channel.d.ts",
-      "broadcast_channel/lib.deno_broadcast_channel.d.ts"
-    ),
-    maybe_compressed_ext_lib!("lib.deno.net.d.ts", "net/lib.deno_net.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.cache.d.ts",
-      "cache/lib.deno_cache.d.ts"
-    ),
-    maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
-    maybe_compressed_lib!("lib.deno.window.d.ts"),
-    maybe_compressed_lib!("lib.deno.worker.d.ts"),
-    maybe_compressed_lib!("lib.deno.shared_globals.d.ts"),
-    maybe_compressed_lib!("lib.deno.ns.d.ts"),
-    maybe_compressed_lib!("lib.deno.unstable.d.ts"),
-    maybe_compressed_lib!("lib.decorators.d.ts"),
-    maybe_compressed_lib!("lib.decorators.legacy.d.ts"),
-    maybe_compressed_lib!("lib.dom.asynciterable.d.ts"),
-    maybe_compressed_lib!("lib.dom.d.ts"),
-    maybe_compressed_lib!("lib.dom.extras.d.ts"),
-    maybe_compressed_lib!("lib.dom.iterable.d.ts"),
-    maybe_compressed_lib!("lib.es2015.collection.d.ts"),
-    maybe_compressed_lib!("lib.es2015.core.d.ts"),
-    maybe_compressed_lib!("lib.es2015.d.ts"),
-    maybe_compressed_lib!("lib.es2015.generator.d.ts"),
-    maybe_compressed_lib!("lib.es2015.iterable.d.ts"),
-    maybe_compressed_lib!("lib.es2015.promise.d.ts"),
-    maybe_compressed_lib!("lib.es2015.proxy.d.ts"),
-    maybe_compressed_lib!("lib.es2015.reflect.d.ts"),
-    maybe_compressed_lib!("lib.es2015.symbol.d.ts"),
-    maybe_compressed_lib!("lib.es2015.symbol.wellknown.d.ts"),
-    maybe_compressed_lib!("lib.es2016.array.include.d.ts"),
-    maybe_compressed_lib!("lib.es2016.d.ts"),
-    maybe_compressed_lib!("lib.es2016.full.d.ts"),
-    maybe_compressed_lib!("lib.es2016.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2017.arraybuffer.d.ts"),
-    maybe_compressed_lib!("lib.es2017.d.ts"),
-    maybe_compressed_lib!("lib.es2017.date.d.ts"),
-    maybe_compressed_lib!("lib.es2017.full.d.ts"),
-    maybe_compressed_lib!("lib.es2017.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2017.object.d.ts"),
-    maybe_compressed_lib!("lib.es2017.sharedmemory.d.ts"),
-    maybe_compressed_lib!("lib.es2017.string.d.ts"),
-    maybe_compressed_lib!("lib.es2017.typedarrays.d.ts"),
-    maybe_compressed_lib!("lib.es2018.asyncgenerator.d.ts"),
-    maybe_compressed_lib!("lib.es2018.asynciterable.d.ts"),
-    maybe_compressed_lib!("lib.es2018.d.ts"),
-    maybe_compressed_lib!("lib.es2018.full.d.ts"),
-    maybe_compressed_lib!("lib.es2018.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2018.promise.d.ts"),
-    maybe_compressed_lib!("lib.es2018.regexp.d.ts"),
-    maybe_compressed_lib!("lib.es2019.array.d.ts"),
-    maybe_compressed_lib!("lib.es2019.d.ts"),
-    maybe_compressed_lib!("lib.es2019.full.d.ts"),
-    maybe_compressed_lib!("lib.es2019.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2019.object.d.ts"),
-    maybe_compressed_lib!("lib.es2019.string.d.ts"),
-    maybe_compressed_lib!("lib.es2019.symbol.d.ts"),
-    maybe_compressed_lib!("lib.es2020.bigint.d.ts"),
-    maybe_compressed_lib!("lib.es2020.d.ts"),
-    maybe_compressed_lib!("lib.es2020.date.d.ts"),
-    maybe_compressed_lib!("lib.es2020.full.d.ts"),
-    maybe_compressed_lib!("lib.es2020.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2020.number.d.ts"),
-    maybe_compressed_lib!("lib.es2020.promise.d.ts"),
-    maybe_compressed_lib!("lib.es2020.sharedmemory.d.ts"),
-    maybe_compressed_lib!("lib.es2020.string.d.ts"),
-    maybe_compressed_lib!("lib.es2020.symbol.wellknown.d.ts"),
-    maybe_compressed_lib!("lib.es2021.d.ts"),
-    maybe_compressed_lib!("lib.es2021.full.d.ts"),
-    maybe_compressed_lib!("lib.es2021.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2021.promise.d.ts"),
-    maybe_compressed_lib!("lib.es2021.string.d.ts"),
-    maybe_compressed_lib!("lib.es2021.weakref.d.ts"),
-    maybe_compressed_lib!("lib.es2022.array.d.ts"),
-    maybe_compressed_lib!("lib.es2022.d.ts"),
-    maybe_compressed_lib!("lib.es2022.error.d.ts"),
-    maybe_compressed_lib!("lib.es2022.full.d.ts"),
-    maybe_compressed_lib!("lib.es2022.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2022.object.d.ts"),
-    maybe_compressed_lib!("lib.es2022.regexp.d.ts"),
-    maybe_compressed_lib!("lib.es2022.string.d.ts"),
-    maybe_compressed_lib!("lib.es2023.array.d.ts"),
-    maybe_compressed_lib!("lib.es2023.collection.d.ts"),
-    maybe_compressed_lib!("lib.es2023.d.ts"),
-    maybe_compressed_lib!("lib.es2023.full.d.ts"),
-    maybe_compressed_lib!("lib.es2023.intl.d.ts"),
-    maybe_compressed_lib!("lib.es2024.arraybuffer.d.ts"),
-    maybe_compressed_lib!("lib.es2024.collection.d.ts"),
-    maybe_compressed_lib!("lib.es2024.d.ts"),
-    maybe_compressed_lib!("lib.es2024.full.d.ts"),
-    maybe_compressed_lib!("lib.es2024.object.d.ts"),
-    maybe_compressed_lib!("lib.es2024.promise.d.ts"),
-    maybe_compressed_lib!("lib.es2024.regexp.d.ts"),
-    maybe_compressed_lib!("lib.es2024.sharedmemory.d.ts"),
-    maybe_compressed_lib!("lib.es2024.string.d.ts"),
-    maybe_compressed_lib!("lib.es5.d.ts"),
-    maybe_compressed_lib!("lib.es6.d.ts"),
-    maybe_compressed_lib!("lib.esnext.array.d.ts"),
-    maybe_compressed_lib!("lib.esnext.collection.d.ts"),
-    maybe_compressed_lib!("lib.esnext.d.ts"),
-    maybe_compressed_lib!("lib.esnext.decorators.d.ts"),
-    maybe_compressed_lib!("lib.esnext.disposable.d.ts"),
-    maybe_compressed_lib!("lib.esnext.full.d.ts"),
-    maybe_compressed_lib!("lib.esnext.intl.d.ts"),
-    maybe_compressed_lib!("lib.esnext.iterator.d.ts"),
-    maybe_compressed_lib!("lib.scripthost.d.ts"),
-    maybe_compressed_lib!("lib.webworker.asynciterable.d.ts"),
-    maybe_compressed_lib!("lib.webworker.d.ts"),
-    maybe_compressed_lib!("lib.webworker.importscripts.d.ts"),
-    maybe_compressed_lib!("lib.webworker.iterable.d.ts"),
     (
       // Special file that can be used to inject the @types/node package.
       // This is used for `node:` specifiers.
       "node_types.d.ts",
-      StaticAssetSource::Uncompressed(
-        "/// <reference types=\"npm:@types/node\" />\n",
-      ),
+      "/// <reference types=\"npm:@types/node\" />\n",
     ),
   ])
   .iter()
@@ -438,8 +245,8 @@ pub struct AssetText {
 }
 
 /// Retrieve a static asset that are included in the binary.
-fn get_lazily_loaded_asset(asset: &str) -> Option<MaybeStaticSource> {
-  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.get())
+fn get_lazily_loaded_asset(asset: &str) -> Option<&'static str> {
+  LAZILY_LOADED_STATIC_ASSETS.get(asset).map(|s| s.to_owned())
 }
 
 fn get_maybe_hash(
@@ -796,10 +603,10 @@ fn op_load_inner(
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name).map(Cow::from);
-    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
+    let maybe_source = get_lazily_loaded_asset(name);
+    hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
-    maybe_source
+    maybe_source.map(Cow::Borrowed)
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -939,20 +746,6 @@ fn op_remap_specifier(
   state
     .maybe_remapped_specifier(specifier)
     .map(|url| url.to_string())
-}
-
-#[op2]
-#[serde]
-fn op_libs() -> Vec<String> {
-  let mut out = Vec::with_capacity(LAZILY_LOADED_STATIC_ASSETS.len());
-  for key in LAZILY_LOADED_STATIC_ASSETS.keys() {
-    let lib = key
-      .replace("lib.", "")
-      .replace(".d.ts", "")
-      .replace("deno_", "deno.");
-    out.push(lib);
-  }
-  out
 }
 
 #[op2]
@@ -1294,84 +1087,6 @@ pub enum ExecError {
   Core(deno_core::error::CoreError),
 }
 
-#[derive(Clone)]
-pub(crate) struct CompressedSource {
-  bytes: &'static [u8],
-  uncompressed: OnceLock<Arc<str>>,
-}
-
-impl CompressedSource {
-  #[cfg_attr(debug_assertions, allow(dead_code))]
-  pub(crate) const fn new(bytes: &'static [u8]) -> Self {
-    Self {
-      bytes,
-      uncompressed: OnceLock::new(),
-    }
-  }
-  pub(crate) fn get(&self) -> Arc<str> {
-    self
-      .uncompressed
-      .get_or_init(|| decompress_source(self.bytes))
-      .clone()
-  }
-}
-
-pub(crate) static MAIN_COMPILER_SOURCE: StaticAssetSource =
-  maybe_compressed_source!("tsc/99_main_compiler.js");
-pub(crate) static LSP_SOURCE: StaticAssetSource =
-  maybe_compressed_source!("tsc/98_lsp.js");
-pub(crate) static TS_HOST_SOURCE: StaticAssetSource =
-  maybe_compressed_source!("tsc/97_ts_host.js");
-pub(crate) static TYPESCRIPT_SOURCE: StaticAssetSource =
-  maybe_compressed_source!("tsc/00_typescript.js");
-
-pub(crate) fn decompress_source(contents: &[u8]) -> Arc<str> {
-  let len_bytes = contents[0..4].try_into().unwrap();
-  let len = u32::from_le_bytes(len_bytes);
-  let uncompressed =
-    zstd::bulk::decompress(&contents[4..], len as usize).unwrap();
-  String::from_utf8(uncompressed).unwrap().into()
-}
-
-deno_core::extension!(deno_cli_tsc,
-  ops = [
-    op_create_hash,
-    op_emit,
-    op_is_node_file,
-    op_load,
-    op_remap_specifier,
-    op_resolve,
-    op_respond,
-    op_libs,
-  ],
-  options = {
-    request: Request,
-    root_map: HashMap<String, Url>,
-    remapped_specifiers: HashMap<String, Url>,
-  },
-  state = |state, options| {
-    state.put(State::new(
-      options.request.graph,
-      options.request.hash_data,
-      options.request.maybe_npm,
-      options.request.maybe_tsbuildinfo,
-      options.root_map,
-      options.remapped_specifiers,
-      std::env::current_dir()
-        .context("Unable to get CWD")
-        .unwrap(),
-    ));
-  },
-  customizer = |ext: &mut deno_core::Extension| {
-    use deno_core::ExtensionFileSource;
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
-    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
-    ext.esm_entry_point = Some("ext:deno_cli_tsc/99_main_compiler.js");
-  }
-);
-
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
@@ -1402,6 +1117,36 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
     })
     .collect();
 
+  deno_core::extension!(deno_cli_tsc,
+    ops = [
+      op_create_hash,
+      op_emit,
+      op_is_node_file,
+      op_load,
+      op_remap_specifier,
+      op_resolve,
+      op_respond,
+    ],
+    options = {
+      request: Request,
+      root_map: HashMap<String, Url>,
+      remapped_specifiers: HashMap<String, Url>,
+    },
+    state = |state, options| {
+      state.put(State::new(
+        options.request.graph,
+        options.request.hash_data,
+        options.request.maybe_npm,
+        options.request.maybe_tsbuildinfo,
+        options.root_map,
+        options.remapped_specifiers,
+        std::env::current_dir()
+          .context("Unable to get CWD")
+          .unwrap(),
+      ));
+    },
+  );
+
   let request_value = json!({
     "config": request.config,
     "debug": request.debug,
@@ -1411,7 +1156,8 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
   let exec_source = format!("globalThis.exec({request_value})");
 
   let mut runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_cli_tsc::init_ops_and_esm(
+    startup_snapshot: Some(compiler_snapshot()),
+    extensions: vec![deno_cli_tsc::init_ops(
       request,
       root_map,
       remapped_specifiers,
@@ -1573,21 +1319,7 @@ mod tests {
   #[tokio::test]
   async fn test_compiler_snapshot() {
     let mut js_runtime = JsRuntime::new(RuntimeOptions {
-      startup_snapshot: None,
-      extensions: vec![super::deno_cli_tsc::init_ops_and_esm(
-        Request {
-          check_mode: TypeCheckMode::All,
-          config: Arc::new(TsConfig(json!({}))),
-          debug: false,
-          graph: Arc::new(ModuleGraph::new(GraphKind::TypesOnly)),
-          hash_data: 0,
-          maybe_npm: None,
-          maybe_tsbuildinfo: None,
-          root_names: vec![],
-        },
-        HashMap::new(),
-        HashMap::new(),
-      )],
+      startup_snapshot: Some(compiler_snapshot()),
       ..Default::default()
     });
     js_runtime
@@ -1670,7 +1402,7 @@ mod tests {
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data, expected.to_string());
+    assert_eq!(actual.data, expected);
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
