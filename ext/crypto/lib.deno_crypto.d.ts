@@ -340,6 +340,29 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
+  /**
+   * The SubtleCrypto.importKey() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations. This method is used to import a cryptographic key. 
+   * The JWK (JSON Web Key format) imports an ECDSA private signing key, given a JSON Web Key object that represents it.
+   * 
+   * @example
+   * ```ts  
+   * // Import an ECDSA private signing key where `jwk` is an object describing a private key
+   * function importKey(jwk) {
+   *  return crypto.subtle.importKey(
+   *    "jwk",
+   *    jwk,
+   *    {
+   *      name: "ECDSA",  
+   *      namedCurve: "P-384",
+   *    },
+   *    true,
+   *    ["sign"],
+   *  );
+   * }
+   * ```
+   * 
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey
+   */
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
@@ -351,6 +374,22 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * The SubtleCrypto.importKey() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations. This method is used to import a cryptographic key. 
+   * 
+   * @example
+   * ```ts
+   * // Import an AES-GCM secret key where `rawKey` is an ArrayBuffer Ssring
+   * function importSecretKey(rawKey) { 
+   *  return crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, [
+   *    "encrypt",
+   *    "decrypt",
+   *  ]);
+   * }
+   * ```
+   * 
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey
+   */
   importKey(
     format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
