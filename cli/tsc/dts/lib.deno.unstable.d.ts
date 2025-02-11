@@ -24,13 +24,6 @@ declare namespace Deno {
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
    *  * ```ts
-   * // Windows example
-   * const { hwnd, hinstance } = await Deno.createWindow({
-   *   title: "WebGPU Window",
-   *   width: 800,
-   *   height: 600
-   * });
-   *
    * const surface = Deno.UnsafeWindowSurface.create(
    *   "win32",    // system
    *   hwnd,       // window handle
