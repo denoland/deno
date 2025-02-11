@@ -295,7 +295,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
     deno_http::deno_http::init_ops::<DefaultHttpPropertyExtractor>(
       deno_http::Options::default(),
     ),
-    deno_io::deno_io::init_ops(Default::default()),
+    deno_io::deno_io::init_ops(Some(Default::default())),
     deno_fs::deno_fs::init_ops::<Permissions>(fs.clone()),
     deno_os::deno_os::init_ops(Default::default()),
     deno_process::deno_process::init_ops(Default::default()),
