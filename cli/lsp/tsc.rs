@@ -1374,6 +1374,7 @@ impl TsServer {
     tokio::select! {
       value = &mut rx => {
         let value = value??;
+        let _span = tracing::info_span!("Tsc response deserialization");
         let r = Ok(serde_json::from_str(&value)?);
         self.performance.measure(mark);
         r
@@ -4775,9 +4776,8 @@ fn op_respond(
 }
 
 struct TracingSpan(#[allow(dead_code)] tracing::span::EnteredSpan);
-// struct TracingSpan(#[allow(dead_code)] ());
 
-deno_core::external!(TracingSpan, "tracingspan");
+deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
 fn span_with_context(
   state: &State,

@@ -185,8 +185,6 @@ ts.deno.setIsNodeSourceFileCallback((sourceFile) => {
   return isNodeSourceFile;
 });
 
-ts.deno.setSpanned(spanned);
-
 /**
  * @param msg {string}
  * @param code {number}
