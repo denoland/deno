@@ -1388,7 +1388,7 @@ declare namespace Deno {
       range?: Range;
       message: string;
       hint?: string;
-      fix?(fixer: Fixer): FixData;
+      fix?(fixer: Fixer): FixData | Iterable<FixData>;
     }
 
     /**
@@ -1396,7 +1396,21 @@ declare namespace Deno {
      * @experimental
      */
     export interface RuleContext {
+      /**
+       * The running rule id: `<plugin-name>/<rule-name>`
+       */
       id: string;
+      /**
+       * Name of the file that's currently being linted.
+       */
+      fileName: string;
+      /**
+       * Retrieve the source code of the current file.
+       */
+      source(): string;
+      /**
+       * Report a lint error.
+       */
       report(data: ReportData): void;
     }
 
@@ -1473,7 +1487,9 @@ declare namespace Deno {
     }
 
     /**
-     * This API is a noop in `deno run`...
+     * This API is useful for testing lint plugins.
+     *
+     * It throws an error if it's not used in `deno test` subcommand.
      * @category Linter
      * @experimental
      */

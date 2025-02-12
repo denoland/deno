@@ -184,3 +184,16 @@ Deno.test("[node/sqlite] applyChangeset across databases", () => {
     { key: 2, value: "world", __proto__: null },
   ]);
 });
+
+Deno.test("[node/sqlite] exec should execute batch statements", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE one(id int PRIMARY KEY) STRICT;
+CREATE TABLE two(id int PRIMARY KEY) STRICT;`);
+
+  const table = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table'`,
+  ).all();
+  assertEquals(table.length, 2);
+
+  db.close();
+});

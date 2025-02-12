@@ -234,11 +234,20 @@ export class Context {
     const start = range[0];
     const end = range[1];
 
-    let fix;
+    /** @type {Deno.lint.FixData[]} */
+    const fixes = [];
 
     if (typeof data.fix === "function") {
       const fixer = new Fixer();
-      fix = data.fix(fixer);
+      const result = data.fix(fixer);
+
+      if (Symbol.iterator in result) {
+        for (const fix of result) {
+          fixes.push(fix);
+        }
+      } else {
+        fixes.push(result);
+      }
     }
 
     doReport(
@@ -247,7 +256,7 @@ export class Context {
       data.hint,
       start,
       end,
-      fix,
+      fixes,
     );
   }
 }
