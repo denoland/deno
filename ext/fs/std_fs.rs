@@ -1068,6 +1068,16 @@ pub fn open_with_access_check(
   path: &Path,
   access_check: Option<AccessCheckCb>,
 ) -> FsResult<std::fs::File> {
+  let opts = open_options_with_access_check(options, path, access_check)?;
+  Ok(opts.open(path)?)
+}
+
+#[inline(always)]
+pub fn open_options_with_access_check(
+  options: OpenOptions,
+  path: &Path,
+  access_check: Option<AccessCheckCb>,
+) -> FsResult<fs::OpenOptions> {
   if let Some(access_check) = access_check {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
@@ -1126,7 +1136,7 @@ pub fn open_with_access_check(
       }
     }
 
-    Ok(opts.open(&path)?)
+    Ok(opts)
   } else {
     // for unix
     #[allow(unused_mut)]
@@ -1137,6 +1147,6 @@ pub fn open_with_access_check(
       use std::os::windows::fs::OpenOptionsExt;
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
     }
-    Ok(opts.open(path)?)
+    Ok(opts)
   }
 }

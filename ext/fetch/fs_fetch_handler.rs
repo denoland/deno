@@ -9,7 +9,7 @@ use deno_core::url::Url;
 use deno_core::CancelFuture;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
-use deno_fs::open_with_access_check;
+use deno_fs::open_options_with_access_check;
 use deno_fs::OpenOptions;
 use deno_permissions::PermissionsContainer;
 use http::StatusCode;
@@ -59,7 +59,7 @@ impl FetchHandler for FsFetchHandler {
         );
       }
     };
-    let file = open_with_access_check(
+    let opts = open_options_with_access_check(
       OpenOptions {
         read: true,
         ..Default::default()
@@ -68,7 +68,7 @@ impl FetchHandler for FsFetchHandler {
       Some(&mut access_check),
     );
     let response_fut = async move {
-      let file = tokio::fs::File::from_std(file?);
+      let file = tokio::fs::OpenOptions::from(opts?).open(path).await?;
       let stream = ReaderStream::new(file)
         .map_ok(hyper::body::Frame::data)
         .map_err(JsErrorBox::from_err);
