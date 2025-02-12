@@ -59,7 +59,7 @@ impl FetchHandler for FsFetchHandler {
         );
       }
     };
-    let opts = open_options_with_access_check(
+    let path_and_opts_result = open_options_with_access_check(
       OpenOptions {
         read: true,
         ..Default::default()
@@ -68,7 +68,8 @@ impl FetchHandler for FsFetchHandler {
       Some(&mut access_check),
     );
     let response_fut = async move {
-      let file = tokio::fs::OpenOptions::from(opts?)
+      let (path, opts) = path_and_opts_result?;
+      let file = tokio::fs::OpenOptions::from(opts)
         .open(path)
         .await
         .map_err(|_| super::FetchError::NetworkError)?;
