@@ -16,7 +16,7 @@ use crate::ops;
 use crate::shared::runtime;
 
 #[derive(Clone)]
-struct Permissions;
+pub struct Permissions;
 
 impl deno_websocket::WebSocketPermissions for Permissions {
   fn check_net_url(
