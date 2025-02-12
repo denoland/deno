@@ -34,7 +34,8 @@ pub(crate) fn make_tracer(
 }
 
 pub(crate) struct TracingGuard(
-  // TODO(nathanwhit): look again if we should be using a guard or if a global default is fine
+  // TODO(nathanwhit): use default guard here so we can change tracing after init
+  // but needs wiring through the subscriber to the TSC thread, as it can't be a global default
   // #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
   #[allow(dead_code)] (),
 );

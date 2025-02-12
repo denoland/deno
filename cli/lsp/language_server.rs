@@ -1271,6 +1271,7 @@ impl Inner {
         self.config.set_workspace_settings(settings, vec![]);
       }
     };
+    // TODO(nathanwhit): allow updating after startup, needs work to set thread local collector on tsc thread
     // self.update_tracing();
     self.update_debug_flag();
     self.update_global_cache().await;
