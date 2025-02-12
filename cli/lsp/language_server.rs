@@ -3620,7 +3620,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn hover(
     &self,
     params: HoverParams,
-
     token: CancellationToken,
   ) -> LspResult<Option<Hover>> {
     if !self.init_flag.is_raised() {
@@ -3681,7 +3680,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn code_lens_resolve(
     &self,
     params: CodeLens,
-
     token: CancellationToken,
   ) -> LspResult<CodeLens> {
     if !self.init_flag.is_raised() {
