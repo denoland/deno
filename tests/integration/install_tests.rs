@@ -160,6 +160,9 @@ fn install_custom_dir_env_var() {
   let context = TestContext::with_http_server();
   let temp_dir = context.temp_dir();
   let temp_dir_str = temp_dir.path().to_string();
+  let bin_dir = temp_dir.path().join("custom_bin");
+  std::fs::create_dir(&bin_dir).unwrap();
+  let bin_dir_str = bin_dir.to_string();
 
   context
     .new_command()
@@ -168,13 +171,13 @@ fn install_custom_dir_env_var() {
     .envs([
       ("HOME", temp_dir_str.as_str()),
       ("USERPROFILE", temp_dir_str.as_str()),
-      ("DENO_INSTALL_ROOT", temp_dir_str.as_str()),
+      ("DENO_INSTALL_ROOT", bin_dir_str.as_str()),
     ])
     .run()
     .skip_output_check()
     .assert_exit_code(0);
 
-  let mut file_path = temp_dir.path().join("bin/echo_test");
+  let mut file_path = bin_dir.join("echo_test");
   assert!(file_path.exists());
 
   if cfg!(windows) {
@@ -200,6 +203,9 @@ fn installer_test_local_module_run() {
   let context = TestContext::with_http_server();
   let temp_dir = context.temp_dir();
   let temp_dir_str = temp_dir.path().to_string();
+  let bin_dir = temp_dir.path().join("bin");
+  std::fs::create_dir(&bin_dir).unwrap();
+  let bin_dir_str = bin_dir.to_string();
   let echo_ts_str = util::testdata_path().join("echo.ts").to_string();
 
   context
@@ -211,7 +217,7 @@ fn installer_test_local_module_run() {
       "--name",
       "echo_test",
       "--root",
-      temp_dir_str.as_str(),
+      bin_dir_str.as_str(),
       echo_ts_str.as_str(),
       "hello",
     ])
@@ -224,7 +230,6 @@ fn installer_test_local_module_run() {
     .skip_output_check()
     .assert_exit_code(0);
 
-  let bin_dir = temp_dir.path().join("bin");
   let mut file_path = bin_dir.join("echo_test");
   if cfg!(windows) {
     file_path = file_path.with_extension("cmd");
@@ -252,7 +257,7 @@ fn installer_test_remote_module_run() {
   let bin_dir = root_dir.join("bin");
   context
     .new_command()
-    .args("install --name echo_test --root ./root -g http://localhost:4545/echo.ts hello")
+    .args("install --name echo_test --root ./root/bin -g http://localhost:4545/echo.ts hello")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
@@ -274,7 +279,7 @@ fn installer_test_remote_module_run() {
   // now uninstall with the relative path
   context
     .new_command()
-    .args("uninstall -g --root ./root echo_test")
+    .args("uninstall -g --root ./root/bin echo_test")
     .run()
     .skip_output_check()
     .assert_exit_code(0);
