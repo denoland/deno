@@ -11,6 +11,7 @@ use deno_ast::swc::visit::VisitWith;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
@@ -21,7 +22,7 @@ use deno_core::ModuleSpecifier;
 use lazy_regex::lazy_regex;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use tower_lsp::jsonrpc::Error as LspError;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis::source_range_to_lsp_range;
@@ -30,7 +31,6 @@ use super::language_server;
 use super::text::LineIndex;
 use super::tsc;
 use super::tsc::NavigationTree;
-use crate::lsp::logging::lsp_warn;
 
 static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
@@ -253,6 +253,7 @@ async fn resolve_implementation_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
   let line_index = asset_or_doc.line_index();
@@ -262,15 +263,25 @@ async fn resolve_implementation_code_lens(
       language_server.snapshot(),
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
+      token,
     )
     .await
     .map_err(|err| {
-      lsp_warn!("{err}");
-      LspError::internal_error()
+      if token.is_cancelled() {
+        anyhow!("request cancelled")
+      } else {
+        anyhow!(
+          "Unable to get implementation locations from TypeScript: {:#}",
+          err
+        )
+      }
     })?;
   if let Some(implementations) = maybe_implementations {
     let mut locations = Vec::new();
     for implementation in implementations {
+      if token.is_cancelled() {
+        break;
+      }
       let implementation_specifier =
         resolve_url(&implementation.document_span.file_name)?;
       let implementation_location =
@@ -326,10 +337,12 @@ async fn resolve_references_code_lens(
   code_lens: lsp::CodeLens,
   data: CodeLensData,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   fn get_locations(
     maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
     language_server: &language_server::Inner,
+    token: &CancellationToken,
   ) -> Result<Vec<lsp::Location>, AnyError> {
     let symbols = match maybe_referenced_symbols {
       Some(symbols) => symbols,
@@ -337,6 +350,9 @@ async fn resolve_references_code_lens(
     };
     let mut locations = Vec::new();
     for reference in symbols.iter().flat_map(|s| &s.references) {
+      if token.is_cancelled() {
+        break;
+      }
       if reference.is_definition {
         continue;
       }
@@ -363,13 +379,18 @@ async fn resolve_references_code_lens(
       language_server.snapshot(),
       data.specifier.clone(),
       line_index.offset_tsc(code_lens.range.start)?,
+      token,
     )
     .await
     .map_err(|err| {
-      lsp_warn!("Unable to find references: {err}");
-      LspError::internal_error()
+      if token.is_cancelled() {
+        anyhow!("request cancelled")
+      } else {
+        anyhow!("Unable to get references from TypeScript: {:#}", err)
+      }
     })?;
-  let locations = get_locations(maybe_referenced_symbols, language_server)?;
+  let locations =
+    get_locations(maybe_referenced_symbols, language_server, token)?;
   let title = if locations.len() == 1 {
     "1 reference".to_string()
   } else {
@@ -402,15 +423,18 @@ async fn resolve_references_code_lens(
 pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<lsp::CodeLens, AnyError> {
   let data: CodeLensData =
     serde_json::from_value(code_lens.data.clone().unwrap())?;
   match data.source {
     CodeLensSource::Implementations => {
-      resolve_implementation_code_lens(code_lens, data, language_server).await
+      resolve_implementation_code_lens(code_lens, data, language_server, token)
+        .await
     }
     CodeLensSource::References => {
-      resolve_references_code_lens(code_lens, data, language_server).await
+      resolve_references_code_lens(code_lens, data, language_server, token)
+        .await
     }
   }
 }
@@ -418,7 +442,9 @@ pub async fn resolve_code_lens(
 pub fn collect_test(
   specifier: &ModuleSpecifier,
   parsed_source: &ParsedSource,
+  _token: &CancellationToken,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
+  // TODO(nayeemrmn): Do cancellation checks while collecting tests.
   let mut collector =
     DenoTestCollector::new(specifier.clone(), parsed_source.clone());
   parsed_source.program().visit_with(&mut collector);
@@ -431,9 +457,10 @@ pub fn collect_tsc(
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
+  token: &CancellationToken,
 ) -> Result<Vec<lsp::CodeLens>, AnyError> {
   let code_lenses = Rc::new(RefCell::new(Vec::new()));
-  navigation_tree.walk(&|i, mp| {
+  navigation_tree.walk(token, &|i, mp| {
     let mut code_lenses = code_lenses.borrow_mut();
 
     // TSC Implementations Code Lens
@@ -541,7 +568,7 @@ pub fn collect_tsc(
         _ => (),
       }
     }
-  });
+  })?;
   Ok(Rc::try_unwrap(code_lenses).unwrap().into_inner())
 }
 

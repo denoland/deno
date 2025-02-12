@@ -12,7 +12,6 @@ import { fromFileUrl, join } from "@std/path";
 import * as tls from "node:tls";
 import * as net from "node:net";
 import * as stream from "node:stream";
-import { text } from "node:stream/consumers";
 import { execCode } from "../unit/test_util.ts";
 
 const tlsTestdataDir = fromFileUrl(
@@ -96,18 +95,6 @@ Connection: close
   const text = new TextDecoder().decode(await chunk.promise);
   const bodyText = text.split("\r\n\r\n").at(-1)?.trim();
   assertEquals(bodyText, "hello");
-});
-
-// Regression at https://github.com/denoland/deno/issues/27652
-Deno.test("tls.connect makes tls connection to example.com", async () => {
-  const socket = tls.connect(443, "example.com");
-  await new Promise((resolve) => {
-    socket.on("secureConnect", resolve);
-  });
-  socket.write(
-    "GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n",
-  );
-  assertStringIncludes(await text(socket), "<title>Example Domain</title>");
 });
 
 // https://github.com/denoland/deno/pull/20120

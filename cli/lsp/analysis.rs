@@ -9,7 +9,7 @@ use std::path::Path;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
-use deno_config::workspace::MappedResolution;
+use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
@@ -20,6 +20,7 @@ use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::workspace::MappedResolution;
 use deno_runtime::deno_node::PathClean;
 use deno_semver::jsr::JsrPackageNvReference;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -38,6 +39,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use text_lines::LineAndColumnIndex;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;
@@ -186,8 +188,9 @@ fn as_lsp_range(
 pub fn get_lint_references(
   parsed_source: &deno_ast::ParsedSource,
   linter: &CliLinter,
+  token: CancellationToken,
 ) -> Result<Vec<Reference>, AnyError> {
-  let lint_diagnostics = linter.lint_with_ast(parsed_source);
+  let lint_diagnostics = linter.lint_with_ast(parsed_source, token)?;
 
   Ok(
     lint_diagnostics
@@ -618,9 +621,13 @@ fn try_reverse_map_package_json_exports(
 pub fn fix_ts_import_changes(
   changes: &[tsc::FileTextChanges],
   language_server: &language_server::Inner,
+  token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
   let mut r = Vec::new();
   for change in changes {
+    if token.is_cancelled() {
+      return Err(anyhow!("request cancelled"));
+    }
     let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
       continue;
     };
@@ -1346,11 +1353,10 @@ impl CodeActionCollection {
       let npm_ref = if let Ok(resolution) = workspace_resolver.resolve(
         &dep_key,
         document.specifier(),
-        deno_config::workspace::ResolutionKind::Execution,
+        deno_resolver::workspace::ResolutionKind::Execution,
       ) {
         let specifier = match resolution {
-          MappedResolution::Normal { specifier, .. }
-          | MappedResolution::ImportMap { specifier, .. } => specifier,
+          MappedResolution::Normal { specifier, .. } => specifier,
           _ => {
             return None;
           }

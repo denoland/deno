@@ -94,6 +94,7 @@ import { bootstrap as bootstrapOtel } from "ext:deno_telemetry/telemetry.ts";
 if (Symbol.metadata) {
   throw "V8 supports Symbol.metadata now, no need to shim it";
 }
+
 ObjectDefineProperties(Symbol, {
   dispose: {
     __proto__: null,
@@ -361,6 +362,12 @@ core.registerErrorBuilder(
     return new DOMException(msg, "DataError");
   },
 );
+core.registerErrorBuilder(
+  "DOMExceptionInvalidStateError",
+  function DOMExceptionInvalidStateError(msg) {
+    return new DOMException(msg, "InvalidStateError");
+  },
+);
 
 function runtimeStart(
   denoVersion,
@@ -527,7 +534,10 @@ const NOT_IMPORTED_OPS = [
   "op_base64_encode",
 
   // Used in the lint API
+  "op_lint_report",
+  "op_lint_get_source",
   "op_lint_create_serialized_ast",
+  "op_is_cancelled",
 
   // Related to `Deno.test()` API
   "op_test_event_step_result_failed",
@@ -569,11 +579,18 @@ const finalDenoNs = {
   internal: internalSymbol,
   [internalSymbol]: internals,
   ...denoNs,
-  // Deno.test and Deno.bench are noops here, but kept for compatibility; so
-  // that they don't cause errors when used outside of `deno test`/`deno bench`
+  // Deno.test, Deno.bench, Deno.lint are noops here, but kept for compatibility; so
+  // that they don't cause errors when used outside of `deno test`/`deno bench`/`deno lint`
   // contexts.
   test: () => {},
   bench: () => {},
+  lint: {
+    runPlugin: () => {
+      throw new Error(
+        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+      );
+    },
+  },
 };
 
 ObjectDefineProperties(finalDenoNs, {

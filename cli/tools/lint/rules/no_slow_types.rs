@@ -9,6 +9,7 @@ use deno_graph::ModuleGraph;
 use deno_lint::diagnostic::LintDiagnostic;
 use deno_lint::diagnostic::LintDiagnosticDetails;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_lint::diagnostic::LintDocsUrl;
 use deno_lint::tags;
 
 use super::PackageLintRule;
@@ -26,11 +27,6 @@ impl PackageLintRule for NoSlowTypesRule {
   fn tags(&self) -> tags::Tags {
     &[tags::JSR]
   }
-
-  // TODO(bartlomieju): these docs need to be hosted somewhere.
-  // fn docs(&self) -> &'static str {
-  //   include_str!("no_slow_types.md")
-  // }
 
   fn help_docs_url(&self) -> Cow<'static, str> {
     Cow::Borrowed("https://jsr.io/docs/about-slow-types")
@@ -60,7 +56,10 @@ impl PackageLintRule for NoSlowTypesRule {
             .map(|info| Cow::Owned(info.to_string()))
             .collect(),
           fixes: vec![],
-          custom_docs_url: d.docs_url().map(|u| u.into_owned()),
+          custom_docs_url: d
+            .docs_url()
+            .map(|u| LintDocsUrl::Custom(u.into_owned()))
+            .unwrap_or_default(),
         },
       })
       .collect()

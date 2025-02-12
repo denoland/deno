@@ -16,7 +16,7 @@ use capacity_builder::BytesAppendable;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_config::workspace::WorkspaceResolver;
+use deno_cache_dir::CACHE_PERM;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -47,8 +47,10 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::workspace::WorkspaceResolver;
 use indexmap::IndexMap;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsCodeAnalyzer;
@@ -285,17 +287,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
 
-    if !binary_path.exists() {
-      self
-        .download_base_binary(&download_directory, &binary_path_suffix)
-        .await
-        .context("Setting up base binary.")?;
-    }
-
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
     };
-    let archive_data = read_file(&binary_path)?;
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up base binary.")?
+    };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
       exe_name: "denort",
@@ -311,9 +313,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn download_base_binary(
     &self,
-    output_directory: &Path,
+    output_path: &Path,
     binary_path_suffix: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<u8>, AnyError> {
     let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
     let maybe_bytes = {
       let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
@@ -340,12 +342,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       std::fs::create_dir_all(dir)
         .with_context(|| format!("Creating {}", dir.display()))
     };
-    create_dir_all(output_directory)?;
-    let output_path = output_directory.join(binary_path_suffix);
     create_dir_all(output_path.parent().unwrap())?;
-    std::fs::write(&output_path, bytes)
-      .with_context(|| format!("Writing {}", output_path.display()))?;
-    Ok(())
+    atomic_write_file_with_retries(
+      &CliSys::default(),
+      output_path,
+      &bytes,
+      CACHE_PERM,
+    )
+    .with_context(|| format!("Writing {}", output_path.display()))?;
+    Ok(bytes)
   }
 
   /// This functions creates a standalone deno binary by appending a bundle
