@@ -148,6 +148,7 @@ pub struct TypeChecker {
   npm_resolver: CliNpmResolver,
   sys: CliSys,
   tsconfig_resolver: Arc<TsConfigResolver>,
+  code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
 impl TypeChecker {
@@ -162,6 +163,7 @@ impl TypeChecker {
     npm_resolver: CliNpmResolver,
     sys: CliSys,
     tsconfig_resolver: Arc<TsConfigResolver>,
+    code_cache: Option<Arc<crate::cache::CodeCache>>,
   ) -> Self {
     Self {
       caches,
@@ -173,6 +175,7 @@ impl TypeChecker {
       npm_resolver,
       sys,
       tsconfig_resolver,
+      code_cache,
     }
   }
 
@@ -283,6 +286,7 @@ impl TypeChecker {
         grouped_roots,
         options,
         seen_diagnotics: Default::default(),
+        code_cache: self.code_cache.clone(),
       }),
     ))
   }
@@ -433,6 +437,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   npm_check_state_hash: Option<u64>,
   seen_diagnotics: HashSet<String>,
   options: CheckOptions,
+  code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
 impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
@@ -550,20 +555,27 @@ impl<'a> DiagnosticsByFolderRealIterator<'a> {
     let tsconfig_hash_data = FastInsecureHasher::new_deno_versioned()
       .write_hashable(ts_config)
       .finish();
-    let response = tsc::exec(tsc::Request {
-      config: ts_config.clone(),
-      debug: self.log_level == Some(log::Level::Debug),
-      graph: self.graph.clone(),
-      hash_data: tsconfig_hash_data,
-      maybe_npm: Some(tsc::RequestNpmState {
-        cjs_tracker: self.cjs_tracker.clone(),
-        node_resolver: self.node_resolver.clone(),
-        npm_resolver: self.npm_resolver.clone(),
-      }),
-      maybe_tsbuildinfo,
-      root_names,
-      check_mode: self.options.type_check_mode,
-    })?;
+    let code_cache = self.code_cache.as_ref().map(|c| {
+      let c: Arc<dyn deno_runtime::code_cache::CodeCache> = c.clone();
+      c
+    });
+    let response = tsc::exec(
+      tsc::Request {
+        config: ts_config.clone(),
+        debug: self.log_level == Some(log::Level::Debug),
+        graph: self.graph.clone(),
+        hash_data: tsconfig_hash_data,
+        maybe_npm: Some(tsc::RequestNpmState {
+          cjs_tracker: self.cjs_tracker.clone(),
+          node_resolver: self.node_resolver.clone(),
+          npm_resolver: self.npm_resolver.clone(),
+        }),
+        maybe_tsbuildinfo,
+        root_names,
+        check_mode: self.options.type_check_mode,
+      },
+      code_cache,
+    )?;
 
     let mut response_diagnostics = response.diagnostics.filter(|d| {
       self.should_include_diagnostic(self.options.type_check_mode, d)
