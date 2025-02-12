@@ -61,6 +61,8 @@ interface AddressInfo {
   port: number;
 }
 
+export const kSetResolvedFrom = Symbol("kSetResolvedFrom");
+
 export class TCPConnectWrap extends AsyncWrap {
   oncomplete!: (
     status: number,
@@ -103,7 +105,7 @@ export class TCP extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
 
-  #permToken?: object;
+  #resolvedFrom?: string;
 
   /**
    * Creates a new TCP class instance.
@@ -374,10 +376,10 @@ export class TCP extends ConnectionWrap {
 
     op_net_connect_tcp(
       { hostname: address ?? "127.0.0.1", port },
-      this.#permToken,
+      this.#resolvedFrom,
     ).then(
       ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-        this.#permToken = undefined;
+        this.#resolvedFrom = undefined;
         // Incorrect / backwards, but correcting the local address and port with
         // what was actually used given we can't actually specify these in Deno.
         this.#address = req.localAddress = localAddr.hostname;
@@ -391,7 +393,7 @@ export class TCP extends ConnectionWrap {
         }
       },
       () => {
-        this.#permToken = undefined;
+        this.#resolvedFrom = undefined;
         try {
           // TODO(cmorten): correct mapping of connection error to status code.
           this.afterConnect(req, codeMap.get("ECONNREFUSED")!);
@@ -500,7 +502,7 @@ export class TCP extends ConnectionWrap {
     return LibuvStreamWrap.prototype._onClose.call(this);
   }
 
-  setPermToken(permToken: object) {
-    this.#permToken = permToken;
+  [kSetResolvedFrom](hostname: string) {
+    this.#resolvedFrom = hostname;
   }
 }

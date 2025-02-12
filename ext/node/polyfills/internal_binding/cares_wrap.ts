@@ -54,11 +54,7 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   ) => void;
   resolve!: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
   reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (
-    err: number | null,
-    addresses: string[],
-    permToken: object | undefined,
-  ) => void;
+  oncomplete!: (err: number | null, addresses: string[]) => void;
 
   constructor() {
     super(providerType.GETADDRINFOREQWRAP);
@@ -83,11 +79,8 @@ export function getaddrinfo(
 
   (async () => {
     let error = 0;
-    let permToken: object | undefined;
     try {
-      const [addrs, permToken_] = await op_getaddrinfo(hostname, req.port || undefined);
-      permToken = permToken_;
-      addresses.push(...addrs);
+      addresses.push(...await op_getaddrinfo(hostname, req.port || undefined));
       if (addresses.length === 0) {
         error = codeMap.get("EAI_NODATA")!;
       }
@@ -117,7 +110,7 @@ export function getaddrinfo(
       addresses = addresses.filter((addr) => addr.family === family);
     }
 
-    req.oncomplete(error, addresses.map((addr) => addr.address), permToken);
+    req.oncomplete(error, addresses.map((addr) => addr.address));
   })();
 
   return 0;

@@ -99,25 +99,18 @@ function onlookup(
   this: GetAddrInfoReqWrap,
   err: number | null,
   addresses: string[],
-  permToken: object | undefined,
 ) {
   if (err) {
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
   }
 
-  this.callback(
-    null,
-    addresses[0],
-    this.family || isIP(addresses[0]),
-    permToken,
-  );
+  this.callback(null, addresses[0], this.family || isIP(addresses[0]));
 }
 
 function onlookupall(
   this: GetAddrInfoReqWrap,
   err: number | null,
   addresses: string[],
-  permToken: object | undefined,
 ) {
   if (err) {
     return this.callback(dnsException(err, "getaddrinfo", this.hostname));
@@ -134,7 +127,7 @@ function onlookupall(
     };
   }
 
-  this.callback(null, parsedAddresses, undefined, permToken);
+  this.callback(null, parsedAddresses);
 }
 
 type LookupCallback = (
