@@ -5845,7 +5845,7 @@ fn lsp_jsr_auto_import_completion() {
       "label": "add",
       "labelDetails": { "description": "jsr:@denotest/add@1" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"jsr:@denotest/add@1\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_1",
       "additionalTextEdits": [
@@ -5923,7 +5923,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       "label": "add",
       "labelDetails": { "description": "add" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"add\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -5998,7 +5998,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "label": "normalize",
       "labelDetails": { "description": "@std/path/posix/normalize" },
       "kind": 3,
-      "detail": "function normalize(path: string): string",
+      "detail": "Add import from \"@std/path/posix/normalize\"\n\nfunction normalize(path: string): string",
       "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -8155,7 +8155,7 @@ fn lsp_completions_auto_import() {
         "description": "./🦕.ts",
       },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"./🦕.ts\"\n\nfunction add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
@@ -8224,7 +8224,7 @@ fn lsp_completions_auto_import_node_builtin() {
         "description": "node:url",
       },
       "kind": 3,
-      "detail": "function pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
+      "detail": "Add import from \"node:url\"\n\nfunction pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
       "documentation": {
         "kind": "markdown",
         "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* - v10.12.0  \n\n*@param* - path The path to convert to a File URL.  \n\n*@return* - The file URL object.",
@@ -8305,7 +8305,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         "description": "npm:@denotest/types-exports-subpaths@1/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"npm:@denotest/types-exports-subpaths@1/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -8553,7 +8553,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         "description": "cowsay",
       },
       "kind": 3,
-      "detail": "function think(options: IOptions): string",
+      "detail": "Add import from \"cowsay\"\n\nfunction think(options: IOptions): string",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired  \n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```",
@@ -8716,7 +8716,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "lz-string",
       },
       "kind": 2,
-      "detail": "(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
+      "detail": "Add import from \"lz-string\"\n\n(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
       "documentation": {
         "kind": "markdown",
         "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* - uncompressed A string which should be compressed.",
@@ -8752,7 +8752,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "react",
       },
       "kind": 3,
-      "detail": "function React.createRef<T>(): React.RefObject<T>",
+      "detail": "Add import from \"react\"\n\nfunction React.createRef<T>(): React.RefObject<T>",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -9263,7 +9263,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "types-exports-subpaths/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"types-exports-subpaths/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -9603,7 +9603,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "nested/entry-b",
       },
       "kind": 3,
-      "detail": "function entryB(): \"b\"",
+      "detail": "Add import from \"nested/entry-b\"\n\nfunction entryB(): \"b\"",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -10111,7 +10111,7 @@ fn lsp_auto_imports_remote_dts() {
         "description": "http://localhost:4545/subdir/imports_declaration/interface.d.ts",
       },
       "kind": 8,
-      "detail": "interface SomeInterface",
+      "detail": "Add import from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\"\n\ninterface SomeInterface",
       "documentation": {
         "kind": "markdown",
         "value": "",
