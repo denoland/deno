@@ -7,9 +7,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::MappedResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -59,6 +57,9 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -73,6 +74,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
@@ -204,7 +206,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
     let mapped_resolution = self.shared.workspace_resolver.resolve(
       raw_specifier,
       &referrer,
-      deno_config::workspace::ResolutionKind::Execution,
+      deno_resolver::workspace::ResolutionKind::Execution,
     );
 
     match mapped_resolution {
@@ -283,8 +285,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
         }
       },
-      Ok(MappedResolution::Normal { specifier, .. })
-      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
+      Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -690,6 +691,7 @@ pub async fn run(
     };
     NpmRegistryReadPermissionChecker::new(sys.clone(), mode)
   };
+  let node_resolution_sys = NodeResolutionSys::new(sys.clone(), None);
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -739,7 +741,7 @@ pub async fn run(
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
@@ -783,7 +785,7 @@ pub async fn run(
     DenoIsBuiltInNodeModuleChecker,
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
-    sys.clone(),
+    node_resolution_sys,
     node_resolver::ConditionsFromResolutionMode::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
@@ -860,6 +862,12 @@ pub async fn run(
         .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
+      if metadata.unstable_config.sloppy_imports {
+        SloppyImportsOptions::Enabled
+      } else {
+        SloppyImportsOptions::Disabled
+      },
+      Default::default(),
       Default::default(),
       Default::default(),
       sys.clone(),

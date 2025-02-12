@@ -120,7 +120,6 @@ pub async fn publish(
   }
 
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
-    cli_factory.sloppy_imports_resolver()?.cloned(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   ));
