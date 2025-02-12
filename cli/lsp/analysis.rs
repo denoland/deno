@@ -39,6 +39,7 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use text_lines::LineAndColumnIndex;
+use tokio_util::sync::CancellationToken;
 use tower_lsp::lsp_types as lsp;
 use tower_lsp::lsp_types::Position;
 use tower_lsp::lsp_types::Range;

@@ -63,6 +63,7 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
+use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
