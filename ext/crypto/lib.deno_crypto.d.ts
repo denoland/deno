@@ -391,7 +391,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Export a private key in JWK format
-   * function exportKey(key) {
+   * async function exportKey(key) {
    *  // key is a CryptoKey object
    *  return await crypto.subtle.exportKey("jwk", key);
    * }
@@ -408,7 +408,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Export a private key in raw format
-   * function exportKey(key) {
+   * async function exportKey(key) {
    *  // key is a CryptoKey object
    *  return await crypto.subtle.exportKey("raw", key);
    * }
@@ -426,7 +426,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Sign data using an ECDSA private key
-   * function signData(key, data) {
+   * async function signData(key, data) {
    *  return await crypto.subtle.sign("ECDSA", key, data);
    * }
    * ```
@@ -444,7 +444,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Verify a digital signature using an ECDSA public key
-   * function verifySignature(key, signature, data) {
+   * async function verifySignature(key, signature, data) {
    *  return await crypto.subtle.verify("ECDSA", key, signature, data);
    * }
    * ```
@@ -480,7 +480,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Encrypt data using an RSA-OAEP key
-   * function encryptData(key, data) {
+   * async function encryptData(key, data) {
    *  return await crypto.subtle.encrypt("RSA-OAEP", key, data);
    * }
    * ```
@@ -503,7 +503,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Decrypt data using an RSA-OAEP key
-   * function decryptData(key, data) {
+   * async function decryptData(key, data) {
    *   return await crypto.subtle.decrypt("RSA-OAEP", key, data);
    * }
    * ```
@@ -526,7 +526,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Derive a key using an HKDF algorithm
-   * function deriveKey(baseKey, length) {
+   * async function deriveKey(baseKey, length) {
    *  return await crypto.subtle.deriveBits("HKDF", baseKey, length);
    * }
    * ```
@@ -551,7 +551,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Derive a key using an HKDF algorithm
-   * function deriveKey(baseKey, derivedKeyType, extractable, keyUsages) {
+   * async function deriveKey(baseKey, derivedKeyType, extractable, keyUsages) {
    *  return await crypto.subtle.deriveKey("HKDF", baseKey, derivedKeyType, extractable, keyUsages);
    * }
    * ```
@@ -581,7 +581,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Wrap a key using an RSA-OAEP key
-   * function wrapKey(key, wrappingKey) {
+   * async function wrapKey(key, wrappingKey) {
    *  return await crypto.subtle.wrapKey("jwk", key, wrappingKey, "RSA-OAEP");
    * }
    * ```
@@ -604,7 +604,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Unwrap a key using an RSA-OAEP key
-   * function unwrapKey(wrappedKey, unwrappingKey) {
+   * async function unwrapKey(wrappedKey, unwrappingKey) {
    *  return await crypto.subtle.unwrapKey(
    *    "jwk", // import format
    *    wrappedKey, // ArrayBuffer of the key to unwrap
