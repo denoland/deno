@@ -88,7 +88,7 @@ where
 }
 
 /// Premultiply the alpha channel of the image.
-pub(crate) fn premultiply_alpha(
+pub fn premultiply_alpha(
   image: DynamicImage,
 ) -> Result<DynamicImage, CanvasError> {
   match image {

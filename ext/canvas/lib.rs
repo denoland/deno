@@ -4,8 +4,11 @@ use std::path::PathBuf;
 
 mod image_ops;
 mod op_create_image_bitmap;
+pub use image;
 use image::ColorType;
+pub use image_ops::premultiply_alpha;
 use op_create_image_bitmap::op_create_image_bitmap;
+pub use op_create_image_bitmap::ImageBitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
