@@ -1430,9 +1430,9 @@ dependencies = [
 
 [[package]]
 name = "deno-tower-lsp-macros"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05d59a1cfd445fd86f63616127a434aabca000e03d963b01b03ce813520565b9"
+checksum = "e017686632f7908cde3e02cd1598e25488f57448600a09211834cfd547b9ec39"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2573,9 +2573,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7afb4d257c084fd889e8cf1ba3ad58db0002428c819cc7717815f996f97777a"
+checksum = "c58d75640e2edffc77929064f2f13c308e549b4b5c42ea6159b0607add856675"
 dependencies = [
  "async-trait",
  "auto_impl",
@@ -2590,7 +2590,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-util",
- "tower 0.4.13",
+ "tower 0.5.2",
  "tracing",
 ]
 
