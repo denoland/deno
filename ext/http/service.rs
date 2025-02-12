@@ -556,6 +556,7 @@ impl HttpRecord {
     let mut info = self.0.borrow_mut();
     if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
       info.attributes.http_response_status_code = Some(status as _);
+      info.handle_duration_and_request_size();
     }
   }
 }

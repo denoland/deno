@@ -15,7 +15,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
@@ -246,10 +245,10 @@ impl From<tokio::net::unix::SocketAddr> for HttpSocketAddr {
 }
 
 struct OtelInfo {
-  instant: std::time::Instant,
   attributes: OtelInfoAttributes,
-  request_size: u64,
-  response_size: u64,
+  duration: Option<std::time::Instant>,
+  request_size: Option<u64>,
+  response_size: Option<u64>,
 }
 
 struct OtelInfoAttributes {
@@ -370,35 +369,48 @@ impl OtelInfo {
     collectors.active_requests.add(1, &attributes.for_counter());
 
     Self {
-      instant,
       attributes,
-      request_size,
-      response_size: 0,
+      duration: Some(instant),
+      request_size: Some(request_size),
+      response_size: Some(0),
+    }
+  }
+
+  fn handle_duration_and_request_size(&mut self) {
+    let collectors = OTEL_COLLECTORS.get().unwrap();
+    
+    if let Some(duration) = self.duration.take() {
+      let duration = duration.elapsed();
+      collectors
+        .duration
+        .record(duration.as_secs_f64(), &self.attributes.for_histogram());
+    }
+
+    if let Some(request_size) = self.request_size.take() {
+      let collectors = OTEL_COLLECTORS.get().unwrap();
+      collectors
+        .request_size
+        .record(request_size, &self.attributes.for_histogram());
     }
   }
 }
 
 impl Drop for OtelInfo {
   fn drop(&mut self) {
-    let duration = self.instant.elapsed();
     let collectors = OTEL_COLLECTORS.get().unwrap();
+
+    debug_assert!(self.duration.is_none());
+    debug_assert!(self.request_size.is_none());
 
     collectors
       .active_requests
       .add(-1, &self.attributes.for_counter());
 
-    let histogram_attributes = self.attributes.for_histogram();
-
-    collectors
-      .duration
-      .record(duration.as_secs_f64(), &histogram_attributes);
-
-    collectors
-      .request_size
-      .record(self.request_size, &histogram_attributes);
-    collectors
-      .response_size
-      .record(self.response_size, &histogram_attributes);
+    if let Some(response_size) = self.response_size {
+      collectors
+        .response_size
+        .record(response_size, &self.attributes.for_histogram());
+    }
   }
 }
 
@@ -1019,8 +1031,10 @@ async fn op_http_write_headers(
   let body = builder.status(status).body(body)?;
 
   if let Some(otel) = stream.otel_info.as_ref() {
-    if let Some(mut otel_info) = otel.take() {
+    let mut otel = otel.borrow_mut();
+    if let Some(otel_info) = otel.as_mut() {
       otel_info.attributes.http_response_status_code = Some(status as _);
+      otel_info.handle_duration_and_request_size();
     }
   }
 
@@ -1267,7 +1281,9 @@ async fn op_http_write(
   if let Some(otel) = stream.otel_info.as_ref() {
     let mut maybe_otel_info = otel.borrow_mut();
     if let Some(otel_info) = maybe_otel_info.as_mut() {
-      otel_info.response_size += buf.len() as u64;
+      if let Some(response_size) = otel_info.response_size.as_mut() {
+        *response_size += buf.len() as u64;
+      }
     }
   }
 
