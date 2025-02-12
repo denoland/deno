@@ -15,6 +15,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+
 use async_compression::tokio::write::BrotliEncoder;
 use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
@@ -378,7 +379,7 @@ impl OtelInfo {
 
   fn handle_duration_and_request_size(&mut self) {
     let collectors = OTEL_COLLECTORS.get().unwrap();
-    
+
     if let Some(duration) = self.duration.take() {
       let duration = duration.elapsed();
       collectors
@@ -414,7 +415,10 @@ impl Drop for OtelInfo {
   }
 }
 
-fn handle_error_otel(otel: &Option<Rc<RefCell<Option<OtelInfo>>>>, error: &HttpError) {
+fn handle_error_otel(
+  otel: &Option<Rc<RefCell<Option<OtelInfo>>>>,
+  error: &HttpError,
+) {
   if let Some(otel) = otel.as_ref() {
     let mut maybe_otel_info = otel.borrow_mut();
     if let Some(otel_info) = maybe_otel_info.as_mut() {
@@ -425,7 +429,9 @@ fn handle_error_otel(otel: &Option<Rc<RefCell<Option<OtelInfo>>>>, error: &HttpE
         HttpError::InvalidHeaderName(_) => "invalid header name",
         HttpError::InvalidHeaderValue(_) => "invalid header value",
         HttpError::Http(_) => "http",
-        HttpError::ResponseHeadersAlreadySent => "response headers already sent",
+        HttpError::ResponseHeadersAlreadySent => {
+          "response headers already sent"
+        }
         HttpError::ConnectionClosedWhileSendingResponse => {
           "connection closed while sending response"
         }
