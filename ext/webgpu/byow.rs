@@ -182,10 +182,14 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
     scope: &mut v8::HandleScope<'a>,
     value: Local<'a, Value>,
   ) -> Result<Self, Self::Error> {
-    let obj = value.try_cast::<v8::Object>().unwrap();
+    let obj = value
+      .try_cast::<v8::Object>()
+      .map_err(|_| JsErrorBox::type_error("is not an object"))?;
 
     let key = v8::String::new(scope, "system").unwrap();
-    let val = obj.get(scope, key.into()).unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'system'"))?;
     let s = String::from_v8(scope, val).unwrap();
     let system = match s.as_str() {
       "cocoa" => UnsafeWindowSurfaceSystem::Cocoa,
@@ -200,23 +204,31 @@ impl<'a> FromV8<'a> for UnsafeWindowSurfaceOptions {
     };
 
     let key = v8::String::new(scope, "windowHandle").unwrap();
-    let val = obj.get(scope, key.into()).unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'windowHandle'"))?;
     let Some(window_handle) = deno_core::_ops::to_external_option(&val) else {
       return Err(JsErrorBox::type_error("expected external"));
     };
 
     let key = v8::String::new(scope, "displayHandle").unwrap();
-    let val = obj.get(scope, key.into()).unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'displayHandle'"))?;
     let Some(display_handle) = deno_core::_ops::to_external_option(&val) else {
       return Err(JsErrorBox::type_error("expected external"));
     };
 
     let key = v8::String::new(scope, "width").unwrap();
-    let val = obj.get(scope, key.into()).unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'width'"))?;
     let width = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
 
     let key = v8::String::new(scope, "height").unwrap();
-    let val = obj.get(scope, key.into()).unwrap();
+    let val = obj
+      .get(scope, key.into())
+      .ok_or_else(|| JsErrorBox::type_error("missing field 'height'"))?;
     let height = deno_core::convert::Number::<u32>::from_v8(scope, val)?.0;
 
     Ok(Self {
