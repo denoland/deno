@@ -33,7 +33,6 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -140,9 +139,6 @@ pub struct LanguageServer {
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
   shutdown_flag: AsyncFlag,
-  /// This is used to move all request handling to a separate thread so blocking
-  /// code there won't block cancellations from being flagged.
-  worker_thread: Rc<WorkerThread>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -190,77 +186,6 @@ impl LanguageServerTaskQueue {
         task_fn(ls.clone());
       }
     });
-  }
-}
-
-#[derive(Debug)]
-struct WorkerThread {
-  runtime_handle: tokio::runtime::Handle,
-  shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
-  join_handle: Option<std::thread::JoinHandle<()>>,
-}
-
-impl WorkerThread {
-  fn create() -> Self {
-    let (handle_tx, handle_rx) = std::sync::mpsc::channel();
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let join_handle = std::thread::spawn(move || {
-      let runtime = create_basic_runtime();
-      handle_tx.send(runtime.handle().clone()).unwrap();
-      runtime.block_on(shutdown_rx).unwrap();
-    });
-    let runtime_handle = handle_rx.recv().unwrap();
-    Self {
-      runtime_handle,
-      shutdown_tx: Some(shutdown_tx),
-      join_handle: Some(join_handle),
-    }
-  }
-
-  async fn spawn(&self, fut: impl std::future::Future<Output = ()> + 'static) {
-    // SAFETY: we're running in a current thread runtime
-    let fut = unsafe { deno_core::unsync::MaskFutureAsSend::new(fut) };
-    self
-      .runtime_handle
-      .spawn(fut)
-      .await
-      .map(|r| r.into_inner())
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .ok();
-  }
-
-  async fn spawn_with_cancellation<
-    T: Send + 'static,
-    TFut: std::future::Future<Output = LspResult<T>>,
-  >(
-    &self,
-    get_fut: impl FnOnce(CancellationToken) -> TFut + 'static,
-  ) -> LspResult<T> {
-    let token = CancellationToken::new();
-    let _drop_guard = token.clone().drop_guard();
-
-    let future = async move {
-      tokio::select! {
-        biased;
-        _ = token.cancelled() => Err(LspError::request_cancelled()),
-        result = get_fut(token.clone()) => result,
-      }
-    };
-    // SAFETY: we're running in a current thread runtime
-    let future = unsafe { deno_core::unsync::MaskFutureAsSend::new(future) };
-
-    let result = self.runtime_handle.spawn(future).await;
-    result
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .map(|r| r.into_inner())
-      .unwrap_or_else(|_| Err(LspError::internal_error()))
-  }
-}
-
-impl Drop for WorkerThread {
-  fn drop(&mut self) {
-    self.shutdown_tx.take().unwrap().send(()).unwrap();
-    self.join_handle.take().unwrap().join().unwrap();
   }
 }
 
@@ -316,29 +241,12 @@ impl LanguageServer {
       init_flag: Default::default(),
       performance,
       shutdown_flag,
-      worker_thread: Rc::new(WorkerThread::create()),
     }
   }
 
   /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
   pub async fn cache(
-    &self,
-    specifiers: Vec<ModuleSpecifier>,
-    referrer: ModuleSpecifier,
-    force_global_cache: bool,
-  ) -> LspResult<Option<Value>> {
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.cache_inner(specifiers, referrer, force_global_cache)
-          .await
-      })
-      .await
-  }
-
-  async fn cache_inner(
     &self,
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
@@ -439,113 +347,88 @@ impl LanguageServer {
   /// coordinate the tests receiving the latest diagnostics.
   pub async fn latest_diagnostic_batch_index_request(
     &self,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(
-          ls.inner
-            .read()
-            .await
-            .diagnostics_server
-            .latest_batch_index()
-            .map(|v| v.into()),
-        )
-      })
-      .await
+    Ok(
+      self
+        .inner
+        .read()
+        .await
+        .diagnostics_server
+        .latest_batch_index()
+        .map(|v| v.into()),
+    )
   }
 
-  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+  pub async fn performance_request(
+    &self,
+    _token: CancellationToken,
+  ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(Some(ls.inner.read().await.get_performance()))
-      })
-      .await
+    Ok(Some(self.inner.read().await.get_performance()))
   }
 
-  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+  pub async fn task_definitions(
+    &self,
+    _token: CancellationToken,
+  ) -> LspResult<Vec<TaskDefinition>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.task_definitions()
-      })
-      .await
+    self.inner.read().await.task_definitions()
   }
 
   pub async fn test_run_request(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_request(params).await
-      })
-      .await
+    self.inner.read().await.test_run_request(params).await
   }
 
   pub async fn test_run_cancel_request(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_cancel_request(params)
-      })
-      .await
+    self.inner.read().await.test_run_cancel_request(params)
   }
 
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        match params.map(serde_json::from_value) {
-          Some(Ok(params)) => Ok(Some(
-            serde_json::to_value(
-              ls.inner.read().await.virtual_text_document(params)?,
-            )
-            .map_err(|err| {
-              error!(
-                "Failed to serialize virtual_text_document response: {:#}",
-                err
-              );
-              LspError::internal_error()
-            })?,
-          )),
-          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-          None => Err(LspError::invalid_params("Missing parameters")),
-        }
-      })
-      .await
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self.inner.read().await.virtual_text_document(params)?,
+        )
+        .map_err(|err| {
+          error!(
+            "Failed to serialize virtual_text_document response: {:#}",
+            err
+          );
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
   }
 
   pub async fn refresh_configuration(&self) {
@@ -3534,6 +3417,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
     &self,
     params: ExecuteCommandParams,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
@@ -3623,52 +3507,28 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_open(params).await;
-      })
-      .await;
+    self.inner.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_change(params).await;
-      })
-      .await;
+    self.inner.write().await.did_change(params).await;
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_save(params);
-      })
-      .await;
+    self.inner.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_close(params).await;
-      })
-      .await;
+    self.inner.write().await.did_close(params).await;
   }
 
   async fn did_change_configuration(
@@ -3678,22 +3538,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_configuration", &params);
+    self.refresh_configuration().await;
     self
-      .worker_thread
-      .spawn(async move {
-        let mark = ls
-          .performance
-          .mark_with_args("lsp.did_change_configuration", &params);
-        ls.refresh_configuration().await;
-        ls.inner
-          .write()
-          .await
-          .did_change_configuration(params)
-          .await;
-        ls.performance.measure(mark);
-      })
+      .inner
+      .write()
+      .await
+      .did_change_configuration(params)
       .await;
+    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -3703,16 +3558,11 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn(async move {
-        ls.inner
-          .write()
-          .await
-          .did_change_watched_files(params)
-          .await;
-      })
+      .inner
+      .write()
+      .await
+      .did_change_watched_files(params)
       .await;
   }
 
@@ -3723,476 +3573,375 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_workspace_folders", &params);
     self
-      .worker_thread
-      .spawn(async move {
-        let mark = ls
-          .performance
-          .mark_with_args("lsp.did_change_workspace_folders", &params);
-        ls.inner
-          .write()
-          .await
-          .pre_did_change_workspace_folders(params);
-        ls.refresh_configuration().await;
-        ls.inner
-          .write()
-          .await
-          .post_did_change_workspace_folders()
-          .await;
-        ls.performance.measure(mark);
-      })
+      .inner
+      .write()
+      .await
+      .pre_did_change_workspace_folders(params);
+    self.refresh_configuration().await;
+    self
+      .inner
+      .write()
+      .await
+      .post_did_change_workspace_folders()
       .await;
+    self.performance.measure(mark);
   }
 
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
+    token: CancellationToken,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.document_symbol(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .document_symbol(params, &token)
       .await
   }
 
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.formatting(params, &token).await
-      })
-      .await
+    self.inner.read().await.formatting(params, &token).await
   }
 
-  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(
+    &self,
+    params: HoverParams,
+
+    token: CancellationToken,
+  ) -> LspResult<Option<Hover>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.hover(params, &token).await
-      })
-      .await
+    self.inner.read().await.hover(params, &token).await
   }
 
   async fn inlay_hint(
     &self,
     params: InlayHintParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<InlayHint>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.inlay_hint(params, &token).await
-      })
-      .await
+    self.inner.read().await.inlay_hint(params, &token).await
   }
 
   async fn code_action(
     &self,
     params: CodeActionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.code_action(params, &token).await
-      })
-      .await
+    self.inner.read().await.code_action(params, &token).await
   }
 
   async fn code_action_resolve(
     &self,
     params: CodeAction,
+    token: CancellationToken,
   ) -> LspResult<CodeAction> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .code_action_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .code_action_resolve(params, &token)
       .await
   }
 
   async fn code_lens(
     &self,
     params: CodeLensParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CodeLens>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.code_lens(params, &token).await
-      })
-      .await
+    self.inner.read().await.code_lens(params, &token).await
   }
 
-  async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
+  async fn code_lens_resolve(
+    &self,
+    params: CodeLens,
+
+    token: CancellationToken,
+  ) -> LspResult<CodeLens> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .code_lens_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .code_lens_resolve(params, &token)
       .await
   }
 
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .document_highlight(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .document_highlight(params, &token)
       .await
   }
 
   async fn references(
     &self,
     params: ReferenceParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<Location>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.references(params, &token).await
-      })
-      .await
+    self.inner.read().await.references(params, &token).await
   }
 
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.goto_definition(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .goto_definition(params, &token)
       .await
   }
 
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .goto_type_definition(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .goto_type_definition(params, &token)
       .await
   }
 
   async fn completion(
     &self,
     params: CompletionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.completion(params, &token).await
-      })
-      .await
+    self.inner.read().await.completion(params, &token).await
   }
 
   async fn completion_resolve(
     &self,
     params: CompletionItem,
+    token: CancellationToken,
   ) -> LspResult<CompletionItem> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .completion_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .completion_resolve(params, &token)
       .await
   }
 
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .goto_implementation(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .goto_implementation(params, &token)
       .await
   }
 
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.folding_range(params, &token).await
-      })
-      .await
+    self.inner.read().await.folding_range(params, &token).await
   }
 
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.incoming_calls(params, &token).await
-      })
-      .await
+    self.inner.read().await.incoming_calls(params, &token).await
   }
 
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.outgoing_calls(params, &token).await
-      })
-      .await
+    self.inner.read().await.outgoing_calls(params, &token).await
   }
 
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .prepare_call_hierarchy(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .prepare_call_hierarchy(params, &token)
       .await
   }
 
   async fn rename(
     &self,
     params: RenameParams,
+    token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.rename(params, &token).await
-      })
-      .await
+    self.inner.read().await.rename(params, &token).await
   }
 
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.selection_range(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .selection_range(params, &token)
       .await
   }
 
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensResult>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .semantic_tokens_full(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .semantic_tokens_full(params, &token)
       .await
   }
 
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .semantic_tokens_range(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .semantic_tokens_range(params, &token)
       .await
   }
 
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SignatureHelp>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.signature_help(params, &token).await
-      })
-      .await
+    self.inner.read().await.signature_help(params, &token).await
   }
 
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
+    token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .will_rename_files(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .will_rename_files(params, &token)
       .await
   }
 
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.symbol(params, &token).await
-      })
-      .await
+    self.inner.read().await.symbol(params, &token).await
   }
 }
 
