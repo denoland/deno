@@ -108,35 +108,32 @@ fn get_asset_texts() -> Result<Vec<AssetText>, AnyError> {
 
 macro_rules! maybe_compressed_source {
   ($file: expr) => {{
-    #[cfg(debug_assertions)]
-    {
-      StaticAssetSource::Uncompressed(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/",
-        $file
-      )))
-    }
-    #[cfg(not(debug_assertions))]
-    {
-      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
-        concat!(env!("OUT_DIR"), "/", $file, ".zstd")
-      )))
-    }
+    maybe_compressed_source!(compressed = $file, uncompressed = $file)
   }};
   (compressed = $comp: expr, uncompressed = $uncomp: expr) => {{
-    #[cfg(debug_assertions)]
+    #[cfg(feature = "hmr")]
     {
-      StaticAssetSource::Uncompressed(include_str!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/",
-        $uncomp
-      )))
+      StaticAssetSource::Owned(
+        concat!(env!("CARGO_MANIFEST_DIR"), "/", $uncomp),
+        std::sync::OnceLock::new(),
+      )
     }
-    #[cfg(not(debug_assertions))]
+    #[cfg(not(feature = "hmr"))]
     {
-      StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
-        concat!(env!("OUT_DIR"), "/", $comp, ".zstd")
-      )))
+      #[cfg(debug_assertions)]
+      {
+        StaticAssetSource::Uncompressed(include_str!(concat!(
+          env!("CARGO_MANIFEST_DIR"),
+          "/",
+          $uncomp
+        )))
+      }
+      #[cfg(not(debug_assertions))]
+      {
+        StaticAssetSource::Compressed(CompressedSource::new(include_bytes!(
+          concat!(env!("OUT_DIR"), "/", $comp, ".zstd")
+        )))
+      }
     }
   }};
 }
@@ -164,9 +161,11 @@ macro_rules! maybe_compressed_ext_lib {
 
 #[derive(Clone)]
 pub enum StaticAssetSource {
-  #[cfg_attr(debug_assertions, allow(dead_code))]
+  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   Compressed(CompressedSource),
   Uncompressed(&'static str),
+  #[cfg_attr(not(feature = "hmr"), allow(dead_code))]
+  Owned(&'static str, std::sync::OnceLock<Arc<str>>),
 }
 
 /// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
@@ -228,6 +227,11 @@ impl StaticAssetSource {
         MaybeStaticSource::Computed(compressed_source.get())
       }
       StaticAssetSource::Uncompressed(src) => MaybeStaticSource::Static(src),
+      StaticAssetSource::Owned(path, cell) => {
+        let str =
+          cell.get_or_init(|| std::fs::read_to_string(path).unwrap().into());
+        MaybeStaticSource::Computed((*str).clone())
+      }
     }
   }
 
@@ -1302,7 +1306,7 @@ pub(crate) struct CompressedSource {
 }
 
 impl CompressedSource {
-  #[cfg_attr(debug_assertions, allow(dead_code))]
+  #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
   pub(crate) const fn new(bytes: &'static [u8]) -> Self {
     Self {
       bytes,
