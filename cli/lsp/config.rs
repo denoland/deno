@@ -1534,17 +1534,11 @@ impl ConfigData {
           import_map_url.clone(),
           ConfigWatchedFileType::ImportMap,
         );
-        // spawn due to the lsp's `Send` requirement
-        let fetch_result =
-          deno_core::unsync::spawn({
-            let file_fetcher = file_fetcher.cloned().unwrap();
-            let import_map_url = import_map_url.clone();
-            async move {
-              file_fetcher.fetch_bypass_permissions(&import_map_url).await
-            }
-          })
-          .await
-          .unwrap();
+        let fetch_result = file_fetcher
+          .as_ref()
+          .unwrap()
+          .fetch_bypass_permissions(import_map_url)
+          .await;
 
         let value_result = fetch_result.and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())

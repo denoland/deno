@@ -71,7 +71,7 @@ fn patch_uris<'a>(
     };
 
     if let Some(new_req) = new_req {
-      *req = new_req;
+      *req = new_req.request;
     }
   }
 }
