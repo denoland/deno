@@ -208,7 +208,7 @@ fn op_node_load_env_file(
 ) -> Result<(), DotEnvLoadErr> {
   state
     .borrow::<PermissionsContainer>()
-    .check_read_with_api_name(path, Some("load_env_file"))
+    .check_read_with_api_name(path, Some("process.loadEnvFile"))
     .map_err(DotEnvLoadErr::Permission)?;
 
   dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
