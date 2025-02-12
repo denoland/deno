@@ -141,6 +141,10 @@ monch.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open = "5.0.1"
+opentelemetry.workspace = true
+opentelemetry-otlp.workspace = true
+opentelemetry-semantic-conventions.workspace = true
+opentelemetry_sdk.workspace = true
 p256.workspace = true
 pathdiff = "0.2.1"
 percent-encoding.workspace = true
@@ -166,8 +170,11 @@ text_lines = "=0.6.0"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+tower.workspace = true
 tower-lsp.workspace = true
-tracing = { version = "0.1", features = ["log", "default"] }
+tracing = { version = "0.1", features = ["log"] }
+tracing-opentelemetry = "0.28.0"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 unicode-width = "0.1.3"

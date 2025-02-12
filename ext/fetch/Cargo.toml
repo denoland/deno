@@ -19,6 +19,7 @@ bytes.workspace = true
 data-url.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
+deno_fs.workspace = true
 deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true

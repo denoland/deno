@@ -15,6 +15,9 @@ and limitations under the License.
 
 declare namespace ts {
     namespace deno {
+        function setEnterSpan(f: EnterSpan): void;
+        function setExitSpan(f: ExitSpan): void;
+        function spanned<T>(name: string, f: () => T): T;
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
         function setNodeOnlyGlobalNames(names: Set<string>): void;
         function setTypesNodeIgnorableNames(names: Set<string>): void;
@@ -26,6 +29,10 @@ declare namespace ts {
         function tryParseNpmPackageReference(text: string): NpmPackageReference | undefined;
         function parseNpmPackageReference(text: string): NpmPackageReference;
         type IsNodeSourceFileCallback = (sourceFile: ts.SourceFile) => boolean;
+        type EnterSpan = (name: string) => object;
+        type ExitSpan = (span: object) => void;
+        let enterSpan: EnterSpan;
+        let exitSpan: ExitSpan;
         interface DenoForkContext {
             hasNodeSourceFile: (node: ts.Node | undefined) => boolean;
             getGlobalsForName: (id: ts.__String) => ts.SymbolTable;
