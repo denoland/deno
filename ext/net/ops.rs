@@ -372,31 +372,49 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+#[derive(Serialize, Debug)]
+pub struct NetPermToken {
+  pub hostname: String,
+  pub resolved_ips: Vec<String>,
+  pub port: Option<u16>,
+}
+
+impl deno_core::GarbageCollected for NetPermToken {}
+
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[cppgc] perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, perm_token).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
-    state_
-      .borrow_mut::<NP>()
-      .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+    let permissions = state_.borrow_mut::<NP>();
+    if let Some(perm_token) = perm_token {
+      if perm_token.resolved_ips.iter().any(|ip| ip == &addr.hostname) {
+        permissions.check_net(&(&perm_token.hostname, perm_token.port), "Deno.connect()")?;
+      } else {
+        permissions.check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+      }
+    } else {
+      permissions.check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
+    }
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)

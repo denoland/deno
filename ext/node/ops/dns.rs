@@ -1,12 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_core::v8;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::str::FromStr;
-
 use deno_core::op2;
 use deno_core::OpState;
 use deno_error::JsError;
+use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
@@ -32,11 +33,12 @@ pub enum GetAddrInfoError {
 
 #[op2(async, stack_trace)]
 #[serde]
-pub async fn op_getaddrinfo<P>(
+pub async fn op_getaddrinfo<'s, P>(
+  scope: &mut v8::HandleScope<'s>,
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
   port: Option<u16>,
-) -> Result<Vec<GetAddrInfoResult>, GetAddrInfoError>
+) -> Result<(Vec<GetAddrInfoResult>, v8::Local<'s, v8::Object>), GetAddrInfoError>
 where
   P: crate::NodePermissions + 'static,
 {
@@ -45,10 +47,17 @@ where
     let permissions = state_.borrow_mut::<P>();
     permissions.check_net((hostname.as_str(), port), "lookup")?;
   }
+
+  let mut token = NetPermToken {
+    hostname: hostname.clone(),
+    resolved_ips: Vec::new(),
+    port: None,
+  };
+
   let mut resolver = GaiResolver::new();
   let name = Name::from_str(&hostname)
     .map_err(|_| GetAddrInfoError::Resolution(hostname.clone()))?;
-  resolver
+  let result = resolver
     .call(name)
     .await
     .map_err(|_| GetAddrInfoError::Resolution(hostname))
@@ -56,6 +65,7 @@ where
       addrs
         .into_iter()
         .map(|addr| {
+          token.resolved_ips.push(addr.ip().to_string());
           GetAddrInfoResult {
             family: match addr {
               std::net::SocketAddr::V4(_) => 4,
@@ -65,5 +75,7 @@ where
           }
         })
         .collect::<Vec<_>>()
-    })
+    })?;
+  let token = deno_core::cppgc::make_cppgc_object(scope, token);
+  Ok((result, token))
 }

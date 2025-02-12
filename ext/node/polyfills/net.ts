@@ -963,7 +963,9 @@ function _lookupAndConnect(
         err: ErrnoException | null,
         ip: string,
         addressType: number,
+        permToken: symbol,
       ) {
+        self._handle.setPermToken?.(permToken);
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1027,7 +1029,8 @@ function _lookupAndConnectMultiple(
   timeout: number | undefined,
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(host, dnsopts, function emitLookup(err, addresses) {
+    lookup(host, dnsopts, function emitLookup(err, addresses, _, permToken) {
+      self._handle.setPermToken?.(permToken);
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.
