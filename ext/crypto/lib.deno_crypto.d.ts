@@ -249,7 +249,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // RSA key generation
-   * const key = await.crypto.subtle.generateKey(
+   * const key = await crypto.subtle.generateKey(
    *  {
       name: "RSA-OAEP",
       modulusLength: 4096,
@@ -264,7 +264,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // Elliptic curve (ECDSA) key pair generation
-   * const key = await.crypto.subtle.generateKey(
+   * const key = await crypto.subtle.generateKey(
    *  {
    *    name: "ECDSA",
    *    namedCurve: "P-384",
@@ -293,7 +293,7 @@ interface SubtleCrypto {
    * 
    * @example
    * ```ts
-   * const key = await.crypto.subtle.generateKey(
+   * const key = await crypto.subtle.generateKey(
    *  {
    *    name: "AES-GCM",
    *    length: 256,
@@ -306,7 +306,7 @@ interface SubtleCrypto {
    * @example
    * ```ts
    * // HMAC key generation
-   * const key = await.crypto.subtle.generateKey(
+   * const key = await crypto.subtle.generateKey(
    *  {
    *    name: "HMAC",
    *    hash: { name: "SHA-512" },
