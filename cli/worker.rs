@@ -486,7 +486,7 @@ mod tests {
       RuntimePermissionDescriptorParser::new(crate::sys::CliSys::default()),
     );
     let options = WorkerOptions {
-      startup_snapshot: crate::js::deno_isolate_init(),
+      startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
       ..Default::default()
     };
 
