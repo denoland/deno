@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -1372,10 +1373,82 @@ deno_core::extension!(deno_cli_tsc,
   }
 );
 
+pub struct TscExtCodeCache {
+  cache: Arc<dyn deno_runtime::code_cache::CodeCache>,
+}
+
+impl TscExtCodeCache {
+  pub fn new(cache: Arc<dyn deno_runtime::code_cache::CodeCache>) -> Self {
+    Self { cache }
+  }
+}
+
+impl deno_core::ExtCodeCache for TscExtCodeCache {
+  fn get_code_cache_info(
+    &self,
+    specifier: &ModuleSpecifier,
+    code: &deno_core::ModuleSourceCode,
+    esm: bool,
+  ) -> deno_core::SourceCodeCacheInfo {
+    use deno_runtime::code_cache::CodeCacheType;
+    let code_hash = FastInsecureHasher::new_deno_versioned()
+      .write_hashable(code)
+      .finish();
+    let data = self
+      .cache
+      .get_sync(
+        specifier,
+        if esm {
+          CodeCacheType::EsModule
+        } else {
+          CodeCacheType::Script
+        },
+        code_hash,
+      )
+      .map(Cow::from)
+      .inspect(|_| {
+        log::debug!(
+          "V8 code cache hit for Extension module: {specifier}, [{code_hash:?}]"
+        );
+      });
+    deno_core::SourceCodeCacheInfo {
+      hash: code_hash,
+      data,
+    }
+  }
+
+  fn code_cache_ready(
+    &self,
+    specifier: ModuleSpecifier,
+    source_hash: u64,
+    code_cache: &[u8],
+    esm: bool,
+  ) {
+    use deno_runtime::code_cache::CodeCacheType;
+
+    log::debug!(
+      "Updating V8 code cache for Extension module: {specifier}, [{source_hash:?}]"
+    );
+    self.cache.set_sync(
+      specifier,
+      if esm {
+        CodeCacheType::EsModule
+      } else {
+        CodeCacheType::Script
+      },
+      source_hash,
+      code_cache,
+    );
+  }
+}
+
 /// Execute a request on the supplied snapshot, returning a response which
 /// contains information, like any emitted files, diagnostics, statistics and
 /// optionally an updated TypeScript build info.
-pub fn exec(request: Request) -> Result<Response, ExecError> {
+pub fn exec(
+  request: Request,
+  code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
+) -> Result<Response, ExecError> {
   // tsc cannot handle root specifiers that don't have one of the "acceptable"
   // extensions.  Therefore, we have to check the root modules against their
   // extensions and remap any that are unacceptable to tsc and add them to the
@@ -1417,10 +1490,14 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
     root_map,
     remapped_specifiers,
   ));
+  let extension_code_cache = code_cache.map(|cache| {
+    Rc::new(TscExtCodeCache::new(cache)) as Rc<dyn deno_core::ExtCodeCache>
+  });
   let mut runtime = JsRuntime::new(RuntimeOptions {
     extensions,
     create_params: create_isolate_create_params(),
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
+    extension_code_cache,
     ..Default::default()
   });
 
@@ -1450,11 +1527,13 @@ pub fn exec(request: Request) -> Result<Response, ExecError> {
 #[cfg(test)]
 mod tests {
   use deno_core::futures::future;
+  use deno_core::parking_lot::Mutex;
   use deno_core::serde_json;
   use deno_core::OpState;
   use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
+  use deno_runtime::code_cache::CodeCacheType;
   use test_util::PathRef;
 
   use super::Diagnostic;
@@ -1530,6 +1609,12 @@ mod tests {
   async fn test_exec(
     specifier: &ModuleSpecifier,
   ) -> Result<Response, ExecError> {
+    test_exec_with_cache(specifier, None).await
+  }
+  async fn test_exec_with_cache(
+    specifier: &ModuleSpecifier,
+    code_cache: Option<Arc<dyn deno_runtime::code_cache::CodeCache>>,
+  ) -> Result<Response, ExecError> {
     let hash_data = 123; // something random
     let fixtures = test_util::testdata_path().join("tsc2");
     let loader = MockLoader { fixtures };
@@ -1563,7 +1648,7 @@ mod tests {
       root_names: vec![(specifier.clone(), MediaType::TypeScript)],
       check_mode: TypeCheckMode::All,
     };
-    exec(request)
+    exec(request, code_cache)
   }
 
   #[tokio::test]
@@ -1783,5 +1868,116 @@ mod tests {
       .await
       .expect("exec should not have errored");
     assert!(!actual.diagnostics.has_diagnostic());
+  }
+
+  pub type SpecifierWithType = (ModuleSpecifier, CodeCacheType);
+
+  #[derive(Default)]
+  struct TestExtCodeCache {
+    cache: Mutex<HashMap<(SpecifierWithType, u64), Vec<u8>>>,
+
+    hits: Mutex<HashMap<SpecifierWithType, usize>>,
+    misses: Mutex<HashMap<SpecifierWithType, usize>>,
+  }
+
+  impl deno_runtime::code_cache::CodeCache for TestExtCodeCache {
+    fn get_sync(
+      &self,
+      specifier: &ModuleSpecifier,
+      code_cache_type: CodeCacheType,
+      source_hash: u64,
+    ) -> Option<Vec<u8>> {
+      let result = self
+        .cache
+        .lock()
+        .get(&((specifier.clone(), code_cache_type), source_hash))
+        .cloned();
+      if result.is_some() {
+        *self
+          .hits
+          .lock()
+          .entry((specifier.clone(), code_cache_type))
+          .or_default() += 1;
+      } else {
+        *self
+          .misses
+          .lock()
+          .entry((specifier.clone(), code_cache_type))
+          .or_default() += 1;
+      }
+      result
+    }
+
+    fn set_sync(
+      &self,
+      specifier: ModuleSpecifier,
+      code_cache_type: CodeCacheType,
+      source_hash: u64,
+      data: &[u8],
+    ) {
+      self
+        .cache
+        .lock()
+        .insert(((specifier, code_cache_type), source_hash), data.to_vec());
+    }
+  }
+
+  #[tokio::test]
+  async fn test_exec_code_cache() {
+    let code_cache = Arc::new(TestExtCodeCache::default());
+    let specifier = ModuleSpecifier::parse("https://deno.land/x/a.ts").unwrap();
+    let actual = test_exec_with_cache(&specifier, Some(code_cache.clone()))
+      .await
+      .expect("exec should not have errored");
+    assert!(!actual.diagnostics.has_diagnostic());
+
+    let expect = [
+      (
+        "ext:deno_cli_tsc/99_main_compiler.js",
+        CodeCacheType::EsModule,
+      ),
+      ("ext:deno_cli_tsc/98_lsp.js", CodeCacheType::EsModule),
+      ("ext:deno_cli_tsc/97_ts_host.js", CodeCacheType::EsModule),
+      ("ext:deno_cli_tsc/00_typescript.js", CodeCacheType::Script),
+    ];
+
+    {
+      let mut files = HashMap::new();
+
+      for (((specifier, ty), _), _) in code_cache.cache.lock().iter() {
+        let specifier = specifier.to_string();
+        if files.contains_key(&specifier) {
+          panic!("should have only 1 entry per specifier");
+        }
+        files.insert(specifier, *ty);
+      }
+
+      // 99_main_compiler, 98_lsp, 97_ts_host, 00_typescript
+      assert_eq!(files.len(), 4);
+      assert_eq!(code_cache.hits.lock().len(), 0);
+      assert_eq!(code_cache.misses.lock().len(), 4);
+
+      for (specifier, ty) in &expect {
+        assert_eq!(files.get(*specifier), Some(ty));
+      }
+
+      code_cache.hits.lock().clear();
+      code_cache.misses.lock().clear();
+    }
+
+    {
+      let _ = test_exec_with_cache(&specifier, Some(code_cache.clone()))
+        .await
+        .expect("exec should not have errored");
+
+      // 99_main_compiler, 98_lsp, 97_ts_host, 00_typescript
+      assert_eq!(code_cache.hits.lock().len(), 4);
+      assert_eq!(code_cache.misses.lock().len(), 0);
+
+      for (specifier, ty) in expect {
+        let url = ModuleSpecifier::parse(specifier).unwrap();
+        assert_eq!(code_cache.hits.lock().get(&(url, ty)), Some(&1));
+      }
+    }
   }
 }
