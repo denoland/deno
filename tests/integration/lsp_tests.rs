@@ -14268,7 +14268,8 @@ fn lsp_node_modules_dir() {
       "unstable": [],
     } }))
   };
-  let diagnostics = refresh_config(&mut client);
+  refresh_config(&mut client);
+  let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
@@ -14361,7 +14362,7 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  let diagnostics = client.change_configuration(json!({ "deno": {
+  client.change_configuration(json!({ "deno": {
     "enable": true,
     "config": "./deno.json",
     "codeLens": {
@@ -14379,6 +14380,7 @@ fn lsp_vendor_dir() {
     },
     "unstable": [],
   } }));
+  let diagnostics = client.read_diagnostics();
 
   // won't be cached until a manual cache occurs
   assert_eq!(
