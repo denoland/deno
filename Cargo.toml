@@ -243,8 +243,8 @@ rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "
 
 # webgpu
 raw-window-handle = "0.6.0"
-wgpu-core = "0.21.1"
-wgpu-types = "0.20"
+wgpu-core = "24.0.0"
+wgpu-types = "24.0.0"
 
 # macros
 quote = "1"
