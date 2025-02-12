@@ -317,7 +317,7 @@ docs: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm\n
 }
 
 function getBitmapData(imageBitmap) {
-  return imageBitmap[_bitmapData];
+  return imageBitmap[_bitmapData]();
 }
 
 internals.getBitmapData = getBitmapData;
