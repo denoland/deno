@@ -1171,7 +1171,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 
