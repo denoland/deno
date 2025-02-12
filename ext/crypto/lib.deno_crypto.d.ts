@@ -586,7 +586,6 @@ interface SubtleCrypto {
   ): Promise<ArrayBuffer>;
   /**
    * 
-   * The SubtleCrypto.decrypt() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations.
    * This method is used to decrypt data using a cryptographic key and return the original plaintext.
    * 
    * @syntax
@@ -594,13 +593,7 @@ interface SubtleCrypto {
    * decrypt(algorithm, key, data)
    * ```
    *  
-   * @param algorithm : The algorithm to use for the decryption. Options are:
-   * 
-   * - `"RSA-OAEP"` : RSA Optimal Asymmetric Encryption Padding
-   * - `"AES-CBC"` : Advanced Encryption Standard (AES) Cipher Block Chaining
-   * - `"AES-GCM"` : Advanced Encryption Standard (AES) Galois/Counter Mode
-   * - `"AES-CTR"` : Advanced Encryption Standard (AES) Counter Mode
-   * 
+   * @param algorithm : The algorithm to use for the decryption. ["RSA-OAEP" | "AES-CBC" | "AES-GCM" | "AES-CTR"]
    * @param key : The key to use for the decryption.
    * @param data : The data to decrypt.
    * 
@@ -608,7 +601,7 @@ interface SubtleCrypto {
    * ```ts
    * // Decrypt data using an RSA-OAEP key
    * function decryptData(key, data) {  
-   *  return await crypto.subtle.decrypt("RSA-OAEP", key, data);
+   *   return await crypto.subtle.decrypt("RSA-OAEP", key, data);
    * }
    * ```
    * 
@@ -626,7 +619,6 @@ interface SubtleCrypto {
   ): Promise<ArrayBuffer>;
   /**
    * 
-   * The SubtleCrypto.deriveBits() method is part of the Web Cryptography API, which allows web applications to perform cryptographic operations.
    * This method is used to derive a key from a base key using a cryptographic algorithm.
    * 
    * @syntax
@@ -634,17 +626,9 @@ interface SubtleCrypto {
    * deriveBits(algorithm, baseKey, length)
    * ```
    * 
-   * @param algorithm : The algorithm to use for the derivation. Options are:
-   * 
-   * - `HKDF` : Object specifying the HMAC-based Key Derivation Function
-   * - `PBKDF2` : Object specifying the Password-Based Key Derivation Function 2
-   * - `ECDH` : Object specifying the Elliptic Curve Diffie-Hellman 
-   * - `X25519` : Object specifying the X25519 elliptic curve
-   * 
-   * 
-   * 
-   * @param baseKey : The base key to derive from.
-   * @param length : The length of the derived key.
+   * @param algorithm The algorithm to use for the derivation. ["HKDF" | "PBKDF2" | "ECDH", "X25519"]
+   * @param baseKey The base key to derive from.
+   * @param length The length of the derived key.
    * 
    * @example
    * ```ts
@@ -665,6 +649,35 @@ interface SubtleCrypto {
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+/**
+ * 
+ * This method is used to derive a secret key from a base or master key using a cryptographic algorithm.
+ * It returns a Promise which fullfils with an object of the new key.
+ * 
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
+ * 
+ * @syntax
+ * ```ts
+ * deriveKey(algorithm, baseKey, derivedKeyType, extractable, keyUsages)
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // Derive a key using an HKDF algorithm
+ * function deriveKey(baseKey, derivedKeyType, extractable, keyUsages) {
+ *  return await crypto.subtle.deriveKey("HKDF", baseKey, derivedKeyType, extractable, keyUsages);
+ * }
+ * ```
+ * 
+ * @param algorithm The algorithm to use for the derivation. ["HKDF" | "PBKDF2" | "ECDH", "X25519"]
+ * @param baseKey The base key to derive from.
+ * @param derivedKeyType The type of key to derive.
+ * @param extractable Whether the key is extractable.
+ * @param keyUsages An Array describing what the derived key can be used for.
+ * 
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
+ * 
+ */
   deriveKey(
     algorithm:
       | AlgorithmIdentifier
@@ -681,6 +694,31 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * 
+   * The wrapKey() method "wraps" a key, which involves exporting it in a portable format and then encrypting that exported key.
+   * Key wrapping enhances protection in untrusted environments, such as within an unsecured data store or during transmission over an unprotected network.
+   * 
+   * @syntax
+   * ```ts
+   * wrapKey(format, key, wrappingKey, wrapAlgorithm)
+   * ```
+   * 
+   * @param format The format of the key data. ["raw" | "spki" | "pkcs8" | "jwk"]
+   * @param key The key to wrap.
+   * @param wrappingKey The key to use for the wrapping.
+   * @param wrapAlgorithm The algorithm to use for the wrapping. ["RSA-OAEP" | "AES-CBC" | "AES-GCM" | "AES-CTR"]
+   * 
+   * @example
+   * ```ts
+   * // Wrap a key using an RSA-OAEP key
+   * function wrapKey(key, wrappingKey) {
+   *  return await crypto.subtle.wrapKey("jwk", key, wrappingKey, "RSA-OAEP");
+   * }
+   * ```
+   * 
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/wrapKey
+   */
   wrapKey(
     format: KeyFormat,
     key: CryptoKey,
