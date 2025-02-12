@@ -447,9 +447,6 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
         ts.getSupportedCodeFixes(),
       );
     }
-    case "$getAssets": {
-      return respond(id, getAssets());
-    }
     case "$getDiagnostics": {
       const projectVersion = args[1];
       // there's a possibility that we receive a change notification
@@ -471,9 +468,9 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
           ].filter(filterMapDiagnostic));
         }
         let ambient =
-          ls.getProgram()?.getTypeChecker().getAmbientModules().map((
-            symbol,
-          ) => symbol.getName()) ?? [];
+          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+            symbol.getName()
+          ) ?? [];
         const previousAmbient = ambientModulesCacheByScope.get(scope);
         if (
           ambient && previousAmbient && arraysEqual(ambient, previousAmbient)

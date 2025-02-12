@@ -1252,7 +1252,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn did_change_configuration(
     &mut self,
     params: DidChangeConfigurationParams,
@@ -1286,7 +1285,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip(self))]
-
   async fn did_change_watched_files(
     &mut self,
     params: DidChangeWatchedFilesParams,
@@ -1373,7 +1371,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
@@ -1427,7 +1424,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
@@ -1687,7 +1683,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn code_action(
     &self,
     params: CodeActionParams,
@@ -1948,7 +1943,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn code_action_resolve(
     &self,
     params: CodeAction,
@@ -2116,7 +2110,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn code_lens(
     &self,
     params: CodeLensParams,
@@ -2202,7 +2195,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn code_lens_resolve(
     &self,
     code_lens: CodeLens,
@@ -2232,7 +2224,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
@@ -2300,7 +2291,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn references(
     &self,
     params: ReferenceParams,
@@ -2367,7 +2357,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
@@ -2428,7 +2417,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
@@ -2492,7 +2480,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn completion(
     &self,
     params: CompletionParams,
@@ -2620,7 +2607,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn completion_resolve(
     &self,
     params: CompletionItem,
@@ -2710,7 +2696,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
@@ -2773,7 +2758,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
@@ -2835,7 +2819,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
@@ -2895,7 +2878,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
@@ -2957,7 +2939,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
@@ -3036,7 +3017,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn rename(
     &self,
     params: RenameParams,
@@ -3098,7 +3078,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
@@ -3154,7 +3133,6 @@ impl Inner {
   }
 
   #[tracing::instrument(skip_all)]
-
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
