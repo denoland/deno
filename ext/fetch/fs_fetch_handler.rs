@@ -68,7 +68,10 @@ impl FetchHandler for FsFetchHandler {
       Some(&mut access_check),
     );
     let response_fut = async move {
-      let file = tokio::fs::OpenOptions::from(opts?).open(path).await?;
+      let file = tokio::fs::OpenOptions::from(opts?)
+        .open(path)
+        .await
+        .map_err(|_| super::FetchError::NetworkError)?;
       let stream = ReaderStream::new(file)
         .map_ok(hyper::body::Frame::data)
         .map_err(JsErrorBox::from_err);
