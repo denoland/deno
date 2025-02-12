@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::BTreeMap;
@@ -3612,7 +3613,26 @@ impl CompletionEntryDetails {
       None
     };
     let mut text_edit = original_item.text_edit.clone();
+    let mut code_action_descriptions = self
+      .code_actions
+      .iter()
+      .flatten()
+      .map(|a| Cow::Borrowed(a.description.as_str()))
+      .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      for description in &mut code_action_descriptions {
+        let specifier_index = description
+          .char_indices()
+          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+        if let Some(i) = specifier_index {
+          let mut specifier_part = description.to_mut().split_off(i);
+          specifier_part = specifier_part.replace(
+            &specifier_rewrite.old_specifier,
+            &specifier_rewrite.new_specifier,
+          );
+          description.to_mut().push_str(&specifier_part);
+        }
+      }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
           lsp::CompletionTextEdit::Edit(text_edit) => &mut text_edit.new_text,
@@ -3639,6 +3659,16 @@ impl CompletionEntryDetails {
         }
       }
     }
+    let code_action_description =
+      Some(code_action_descriptions.join("\n\n")).filter(|s| !s.is_empty());
+    let detail = Some(
+      [code_action_description, detail]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n\n"),
+    )
+    .filter(|s| !s.is_empty());
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
