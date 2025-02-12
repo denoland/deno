@@ -1487,7 +1487,9 @@ declare namespace Deno {
     }
 
     /**
-     * This API is a noop in `deno run`...
+     * This API is useful for testing lint plugins.
+     *
+     * It throws an error if it's not used in `deno test` subcommand.
      * @category Linter
      * @experimental
      */
