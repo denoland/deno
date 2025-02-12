@@ -34,6 +34,7 @@ pub(crate) fn make_tracer(
 }
 
 pub(crate) struct TracingGuard(
+  // TODO(nathanwhit): look again if we should be using a guard or if a global default is fine
   // #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
   #[allow(dead_code)] (),
 );
@@ -144,7 +145,7 @@ pub(crate) fn init_tracing_subscriber(
     _ => None,
   };
 
-  let guard = tracing::subscriber::set_global_default(
+  tracing::subscriber::set_global_default(
     tracing_subscriber::registry()
       .with(filter)
       .with(logging_layer)
@@ -152,5 +153,6 @@ pub(crate) fn init_tracing_subscriber(
   )
   .unwrap();
 
+  let guard = ();
   Ok(TracingGuard(guard))
 }
