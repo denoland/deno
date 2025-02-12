@@ -1533,6 +1533,7 @@ mod tests {
   use deno_error::JsErrorBox;
   use deno_graph::GraphKind;
   use deno_graph::ModuleGraph;
+  use deno_runtime::code_cache::CodeCacheType;
   use test_util::PathRef;
 
   use super::Diagnostic;
@@ -1869,44 +1870,27 @@ mod tests {
     assert!(!actual.diagnostics.has_diagnostic());
   }
 
+  pub type SpecifierWithType = (ModuleSpecifier, CodeCacheType);
+
   #[derive(Default)]
   struct TestExtCodeCache {
-    cache: Mutex<
-      HashMap<
-        (
-          ModuleSpecifier,
-          deno_runtime::code_cache::CodeCacheType,
-          u64,
-        ),
-        Vec<u8>,
-      >,
-    >,
+    cache: Mutex<HashMap<(SpecifierWithType, u64), Vec<u8>>>,
 
-    hits: Mutex<
-      HashMap<
-        (ModuleSpecifier, deno_runtime::code_cache::CodeCacheType),
-        usize,
-      >,
-    >,
-    misses: Mutex<
-      HashMap<
-        (ModuleSpecifier, deno_runtime::code_cache::CodeCacheType),
-        usize,
-      >,
-    >,
+    hits: Mutex<HashMap<SpecifierWithType, usize>>,
+    misses: Mutex<HashMap<SpecifierWithType, usize>>,
   }
 
   impl deno_runtime::code_cache::CodeCache for TestExtCodeCache {
     fn get_sync(
       &self,
       specifier: &ModuleSpecifier,
-      code_cache_type: deno_runtime::code_cache::CodeCacheType,
+      code_cache_type: CodeCacheType,
       source_hash: u64,
     ) -> Option<Vec<u8>> {
       let result = self
         .cache
         .lock()
-        .get(&(specifier.clone(), code_cache_type, source_hash))
+        .get(&((specifier.clone(), code_cache_type), source_hash))
         .cloned();
       if result.is_some() {
         *self
@@ -1927,14 +1911,14 @@ mod tests {
     fn set_sync(
       &self,
       specifier: ModuleSpecifier,
-      code_cache_type: deno_runtime::code_cache::CodeCacheType,
+      code_cache_type: CodeCacheType,
       source_hash: u64,
       data: &[u8],
     ) {
       self
         .cache
         .lock()
-        .insert((specifier, code_cache_type, source_hash), data.to_vec());
+        .insert(((specifier, code_cache_type), source_hash), data.to_vec());
     }
   }
 
@@ -1950,26 +1934,17 @@ mod tests {
     let expect = [
       (
         "ext:deno_cli_tsc/99_main_compiler.js",
-        deno_runtime::code_cache::CodeCacheType::EsModule,
+        CodeCacheType::EsModule,
       ),
-      (
-        "ext:deno_cli_tsc/98_lsp.js",
-        deno_runtime::code_cache::CodeCacheType::EsModule,
-      ),
-      (
-        "ext:deno_cli_tsc/97_ts_host.js",
-        deno_runtime::code_cache::CodeCacheType::EsModule,
-      ),
-      (
-        "ext:deno_cli_tsc/00_typescript.js",
-        deno_runtime::code_cache::CodeCacheType::Script,
-      ),
+      ("ext:deno_cli_tsc/98_lsp.js", CodeCacheType::EsModule),
+      ("ext:deno_cli_tsc/97_ts_host.js", CodeCacheType::EsModule),
+      ("ext:deno_cli_tsc/00_typescript.js", CodeCacheType::Script),
     ];
 
     {
       let mut files = HashMap::new();
 
-      for ((specifier, ty, _), _) in code_cache.cache.lock().iter() {
+      for (((specifier, ty), _), _) in code_cache.cache.lock().iter() {
         let specifier = specifier.to_string();
         if files.contains_key(&specifier) {
           panic!("should have only 1 entry per specifier");
