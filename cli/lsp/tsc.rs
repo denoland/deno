@@ -3617,7 +3617,7 @@ impl CompletionEntryDetails {
       .code_actions
       .iter()
       .flatten()
-      .map(|a| Cow::Borrowed(dbg!(a.description.as_str())))
+      .map(|a| Cow::Borrowed(a.description.as_str()))
       .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
       for description in &mut code_action_descriptions {
