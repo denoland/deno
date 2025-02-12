@@ -1693,7 +1693,7 @@ Deno.test({ permissions: { read: false } }, async function fetchFilePerm() {
 });
 
 Deno.test(
-  { permissions: { read: true }, if: Deno.build.os == "linux" },
+  { permissions: { read: true }, ignore: Deno.build.os !== "linux" },
   async function fetchSpecialFilePerm() {
     await assertRejects(async () => {
       await fetch("file:///proc/self/environ");
