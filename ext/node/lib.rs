@@ -87,7 +87,6 @@ pub trait NodePermissions {
     path: &str,
     api_name: Option<&str>,
   ) -> Result<PathBuf, PermissionCheckError>;
-  fn grant_net(&mut self, host: &str, port: Option<u16>);
 }
 
 impl NodePermissions for deno_permissions::PermissionsContainer {
@@ -147,11 +146,6 @@ impl NodePermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
   ) -> Result<(), PermissionCheckError> {
     deno_permissions::PermissionsContainer::check_sys(self, kind, api_name)
-  }
-
-  fn grant_net(&mut self, host: &str, port: Option<u16>) {
-    // ignore the result when host parsing fails
-    _ = deno_permissions::PermissionsContainer::grant_net(self, host, port);
   }
 }
 

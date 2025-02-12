@@ -45,7 +45,6 @@ where
     let permissions = state_.borrow_mut::<P>();
     permissions.check_net((hostname.as_str(), port), "lookup")?;
   }
-
   let mut resolver = GaiResolver::new();
   let name = Name::from_str(&hostname)
     .map_err(|_| GetAddrInfoError::Resolution(hostname.clone()))?;
@@ -54,12 +53,9 @@ where
     .await
     .map_err(|_| GetAddrInfoError::Resolution(hostname))
     .map(|addrs| {
-      let mut state_ = state.borrow_mut();
-      let permissions = state_.borrow_mut::<P>();
       addrs
         .into_iter()
         .map(|addr| {
-          permissions.grant_net(&addr.ip().to_string(), port);
           GetAddrInfoResult {
             family: match addr {
               std::net::SocketAddr::V4(_) => 4,
