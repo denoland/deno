@@ -514,6 +514,7 @@ impl HttpRecord {
       ) -> Poll<Self::Output> {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_ready {
+          mut_self.otel_info.take();
           return Poll::Ready(());
         }
         mut_self.response_waker = Some(cx.waker().clone());
@@ -615,9 +616,9 @@ impl Body for HttpRecordResponse {
     }
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
-      let http = self.0 .0.borrow();
-      if let Some(otel_info) = &http.as_ref().unwrap().otel_info {
-        *otel_info.response_size.borrow_mut() += buf.len() as u64;
+      let mut http = self.0 .0.borrow_mut();
+      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
+        otel_info.response_size += buf.len() as u64;
       }
     }
 
