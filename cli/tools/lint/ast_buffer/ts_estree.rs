@@ -499,12 +499,16 @@ impl TsEsTreeBuilder {
   pub fn write_program(
     &mut self,
     span: &Span,
-    source_kind: &str,
+    source_kind: SourceKind,
     body: Vec<NodeRef>,
   ) -> NodeRef {
     let id = self.ctx.append_node(AstNode::Program, span);
 
-    self.ctx.write_str(AstProp::SourceType, source_kind);
+    let kind = match source_kind {
+      SourceKind::Module => "module",
+      SourceKind::Script => "script",
+    };
+    self.ctx.write_str(AstProp::SourceType, kind);
     self.ctx.write_ref_vec(AstProp::Body, &id, body);
 
     self.ctx.set_root_idx(id.0);
@@ -2902,4 +2906,10 @@ pub enum MethodKind {
   Get,
   Method,
   Set,
+}
+
+#[derive(Debug)]
+pub enum SourceKind {
+  Module,
+  Script,
 }

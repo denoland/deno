@@ -193,31 +193,102 @@ class Fixer {
 }
 
 /**
+ * @implements {Deno.lint.SourceCode}
+ */
+export class SourceCode {
+  /** @type {string | null} */
+  #source = null;
+
+  /** @type {AstContext} */
+  #ctx;
+
+  /**
+   * @param {AstContext} ctx
+   */
+  constructor(ctx) {
+    this.#ctx = ctx;
+  }
+
+  get text() {
+    return this.#getSource();
+  }
+
+  get ast() {
+    const program = /** @type {*} */ (getNode(
+      this.#ctx,
+      this.#ctx.rootOffset,
+    ));
+
+    return program;
+  }
+
+  /**
+   * @param {Deno.lint.Node} [node]
+   * @returns {string}
+   */
+  getText(node) {
+    const source = this.#getSource();
+    if (node === undefined) {
+      return source;
+    }
+
+    return source.slice(node.range[0], node.range[1]);
+  }
+
+  /**
+   * @param {Deno.lint.Node} node
+   */
+  getAncestors(node) {
+    const { buf } = this.#ctx;
+
+    /** @type {Deno.lint.Node[]} */
+    const ancestors = [];
+
+    let parent = /** @type {*} */ (node)[INTERNAL_IDX];
+    while ((parent = readParent(buf, parent)) > AST_IDX_INVALID) {
+      if (readType(buf, parent) === AST_GROUP_TYPE) continue;
+
+      const parentNode = /** @type {*} */ (getNode(this.#ctx, parent));
+      if (parentNode !== null) {
+        ancestors.push(parentNode);
+      }
+    }
+
+    ancestors.reverse();
+
+    return ancestors;
+  }
+
+  /**
+   * @returns {string}
+   */
+  #getSource() {
+    if (this.#source === null) {
+      this.#source = op_lint_get_source();
+    }
+    return /** @type {string} */ (this.#source);
+  }
+}
+
+/**
  * Every rule gets their own instance of this class. This is the main
  * API lint rules interact with.
  * @implements {Deno.lint.RuleContext}
  */
 export class Context {
   id;
-
   fileName;
-
-  #source = null;
+  sourceCode;
 
   /**
+   * @param {AstContext} ctx
    * @param {string} id
    * @param {string} fileName
    */
-  constructor(id, fileName) {
+  constructor(ctx, id, fileName) {
     this.id = id;
     this.fileName = fileName;
-  }
-
-  source() {
-    if (this.#source === null) {
-      this.#source = op_lint_get_source();
-    }
-    return /** @type {*} */ (this.#source);
+    this.sourceCode = new SourceCode(ctx);
   }
 
   /**
@@ -961,8 +1032,8 @@ export function runPluginsForFile(fileName, serializedAst) {
         continue;
       }
 
-      const ctx = new Context(id, fileName);
-      const visitor = rule.create(ctx);
+      const ruleCtx = new Context(ctx, id, fileName);
+      const visitor = rule.create(ruleCtx);
 
       // deno-lint-ignore guard-for-in
       for (let key in visitor) {
@@ -1016,7 +1087,7 @@ export function runPluginsForFile(fileName, serializedAst) {
         const destroyFn = rule.destroy.bind(rule);
         destroyFns.push(() => {
           try {
-            destroyFn(ctx);
+            destroyFn(ruleCtx);
           } catch (err) {
             throw new Error(`Destroy hook of "${id}" errored`, { cause: err });
           }
