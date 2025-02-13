@@ -1772,7 +1772,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
+  command("bundle",  "`deno bundle` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
@@ -3321,7 +3321,7 @@ different location, use the <c>--output</> flag:
 
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ `deno vendor` was removed in Deno 2.
+      "`deno vendor` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
