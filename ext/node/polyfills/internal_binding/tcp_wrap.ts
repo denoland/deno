@@ -498,7 +498,7 @@ export class TCP extends ConnectionWrap {
     return LibuvStreamWrap.prototype._onClose.call(this);
   }
 
-  set netPermToken(netPermToken: object | undefined) {
+  setNetPermToken(netPermToken: object | undefined) {
     this.#netPermToken = netPermToken;
   }
 }
