@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 // Copyright 2018-2025 the Deno authors. MIT license.
 use std::cell::Cell;
 use std::cell::Ref;
@@ -193,11 +194,15 @@ pub(crate) async fn handle_request(
       instant,
       size_hint.upper().unwrap_or(size_hint.lower()),
       OtelInfoAttributes {
-        http_request_method: request.method().as_str().to_string(),
-        url_scheme: request.uri().scheme_str().unwrap_or("http").to_string(),
-        network_protocol_version: format!("{:?}", request.version())
-          .trim_start_matches("HTTP/")
-          .to_string(),
+        http_request_method: OtelInfoAttributes::method(request.method()),
+        url_scheme: request
+          .uri()
+          .scheme_str()
+          .map(|s| Cow::Owned(s.to_string()))
+          .unwrap_or_else(|| Cow::Borrowed("http")),
+        network_protocol_version: OtelInfoAttributes::version(
+          request.version(),
+        ),
         server_address: request.uri().host().map(|host| host.to_string()),
         server_port: request.uri().port_u16().map(|port| port as i64),
         error_type: Default::default(),

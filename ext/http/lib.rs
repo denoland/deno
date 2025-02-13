@@ -253,9 +253,9 @@ struct OtelInfo {
 }
 
 struct OtelInfoAttributes {
-  http_request_method: String,
-  network_protocol_version: String,
-  url_scheme: String,
+  http_request_method: Cow<'static, str>,
+  network_protocol_version: &'static str,
+  url_scheme: Cow<'static, str>,
   server_address: Option<String>,
   server_port: Option<i64>,
   error_type: Option<&'static str>,
@@ -263,6 +263,66 @@ struct OtelInfoAttributes {
 }
 
 impl OtelInfoAttributes {
+  fn method(method: &http::method::Method) -> Cow<'static, str> {
+    use http::method::Method;
+
+    match *method {
+      Method::GET => Cow::Borrowed("GET"),
+      Method::POST => Cow::Borrowed("POST"),
+      Method::PUT => Cow::Borrowed("PUT"),
+      Method::DELETE => Cow::Borrowed("DELETE"),
+      Method::HEAD => Cow::Borrowed("HEAD"),
+      Method::OPTIONS => Cow::Borrowed("OPTIONS"),
+      Method::CONNECT => Cow::Borrowed("CONNECT"),
+      Method::PATCH => Cow::Borrowed("PATCH"),
+      Method::TRACE => Cow::Borrowed("TRACE"),
+      _ => Cow::Owned(method.to_string()),
+    }
+  }
+
+  fn method_v02(method: &http_v02::method::Method) -> Cow<'static, str> {
+    use http_v02::method::Method;
+
+    match *method {
+      Method::GET => Cow::Borrowed("GET"),
+      Method::POST => Cow::Borrowed("POST"),
+      Method::PUT => Cow::Borrowed("PUT"),
+      Method::DELETE => Cow::Borrowed("DELETE"),
+      Method::HEAD => Cow::Borrowed("HEAD"),
+      Method::OPTIONS => Cow::Borrowed("OPTIONS"),
+      Method::CONNECT => Cow::Borrowed("CONNECT"),
+      Method::PATCH => Cow::Borrowed("PATCH"),
+      Method::TRACE => Cow::Borrowed("TRACE"),
+      _ => Cow::Owned(method.to_string()),
+    }
+  }
+
+  fn version(version: http::Version) -> &'static str {
+    use http::Version;
+
+    match version {
+      Version::HTTP_09 => "0.9",
+      Version::HTTP_10 => "1.0",
+      Version::HTTP_11 => "1.1",
+      Version::HTTP_2 => "2.0",
+      Version::HTTP_3 => "3.0",
+      _ => unreachable!(),
+    }
+  }
+
+  fn version_v02(version: http_v02::Version) -> &'static str {
+    use http_v02::Version;
+
+    match version {
+      Version::HTTP_09 => "0.9",
+      Version::HTTP_10 => "1.0",
+      Version::HTTP_11 => "1.1",
+      Version::HTTP_2 => "2.0",
+      Version::HTTP_3 => "3.0",
+      _ => unreachable!(),
+    }
+  }
+
   fn for_counter(&self) -> Vec<deno_telemetry::KeyValue> {
     let mut attributes = vec![
       deno_telemetry::KeyValue::new(
@@ -291,7 +351,7 @@ impl OtelInfoAttributes {
       deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
       deno_telemetry::KeyValue::new(
         "network.protocol.version",
-        self.network_protocol_version.clone(),
+        self.network_protocol_version,
       ),
     ];
 
@@ -379,19 +439,18 @@ impl OtelInfo {
 
   fn handle_duration_and_request_size(&mut self) {
     let collectors = OTEL_COLLECTORS.get().unwrap();
+    let attributes = self.attributes.for_histogram();
 
     if let Some(duration) = self.duration.take() {
       let duration = duration.elapsed();
       collectors
         .duration
-        .record(duration.as_secs_f64(), &self.attributes.for_histogram());
+        .record(duration.as_secs_f64(), &attributes);
     }
 
     if let Some(request_size) = self.request_size.take() {
       let collectors = OTEL_COLLECTORS.get().unwrap();
-      collectors
-        .request_size
-        .record(request_size, &self.attributes.for_histogram());
+      collectors.request_size.record(request_size, &attributes);
     }
   }
 }
@@ -540,11 +599,13 @@ impl HttpConnResource {
           otel_instant.unwrap(),
           size_hint.upper().unwrap_or(size_hint.lower()),
           OtelInfoAttributes {
-            http_request_method: request.method().as_str().to_string(),
-            url_scheme: self.scheme.to_string(),
-            network_protocol_version: format!("{:?}", request.version())
-              .trim_start_matches("HTTP/")
-              .to_string(),
+            http_request_method: OtelInfoAttributes::method_v02(
+              request.method(),
+            ),
+            url_scheme: Cow::Borrowed(self.scheme),
+            network_protocol_version: OtelInfoAttributes::version_v02(
+              request.version(),
+            ),
             server_address: request.uri().host().map(|host| host.to_string()),
             server_port: request.uri().port_u16().map(|port| port as i64),
             error_type: Default::default(),
