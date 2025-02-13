@@ -536,16 +536,12 @@ pub(super) fn op_create_image_bitmap(
     apply_premultiply_alpha(image, &image_bitmap_source, &premultiply_alpha)?;
 
   Ok(ImageBitmap {
-    width,
-    height,
     detached: Default::default(),
     data: RefCell::new(image),
   })
 }
 
 pub struct ImageBitmap {
-  pub width: u32,
-  pub height: u32,
   pub detached: OnceCell<()>,
   pub data: RefCell<DynamicImage>,
 }
@@ -556,20 +552,14 @@ impl GarbageCollected for ImageBitmap {}
 impl ImageBitmap {
   #[getter]
   fn width(&self) -> u32 {
-    if self.detached.get().is_some() {
-      return 0;
-    }
-
-    self.width
+    let data = self.data.borrow();
+    data.width()
   }
 
   #[getter]
   fn height(&self) -> u32 {
-    if self.detached.get().is_some() {
-      return 0;
-    }
-
-    self.height
+    let data = self.data.borrow();
+    data.height()
   }
 
   #[fast]
@@ -578,11 +568,11 @@ impl ImageBitmap {
     self.data.replace(DynamicImage::new(0, 0, ColorType::L8));
   }
 
-  #[buffer(copy)]
+  #[buffer]
   #[symbol("bitmapData")]
   fn getData(&self) -> Vec<u8> {
     let data = self.data.borrow();
-    data.into_bytes()
+    data.as_bytes().to_vec()
   }
 }
 
