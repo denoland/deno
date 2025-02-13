@@ -619,7 +619,9 @@ impl Body for HttpRecordResponse {
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
       let mut http = self.0 .0.borrow_mut();
       if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
-        otel_info.response_size += buf.len() as u64;
+        if let Some(response_size) = &mut otel_info.response_size {
+          *response_size += buf.len() as u64;
+        }
       }
     }
 
