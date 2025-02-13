@@ -1395,9 +1395,56 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
+    export interface SourceCode {
+      /**
+       * Get the source test of a node. Omit `node` to get the
+       * full source code.
+       */
+      getText(node?: Node): string;
+      /**
+       * Returns array of ancestors of the current node, excluding the
+       * current node.
+       */
+      getAncestors(node: Node): Node[];
+      /**
+       * Get the full source code.
+       */
+      text: string;
+      /**
+       * Get the root node of the file. It's always the `Program` node.
+       */
+      ast: Program;
+    }
+
+    /**
+     * @category Linter
+     * @experimental
+     */
     export interface RuleContext {
+      /**
+       * The running rule id: `<plugin-name>/<rule-name>`
+       */
       id: string;
+      /**
+       * Name of the file that's currently being linted.
+       */
+      filename: string;
+      /**
+       * Helper methods for working with the raw source code.
+       */
+      sourceCode: SourceCode;
+      /**
+       * Report a lint error.
+       */
       report(data: ReportData): void;
+      /**
+       * @deprecated Use `ctx.filename` instead.
+       */
+      getFilename(): string;
+      /**
+       * @deprecated Use `ctx.sourceCode` instead.
+       */
+      getSourceCode(): SourceCode;
     }
 
     /**
@@ -1473,7 +1520,9 @@ declare namespace Deno {
     }
 
     /**
-     * This API is a noop in `deno run`...
+     * This API is useful for testing lint plugins.
+     *
+     * It throws an error if it's not used in `deno test` subcommand.
      * @category Linter
      * @experimental
      */
@@ -1482,6 +1531,17 @@ declare namespace Deno {
       fileName: string,
       source: string,
     ): Diagnostic[];
+
+    /**
+     * @category Linter
+     * @experimental
+     */
+    export interface Program {
+      type: "Program";
+      range: Range;
+      sourceType: "module" | "script";
+      body: Statement[];
+    }
 
     /**
      * @category Linter
@@ -3843,6 +3903,7 @@ declare namespace Deno {
      * @experimental
      */
     export type Node =
+      | Program
       | Expression
       | Statement
       | TypeNode

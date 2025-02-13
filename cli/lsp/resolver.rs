@@ -796,15 +796,9 @@ impl<'a> ResolverFactory<'a> {
         NpmSystemInfo::default(),
       ));
       self.set_npm_installer(npm_installer);
-      // spawn due to the lsp's `Send` requirement
-      deno_core::unsync::spawn(async move {
-        if let Err(err) = npm_resolution_initializer.ensure_initialized().await
-        {
-          log::warn!("failed to initialize npm resolution: {}", err);
-        }
-      })
-      .await
-      .unwrap();
+      if let Err(err) = npm_resolution_initializer.ensure_initialized().await {
+        log::warn!("failed to initialize npm resolution: {}", err);
+      }
 
       CliNpmResolverCreateOptions::Managed(CliManagedNpmResolverCreateOptions {
         sys: CliSys::default(),

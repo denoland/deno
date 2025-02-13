@@ -6,6 +6,35 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.10 / 2025.02.13
+
+- Revert "fix(lsp): silence debug error for 'move to a new file' action
+  (#27780)" (#27903)
+- fix(cli): Fix panic in `load_native_certs` (#27863)
+- fix(compile): never include the specified output executable in itself (#27877)
+- fix(ext/napi): napi_is_buffer tests for ArrayBufferView (#27956)
+- fix(ext/node): expose brotli stream APIs (#27943)
+- fix(ext/node): fix missing privateKey.x in curve25519 JWK (#27990)
+- fix(ext/node): fix twitter-api-v2 compatibility (#27971)
+- fix(ext/node): handle non-ws upgrade headers (#27931)
+- fix(ext/node): set process fields on own instance (#27927)
+- fix(ext/node): set process.env as own property (#27891)
+- fix(ext/node): support proxy http request (#27871)
+- fix(lsp): ignore a few more diagnostics for ambient modules (#27949)
+- fix(node): resolve module as maybe CJS when it's missing a file extension
+  (#27904)
+- fix(node): show directory import and missing extension suggestions (#27905)
+- fix(otel): custom span start + end times are fractional ms (#27995)
+- fix(publish): correct coloring in --help (#27939)
+- fix(streams): handle Resource stream error (#27975)
+- fix: allow creating TSC host without a snapshot (#28058)
+- fix: do special file permission check for `check_read_path` (#27989)
+- fix: panic with js lint plugins and invalid js syntax (#28006)
+- perf(compile): use bytes already in memory after downloading executable
+  (#28000)
+- perf(lsp): cancellation checks in blocking code (#27997)
+- perf: node resolution cache (#27838)
+
 ### 2.1.9 / 2025.01.30
 
 - fix(ext/node): add http information support (#27381)

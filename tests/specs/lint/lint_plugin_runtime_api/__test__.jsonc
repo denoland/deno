@@ -1,0 +1,13 @@
+{
+  "steps": [
+    {
+      "args": "run main.ts",
+      "output": "run.out",
+      "exitCode": 1
+    },
+    {
+      "args": "test main.ts",
+      "output": "test.out"
+    }
+  ]
+}
