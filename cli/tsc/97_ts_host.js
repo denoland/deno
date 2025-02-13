@@ -732,6 +732,10 @@ const hostImpl = {
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // leave this up to Deno
+    return undefined;
+  },
 };
 
 // these host methods are super noisy (often thousands of calls per TSC request)
