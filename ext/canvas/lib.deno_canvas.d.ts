@@ -81,33 +81,35 @@ interface ImageBitmapOptions {
  *
  * @category Canvas
  *
+ * @example
  * ```ts
-const example = async () => {
-  try {
-    // Fetch an image
-    const response = await fetch("https://example.com/image.png");
-    const blob = await response.blob();
-
-    // Basic usage
-    const basicBitmap = await createImageBitmap(blob);
-    console.log("Basic bitmap size:", basicBitmap.width, basicBitmap.height);
-
-    // With options
-    const resizedBitmap = await createImageBitmap(blob, {
-      resizeWidth: 100,
-      resizeHeight: 100,
-      resizeQuality: "high",
-      imageOrientation: "flipY"
-    });
-
-    // Cleanup when done
-    basicBitmap.close();
-    resizedBitmap.close();
-  } catch (error) {
-    console.error("Failed to create ImageBitmap:", error);
-  }
-};
+ * const example = async () => {
+ *   try {
+ *     // Fetch an image
+ *     const response = await fetch("https://example.com/image.png");
+ *     const blob = await response.blob();
+ *
+ *     // Basic usage
+ *     const basicBitmap = await createImageBitmap(blob);
+ *     console.log("Basic bitmap size:", basicBitmap.width, basicBitmap.height);
+ *
+ *     // With options
+ *     const resizedBitmap = await createImageBitmap(blob, {
+ *       resizeWidth: 100,
+ *       resizeHeight: 100,
+ *       resizeQuality: "high",
+ *       imageOrientation: "flipY"
+ *     });
+ *
+ *     // Cleanup when done
+ *     basicBitmap.close();
+ *     resizedBitmap.close();
+ *   } catch (error) {
+ *     console.error("Failed to create ImageBitmap:", error);
+ *   }
+ * };
  * ```
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap
  */
 declare function createImageBitmap(
   image: ImageBitmapSource,
@@ -130,29 +132,31 @@ declare function createImageBitmap(
  *
  * @category Canvas
  *
+ * @example
+ * ```ts
+ * const example = async () => {
+ *   try {
+ *     // Fetch an image
+ *     const response = await fetch("https://example.com/image.png");
+ *     const blob = await response.blob();
+ *
+ *     // Cropping parameters
+ *     const croppedBitmap = await createImageBitmap(
+ *       blob,
+ *       0,    // sx: start x
+ *       0,    // sy: start y
+ *       50,   // sw: source width
+ *       50,   // sh: source height
+ *     );
+ *
+ *     // Cleanup when done
+ *     croppedBitmap.close();
+ *   } catch (error) {
+ *     console.error("Failed to create ImageBitmap:", error);
+ *   }
+ * };
  * ```
-const example = async () => {
-  try {
-    // Fetch an image
-    const response = await fetch("https://example.com/image.png");
-    const blob = await response.blob();
-
-
-    // Cropping parameters
-    const croppedBitmap = await createImageBitmap(
-      blob,
-      0,    // sx: start x
-      0,    // sy: start y
-      50,   // sw: source width
-      50,   // sh: source height
-    );
-
-    // Cleanup when done
-    croppedBitmap.close();
-  } catch (error) {
-    console.error("Failed to create ImageBitmap:", error);
-  }
-};
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/createImageBitmap/createImageBitmap
  */
 declare function createImageBitmap(
   image: ImageBitmapSource,
