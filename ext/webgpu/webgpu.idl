@@ -846,6 +846,26 @@ dictionary GPUTexelCopyTextureInfo {
     GPUTextureAspect aspect = "all";
 };
 
+dictionary GPUCopyExternalImageDestInfo
+         : GPUTexelCopyTextureInfo {
+    PredefinedColorSpace colorSpace = "srgb";
+    boolean premultipliedAlpha = false;
+};
+
+typedef (ImageBitmap or
+         ImageData or
+         HTMLImageElement or
+         HTMLVideoElement or
+         VideoFrame or
+         HTMLCanvasElement or
+         OffscreenCanvas) GPUCopyExternalImageSource;
+
+dictionary GPUCopyExternalImageSourceInfo {
+    required GPUCopyExternalImageSource source;
+    GPUOrigin2D origin = {};
+    boolean flipY = false;
+};
+
 [Exposed=(Window, Worker), SecureContext]
 interface GPUCommandBuffer {
 };

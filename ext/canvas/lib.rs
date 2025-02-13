@@ -48,6 +48,7 @@ deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
   ops = [op_create_image_bitmap],
+  objects = [ImageBitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
 
