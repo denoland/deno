@@ -10,9 +10,9 @@
  * as well as other utility methods for debugging and inspecting code.
  * Methods include logging, debugging, and timing functionality.
  * @see https://developer.mozilla.org/en-US/docs/Web/API/console
- * 
+ *
  * @category I/O
-*/
+ */
 interface Console {
   /**
    * Tests that an expression is true. If not, logs an error message

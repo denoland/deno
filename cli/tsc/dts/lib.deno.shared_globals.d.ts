@@ -462,19 +462,19 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
  * A global console object that provides methods for logging, debugging, and error reporting.
  * The console object provides access to the browser's or runtime's debugging console functionality.
  * It allows developers to output text and data for debugging purposes.
-*
-* @example
-* ```typescript
-* console.log("Hello, world!");
-* console.error("An error occurred");
-* console.warn("Warning message");
-* console.debug("Debug information");
-* ```
-*
-* @see https://developer.mozilla.org/en-US/docs/Web/API/console
-* 
-* @category I/O
-*/
+ *
+ * @example
+ * ```typescript
+ * console.log("Hello, world!");
+ * console.error("An error occurred");
+ * console.warn("Warning message");
+ * console.debug("Debug information");
+ * ```
+ *
+ * @see https://developer.mozilla.org/en-US/docs/Web/API/console
+ *
+ * @category I/O
+ */
 declare var console: Console;
 
 /** @category Events */
