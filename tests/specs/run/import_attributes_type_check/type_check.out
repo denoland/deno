@@ -12,3 +12,6 @@ console.log(data2.foo);
 Found 2 errors.
 
 error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

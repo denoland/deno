@@ -28,6 +28,7 @@ use regex::Regex;
 use crate::args::deno_json::TsConfigResolver;
 use crate::args::CheckFlags;
 use crate::args::CliOptions;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::TsConfig;
 use crate::args::TsTypeLib;
@@ -94,8 +95,16 @@ pub async fn check(
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(type)]
-#[error("Type checking failed.")]
-pub struct FailedTypeCheckingError;
+#[error("Type checking failed.{}", if self.can_skip {
+  color_print::cstr!(
+    "\n\n  <y>info:</y> The program failed type-checking, but it still might work correctly.\n  <c>hint:</c> Re-run with <u>--no-check</u> to skip type-checking.",
+  )
+} else {
+  ""
+})]
+pub struct FailedTypeCheckingError {
+  can_skip: bool,
+}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CheckError {
@@ -199,7 +208,15 @@ impl TypeChecker {
       }
     }
     if failed {
-      Err(FailedTypeCheckingError.into())
+      Err(
+        FailedTypeCheckingError {
+          can_skip: !matches!(
+            self.cli_options.sub_command(),
+            DenoSubcommand::Check(_)
+          ),
+        }
+        .into(),
+      )
     } else {
       Ok(diagnostics.into_graph())
     }
