@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_webgpu"
-version = "0.156.0"
+version = "0.157.0"
 authors = ["the Deno authors"]
 edition.workspace = true
 license = "MIT"
@@ -27,6 +27,9 @@ tokio = { workspace = true, features = ["full"] }
 wgpu-types = { workspace = true, features = ["serde"] }
 raw-window-handle = { workspace = true }
 thiserror.workspace = true
+indexmap.workspace = true
+serde_json.workspace = true
+deno_unsync.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.wgpu-core]
 workspace = true

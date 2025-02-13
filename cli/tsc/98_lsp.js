@@ -8,7 +8,6 @@ import {
   error,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
-  getAssets,
   getCreateSourceFileOptions,
   host,
   IS_NODE_SOURCE_FILE_CACHE,
@@ -287,6 +286,8 @@ let hasStarted = false;
 
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
+  ts.deno.setEnterSpan(ops.op_make_span);
+  ts.deno.setExitSpan(ops.op_exit_span);
   if (hasStarted) {
     throw new Error("The language server has already been initialized.");
   }
@@ -383,7 +384,7 @@ function arraysEqual(a, b) {
  * @param {string | null} scope
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, maybeChange) {
+function serverRequestInner(id, method, args, scope, maybeChange) {
   debug(`serverRequest()`, id, method, args, scope, maybeChange);
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
@@ -445,9 +446,6 @@ function serverRequest(id, method, args, scope, maybeChange) {
         id,
         ts.getSupportedCodeFixes(),
       );
-    }
-    case "$getAssets": {
-      return respond(id, getAssets());
     }
     case "$getDiagnostics": {
       const projectVersion = args[1];
@@ -519,5 +517,21 @@ function serverRequest(id, method, args, scope, maybeChange) {
         // @ts-ignore exhausted case statement sets type to never
         `Invalid request method for request: "${method}" (${id})`,
       );
+  }
+}
+
+/**
+ * @param {number} id
+ * @param {string} method
+ * @param {any[]} args
+ * @param {string | null} scope
+ * @param {PendingChange | null} maybeChange
+ */
+function serverRequest(id, method, args, scope, maybeChange) {
+  const span = ops.op_make_span(`serverRequest(${method})`, true);
+  try {
+    serverRequestInner(id, method, args, scope, maybeChange);
+  } finally {
+    ops.op_exit_span(span, true);
   }
 }
