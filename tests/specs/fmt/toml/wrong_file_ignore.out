@@ -1,7 +1,5 @@
-Error formatting: [WILDCARD]wrong_file_ignore.yaml
-   parse error at line 5, column 1
-  |
-5 | {{something crazy
-  | ^
+Error formatting: [WILDCARD]wrong_file_ignore.toml
+   Line 5, column 10: expected value
 
+  enabled =
 Checked 1 file

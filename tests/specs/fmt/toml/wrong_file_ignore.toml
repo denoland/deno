@@ -2,4 +2,4 @@
 # of comment, ie. there are no empty lines after the first n-leading lines.
 
 # deno-fmt-ignore-file
-enabled =    true
+enabled =
