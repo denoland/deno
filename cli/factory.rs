@@ -873,6 +873,11 @@ impl CliFactory {
           self.npm_resolver().await?.clone(),
           self.sys(),
           self.tsconfig_resolver()?.clone(),
+          if cli_options.code_cache_enabled() {
+            Some(self.code_cache()?.clone())
+          } else {
+            None
+          },
         )))
       })
       .await
