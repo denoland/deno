@@ -506,7 +506,7 @@ impl TsEsTreeBuilder {
 
     let kind = match source_kind {
       SourceKind::Module => "module",
-      SourceKind::Script => "source",
+      SourceKind::Script => "script",
     };
     self.ctx.write_str(AstProp::SourceType, kind);
     self.ctx.write_ref_vec(AstProp::Body, &id, body);
