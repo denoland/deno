@@ -46,7 +46,6 @@ where
     .call(name)
     .await
     .map_err(|_| GetAddrInfoError::Resolution(hostname.clone()))?
-    .into_iter()
     .map(|addr| addr.ip().to_string())
     .collect::<Vec<_>>();
   Ok(NetPermToken {
