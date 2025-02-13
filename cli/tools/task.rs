@@ -422,12 +422,7 @@ impl<'a> TaskRunner<'a> {
       return Ok(0);
     };
 
-    if let Some(npm_installer) = self.npm_installer {
-      npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      npm_installer.cache_packages(PackageCaching::All).await?;
-    }
+    self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))
@@ -461,12 +456,7 @@ impl<'a> TaskRunner<'a> {
     argv: &[String],
   ) -> Result<i32, deno_core::anyhow::Error> {
     // ensure the npm packages are installed if using a managed resolver
-    if let Some(npm_installer) = self.npm_installer {
-      npm_installer
-        .ensure_top_level_package_json_install()
-        .await?;
-      npm_installer.cache_packages(PackageCaching::All).await?;
-    }
+    self.maybe_npm_install().await?;
 
     let cwd = match &self.task_flags.cwd {
       Some(path) => canonicalize_path(&PathBuf::from(path))?,
@@ -541,6 +531,19 @@ impl<'a> TaskRunner<'a> {
       .await?
       .exit_code,
     )
+  }
+
+  async fn maybe_npm_install(&self) -> Result<(), AnyError> {
+    if let Some(npm_installer) = self.npm_installer {
+      npm_installer
+        .ensure_top_level_package_json_install()
+        .await?;
+      npm_installer.cache_packages(PackageCaching::All).await?;
+      if let Some(lockfile) = self.cli_options.maybe_lockfile() {
+        lockfile.write_if_changed()?;
+      }
+    }
+    Ok(())
   }
 }
 
