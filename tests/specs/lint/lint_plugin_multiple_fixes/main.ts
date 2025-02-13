@@ -1,2 +1,2 @@
-const value = "unfixed";
+const value = "unfixed🚧⚡️🚵";
 console.log(value);
