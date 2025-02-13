@@ -459,8 +459,7 @@ impl Drop for OtelInfo {
   fn drop(&mut self) {
     let collectors = OTEL_COLLECTORS.get().unwrap();
 
-    debug_assert!(self.duration.is_none());
-    debug_assert!(self.request_size.is_none());
+    self.handle_duration_and_request_size();
 
     collectors
       .active_requests
