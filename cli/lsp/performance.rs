@@ -74,14 +74,15 @@ impl From<PerformanceMark> for PerformanceMeasure {
 
 #[derive(Debug)]
 pub struct PerformanceScopeMark {
-  performance_inner: Arc<Mutex<PerformanceInner>>,
+  performance: Arc<Performance>,
   inner: Option<PerformanceMark>,
 }
 
 impl Drop for PerformanceScopeMark {
   fn drop(&mut self) {
     self
-      .performance_inner
+      .performance
+      .0
       .lock()
       .measure(self.inner.take().unwrap());
   }
@@ -139,7 +140,7 @@ impl Default for PerformanceInner {
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
 #[derive(Debug, Default)]
-pub struct Performance(Arc<Mutex<PerformanceInner>>);
+pub struct Performance(Mutex<PerformanceInner>);
 
 impl Performance {
   /// Return the count and average duration of a measurement identified by name.
@@ -279,9 +280,12 @@ impl Performance {
   /// // ❌
   /// let _ = self.performance.measure_scope("foo");
   /// ```
-  pub fn measure_scope<S: AsRef<str>>(&self, name: S) -> PerformanceScopeMark {
+  pub fn measure_scope<S: AsRef<str>>(
+    self: &Arc<Self>,
+    name: S,
+  ) -> PerformanceScopeMark {
     PerformanceScopeMark {
-      performance_inner: self.0.clone(),
+      performance: self.clone(),
       inner: Some(self.mark(name)),
     }
   }
