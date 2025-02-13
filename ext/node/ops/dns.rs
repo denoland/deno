@@ -7,18 +7,11 @@ use std::str::FromStr;
 use deno_core::op2;
 use deno_core::OpState;
 use deno_error::JsError;
+use deno_net::ops::NetPermToken;
 use deno_permissions::PermissionCheckError;
 use hyper_util::client::legacy::connect::dns::GaiResolver;
 use hyper_util::client::legacy::connect::dns::Name;
-use serde::Serialize;
 use tower_service::Service;
-
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct GetAddrInfoResult {
-  family: usize,
-  address: String,
-}
 
 #[derive(Debug, thiserror::Error, JsError)]
 pub enum GetAddrInfoError {
@@ -31,37 +24,34 @@ pub enum GetAddrInfoError {
 }
 
 #[op2(async, stack_trace)]
-#[serde]
-pub async fn op_getaddrinfo<P>(
+#[cppgc]
+pub async fn op_node_getaddrinfo<P>(
   state: Rc<RefCell<OpState>>,
   #[string] hostname: String,
   port: Option<u16>,
-) -> Result<Vec<GetAddrInfoResult>, GetAddrInfoError>
+) -> Result<NetPermToken, GetAddrInfoError>
 where
   P: crate::NodePermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
     let permissions = state_.borrow_mut::<P>();
-    permissions.check_net((hostname.as_str(), port), "lookup")?;
+    permissions.check_net((hostname.as_str(), port), "node:dns.lookup()")?;
   }
+
   let mut resolver = GaiResolver::new();
   let name = Name::from_str(&hostname)
     .map_err(|_| GetAddrInfoError::Resolution(hostname.clone()))?;
-  resolver
+  let resolved_ips = resolver
     .call(name)
     .await
-    .map_err(|_| GetAddrInfoError::Resolution(hostname))
-    .map(|addrs| {
-      addrs
-        .into_iter()
-        .map(|addr| GetAddrInfoResult {
-          family: match addr {
-            std::net::SocketAddr::V4(_) => 4,
-            std::net::SocketAddr::V6(_) => 6,
-          },
-          address: addr.ip().to_string(),
-        })
-        .collect::<Vec<_>>()
-    })
+    .map_err(|_| GetAddrInfoError::Resolution(hostname.clone()))?
+    .into_iter()
+    .map(|addr| addr.ip().to_string())
+    .collect::<Vec<_>>();
+  Ok(NetPermToken {
+    hostname,
+    port,
+    resolved_ips,
+  })
 }

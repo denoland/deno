@@ -372,38 +372,65 @@ pub async fn op_net_set_multi_ttl_udp(
   Ok(())
 }
 
+/// If this token is present in op_net_connect_tcp call and
+/// the hostname matches with one of the resolved IPs, then
+/// the permission check is performed against the original hostname.
+pub struct NetPermToken {
+  pub hostname: String,
+  pub port: Option<u16>,
+  pub resolved_ips: Vec<String>,
+}
+
+impl deno_core::GarbageCollected for NetPermToken {}
+
+impl NetPermToken {
+  /// Checks if the given address is included in the resolved IPs.
+  pub fn includes(&self, addr: &str) -> bool {
+    self.resolved_ips.iter().any(|ip| ip == addr)
+  }
+}
+
+#[op2]
+#[serde]
+pub fn op_net_get_ips_from_perm_token(
+  #[cppgc] token: &NetPermToken,
+) -> Vec<String> {
+  token.resolved_ips.clone()
+}
+
 #[op2(async, stack_trace)]
 #[serde]
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
-  #[string] resolved_from: Option<String>,
+  #[cppgc] net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr, resolved_from).await
+  op_net_connect_tcp_inner::<NP>(state, addr, net_perm_token).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
-  resolved_from: Option<String>,
+  net_perm_token: Option<&NetPermToken>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
   {
     let mut state_ = state.borrow_mut();
-    let permissions = state_.borrow_mut::<NP>();
-    if let Some(resolved_from) = resolved_from {
-      permissions
-        .check_net(&(&resolved_from, Some(addr.port)), "Deno.connect()")?;
-    } else {
-      permissions
-        .check_net(&(&addr.hostname, Some(addr.port)), "Deno.connect()")?;
-    }
+    // If token exists and the address matches to its resolved ips,
+    // then we can check net permission against token.hostname, instead of addr.hostname
+    let hostname_to_check = match net_perm_token {
+      Some(token) if token.includes(&addr.hostname) => token.hostname.clone(),
+      _ => addr.hostname.clone(),
+    };
+    state_
+      .borrow_mut::<NP>()
+      .check_net(&(&hostname_to_check, Some(addr.port)), "Deno.connect()")?;
   }
 
   let addr = resolve_addr(&addr.hostname, addr.port)

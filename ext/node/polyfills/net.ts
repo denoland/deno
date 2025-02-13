@@ -110,7 +110,6 @@ import {
   UV_ETIMEDOUT,
 } from "ext:deno_node/internal_binding/uv.ts";
 import { guessHandleType } from "ext:deno_node/internal_binding/util.ts";
-import { kSetResolvedFrom } from "ext:deno_node/internal_binding/tcp_wrap.ts";
 import { debuglog } from "ext:deno_node/internal/util/debuglog.ts";
 import type { DuplexOptions } from "ext:deno_node/_stream.d.ts";
 import type { BufferEncoding } from "ext:deno_node/_global.d.ts";
@@ -964,8 +963,9 @@ function _lookupAndConnect(
         err: ErrnoException | null,
         ip: string,
         addressType: number,
+        netPermToken,
       ) {
-        self._handle?.[kSetResolvedFrom](host);
+        self._handle.netPermToken = netPermToken;
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1029,8 +1029,8 @@ function _lookupAndConnectMultiple(
   timeout: number | undefined,
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(host, dnsopts, function emitLookup(err, addresses) {
-      self._handle?.[kSetResolvedFrom](host);
+    lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
+      self._handle.netPermToken = netPermToken;
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.

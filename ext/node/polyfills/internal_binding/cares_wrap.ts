@@ -28,6 +28,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
+import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   AsyncWrap,
@@ -35,7 +36,10 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { op_getaddrinfo } from "ext:core/ops";
+import {
+  op_net_get_ips_from_perm_token,
+  op_node_getaddrinfo,
+} from "ext:core/ops";
 
 interface LookupAddress {
   address: string;
@@ -54,7 +58,11 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   ) => void;
   resolve!: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
   reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (err: number | null, addresses: string[]) => void;
+  oncomplete!: (
+    err: number | null,
+    addresses: string[],
+    netPermToken: object | undefined,
+  ) => void;
 
   constructor() {
     super(providerType.GETADDRINFOREQWRAP);
@@ -68,19 +76,17 @@ export function getaddrinfo(
   _hints: number,
   verbatim: boolean,
 ): number {
-  type Addr = {
-    address: string;
-    family: number;
-  };
-  let addresses: Addr[] = [];
+  let addresses: string[] = [];
 
   // TODO(cmorten): use hints
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
 
   (async () => {
     let error = 0;
+    let netPermToken: object | undefined;
     try {
-      addresses.push(...await op_getaddrinfo(hostname, req.port || undefined));
+      netPermToken = await op_node_getaddrinfo(hostname, req.port || undefined);
+      addresses.push(...op_net_get_ips_from_perm_token(netPermToken));
       if (addresses.length === 0) {
         error = codeMap.get("EAI_NODATA")!;
       }
@@ -95,10 +101,10 @@ export function getaddrinfo(
     // TODO(cmorten): needs work
     // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
     if (!verbatim) {
-      addresses.sort((a: Addr, b: Addr): number => {
-        if (a.family === 4 && b.family === 6) {
+      addresses.sort((a: string, b: string): number => {
+        if (isIPv4(a)) {
           return -1;
-        } else if (a.family === 6 && b.family === 4) {
+        } else if (isIPv4(b)) {
           return 1;
         }
 
@@ -106,11 +112,13 @@ export function getaddrinfo(
       });
     }
 
-    if (family === 4 || family === 6) {
-      addresses = addresses.filter((addr) => addr.family === family);
+    if (family === 4) {
+      addresses = addresses.filter((addr) => isIPv4(addr));
+    } else if (family === 6) {
+      addresses = addresses.filter((addr) => isIPv6(addr));
     }
 
-    req.oncomplete(error, addresses.map((addr) => addr.address));
+    req.oncomplete(error, addresses, netPermToken);
   })();
 
   return 0;
