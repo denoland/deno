@@ -202,7 +202,7 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
-  if !cfg!(debug_assertions) {
+  if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
     let out_dir =
       std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     compress_sources(&out_dir);
