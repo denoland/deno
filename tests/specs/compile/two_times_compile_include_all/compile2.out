@@ -6,7 +6,5 @@ Embedded Files
 ├── deno.json ([WILDLINE])
 └── main.ts ([WILDLINE])
 
-Files: [WILDCARD]
-Metadata: [WILDCARD]
-Remote modules: [WILDCARD]
+Size: [WILDLINE]
 

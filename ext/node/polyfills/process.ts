@@ -575,7 +575,11 @@ process.config = {
 };
 
 process.cpuUsage = function () {
-  return Deno.cpuUsage();
+  warnNotImplemented("process.cpuUsage()");
+  return {
+    user: 0,
+    system: 0,
+  };
 };
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
