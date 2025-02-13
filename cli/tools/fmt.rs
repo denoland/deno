@@ -276,6 +276,7 @@ fn format_markdown(
           | "yml"
           | "yaml"
           | "sql"
+          | "toml"
       ) {
         // It's important to tell dprint proper file extension, otherwise
         // it might parse the file twice.
@@ -305,6 +306,7 @@ fn format_markdown(
             }
           }
           "yml" | "yaml" => format_yaml(text, fmt_options),
+          "toml" => format_toml(text, fmt_options),
           "sql" => {
             if unstable_options.sql {
               format_sql(text, fmt_options)
@@ -360,6 +362,38 @@ pub fn format_css(
   } else {
     Some(formatted_str)
   })
+}
+
+fn format_toml(
+  file_text: &str,
+  fmt_options: &FmtOptionsConfig,
+) -> Result<Option<String>, AnyError> {
+  let ignore_file = file_text
+    .lines()
+    .take_while(|line| line.starts_with('#'))
+    .any(|line| {
+      line
+        .strip_prefix('#')
+        .unwrap()
+        .trim()
+        .starts_with("deno-fmt-ignore-file")
+    });
+
+  if ignore_file {
+    return Ok(None);
+  }
+
+  let formatted_str = dprint_plugin_toml::format_text(
+    &PathBuf::from(""),
+    file_text,
+    &dprint_plugin_toml::configuration::ConfigurationBuilder::new()
+      .line_width(fmt_options.line_width.unwrap_or(80))
+      .use_tabs(fmt_options.use_tabs.unwrap_or_default())
+      .indent_width(fmt_options.indent_width.unwrap_or(2))
+      .build(),
+  )?;
+
+  Ok(formatted_str)
 }
 
 fn format_yaml(
@@ -590,6 +624,7 @@ pub fn format_file(
       }
     }
     "yml" | "yaml" => format_yaml(file_text, fmt_options),
+    "toml" => format_toml(file_text, fmt_options),
     "ipynb" => dprint_plugin_jupyter::format_text(
       file_text,
       |file_path: &Path, file_text: String| {
@@ -1285,6 +1320,7 @@ fn is_supported_ext_fmt(path: &Path) -> bool {
         | "yaml"
         | "ipynb"
         | "sql"
+        | "toml"
     )
   })
 }
