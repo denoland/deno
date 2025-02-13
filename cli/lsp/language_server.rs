@@ -8,6 +8,7 @@ use std::collections::VecDeque;
 use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -32,7 +33,6 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
-use deno_runtime::tokio_util::create_basic_runtime;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
 use indexmap::IndexSet;
@@ -129,7 +129,7 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
   client: Client,
-  pub inner: Arc<tokio::sync::RwLock<Inner>>,
+  pub inner: Rc<tokio::sync::RwLock<Inner>>,
   /// This is used to block out standard request handling until the complete
   /// user configuration has been fetched. This is done in the `initialized`
   /// handler which normally may occur concurrently with those other requests.
@@ -139,9 +139,6 @@ pub struct LanguageServer {
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
   shutdown_flag: AsyncFlag,
-  /// This is used to move all request handling to a separate thread so blocking
-  /// code there won't block cancellations from being flagged.
-  worker_thread: Arc<WorkerThread>,
 }
 
 /// Snapshot of the state used by TSC.
@@ -193,73 +190,6 @@ impl LanguageServerTaskQueue {
 }
 
 #[derive(Debug)]
-struct WorkerThread {
-  runtime_handle: tokio::runtime::Handle,
-  shutdown_tx: Option<tokio::sync::oneshot::Sender<()>>,
-  join_handle: Option<std::thread::JoinHandle<()>>,
-}
-
-impl WorkerThread {
-  fn create() -> Self {
-    let (handle_tx, handle_rx) = std::sync::mpsc::channel();
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let join_handle = std::thread::spawn(move || {
-      let runtime = create_basic_runtime();
-      handle_tx.send(runtime.handle().clone()).unwrap();
-      runtime.block_on(shutdown_rx).unwrap();
-    });
-    let runtime_handle = handle_rx.recv().unwrap();
-    Self {
-      runtime_handle,
-      shutdown_tx: Some(shutdown_tx),
-      join_handle: Some(join_handle),
-    }
-  }
-
-  async fn spawn(
-    &self,
-    fut: impl std::future::Future<Output = ()> + Send + 'static,
-  ) {
-    self
-      .runtime_handle
-      .spawn(fut)
-      .await
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .ok();
-  }
-
-  async fn spawn_with_cancellation<
-    T: Send + 'static,
-    TFut: std::future::Future<Output = LspResult<T>> + Send,
-  >(
-    &self,
-    get_fut: impl FnOnce(CancellationToken) -> TFut + Send + 'static,
-  ) -> LspResult<T> {
-    let token = CancellationToken::new();
-    let _drop_guard = token.clone().drop_guard();
-    self
-      .runtime_handle
-      .spawn(async move {
-        tokio::select! {
-          biased;
-          _ = token.cancelled() => Err(LspError::request_cancelled()),
-          result = get_fut(token.clone()) => result,
-        }
-      })
-      .await
-      .inspect_err(|err| lsp_warn!("Handler task error: {err}"))
-      .unwrap_or_else(|_| Err(LspError::internal_error()))
-  }
-}
-
-impl Drop for WorkerThread {
-  fn drop(&mut self) {
-    self.shutdown_tx.take().unwrap().send(()).unwrap();
-    self.join_handle.take().unwrap().join().unwrap();
-  }
-}
-
-#[derive(Debug)]
 pub struct Inner {
   /// Cached versions of "fixed" assets that can either be inlined in Rust or
   /// are part of the TypeScript snapshot and have to be fetched out.
@@ -297,6 +227,8 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
+
+  _tracing: Option<super::trace::TracingGuard>,
 }
 
 impl LanguageServer {
@@ -304,36 +236,20 @@ impl LanguageServer {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
-      inner: Arc::new(tokio::sync::RwLock::new(Inner::new(
+      inner: Rc::new(tokio::sync::RwLock::new(Inner::new(
         client,
         performance.clone(),
       ))),
       init_flag: Default::default(),
       performance,
       shutdown_flag,
-      worker_thread: Arc::new(WorkerThread::create()),
     }
   }
 
   /// Similar to `deno install --entrypoint` on the command line, where modules will be cached
   /// in the Deno cache, including any of their dependencies.
+  #[tracing::instrument(skip_all)]
   pub async fn cache(
-    &self,
-    specifiers: Vec<ModuleSpecifier>,
-    referrer: ModuleSpecifier,
-    force_global_cache: bool,
-  ) -> LspResult<Option<Value>> {
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.cache_inner(specifiers, referrer, force_global_cache)
-          .await
-      })
-      .await
-  }
-
-  async fn cache_inner(
     &self,
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
@@ -434,115 +350,91 @@ impl LanguageServer {
   /// coordinate the tests receiving the latest diagnostics.
   pub async fn latest_diagnostic_batch_index_request(
     &self,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(
-          ls.inner
-            .read()
-            .await
-            .diagnostics_server
-            .latest_batch_index()
-            .map(|v| v.into()),
-        )
-      })
-      .await
+    Ok(
+      self
+        .inner
+        .read()
+        .await
+        .diagnostics_server
+        .latest_batch_index()
+        .map(|v| v.into()),
+    )
   }
 
-  pub async fn performance_request(&self) -> LspResult<Option<Value>> {
+  pub async fn performance_request(
+    &self,
+    _token: CancellationToken,
+  ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        Ok(Some(ls.inner.read().await.get_performance()))
-      })
-      .await
+    Ok(Some(self.inner.read().await.get_performance()))
   }
 
-  pub async fn task_definitions(&self) -> LspResult<Vec<TaskDefinition>> {
+  pub async fn task_definitions(
+    &self,
+    _token: CancellationToken,
+  ) -> LspResult<Vec<TaskDefinition>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.task_definitions()
-      })
-      .await
+    self.inner.read().await.task_definitions()
   }
 
   pub async fn test_run_request(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_request(params).await
-      })
-      .await
+    self.inner.read().await.test_run_request(params).await
   }
 
   pub async fn test_run_cancel_request(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        ls.inner.read().await.test_run_cancel_request(params)
-      })
-      .await
+    self.inner.read().await.test_run_cancel_request(params)
   }
 
   pub async fn virtual_text_document(
     &self,
     params: Option<Value>,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |_| async move {
-        match params.map(serde_json::from_value) {
-          Some(Ok(params)) => Ok(Some(
-            serde_json::to_value(
-              ls.inner.read().await.virtual_text_document(params)?,
-            )
-            .map_err(|err| {
-              error!(
-                "Failed to serialize virtual_text_document response: {:#}",
-                err
-              );
-              LspError::internal_error()
-            })?,
-          )),
-          Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
-          None => Err(LspError::invalid_params("Missing parameters")),
-        }
-      })
-      .await
+    match params.map(serde_json::from_value) {
+      Some(Ok(params)) => Ok(Some(
+        serde_json::to_value(
+          self.inner.read().await.virtual_text_document(params)?,
+        )
+        .map_err(|err| {
+          error!(
+            "Failed to serialize virtual_text_document response: {:#}",
+            err
+          );
+          LspError::internal_error()
+        })?,
+      )),
+      Some(Err(err)) => Err(LspError::invalid_params(err.to_string())),
+      None => Err(LspError::invalid_params("Missing parameters")),
+    }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn refresh_configuration(&self) {
     let (folders, capable) = {
       let inner = self.inner.read().await;
@@ -634,11 +526,13 @@ impl Inner {
       url_map: Default::default(),
       workspace_files: Default::default(),
       workspace_files_hash: 0,
+      _tracing: Default::default(),
     }
   }
 
   /// Searches assets and documents for the provided
   /// specifier erroring if it doesn't exist.
+  #[tracing::instrument(skip_all)]
   pub fn get_asset_or_document(
     &self,
     specifier: &ModuleSpecifier,
@@ -665,6 +559,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_navigation_tree(
     &self,
     specifier: &ModuleSpecifier,
@@ -728,6 +623,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
@@ -738,6 +634,40 @@ impl Inner {
     })
   }
 
+  pub fn update_tracing(&mut self) {
+    let tracing =
+      self
+        .config
+        .workspace_settings()
+        .tracing
+        .clone()
+        .or_else(|| {
+          std::env::var("DENO_LSP_TRACE").ok().map(|_| {
+            super::trace::TracingConfig {
+              enable: true,
+              ..Default::default()
+            }
+            .into()
+          })
+        });
+    self
+      .ts_server
+      .set_tracing_enabled(tracing.as_ref().is_some_and(|t| t.enabled()));
+    self._tracing = tracing.and_then(|conf| {
+      if !conf.enabled() {
+        return None;
+      }
+      lsp_log!("Initializing tracing subscriber: {:#?}", conf);
+      let config = conf.into();
+      super::trace::init_tracing_subscriber(&config)
+        .inspect_err(|e| {
+          lsp_warn!("Error initializing tracing subscriber: {e:#}");
+        })
+        .ok()
+    });
+  }
+
+  #[tracing::instrument(skip_all)]
   pub async fn update_global_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_global_cache");
     let maybe_cache = self.config.workspace_settings().cache.as_ref();
@@ -795,6 +725,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
@@ -904,6 +835,7 @@ impl Inner {
       return Err(tower_lsp::jsonrpc::Error::internal_error());
     };
 
+    self.update_tracing();
     self.update_debug_flag();
 
     if capabilities.code_action_provider.is_some() {
@@ -922,6 +854,7 @@ impl Inner {
     })
   }
 
+  #[tracing::instrument(skip_all)]
   fn walk_workspace(config: &Config) -> (IndexSet<ModuleSpecifier>, bool) {
     if !config.workspace_capable() {
       log::debug!("Skipped workspace walk due to client incapability.");
@@ -1081,6 +1014,7 @@ impl Inner {
     self.workspace_files_hash = enable_settings_hash;
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_config_tree(&mut self) {
     let file_fetcher = CliFileFetcher::new(
       self.cache.global().clone(),
@@ -1136,6 +1070,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_resolver(&mut self) {
     self.resolver = Arc::new(
       LspResolver::from_config(
@@ -1147,6 +1082,7 @@ impl Inner {
     );
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_documents_config(&mut self) {
     self.documents.update_config(
       &self.config,
@@ -1162,6 +1098,7 @@ impl Inner {
     self.project_changed([], true);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let Some(scheme) = params.text_document.uri.scheme() else {
@@ -1211,6 +1148,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
     let specifier = self
@@ -1248,6 +1186,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   fn did_save(&mut self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
     let specifier = self
@@ -1276,17 +1215,16 @@ impl Inner {
     }));
   }
 
+  #[tracing::instrument(skip_all)]
   async fn refresh_dep_info(&mut self) {
     let dep_info_by_scope = self.documents.dep_info_by_scope();
-    let resolver = self.resolver.clone();
-    // spawn due to the lsp's `Send` requirement
-    spawn(
-      async move { resolver.set_dep_info_by_scope(&dep_info_by_scope).await },
-    )
-    .await
-    .ok();
+    self
+      .resolver
+      .set_dep_info_by_scope(&dep_info_by_scope)
+      .await;
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
     let Some(scheme) = params.text_document.uri.scheme() else {
@@ -1313,6 +1251,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn did_change_configuration(
     &mut self,
     params: DidChangeConfigurationParams,
@@ -1331,6 +1270,8 @@ impl Inner {
         self.config.set_workspace_settings(settings, vec![]);
       }
     };
+    // TODO(nathanwhit): allow updating after startup, needs work to set thread local collector on tsc thread
+    // self.update_tracing();
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
@@ -1343,6 +1284,7 @@ impl Inner {
     self.send_testing_update();
   }
 
+  #[tracing::instrument(skip(self))]
   async fn did_change_watched_files(
     &mut self,
     params: DidChangeWatchedFilesParams,
@@ -1428,6 +1370,7 @@ impl Inner {
     self.performance.measure(mark);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
@@ -1480,6 +1423,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
@@ -1594,6 +1538,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn hover(
     &self,
     params: HoverParams,
@@ -1693,6 +1638,8 @@ impl Inner {
     Ok(hover)
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
@@ -1735,6 +1682,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn code_action(
     &self,
     params: CodeActionParams,
@@ -1994,6 +1942,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn code_action_resolve(
     &self,
     params: CodeAction,
@@ -2160,6 +2109,7 @@ impl Inner {
     )
   }
 
+  #[tracing::instrument(skip_all)]
   async fn code_lens(
     &self,
     params: CodeLensParams,
@@ -2244,6 +2194,7 @@ impl Inner {
     Ok(Some(code_lenses))
   }
 
+  #[tracing::instrument(skip_all)]
   async fn code_lens_resolve(
     &self,
     code_lens: CodeLens,
@@ -2272,6 +2223,7 @@ impl Inner {
     result
   }
 
+  #[tracing::instrument(skip_all)]
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
@@ -2338,6 +2290,7 @@ impl Inner {
     Ok(document_highlights)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn references(
     &self,
     params: ReferenceParams,
@@ -2403,6 +2356,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
@@ -2462,6 +2416,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
@@ -2524,6 +2479,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn completion(
     &self,
     params: CompletionParams,
@@ -2650,6 +2606,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn completion_resolve(
     &self,
     params: CompletionItem,
@@ -2738,6 +2695,7 @@ impl Inner {
     Ok(completion_item)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
@@ -2799,6 +2757,7 @@ impl Inner {
     Ok(result)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
@@ -2859,6 +2818,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
@@ -2917,6 +2877,7 @@ impl Inner {
     Ok(Some(resolved_items))
   }
 
+  #[tracing::instrument(skip_all)]
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
@@ -2977,6 +2938,7 @@ impl Inner {
     Ok(Some(resolved_items))
   }
 
+  #[tracing::instrument(skip_all)]
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
@@ -3054,6 +3016,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn rename(
     &self,
     params: RenameParams,
@@ -3114,6 +3077,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
@@ -3168,6 +3132,7 @@ impl Inner {
     Ok(Some(selection_ranges))
   }
 
+  #[tracing::instrument(skip_all)]
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
@@ -3234,6 +3199,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
@@ -3298,6 +3264,7 @@ impl Inner {
     Ok(response)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
@@ -3372,6 +3339,7 @@ impl Inner {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
@@ -3433,6 +3401,7 @@ impl Inner {
     file_text_changes_to_workspace_edit(&changes, self, token)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
@@ -3484,6 +3453,8 @@ impl Inner {
     Ok(maybe_symbol_information)
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn project_changed<'a>(
     &mut self,
     modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
@@ -3505,6 +3476,7 @@ impl Inner {
     );
   }
 
+  #[tracing::instrument(skip_all)]
   fn send_diagnostics_update(&self) {
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
@@ -3526,11 +3498,12 @@ impl Inner {
   }
 }
 
-#[tower_lsp::async_trait]
+#[tower_lsp::async_trait(?Send)]
 impl tower_lsp::LanguageServer for LanguageServer {
   async fn execute_command(
     &self,
     params: ExecuteCommandParams,
+    _token: CancellationToken,
   ) -> LspResult<Option<Value>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
@@ -3620,52 +3593,28 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_open(params).await;
-      })
-      .await;
+    self.inner.write().await.did_open(params).await;
   }
 
   async fn did_change(&self, params: DidChangeTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_change(params).await;
-      })
-      .await;
+    self.inner.write().await.did_change(params).await;
   }
 
   async fn did_save(&self, params: DidSaveTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_save(params);
-      })
-      .await;
+    self.inner.write().await.did_save(params);
   }
 
   async fn did_close(&self, params: DidCloseTextDocumentParams) {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn(async move {
-        ls.inner.write().await.did_close(params).await;
-      })
-      .await;
+    self.inner.write().await.did_close(params).await;
   }
 
   async fn did_change_configuration(
@@ -3675,22 +3624,17 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_configuration", &params);
+    self.refresh_configuration().await;
     self
-      .worker_thread
-      .spawn(async move {
-        let mark = ls
-          .performance
-          .mark_with_args("lsp.did_change_configuration", &params);
-        ls.refresh_configuration().await;
-        ls.inner
-          .write()
-          .await
-          .did_change_configuration(params)
-          .await;
-        ls.performance.measure(mark);
-      })
+      .inner
+      .write()
+      .await
+      .did_change_configuration(params)
       .await;
+    self.performance.measure(mark);
   }
 
   async fn did_change_watched_files(
@@ -3700,16 +3644,11 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn(async move {
-        ls.inner
-          .write()
-          .await
-          .did_change_watched_files(params)
-          .await;
-      })
+      .inner
+      .write()
+      .await
+      .did_change_watched_files(params)
       .await;
   }
 
@@ -3720,476 +3659,373 @@ impl tower_lsp::LanguageServer for LanguageServer {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
+    let mark = self
+      .performance
+      .mark_with_args("lsp.did_change_workspace_folders", &params);
     self
-      .worker_thread
-      .spawn(async move {
-        let mark = ls
-          .performance
-          .mark_with_args("lsp.did_change_workspace_folders", &params);
-        ls.inner
-          .write()
-          .await
-          .pre_did_change_workspace_folders(params);
-        ls.refresh_configuration().await;
-        ls.inner
-          .write()
-          .await
-          .post_did_change_workspace_folders()
-          .await;
-        ls.performance.measure(mark);
-      })
+      .inner
+      .write()
+      .await
+      .pre_did_change_workspace_folders(params);
+    self.refresh_configuration().await;
+    self
+      .inner
+      .write()
+      .await
+      .post_did_change_workspace_folders()
       .await;
+    self.performance.measure(mark);
   }
 
   async fn document_symbol(
     &self,
     params: DocumentSymbolParams,
+    token: CancellationToken,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.document_symbol(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .document_symbol(params, &token)
       .await
   }
 
   async fn formatting(
     &self,
     params: DocumentFormattingParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.formatting(params, &token).await
-      })
-      .await
+    self.inner.read().await.formatting(params, &token).await
   }
 
-  async fn hover(&self, params: HoverParams) -> LspResult<Option<Hover>> {
+  async fn hover(
+    &self,
+    params: HoverParams,
+    token: CancellationToken,
+  ) -> LspResult<Option<Hover>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.hover(params, &token).await
-      })
-      .await
+    self.inner.read().await.hover(params, &token).await
   }
 
   async fn inlay_hint(
     &self,
     params: InlayHintParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<InlayHint>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.inlay_hint(params, &token).await
-      })
-      .await
+    self.inner.read().await.inlay_hint(params, &token).await
   }
 
   async fn code_action(
     &self,
     params: CodeActionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.code_action(params, &token).await
-      })
-      .await
+    self.inner.read().await.code_action(params, &token).await
   }
 
   async fn code_action_resolve(
     &self,
     params: CodeAction,
+    token: CancellationToken,
   ) -> LspResult<CodeAction> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .code_action_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .code_action_resolve(params, &token)
       .await
   }
 
   async fn code_lens(
     &self,
     params: CodeLensParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CodeLens>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.code_lens(params, &token).await
-      })
-      .await
+    self.inner.read().await.code_lens(params, &token).await
   }
 
-  async fn code_lens_resolve(&self, params: CodeLens) -> LspResult<CodeLens> {
+  async fn code_lens_resolve(
+    &self,
+    params: CodeLens,
+    token: CancellationToken,
+  ) -> LspResult<CodeLens> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .code_lens_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .code_lens_resolve(params, &token)
       .await
   }
 
   async fn document_highlight(
     &self,
     params: DocumentHighlightParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .document_highlight(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .document_highlight(params, &token)
       .await
   }
 
   async fn references(
     &self,
     params: ReferenceParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<Location>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.references(params, &token).await
-      })
-      .await
+    self.inner.read().await.references(params, &token).await
   }
 
   async fn goto_definition(
     &self,
     params: GotoDefinitionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.goto_definition(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .goto_definition(params, &token)
       .await
   }
 
   async fn goto_type_definition(
     &self,
     params: GotoTypeDefinitionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoTypeDefinitionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .goto_type_definition(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .goto_type_definition(params, &token)
       .await
   }
 
   async fn completion(
     &self,
     params: CompletionParams,
+    token: CancellationToken,
   ) -> LspResult<Option<CompletionResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.completion(params, &token).await
-      })
-      .await
+    self.inner.read().await.completion(params, &token).await
   }
 
   async fn completion_resolve(
     &self,
     params: CompletionItem,
+    token: CancellationToken,
   ) -> LspResult<CompletionItem> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .completion_resolve(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .completion_resolve(params, &token)
       .await
   }
 
   async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
+    token: CancellationToken,
   ) -> LspResult<Option<GotoImplementationResponse>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .goto_implementation(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .goto_implementation(params, &token)
       .await
   }
 
   async fn folding_range(
     &self,
     params: FoldingRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<FoldingRange>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.folding_range(params, &token).await
-      })
-      .await
+    self.inner.read().await.folding_range(params, &token).await
   }
 
   async fn incoming_calls(
     &self,
     params: CallHierarchyIncomingCallsParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyIncomingCall>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.incoming_calls(params, &token).await
-      })
-      .await
+    self.inner.read().await.incoming_calls(params, &token).await
   }
 
   async fn outgoing_calls(
     &self,
     params: CallHierarchyOutgoingCallsParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyOutgoingCall>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.outgoing_calls(params, &token).await
-      })
-      .await
+    self.inner.read().await.outgoing_calls(params, &token).await
   }
 
   async fn prepare_call_hierarchy(
     &self,
     params: CallHierarchyPrepareParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<CallHierarchyItem>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .prepare_call_hierarchy(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .prepare_call_hierarchy(params, &token)
       .await
   }
 
   async fn rename(
     &self,
     params: RenameParams,
+    token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.rename(params, &token).await
-      })
-      .await
+    self.inner.read().await.rename(params, &token).await
   }
 
   async fn selection_range(
     &self,
     params: SelectionRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<SelectionRange>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.selection_range(params, &token).await
-      })
+      .inner
+      .read()
+      .await
+      .selection_range(params, &token)
       .await
   }
 
   async fn semantic_tokens_full(
     &self,
     params: SemanticTokensParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensResult>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .semantic_tokens_full(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .semantic_tokens_full(params, &token)
       .await
   }
 
   async fn semantic_tokens_range(
     &self,
     params: SemanticTokensRangeParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SemanticTokensRangeResult>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .semantic_tokens_range(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .semantic_tokens_range(params, &token)
       .await
   }
 
   async fn signature_help(
     &self,
     params: SignatureHelpParams,
+    token: CancellationToken,
   ) -> LspResult<Option<SignatureHelp>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.signature_help(params, &token).await
-      })
-      .await
+    self.inner.read().await.signature_help(params, &token).await
   }
 
   async fn will_rename_files(
     &self,
     params: RenameFilesParams,
+    token: CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
     self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner
-          .read()
-          .await
-          .will_rename_files(params, &token)
-          .await
-      })
+      .inner
+      .read()
+      .await
+      .will_rename_files(params, &token)
       .await
   }
 
   async fn symbol(
     &self,
     params: WorkspaceSymbolParams,
+    token: CancellationToken,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
-    let ls = self.clone();
-    self
-      .worker_thread
-      .spawn_with_cancellation(move |token| async move {
-        ls.inner.read().await.symbol(params, &token).await
-      })
-      .await
+    self.inner.read().await.symbol(params, &token).await
   }
 }
 
@@ -4293,6 +4129,8 @@ impl Inner {
     registrations
   }
 
+  #[tracing::instrument(skip_all)]
+
   fn prepare_cache(
     &mut self,
     specifiers: Vec<ModuleSpecifier>,
@@ -4371,6 +4209,7 @@ impl Inner {
     })
   }
 
+  #[tracing::instrument(skip_all)]
   async fn post_cache(&mut self) {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
@@ -4380,6 +4219,8 @@ impl Inner {
     self.send_diagnostics_update();
     self.send_testing_update();
   }
+
+  #[tracing::instrument(skip_all)]
 
   fn pre_did_change_workspace_folders(
     &mut self,
@@ -4409,6 +4250,7 @@ impl Inner {
     self.config.set_workspace_folders(workspace_folders);
   }
 
+  #[tracing::instrument(skip_all)]
   async fn post_did_change_workspace_folders(&mut self) {
     self.refresh_workspace_files();
     self.refresh_config_tree().await;
@@ -4488,6 +4330,7 @@ impl Inner {
     Ok(result)
   }
 
+  #[tracing::instrument(skip_all)]
   async fn inlay_hint(
     &self,
     params: InlayHintParams,

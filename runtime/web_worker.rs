@@ -489,8 +489,8 @@ impl WebWorker {
     let create_cache = create_cache_inner(&options);
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/worker.rs` and `runtime/snapshot.rs`!
-
+    // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+    // and `runtime/snapshot.rs`!
     let mut extensions = vec![
       deno_telemetry::deno_telemetry::init_ops_and_esm(),
       // Web APIs

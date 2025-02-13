@@ -585,7 +585,11 @@ const finalDenoNs = {
   test: () => {},
   bench: () => {},
   lint: {
-    runPlugin: () => {},
+    runPlugin: () => {
+      throw new Error(
+        "`Deno.lint.runPlugin` is only available in `deno test` subcommand.",
+      );
+    },
   },
 };
 
