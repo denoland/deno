@@ -873,6 +873,11 @@ impl CliFactory {
           self.npm_resolver().await?.clone(),
           self.sys(),
           self.tsconfig_resolver()?.clone(),
+          if cli_options.code_cache_enabled() {
+            Some(self.code_cache()?.clone())
+          } else {
+            None
+          },
         )))
       })
       .await
@@ -1194,7 +1199,7 @@ impl CliFactory {
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
       otel_config: self.cli_options()?.otel_config(),
-      startup_snapshot: crate::js::deno_isolate_init(),
+      startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     })
   }
 

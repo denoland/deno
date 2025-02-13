@@ -6,7 +6,7 @@ use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait PackageSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
   async fn versions(&self, name: &str) -> Result<Arc<Vec<Version>>, AnyError>;
@@ -45,7 +45,7 @@ pub mod tests {
     }
   }
 
-  #[async_trait::async_trait]
+  #[async_trait::async_trait(?Send)]
   impl PackageSearchApi for TestPackageSearchApi {
     async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
       let names = self

@@ -1,318 +1,183 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::env;
-use std::path::PathBuf;
+use std::io::Write;
+use std::path::Path;
 
-use deno_core::snapshot::*;
 use deno_runtime::*;
 
-mod ts {
-  use std::collections::HashMap;
-  use std::io::Write;
-  use std::path::Path;
-  use std::path::PathBuf;
-
-  use deno_core::op2;
-  use deno_core::v8;
-  use deno_core::OpState;
-  use deno_error::JsErrorBox;
-  use serde::Serialize;
-
-  use super::*;
-
-  #[derive(Debug, Serialize)]
-  #[serde(rename_all = "camelCase")]
-  struct LoadResponse {
-    data: String,
-    version: String,
-    script_kind: i32,
+fn compress_decls(out_dir: &Path) {
+  let decls = [
+    "lib.deno_webgpu.d.ts",
+    "lib.deno.ns.d.ts",
+    "lib.deno.unstable.d.ts",
+    "lib.deno.window.d.ts",
+    "lib.deno.worker.d.ts",
+    "lib.deno.shared_globals.d.ts",
+    "lib.deno.ns.d.ts",
+    "lib.deno.unstable.d.ts",
+    "lib.decorators.d.ts",
+    "lib.decorators.legacy.d.ts",
+    "lib.dom.asynciterable.d.ts",
+    "lib.dom.d.ts",
+    "lib.dom.extras.d.ts",
+    "lib.dom.iterable.d.ts",
+    "lib.es2015.collection.d.ts",
+    "lib.es2015.core.d.ts",
+    "lib.es2015.d.ts",
+    "lib.es2015.generator.d.ts",
+    "lib.es2015.iterable.d.ts",
+    "lib.es2015.promise.d.ts",
+    "lib.es2015.proxy.d.ts",
+    "lib.es2015.reflect.d.ts",
+    "lib.es2015.symbol.d.ts",
+    "lib.es2015.symbol.wellknown.d.ts",
+    "lib.es2016.array.include.d.ts",
+    "lib.es2016.d.ts",
+    "lib.es2016.full.d.ts",
+    "lib.es2016.intl.d.ts",
+    "lib.es2017.arraybuffer.d.ts",
+    "lib.es2017.d.ts",
+    "lib.es2017.date.d.ts",
+    "lib.es2017.full.d.ts",
+    "lib.es2017.intl.d.ts",
+    "lib.es2017.object.d.ts",
+    "lib.es2017.sharedmemory.d.ts",
+    "lib.es2017.string.d.ts",
+    "lib.es2017.typedarrays.d.ts",
+    "lib.es2018.asyncgenerator.d.ts",
+    "lib.es2018.asynciterable.d.ts",
+    "lib.es2018.d.ts",
+    "lib.es2018.full.d.ts",
+    "lib.es2018.intl.d.ts",
+    "lib.es2018.promise.d.ts",
+    "lib.es2018.regexp.d.ts",
+    "lib.es2019.array.d.ts",
+    "lib.es2019.d.ts",
+    "lib.es2019.full.d.ts",
+    "lib.es2019.intl.d.ts",
+    "lib.es2019.object.d.ts",
+    "lib.es2019.string.d.ts",
+    "lib.es2019.symbol.d.ts",
+    "lib.es2020.bigint.d.ts",
+    "lib.es2020.d.ts",
+    "lib.es2020.date.d.ts",
+    "lib.es2020.full.d.ts",
+    "lib.es2020.intl.d.ts",
+    "lib.es2020.number.d.ts",
+    "lib.es2020.promise.d.ts",
+    "lib.es2020.sharedmemory.d.ts",
+    "lib.es2020.string.d.ts",
+    "lib.es2020.symbol.wellknown.d.ts",
+    "lib.es2021.d.ts",
+    "lib.es2021.full.d.ts",
+    "lib.es2021.intl.d.ts",
+    "lib.es2021.promise.d.ts",
+    "lib.es2021.string.d.ts",
+    "lib.es2021.weakref.d.ts",
+    "lib.es2022.array.d.ts",
+    "lib.es2022.d.ts",
+    "lib.es2022.error.d.ts",
+    "lib.es2022.full.d.ts",
+    "lib.es2022.intl.d.ts",
+    "lib.es2022.object.d.ts",
+    "lib.es2022.regexp.d.ts",
+    "lib.es2022.string.d.ts",
+    "lib.es2023.array.d.ts",
+    "lib.es2023.collection.d.ts",
+    "lib.es2023.d.ts",
+    "lib.es2023.full.d.ts",
+    "lib.es2023.intl.d.ts",
+    "lib.es2024.arraybuffer.d.ts",
+    "lib.es2024.collection.d.ts",
+    "lib.es2024.d.ts",
+    "lib.es2024.full.d.ts",
+    "lib.es2024.object.d.ts",
+    "lib.es2024.promise.d.ts",
+    "lib.es2024.regexp.d.ts",
+    "lib.es2024.sharedmemory.d.ts",
+    "lib.es2024.string.d.ts",
+    "lib.es5.d.ts",
+    "lib.es6.d.ts",
+    "lib.esnext.array.d.ts",
+    "lib.esnext.collection.d.ts",
+    "lib.esnext.d.ts",
+    "lib.esnext.decorators.d.ts",
+    "lib.esnext.disposable.d.ts",
+    "lib.esnext.full.d.ts",
+    "lib.esnext.intl.d.ts",
+    "lib.esnext.iterator.d.ts",
+    "lib.scripthost.d.ts",
+    "lib.webworker.asynciterable.d.ts",
+    "lib.webworker.d.ts",
+    "lib.webworker.importscripts.d.ts",
+    "lib.webworker.iterable.d.ts",
+  ];
+  for decl in decls {
+    let file = format!("./tsc/dts/{decl}");
+    compress_source(out_dir, &file);
   }
-
-  #[op2]
-  #[serde]
-  // using the same op that is used in `tsc.rs` for loading modules and reading
-  // files, but a slightly different implementation at build time.
-  fn op_load(
-    state: &mut OpState,
-    #[string] load_specifier: &str,
-  ) -> Result<LoadResponse, JsErrorBox> {
-    let op_crate_libs = state.borrow::<HashMap<&str, PathBuf>>();
-    let path_dts = state.borrow::<PathBuf>();
-    let re_asset = lazy_regex::regex!(r"asset:/{3}lib\.(\S+)\.d\.ts");
-
-    // specifiers come across as `asset:///lib.{lib_name}.d.ts` and we need to
-    // parse out just the name so we can lookup the asset.
-    if let Some(caps) = re_asset.captures(load_specifier) {
-      if let Some(lib) = caps.get(1).map(|m| m.as_str()) {
-        // if it comes from an op crate, we were supplied with the path to the
-        // file.
-        let path = if let Some(op_crate_lib) = op_crate_libs.get(lib) {
-          PathBuf::from(op_crate_lib)
-            .canonicalize()
-            .map_err(JsErrorBox::from_err)?
-          // otherwise we will generate the path ourself
-        } else {
-          path_dts.join(format!("lib.{lib}.d.ts"))
-        };
-        let data =
-          std::fs::read_to_string(path).map_err(JsErrorBox::from_err)?;
-        return Ok(LoadResponse {
-          data,
-          version: "1".to_string(),
-          // this corresponds to `ts.ScriptKind.TypeScript`
-          script_kind: 3,
-        });
-      }
-    }
-
-    Err(JsErrorBox::new(
-      "InvalidSpecifier",
-      format!("An invalid specifier was requested: {}", load_specifier),
-    ))
+  let ext_decls = [
+    "console/lib.deno_console.d.ts",
+    "url/lib.deno_url.d.ts",
+    "web/lib.deno_web.d.ts",
+    "fetch/lib.deno_fetch.d.ts",
+    "websocket/lib.deno_websocket.d.ts",
+    "webstorage/lib.deno_webstorage.d.ts",
+    "canvas/lib.deno_canvas.d.ts",
+    "crypto/lib.deno_crypto.d.ts",
+    "cache/lib.deno_cache.d.ts",
+    "net/lib.deno_net.d.ts",
+    "broadcast_channel/lib.deno_broadcast_channel.d.ts",
+  ];
+  for ext_decl in ext_decls {
+    let file = format!("../ext/{ext_decl}");
+    compress_source(out_dir, &file);
   }
+}
 
-  deno_core::extension!(deno_tsc,
-    ops = [
-      op_load,
-    ],
-    esm_entry_point = "ext:deno_tsc/99_main_compiler.js",
-    esm = [
-      dir "tsc",
-      "97_ts_host.js",
-      "98_lsp.js",
-      "99_main_compiler.js",
-    ],
-    js = [
-      dir "tsc",
-      "00_typescript.js",
-    ],
-    options = {
-      op_crate_libs: HashMap<&'static str, PathBuf>,
-      build_libs: Vec<&'static str>,
-      path_dts: PathBuf,
-    },
-    state = |state, options| {
-      state.put(options.op_crate_libs);
-      state.put(options.build_libs);
-      state.put(options.path_dts);
-    },
-  );
+fn compress_source(out_dir: &Path, file: &str) {
+  let path = Path::new(file)
+    .canonicalize()
+    .unwrap_or_else(|_| panic!("expected file \"{file}\" to exist"));
+  let contents = std::fs::read(&path).unwrap();
 
-  pub fn create_compiler_snapshot(snapshot_path: PathBuf, cwd: &Path) {
-    // libs that are being provided by op crates.
-    let mut op_crate_libs = HashMap::new();
-    op_crate_libs.insert("deno.cache", deno_cache::get_declaration());
-    op_crate_libs.insert("deno.console", deno_console::get_declaration());
-    op_crate_libs.insert("deno.url", deno_url::get_declaration());
-    op_crate_libs.insert("deno.web", deno_web::get_declaration());
-    op_crate_libs.insert("deno.fetch", deno_fetch::get_declaration());
-    op_crate_libs.insert("deno.webgpu", deno_webgpu_get_declaration());
-    op_crate_libs.insert("deno.websocket", deno_websocket::get_declaration());
-    op_crate_libs.insert("deno.webstorage", deno_webstorage::get_declaration());
-    op_crate_libs.insert("deno.canvas", deno_canvas::get_declaration());
-    op_crate_libs.insert("deno.crypto", deno_crypto::get_declaration());
-    op_crate_libs.insert(
-      "deno.broadcast_channel",
-      deno_broadcast_channel::get_declaration(),
-    );
-    op_crate_libs.insert("deno.net", deno_net::get_declaration());
+  println!("cargo:rerun-if-changed={}", path.display());
 
-    // ensure we invalidate the build properly.
-    for (_, path) in op_crate_libs.iter() {
-      println!("cargo:rerun-if-changed={}", path.display());
-    }
-
-    // libs that should be loaded into the isolate before snapshotting.
-    let libs = vec![
-      // Deno custom type libraries
-      "deno.window",
-      "deno.worker",
-      "deno.shared_globals",
-      "deno.ns",
-      "deno.unstable",
-      // Deno built-in type libraries
-      "decorators",
-      "decorators.legacy",
-      "dom.asynciterable",
-      "dom",
-      "dom.extras",
-      "dom.iterable",
-      "es2015.collection",
-      "es2015.core",
-      "es2015",
-      "es2015.generator",
-      "es2015.iterable",
-      "es2015.promise",
-      "es2015.proxy",
-      "es2015.reflect",
-      "es2015.symbol",
-      "es2015.symbol.wellknown",
-      "es2016.array.include",
-      "es2016",
-      "es2016.full",
-      "es2016.intl",
-      "es2017.arraybuffer",
-      "es2017",
-      "es2017.date",
-      "es2017.full",
-      "es2017.intl",
-      "es2017.object",
-      "es2017.sharedmemory",
-      "es2017.string",
-      "es2017.typedarrays",
-      "es2018.asyncgenerator",
-      "es2018.asynciterable",
-      "es2018",
-      "es2018.full",
-      "es2018.intl",
-      "es2018.promise",
-      "es2018.regexp",
-      "es2019.array",
-      "es2019",
-      "es2019.full",
-      "es2019.intl",
-      "es2019.object",
-      "es2019.string",
-      "es2019.symbol",
-      "es2020.bigint",
-      "es2020",
-      "es2020.date",
-      "es2020.full",
-      "es2020.intl",
-      "es2020.number",
-      "es2020.promise",
-      "es2020.sharedmemory",
-      "es2020.string",
-      "es2020.symbol.wellknown",
-      "es2021",
-      "es2021.full",
-      "es2021.intl",
-      "es2021.promise",
-      "es2021.string",
-      "es2021.weakref",
-      "es2022.array",
-      "es2022",
-      "es2022.error",
-      "es2022.full",
-      "es2022.intl",
-      "es2022.object",
-      "es2022.regexp",
-      "es2022.string",
-      "es2023.array",
-      "es2023.collection",
-      "es2023",
-      "es2023.full",
-      "es2023.intl",
-      "es2024.arraybuffer",
-      "es2024.collection",
-      "es2024",
-      "es2024.full",
-      "es2024.object",
-      "es2024.promise",
-      "es2024.regexp",
-      "es2024.sharedmemory",
-      "es2024.string",
-      "es5",
-      "es6",
-      "esnext.array",
-      "esnext.collection",
-      "esnext",
-      "esnext.decorators",
-      "esnext.disposable",
-      "esnext.full",
-      "esnext.intl",
-      "esnext.iterator",
-      "scripthost",
-      "webworker.asynciterable",
-      "webworker",
-      "webworker.importscripts",
-      "webworker.iterable",
-    ];
-
-    let path_dts = cwd.join("tsc/dts");
-    // ensure we invalidate the build properly.
-    for name in libs.iter() {
-      println!(
-        "cargo:rerun-if-changed={}",
-        path_dts.join(format!("lib.{name}.d.ts")).display()
-      );
-    }
-
-    // create a copy of the vector that includes any op crate libs to be passed
-    // to the JavaScript compiler to build into the snapshot
-    let mut build_libs = libs.clone();
-    for (op_lib, _) in op_crate_libs.iter() {
-      build_libs.push(op_lib.to_owned());
-    }
-
-    // used in the tests to verify that after snapshotting it has the same number
-    // of lib files loaded and hasn't included any ones lazily loaded from Rust
-    std::fs::write(
-      PathBuf::from(env::var_os("OUT_DIR").unwrap())
-        .join("lib_file_names.json"),
-      serde_json::to_string(&build_libs).unwrap(),
-    )
+  let compressed = zstd::bulk::compress(&contents, 19).unwrap();
+  let mut out = out_dir.join(file.trim_start_matches("../"));
+  let mut ext = out
+    .extension()
+    .map(|s| s.to_string_lossy())
+    .unwrap_or_default()
+    .into_owned();
+  ext.push_str(".zstd");
+  out.set_extension(ext);
+  std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+  let mut file = std::fs::OpenOptions::new()
+    .create(true)
+    .truncate(true)
+    .write(true)
+    .open(out)
+    .unwrap();
+  file
+    .write_all(&(contents.len() as u32).to_le_bytes())
     .unwrap();
 
-    // Leak to satisfy type-checker. It's okay since it's only run once for a build script.
-    let build_libs_ = Box::leak(Box::new(build_libs.clone()));
-    let runtime_cb = Box::new(|rt: &mut deno_core::JsRuntimeForSnapshot| {
-      let scope = &mut rt.handle_scope();
+  file.write_all(&compressed).unwrap();
+}
 
-      let context = scope.get_current_context();
-      let global = context.global(scope);
+fn compress_sources(out_dir: &Path) {
+  compress_decls(out_dir);
 
-      let name = v8::String::new(scope, "snapshot").unwrap();
-      let snapshot_fn_val = global.get(scope, name.into()).unwrap();
-      let snapshot_fn: v8::Local<v8::Function> =
-        snapshot_fn_val.try_into().unwrap();
-      let undefined = v8::undefined(scope);
-      let build_libs = build_libs_.clone();
-      let build_libs_v8 =
-        deno_core::serde_v8::to_v8(scope, build_libs).unwrap();
-
-      snapshot_fn
-        .call(scope, undefined.into(), &[build_libs_v8])
-        .unwrap();
-    });
-
-    let output = create_snapshot(
-      CreateSnapshotOptions {
-        cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
-        startup_snapshot: None,
-        extensions: vec![deno_tsc::init_ops_and_esm(
-          op_crate_libs,
-          build_libs,
-          path_dts,
-        )],
-        extension_transpiler: None,
-        with_runtime_cb: Some(runtime_cb),
-        skip_op_registration: false,
-      },
-      None,
-    )
-    .unwrap();
-
-    // NOTE(bartlomieju): Compressing the TSC snapshot in debug build took
-    // ~45s on M1 MacBook Pro; without compression it took ~1s.
-    // Thus we're not using compressed snapshot, trading off
-    // a lot of build time for some startup time in debug build.
-    let mut file = std::fs::File::create(snapshot_path).unwrap();
-    if cfg!(debug_assertions) {
-      file.write_all(&output.output).unwrap();
-    } else {
-      let mut vec = Vec::with_capacity(output.output.len());
-      vec.extend((output.output.len() as u32).to_le_bytes());
-      vec.extend_from_slice(
-        &zstd::bulk::compress(&output.output, 22)
-          .expect("snapshot compression failed"),
-      );
-      file.write_all(&vec).unwrap();
-    }
-
-    for path in output.files_loaded_during_snapshot {
-      println!("cargo:rerun-if-changed={}", path.display());
-    }
+  let ext_sources = [
+    "./tsc/99_main_compiler.js",
+    "./tsc/97_ts_host.js",
+    "./tsc/98_lsp.js",
+    "./tsc/00_typescript.js",
+  ];
+  for ext_source in ext_sources {
+    compress_source(out_dir, ext_source);
   }
 }
 
@@ -337,6 +202,12 @@ fn main() {
   // To debug snapshot issues uncomment:
   // op_fetch_asset::trace_serializer();
 
+  if !cfg!(debug_assertions) && std::env::var("CARGO_FEATURE_HMR").is_err() {
+    let out_dir =
+      std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    compress_sources(&out_dir);
+  }
+
   if let Ok(c) = env::var("DENO_CANARY") {
     println!("cargo:rustc-env=DENO_CANARY={c}");
   }
@@ -344,12 +215,6 @@ fn main() {
 
   println!("cargo:rustc-env=TARGET={}", env::var("TARGET").unwrap());
   println!("cargo:rustc-env=PROFILE={}", env::var("PROFILE").unwrap());
-
-  let c = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-  let o = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-
-  let compiler_snapshot_path = o.join("COMPILER_SNAPSHOT.bin");
-  ts::create_compiler_snapshot(compiler_snapshot_path, &c);
 
   #[cfg(target_os = "windows")]
   {
@@ -361,12 +226,4 @@ fn main() {
     ));
     res.compile().unwrap();
   }
-}
-
-fn deno_webgpu_get_declaration() -> PathBuf {
-  let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-  manifest_dir
-    .join("tsc")
-    .join("dts")
-    .join("lib.deno_webgpu.d.ts")
 }

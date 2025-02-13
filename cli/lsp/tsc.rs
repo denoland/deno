@@ -1,15 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::convert::Infallible;
+use std::ffi::c_void;
 use std::net::SocketAddr;
 use std::ops::Range;
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 
@@ -65,6 +68,7 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::analysis::CodeActionData;
 use super::code_lens;
@@ -124,6 +128,7 @@ type Request = (
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
   Option<PendingChange>,
+  Option<opentelemetry::Context>,
 );
 
 #[derive(Debug, Clone, Copy, Serialize_repr)]
@@ -243,6 +248,7 @@ pub struct TsServer {
   pub specifier_map: Arc<TscSpecifierMap>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
+  enable_tracing: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -401,7 +407,14 @@ impl TsServer {
       specifier_map: Arc::new(TscSpecifierMap::new()),
       inspector_server: Mutex::new(None),
       pending_change: Mutex::new(None),
+      enable_tracing: Default::default(),
     }
+  }
+
+  pub fn set_tracing_enabled(&self, enabled: bool) {
+    self
+      .enable_tracing
+      .store(enabled, std::sync::atomic::Ordering::Relaxed);
   }
 
   pub fn start(
@@ -427,12 +440,14 @@ impl TsServer {
     let receiver = self.receiver.lock().take().unwrap();
     let performance = self.performance.clone();
     let specifier_map = self.specifier_map.clone();
+    let enable_tracing = self.enable_tracing.clone();
     let _join_handle = thread::spawn(move || {
       run_tsc_thread(
         receiver,
         performance,
         specifier_map,
         maybe_inspector_server,
+        enable_tracing,
       )
     });
     Ok(())
@@ -467,6 +482,7 @@ impl TsServer {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -532,6 +548,7 @@ impl TsServer {
     Ok((diagnostics_map, ambient_modules_by_scope))
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
     for scope in snapshot
       .config
@@ -558,6 +575,7 @@ impl TsServer {
     }
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -612,6 +630,7 @@ impl TsServer {
     Ok(Some(all_symbols.into_iter().collect()))
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_navigation_tree(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -625,6 +644,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_supported_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -639,6 +659,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_quick_info(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -655,6 +676,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
+  #[tracing::instrument(skip_all)]
   pub async fn get_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -686,6 +708,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
+  #[tracing::instrument(skip_all)]
   pub async fn get_applicable_refactors(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -718,6 +741,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -746,6 +770,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
+  #[tracing::instrument(skip_all)]
   pub async fn get_edits_for_refactor(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -775,6 +800,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -833,6 +859,7 @@ impl TsServer {
     Ok(all_changes.into_iter().collect())
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_document_highlights(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -853,6 +880,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -878,6 +906,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_type_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -905,6 +934,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
+  #[tracing::instrument(skip_all)]
   pub async fn get_completions(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -932,6 +962,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -959,6 +990,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1013,6 +1045,7 @@ impl TsServer {
     Ok(Some(all_locations.into_iter().collect()))
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_outlining_spans(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1026,6 +1059,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1074,6 +1108,7 @@ impl TsServer {
     Ok(all_calls.into_iter().collect())
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1100,6 +1135,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn prepare_call_hierarchy(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1133,6 +1169,7 @@ impl TsServer {
       })
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn find_rename_locations(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1190,6 +1227,7 @@ impl TsServer {
     Ok(Some(all_locations.into_iter().collect()))
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_smart_selection_range(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1205,6 +1243,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_encoded_semantic_classifications(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1224,6 +1263,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_signature_help_items(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1241,6 +1281,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn get_navigate_to_items(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1292,6 +1333,7 @@ impl TsServer {
     Ok(all_items.into_iter().collect())
   }
 
+  #[tracing::instrument(skip_all)]
   pub async fn provide_inlay_hints(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1319,6 +1361,7 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
+    let context = tracing::Span::current().context();
     let mark = self
       .performance
       .mark(format!("tsc.request.{}", req.method()));
@@ -1327,7 +1370,15 @@ impl TsServer {
 
     if self
       .sender
-      .send((req, scope, snapshot, tx, token.clone(), change))
+      .send((
+        req,
+        scope,
+        snapshot,
+        tx,
+        token.clone(),
+        change,
+        Some(context),
+      ))
       .is_err()
     {
       return Err(anyhow!("failed to send request to tsc thread"));
@@ -1335,6 +1386,7 @@ impl TsServer {
     tokio::select! {
       value = &mut rx => {
         let value = value??;
+        let _span = tracing::info_span!("Tsc response deserialization");
         let r = Ok(serde_json::from_str(&value)?);
         self.performance.measure(mark);
         r
@@ -1399,7 +1451,7 @@ fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
     .map(|(k, v)| {
       let url_str = format!("asset:///{k}");
       let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(specifier.clone(), v);
+      let asset = AssetDocument::new(specifier.clone(), v.get());
       (specifier, asset)
     })
     .collect::<AssetsMap>();
@@ -1430,26 +1482,13 @@ impl AssetsSnapshot {
 /// multiple threads without needing to worry about race conditions.
 #[derive(Debug, Clone)]
 pub struct Assets {
-  ts_server: Arc<TsServer>,
   assets: Arc<Mutex<AssetsMap>>,
 }
 
 impl Assets {
-  pub fn new(ts_server: Arc<TsServer>) -> Self {
+  pub fn new() -> Self {
     Self {
-      ts_server,
       assets: new_assets_map(),
-    }
-  }
-
-  /// Initializes with the assets in the isolate.
-  pub async fn initialize(&self, state_snapshot: Arc<StateSnapshot>) {
-    let assets = get_isolate_assets(&self.ts_server, state_snapshot).await;
-    let mut assets_map = self.assets.lock();
-    for asset in assets {
-      if !assets_map.contains_key(asset.specifier()) {
-        assets_map.insert(asset.specifier().clone(), asset);
-      }
     }
   }
 
@@ -1475,39 +1514,6 @@ impl Assets {
     *doc = doc.with_navigation_tree(navigation_tree);
     Ok(())
   }
-}
-
-/// Get all the assets stored in the tsc isolate.
-async fn get_isolate_assets(
-  ts_server: &TsServer,
-  state_snapshot: Arc<StateSnapshot>,
-) -> Vec<AssetDocument> {
-  let req = TscRequest::GetAssets;
-  let res: Value = ts_server
-    .request(state_snapshot, req, None, &Default::default())
-    .await
-    .unwrap();
-  let response_assets = match res {
-    Value::Array(value) => value,
-    _ => unreachable!(),
-  };
-  let mut assets = Vec::with_capacity(response_assets.len());
-
-  for asset in response_assets {
-    let mut obj = match asset {
-      Value::Object(obj) => obj,
-      _ => unreachable!(),
-    };
-    let specifier_str = obj.get("specifier").unwrap().as_str().unwrap();
-    let specifier = ModuleSpecifier::parse(specifier_str).unwrap();
-    let text = match obj.remove("text").unwrap() {
-      Value::String(text) => text,
-      _ => unreachable!(),
-    };
-    assets.push(AssetDocument::new(specifier, text));
-  }
-
-  assets
 }
 
 fn get_tag_body_text(
@@ -3658,7 +3664,26 @@ impl CompletionEntryDetails {
       None
     };
     let mut text_edit = original_item.text_edit.clone();
+    let mut code_action_descriptions = self
+      .code_actions
+      .iter()
+      .flatten()
+      .map(|a| Cow::Borrowed(a.description.as_str()))
+      .collect::<Vec<_>>();
     if let Some(specifier_rewrite) = &data.specifier_rewrite {
+      for description in &mut code_action_descriptions {
+        let specifier_index = description
+          .char_indices()
+          .find_map(|(b, c)| (c == '\'' || c == '"').then_some(b));
+        if let Some(i) = specifier_index {
+          let mut specifier_part = description.to_mut().split_off(i);
+          specifier_part = specifier_part.replace(
+            &specifier_rewrite.old_specifier,
+            &specifier_rewrite.new_specifier,
+          );
+          description.to_mut().push_str(&specifier_part);
+        }
+      }
       if let Some(text_edit) = &mut text_edit {
         let new_text = match text_edit {
           lsp::CompletionTextEdit::Edit(text_edit) => &mut text_edit.new_text,
@@ -3685,6 +3710,16 @@ impl CompletionEntryDetails {
         }
       }
     }
+    let code_action_description =
+      Some(code_action_descriptions.join("\n\n")).filter(|s| !s.is_empty());
+    let detail = Some(
+      [code_action_description, detail]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n\n"),
+    )
+    .filter(|s| !s.is_empty());
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
@@ -3753,6 +3788,7 @@ impl CompletionInfo {
     Ok(())
   }
 
+  #[tracing::instrument(skip_all, fields(entries = %self.entries.len()))]
   pub fn as_completion_response(
     &self,
     line_index: Arc<LineIndex>,
@@ -4473,6 +4509,8 @@ struct State {
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
+  context: Option<opentelemetry::Context>,
+  enable_tracing: Arc<AtomicBool>,
 }
 
 impl State {
@@ -4481,6 +4519,7 @@ impl State {
     specifier_map: Arc<TscSpecifierMap>,
     performance: Arc<Performance>,
     pending_requests: UnboundedReceiver<Request>,
+    enable_tracing: Arc<AtomicBool>,
   ) -> Self {
     Self {
       last_id: 1,
@@ -4492,7 +4531,15 @@ impl State {
       token: Default::default(),
       mark: None,
       pending_requests: Some(pending_requests),
+      context: None,
+      enable_tracing,
     }
+  }
+
+  fn tracing_enabled(&self) -> bool {
+    self
+      .enable_tracing
+      .load(std::sync::atomic::Ordering::Relaxed)
   }
 
   fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
@@ -4547,6 +4594,21 @@ fn op_is_node_file(state: &mut OpState, #[string] path: String) -> bool {
   r
 }
 
+#[op2]
+#[serde]
+fn op_libs() -> Vec<String> {
+  let mut out =
+    Vec::with_capacity(crate::tsc::LAZILY_LOADED_STATIC_ASSETS.len());
+  for key in crate::tsc::LAZILY_LOADED_STATIC_ASSETS.keys() {
+    let lib = key
+      .replace("lib.", "")
+      .replace(".d.ts", "")
+      .replace("deno_", "deno.");
+    out.push(lib);
+  }
+  out
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 enum LoadError {
   #[error("{0}")]
@@ -4572,6 +4634,7 @@ fn op_load<'s>(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<v8::Local<'s, v8::Value>, LoadError> {
+  let _span = tracing::info_span!("op_load").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4603,6 +4666,7 @@ fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<(), deno_core::url::ParseError> {
+  let _span = tracing::info_span!("op_release").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4621,6 +4685,7 @@ fn op_resolve(
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
+  let _span = tracing::info_span!("op_resolve").entered();
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -4675,7 +4740,7 @@ async fn op_poll_requests(
   // clear the resolution cache after each request
   NodeResolutionThreadLocalCache::clear();
 
-  let Some((request, scope, snapshot, response_tx, token, change)) =
+  let Some((request, scope, snapshot, response_tx, token, change, context)) =
     pending_requests.recv().await
   else {
     return None.into();
@@ -4694,6 +4759,7 @@ async fn op_poll_requests(
     .performance
     .mark_with_args(format!("tsc.host.{}", request.method()), &request);
   state.mark = Some(mark);
+  state.context = context;
 
   Some(TscRequestArray {
     request,
@@ -4741,6 +4807,7 @@ fn op_respond(
   #[string] response: String,
   #[string] error: String,
 ) {
+  let _span = tracing::info_span!("op_respond").entered();
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
   state.last_scope = None;
@@ -4758,6 +4825,58 @@ fn op_respond(
   }
 }
 
+struct TracingSpan(#[allow(dead_code)] Option<tracing::span::EnteredSpan>);
+
+deno_core::external!(TracingSpan, "lsp::TracingSpan");
+
+fn span_with_context(
+  state: &State,
+  span: tracing::Span,
+) -> tracing::span::EnteredSpan {
+  if let Some(context) = &state.context {
+    span.set_parent(context.clone());
+  }
+  span.entered()
+}
+
+#[op2(fast)]
+fn op_make_span(
+  op_state: &mut OpState,
+  #[string] s: &str,
+  needs_context: bool,
+) -> *const c_void {
+  let state = op_state.borrow_mut::<State>();
+  if !state.tracing_enabled() {
+    return deno_core::ExternalPointer::new(TracingSpan(None)).into_raw();
+  }
+  let sp = tracing::info_span!("js", otel.name = format!("js::{s}").as_str());
+  let span = if needs_context {
+    span_with_context(state, sp)
+  } else {
+    sp.entered()
+  };
+  deno_core::ExternalPointer::new(TracingSpan(Some(span))).into_raw()
+}
+
+#[op2(fast)]
+fn op_log_event(op_state: &OpState, #[string] msg: &str) {
+  let state = op_state.borrow::<State>();
+  if state.tracing_enabled() {
+    tracing::info!(msg = msg);
+  }
+}
+
+#[op2(fast)]
+fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
+  let ptr = deno_core::ExternalPointer::<TracingSpan>::from_raw(span);
+  // SAFETY: trust me
+  let _span = unsafe { ptr.unsafely_take().0 };
+  let state = op_state.borrow_mut::<State>();
+  if root {
+    state.context = None;
+  }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
@@ -4768,6 +4887,7 @@ struct ScriptNames {
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
+  let _span = tracing::info_span!("op_script_names").entered();
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let mut result = ScriptNames {
@@ -4941,19 +5061,21 @@ fn run_tsc_thread(
   performance: Arc<Performance>,
   specifier_map: Arc<TscSpecifierMap>,
   maybe_inspector_server: Option<Arc<InspectorServer>>,
+  enable_tracing: Arc<AtomicBool>,
 ) {
   let has_inspector_server = maybe_inspector_server.is_some();
-  // Create and setup a JsRuntime based on a snapshot. It is expected that the
-  // supplied snapshot is an isolate that contains the TypeScript language
-  // server.
+  let mut extensions =
+    deno_runtime::snapshot_info::get_extensions_in_snapshot();
+  extensions.push(deno_tsc::init_ops_and_esm(
+    performance,
+    specifier_map,
+    request_rx,
+    enable_tracing,
+  ));
   let mut tsc_runtime = JsRuntime::new(RuntimeOptions {
-    extensions: vec![deno_tsc::init_ops(
-      performance,
-      specifier_map,
-      request_rx,
-    )],
+    extensions,
     create_params: create_isolate_create_params(),
-    startup_snapshot: Some(tsc::compiler_snapshot()),
+    startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     inspector: has_inspector_server,
     ..Default::default()
   });
@@ -5035,11 +5157,16 @@ deno_core::extension!(deno_tsc,
     op_script_version,
     op_project_version,
     op_poll_requests,
+    op_make_span,
+    op_exit_span,
+    op_log_event,
+    op_libs,
   ],
   options = {
     performance: Arc<Performance>,
     specifier_map: Arc<TscSpecifierMap>,
     request_rx: UnboundedReceiver<Request>,
+    enable_tracing: Arc<AtomicBool>,
   },
   state = |state, options| {
     state.put(State::new(
@@ -5047,8 +5174,17 @@ deno_core::extension!(deno_tsc,
       options.specifier_map,
       options.performance,
       options.request_rx,
+      options.enable_tracing,
     ));
   },
+  customizer = |ext: &mut deno_core::Extension| {
+    use deno_core::ExtensionFileSource;
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_entry_point = Some("ext:deno_tsc/99_main_compiler.js");
+  }
 );
 
 #[derive(Debug, Clone, Deserialize_repr, Serialize_repr)]
@@ -5428,7 +5564,6 @@ pub struct JsNull;
 #[derive(Debug, Clone, Serialize)]
 pub enum TscRequest {
   GetDiagnostics((Vec<String>, usize)),
-  GetAssets,
 
   CleanupSemanticCache,
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6230
@@ -5634,7 +5769,6 @@ impl TscRequest {
         ("provideInlayHints", Some(serde_v8::to_v8(scope, args)?))
       }
       TscRequest::CleanupSemanticCache => ("cleanupSemanticCache", None),
-      TscRequest::GetAssets => ("$getAssets", None),
     };
 
     Ok(args)
@@ -5679,7 +5813,6 @@ impl TscRequest {
       TscRequest::GetSignatureHelpItems(_) => "getSignatureHelpItems",
       TscRequest::GetNavigateToItems(_) => "getNavigateToItems",
       TscRequest::ProvideInlayHints(_) => "provideInlayHints",
-      TscRequest::GetAssets => "$getAssets",
     }
   }
 }
@@ -5755,8 +5888,13 @@ mod tests {
 
   fn setup_op_state(state_snapshot: Arc<StateSnapshot>) -> OpState {
     let (_tx, rx) = mpsc::unbounded_channel();
-    let state =
-      State::new(state_snapshot, Default::default(), Default::default(), rx);
+    let state = State::new(
+      state_snapshot,
+      Default::default(),
+      Default::default(),
+      rx,
+      Arc::new(AtomicBool::new(true)),
+    );
     let mut op_state = OpState::new(None, None);
     op_state.put(state);
     op_state
@@ -6063,52 +6201,6 @@ mod tests {
         ]
       })
     );
-  }
-
-  #[tokio::test]
-  async fn test_request_assets() {
-    let (_, ts_server, snapshot, _) = setup(json!({}), &[]).await;
-    let assets = get_isolate_assets(&ts_server, snapshot).await;
-    let mut asset_names = assets
-      .iter()
-      .map(|a| {
-        a.specifier()
-          .to_string()
-          .replace("asset:///lib.", "")
-          .replace(".d.ts", "")
-      })
-      .collect::<Vec<_>>();
-    let mut expected_asset_names: Vec<String> = serde_json::from_str(
-      include_str!(concat!(env!("OUT_DIR"), "/lib_file_names.json")),
-    )
-    .unwrap();
-    asset_names.sort();
-
-    // if this test fails, update build.rs
-    expected_asset_names.sort();
-    assert_eq!(asset_names, expected_asset_names);
-
-    // get some notification when the size of the assets grows
-    let mut total_size = 0;
-    for asset in &assets {
-      total_size += asset.text().len();
-    }
-    assert!(total_size > 0);
-    #[allow(clippy::print_stderr)]
-    // currently as of TS 5.7, it's 3MB
-    if total_size > 3_500_000 {
-      let mut sizes = Vec::new();
-      for asset in &assets {
-        sizes.push((asset.specifier(), asset.text().len()));
-      }
-      sizes.sort_by_cached_key(|(_, size)| *size);
-      sizes.reverse();
-      for (specifier, size) in &sizes {
-        eprintln!("{}: {}", specifier, size);
-      }
-      eprintln!("Total size: {}", total_size);
-      panic!("Assets were quite large.");
-    }
   }
 
   #[tokio::test]

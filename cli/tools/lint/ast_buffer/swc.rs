@@ -94,6 +94,7 @@ use super::buffer::NodeRef;
 use super::ts_estree::AstNode;
 use super::ts_estree::MethodKind as TsEstreeMethodKind;
 use super::ts_estree::PropertyKind;
+use super::ts_estree::SourceKind;
 use super::ts_estree::TsEsTreeBuilder;
 use super::ts_estree::TsKeywordKind;
 use super::ts_estree::TsModuleKind;
@@ -120,7 +121,7 @@ pub fn serialize_swc_to_buffer(
         })
         .collect::<Vec<_>>();
 
-      ctx.write_program(&module.span, "module", children);
+      ctx.write_program(&module.span, SourceKind::Module, children);
     }
     Program::Script(script) => {
       let children = script
@@ -129,7 +130,7 @@ pub fn serialize_swc_to_buffer(
         .map(|stmt| serialize_stmt(&mut ctx, stmt))
         .collect::<Vec<_>>();
 
-      ctx.write_program(&script.span, "script", children);
+      ctx.write_program(&script.span, SourceKind::Script, children);
     }
   }
 
