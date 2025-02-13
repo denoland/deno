@@ -303,7 +303,7 @@ impl OtelInfoAttributes {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("server.port", port));
     }
-    if let Some(status_code) = self.http_response_status_code.clone() {
+    if let Some(status_code) = self.http_response_status_code {
       histogram_attributes.push(deno_telemetry::KeyValue::new(
         "http.response.status_code",
         status_code,
