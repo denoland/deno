@@ -30,8 +30,6 @@ https://github.com/denoland/deno_install
 - fix: allow creating TSC host without a snapshot (#28058)
 - fix: do special file permission check for `check_read_path` (#27989)
 - fix: panic with js lint plugins and invalid js syntax (#28006)
-- fix: sync changes from cherry-pick PRs
-- fix: update Cargo.lock and fix changes from cherry-pick PRs
 - perf(compile): use bytes already in memory after downloading executable
   (#28000)
 - perf(lsp): cancellation checks in blocking code (#27997)
