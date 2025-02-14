@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-import { assertEquals, assertThrows } from "./test_util.ts";
+import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 const format = Deno[Deno.internal].jupyter.formatInner;
@@ -119,10 +119,7 @@ Deno.test(
     const adapter = await navigator.gpu.requestAdapter();
     const device = await adapter?.requestDevice();
 
-    if (!device) {
-      console.error("no suitable adapter found");
-      Deno.exit(0);
-    }
+    assert(device);
 
     const shaderCode = `
 @vertex
@@ -213,11 +210,7 @@ Deno.test(
 
     const adapter = await navigator.gpu.requestAdapter();
     const device = await adapter?.requestDevice();
-
-    if (!device) {
-      console.error("no suitable adapter found");
-      Deno.exit(0);
-    }
+    assert(device);
 
     const shaderCode = `
 @group(0)
