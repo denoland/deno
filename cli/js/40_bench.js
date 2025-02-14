@@ -229,7 +229,7 @@ function benchStats(
   };
 }
 
-async function benchMeasure(timeBudget, fn, async, context) {
+async function benchMeasure(timeBudget, fn, desc, context) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
@@ -241,10 +241,10 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
   // warmup step
   let c = 0;
-  let iterations = context.warmups > 0 ? context.warmups : 20;
-  let budget = context.warmups == null ? 10 * 1e6 : 0;
+  let iterations = desc.warmups > 0 ? desc.warmups : 20;
+  let budget = desc.warmups == null ? 10 * 1e6 : 0;
 
-  if (!async) {
+  if (!desc.async) {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
       fn(context);
@@ -287,11 +287,11 @@ async function benchMeasure(timeBudget, fn, async, context) {
   wavg /= c;
 
   // measure step
-  if (wavg > lowPrecisionThresholdInNs) {
-    let iterations = context.iterations > 0 ? context.iterations : 10;
-    let budget = context.iterations == null ? timeBudget * 1e6 : 0;
+  let iterations = desc.iterations > 0 ? desc.iterations : 10;
+  let budget = desc.iterations == null ? timeBudget * 1e6 : 0;
 
-    if (!async) {
+  if (wavg > lowPrecisionThresholdInNs) {
+    if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
         fn(context);
@@ -341,10 +341,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
   } else {
     context.start = function start() {};
     context.end = function end() {};
-    let iterations = 10;
-    let budget = timeBudget * 1e6;
 
-    if (!async) {
+    if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
         for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
@@ -397,8 +395,6 @@ function createBenchContext(desc) {
     [SymbolToStringTag]: "BenchContext",
     name: desc.name,
     origin: desc.origin,
-    iterations: desc.iterations,
-    warmups: desc.warmups,
     start() {
       if (currentBenchId !== desc.id) {
         throw new TypeError(
@@ -457,7 +453,7 @@ function wrapBenchmark(desc) {
       const stats = await benchMeasure(
         benchTimeInMs,
         fn,
-        desc.async,
+        desc,
         context,
       );
 
