@@ -50,7 +50,7 @@ license = "MIT"
 repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
-deno_ast = { version = "=0.44.0", features = ["transpiling"] }
+deno_ast = { version = "=0.45.0", features = ["transpiling"] }
 deno_core = { version = "0.338.0" }
 
 deno_bench_util = { version = "0.184.0", path = "./bench_util" }
@@ -356,6 +356,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
-
-[patch.crates-io]
-deno_ast = { git = "https://github.com/bartlomieju/deno_ast.git", branch = "remove_explicit_resource_management_pass" }
