@@ -74,7 +74,7 @@ const HTTP_TOKEN_CODE_POINT = [
   ...new SafeArrayIterator(ASCII_ALPHANUMERIC),
 ];
 const HTTP_TOKEN_CODE_POINT_RE = new SafeRegExp(
-  `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`,
+  `^[${regexMatcher(HTTP_TOKEN_CODE_POINT)}]+$`
 );
 const HTTP_QUOTED_STRING_TOKEN_POINT = [
   "\u0009",
@@ -82,28 +82,28 @@ const HTTP_QUOTED_STRING_TOKEN_POINT = [
   "\u0080-\u00FF",
 ];
 const HTTP_QUOTED_STRING_TOKEN_POINT_RE = new SafeRegExp(
-  `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`,
+  `^[${regexMatcher(HTTP_QUOTED_STRING_TOKEN_POINT)}]+$`
 );
 const HTTP_TAB_OR_SPACE_MATCHER = regexMatcher(HTTP_TAB_OR_SPACE);
 const HTTP_TAB_OR_SPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_TAB_OR_SPACE_MATCHER}]+`,
-  "g",
+  "g"
 );
 const HTTP_TAB_OR_SPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_TAB_OR_SPACE_MATCHER}]+$`,
-  "g",
+  "g"
 );
 const HTTP_WHITESPACE_MATCHER = regexMatcher(HTTP_WHITESPACE);
 const HTTP_BETWEEN_WHITESPACE = new SafeRegExp(
-  `^[${HTTP_WHITESPACE_MATCHER}]*(.*?)[${HTTP_WHITESPACE_MATCHER}]*$`,
+  `^[${HTTP_WHITESPACE_MATCHER}]*(.*?)[${HTTP_WHITESPACE_MATCHER}]*$`
 );
 const HTTP_WHITESPACE_PREFIX_RE = new SafeRegExp(
   `^[${HTTP_WHITESPACE_MATCHER}]+`,
-  "g",
+  "g"
 );
 const HTTP_WHITESPACE_SUFFIX_RE = new SafeRegExp(
   `[${HTTP_WHITESPACE_MATCHER}]+$`,
-  "g",
+  "g"
 );
 
 /**
@@ -117,19 +117,19 @@ function regexMatcher(chars) {
       const a = StringPrototypePadStart(
         NumberPrototypeToString(StringPrototypeCharCodeAt(char, 0), 16),
         4,
-        "0",
+        "0"
       );
       return `\\u${a}`;
     } else if (char.length === 3 && char[1] === "-") {
       const a = StringPrototypePadStart(
         NumberPrototypeToString(StringPrototypeCharCodeAt(char, 0), 16),
         4,
-        "0",
+        "0"
       );
       const b = StringPrototypePadStart(
         NumberPrototypeToString(StringPrototypeCharCodeAt(char, 2), 16),
         4,
-        "0",
+        "0"
       );
       return `\\u${a}-\\u${b}`;
     } else {
@@ -168,7 +168,7 @@ function byteUpperCase(s) {
     LOWERCASE_PATTERN,
     function byteUpperCaseReplace(c) {
       return StringPrototypeToUpperCase(c);
-    },
+    }
   );
 }
 
@@ -204,7 +204,7 @@ function collectHttpQuotedString(input, position, extractValue) {
     const res = collectSequenceOfCodepoints(
       input,
       position,
-      (c) => c !== "\u0022" && c !== "\u005C",
+      (c) => c !== "\u0022" && c !== "\u005C"
     );
     value += res.result;
     position = res.position;
@@ -225,7 +225,8 @@ function collectHttpQuotedString(input, position, extractValue) {
       value += input[position];
       // 5.5.3.
       position++;
-    } else { // 5.6.
+    } else {
+      // 5.6.
       // 5.6.1
       if (quoteOrBackslash !== "\u0022") throw new TypeError('must be "');
       // 5.6.2
@@ -288,13 +289,9 @@ function convertBase64urlToBase64(base64url) {
     throw new TypeError("Failed to decode base64url: invalid character");
   }
   return StringPrototypeReplaceAll(
-    StringPrototypeReplaceAll(
-      addPaddingToBase64url(base64url),
-      "-",
-      "+",
-    ),
+    StringPrototypeReplaceAll(addPaddingToBase64url(base64url), "-", "+"),
     "_",
-    "/",
+    "/"
   );
 }
 
@@ -308,16 +305,16 @@ function forgivingBase64UrlEncode(data) {
     StringPrototypeReplaceAll(
       StringPrototypeReplaceAll(
         forgivingBase64Encode(
-          typeof data === "string" ? new TextEncoder().encode(data) : data,
+          typeof data === "string" ? new TextEncoder().encode(data) : data
         ),
         "=",
-        "",
+        ""
       ),
       "+",
-      "-",
+      "-"
     ),
     "/",
-    "_",
+    "_"
   );
 }
 
@@ -397,21 +394,9 @@ const PERCENT_RE = new SafeRegExp(/%(?![0-9A-Fa-f]{2})/g);
  * @returns {string}
  */
 function pathFromURLWin32(url) {
-  let p = StringPrototypeReplace(
-    url.pathname,
-    PATHNAME_WIN_RE,
-    "$1/",
-  );
-  p = StringPrototypeReplace(
-    p,
-    SLASH_WIN_RE,
-    "\\",
-  );
-  p = StringPrototypeReplace(
-    p,
-    PERCENT_RE,
-    "%25",
-  );
+  let p = StringPrototypeReplace(url.pathname, PATHNAME_WIN_RE, "$1/");
+  p = StringPrototypeReplace(p, SLASH_WIN_RE, "\\");
+  p = StringPrototypeReplace(p, PERCENT_RE, "%25");
   let path = decodeURIComponent(p);
   if (url.hostname != "") {
     // Note: The `URL` implementation guarantees that the drive letter and
@@ -433,11 +418,7 @@ function pathFromURLPosix(url) {
   }
 
   return decodeURIComponent(
-    StringPrototypeReplace(
-      url.pathname,
-      PERCENT_RE,
-      "%25",
-    ),
+    StringPrototypeReplace(url.pathname, PERCENT_RE, "%25")
   );
 }
 
@@ -459,13 +440,11 @@ function pathFromURL(pathOrUrl) {
 internals.pathFromURL = pathFromURL;
 
 // deno-lint-ignore prefer-primordials
-export const SymbolDispose = Symbol.dispose ?? Symbol("Symbol.dispose");
+export const SymbolDispose = Symbol.dispose;
 // deno-lint-ignore prefer-primordials
-export const SymbolAsyncDispose = Symbol.asyncDispose ??
-  Symbol("Symbol.asyncDispose");
+export const SymbolAsyncDispose = Symbol.asyncDispose;
 // deno-lint-ignore prefer-primordials
-export const SymbolMetadata = Symbol.metadata ??
-  Symbol("Symbol.metadata");
+export const SymbolMetadata = Symbol.metadata ?? Symbol("Symbol.metadata");
 
 export {
   ASCII_ALPHA,
