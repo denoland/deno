@@ -114,6 +114,7 @@ dotenvy = "0.15.7"
 dprint-plugin-json = "=0.19.4"
 dprint-plugin-jupyter = "=0.1.5"
 dprint-plugin-markdown = "=0.17.8"
+dprint-plugin-toml = "=0.6.4"
 dprint-plugin-typescript = "=0.93.3"
 fancy-regex = "=0.10.0"
 faster-hex.workspace = true
