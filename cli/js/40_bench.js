@@ -23,6 +23,21 @@ const {
   TypeError,
 } = primordials;
 
+/**
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   fn: BenchFunction
+ *   origin: string,
+ *   ignore: boolean,
+ *   only: boolean.
+ *   iterations?: number;
+ *   warmups?: number;
+ *   sanitizeExit: boolean,
+ *   permissions: PermissionOptions,
+ * }} BenchDescription
+ */
+
 /** @type {number | null} */
 let currentBenchId = null;
 // These local variables are used to track time measurements at
@@ -226,8 +241,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
   // warmup step
   let c = 0;
-  let iterations = 20;
-  let budget = 10 * 1e6;
+  let iterations = context.warmups > 0 ? context.warmups : 20;
+  let budget = context.warmups == null ? 10 * 1e6 : 0;
 
   if (!async) {
     while (budget > 0 || iterations-- > 0) {
@@ -273,8 +288,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
 
   // measure step
   if (wavg > lowPrecisionThresholdInNs) {
-    let iterations = 10;
-    let budget = timeBudget * 1e6;
+    let iterations = context.iterations > 0 ? context.iterations : 10;
+    let budget = context.iterations == null ? timeBudget * 1e6 : 0;
 
     if (!async) {
       while (budget > 0 || iterations-- > 0) {
@@ -382,6 +397,8 @@ function createBenchContext(desc) {
     [SymbolToStringTag]: "BenchContext",
     name: desc.name,
     origin: desc.origin,
+    iterations: desc.iterations,
+    warmups: desc.warmups,
     start() {
       if (currentBenchId !== desc.id) {
         throw new TypeError(
