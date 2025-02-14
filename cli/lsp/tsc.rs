@@ -68,7 +68,6 @@ use tokio_util::sync::CancellationToken;
 use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
-use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use super::analysis::CodeActionData;
 use super::code_lens;
@@ -128,7 +127,7 @@ type Request = (
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
   Option<PendingChange>,
-  Option<opentelemetry::Context>,
+  Option<super::trace::Context>,
 );
 
 #[derive(Debug, Clone, Copy, Serialize_repr)]
@@ -482,7 +481,7 @@ impl TsServer {
     }
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_diagnostics(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -548,7 +547,7 @@ impl TsServer {
     Ok((diagnostics_map, ambient_modules_by_scope))
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
     for scope in snapshot
       .config
@@ -575,7 +574,7 @@ impl TsServer {
     }
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -630,7 +629,7 @@ impl TsServer {
     Ok(Some(all_symbols.into_iter().collect()))
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigation_tree(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -644,7 +643,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_supported_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -659,7 +658,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_quick_info(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -676,7 +675,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -708,7 +707,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_applicable_refactors(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -741,7 +740,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -770,7 +769,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_edits_for_refactor(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -800,7 +799,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -859,7 +858,7 @@ impl TsServer {
     Ok(all_changes.into_iter().collect())
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_document_highlights(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -880,7 +879,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -906,7 +905,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_type_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -934,7 +933,7 @@ impl TsServer {
   }
 
   #[allow(clippy::too_many_arguments)]
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completions(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -962,7 +961,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -990,7 +989,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1045,7 +1044,7 @@ impl TsServer {
     Ok(Some(all_locations.into_iter().collect()))
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_outlining_spans(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1059,7 +1058,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1108,7 +1107,7 @@ impl TsServer {
     Ok(all_calls.into_iter().collect())
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1135,7 +1134,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn prepare_call_hierarchy(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1169,7 +1168,7 @@ impl TsServer {
       })
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn find_rename_locations(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1227,7 +1226,7 @@ impl TsServer {
     Ok(Some(all_locations.into_iter().collect()))
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_smart_selection_range(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1243,7 +1242,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_encoded_semantic_classifications(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1263,7 +1262,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_signature_help_items(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1281,7 +1280,7 @@ impl TsServer {
     self.request(snapshot, req, scope, token).await
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigate_to_items(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1333,7 +1332,7 @@ impl TsServer {
     Ok(all_items.into_iter().collect())
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn provide_inlay_hints(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1361,7 +1360,8 @@ impl TsServer {
   where
     R: de::DeserializeOwned,
   {
-    let context = tracing::Span::current().context();
+    use super::trace::SpanExt;
+    let context = super::trace::Span::current().context();
     let mark = self
       .performance
       .mark(format!("tsc.request.{}", req.method()));
@@ -1386,7 +1386,7 @@ impl TsServer {
     tokio::select! {
       value = &mut rx => {
         let value = value??;
-        let _span = tracing::info_span!("Tsc response deserialization");
+        let _span = super::logging::lsp_tracing_info_span!("Tsc response deserialization");
         let r = Ok(serde_json::from_str(&value)?);
         self.performance.measure(mark);
         r
@@ -3788,7 +3788,7 @@ impl CompletionInfo {
     Ok(())
   }
 
-  #[tracing::instrument(skip_all, fields(entries = %self.entries.len()))]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all, fields(entries = %self.entries.len())))]
   pub fn as_completion_response(
     &self,
     line_index: Arc<LineIndex>,
@@ -4509,7 +4509,7 @@ struct State {
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
-  context: Option<opentelemetry::Context>,
+  context: Option<super::trace::Context>,
   enable_tracing: Arc<AtomicBool>,
 }
 
@@ -4634,7 +4634,7 @@ fn op_load<'s>(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<v8::Local<'s, v8::Value>, LoadError> {
-  let _span = tracing::info_span!("op_load").entered();
+  let _span = super::logging::lsp_tracing_info_span!("op_load").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4666,7 +4666,7 @@ fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<(), deno_core::url::ParseError> {
-  let _span = tracing::info_span!("op_release").entered();
+  let _span = super::logging::lsp_tracing_info_span!("op_release").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
@@ -4685,7 +4685,7 @@ fn op_resolve(
   #[string] base: String,
   #[serde] specifiers: Vec<(bool, String)>,
 ) -> Result<Vec<Option<(String, Option<String>)>>, deno_core::url::ParseError> {
-  let _span = tracing::info_span!("op_resolve").entered();
+  let _span = super::logging::lsp_tracing_info_span!("op_resolve").entered();
   op_resolve_inner(state, ResolveArgs { base, specifiers })
 }
 
@@ -4807,7 +4807,7 @@ fn op_respond(
   #[string] response: String,
   #[string] error: String,
 ) {
-  let _span = tracing::info_span!("op_respond").entered();
+  let _span = super::logging::lsp_tracing_info_span!("op_respond").entered();
   let state = state.borrow_mut::<State>();
   state.performance.measure(state.mark.take().unwrap());
   state.last_scope = None;
@@ -4825,31 +4825,43 @@ fn op_respond(
   }
 }
 
-struct TracingSpan(#[allow(dead_code)] Option<tracing::span::EnteredSpan>);
+struct TracingSpan(#[allow(dead_code)] Option<super::trace::EnteredSpan>);
 
 deno_core::external!(TracingSpan, "lsp::TracingSpan");
 
 fn span_with_context(
-  state: &State,
-  span: tracing::Span,
-) -> tracing::span::EnteredSpan {
-  if let Some(context) = &state.context {
-    span.set_parent(context.clone());
+  _state: &State,
+  span: super::trace::Span,
+) -> super::trace::EnteredSpan {
+  #[cfg(feature = "lsp-tracing")]
+  {
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+    if let Some(context) = &_state.context {
+      span.set_parent(context.clone());
+    }
+    span.entered()
   }
-  span.entered()
+  #[cfg(not(feature = "lsp-tracing"))]
+  {
+    span.entered()
+  }
 }
 
 #[op2(fast)]
 fn op_make_span(
   op_state: &mut OpState,
-  #[string] s: &str,
+  #[string] _s: &str,
   needs_context: bool,
 ) -> *const c_void {
   let state = op_state.borrow_mut::<State>();
   if !state.tracing_enabled() {
     return deno_core::ExternalPointer::new(TracingSpan(None)).into_raw();
   }
-  let sp = tracing::info_span!("js", otel.name = format!("js::{s}").as_str());
+  let sp = super::logging::lsp_tracing_info_span!(
+    "js",
+    otel.name = format!("js::{_s}").as_str()
+  );
   let span = if needs_context {
     span_with_context(state, sp)
   } else {
@@ -4859,10 +4871,10 @@ fn op_make_span(
 }
 
 #[op2(fast)]
-fn op_log_event(op_state: &OpState, #[string] msg: &str) {
+fn op_log_event(op_state: &OpState, #[string] _msg: &str) {
   let state = op_state.borrow::<State>();
   if state.tracing_enabled() {
-    tracing::info!(msg = msg);
+    super::logging::lsp_tracing_info!(msg = _msg);
   }
 }
 
@@ -4887,7 +4899,8 @@ struct ScriptNames {
 #[op2]
 #[serde]
 fn op_script_names(state: &mut OpState) -> ScriptNames {
-  let _span = tracing::info_span!("op_script_names").entered();
+  let _span =
+    super::logging::lsp_tracing_info_span!("op_script_names").entered();
   let state = state.borrow_mut::<State>();
   let mark = state.performance.mark("tsc.op.op_script_names");
   let mut result = ScriptNames {
