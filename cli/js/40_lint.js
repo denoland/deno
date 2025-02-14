@@ -277,7 +277,8 @@ export class SourceCode {
  */
 export class Context {
   id;
-  fileName;
+  // ESLint uses lowercase
+  filename;
   sourceCode;
 
   /**
@@ -287,8 +288,16 @@ export class Context {
    */
   constructor(ctx, id, fileName) {
     this.id = id;
-    this.fileName = fileName;
+    this.filename = fileName;
     this.sourceCode = new SourceCode(ctx);
+  }
+
+  getFilename() {
+    return this.filename;
+  }
+
+  getSourceCode() {
+    return this.sourceCode;
   }
 
   /**
