@@ -272,6 +272,8 @@ pub async fn op_http_upgrade_websocket_next(
   {
     let mut response_parts = http.response_parts();
     response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
+    http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
+
     for (name, value) in headers {
       response_parts.headers.append(
         HeaderName::from_bytes(&name).unwrap(),
@@ -306,6 +308,7 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
     http.response_parts().status = code;
+    http.otel_info_set_status(status);
   }
   http.complete();
 }
@@ -714,6 +717,7 @@ fn set_response(
     // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
       http.response_parts().status = code;
+      http.otel_info_set_status(status);
     }
   } else if force_instantiate_body {
     response_fn(Compression::None).abort();
