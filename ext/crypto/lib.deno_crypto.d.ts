@@ -237,21 +237,114 @@ declare var CryptoKeyPair: {
  * @category Crypto
  */
 interface SubtleCrypto {
+  /**
+   * This method is used to generate a cryptographic key.
+   *
+   * @example
+   * ```ts
+   * // RSA key generation
+   * const key = await crypto.subtle.generateKey(
+   *   {
+   *     name: "RSA-OAEP",
+   *     modulusLength: 4096,
+   *     publicExponent: new Uint8Array([1, 0, 1]),
+   *     hash: "SHA-256",
+   *   },
+   *   true,
+   *   ["encrypt", "decrypt"]
+   * );
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Elliptic curve (ECDSA) key pair generation
+   * const key = await crypto.subtle.generateKey(
+   *   {
+   *     name: "ECDSA",
+   *     namedCurve: "P-384",
+   *   },
+   *   true,
+   *   ["sign", "verify"]
+   * );
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
     algorithm: RsaHashedKeyGenParams | EcKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
+  /**
+  *
+   This method is used to generate a cryptographic key.
+   *
+   *
+   * @example
+   * ```ts
+   * const key = await crypto.subtle.generateKey(
+   *  {
+   *    name: "AES-GCM",
+   *    length: 256,
+   *  },
+   *  true,
+   *  ["encrypt", "decrypt"]
+   * );
+   * ```
+   *
+   * @example
+   * ```ts
+   * // HMAC key generation
+   * const key = await crypto.subtle.generateKey(
+   *  {
+   *    name: "HMAC",
+   *    hash: { name: "SHA-512" },
+   *  },
+   *  true,
+   *  ["sign", "verify"]
+   * );
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
     algorithm: AesKeyGenParams | HmacKeyGenParams,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * This method is used to generate a cryptographic key.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+   */
   generateKey(
     algorithm: AlgorithmIdentifier,
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair | CryptoKey>;
+  /**
+   * This method is used to import a cryptographic key.
+   * The JWK (JSON Web Key format) imports an ECDSA private signing key, given a JSON Web Key object that represents it.
+   *
+   * @example
+   * ```ts
+   * // Import an ECDSA private signing key where `jwk` is an object describing a private key
+   * function importKey(jwk) {
+   *  return crypto.subtle.importKey(
+   *    "jwk",
+   *    jwk,
+   *    {
+   *      name: "ECDSA",
+   *      namedCurve: "P-384",
+   *    },
+   *    true,
+   *    ["sign"],
+   *  );
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey
+   */
   importKey(
     format: "jwk",
     keyData: JsonWebKey,
@@ -263,6 +356,22 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * This method is used to import a cryptographic key.
+   *
+   * @example
+   * ```ts
+   * // Import an AES-GCM secret key where `rawKey` is an ArrayBuffer Sring
+   * function importSecretKey(rawKey) {
+   *  return crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, [
+   *    "encrypt",
+   *    "decrypt",
+   *  ]);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/importKey
+   */
   importKey(
     format: Exclude<KeyFormat, "jwk">,
     keyData: BufferSource,
@@ -274,26 +383,110 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * This method is used to export a cryptographic key.
+   *
+   * When the format specified is `jwk` the function returns a Promise which fulfils with a JSON object containing the key.
+   *
+   * @example
+   * ```ts
+   * // Export a private key in JWK format
+   * async function exportKey(key) {
+   *  // key is a CryptoKey object
+   *  return await crypto.subtle.exportKey("jwk", key);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/exportKey
+   */
   exportKey(format: "jwk", key: CryptoKey): Promise<JsonWebKey>;
+  /**
+   * This method is used to export a cryptographic key.
+   *
+   * When the format specified is other than `jwk` the function returns a Promise which fulfils with an ArrayBuffer containing the key.
+   *
+   * @example
+   * ```ts
+   * // Export a private key in raw format
+   * async function exportKey(key) {
+   *  // key is a CryptoKey object
+   *  return await crypto.subtle.exportKey("raw", key);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/exportKey
+   */
   exportKey(
     format: Exclude<KeyFormat, "jwk">,
     key: CryptoKey,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to sign data using a cryptographic key and provide a digital signature.
+   *
+   * @example
+   * ```ts
+   * // Sign data using an ECDSA private key
+   * async function signData(key, data) {
+   *  return await crypto.subtle.sign("ECDSA", key, data);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/sign
+   */
   sign(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to verify a digital signature using a cryptographic key and returns a boolean value.
+   *
+   * @example
+   * ```ts
+   * // Verify a digital signature using an ECDSA public key
+   * async function verifySignature(key, signature, data) {
+   *  return await crypto.subtle.verify("ECDSA", key, signature, data);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/verify
+   */
   verify(
     algorithm: AlgorithmIdentifier | RsaPssParams | EcdsaParams,
     key: CryptoKey,
     signature: BufferSource,
     data: BufferSource,
   ): Promise<boolean>;
+  /**
+   * This method is used to compute the digest of given data using a cryptographic algorithm.
+   *
+   * @example
+   * ```ts
+   * // Compute the digest of given data using a cryptographic algorithm
+   * function computeDigest(data) {
+   *  return await crypto.subtle.digest("SHA-256", data);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest
+   */
   digest(
     algorithm: AlgorithmIdentifier,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to encrypt data using a cryptographic key and provide a ciphertext.
+   *   *
+   * @example
+   * ```ts
+   * // Encrypt data using an RSA-OAEP key
+   * async function encryptData(key, data) {
+   *  return await crypto.subtle.encrypt("RSA-OAEP", key, data);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/encrypt
+   */
   encrypt(
     algorithm:
       | AlgorithmIdentifier
@@ -304,6 +497,19 @@ interface SubtleCrypto {
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to decrypt data using a cryptographic key and return the original plaintext.
+   *   *
+   * @example
+   * ```ts
+   * // Decrypt data using an RSA-OAEP key
+   * async function decryptData(key, data) {
+   *   return await crypto.subtle.decrypt("RSA-OAEP", key, data);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/decrypt
+   */
   decrypt(
     algorithm:
       | AlgorithmIdentifier
@@ -314,6 +520,19 @@ interface SubtleCrypto {
     key: CryptoKey,
     data: BufferSource,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to derive a key from a base key using a cryptographic algorithm.
+   *
+   * @example
+   * ```ts
+   * // Derive a key using an HKDF algorithm
+   * async function deriveKey(baseKey, length) {
+   *  return await crypto.subtle.deriveBits("HKDF", baseKey, length);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveBits
+   */
   deriveBits(
     algorithm:
       | AlgorithmIdentifier
@@ -323,6 +542,22 @@ interface SubtleCrypto {
     baseKey: CryptoKey,
     length: number,
   ): Promise<ArrayBuffer>;
+  /**
+   * This method is used to derive a secret key from a base or master key using a cryptographic algorithm.
+   * It returns a Promise which fullfils with an object of the new key.
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
+   *
+   * @example
+   * ```ts
+   * // Derive a key using an HKDF algorithm
+   * async function deriveKey(baseKey, derivedKeyType, extractable, keyUsages) {
+   *  return await crypto.subtle.deriveKey("HKDF", baseKey, derivedKeyType, extractable, keyUsages);
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/deriveKey
+   */
   deriveKey(
     algorithm:
       | AlgorithmIdentifier
@@ -339,6 +574,20 @@ interface SubtleCrypto {
     extractable: boolean,
     keyUsages: KeyUsage[],
   ): Promise<CryptoKey>;
+  /**
+   * The wrapKey() method "wraps" a key, which involves exporting it in a portable format and then encrypting that exported key.
+   * Key wrapping enhances protection in untrusted environments, such as within an unsecured data store or during transmission over an unprotected network.
+   *
+   * @example
+   * ```ts
+   * // Wrap a key using an RSA-OAEP key
+   * async function wrapKey(key, wrappingKey) {
+   *  return await crypto.subtle.wrapKey("jwk", key, wrappingKey, "RSA-OAEP");
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/wrapKey
+   */
   wrapKey(
     format: KeyFormat,
     key: CryptoKey,
@@ -349,6 +598,27 @@ interface SubtleCrypto {
       | AesCbcParams
       | AesCtrParams,
   ): Promise<ArrayBuffer>;
+  /**
+   * The unwrapKey() method "unwraps" a key, which involves decrypting a wrapped key and then importing the decrypted key.
+   *
+   * @example
+   * ```ts
+   * // Unwrap a key using an RSA-OAEP key
+   * async function unwrapKey(wrappedKey, unwrappingKey) {
+   *  return await crypto.subtle.unwrapKey(
+   *    "jwk", // import format
+   *    wrappedKey, // ArrayBuffer of the key to unwrap
+   *    unwrappingKey, // CryptoKey of the encryption key
+   *    "AES-KW", // algorithm identifier for key encryption key
+   *    "AES-GCM", // algorithm identifier for key to unwrap
+   *    true, // whether the key to unwrap is extractable
+   *    ["encrypt", "decrypt"], // key usages for key to unwrap
+   *  );
+   * }
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/unwrapKey
+   */
   unwrapKey(
     format: KeyFormat,
     wrappedKey: BufferSource,
