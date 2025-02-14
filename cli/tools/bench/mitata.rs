@@ -174,6 +174,11 @@ pub mod reporter {
     pub avg: f64,
     pub min: f64,
     pub max: f64,
+    pub percentiles: Option<BenchmarkPercentiles>,
+  }
+
+  #[derive(Clone, PartialEq)]
+  pub struct BenchmarkPercentiles {
     pub p75: f64,
     pub p99: f64,
     pub p995: f64,
@@ -299,15 +304,21 @@ pub mod reporter {
       ));
     }
     if options.percentiles {
-      s.push_str(
-        &colors::magenta(format!(
-          " {:>8} {:>8} {:>8}",
-          fmt_duration(stats.p75),
-          fmt_duration(stats.p99),
-          fmt_duration(stats.p995)
-        ))
-        .to_string(),
-      );
+      if let Some(p) = &stats.percentiles {
+        s.push_str(
+          &colors::magenta(format!(
+            " {:>8} {:>8} {:>8}",
+            fmt_duration(p.p75),
+            fmt_duration(p.p99),
+            fmt_duration(p.p995)
+          ))
+          .to_string(),
+        );
+      } else {
+        s.push_str(
+          &colors::italic_gray(" (Omitted)").to_string()
+        );
+      }
     }
 
     s

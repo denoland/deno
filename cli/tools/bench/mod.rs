@@ -118,12 +118,17 @@ pub struct BenchStats {
   pub min: f64,
   pub max: f64,
   pub avg: f64,
+  pub percentiles: Option<BenchPercentiles>,
+  pub high_precision: bool,
+  pub used_explicit_timers: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BenchPercentiles {
   pub p75: f64,
   pub p99: f64,
   pub p995: f64,
-  pub p999: f64,
-  pub high_precision: bool,
-  pub used_explicit_timers: bool,
 }
 
 impl BenchReport {
