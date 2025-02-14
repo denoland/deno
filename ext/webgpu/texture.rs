@@ -42,6 +42,8 @@ pub struct GPUTexture {
   pub error_handler: super::error::ErrorHandler,
 
   pub id: wgpu_core::id::TextureId,
+  pub device_id: wgpu_core::id::DeviceId,
+  pub queue_id: wgpu_core::id::QueueId,
 
   pub label: String,
 
@@ -286,7 +288,7 @@ impl From<GPUTextureDimension> for TextureDimension {
 
 #[derive(WebIDL, Clone)]
 #[webidl(enum)]
-pub(crate) enum GPUTextureFormat {
+pub enum GPUTextureFormat {
   #[webidl(rename = "r8unorm")]
   R8unorm,
   #[webidl(rename = "r8snorm")]

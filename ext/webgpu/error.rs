@@ -20,6 +20,7 @@ use wgpu_core::command::RenderPassError;
 use wgpu_core::device::queue::QueueSubmitError;
 use wgpu_core::device::queue::QueueWriteError;
 use wgpu_core::device::DeviceError;
+use wgpu_core::device::WaitIdleError;
 use wgpu_core::pipeline::CreateComputePipelineError;
 use wgpu_core::pipeline::CreateRenderPipelineError;
 use wgpu_core::pipeline::CreateShaderModuleError;
@@ -351,6 +352,12 @@ impl From<ClearError> for GPUError {
 
 impl From<ConfigureSurfaceError> for GPUError {
   fn from(err: ConfigureSurfaceError) -> Self {
+    GPUError::Validation(fmt_err(&err))
+  }
+}
+
+impl From<WaitIdleError> for GPUError {
+  fn from(err: WaitIdleError) -> Self {
     GPUError::Validation(fmt_err(&err))
   }
 }

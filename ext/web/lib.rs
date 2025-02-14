@@ -193,7 +193,7 @@ fn op_base64_btoa(#[serde] s: ByteString) -> String {
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_encode(s: &[u8]) -> String {
+pub fn forgiving_base64_encode(s: &[u8]) -> String {
   base64_simd::STANDARD.encode_to_string(s)
 }
 

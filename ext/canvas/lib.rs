@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod image_ops;
 mod op_create_image_bitmap;
+pub use image;
 use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
 
@@ -11,7 +12,7 @@ use op_create_image_bitmap::op_create_image_bitmap;
 pub enum CanvasError {
   /// Image formats that is 32-bit depth are not supported currently due to the following reasons:
   /// - e.g. OpenEXR, it's not covered by the spec.
-  /// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
+  /// - JPEG XL supported by WebKit, but it cannot be called a standard today.
   ///   https://github.com/whatwg/mimesniff/issues/143
   ///
   #[class(type)]
