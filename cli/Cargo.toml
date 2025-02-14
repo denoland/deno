@@ -47,6 +47,7 @@ upgrade = []
 hmr = ["deno_runtime/hmr", "deno_snapshots/disable"]
 # Vendor zlib as zlib-ng
 __vendored_zlib_ng = ["flate2/zlib-ng-compat", "libz-sys/zlib-ng"]
+lsp-tracing = ["dep:tracing", "dep:tracing-subscriber", "dep:tracing-opentelemetry"]
 
 [build-dependencies]
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting", "only_snapshotted_js_sources"] }
@@ -172,9 +173,9 @@ tokio.workspace = true
 tokio-util.workspace = true
 tower.workspace = true
 tower-lsp.workspace = true
-tracing = { version = "0.1", features = ["log"] }
-tracing-opentelemetry = "0.28.0"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+tracing = { version = "0.1", features = ["log"], optional = true }
+tracing-opentelemetry = { version = "0.28.0", optional = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"], optional = true }
 twox-hash.workspace = true
 typed-arena = "=2.0.2"
 unicode-width = "0.1.3"

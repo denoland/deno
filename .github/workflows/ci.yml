@@ -725,6 +725,42 @@ jobs:
       - name: Cargo build
         run: cargo build --target wasm32-unknown-unknown -p deno_resolver
         if: '!(matrix.skip)'
+  check-lsp-tracing:
+    name: check lsp tracing
+    needs:
+      - pre_build
+    if: '${{ needs.pre_build.outputs.skip_build != ''true'' }}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Configure git
+        run: |-
+          git config --global core.symlinks true
+          git config --global fetch.parallel 32
+        if: '!(matrix.skip)'
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+          submodules: false
+        if: '!(matrix.skip)'
+      - uses: dsherret/rust-toolchain-file@v1
+        if: '!(matrix.skip)'
+      - name: Restore cache build output (PR)
+        uses: actions/cache/restore@v4
+        if: '!(matrix.skip) && (github.ref != ''refs/heads/main'' && !startsWith(github.ref, ''refs/tags/''))'
+        with:
+          path: |-
+            ./target
+            !./target/*/gn_out
+            !./target/*/gn_root
+            !./target/*/*.zip
+            !./target/*/*.tar.gz
+          key: never_saved
+          restore-keys: '40-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+      - name: Check
+        run: cargo check -p deno --features=lsp-tracing
+        if: '!(matrix.skip)'
   publish-canary:
     name: publish canary
     runs-on: ubuntu-24.04

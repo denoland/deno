@@ -1129,6 +1129,33 @@ const ci = {
         },
       ]),
     },
+    "check-lsp-tracing": {
+      name: "check lsp tracing",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          // Restore cache from the latest 'main' branch build.
+          name: "Restore cache build output (PR)",
+          uses: "actions/cache/restore@v4",
+          if:
+            "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
+          with: {
+            path: prCachePath,
+            key: "never_saved",
+            "restore-keys": prCacheKeyPrefix,
+          },
+        },
+        {
+          name: "Check",
+          run: "cargo check -p deno --features=lsp-tracing",
+        },
+      ]),
+    },
     "publish-canary": {
       name: "publish canary",
       "runs-on": ubuntuX86Runner,
