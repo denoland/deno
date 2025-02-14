@@ -1126,7 +1126,7 @@ const ci = {
       ]),
     },
     "check-lsp-tracing": {
-      name: "build wasm32",
+      name: "check lsp tracing",
       needs: ["pre_build"],
       if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
       "runs-on": ubuntuX86Runner,
@@ -1148,7 +1148,6 @@ const ci = {
         },
         {
           name: "Check",
-          // we want this crate to be wasm compatible
           run: "cargo check -p deno --features=lsp-tracing",
         },
       ]),
