@@ -287,8 +287,8 @@ async function benchMeasure(timeBudget, fn, desc, context) {
   wavg /= c;
 
   // measure step
-  let iterations = desc.iterations > 0 ? desc.iterations : 10;
-  let budget = desc.iterations == null ? timeBudget * 1e6 : 0;
+  iterations = desc.iterations > 0 ? desc.iterations : 10;
+  budget = desc.iterations == null ? timeBudget * 1e6 : 0;
 
   if (wavg > lowPrecisionThresholdInNs) {
     if (!desc.async) {
