@@ -619,6 +619,7 @@ async fn configure_main_worker(
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,
 > {
+  let jupyter_channel = tokio::sync::mpsc::unbounded_channel();
   let mut worker = worker_factory
     .create_custom_worker(
       WorkerExecutionMode::Test,
@@ -627,6 +628,7 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init_ops(),
+        ops::jupyter::deno_jupyter::init_ops(jupyter_channel.0),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
