@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_canvas::image::GenericImageView;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::GarbageCollected;
@@ -156,7 +157,33 @@ impl GPUQueue {
       );
     }
 
-    // TODO: source.origin
+    // Content timeline steps:
+    // 6.
+    if let Some(origin) = source.origin {
+      let (origin_x, origin_y) = origin.dimensions();
+      let (copy_size_width, copy_size_height, copy_size_height_depth) =
+        copy_size.dimensions();
+      let (source_image_width, source_image_height) = data.dimensions();
+      if !(origin_x + copy_size_width <= source_image_width) {
+        return Err(JsErrorBox::new(
+          "DOMExceptionOperationError",
+          "source.origin.x + copySize.width must be less than the width of source.source",
+        ));
+      }
+      if !(origin_y + copy_size_height <= source_image_height) {
+        return Err(JsErrorBox::new(
+          "DOMExceptionOperationError",
+          "source.origin.y + copySize.height must be less than the height of source.source",
+        ));
+      }
+      if !(copy_size_height_depth <= 1) {
+        return Err(JsErrorBox::new(
+          "DOMExceptionOperationError",
+          "copySize.depthOrArrayLayers must be less than 1",
+        ));
+      }
+    }
+
     // TODO: destination.color_space
 
     if destination.premultiplied_alpha {
