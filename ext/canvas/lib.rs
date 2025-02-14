@@ -4,8 +4,11 @@ use std::path::PathBuf;
 
 mod image_ops;
 mod op_create_image_bitmap;
+pub use image;
 use image::ColorType;
+pub use image_ops::premultiply_alpha;
 use op_create_image_bitmap::op_create_image_bitmap;
+pub use op_create_image_bitmap::ImageBitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
@@ -45,6 +48,7 @@ deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
   ops = [op_create_image_bitmap],
+  objects = [ImageBitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
 
