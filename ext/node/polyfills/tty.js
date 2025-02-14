@@ -133,7 +133,7 @@ export class WriteStream extends Socket {
     // TODO(@marvinhagemeister): Ignore env parameter.
     // Haven't seen it used anywhere, seems more done
     // to make testing easier in Node
-    return op_bootstrap_color_depth();
+    return Deno.colorDepth;
   }
 }
 
