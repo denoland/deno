@@ -127,6 +127,7 @@ deno_core::extension!(deno_net,
   parameters = [ P: NetPermissions ],
   ops = [
     ops::op_net_accept_tcp,
+    ops::op_net_get_ips_from_perm_token,
     ops::op_net_connect_tcp<P>,
     ops::op_net_listen_tcp<P>,
     ops::op_net_listen_udp<P>,
