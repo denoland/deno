@@ -2,11 +2,10 @@
 
 use std::fmt;
 
-use serde::Deserialize;
-use serde::Serialize;
-
 #[cfg(feature = "lsp-tracing")]
 pub use real_tracing::*;
+use serde::Deserialize;
+use serde::Serialize;
 #[cfg(not(feature = "lsp-tracing"))]
 pub use stub_tracing::*;
 
@@ -29,24 +28,24 @@ impl fmt::Debug for TracingGuard {
 
 #[cfg(feature = "lsp-tracing")]
 mod real_tracing {
-  use super::TracingCollector;
-  use super::TracingConfig;
-  use super::TracingGuard;
   use deno_core::anyhow;
   use opentelemetry::trace::TracerProvider;
+  pub use opentelemetry::Context;
   use opentelemetry::KeyValue;
   use opentelemetry_otlp::WithExportConfig;
   use opentelemetry_sdk::Resource;
   use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
   use tracing::level_filters::LevelFilter;
+  pub use tracing::span::EnteredSpan;
+  pub use tracing::Span;
   use tracing_opentelemetry::OpenTelemetryLayer;
   pub use tracing_opentelemetry::OpenTelemetrySpanExt as SpanExt;
   use tracing_subscriber::fmt::format::FmtSpan;
   use tracing_subscriber::layer::SubscriberExt;
 
-  pub use opentelemetry::Context;
-  pub use tracing::span::EnteredSpan;
-  pub use tracing::Span;
+  use super::TracingCollector;
+  use super::TracingConfig;
+  use super::TracingGuard;
 
   pub(crate) fn make_tracer(
     endpoint: Option<&str>,
