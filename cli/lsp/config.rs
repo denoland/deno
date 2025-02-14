@@ -619,6 +619,9 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub typescript: LanguageWorkspaceSettings,
+
+  #[serde(default)]
+  pub tracing: Option<super::trace::TracingConfigOrEnabled>,
 }
 
 impl Default for WorkspaceSettings {
@@ -645,6 +648,7 @@ impl Default for WorkspaceSettings {
       unstable: Default::default(),
       javascript: Default::default(),
       typescript: Default::default(),
+      tracing: Default::default(),
     }
   }
 }
@@ -2309,8 +2313,9 @@ mod tests {
           suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
-          }
+          },
         },
+        tracing: Default::default()
       }
     );
   }

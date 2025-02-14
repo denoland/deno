@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_ffi"
-version = "0.176.0"
+version = "0.177.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -14,14 +14,16 @@ description = "Dynamic library ffi for deno"
 path = "lib.rs"
 
 [dependencies]
+cranelift = "0.116"
+cranelift-native = "0.116"
 deno_core.workspace = true
 deno_error.workspace = true
 deno_permissions.workspace = true
 dlopen2.workspace = true
-dynasmrt = "1.2.3"
 libffi = "=3.2.0"
 libffi-sys = "=2.3.0"
 log.workspace = true
+memmap2 = "0.9"
 num-bigint.workspace = true
 serde.workspace = true
 serde-value = "0.7"

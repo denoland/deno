@@ -1772,7 +1772,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
+  command("bundle",  "`deno bundle` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
@@ -1828,6 +1828,7 @@ Unless --reload is specified, this command will not re-download already cached d
     )
     .defer(|cmd| {
       compile_args_without_check_args(cmd)
+        .arg(no_code_cache_arg())
         .arg(
           Arg::new("all")
             .long("all")
@@ -3025,6 +3026,7 @@ Evaluate a task from string
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
+      .arg(frozen_lockfile_arg())
       .arg(
         Arg::new("cwd")
           .long("cwd")
@@ -3320,7 +3322,7 @@ different location, use the <c>--output</> flag:
 
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ `deno vendor` was removed in Deno 2.
+      "`deno vendor` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
@@ -4572,6 +4574,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_import_parse(flags, matches);
   Ok(())
 }
@@ -5256,6 +5259,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
@@ -7412,6 +7416,7 @@ mod tests {
           doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7426,6 +7431,7 @@ mod tests {
           doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7440,6 +7446,7 @@ mod tests {
           doc_only: true,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7468,6 +7475,7 @@ mod tests {
             doc_only: false,
           }),
           type_check_mode: TypeCheckMode::All,
+          code_cache_enabled: true,
           ..Flags::default()
         }
       );

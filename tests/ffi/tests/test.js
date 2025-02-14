@@ -379,7 +379,7 @@ const externalZeroBuffer = new Uint8Array(Deno.UnsafePointerView.getArrayBuffer(
 // V8 Fast calls used to get null pointers for all zero-sized buffers no matter their external backing.
 assertEquals(isNullBuffer(externalZeroBuffer), false, "isNullBuffer(externalZeroBuffer) !== false");
 // V8's `Local<ArrayBuffer>->Data()` method also used to similarly return null pointers for all
-// zero-sized buffers which would not match what `Local<ArrayBuffer>->GetBackingStore()->Data()` 
+// zero-sized buffers which would not match what `Local<ArrayBuffer>->GetBackingStore()->Data()`
 // API returned. These issues have been fixed in https://bugs.chromium.org/p/v8/issues/detail?id=13488.
 assertEquals(isNullBufferDeopt(externalZeroBuffer), false, "isNullBufferDeopt(externalZeroBuffer) !== false");
 

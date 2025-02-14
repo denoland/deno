@@ -9,3 +9,6 @@ TS2367 [ERROR]: This comparison appears to be unintentional because the types 's
     at [WILDCARD]/main.ts$30-35.ts:3:20
 
 error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

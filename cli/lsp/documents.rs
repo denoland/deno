@@ -1297,6 +1297,7 @@ impl Documents {
   /// For a given set of string specifiers, resolve each one from the graph,
   /// for a given referrer. This is used to provide resolution information to
   /// tsc when type checking.
+  #[tracing::instrument(skip_all)]
   pub fn resolve(
     &self,
     // (is_cjs: bool, raw_specifier: String)
@@ -1555,6 +1556,7 @@ impl Documents {
     self.dirty = false;
   }
 
+  #[tracing::instrument(skip_all)]
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,

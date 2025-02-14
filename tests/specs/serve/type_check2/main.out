@@ -5,3 +5,6 @@ TS2339 [ERROR]: Property 'doesnt_exist' does not exist on type 'Request'.
     at [WILDCARD]main.ts:3:25
 
 error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

@@ -45,9 +45,10 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read<'a>(
     &mut self,
+    _resolved: bool,
     _p: &'a Path,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, FsError> {
     unreachable!("snapshotting!")
   }
 }
