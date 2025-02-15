@@ -287,7 +287,6 @@ let hasStarted = false;
 function createLs() {
   let exportInfoMap = undefined;
   let exportImportablePathsCache = undefined;
-  let ls = undefined;
   const newHost = {
     ...host,
     getCachedExportInfoMap: () => {
@@ -297,16 +296,15 @@ function createLs() {
     },
     getExportImportablePathsFromModule(referrerPath) {
       if (exportImportablePathsCache?.referrer !== referrerPath) {
-        const exports = ops.op_export_modules_for_module(referrerPath);
         exportImportablePathsCache = {
           referrer: referrerPath,
-          exports,
+          exports: ops.op_export_modules_for_module(referrerPath),
         };
       }
       return exportImportablePathsCache.exports;
     },
   };
-  ls = ts.createLanguageService(
+  const ls = ts.createLanguageService(
     newHost,
     documentRegistry,
   );
