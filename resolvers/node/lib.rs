@@ -36,6 +36,7 @@ pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionKind;
 pub use resolution::NodeResolver;
 pub use resolution::NodeResolverRc;
+pub use resolution::NodeResolverSys;
 pub use resolution::ResolutionMode;
 pub use resolution::DEFAULT_CONDITIONS;
 pub use resolution::REQUIRE_CONDITIONS;

@@ -1,21 +1,31 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
+use deno_config::glob::FilePatterns;
+use deno_config::glob::PathOrPattern;
+use deno_config::glob::PathOrPatternSet;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
 use serde_json::Map;
 use serde_json::Value;
+use sys_traits::BaseFsCanonicalize;
+use sys_traits::BaseFsMetadata;
+use sys_traits::BaseFsRead;
+use sys_traits::BaseFsReadDir;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use url::Url;
 
 use crate::cache::NodeResolutionSys;
@@ -168,6 +178,16 @@ enum ResolvedMethod {
   PackageSubPath,
 }
 
+pub trait NodeResolverSys:
+  BaseFsCanonicalize + BaseFsMetadata + BaseFsRead + BaseFsReadDir
+{
+}
+
+impl<T: BaseFsCanonicalize + BaseFsMetadata + BaseFsRead + BaseFsReadDir>
+  NodeResolverSys for T
+{
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -188,7 +208,7 @@ pub struct NodeResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
@@ -202,7 +222,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeResolver<
     TInNpmPackageChecker,
@@ -1338,6 +1358,40 @@ impl<
     )
   }
 
+  /// Gets all the exported modules of the specified package directory.
+  pub fn all_exported_modules_for_package(
+    &self,
+    package_dir: &Path,
+    conditions: &[&str],
+    resolution_kind: NodeResolutionKind,
+  ) -> Vec<PathBuf> {
+    let pkg_json_path = package_dir.join("package.json");
+    let patterns = match self
+      .pkg_json_resolver
+      .load_package_json(&pkg_json_path)
+      .ok()
+      .flatten()
+    {
+      Some(pkg_json) => {
+        if let Some(exports) = &pkg_json.exports {
+          let globs = exports_to_globs(exports, conditions, resolution_kind);
+          FilePatterns {
+            base: package_dir.to_path_buf(),
+            include: Some(PathOrPatternSet::new(globs)),
+            exclude: PathOrPatternSet::new(Vec::new()),
+          }
+        } else {
+          FilePatterns::new_with_base(package_dir.to_path_buf())
+        }
+      }
+      None => {
+        // include all modules
+        FilePatterns::new_with_base(package_dir.to_path_buf())
+      }
+    };
+    collect_modules_in_dir_recursive(&self.sys, package_dir, &patterns)
+  }
+
   fn package_resolve(
     &self,
     specifier: &str,
@@ -1791,6 +1845,109 @@ impl<
 
     None
   }
+}
+
+fn exports_to_globs(
+  exports: &serde_json::Map<String, serde_json::Value>,
+  conditions: &[&str],
+  resolution_kind: NodeResolutionKind,
+) -> Vec<PathOrPattern> {
+  // create a list of globs based on the exports
+  let mut globs = Vec::new();
+  let mut pending = VecDeque::new();
+  pending.push_back(exports);
+  while let Some(exports) = pending.pop_front() {
+    for (key, value) in exports {
+      let was_conditional_match = key == "default"
+        || conditions.contains(&key.as_str())
+        || resolution_kind.is_types() && key.as_str() == "types";
+      let should_handle = was_conditional_match || key.starts_with(".");
+      let mut local_pending = VecDeque::new();
+      if should_handle {
+        local_pending.push_back(value);
+      }
+      while let Some(value) = local_pending.pop_front() {
+        match value {
+          Value::String(value) => {
+            if let Ok(item) = PathOrPattern::new(value) {
+              globs.push(item);
+            }
+          }
+          Value::Array(values) => {
+            for value in values {
+              local_pending.push_back(value);
+            }
+          }
+          Value::Object(map) => {
+            pending.push_back(map);
+          }
+          Value::Bool(_) | Value::Number(_) | Value::Null => {}
+        }
+      }
+      if was_conditional_match {
+        break;
+      }
+    }
+  }
+  globs
+}
+
+fn collect_modules_in_dir_recursive(
+  sys: &impl BaseFsReadDir,
+  start_dir: &Path,
+  patterns: &FilePatterns,
+) -> Vec<PathBuf> {
+  let mut result = Vec::new();
+  let mut pending_dirs = VecDeque::new();
+  pending_dirs.push_back(Cow::Borrowed(start_dir));
+  while let Some(dir) = pending_dirs.pop_front() {
+    let Ok(entries) = sys.fs_read_dir(&dir) else {
+      return result;
+    };
+    for entry in entries {
+      let Ok(entry) = entry else {
+        continue;
+      };
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+
+      match file_type {
+        FileType::File => {
+          let path = entry.path();
+          match MediaType::from_path(&path) {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx
+            | MediaType::Wasm => {
+              if patterns.matches_path(&path, deno_config::glob::PathKind::File)
+              {
+                result.push(path.into_owned());
+              }
+            }
+            MediaType::Css
+            | MediaType::Json
+            | MediaType::SourceMap
+            | MediaType::Unknown => {}
+          }
+        }
+        FileType::Dir => {
+          pending_dirs.push_back(entry.path().into_owned().into());
+        }
+        FileType::Symlink | FileType::Unknown => todo!(),
+      }
+    }
+  }
+
+  result
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -2309,5 +2466,63 @@ mod tests {
       types_package_name("@scoped/package"),
       "@types/@scoped__package"
     );
+  }
+
+  #[test]
+  fn test_exports_to_globs() {
+    {
+      let exports = get_exports_to_globs(
+        serde_json::json!({}),
+        &["default"],
+        NodeResolutionKind::Types,
+      );
+      assert!(exports.is_empty());
+    }
+    {
+      let exports = get_exports_to_globs(
+        serde_json::json!({
+          "./test/*": "./test/*",
+          "./other": "./other.js",
+          "./conditional": {
+            // won't include this condition
+            "example": "./example.js",
+            "custom-condition": "./custom-condition.js",
+            "default": "./conditional/value.js"
+          },
+          "./types-conditional": {
+            "types": "./types.d.ts",
+            "default": "./conditional/value.js"
+          },
+        }),
+        &["custom-condition"],
+        NodeResolutionKind::Types,
+      );
+      assert_eq!(
+        exports,
+        vec!["./test/*", "other.js", "custom-condition.js", "types.d.ts"]
+      );
+    }
+  }
+
+  fn get_exports_to_globs(
+    exports: serde_json::Value,
+    conditions: &[&str],
+    resolution_kind: NodeResolutionKind,
+  ) -> Vec<String> {
+    let exports = exports.as_object().unwrap();
+    let globs = exports_to_globs(&exports, conditions, resolution_kind);
+    globs
+      .iter()
+      .map(|g| match g {
+        PathOrPattern::Path(path_buf) => path_buf.to_string_lossy().to_string(),
+        PathOrPattern::NegatedPath(path_buf) => {
+          format!("!{}", path_buf.to_string_lossy())
+        }
+        PathOrPattern::RemoteUrl(url) => url.to_string(),
+        PathOrPattern::Pattern(glob_pattern) => {
+          glob_pattern.as_str().to_string()
+        }
+      })
+      .collect::<Vec<_>>()
   }
 }

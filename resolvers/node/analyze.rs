@@ -15,12 +15,11 @@ use futures::StreamExt;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde::Serialize;
-use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
-use sys_traits::FsRead;
 use url::Url;
 
 use crate::resolution::NodeResolverRc;
+use crate::resolution::NodeResolverSys;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
 use crate::NodeResolutionKind;
@@ -88,7 +87,7 @@ pub struct NodeCodeTranslator<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   cjs_code_analyzer: TCjsCodeAnalyzer,
   in_npm_pkg_checker: TInNpmPackageChecker,
@@ -108,7 +107,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeCodeTranslator<
     TCjsCodeAnalyzer,
