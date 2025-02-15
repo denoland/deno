@@ -53,7 +53,6 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::StackString;
 use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
-use dotenvy::from_filename;
 pub use flags::*;
 pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
@@ -480,8 +479,6 @@ impl CliOptions {
         log::error!("{}", colors::yellow(msg));
       }
     }
-
-    load_env_variables_from_env_file(flags.env_file.as_ref());
 
     Ok(Self {
       flags,
@@ -1319,26 +1316,6 @@ pub fn config_to_deno_graph_workspace_member(
     version,
     exports: config.to_exports_config()?.into_map(),
   })
-}
-
-fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
-  let Some(env_file_names) = filename else {
-    return;
-  };
-
-  for env_file_name in env_file_names.iter().rev() {
-    match from_filename(env_file_name) {
-      Ok(_) => (),
-      Err(error) => {
-        match error {
-          dotenvy::Error::LineParse(line, index)=> log::info!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
-          dotenvy::Error::Io(_)=> log::info!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
-          dotenvy::Error::EnvVar(_)=> log::info!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-          _ => log::info!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
-        }
-      }
-    }
-  }
 }
 
 /// Gets the --allow-import host from the provided url

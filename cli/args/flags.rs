@@ -40,6 +40,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
+use deno_terminal::colors;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -1396,6 +1397,28 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
   }
 
   Ok(flags)
+}
+
+// use eprintln instead of log::warn because logging hasn't been initialized yet
+#[allow(clippy::print_stderr)]
+fn load_env_variables_from_env_file(filename: Option<&Vec<String>>) {
+  let Some(env_file_names) = filename else {
+    return;
+  };
+
+  for env_file_name in env_file_names.iter().rev() {
+    match dotenvy::from_filename(env_file_name) {
+      Ok(_) => (),
+      Err(error) => {
+        match error {
+          dotenvy::Error::LineParse(line, index)=> eprintln!("{} Parsing failed within the specified environment file: {} at index: {} of the value: {}", colors::yellow("Warning"), env_file_name, index, line),
+          dotenvy::Error::Io(_)=> eprintln!("{} The `--env-file` flag was used, but the environment file specified '{}' was not found.", colors::yellow("Warning"), env_file_name),
+          dotenvy::Error::EnvVar(_)=> eprintln!("{} One or more of the environment variables isn't present or not unicode within the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+          _ => eprintln!("{} Unknown failure occurred with the specified environment file: {}", colors::yellow("Warning"), env_file_name),
+        }
+      }
+    }
+  }
 }
 
 fn enable_unstable(command: Command) -> Command {
@@ -5115,6 +5138,7 @@ fn repl_parse(
   flags: &mut Flags,
   matches: &mut ArgMatches,
 ) -> clap::error::Result<()> {
+  env_file_arg_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_without_check_parse(flags, matches)?;
   cached_only_arg_parse(flags, matches);
@@ -5125,7 +5149,6 @@ fn repl_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
-  env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
 
   let eval_files = matches
@@ -5691,6 +5714,7 @@ fn runtime_args_parse(
   include_inspector: bool,
   include_allow_scripts: bool,
 ) -> clap::error::Result<()> {
+  env_file_arg_parse(flags, matches);
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   compile_args_parse(flags, matches)?;
   cached_only_arg_parse(flags, matches);
@@ -5708,7 +5732,6 @@ fn runtime_args_parse(
   v8_flags_arg_parse(flags, matches);
   seed_arg_parse(flags, matches);
   enable_testing_features_arg_parse(flags, matches);
-  env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
   Ok(())
 }
@@ -5727,6 +5750,8 @@ fn env_file_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   flags.env_file = matches
     .get_many::<String>("env-file")
     .map(|values| values.cloned().collect());
+
+  load_env_variables_from_env_file(flags.env_file.as_ref());
 }
 
 fn reload_arg_parse(
