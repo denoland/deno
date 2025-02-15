@@ -87,23 +87,34 @@ where
   out
 }
 
-/// Premultiply the alpha channel of the image.
+/// Premultiply the alpha channel of the image.\
+/// The operation will be skipped if the image is already premultiplied or has no alpha value.
 pub fn premultiply_alpha(
   image: DynamicImage,
 ) -> Result<DynamicImage, CanvasError> {
   match image {
-    DynamicImage::ImageLumaA8(image) => {
-      Ok(process_premultiply_alpha(&image).into())
-    }
+    DynamicImage::ImageLumaA8(image) => Ok(if is_premultiplied_alpha(&image) {
+      image.into()
+    } else {
+      process_premultiply_alpha(&image).into()
+    }),
     DynamicImage::ImageLumaA16(image) => {
-      Ok(process_premultiply_alpha(&image).into())
+      Ok(if is_premultiplied_alpha(&image) {
+        image.into()
+      } else {
+        process_premultiply_alpha(&image).into()
+      })
     }
-    DynamicImage::ImageRgba8(image) => {
-      Ok(process_premultiply_alpha(&image).into())
-    }
-    DynamicImage::ImageRgba16(image) => {
-      Ok(process_premultiply_alpha(&image).into())
-    }
+    DynamicImage::ImageRgba8(image) => Ok(if is_premultiplied_alpha(&image) {
+      image.into()
+    } else {
+      process_premultiply_alpha(&image).into()
+    }),
+    DynamicImage::ImageRgba16(image) => Ok(if is_premultiplied_alpha(&image) {
+      image.into()
+    } else {
+      process_premultiply_alpha(&image).into()
+    }),
     DynamicImage::ImageRgb32F(_) => {
       Err(CanvasError::UnsupportedColorType(image.color()))
     }
@@ -116,9 +127,6 @@ pub fn premultiply_alpha(
 }
 
 pub(crate) trait UnpremultiplyAlpha {
-  /// To determine if the image is premultiplied alpha,
-  /// checking premultiplied RGBA value is one where any of the R/G/B channel values exceeds the alpha channel value.\
-  /// https://www.w3.org/TR/webgpu/#color-spaces
   fn is_premultiplied_alpha(&self) -> bool;
   fn unpremultiply_alpha(&self) -> Self;
 }
@@ -189,6 +197,9 @@ impl<T: Primitive + SaturatingMul + Ord> UnpremultiplyAlpha for LumaA<T> {
   }
 }
 
+/// To determine if the image is premultiplied alpha,
+/// checking premultiplied RGBA value is one where any of the R/G/B channel values exceeds the alpha channel value.\
+/// https://www.w3.org/TR/webgpu/#color-spaces
 fn is_premultiplied_alpha<I, P, S>(image: &I) -> bool
 where
   I: GenericImageView<Pixel = P>,
@@ -218,7 +229,8 @@ where
   out
 }
 
-/// Invert the premultiplied alpha channel of the image.
+/// Invert the premultiplied alpha channel of the image.\
+/// The operation will be skipped if the image is not premultiplied or has no alpha value.
 pub(crate) fn unpremultiply_alpha(
   image: DynamicImage,
 ) -> Result<DynamicImage, CanvasError> {

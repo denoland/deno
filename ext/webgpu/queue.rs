@@ -184,8 +184,10 @@ impl GPUQueue {
       }
     }
 
-    // TODO: destination.color_space
-
+    // Queue timeline steps:
+    // 5.2.1
+    // This step is depending on the source.source type, conversion may or may not be required.
+    // https://gpuweb.github.io/gpuweb/#color-space-conversion-elision
     if destination.premultiplied_alpha {
       data = deno_canvas::premultiply_alpha(data)?;
     }
