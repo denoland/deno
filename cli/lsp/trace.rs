@@ -2,43 +2,23 @@
 
 use std::fmt;
 
-use deno_core::anyhow;
-use opentelemetry::trace::TracerProvider;
-use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::Resource;
-use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
+#[cfg(feature = "lsp-tracing")]
+pub use real_tracing::*;
 use serde::Deserialize;
 use serde::Serialize;
-use tracing::level_filters::LevelFilter;
-use tracing_opentelemetry::OpenTelemetryLayer;
-use tracing_subscriber::fmt::format::FmtSpan;
-use tracing_subscriber::layer::SubscriberExt;
+#[cfg(not(feature = "lsp-tracing"))]
+pub use stub_tracing::*;
 
-use crate::lsp::logging::lsp_debug;
+pub(crate) struct TracingGuard {
+  #[allow(dead_code)]
+  guard: (),
 
-pub(crate) fn make_tracer(
-  endpoint: Option<&str>,
-) -> Result<opentelemetry_sdk::trace::Tracer, anyhow::Error> {
-  let endpoint = endpoint.unwrap_or("http://localhost:4317");
-  let exporter = opentelemetry_otlp::SpanExporter::builder()
-    .with_tonic()
-    .with_endpoint(endpoint)
-    .build()?;
-  let provider = opentelemetry_sdk::trace::Builder::default()
-    .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-    .with_resource(Resource::new(vec![KeyValue::new(SERVICE_NAME, "deno-lsp")]))
-    .build();
-  opentelemetry::global::set_tracer_provider(provider.clone());
-  Ok(provider.tracer("deno-lsp-tracer"))
-}
-
-pub(crate) struct TracingGuard(
   // TODO(nathanwhit): use default guard here so we can change tracing after init
   // but needs wiring through the subscriber to the TSC thread, as it can't be a global default
   // #[allow(dead_code)] tracing::dispatcher::DefaultGuard,
-  #[allow(dead_code)] (),
-);
+  #[allow(dead_code)]
+  defused: bool,
+}
 
 impl fmt::Debug for TracingGuard {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -46,12 +26,146 @@ impl fmt::Debug for TracingGuard {
   }
 }
 
-impl Drop for TracingGuard {
-  fn drop(&mut self) {
-    lsp_debug!("Shutting down tracing");
-    tokio::task::spawn_blocking(|| {
-      opentelemetry::global::shutdown_tracer_provider()
-    });
+#[cfg(feature = "lsp-tracing")]
+mod real_tracing {
+  use deno_core::anyhow;
+  use opentelemetry::trace::TracerProvider;
+  pub use opentelemetry::Context;
+  use opentelemetry::KeyValue;
+  use opentelemetry_otlp::WithExportConfig;
+  use opentelemetry_sdk::Resource;
+  use opentelemetry_semantic_conventions::resource::SERVICE_NAME;
+  use tracing::level_filters::LevelFilter;
+  pub use tracing::span::EnteredSpan;
+  pub use tracing::Span;
+  use tracing_opentelemetry::OpenTelemetryLayer;
+  pub use tracing_opentelemetry::OpenTelemetrySpanExt as SpanExt;
+  use tracing_subscriber::fmt::format::FmtSpan;
+  use tracing_subscriber::layer::SubscriberExt;
+
+  use super::TracingCollector;
+  use super::TracingConfig;
+  use super::TracingGuard;
+
+  pub(crate) fn make_tracer(
+    endpoint: Option<&str>,
+  ) -> Result<opentelemetry_sdk::trace::Tracer, anyhow::Error> {
+    let endpoint = endpoint.unwrap_or("http://localhost:4317");
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+      .with_tonic()
+      .with_endpoint(endpoint)
+      .build()?;
+    let provider = opentelemetry_sdk::trace::Builder::default()
+      .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+      .with_resource(Resource::new(vec![KeyValue::new(
+        SERVICE_NAME,
+        "deno-lsp",
+      )]))
+      .build();
+    opentelemetry::global::set_tracer_provider(provider.clone());
+    Ok(provider.tracer("deno-lsp-tracer"))
+  }
+
+  pub(crate) fn init_tracing_subscriber(
+    config: &TracingConfig,
+  ) -> Result<TracingGuard, anyhow::Error> {
+    if !config.enable {
+      return Err(anyhow::anyhow!("Tracing is not enabled"));
+    }
+    let filter = tracing_subscriber::EnvFilter::builder()
+      .with_default_directive(LevelFilter::INFO.into());
+    let filter = if let Some(directive) = config.filter.as_ref() {
+      filter.parse(directive)?
+    } else {
+      filter.with_env_var("DENO_LSP_TRACE").from_env()?
+    };
+    let open_telemetry_layer = match config.collector {
+      TracingCollector::OpenTelemetry => Some(OpenTelemetryLayer::new(
+        make_tracer(config.collector_endpoint.as_deref())?,
+      )),
+      _ => None,
+    };
+    let logging_layer = match config.collector {
+      TracingCollector::Logging => Some(
+        tracing_subscriber::fmt::layer()
+          .with_writer(std::io::stderr)
+          // Include span events in the log output.
+          // Without this, only events get logged (and at the moment we have none).
+          .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
+      ),
+      _ => None,
+    };
+
+    tracing::subscriber::set_global_default(
+      tracing_subscriber::registry()
+        .with(filter)
+        .with(logging_layer)
+        .with(open_telemetry_layer),
+    )
+    .unwrap();
+
+    let guard = ();
+    Ok(TracingGuard {
+      guard,
+      defused: false,
+    })
+  }
+
+  impl Drop for TracingGuard {
+    fn drop(&mut self) {
+      if !self.defused {
+        crate::lsp::logging::lsp_debug!("Shutting down tracing");
+        tokio::task::spawn_blocking(|| {
+          opentelemetry::global::shutdown_tracer_provider()
+        });
+      }
+    }
+  }
+}
+
+#[cfg(not(feature = "lsp-tracing"))]
+mod stub_tracing {
+  pub trait SpanExt {
+    #[allow(dead_code)]
+    fn set_parent(&self, _context: Context);
+
+    fn context(&self) -> Context;
+  }
+  #[derive(Debug, Clone)]
+  pub struct Span {}
+
+  impl SpanExt for Span {
+    #[allow(dead_code)]
+    fn set_parent(&self, _context: Context) {}
+
+    fn context(&self) -> Context {
+      Context {}
+    }
+  }
+
+  impl Span {
+    pub fn entered(self) -> EnteredSpan {
+      EnteredSpan {}
+    }
+
+    pub fn current() -> Self {
+      Self {}
+    }
+  }
+
+  #[derive(Debug)]
+  pub struct EnteredSpan {}
+
+  #[derive(Clone, Debug)]
+  pub struct Context {}
+
+  pub(crate) fn init_tracing_subscriber(
+    _config: &super::TracingConfig,
+  ) -> Result<super::TracingGuard, deno_core::anyhow::Error> {
+    Ok(super::TracingGuard {
+      defused: false,
+      guard: {},
+    })
   }
 }
 
@@ -114,46 +228,4 @@ impl TracingConfigOrEnabled {
       TracingConfigOrEnabled::Enabled(enabled) => *enabled,
     }
   }
-}
-
-pub(crate) fn init_tracing_subscriber(
-  config: &TracingConfig,
-) -> Result<TracingGuard, anyhow::Error> {
-  if !config.enable {
-    return Err(anyhow::anyhow!("Tracing is not enabled"));
-  }
-  let filter = tracing_subscriber::EnvFilter::builder()
-    .with_default_directive(LevelFilter::INFO.into());
-  let filter = if let Some(directive) = config.filter.as_ref() {
-    filter.parse(directive)?
-  } else {
-    filter.with_env_var("DENO_LSP_TRACE").from_env()?
-  };
-  let open_telemetry_layer = match config.collector {
-    TracingCollector::OpenTelemetry => Some(OpenTelemetryLayer::new(
-      make_tracer(config.collector_endpoint.as_deref())?,
-    )),
-    _ => None,
-  };
-  let logging_layer = match config.collector {
-    TracingCollector::Logging => Some(
-      tracing_subscriber::fmt::layer()
-        .with_writer(std::io::stderr)
-        // Include span events in the log output.
-        // Without this, only events get logged (and at the moment we have none).
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
-    ),
-    _ => None,
-  };
-
-  tracing::subscriber::set_global_default(
-    tracing_subscriber::registry()
-      .with(filter)
-      .with(logging_layer)
-      .with(open_telemetry_layer),
-  )
-  .unwrap();
-
-  let guard = ();
-  Ok(TracingGuard(guard))
 }
