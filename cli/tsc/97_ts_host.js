@@ -726,9 +726,6 @@ const hostImpl = {
     }
     return scriptSnapshot;
   },
-  getExportImportablePathsFromModule(referrerPath) {
-    return ops.op_export_modules_for_module(referrerPath);
-  },
 };
 
 // these host methods are super noisy (often thousands of calls per TSC request)
