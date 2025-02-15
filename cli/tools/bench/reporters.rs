@@ -224,13 +224,9 @@ impl BenchReporter for ConsoleReporter {
               avg: stats.avg,
               min: stats.min,
               max: stats.max,
-              percentiles: stats.percentiles.as_ref().map(|p| {
-                mitata::reporter::BenchmarkPercentiles {
-                  p75: p.p75,
-                  p99: p.p99,
-                  p995: p.p995,
-                }
-              }),
+              p75: stats.p75,
+              p99: stats.p99,
+              p995: stats.p995,
             },
             options
           )
@@ -285,13 +281,9 @@ impl BenchReporter for ConsoleReporter {
                 avg: s.avg,
                 min: s.min,
                 max: s.max,
-                percentiles: s.percentiles.as_ref().map(|p| {
-                  mitata::reporter::BenchmarkPercentiles {
-                    p75: p.p75,
-                    p99: p.p99,
-                    p995: p.p995,
-                  }
-                }),
+                p75: s.p75,
+                p99: s.p99,
+                p995: s.p995,
               },
             })
             .collect::<Vec<mitata::reporter::GroupBenchmark>>(),
