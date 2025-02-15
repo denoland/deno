@@ -239,8 +239,8 @@ async function benchMeasure(timeBudget, fn, desc, context) {
   let wavg = 0;
   let usedExplicitTimers = false;
   // after a certain iteration count it becomes
-  // way too expensive to compute the p values
-  const all = desc.iterations >= 10_000 ? undefined : [];
+  // too expensive to compute the p values
+  const all = desc.iterations >= 1_000_000 ? undefined : [];
   let min = Infinity;
   let max = -Infinity;
   const lowPrecisionThresholdInNs = 1e4;
