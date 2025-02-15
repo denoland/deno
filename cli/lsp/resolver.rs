@@ -83,7 +83,7 @@ use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
 #[derive(Debug, Clone)]
-struct LspScopeResolver {
+pub struct LspScopeResolver {
   resolver: Arc<CliResolver>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
   is_cjs_resolver: Arc<CliIsCjsResolver>,
@@ -316,6 +316,30 @@ impl LspScopeResolver {
         .clone(),
       config_data: self.config_data.clone(),
     })
+  }
+
+  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
+    self.config_data.as_ref()
+  }
+
+  pub fn as_jsr_cache_resolver(&self) -> Option<&Arc<JsrCacheResolver>> {
+    self.jsr_resolver.as_ref()
+  }
+
+  pub fn as_in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
+    &self.in_npm_pkg_checker
+  }
+
+  pub fn as_node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
+    self.node_resolver.as_ref()
+  }
+
+  pub fn as_npm_resolver(&self) -> Option<&CliNpmResolver> {
+    self.npm_resolver.as_ref()
+  }
+
+  pub fn dep_info(&self) -> Arc<ScopeDepInfo> {
+    self.dep_info.lock().clone()
   }
 }
 
@@ -630,7 +654,7 @@ impl LspResolver {
       .collect()
   }
 
-  fn get_scope_resolver(
+  pub fn get_scope_resolver(
     &self,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> &LspScopeResolver {

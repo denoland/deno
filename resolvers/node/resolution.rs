@@ -1366,9 +1366,12 @@ impl<
   pub fn all_exported_modules_for_package(
     &self,
     package_dir: &Path,
-    conditions: &[&str],
+    resolution_mode: ResolutionMode,
     resolution_kind: NodeResolutionKind,
   ) -> Vec<NpmPackageExportedModule> {
+    let conditions = self
+      .conditions_from_resolution_mode
+      .resolve(resolution_mode);
     let pkg_json_path = package_dir.join("package.json");
     let patterns = match self
       .pkg_json_resolver
@@ -1378,17 +1381,19 @@ impl<
     {
       Some(pkg_json) => {
         if let Some(exports) = &pkg_json.exports {
-          exports_to_globs(exports, conditions, resolution_kind)
+          Some(exports_to_globs(
+            package_dir,
+            exports,
+            conditions,
+            resolution_kind,
+          ))
         } else {
-          Vec::new()
+          None
         }
       }
-      None => {
-        // include all modules
-        Vec::new()
-      }
+      None => None,
     };
-    collect_modules_in_dir_recursive(&self.sys, package_dir, &patterns)
+    collect_modules_in_dir_recursive(&self.sys, package_dir, patterns)
   }
 
   fn package_resolve(
@@ -1852,6 +1857,7 @@ struct ExportGlob {
 }
 
 fn exports_to_globs(
+  base: &Path,
   exports: &serde_json::Map<String, serde_json::Value>,
   conditions: &[&str],
   resolution_kind: NodeResolutionKind,
@@ -1890,7 +1896,7 @@ fn exports_to_globs(
       while let Some(value) = local_pending.pop_front() {
         match value {
           Value::String(value) => {
-            if let Ok(item) = PathOrPattern::new(value) {
+            if let Ok(item) = PathOrPattern::from_relative(base, value) {
               globs.push(ExportGlob {
                 key: next_path().into_owned(),
                 value: item,
@@ -1919,11 +1925,51 @@ fn exports_to_globs(
 fn collect_modules_in_dir_recursive(
   sys: &impl BaseFsReadDir,
   start_dir: &Path,
-  patterns: &[ExportGlob],
+  mut patterns: Option<Vec<ExportGlob>>,
 ) -> Vec<NpmPackageExportedModule> {
+  if let Some(patterns) = &mut patterns {
+    // avoid traversing if all the globs are paths
+    if patterns.iter().all(|p| match &p.value {
+      PathOrPattern::Path(_) | PathOrPattern::NegatedPath(_) => true,
+      PathOrPattern::RemoteUrl(_) | PathOrPattern::Pattern(_) => false,
+    }) {
+      return patterns
+        .drain(..)
+        .filter_map(|p| {
+          Some(NpmPackageExportedModule {
+            export: p.key,
+            path: match p.value {
+              PathOrPattern::Path(path) => Some(path),
+              PathOrPattern::NegatedPath(_)
+              | PathOrPattern::RemoteUrl(_)
+              | PathOrPattern::Pattern(_) => None,
+            }?,
+          })
+        })
+        .collect();
+    }
+  }
   let mut result = Vec::new();
   let mut pending_dirs = VecDeque::new();
   pending_dirs.push_back(Cow::Borrowed(start_dir));
+  let patterns = &patterns;
+  let is_match = |path: &Path| {
+    let Some(patterns) = patterns else {
+      return Some(
+        path
+          .strip_prefix(start_dir)
+          .unwrap_or(&path)
+          .to_string_lossy()
+          .replace("\\", "/"),
+      );
+    };
+    for pattern in patterns {
+      if pattern.value.matches_path(&path) == PathGlobMatch::Matched {
+        return Some(pattern.key.clone());
+      }
+    }
+    None
+  };
   while let Some(dir) = pending_dirs.pop_front() {
     let Ok(entries) = sys.fs_read_dir(&dir) else {
       return result;
@@ -1952,14 +1998,11 @@ fn collect_modules_in_dir_recursive(
             | MediaType::Dcts
             | MediaType::Tsx
             | MediaType::Wasm => {
-              for pattern in patterns {
-                if pattern.value.matches_path(&path) == PathGlobMatch::Matched {
-                  result.push(NpmPackageExportedModule {
-                    export: pattern.key.clone(),
-                    path: path.to_path_buf(),
-                  });
-                  break;
-                }
+              if let Some(export) = is_match(&path) {
+                result.push(NpmPackageExportedModule {
+                  export,
+                  path: path.to_path_buf(),
+                });
               }
             }
             MediaType::Css
@@ -2543,7 +2586,8 @@ mod tests {
     resolution_kind: NodeResolutionKind,
   ) -> Vec<String> {
     let exports = exports.as_object().unwrap();
-    let globs = exports_to_globs(&exports, conditions, resolution_kind);
+    let path = PathBuf::from("/");
+    let globs = exports_to_globs(&path, &exports, conditions, resolution_kind);
     globs
       .iter()
       .map(|g| {

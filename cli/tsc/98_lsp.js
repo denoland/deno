@@ -284,6 +284,34 @@ async function pollRequests() {
 
 let hasStarted = false;
 
+function createLs() {
+  let exportInfoMap = undefined;
+  const newHost = {
+    ...host,
+    getCachedExportInfoMap: () => {
+      // this export info map is specific to
+      // the language service instance
+      return exportInfoMap;
+    },
+  };
+  const ls = ts.createLanguageService(
+    newHost,
+    documentRegistry,
+  );
+  exportInfoMap = ts.createCacheableExportInfoMap({
+    getCurrentProgram() {
+      return ls.getCurrentProgram();
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
+    getPackageJsonAutoImportProvider() {
+      return undefined;
+    },
+  });
+  return ls;
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
   ts.deno.setEnterSpan(ops.op_make_span);
@@ -293,10 +321,7 @@ export async function serverMainLoop(enableDebugLogging) {
   }
   hasStarted = true;
   LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: ts.createLanguageService(
-      host,
-      documentRegistry,
-    ),
+    ls: createLs(),
     compilerOptions: lspTsConfigToCompilerOptions({
       "allowJs": true,
       "esModuleInterop": true,
@@ -398,9 +423,7 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       for (const [scope, config] of newConfigsByScope) {
         LAST_REQUEST_SCOPE.set(scope);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
-        const ls = oldEntry
-          ? oldEntry.ls
-          : ts.createLanguageService(host, documentRegistry);
+        const ls = oldEntry ? oldEntry.ls : createLs();
         const compilerOptions = lspTsConfigToCompilerOptions(config);
         newByScope.set(scope, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
