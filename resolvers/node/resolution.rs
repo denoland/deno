@@ -8,9 +8,8 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
-use deno_config::glob::FilePatterns;
+use deno_config::glob::PathGlobMatch;
 use deno_config::glob::PathOrPattern;
-use deno_config::glob::PathOrPatternSet;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
@@ -24,7 +23,6 @@ use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
-use sys_traits::FsRead;
 use sys_traits::FsReadDir;
 use url::Url;
 
@@ -176,6 +174,12 @@ enum ResolvedMethod {
   PackageImports,
   PackageExports,
   PackageSubPath,
+}
+
+pub struct NpmPackageExportedModule {
+  /// Reverse mapping.
+  pub export: String,
+  pub path: PathBuf,
 }
 
 pub trait NodeResolverSys:
@@ -1364,7 +1368,7 @@ impl<
     package_dir: &Path,
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
-  ) -> Vec<PathBuf> {
+  ) -> Vec<NpmPackageExportedModule> {
     let pkg_json_path = package_dir.join("package.json");
     let patterns = match self
       .pkg_json_resolver
@@ -1374,19 +1378,14 @@ impl<
     {
       Some(pkg_json) => {
         if let Some(exports) = &pkg_json.exports {
-          let globs = exports_to_globs(exports, conditions, resolution_kind);
-          FilePatterns {
-            base: package_dir.to_path_buf(),
-            include: Some(PathOrPatternSet::new(globs)),
-            exclude: PathOrPatternSet::new(Vec::new()),
-          }
+          exports_to_globs(exports, conditions, resolution_kind)
         } else {
-          FilePatterns::new_with_base(package_dir.to_path_buf())
+          Vec::new()
         }
       }
       None => {
         // include all modules
-        FilePatterns::new_with_base(package_dir.to_path_buf())
+        Vec::new()
       }
     };
     collect_modules_in_dir_recursive(&self.sys, package_dir, &patterns)
@@ -1847,20 +1846,42 @@ impl<
   }
 }
 
+struct ExportGlob {
+  key: String,
+  value: PathOrPattern,
+}
+
 fn exports_to_globs(
   exports: &serde_json::Map<String, serde_json::Value>,
   conditions: &[&str],
   resolution_kind: NodeResolutionKind,
-) -> Vec<PathOrPattern> {
+) -> Vec<ExportGlob> {
   // create a list of globs based on the exports
   let mut globs = Vec::new();
   let mut pending = VecDeque::new();
-  pending.push_back(exports);
-  while let Some(exports) = pending.pop_front() {
+  pending.push_back((Cow::Borrowed(""), exports));
+  while let Some((current_path, exports)) = pending.pop_front() {
     for (key, value) in exports {
       let was_conditional_match = key == "default"
         || conditions.contains(&key.as_str())
         || resolution_kind.is_types() && key.as_str() == "types";
+      let next_path = || {
+        if was_conditional_match {
+          current_path.clone()
+        } else {
+          if current_path.is_empty() {
+            key.to_string().into()
+          } else {
+            let key = key.strip_prefix("./").unwrap_or(key);
+            if current_path.ends_with("/") {
+              format!("{}{}", current_path, key)
+            } else {
+              format!("{}/{}", current_path, key)
+            }
+            .into()
+          }
+        }
+      };
       let should_handle = was_conditional_match || key.starts_with(".");
       let mut local_pending = VecDeque::new();
       if should_handle {
@@ -1870,7 +1891,10 @@ fn exports_to_globs(
         match value {
           Value::String(value) => {
             if let Ok(item) = PathOrPattern::new(value) {
-              globs.push(item);
+              globs.push(ExportGlob {
+                key: next_path().into_owned(),
+                value: item,
+              });
             }
           }
           Value::Array(values) => {
@@ -1879,7 +1903,7 @@ fn exports_to_globs(
             }
           }
           Value::Object(map) => {
-            pending.push_back(map);
+            pending.push_back((next_path(), map));
           }
           Value::Bool(_) | Value::Number(_) | Value::Null => {}
         }
@@ -1895,8 +1919,8 @@ fn exports_to_globs(
 fn collect_modules_in_dir_recursive(
   sys: &impl BaseFsReadDir,
   start_dir: &Path,
-  patterns: &FilePatterns,
-) -> Vec<PathBuf> {
+  patterns: &[ExportGlob],
+) -> Vec<NpmPackageExportedModule> {
   let mut result = Vec::new();
   let mut pending_dirs = VecDeque::new();
   pending_dirs.push_back(Cow::Borrowed(start_dir));
@@ -1928,9 +1952,14 @@ fn collect_modules_in_dir_recursive(
             | MediaType::Dcts
             | MediaType::Tsx
             | MediaType::Wasm => {
-              if patterns.matches_path(&path, deno_config::glob::PathKind::File)
-              {
-                result.push(path.into_owned());
+              for pattern in patterns {
+                if pattern.value.matches_path(&path) == PathGlobMatch::Matched {
+                  result.push(NpmPackageExportedModule {
+                    export: pattern.key.clone(),
+                    path: path.to_path_buf(),
+                  });
+                  break;
+                }
               }
             }
             MediaType::Css
@@ -2484,7 +2513,6 @@ mod tests {
           "./test/*": "./test/*",
           "./other": "./other.js",
           "./conditional": {
-            // won't include this condition
             "example": "./example.js",
             "custom-condition": "./custom-condition.js",
             "default": "./conditional/value.js"
@@ -2499,7 +2527,12 @@ mod tests {
       );
       assert_eq!(
         exports,
-        vec!["./test/*", "other.js", "custom-condition.js", "types.d.ts"]
+        vec![
+          "./test/*|./test/*",
+          "./other|other.js",
+          "./conditional|custom-condition.js",
+          "./types-conditional|types.d.ts"
+        ]
       );
     }
   }
@@ -2513,15 +2546,20 @@ mod tests {
     let globs = exports_to_globs(&exports, conditions, resolution_kind);
     globs
       .iter()
-      .map(|g| match g {
-        PathOrPattern::Path(path_buf) => path_buf.to_string_lossy().to_string(),
-        PathOrPattern::NegatedPath(path_buf) => {
-          format!("!{}", path_buf.to_string_lossy())
-        }
-        PathOrPattern::RemoteUrl(url) => url.to_string(),
-        PathOrPattern::Pattern(glob_pattern) => {
-          glob_pattern.as_str().to_string()
-        }
+      .map(|g| {
+        let value = match &g.value {
+          PathOrPattern::Path(path_buf) => {
+            path_buf.to_string_lossy().to_string()
+          }
+          PathOrPattern::NegatedPath(path_buf) => {
+            format!("!{}", path_buf.to_string_lossy())
+          }
+          PathOrPattern::RemoteUrl(url) => url.to_string(),
+          PathOrPattern::Pattern(glob_pattern) => {
+            glob_pattern.as_str().to_string()
+          }
+        };
+        format!("{}|{}", g.key, value)
       })
       .collect::<Vec<_>>()
   }

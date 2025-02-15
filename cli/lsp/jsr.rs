@@ -8,6 +8,7 @@ use deno_cache_dir::HttpCache;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_graph::packages::JsrPackageInfo;
 use deno_graph::packages::JsrPackageInfoVersion;
 use deno_graph::packages::JsrPackageVersionInfo;
@@ -27,6 +28,12 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
+
+pub struct JsrPackageExportedModule {
+  /// Reverse mapping.
+  pub export: String,
+  pub url: Url,
+}
 
 /// Keep in sync with `JsrFetchResolver`!
 #[derive(Debug)]
@@ -219,6 +226,37 @@ impl JsrCacheResolver {
       }
     }
     None
+  }
+
+  pub fn exported_modules_for_package(
+    &self,
+    nv: &PackageNv,
+  ) -> Vec<JsrPackageExportedModule> {
+    let Some(version_info) = self.package_version_info(nv) else {
+      return Vec::new();
+    };
+    let Ok(base_url) =
+      jsr_url().join(&format!("{}/{}/", &nv.name, &nv.version))
+    else {
+      return Vec::new();
+    };
+    match &version_info.exports {
+      serde_json::Value::Object(map) => {
+        let mut exports = Vec::with_capacity(map.len());
+        for (key, value) in map {
+          if let serde_json::Value::String(value) = value {
+            if let Ok(url) = base_url.join(value) {
+              exports.push(JsrPackageExportedModule {
+                export: key.clone(),
+                url,
+              });
+            }
+          }
+        }
+        exports
+      }
+      _ => Vec::new(),
+    }
   }
 
   pub fn package_info(
