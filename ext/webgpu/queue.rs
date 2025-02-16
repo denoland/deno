@@ -189,12 +189,18 @@ impl GPUQueue {
     // 5.2.1
     // This step is depending on the source.source type, conversion may or may not be required.
     // https://gpuweb.github.io/gpuweb/#color-space-conversion-elision
+
+    // NOTE: According to the spec, there is no way to check that if source.source is ImageBitmap that was aleady premultiplied or not.
+    // We check whether the source.source is premultiplied or not by the is_premultiplied_alpha method inside,
+    // however it's not any implementation coverd by the spec.
     let data = if destination.premultiplied_alpha {
       deno_canvas::premultiply_alpha(data).map_err(JsErrorBox::from_err)?
     } else {
       data
     };
 
+    // It's same issue as the above, there is no way to check that
+    // if the color space of source.source is ImageBitmap that was aleady transformed or not.
     let data = deno_canvas::transform_rgb_color_space(
       data,
       match destination.color_space {
@@ -214,8 +220,13 @@ impl GPUQueue {
 
     let data_layout = wgpu_types::TexelCopyBufferLayout {
       offset: 0,
-      bytes_per_row: Some(4 * data.width()), // TODO: Shouldn't be hardcoded 4
-      rows_per_image: Some(data.height()),
+      // The source.source is always a shape of 2D that is one of GPUCopyExternalImageSource,
+      // it can simply be calculated by multiplying the width of the image by the number of bytes per pixel.
+      bytes_per_row: Some(
+        (data.color().bytes_per_pixel() as u32 * data.width()).into(),
+      ),
+      // nothing to set due to copySize.depthOrArrayLayers is always 1 for 2D images
+      rows_per_image: None,
     };
 
     let err = self
