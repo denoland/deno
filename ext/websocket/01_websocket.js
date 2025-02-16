@@ -429,6 +429,7 @@ class WebSocket extends EventTarget {
     const rid = this[_rid];
     while (this[_readyState] !== CLOSED) {
       const kind = await op_ws_next_event(rid);
+
       /* close the connection if read was cancelled, and we didn't get a close frame */
       if (
         (this[_readyState] == CLOSING) &&
@@ -439,6 +440,10 @@ class WebSocket extends EventTarget {
         const event = new CloseEvent("close");
         this.dispatchEvent(event);
         core.tryClose(rid);
+        break;
+      }
+
+      if (kind == null) {
         break;
       }
 
