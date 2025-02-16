@@ -698,14 +698,16 @@ const ci = {
             "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
+          name: "Check tracing build",
+          if:
+            "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
+          run: "cargo check -p deno --features=lsp-tracing ",
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: [
-            // output fs space before and after building
-            "df -h",
-            "cargo build --locked --all-targets",
-            "df -h",
-          ].join("\n"),
+          run: "cargo build --locked --all-targets",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -1126,33 +1128,6 @@ const ci = {
           name: "Cargo build",
           // we want this crate to be wasm compatible
           run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
-        },
-      ]),
-    },
-    "check-lsp-tracing": {
-      name: "check lsp tracing",
-      needs: ["pre_build"],
-      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
-      "runs-on": ubuntuX86Runner,
-      "timeout-minutes": 30,
-      steps: skipJobsIfPrAndMarkedSkip([
-        ...cloneRepoStep,
-        installRustStep,
-        {
-          // Restore cache from the latest 'main' branch build.
-          name: "Restore cache build output (PR)",
-          uses: "actions/cache/restore@v4",
-          if:
-            "github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')",
-          with: {
-            path: prCachePath,
-            key: "never_saved",
-            "restore-keys": prCacheKeyPrefix,
-          },
-        },
-        {
-          name: "Check",
-          run: "cargo check -p deno --features=lsp-tracing",
         },
       ]),
     },
