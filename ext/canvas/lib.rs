@@ -4,9 +4,11 @@ use std::path::PathBuf;
 
 mod image_ops;
 mod op_create_image_bitmap;
+pub mod webidl;
 pub use image;
 use image::ColorType;
 pub use image_ops::premultiply_alpha;
+pub use image_ops::transform_rgb_color_space;
 use op_create_image_bitmap::op_create_image_bitmap;
 pub use op_create_image_bitmap::ImageBitmap;
 

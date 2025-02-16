@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_canvas::image::GenericImageView;
+use deno_canvas::webidl::PredefinedColorSpace;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::GarbageCollected;
@@ -146,7 +147,7 @@ impl GPUQueue {
     #[webidl] source: GPUCopyExternalImageSourceInfo,
     #[webidl] destination: GPUCopyExternalImageDestInfo,
     #[webidl] copy_size: GPUExtent3D,
-  ) -> Result<(), deno_canvas::CanvasError> {
+  ) -> Result<(), JsErrorBox> {
     if source.source.detached.get().is_some() {
       // TODO: error
     }
@@ -188,9 +189,21 @@ impl GPUQueue {
     // 5.2.1
     // This step is depending on the source.source type, conversion may or may not be required.
     // https://gpuweb.github.io/gpuweb/#color-space-conversion-elision
-    if destination.premultiplied_alpha {
-      data = deno_canvas::premultiply_alpha(data)?;
-    }
+    let data = if destination.premultiplied_alpha {
+      deno_canvas::premultiply_alpha(data).map_err(JsErrorBox::from_err)?
+    } else {
+      data
+    };
+
+    let data = deno_canvas::transform_rgb_color_space(
+      data,
+      match destination.color_space {
+        PredefinedColorSpace::Srgb => PredefinedColorSpace::DisplayP3,
+        PredefinedColorSpace::DisplayP3 => PredefinedColorSpace::Srgb,
+      },
+      destination.color_space,
+    )
+    .map_err(JsErrorBox::from_err)?;
 
     let destination = wgpu_core::command::TexelCopyTextureInfo {
       texture: destination.texture.id,
@@ -271,13 +284,4 @@ struct GPUCopyExternalImageDestInfo {
   pub color_space: PredefinedColorSpace,
   #[webidl(default = false)]
   pub premultiplied_alpha: bool,
-}
-
-#[derive(WebIDL)]
-#[webidl(dictionary)]
-enum PredefinedColorSpace {
-  #[webidl(rename = "srgb")]
-  Srgb,
-  #[webidl(rename = "display-p3")]
-  DisplayP3,
 }
