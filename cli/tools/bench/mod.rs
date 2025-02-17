@@ -121,6 +121,7 @@ pub struct BenchStats {
   pub p75: f64,
   pub p99: f64,
   pub p995: f64,
+  pub p999: f64,
   pub high_precision: bool,
   pub used_explicit_timers: bool,
 }
