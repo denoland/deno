@@ -341,7 +341,7 @@ fn ts_config_to_transpile_and_emit_options(
   };
   let transpile = deno_ast::TranspileOptions {
     use_ts_decorators: options.experimental_decorators,
-    use_decorators_proposal: !options.experimental_decorators,
+    use_decorators_proposal: false,
     emit_metadata: options.emit_decorator_metadata,
     imports_not_used_as_values,
     jsx_automatic,

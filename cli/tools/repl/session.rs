@@ -637,7 +637,7 @@ impl ReplSession {
       .transpile(
         &deno_ast::TranspileOptions {
           use_ts_decorators: self.experimental_decorators,
-          use_decorators_proposal: !self.experimental_decorators,
+          use_decorators_proposal: false,
           emit_metadata: false,
           imports_not_used_as_values: ImportsNotUsedAsValues::Preserve,
           transform_jsx: true,
