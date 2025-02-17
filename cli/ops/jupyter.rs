@@ -42,6 +42,21 @@ deno_core::extension!(deno_jupyter,
   },
 );
 
+deno_core::extension!(deno_jupyter_for_test,
+  ops = [
+    op_jupyter_broadcast,
+    op_jupyter_input,
+    op_jupyter_create_png_from_texture,
+    op_jupyter_get_buffer,
+  ],
+  options = {
+    sender: mpsc::UnboundedSender<StreamContent>,
+  },
+  state = |state, options| {
+    state.put(options.sender);
+  },
+);
+
 #[op2]
 #[string]
 pub fn op_jupyter_input(

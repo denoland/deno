@@ -629,7 +629,7 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init_ops(),
-        ops::jupyter::deno_jupyter::init_ops(sender),
+        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
