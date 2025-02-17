@@ -2,15 +2,15 @@
 
 use std::path::PathBuf;
 
+mod image_bitmap;
 mod image_ops;
-mod op_create_image_bitmap;
 pub mod webidl;
 pub use image;
 use image::ColorType;
+use image_bitmap::op_create_image_bitmap;
+pub use image_bitmap::ImageBitmap;
 pub use image_ops::premultiply_alpha;
 pub use image_ops::transform_rgb_color_space;
-use op_create_image_bitmap::op_create_image_bitmap;
-pub use op_create_image_bitmap::ImageBitmap;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum CanvasError {
