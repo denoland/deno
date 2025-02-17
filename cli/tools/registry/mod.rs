@@ -120,7 +120,6 @@ pub async fn publish(
   }
 
   let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
-    cli_factory.sloppy_imports_resolver()?.cloned(),
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
   ));
@@ -364,14 +363,13 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let (graph, check_diagnostics) = self
+        let mut diagnostics_by_folder = self
           .type_checker
           .check_diagnostics(
             graph,
             CheckOptions {
               build_fast_check_graph: false, // already built
               lib: self.cli_options.ts_type_lib_window(),
-              log_ignored_options: false,
               reload: self.cli_options.reload_flag(),
               type_check_mode: self.cli_options.type_check_mode(),
             },
@@ -379,20 +377,23 @@ impl PublishPreparer {
           .await?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
-        let check_diagnostics =
-          check_diagnostics.filter(|d| d.include_when_remote());
-        if !check_diagnostics.is_empty() {
-          bail!(
-            concat!(
-            "Failed ensuring public API type output is valid.\n\n",
-            "{:#}\n\n",
-            "You may have discovered a bug in Deno. Please open an issue at: ",
-            "https://github.com/denoland/deno/issues/"
-          ),
-            check_diagnostics
-          );
+        for result in diagnostics_by_folder.by_ref() {
+          let check_diagnostics = result?;
+          let check_diagnostics =
+            check_diagnostics.filter(|d| d.include_when_remote());
+          if check_diagnostics.has_diagnostic() {
+            bail!(
+              concat!(
+                "Failed ensuring public API type output is valid.\n\n",
+                "{:#}\n\n",
+                "You may have discovered a bug in Deno. Please open an issue at: ",
+                "https://github.com/denoland/deno/issues/"
+              ),
+              check_diagnostics
+            );
+          }
         }
-        Ok(graph)
+        Ok(diagnostics_by_folder.into_graph())
       }
     }
   }

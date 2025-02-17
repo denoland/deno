@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::env;
@@ -15,7 +16,7 @@ use capacity_builder::BytesAppendable;
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
 use deno_ast::ModuleSpecifier;
-use deno_config::workspace::WorkspaceResolver;
+use deno_cache_dir::CACHE_PERM;
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
@@ -46,8 +47,10 @@ use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::resolution::SerializedNpmResolutionSnapshot;
 use deno_npm::NpmSystemInfo;
+use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_path_util::url_from_directory_path;
 use deno_path_util::url_to_file_path;
+use deno_resolver::workspace::WorkspaceResolver;
 use indexmap::IndexMap;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsCodeAnalyzer;
@@ -61,6 +64,7 @@ use crate::http_util::HttpClientProvider;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::npm::CliNpmResolver;
 use crate::resolver::CliCjsTracker;
+use crate::sys::CliSys;
 use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -193,7 +197,7 @@ pub struct DenoCompileBinaryWriter<'a> {
   emitter: &'a Emitter,
   http_client_provider: &'a HttpClientProvider,
   npm_resolver: &'a CliNpmResolver,
-  workspace_resolver: &'a WorkspaceResolver,
+  workspace_resolver: &'a WorkspaceResolver<CliSys>,
   npm_system_info: NpmSystemInfo,
 }
 
@@ -207,7 +211,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     emitter: &'a Emitter,
     http_client_provider: &'a HttpClientProvider,
     npm_resolver: &'a CliNpmResolver,
-    workspace_resolver: &'a WorkspaceResolver,
+    workspace_resolver: &'a WorkspaceResolver<CliSys>,
     npm_system_info: NpmSystemInfo,
   ) -> Self {
     Self {
@@ -283,17 +287,17 @@ impl<'a> DenoCompileBinaryWriter<'a> {
     let download_directory = self.deno_dir.dl_folder_path();
     let binary_path = download_directory.join(&binary_path_suffix);
 
-    if !binary_path.exists() {
-      self
-        .download_base_binary(&download_directory, &binary_path_suffix)
-        .await
-        .context("Setting up base binary.")?;
-    }
-
     let read_file = |path: &Path| -> Result<Vec<u8>, AnyError> {
       std::fs::read(path).with_context(|| format!("Reading {}", path.display()))
     };
-    let archive_data = read_file(&binary_path)?;
+    let archive_data = if binary_path.exists() {
+      read_file(&binary_path)?
+    } else {
+      self
+        .download_base_binary(&binary_path, &binary_path_suffix)
+        .await
+        .context("Setting up base binary.")?
+    };
     let temp_dir = tempfile::TempDir::new()?;
     let base_binary_path = archive::unpack_into_dir(archive::UnpackArgs {
       exe_name: "denort",
@@ -309,9 +313,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
 
   async fn download_base_binary(
     &self,
-    output_directory: &Path,
+    output_path: &Path,
     binary_path_suffix: &str,
-  ) -> Result<(), AnyError> {
+  ) -> Result<Vec<u8>, AnyError> {
     let download_url = format!("https://dl.deno.land/{binary_path_suffix}");
     let maybe_bytes = {
       let progress_bars = ProgressBar::new(ProgressBarStyle::DownloadBars);
@@ -338,12 +342,15 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       std::fs::create_dir_all(dir)
         .with_context(|| format!("Creating {}", dir.display()))
     };
-    create_dir_all(output_directory)?;
-    let output_path = output_directory.join(binary_path_suffix);
     create_dir_all(output_path.parent().unwrap())?;
-    std::fs::write(&output_path, bytes)
-      .with_context(|| format!("Writing {}", output_path.display()))?;
-    Ok(())
+    atomic_write_file_with_retries(
+      &CliSys::default(),
+      output_path,
+      &bytes,
+      CACHE_PERM,
+    )
+    .with_context(|| format!("Writing {}", output_path.display()))?;
+    Ok(bytes)
   }
 
   /// This functions creates a standalone deno binary by appending a bundle
@@ -699,7 +706,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       vfs_case_sensitivity: vfs.case_sensitivity,
     };
 
-    let data_section_bytes = serialize_binary_data_section(
+    let (data_section_bytes, section_sizes) = serialize_binary_data_section(
       &metadata,
       npm_snapshot.map(|s| s.into_serialized()),
       &specifier_store.for_serialization(&root_dir_url),
@@ -708,6 +715,22 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       &vfs,
     )
     .context("Serializing binary data section.")?;
+
+    log::info!(
+      "\n{} {}",
+      crate::colors::bold("Files:"),
+      crate::util::display::human_size(section_sizes.vfs as f64)
+    );
+    log::info!(
+      "{} {}",
+      crate::colors::bold("Metadata:"),
+      crate::util::display::human_size(section_sizes.metadata as f64)
+    );
+    log::info!(
+      "{} {}\n",
+      crate::colors::bold("Remote modules:"),
+      crate::util::display::human_size(section_sizes.remote_modules as f64)
+    );
 
     write_binary_bytes(writer, original_bin, data_section_bytes, compile_flags)
       .context("Writing binary bytes")
@@ -912,6 +935,12 @@ fn write_binary_bytes(
   Ok(())
 }
 
+struct BinaryDataSectionSizes {
+  metadata: usize,
+  remote_modules: usize,
+  vfs: usize,
+}
+
 /// Binary format:
 /// * d3n0l4nd
 /// * <metadata_len><metadata>
@@ -930,11 +959,15 @@ fn serialize_binary_data_section(
   redirects: &SpecifierDataStore<SpecifierId>,
   remote_modules: &SpecifierDataStore<RemoteModuleEntry<'_>>,
   vfs: &BuiltVfs,
-) -> Result<Vec<u8>, AnyError> {
+) -> Result<(Vec<u8>, BinaryDataSectionSizes), AnyError> {
   let metadata = serde_json::to_string(metadata)?;
   let npm_snapshot =
     npm_snapshot.map(serialize_npm_snapshot).unwrap_or_default();
   let serialized_vfs = serde_json::to_string(&vfs.entries)?;
+
+  let remote_modules_len = Cell::new(0);
+  let metadata_len = Cell::new(0);
+  let vfs_len = Cell::new(0);
 
   let bytes = capacity_builder::BytesBuilder::build(|builder| {
     builder.append(MAGIC_BYTES);
@@ -948,12 +981,14 @@ fn serialize_binary_data_section(
       builder.append_le(npm_snapshot.len() as u64);
       builder.append(&npm_snapshot);
     }
+    metadata_len.set(builder.len());
     // 3. Specifiers
     builder.append(specifiers);
     // 4. Redirects
     redirects.serialize(builder);
     // 5. Remote modules
     remote_modules.serialize(builder);
+    remote_modules_len.set(builder.len() - metadata_len.get());
     // 6. VFS
     {
       builder.append_le(serialized_vfs.len() as u64);
@@ -964,13 +999,21 @@ fn serialize_binary_data_section(
         builder.append(file);
       }
     }
+    vfs_len.set(builder.len() - remote_modules_len.get());
 
     // write the magic bytes at the end so we can use it
     // to make sure we've deserialized correctly
     builder.append(MAGIC_BYTES);
   })?;
 
-  Ok(bytes)
+  Ok((
+    bytes,
+    BinaryDataSectionSizes {
+      metadata: metadata_len.get(),
+      remote_modules: remote_modules_len.get(),
+      vfs: vfs_len.get(),
+    },
+  ))
 }
 
 fn serialize_npm_snapshot(

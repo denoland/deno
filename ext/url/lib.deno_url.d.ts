@@ -6,6 +6,12 @@
 /// <reference lib="esnext" />
 
 /** @category URL */
+interface URLSearchParamsIterator<T>
+  extends IteratorObject<T, BuiltinIteratorReturn, unknown> {
+  [Symbol.iterator](): URLSearchParamsIterator<T>;
+}
+
+/** @category URL */
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
@@ -102,7 +108,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  keys(): IterableIterator<string>;
+  keys(): URLSearchParamsIterator<string>;
 
   /** Returns an iterator allowing to go through all values contained
    * in this object.
@@ -114,7 +120,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  values(): IterableIterator<string>;
+  values(): URLSearchParamsIterator<string>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
@@ -126,7 +132,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  entries(): IterableIterator<[string, string]>;
+  entries(): URLSearchParamsIterator<[string, string]>;
 
   /** Returns an iterator allowing to go through all key/value
    * pairs contained in this object.
@@ -138,7 +144,7 @@ interface URLSearchParams {
    * }
    * ```
    */
-  [Symbol.iterator](): IterableIterator<[string, string]>;
+  [Symbol.iterator](): URLSearchParamsIterator<[string, string]>;
 
   /** Returns a query string suitable for use in a URL.
    *
@@ -154,36 +160,250 @@ interface URLSearchParams {
    * searchParams.size
    * ```
    */
-  size: number;
+  readonly size: number;
 }
 
 /** @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   new (
-    init?: Iterable<string[]> | Record<string, string> | string,
+    init?:
+      | Iterable<string[]>
+      | Record<string, string>
+      | string
+      | URLSearchParams,
   ): URLSearchParams;
 };
 
 /** The URL interface represents an object providing static methods used for
- * creating object URLs.
+ * creating, parsing, and manipulating URLs.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/URL
  *
  * @category URL
  */
 interface URL {
+  /**
+   * The hash property of the URL interface is a string that starts with a `#` and is followed by the fragment identifier of the URL.
+   * It returns an empty string if the URL does not contain a fragment identifier.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo#bar');
+   * console.log(myURL.hash);  // Logs "#bar"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org');
+   * console.log(myURL.hash);  // Logs ""
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/hash
+   */
   hash: string;
+
+  /**
+   * The `host` property of the URL interface is a string that includes the {@linkcode URL.hostname} and the {@linkcode URL.port} if one is specified in the URL includes by including a `:` followed by the port number.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo');
+   * console.log(myURL.host);  // Logs "example.org"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org:8080/foo');
+   * console.log(myURL.host);  // Logs "example.org:8080"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/host
+   */
   host: string;
+
+  /**
+   * The `hostname` property of the URL interface is a string that represents the fully qualified domain name of the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://foo.example.org/bar');
+   * console.log(myURL.hostname);  // Logs "foo.example.org"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/hostname
+   */
   hostname: string;
+
+  /**
+   * The `href` property of the URL interface is a string that represents the complete URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://foo.example.org/bar?baz=qux#quux');
+   * console.log(myURL.href);  // Logs "https://foo.example.org/bar?baz=qux#quux"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/href
+   */
   href: string;
+
+  /**
+   * The `toString()` method of the URL interface returns a string containing the complete URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://foo.example.org/bar');
+   * console.log(myURL.toString());  // Logs "https://foo.example.org/bar"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/toString
+   */
   toString(): string;
+
+  /**
+   * The `origin` property of the URL interface is a string that represents the origin of the URL, that is the {@linkcode URL.protocol}, {@linkcode URL.host}, and {@linkcode URL.port}.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://foo.example.org/bar');
+   * console.log(myURL.origin);  // Logs "https://foo.example.org"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org:8080/foo');
+   * console.log(myURL.origin);  // Logs "https://example.org:8080"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/origin
+   */
   readonly origin: string;
+
+  /**
+   * The `password` property of the URL interface is a string that represents the password specified in the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://someone:somepassword@example.org/baz');
+   * console.log(myURL.password);  // Logs "somepassword"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/password
+   */
   password: string;
+
+  /**
+   * The `pathname` property of the URL interface is a string that represents the path of the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo/bar');
+   * console.log(myURL.pathname);  // Logs "/foo/bar"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org');
+   * console.log(myURL.pathname);  // Logs "/"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/pathname
+   */
   pathname: string;
+
+  /**
+   * The `port` property of the URL interface is a string that represents the port of the URL if an explicit port has been specified in the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org:8080/foo');
+   * console.log(myURL.port);  // Logs "8080"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo');
+   * console.log(myURL.port);  // Logs ""
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/port
+   */
   port: string;
+
+  /**
+   * The `protocol` property of the URL interface is a string that represents the protocol scheme of the URL and includes a trailing `:`.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo');
+   * console.log(myURL.protocol);  // Logs "https:"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/protocol
+   */
   protocol: string;
+
+  /**
+   * The `search` property of the URL interface is a string that represents the search string, or the query string, of the URL.
+   * This includes the `?` character and the but excludes identifiers within the represented resource such as the {@linkcode URL.hash}. More granular control can be found using {@linkcode URL.searchParams} property.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo?bar=baz');
+   * console.log(myURL.search);  // Logs "?bar=baz"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo?bar=baz#quux');
+   * console.log(myURL.search);  // Logs "?bar=baz"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/search
+   */
   search: string;
+
+  /**
+   * The `searchParams` property of the URL interface is a {@linkcode URL.URLSearchParams} object that represents the search parameters of the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo?bar=baz');
+   * const params = myURL.searchParams;
+   *
+   * console.log(params);  // Logs { bar: "baz" }
+   * console.log(params.get('bar'));  // Logs "baz"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/searchParams
+   */
   readonly searchParams: URLSearchParams;
+
+  /**
+   * The `username` property of the URL interface is a string that represents the username of the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://someone:somepassword@example.org/baz');
+   * console.log(myURL.username);  // Logs "someone"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/username
+   */
   username: string;
+
+  /**
+   * The `toJSON()` method of the URL interface returns a JSON representation of the URL.
+   *
+   * @example
+   * ```ts
+   * const myURL = new URL('https://example.org/foo');
+   * console.log(myURL.toJSON());   // Logs "https://example.org/foo"
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/toJSON
+   */
   toJSON(): string;
 }
 
@@ -194,10 +414,29 @@ interface URL {
  */
 declare var URL: {
   readonly prototype: URL;
+  /**
+   * @see https://developer.mozilla.org/docs/Web/API/URL/URL
+   */
   new (url: string | URL, base?: string | URL): URL;
+
+  /**
+   * @see https://developer.mozilla.org/docs/Web/API/URL/parse_static
+   */
   parse(url: string | URL, base?: string | URL): URL | null;
+
+  /**
+   * @see https://developer.mozilla.org/docs/Web/API/URL/canParse_static
+   */
   canParse(url: string | URL, base?: string | URL): boolean;
+
+  /**
+   * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL
+   */
   createObjectURL(blob: Blob): string;
+
+  /**
+   * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL
+   */
   revokeObjectURL(url: string): void;
 };
 

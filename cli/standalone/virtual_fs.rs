@@ -30,11 +30,7 @@ pub fn output_vfs(vfs: &BuiltVfs, executable_name: &str) {
   let display_tree = vfs_as_display_tree(vfs, executable_name);
   display_tree.print(&mut text).unwrap(); // unwrap ok because it's writing to a string
   log::info!("\n{}\n", deno_terminal::colors::bold("Embedded Files"));
-  log::info!("{}\n", text.trim());
-  log::info!(
-    "Size: {}\n",
-    human_size(vfs.files.iter().map(|f| f.len() as f64).sum())
-  );
+  log::info!("{}", text.trim());
 }
 
 fn vfs_as_display_tree(

@@ -22,6 +22,8 @@ use deno_graph::Module;
 use deno_graph::ModuleGraph;
 use deno_lib::util::hash::FastInsecureHasher;
 
+use crate::args::deno_json::TranspileAndEmitOptions;
+use crate::args::deno_json::TsConfigResolver;
 use crate::cache::EmitCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
@@ -31,10 +33,7 @@ pub struct Emitter {
   cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,
   parsed_source_cache: Arc<ParsedSourceCache>,
-  transpile_and_emit_options:
-    Arc<(deno_ast::TranspileOptions, deno_ast::EmitOptions)>,
-  // cached hash of the transpile and emit options
-  transpile_and_emit_options_hash: u64,
+  tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
 impl Emitter {
@@ -42,21 +41,13 @@ impl Emitter {
     cjs_tracker: Arc<CliCjsTracker>,
     emit_cache: Arc<EmitCache>,
     parsed_source_cache: Arc<ParsedSourceCache>,
-    transpile_options: deno_ast::TranspileOptions,
-    emit_options: deno_ast::EmitOptions,
+    tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
-    let transpile_and_emit_options_hash = {
-      let mut hasher = FastInsecureHasher::new_without_deno_version();
-      hasher.write_hashable(&transpile_options);
-      hasher.write_hashable(&emit_options);
-      hasher.finish()
-    };
     Self {
       cjs_tracker,
       emit_cache,
       parsed_source_cache,
-      transpile_and_emit_options: Arc::new((transpile_options, emit_options)),
-      transpile_and_emit_options_hash,
+      tsconfig_resolver,
     }
   }
 
@@ -103,9 +94,13 @@ impl Emitter {
     specifier: &ModuleSpecifier,
     module_kind: deno_ast::ModuleKind,
     source: &str,
-  ) -> Option<String> {
-    let source_hash = self.get_source_hash(module_kind, source);
-    self.emit_cache.get_emit_code(specifier, source_hash)
+  ) -> Result<Option<String>, AnyError> {
+    let transpile_and_emit_options = self
+      .tsconfig_resolver
+      .transpile_and_emit_options(specifier)?;
+    let source_hash =
+      self.get_source_hash(module_kind, transpile_and_emit_options, source);
+    Ok(self.emit_cache.get_emit_code(specifier, source_hash))
   }
 
   pub async fn emit_parsed_source(
@@ -115,14 +110,21 @@ impl Emitter {
     module_kind: ModuleKind,
     source: &Arc<str>,
   ) -> Result<String, EmitParsedSourceHelperError> {
+    let transpile_and_emit_options = self
+      .tsconfig_resolver
+      .transpile_and_emit_options(specifier)?;
     // Note: keep this in sync with the sync version below
     let helper = EmitParsedSourceHelper(self);
-    match helper.pre_emit_parsed_source(specifier, module_kind, source) {
+    match helper.pre_emit_parsed_source(
+      specifier,
+      module_kind,
+      transpile_and_emit_options,
+      source,
+    ) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
       PreEmitResult::NotCached { source_hash } => {
         let parsed_source_cache = self.parsed_source_cache.clone();
-        let transpile_and_emit_options =
-          self.transpile_and_emit_options.clone();
+        let transpile_and_emit_options = transpile_and_emit_options.clone();
         let transpiled_source = deno_core::unsync::spawn_blocking({
           let specifier = specifier.clone();
           let source = source.clone();
@@ -133,8 +135,8 @@ impl Emitter {
               media_type,
               module_kind,
               source.clone(),
-              &transpile_and_emit_options.0,
-              &transpile_and_emit_options.1,
+              &transpile_and_emit_options.transpile,
+              &transpile_and_emit_options.emit,
             )
             .map(|r| r.text)
           }
@@ -158,9 +160,17 @@ impl Emitter {
     module_kind: deno_ast::ModuleKind,
     source: &Arc<str>,
   ) -> Result<String, EmitParsedSourceHelperError> {
+    let transpile_and_emit_options = self
+      .tsconfig_resolver
+      .transpile_and_emit_options(specifier)?;
     // Note: keep this in sync with the async version above
     let helper = EmitParsedSourceHelper(self);
-    match helper.pre_emit_parsed_source(specifier, module_kind, source) {
+    match helper.pre_emit_parsed_source(
+      specifier,
+      module_kind,
+      transpile_and_emit_options,
+      source,
+    ) {
       PreEmitResult::Cached(emitted_text) => Ok(emitted_text),
       PreEmitResult::NotCached { source_hash } => {
         let transpiled_source = EmitParsedSourceHelper::transpile(
@@ -169,8 +179,8 @@ impl Emitter {
           media_type,
           module_kind,
           source.clone(),
-          &self.transpile_and_emit_options.0,
-          &self.transpile_and_emit_options.1,
+          &transpile_and_emit_options.transpile,
+          &transpile_and_emit_options.emit,
         )?
         .text;
         helper.post_emit_parsed_source(
@@ -190,7 +200,10 @@ impl Emitter {
     module_kind: deno_ast::ModuleKind,
     source: &Arc<str>,
   ) -> Result<(String, String), AnyError> {
-    let mut emit_options = self.transpile_and_emit_options.1.clone();
+    let transpile_and_emit_options = self
+      .tsconfig_resolver
+      .transpile_and_emit_options(specifier)?;
+    let mut emit_options = transpile_and_emit_options.emit.clone();
     emit_options.inline_sources = false;
     emit_options.source_map = SourceMapOption::Separate;
     // strip off the path to have more deterministic builds as we don't care
@@ -202,7 +215,7 @@ impl Emitter {
       media_type,
       module_kind,
       source.clone(),
-      &self.transpile_and_emit_options.0,
+      &transpile_and_emit_options.transpile,
       &emit_options,
     )?;
     Ok((source.text, source.source_map.unwrap()))
@@ -232,7 +245,11 @@ impl Emitter {
         // HMR doesn't work with embedded source maps for some reason, so set
         // the option to not use them (though you should test this out because
         // this statement is probably wrong)
-        let mut options = self.transpile_and_emit_options.1.clone();
+        let transpile_and_emit_options = self
+          .tsconfig_resolver
+          .transpile_and_emit_options(specifier)
+          .map_err(JsErrorBox::from_err)?;
+        let mut options = transpile_and_emit_options.emit.clone();
         options.source_map = SourceMapOption::None;
         let is_cjs = self
           .cjs_tracker
@@ -244,7 +261,7 @@ impl Emitter {
           .map_err(JsErrorBox::from_err)?;
         let transpiled_source = parsed_source
           .transpile(
-            &self.transpile_and_emit_options.0,
+            &transpile_and_emit_options.transpile,
             &deno_ast::TranspileModuleOptions {
               module_kind: Some(ModuleKind::from_is_cjs(is_cjs)),
             },
@@ -275,10 +292,15 @@ impl Emitter {
   /// A hashing function that takes the source code and uses the global emit
   /// options then generates a string hash which can be stored to
   /// determine if the cached emit is valid or not.
-  fn get_source_hash(&self, module_kind: ModuleKind, source_text: &str) -> u64 {
+  fn get_source_hash(
+    &self,
+    module_kind: ModuleKind,
+    transpile_and_emit: &TranspileAndEmitOptions,
+    source_text: &str,
+  ) -> u64 {
     FastInsecureHasher::new_without_deno_version() // stored in the transpile_and_emit_options_hash
       .write_str(source_text)
-      .write_u64(self.transpile_and_emit_options_hash)
+      .write_u64(transpile_and_emit.pre_computed_hash)
       .write_hashable(module_kind)
       .finish()
   }
@@ -291,6 +313,11 @@ enum PreEmitResult {
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum EmitParsedSourceHelperError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CompilerOptionsParse(
+    #[from] deno_config::deno_json::CompilerOptionsParseError,
+  ),
   #[class(inherit)]
   #[error(transparent)]
   ParseDiagnostic(#[from] deno_ast::ParseDiagnostic),
@@ -310,9 +337,13 @@ impl<'a> EmitParsedSourceHelper<'a> {
     &self,
     specifier: &ModuleSpecifier,
     module_kind: deno_ast::ModuleKind,
+    transpile_and_emit_options: &TranspileAndEmitOptions,
     source: &Arc<str>,
   ) -> PreEmitResult {
-    let source_hash = self.0.get_source_hash(module_kind, source);
+    let source_hash =
+      self
+        .0
+        .get_source_hash(module_kind, transpile_and_emit_options, source);
 
     if let Some(emit_code) =
       self.0.emit_cache.get_emit_code(specifier, source_hash)

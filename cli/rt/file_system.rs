@@ -22,7 +22,6 @@ use deno_lib::standalone::virtual_fs::VfsEntry;
 use deno_lib::standalone::virtual_fs::VfsEntryRef;
 use deno_lib::standalone::virtual_fs::VirtualDirectory;
 use deno_lib::standalone::virtual_fs::VirtualFile;
-use deno_lib::sys::DenoLibSys;
 use deno_runtime::deno_fs::AccessCheckCb;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_fs::FsDirEntry;
@@ -34,7 +33,6 @@ use deno_runtime::deno_io::fs::File as DenoFile;
 use deno_runtime::deno_io::fs::FsError;
 use deno_runtime::deno_io::fs::FsResult;
 use deno_runtime::deno_io::fs::FsStat;
-use deno_runtime::deno_node::ExtNodeSys;
 use sys_traits::boxed::BoxedFsDirEntry;
 use sys_traits::boxed::BoxedFsMetadataValue;
 use sys_traits::boxed::FsMetadataBoxed;
@@ -442,9 +440,6 @@ impl FileSystem for DenoRtSys {
       .await
   }
 }
-
-impl ExtNodeSys for DenoRtSys {}
-impl DenoLibSys for DenoRtSys {}
 
 impl sys_traits::BaseFsHardLink for DenoRtSys {
   #[inline]

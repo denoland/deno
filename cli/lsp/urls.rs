@@ -219,7 +219,8 @@ impl LspUrlMap {
         let uri_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
-          let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
+          let data_url =
+            deno_media_type::data_url::RawDataUrl::parse(specifier)?;
           let media_type = data_url.media_type();
           let extension = if media_type == MediaType::Unknown {
             ""

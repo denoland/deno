@@ -2085,3 +2085,56 @@ Deno.test(async function x25519SharedSecret() {
   assertEquals(sharedSecret1.byteLength, 16);
   assertEquals(new Uint8Array(sharedSecret1), new Uint8Array(sharedSecret2));
 });
+
+// https://github.com/denoland/deno/issues/26870
+Deno.test(async function jwkKeyOpsValidation() {
+  const { privateKey } = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      hash: { name: "SHA-256" },
+      publicExponent: new Uint8Array([1, 0, 1]),
+      modulusLength: 2048,
+    },
+    true,
+    ["sign", "verify"],
+  );
+
+  // https://github.com/node-opcua/node-opcua-crypto/blob/a2a1b8a4d416fe176cd1a38796c4b13f938cd01c/packages/node-opcua-crypto/source/x509/_build_public_key.ts#L30-L49
+  const jwk = await crypto.subtle.exportKey("jwk", privateKey);
+  delete jwk.d;
+  delete jwk.dp;
+  delete jwk.dq;
+  delete jwk.q;
+  delete jwk.qi;
+  jwk.key_ops = [
+    "encrypt",
+    "sign",
+  ];
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "RSASSA-PKCS1-v1_5", hash: { name: "SHA-256" } },
+    true,
+    [],
+  );
+
+  assert(publicKey);
+});
+
+Deno.test(async function x25519ExportJwk() {
+  const keyPair = await crypto.subtle.generateKey(
+    {
+      name: "X25519",
+    },
+    true,
+    ["deriveBits"],
+  ) as CryptoKeyPair;
+
+  const jwk = await crypto.subtle.exportKey("jwk", keyPair.privateKey);
+
+  assertEquals(jwk.kty, "OKP");
+  assertEquals(jwk.crv, "X25519");
+  assert(jwk.d);
+  assert(jwk.x);
+});

@@ -175,6 +175,14 @@
           "default": false,
           "markdownDescription": "Raise an error when a function parameter isn't read\n\nSee more: https://www.typescriptlang.org/tsconfig#noUnusedParameters"
         },
+        "rootDirs": {
+          "description": "Declare many “virtual” directories acting as a single root.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Declare many “virtual” directories acting as a single root.\n\nSee more: https://www.typescriptlang.org/tsconfig#rootDirs"
+        },
         "strict": {
           "description": "Enable all strict type checking options.",
           "type": "boolean",
@@ -280,6 +288,13 @@
         "exclude": {
           "type": "array",
           "description": "List of files, directories or globs that will not be linted.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plugins": {
+          "type": "array",
+          "description": "UNSTABLE: List of plugins to load. These can be paths, npm or jsr specifiers",
           "items": {
             "type": "string"
           }

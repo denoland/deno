@@ -36,6 +36,7 @@ mod search;
 mod semantic_tokens;
 mod testing;
 mod text;
+mod trace;
 mod tsc;
 mod urls;
 
@@ -74,7 +75,7 @@ pub async fn start() -> Result<(), AnyError> {
     builder
   };
 
-  let (service, socket) = builder.finish();
+  let (service, socket, pending) = builder.finish();
 
   // TODO(nayeemrmn): This shutdown flag is a workaround for
   // https://github.com/denoland/deno/issues/20700. Remove when
@@ -82,7 +83,7 @@ pub async fn start() -> Result<(), AnyError> {
   // Force end the server 8 seconds after receiving a shutdown request.
   tokio::select! {
     biased;
-    _ = Server::new(stdin, stdout, socket).serve(service) => {}
+    _ = Server::new(stdin, stdout, socket, pending).concurrency_level(32).serve(service) => {}
     _ = spawn(async move {
       shutdown_flag.wait_raised().await;
       tokio::time::sleep(std::time::Duration::from_secs(8)).await;

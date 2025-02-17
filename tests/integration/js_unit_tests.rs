@@ -165,10 +165,14 @@ fn js_unit_test(test: String) {
 
   let mut deno = deno
     .arg("-A")
-    .arg(util::tests_path().join("unit").join(format!("{test}.ts")))
-    .piped_output()
-    .spawn()
-    .expect("failed to spawn script");
+    .arg(util::tests_path().join("unit").join(format!("{test}.ts")));
+
+  // update the snapshots if when `UPDATE=1`
+  if std::env::var_os("UPDATE") == Some("1".into()) {
+    deno = deno.arg("--").arg("--update");
+  }
+
+  let mut deno = deno.piped_output().spawn().expect("failed to spawn script");
 
   let now = Instant::now();
   let stdout = deno.stdout.take().unwrap();

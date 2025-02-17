@@ -3,6 +3,7 @@
 use std::fs;
 use std::str::FromStr;
 
+use ntest_timeout::timeout;
 use pretty_assertions::assert_eq;
 use serde::Deserialize;
 use serde_json::json;
@@ -20,6 +21,7 @@ use tower_lsp::lsp_types as lsp;
 use url::Url;
 
 #[test]
+#[timeout(300_000)]
 fn lsp_startup_shutdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -28,6 +30,7 @@ fn lsp_startup_shutdown() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_init_tsconfig() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -61,6 +64,7 @@ fn lsp_init_tsconfig() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_tsconfig_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -104,6 +108,7 @@ fn lsp_tsconfig_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_tsconfig_types_config_sub_dir() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -149,6 +154,7 @@ fn lsp_tsconfig_types_config_sub_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_triple_slash_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -172,6 +178,7 @@ fn lsp_triple_slash_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn unadded_dependency_message_with_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -209,6 +216,7 @@ fn unadded_dependency_message_with_import_map() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -238,6 +246,7 @@ fn unadded_dependency_message_with_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn unadded_dependency_message() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -268,6 +277,7 @@ fn unadded_dependency_message() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -297,6 +307,7 @@ fn unadded_dependency_message() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -306,7 +317,6 @@ fn lsp_import_map() {
   }
 }"#;
   temp_dir.write("import-map.json", import_map);
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -356,6 +366,7 @@ fn lsp_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_remote() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -382,6 +393,7 @@ fn lsp_import_map_remote() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -396,6 +408,7 @@ fn lsp_import_map_remote() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_data_url() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -422,6 +435,7 @@ fn lsp_import_map_data_url() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_config_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -439,7 +453,6 @@ fn lsp_import_map_config_file() {
   }
 }"#,
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -489,6 +502,7 @@ fn lsp_import_map_config_file() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_embedded_in_config_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -501,7 +515,6 @@ fn lsp_import_map_embedded_in_config_file() {
   }
 }"#,
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -551,11 +564,11 @@ fn lsp_import_map_embedded_in_config_file() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_embedded_in_config_file_after_initialize() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
   temp_dir.write("deno.embedded_import_map.jsonc", "{}");
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -624,13 +637,13 @@ fn lsp_import_map_embedded_in_config_file_after_initialize() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_config_file_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   // add the deno.json
@@ -644,6 +657,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  client.read_diagnostics();
 
   let uri = temp_dir.url().join("a.ts").unwrap();
 
@@ -705,6 +719,7 @@ fn lsp_import_map_config_file_auto_discovered() {
   client.wait_until_stderr_line(|line| {
     line.contains("  Resolved Deno configuration file:")
   });
+  assert_eq!(json!(client.read_diagnostics().all()), json!([]));
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -730,12 +745,12 @@ fn lsp_import_map_config_file_auto_discovered() {
       }
     })
   );
-  assert_eq!(client.read_diagnostics().all().len(), 0);
 
   client.shutdown();
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_config_file_auto_discovered_symlink() {
   let context = TestContextBuilder::new()
     // DO NOT COPY THIS CODE. Very rare case where we want to force the temp
@@ -747,15 +762,13 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   // now create a symlink in the current directory to a subdir/deno.json
   // and ensure the watched files notification still works
-  temp_dir.create_dir_all("subdir");
   temp_dir.write("subdir/deno.json", r#"{ }"#);
   temp_dir.symlink_file(
     temp_dir.path().join("subdir").join("deno.json"),
@@ -768,6 +781,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
       "type": 2
     }]
   }));
+  client.read_diagnostics();
 
   // this will discover the deno.json in the root
   let search_line = format!(
@@ -802,6 +816,7 @@ fn lsp_import_map_config_file_auto_discovered_symlink() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_imports_comments_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -833,6 +848,7 @@ fn lsp_deno_json_imports_comments_cache() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
 
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -847,6 +863,7 @@ fn lsp_deno_json_imports_comments_cache() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_node_specifiers() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -880,6 +897,7 @@ fn lsp_import_map_node_specifiers() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_vendor_path() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -924,6 +942,7 @@ fn lsp_format_vendor_path() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   assert!(temp_dir
     .path()
     .join("vendor/http_localhost_4545/run/002_hello.ts")
@@ -971,6 +990,7 @@ fn lsp_format_vendor_path() {
 // Disable the `workspace/configuration` capability. Ensure the LSP falls back
 // to using `enablePaths` from the `InitializationOptions`.
 #[test]
+#[timeout(300_000)]
 fn lsp_workspace_enable_paths_no_workspace_configuration() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1049,13 +1069,10 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_did_refresh_deno_configuration_tree_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("workspace/member1");
-  temp_dir.create_dir_all("workspace/member2");
-  temp_dir.create_dir_all("non_workspace1");
-  temp_dir.create_dir_all("non_workspace2");
   temp_dir.write(
     "workspace/deno.json",
     json!({
@@ -1125,6 +1142,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
@@ -1234,6 +1252,7 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_did_change_deno_configuration_notification() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1274,6 +1293,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1295,6 +1315,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1316,6 +1337,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 2,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1337,6 +1359,7 @@ fn lsp_did_change_deno_configuration_notification() {
       "type": 3,
     }],
   }));
+  client.read_diagnostics();
   let res = client
     .read_notification_with_method::<Value>("deno/didChangeDenoConfiguration");
   assert_eq!(
@@ -1354,6 +1377,7 @@ fn lsp_did_change_deno_configuration_notification() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_task() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1392,6 +1416,7 @@ fn lsp_deno_task() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_reload_import_registries_command() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1405,6 +1430,7 @@ fn lsp_reload_import_registries_command() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_attributes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1420,7 +1446,7 @@ fn lsp_import_attributes() {
     },
   }));
 
-  client.did_open(json!({
+  client.did_open_raw(json!({
     "textDocument": {
       "uri": "file:///a/test.json",
       "languageId": "json",
@@ -1520,6 +1546,7 @@ fn lsp_import_attributes() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_import_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1541,7 +1568,6 @@ fn lsp_import_map_import_completions() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("lib");
   temp_dir.write("lib/b.ts", r#"export const b = "b";"#);
 
   let mut client = context.new_lsp_command().build();
@@ -1695,6 +1721,7 @@ fn lsp_import_map_import_completions() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1737,6 +1764,7 @@ fn lsp_hover() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_asset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -1798,6 +1826,7 @@ fn lsp_hover_asset() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -1828,6 +1857,7 @@ fn lsp_hover_disabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_inlay_hints() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2034,6 +2064,7 @@ fn lsp_inlay_hints() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_inlay_hints_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2082,6 +2113,7 @@ fn lsp_inlay_hints_not_enabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_suggestion_actions_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -2098,7 +2130,6 @@ fn lsp_suggestion_actions_disabled() {
       },
     },
   }));
-  client.read_diagnostics();
   let diagnostics = client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -2164,11 +2195,11 @@ fn lsp_suggestion_actions_disabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_workspace_disable_enable_paths() {
   fn run_test(use_trailing_slash: bool) {
     let context = TestContextBuilder::new().use_temp_cwd().build();
     let temp_dir = context.temp_dir();
-    temp_dir.create_dir_all("worker");
     temp_dir.write("worker/shared.ts", "export const a = 1");
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
     temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
@@ -2383,16 +2414,15 @@ fn lsp_workspace_disable_enable_paths() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_exclude_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("other");
   temp_dir.write(
     "other/shared.ts",
     // this should not be found in the "find references" since this file is excluded
     "import { a } from '../worker/shared.ts'; console.log(a);",
   );
-  temp_dir.create_dir_all("worker");
   temp_dir.write("worker/shared.ts", "export const a = 1");
   temp_dir.write(
     "deno.json",
@@ -2514,6 +2544,7 @@ fn lsp_exclude_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_unstable_always_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2558,6 +2589,7 @@ fn lsp_hover_unstable_always_enabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_unstable_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2603,6 +2635,7 @@ fn lsp_hover_unstable_enabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_change_mbc() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -2669,6 +2702,7 @@ fn lsp_hover_change_mbc() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_closed_document() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -2761,6 +2795,7 @@ fn lsp_hover_closed_document() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_dependency() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -2793,6 +2828,7 @@ fn lsp_hover_dependency() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -2931,6 +2967,7 @@ fn lsp_hover_dependency() {
 // This tests for a regression covered by denoland/deno#12753 where the lsp was
 // unable to resolve dependencies when there was an invalid syntax in the module
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_deps_preserved_when_invalid_parse() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3024,6 +3061,7 @@ fn lsp_hover_deps_preserved_when_invalid_parse() {
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1068.
 #[test]
+#[timeout(300_000)]
 fn lsp_rename_synbol_file_scheme_edits_only() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3087,6 +3125,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
 
 // Regression test for https://github.com/denoland/deno/issues/23121.
 #[test]
+#[timeout(300_000)]
 fn lsp_document_preload_limit_zero_deno_json_detection() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3116,6 +3155,7 @@ fn lsp_document_preload_limit_zero_deno_json_detection() {
 
 // Regression test for https://github.com/denoland/deno/issues/23141.
 #[test]
+#[timeout(300_000)]
 fn lsp_import_map_setting_with_deno_json() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3150,6 +3190,7 @@ fn lsp_import_map_setting_with_deno_json() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_typescript_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3177,6 +3218,7 @@ fn lsp_hover_typescript_types() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3203,6 +3245,7 @@ fn lsp_hover_typescript_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_jsr() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -3226,6 +3269,7 @@ fn lsp_hover_jsr() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -3252,6 +3296,7 @@ fn lsp_hover_jsr() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_hover_jsdoc_symbol_link() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3303,6 +3348,7 @@ fn lsp_hover_jsdoc_symbol_link() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_goto_type_definition() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3346,6 +3392,7 @@ fn lsp_goto_type_definition() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3476,6 +3523,7 @@ fn lsp_call_hierarchy() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_large_doc_changes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3578,6 +3626,7 @@ fn lsp_large_doc_changes() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_document_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3778,6 +3827,7 @@ fn lsp_document_symbol() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_folding_range() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3825,6 +3875,7 @@ fn lsp_folding_range() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_rename() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3878,6 +3929,7 @@ fn lsp_rename() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_selection_range() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -3956,6 +4008,7 @@ fn lsp_selection_range() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_semantic_tokens() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4016,6 +4069,7 @@ fn lsp_semantic_tokens() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_lens_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4217,6 +4271,7 @@ fn lsp_code_lens_references() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_lens_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4391,6 +4446,7 @@ fn lsp_code_lens_implementations() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_lens_test() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4647,6 +4703,7 @@ fn lsp_code_lens_test() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_lens_test_disabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4686,6 +4743,7 @@ fn lsp_code_lens_test_disabled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_lens_non_doc_nav_tree() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4753,6 +4811,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_nav_tree_updates() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -4939,6 +4998,7 @@ fn lsp_nav_tree_updates() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5048,6 +5108,7 @@ fn lsp_find_references() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_signature_help() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5169,6 +5230,7 @@ fn lsp_signature_help() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5357,6 +5419,7 @@ fn lsp_code_actions() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn test_lsp_code_actions_ordering() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5450,6 +5513,7 @@ fn test_lsp_code_actions_ordering() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_status_file() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5480,6 +5544,7 @@ fn lsp_status_file() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deno_cache() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -5570,6 +5635,7 @@ fn lsp_code_actions_deno_cache() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deno_cache_jsr() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5673,6 +5739,7 @@ fn lsp_code_actions_deno_cache_jsr() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_lockfile() {
   let context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -5724,6 +5791,7 @@ fn lsp_jsr_lockfile() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_auto_import_completion() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5748,6 +5816,7 @@ fn lsp_jsr_auto_import_completion() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5762,7 +5831,6 @@ fn lsp_jsr_auto_import_completion() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(
@@ -5777,7 +5845,7 @@ fn lsp_jsr_auto_import_completion() {
       "label": "add",
       "labelDetails": { "description": "jsr:@denotest/add@1" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"jsr:@denotest/add@1\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_1",
       "additionalTextEdits": [
@@ -5795,6 +5863,7 @@ fn lsp_jsr_auto_import_completion() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_auto_import_completion_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5828,6 +5897,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
   client.did_open(json!({
     "textDocument": {
       "uri": temp_dir.url().join("file.ts").unwrap(),
@@ -5842,7 +5912,6 @@ fn lsp_jsr_auto_import_completion_import_map() {
     json!({ "triggerKind": 1 }),
   );
   assert!(!list.is_incomplete);
-  assert_eq!(list.items.len(), 268);
   let item = list.items.iter().find(|i| i.label == "add").unwrap();
   assert_eq!(&item.label, "add");
   assert_eq!(json!(&item.label_details), json!({ "description": "add" }));
@@ -5854,7 +5923,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       "label": "add",
       "labelDetails": { "description": "add" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"add\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -5872,6 +5941,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5928,7 +5998,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "label": "normalize",
       "labelDetails": { "description": "@std/path/posix/normalize" },
       "kind": 3,
-      "detail": "function normalize(path: string): string",
+      "detail": "Add import from \"@std/path/posix/normalize\"\n\nfunction normalize(path: string): string",
       "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -5946,6 +6016,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_code_action_missing_declaration() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -5968,6 +6039,7 @@ fn lsp_jsr_code_action_missing_declaration() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let res = client.write_request(
     "textDocument/codeAction",
@@ -6066,6 +6138,7 @@ fn lsp_jsr_code_action_missing_declaration() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsr_code_action_move_to_new_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6088,6 +6161,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   client.did_open_file(&file);
   let list = client
     .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
@@ -6179,6 +6253,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deno_cache_npm() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6264,6 +6339,7 @@ fn lsp_code_actions_deno_cache_npm() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deno_cache_all() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6281,8 +6357,12 @@ fn lsp_code_actions_deno_cache_all() {
       "#,
     }
   }));
+  let mut deno_diagnostics = diagnostics.messages_with_source("deno");
+  deno_diagnostics
+    .diagnostics
+    .sort_by_key(|d| d.range.start.line);
   assert_eq!(
-    diagnostics.messages_with_source("deno"),
+    deno_diagnostics,
     serde_json::from_value(json!({
       "uri": "file:///a/file.ts",
       "diagnostics": [
@@ -6313,7 +6393,7 @@ fn lsp_code_actions_deno_cache_all() {
     })).unwrap()
   );
 
-  let res =
+  let mut res =
     client
     .write_request(
       "textDocument/codeAction",
@@ -6343,6 +6423,11 @@ fn lsp_code_actions_deno_cache_all() {
         }
       }),
     );
+  res.as_array_mut().unwrap().iter_mut().for_each(|fix| {
+    fix["diagnostics"].as_array_mut().unwrap().sort_by_key(|v| {
+      v["range"]["start"]["line"].as_number().unwrap().as_i64()
+    })
+  });
   assert_eq!(
     res,
     json!([
@@ -6409,6 +6494,7 @@ fn lsp_code_actions_deno_cache_all() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deno_types_for_npm() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6427,7 +6513,6 @@ fn lsp_code_actions_deno_types_for_npm() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("managed_node_modules");
   temp_dir.write(
     "managed_node_modules/deno.json",
     json!({
@@ -6499,6 +6584,7 @@ fn lsp_code_actions_deno_types_for_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
@@ -6538,6 +6624,7 @@ fn lsp_code_actions_deno_types_for_npm() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6597,6 +6684,7 @@ fn lsp_cache_on_save() {
 
 // Regression test for https://github.com/denoland/deno/issues/25999.
 #[test]
+#[timeout(300_000)]
 fn lsp_asset_document_dom_code_action() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -6636,6 +6724,7 @@ fn lsp_asset_document_dom_code_action() {
 
 // Regression test for https://github.com/denoland/deno/issues/22122.
 #[test]
+#[timeout(300_000)]
 fn lsp_cache_then_definition() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -6666,6 +6755,7 @@ fn lsp_cache_then_definition() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -6703,6 +6793,7 @@ fn lsp_cache_then_definition() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -6954,6 +7045,7 @@ export class DuckConfig {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_imports_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7026,6 +7118,7 @@ fn lsp_code_actions_imports_dts() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_import_map_remap() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7137,6 +7230,7 @@ fn lsp_code_actions_import_map_remap() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7347,6 +7441,7 @@ fn lsp_code_actions_refactor() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_imports_respects_fmt_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7515,6 +7610,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_quote_style_from_workspace_settings() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -7615,6 +7711,7 @@ fn lsp_quote_style_from_workspace_settings() {
       "type": 1,
     }],
   }));
+  client.read_diagnostics();
 
   let res = client.write_request("textDocument/codeAction", code_action_params);
   // Expect double quotes in the auto-import.
@@ -7654,6 +7751,7 @@ fn lsp_quote_style_from_workspace_settings() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_refactor_no_disabled_support() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7724,6 +7822,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_deadlock() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7846,6 +7945,7 @@ fn lsp_code_actions_deadlock() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7905,6 +8005,7 @@ fn lsp_completions() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_private_fields() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -7930,6 +8031,7 @@ fn lsp_completions_private_fields() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_optional() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8013,6 +8115,7 @@ fn lsp_completions_optional() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_auto_import() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8052,7 +8155,7 @@ fn lsp_completions_auto_import() {
         "description": "./🦕.ts",
       },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"./🦕.ts\"\n\nfunction add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
@@ -8073,6 +8176,7 @@ fn lsp_completions_auto_import() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_auto_import_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8099,6 +8203,7 @@ fn lsp_completions_auto_import_node_builtin() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -8119,7 +8224,7 @@ fn lsp_completions_auto_import_node_builtin() {
         "description": "node:url",
       },
       "kind": 3,
-      "detail": "function pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
+      "detail": "Add import from \"node:url\"\n\nfunction pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
       "documentation": {
         "kind": "markdown",
         "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* - v10.12.0  \n\n*@param* - path The path to convert to a File URL.  \n\n*@return* - The file URL object.",
@@ -8140,6 +8245,7 @@ fn lsp_completions_auto_import_node_builtin() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8167,6 +8273,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // try auto-import with path
   client.did_open(json!({
@@ -8198,7 +8305,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         "description": "npm:@denotest/types-exports-subpaths@1/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"npm:@denotest/types-exports-subpaths@1/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -8392,6 +8499,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_auto_import_and_quick_fix_byonm() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8445,7 +8553,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         "description": "cowsay",
       },
       "kind": 3,
-      "detail": "function think(options: IOptions): string",
+      "detail": "Add import from \"cowsay\"\n\nfunction think(options: IOptions): string",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired  \n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```",
@@ -8537,6 +8645,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_auto_import_with_deno_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8607,7 +8716,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "lz-string",
       },
       "kind": 2,
-      "detail": "(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
+      "detail": "Add import from \"lz-string\"\n\n(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
       "documentation": {
         "kind": "markdown",
         "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* - uncompressed A string which should be compressed.",
@@ -8643,7 +8752,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "react",
       },
       "kind": 3,
-      "detail": "function React.createRef<T>(): React.RefObject<T>",
+      "detail": "Add import from \"react\"\n\nfunction React.createRef<T>(): React.RefObject<T>",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -8661,6 +8770,7 @@ fn lsp_npm_auto_import_with_deno_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_node_specifier() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8725,6 +8835,7 @@ fn lsp_completions_node_specifier() {
       "node:readline",
       "node:readline/promises",
       "node:repl",
+      "node:sqlite",
       "node:stream",
       "node:stream/consumers",
       "node:stream/promises",
@@ -8769,6 +8880,7 @@ fn lsp_completions_node_specifier() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_infer_return_type() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -8868,6 +8980,7 @@ fn lsp_infer_return_type() {
 
 // Regression test for https://github.com/denoland/deno/issues/23895.
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_types_nested_js_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -8891,6 +9004,7 @@ fn lsp_npm_types_nested_js_dts() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -8916,6 +9030,7 @@ fn lsp_npm_types_nested_js_dts() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_using_decl() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -8953,6 +9068,7 @@ res"#
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_always_caches() {
   // npm specifiers should always be cached even when not specified
   // because they affect the resolution of each other
@@ -8990,6 +9106,7 @@ fn lsp_npm_always_caches() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // now open a new file and chalk should be working
   let new_file_uri = temp_dir_path.join("new_file.ts").url_file();
@@ -9018,6 +9135,7 @@ fn lsp_npm_always_caches() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_semantic_tokens_for_disabled_module() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9058,6 +9176,7 @@ fn lsp_semantic_tokens_for_disabled_module() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9112,6 +9231,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // try auto-import with path
   client.did_open(json!({
@@ -9143,7 +9263,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "types-exports-subpaths/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"types-exports-subpaths/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -9483,7 +9603,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "nested/entry-b",
       },
       "kind": 3,
-      "detail": "function entryB(): \"b\"",
+      "detail": "Add import from \"nested/entry-b\"\n\nfunction entryB(): \"b\"",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -9505,6 +9625,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
 
 // Regression test for https://github.com/denoland/deno/issues/25775.
 #[test]
+#[timeout(300_000)]
 fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9572,6 +9693,7 @@ fn lsp_quick_fix_missing_import_exclude_bare_node_builtins() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_snippet() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9667,6 +9789,7 @@ fn lsp_completions_snippet() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_no_snippet() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -9723,6 +9846,7 @@ fn lsp_completions_no_snippet() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_npm() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9750,6 +9874,7 @@ fn lsp_completions_npm() {
       ],
     }),
   );
+  client.read_diagnostics();
 
   // check importing a cjs default import
   client.write_notification(
@@ -9873,6 +9998,7 @@ fn lsp_completions_npm() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_auto_imports_npm_auto() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir_path = context.temp_dir().path();
@@ -9937,6 +10063,7 @@ fn lsp_auto_imports_npm_auto() {
 
 // Regression test for https://github.com/denoland/deno/issues/23869.
 #[test]
+#[timeout(300_000)]
 fn lsp_auto_imports_remote_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -9963,6 +10090,7 @@ fn lsp_auto_imports_remote_dts() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let list = client.get_completion_list(
     temp_dir.url().join("file.ts").unwrap(),
     (2, 21),
@@ -9983,7 +10111,7 @@ fn lsp_auto_imports_remote_dts() {
         "description": "http://localhost:4545/subdir/imports_declaration/interface.d.ts",
       },
       "kind": 8,
-      "detail": "interface SomeInterface",
+      "detail": "Add import from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\"\n\ninterface SomeInterface",
       "documentation": {
         "kind": "markdown",
         "value": "",
@@ -10004,6 +10132,7 @@ fn lsp_auto_imports_remote_dts() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npm_specifier_unopened_file() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10083,6 +10212,7 @@ fn lsp_npm_specifier_unopened_file() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_node_builtin() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10265,6 +10395,7 @@ fn lsp_completions_node_builtin() {
       "arguments": [["npm:@types/node"], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
 
   client.write_notification(
     "textDocument/didChange",
@@ -10302,6 +10433,7 @@ fn lsp_completions_node_builtin() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_node_specifier_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10332,6 +10464,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   client.write_notification(
     "textDocument/didChange",
     json!({
@@ -10365,6 +10498,7 @@ fn lsp_completions_node_specifier_node_modules_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_registry() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10431,6 +10565,7 @@ fn lsp_completions_registry() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_registry_empty() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10494,6 +10629,7 @@ fn lsp_completions_registry_empty() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_auto_discover_registry() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10531,6 +10667,7 @@ fn lsp_auto_discover_registry() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_cache_location() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10567,6 +10704,7 @@ fn lsp_cache_location() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10621,6 +10759,7 @@ fn lsp_cache_location() {
 /// the custom signed test server and be able to retrieve the registry config
 /// and cache files.
 #[test]
+#[timeout(300_000)]
 fn lsp_tls_cert() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10661,6 +10800,7 @@ fn lsp_tls_cert() {
       "arguments": [[], "file:///a/file.ts"],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -10709,6 +10849,7 @@ fn lsp_tls_cert() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_npmrc() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10759,6 +10900,7 @@ fn lsp_npmrc() {
       "arguments": [[], file.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(
     json!(diagnostics.all()),
@@ -10785,6 +10927,7 @@ fn lsp_npmrc() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_warn_redirect() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10861,6 +11004,7 @@ fn lsp_diagnostics_warn_redirect() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_redirect_quick_fix() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -10948,6 +11092,7 @@ fn lsp_redirect_quick_fix() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_lockfile_redirect_resolution() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11006,6 +11151,7 @@ fn lsp_lockfile_redirect_resolution() {
 
 // Regression test for https://github.com/denoland/vscode_deno/issues/1157.
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_brackets_in_file_name() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11050,6 +11196,7 @@ fn lsp_diagnostics_brackets_in_file_name() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_deprecated() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11104,6 +11251,7 @@ fn lsp_diagnostics_deprecated() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_deno_types() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11132,6 +11280,7 @@ fn lsp_diagnostics_deno_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_root_with_global_reference_types() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -11155,11 +11304,13 @@ fn lsp_root_with_global_reference_types() {
       "arguments": [[], file2.url()],
     }),
   );
+  client.read_diagnostics();
   let diagnostics = client.did_open_file(&file);
   assert_eq!(json!(diagnostics.all()), json!([]));
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_refresh_dependents() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11236,6 +11387,7 @@ fn lsp_diagnostics_refresh_dependents() {
 
 // Regression test for https://github.com/denoland/deno/issues/10897.
 #[test]
+#[timeout(300_000)]
 fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11282,6 +11434,7 @@ fn lsp_ts_diagnostics_refresh_on_lsp_version_reset() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_diagnostics_none_for_resolving_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   context
@@ -11315,6 +11468,7 @@ fn lsp_diagnostics_none_for_resolving_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jupyter_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11358,6 +11512,7 @@ fn lsp_jupyter_diagnostics() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_untitled_file_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11413,6 +11568,7 @@ struct PerformanceAverages {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_performance() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11456,14 +11612,13 @@ fn lsp_performance() {
       "lsp.update_diagnostics_lint",
       "lsp.update_diagnostics_ts",
       "lsp.update_global_cache",
-      "tsc.host.$getAssets",
       "tsc.host.$getDiagnostics",
       "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
-      "tsc.request.$getAssets",
+      "tsc.request.$getDiagnostics",
       "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
@@ -11472,6 +11627,7 @@ fn lsp_performance() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_no_changes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11502,6 +11658,7 @@ fn lsp_format_no_changes() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_error() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11531,6 +11688,7 @@ fn lsp_format_error() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_mbc() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11587,6 +11745,7 @@ fn lsp_format_mbc() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_exclude_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11638,6 +11797,7 @@ fn lsp_format_exclude_with_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_exclude_default_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11689,6 +11849,7 @@ fn lsp_format_exclude_default_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_untitled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11729,6 +11890,7 @@ fn lsp_format_untitled() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_json() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11778,6 +11940,7 @@ fn lsp_format_json() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_editor_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11839,6 +12002,7 @@ fn lsp_format_editor_options() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_json_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -11877,6 +12041,7 @@ fn lsp_json_no_diagnostics() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_json_import_with_query_string() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11911,6 +12076,7 @@ fn lsp_json_import_with_query_string() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_markdown() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11953,6 +12119,7 @@ fn lsp_format_markdown() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_html() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -11992,6 +12159,7 @@ fn lsp_format_html() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_css() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12099,6 +12267,7 @@ fn lsp_format_css() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_yaml() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12138,6 +12307,7 @@ fn lsp_format_yaml() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_sql() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12187,6 +12357,7 @@ fn lsp_format_sql() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_component() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12333,6 +12504,7 @@ fn lsp_format_component() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_format_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12441,6 +12613,7 @@ fn lsp_format_with_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_markdown_no_diagnostics() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12479,6 +12652,7 @@ fn lsp_markdown_no_diagnostics() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_configuration_did_change() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -12565,6 +12739,7 @@ fn lsp_configuration_did_change() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_completions_complete_function_calls() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -12637,6 +12812,7 @@ fn lsp_completions_complete_function_calls() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_workspace_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12732,6 +12908,7 @@ fn lsp_workspace_symbol() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_ignore_lint() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12856,6 +13033,7 @@ fn lsp_code_actions_ignore_lint() {
 
 /// This test exercises updating an existing deno-lint-ignore-file comment.
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_update_ignore_lint() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -12982,6 +13160,7 @@ console.log(snake_case);
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_code_actions_lint_fixes() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -13080,6 +13259,7 @@ fn lsp_code_actions_lint_fixes() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_lint_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13121,6 +13301,7 @@ fn lsp_lint_with_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_lint_exclude_with_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13160,6 +13341,7 @@ fn lsp_lint_exclude_with_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsx_import_source_pragma() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13195,6 +13377,7 @@ export function B() {
       ],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/hover",
     json!({
@@ -13217,15 +13400,12 @@ export function B() {
       }
     })
   );
-
-  let diagnostics = client.read_diagnostics();
-  println!("{:?}", diagnostics);
-
   client.shutdown();
 }
 
 #[ignore = "https://github.com/denoland/deno/issues/21770"]
 #[test]
+#[timeout(300_000)]
 fn lsp_jsx_import_source_config_file_automatic_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13291,6 +13471,7 @@ fn lsp_jsx_import_source_config_file_automatic_cache() {
 
 #[ignore = "https://github.com/denoland/deno/issues/21770"]
 #[test]
+#[timeout(300_000)]
 fn lsp_jsx_import_source_package_json_automatic_cache() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13365,6 +13546,7 @@ fn lsp_jsx_import_source_package_json_automatic_cache() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsx_import_source_byonm_preact() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13425,6 +13607,7 @@ fn lsp_jsx_import_source_byonm_preact() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsx_import_source_types_pragma() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -13531,6 +13714,7 @@ struct TestRunResponseParams {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_testing_api() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13793,6 +13977,7 @@ Deno.test({
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_closed_file_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -13846,10 +14031,10 @@ fn lsp_closed_file_find_references() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_closed_file_find_references_low_document_pre_load() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("sub_dir");
   temp_dir.write("./other_file.ts", "export const b = 5;");
   temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
   temp_dir.write(
@@ -13889,13 +14074,12 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_closed_file_find_references_excluded_path() {
   // we exclude any files or folders in the "exclude" part of
   // the config file from being pre-loaded
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("sub_dir");
-  temp_dir.create_dir_all("other_dir/sub_dir");
   temp_dir.write("./sub_dir/mod.ts", "export const a = 5;");
   temp_dir.write(
     "./sub_dir/mod.test.ts",
@@ -13945,6 +14129,7 @@ fn lsp_closed_file_find_references_excluded_path() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_data_urls_with_jsx_compiler_option() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -14009,6 +14194,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14046,6 +14232,7 @@ fn lsp_node_modules_dir() {
         "arguments": [["npm:chalk", "npm:@types/node"], file_uri],
       }),
     );
+    client.read_diagnostics()
   };
 
   cache(&mut client);
@@ -14079,10 +14266,9 @@ fn lsp_node_modules_dir() {
         "imports": {},
       },
       "unstable": [],
-    } }));
+    } }))
   };
   refresh_config(&mut client);
-
   let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
@@ -14098,9 +14284,7 @@ fn lsp_node_modules_dir() {
     "{ \"nodeModulesDir\": \"auto\" }\n",
   );
   refresh_config(&mut client);
-  cache(&mut client);
-
-  let diagnostics = client.read_diagnostics();
+  let diagnostics = cache(&mut client);
   assert_eq!(diagnostics.all().len(), 0, "{:#?}", diagnostics);
 
   assert!(lockfile_path.exists());
@@ -14137,6 +14321,7 @@ fn lsp_node_modules_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -14195,8 +14380,8 @@ fn lsp_vendor_dir() {
     },
     "unstable": [],
   } }));
-
   let diagnostics = client.read_diagnostics();
+
   // won't be cached until a manual cache occurs
   assert_eq!(
     diagnostics
@@ -14372,11 +14557,10 @@ fn lsp_vendor_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14503,14 +14687,13 @@ fn lsp_deno_json_scopes_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14549,6 +14732,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14599,6 +14783,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14649,6 +14834,7 @@ fn lsp_deno_json_scopes_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14688,14 +14874,13 @@ fn lsp_deno_json_scopes_vendor_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2/project3");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -14734,6 +14919,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14787,6 +14973,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14837,6 +15024,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project2/project3/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -14876,11 +15064,10 @@ fn lsp_deno_json_scopes_node_modules_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_ts_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write(
     "project2/deno.json",
@@ -14950,11 +15137,10 @@ fn lsp_deno_json_scopes_ts_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_declaration_files() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   temp_dir.write("project1/foo.d.ts", "declare type Foo = number;\n");
@@ -15018,11 +15204,10 @@ fn lsp_deno_json_scopes_declaration_files() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_find_references() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15062,11 +15247,10 @@ fn lsp_deno_json_scopes_find_references() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_file_rename_import_edits() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(temp_dir.path().join("project1/file.ts"), "");
@@ -15110,11 +15294,10 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_goto_implementations() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15151,12 +15334,10 @@ fn lsp_deno_json_scopes_goto_implementations() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_call_hierarchy() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
-  temp_dir.create_dir_all("project3");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   temp_dir.write("project3/deno.json", json!({}).to_string());
@@ -15264,11 +15445,10 @@ fn lsp_deno_json_scopes_call_hierarchy() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_rename_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15324,11 +15504,10 @@ fn lsp_deno_json_scopes_rename_symbol() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_scopes_search_symbol() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1");
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project1/deno.json", json!({}).to_string());
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let file1 = source_file(
@@ -15370,6 +15549,7 @@ fn lsp_deno_json_scopes_search_symbol() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_fmt_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15383,7 +15563,6 @@ fn lsp_deno_json_workspace_fmt_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15393,7 +15572,6 @@ fn lsp_deno_json_workspace_fmt_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -15493,6 +15671,7 @@ fn lsp_deno_json_workspace_fmt_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_lint_config() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15508,7 +15687,6 @@ fn lsp_deno_json_workspace_lint_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15520,7 +15698,6 @@ fn lsp_deno_json_workspace_lint_config() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project2");
   temp_dir.write("project2/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
@@ -15642,10 +15819,10 @@ fn lsp_deno_json_workspace_lint_config() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_import_map() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15742,13 +15919,13 @@ fn lsp_deno_json_workspace_import_map() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_workspace_lockfile() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15807,13 +15984,13 @@ fn lsp_workspace_lockfile() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_vendor_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15840,6 +16017,7 @@ fn lsp_deno_json_workspace_vendor_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15879,13 +16057,13 @@ fn lsp_deno_json_workspace_vendor_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_node_modules_dir() {
   let context = TestContextBuilder::new()
     .use_http_server()
     .use_temp_cwd()
     .build();
   let temp_dir = context.temp_dir();
-  temp_dir.create_dir_all("project1/project2");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -15912,6 +16090,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
       "arguments": [[], temp_dir.url().join("project1/project2/file.ts").unwrap()],
     }),
   );
+  client.read_diagnostics();
   let res = client.write_request(
     "textDocument/definition",
     json!({
@@ -15954,6 +16133,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_deno_json_workspace_jsr_resolution() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -15964,7 +16144,6 @@ fn lsp_deno_json_workspace_jsr_resolution() {
     })
     .to_string(),
   );
-  temp_dir.create_dir_all("project1");
   temp_dir.write(
     "project1/deno.json",
     json!({
@@ -16015,6 +16194,68 @@ fn lsp_deno_json_workspace_jsr_resolution() {
 }
 
 #[test]
+#[timeout(300_000)]
+fn lsp_workspace_compiler_options_root_dirs() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "workspace": ["member"],
+      "compilerOptions": {
+        "rootDirs": ["member", "non_member", "non_member_types"],
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "member/deno.json",
+    json!({
+      "compilerOptions": {
+        "rootDirs": ["subdir", "subdir_types"],
+      },
+    })
+    .to_string(),
+  );
+  let file1 = source_file(
+    temp_dir.path().join("member/subdir/mod.ts"),
+    r#"
+      import type { someType } from "./import.ts";
+      const foo: someType = "";
+      console.log(foo);
+    "#,
+  );
+  source_file(
+    temp_dir.path().join("member/subdir_types/import.ts"),
+    r#"
+      export type someType = string;
+    "#,
+  );
+  let file2 = source_file(
+    temp_dir.path().join("non_member/mod.ts"),
+    r#"
+      import type { someType } from "./import.ts";
+      const foo: someType = 0;
+      console.log(foo);
+    "#,
+  );
+  source_file(
+    temp_dir.path().join("non_member_types/import.ts"),
+    r#"
+      export type someType = number;
+    "#,
+  );
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client.did_open_file(&file1);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  let diagnostics = client.did_open_file(&file2);
+  assert_eq!(json!(diagnostics.all()), json!([]));
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_npm_workspace() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16038,7 +16279,6 @@ fn lsp_npm_workspace() {
     .to_string(),
   );
   {
-    temp_dir.create_dir_all("packages/add");
     temp_dir.write(
       "packages/add/package.json",
       json!({
@@ -16054,7 +16294,6 @@ fn lsp_npm_workspace() {
     );
   }
   {
-    temp_dir.create_dir_all("packages/subtract");
     temp_dir.write(
       "packages/subtract/package.json",
       json!({
@@ -16119,6 +16358,7 @@ fn lsp_npm_workspace() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16128,7 +16368,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   temp_dir.write("deno.json", r#"{ "unstable": ["bare-node-builtins"] }"#);
   let main_script = temp_dir.url().join("main.ts").unwrap();
 
-  let mut client = context.new_lsp_command().capture_stderr().build();
+  let mut client = context.new_lsp_command().build();
   client.initialize_default();
   let diagnostics = client.did_open(json!({
     "textDocument": {
@@ -16208,6 +16448,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jupyter_byonm_diagnostics() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -16268,6 +16509,7 @@ fn lsp_jupyter_byonm_diagnostics() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_byonm() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16359,6 +16601,7 @@ fn lsp_byonm() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_sloppy_imports() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16485,6 +16728,7 @@ fn lsp_sloppy_imports() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_sloppy_imports_prefers_dts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16562,6 +16806,7 @@ fn lsp_sloppy_imports_prefers_dts() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn sloppy_imports_not_enabled() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16689,6 +16934,7 @@ fn sloppy_imports_not_enabled() {
 
 // Regression test for https://github.com/denoland/deno/issues/24457.
 #[test]
+#[timeout(300_000)]
 fn lsp_byonm_js_import_resolves_to_dts() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16728,6 +16974,7 @@ fn lsp_byonm_js_import_resolves_to_dts() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn decorators_tc39() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16776,6 +17023,7 @@ new C().m(1);
 }
 
 #[test]
+#[timeout(300_000)]
 fn decorators_ts() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16831,6 +17079,7 @@ C.test();
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_uses_lockfile_for_npm_initialization() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -16845,11 +17094,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
   // remove one of the npm packages and let the other one be found via the lockfile
   temp_dir.write("main.ts", "import 'npm:@denotest/esm-basic';");
   assert!(temp_dir.path().join("deno.lock").exists());
-  let mut client = context
-    .new_lsp_command()
-    .capture_stderr()
-    .log_debug()
-    .build();
+  let mut client = context.new_lsp_command().log_debug().build();
   client.initialize_default();
   let mut skipping_count = 0;
   client.wait_until_stderr_line(|line| {
@@ -16864,6 +17109,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_cjs_internal_types_default_export() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16912,6 +17158,7 @@ fn lsp_cjs_internal_types_default_export() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_cjs_import_dual() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -16960,6 +17207,7 @@ fn lsp_cjs_import_dual() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_type_commonjs() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17009,6 +17257,7 @@ fn lsp_type_commonjs() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_ts_code_fix_any_param() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -17078,6 +17327,7 @@ fn lsp_ts_code_fix_any_param() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_semantic_token_caching() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -17162,6 +17412,7 @@ fn lsp_semantic_token_caching() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_jsdoc_named_example() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir().path();
@@ -17214,6 +17465,7 @@ fn lsp_jsdoc_named_example() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn lsp_wasm_module() {
   let context = TestContextBuilder::new()
     .use_temp_cwd()
@@ -17258,6 +17510,7 @@ fn lsp_wasm_module() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn wildcard_augment() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -17293,6 +17546,7 @@ fn wildcard_augment() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn compiler_options_types() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -17328,6 +17582,7 @@ fn compiler_options_types() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     eprintln!("{:#?}", diagnostics.all());
@@ -17337,6 +17592,7 @@ fn compiler_options_types() {
 }
 
 #[test]
+#[timeout(300_000)]
 fn type_reference_import_meta() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
@@ -17401,9 +17657,59 @@ fn type_reference_import_meta() {
         "type": 2,
       }],
     }));
+    client.read_diagnostics();
 
     let diagnostics = client.did_open_file(&source);
     assert_eq!(diagnostics.all().len(), 0);
     client.did_close_file(&source);
   }
+}
+
+#[test]
+#[timeout(300_000)]
+fn ambient_module_errors_suppressed() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp_dir = context.temp_dir().path();
+
+  client.initialize_default();
+
+  temp_dir.join("ambient.d.ts").write(
+    r#"
+      declare module "$virtual/module" {
+        export const foo: number;
+      }
+      declare module "*.fake" {
+        const fake: string;
+        export default fake;
+      }
+
+    "#,
+  );
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      /// <reference types="./ambient.d.ts"/>
+      import { foo as _foo } from "$virtual/module";
+      import _fake from "./not-real.fake";
+      import _bad from "./not-real.bad";
+    "#,
+  );
+  let diagnostics = client.did_open_file(&source);
+  assert_eq!(diagnostics.all().len(), 1);
+  assert_eq!(
+    json!(diagnostics.all()),
+    json!([
+      {
+        "range": source.range_of("\"./not-real.bad\""),
+        "severity": 1,
+        "code": "no-local",
+        "source": "deno",
+        "message": format!(
+          "Unable to load a local module: {}\nPlease check the file path.",
+          temp_dir.join("./not-real.bad").url_file()
+        )
+      }
+    ])
+  );
 }

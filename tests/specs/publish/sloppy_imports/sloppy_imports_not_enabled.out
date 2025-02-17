@@ -1,3 +1,8 @@
 Check file:///[WILDLINE]/mod.ts
-error: TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/b'. Maybe specify path to 'index.ts' file in directory instead or run with --unstable-sloppy-imports
+TS2307 [ERROR]: Cannot find module 'file:///[WILDLINE]/b'. Maybe specify path to 'index.ts' file in directory instead or run with --unstable-sloppy-imports
     at file:///[WILDLINE]/mod.ts:1:20
+
+error: Type checking failed.
+
+  info: The program failed type-checking, but it still might work correctly.
+  hint: Re-run with --no-check to skip type-checking.

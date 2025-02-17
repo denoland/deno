@@ -33,6 +33,7 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use tower_lsp::lsp_types as lsp;
@@ -897,6 +898,7 @@ impl FileSystemDocuments {
       }
     };
     if dirty {
+      NodeResolutionThreadLocalCache::clear();
       // attempt to update the file on the file system
       self.refresh_document(specifier, resolver, config, cache, file_referrer)
     } else {
@@ -936,7 +938,7 @@ impl FileSystemDocuments {
         file_referrer.cloned(),
       )
     } else if specifier.scheme() == "data" {
-      let source = deno_graph::source::RawDataUrl::parse(specifier)
+      let source = deno_media_type::data_url::RawDataUrl::parse(specifier)
         .ok()?
         .decode()
         .ok()?;
@@ -1295,6 +1297,7 @@ impl Documents {
   /// For a given set of string specifiers, resolve each one from the graph,
   /// for a given referrer. This is used to provide resolution information to
   /// tsc when type checking.
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve(
     &self,
     // (is_cjs: bool, raw_specifier: String)
@@ -1375,6 +1378,7 @@ impl Documents {
     self.resolver = resolver.clone();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
+    NodeResolutionThreadLocalCache::clear();
 
     {
       let fs_docs = &self.file_system_docs;
@@ -1440,6 +1444,7 @@ impl Documents {
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
+    NodeResolutionThreadLocalCache::clear();
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc.scope();
       let dep_info = dep_info_by_scope.entry(scope.cloned()).or_default();
@@ -1551,6 +1556,7 @@ impl Documents {
     self.dirty = false;
   }
 
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
@@ -1756,10 +1762,11 @@ fn bytes_to_content(
     // we use the dts representation for Wasm modules
     Ok(deno_graph::source::wasm::wasm_module_to_dts(&bytes)?)
   } else {
-    Ok(deno_graph::source::decode_owned_source(
-      specifier,
-      bytes,
-      maybe_charset,
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(specifier, &bytes)
+    });
+    Ok(deno_media_type::encoding::decode_owned_source(
+      charset, bytes,
     )?)
   }
 }

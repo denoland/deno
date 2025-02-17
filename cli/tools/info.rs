@@ -50,39 +50,42 @@ pub async fn info(
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
     let resolver = factory.workspace_resolver().await?.clone();
-    let npmrc = cli_options.npmrc();
+    let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
       url::Url::from_directory_path(cli_options.initial_cwd()).unwrap();
 
-    let maybe_import_specifier = if let Ok(resolved) =
-      resolver.resolve(&specifier, &cwd_url)
-    {
+    let maybe_import_specifier = if let Ok(resolved) = resolver.resolve(
+      &specifier,
+      &cwd_url,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    ) {
       match resolved {
-        deno_config::workspace::MappedResolution::Normal {
-          specifier, ..
-        }
-        | deno_config::workspace::MappedResolution::ImportMap {
+        deno_resolver::workspace::MappedResolution::Normal {
           specifier,
           ..
         }
-        | deno_config::workspace::MappedResolution::WorkspaceJsrPackage {
+        | deno_resolver::workspace::MappedResolution::WorkspaceJsrPackage {
           specifier,
           ..
         } => Some(specifier),
-        deno_config::workspace::MappedResolution::WorkspaceNpmPackage {
+        deno_resolver::workspace::MappedResolution::WorkspaceNpmPackage {
           target_pkg_json,
           sub_path,
           ..
-        } => Some(node_resolver.resolve_package_subpath_from_deno_module(
-          target_pkg_json.clone().dir_path(),
-          sub_path.as_deref(),
-          Some(&cwd_url),
-          node_resolver::ResolutionMode::Import,
-          node_resolver::NodeResolutionKind::Execution,
-        )?),
-        deno_config::workspace::MappedResolution::PackageJson {
+        } => Some(
+          node_resolver
+            .resolve_package_subpath_from_deno_module(
+              target_pkg_json.clone().dir_path(),
+              sub_path.as_deref(),
+              Some(&cwd_url),
+              node_resolver::ResolutionMode::Import,
+              node_resolver::NodeResolutionKind::Execution,
+            )?
+            .into_url()?,
+        ),
+        deno_resolver::workspace::MappedResolution::PackageJson {
           alias,
           sub_path,
           dep_result,
@@ -94,13 +97,17 @@ pub async fn info(
                 alias,
                 version_req,
               )?;
-            Some(node_resolver.resolve_package_subpath_from_deno_module(
-              pkg_folder,
-              sub_path.as_deref(),
-              Some(&cwd_url),
-              node_resolver::ResolutionMode::Import,
-              node_resolver::NodeResolutionKind::Execution,
-            )?)
+            Some(
+              node_resolver
+                .resolve_package_subpath_from_deno_module(
+                  pkg_folder,
+                  sub_path.as_deref(),
+                  Some(&cwd_url),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )?
+                .into_url()?,
+            )
           }
           deno_package_json::PackageJsonDepValue::Req(req) => {
             Some(ModuleSpecifier::parse(&format!(
@@ -185,7 +192,7 @@ fn print_cache_info(
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
-  let modules_cache = factory.global_http_cache()?.get_global_cache_location();
+  let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();

@@ -118,6 +118,5 @@
     "type": "git",
     "url": "git://github.com/isaacs/minimatch.git"
   },
-  "description": "a glob matcher in javascript",
-  "readmeFilename": "README.md"
+  "description": "a glob matcher in javascript"
 }

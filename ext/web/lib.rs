@@ -113,6 +113,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
   ],
+  lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
@@ -356,6 +357,7 @@ struct TextDecoderResource {
 impl deno_core::GarbageCollected for TextDecoderResource {}
 
 #[op2(fast(op_encoding_encode_into_fast))]
+#[allow(deprecated)]
 fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
   input: v8::Local<v8::Value>,

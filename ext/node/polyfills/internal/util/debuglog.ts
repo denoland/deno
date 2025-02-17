@@ -4,8 +4,6 @@
 // TODO(petamoriken): enable prefer-primordials for node polyfills
 // deno-lint-ignore-file prefer-primordials
 
-import { inspect } from "ext:deno_node/internal/util/inspect.mjs";
-
 // `debugImpls` and `testEnabled` are deliberately not initialized so any call
 // to `debuglog()` before `initializeDebugEnv()` is called will throw.
 let debugImpls: Record<string, (...args: unknown[]) => void>;
@@ -49,10 +47,9 @@ function debuglogImpl(
   if (debugImpls[set] === undefined) {
     if (enabled) {
       emitWarningIfNeeded(set);
-      debugImpls[set] = function debug(...args: unknown[]) {
-        const msg = args.map((arg) => inspect(arg)).join(" ");
+      debugImpls[set] = function debug(msg, ...args: unknown[]) {
         // deno-lint-ignore no-console
-        console.error("%s %s: %s", set, String(Deno.pid), msg);
+        console.error("%s %s: " + msg, set, String(Deno.pid), ...args);
       };
     } else {
       debugImpls[set] = noop;
