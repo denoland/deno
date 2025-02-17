@@ -714,6 +714,12 @@ export const host = {
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // always return `undefined` in order to short-circuit
+    // a codepath in the TypeScript compiler that always
+    // ends up returning `undefined` in Deno anyway
+    return undefined;
+  },
 };
 
 // @ts-ignore Undocumented function.
