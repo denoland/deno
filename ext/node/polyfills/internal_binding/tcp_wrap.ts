@@ -49,8 +49,6 @@ import {
 } from "ext:deno_node/internal_binding/_listen.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 
-const fdSymbol: unique symbol = Symbol("fdSymbol");
-
 /** The type of TCP socket. */
 enum socketType {
   SOCKET,
@@ -105,8 +103,6 @@ export class TCP extends ConnectionWrap {
   #closed = false;
   #acceptBackoffDelay?: number;
 
-  [fdSymbol]: number = -1;
-
   /**
    * Creates a new TCP class instance.
    * @param type The socket type.
@@ -133,10 +129,6 @@ export class TCP extends ConnectionWrap {
 
     super(provider, conn);
 
-    if (this[kStreamBaseField]) {
-      this[fdSymbol] = this[kStreamBaseField][internalFdSymbol];
-    }
-
     // TODO(cmorten): the handling of new connections and construction feels
     // a little off. Suspect duplicating in some fashion.
     if (conn && provider === providerType.TCPWRAP) {
@@ -152,7 +144,7 @@ export class TCP extends ConnectionWrap {
   }
 
   get fd() {
-    return this[fdSymbol];
+    return this[kStreamBaseField]?.[internalFdSymbol];
   }
 
   /**
@@ -235,7 +227,6 @@ export class TCP extends ConnectionWrap {
     const address = listener.addr as Deno.NetAddr;
     this.#address = address.hostname;
     this.#port = address.port;
-
     this.#listener = listener;
 
     // TODO(kt3k): Delays the accept() call 2 ticks. Deno.Listener can't be closed
@@ -472,7 +463,6 @@ export class TCP extends ConnectionWrap {
 
     // Reset the backoff delay upon successful accept.
     this.#acceptBackoffDelay = undefined;
-
     const connectionHandle = new TCP(socketType.SOCKET, connection);
     this.#connections++;
 
