@@ -227,6 +227,7 @@ function benchStats(
     p75: all[MathCeil(allLength * (75 / 100)) - 1],
     p99: all[MathCeil(allLength * (99 / 100)) - 1],
     p995: all[MathCeil(allLength * (99.5 / 100)) - 1],
+    p999: all[MathCeil(n * (99.9 / 100)) - 1],
     avg: ((max + min) / 2) > lowPrecisionThresholdInNs
       ? MathCeil(avg / n)
       : (avg / n),
