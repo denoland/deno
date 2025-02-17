@@ -2,10 +2,13 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::CString;
 use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::GarbageCollected;
 use libsqlite3_sys as ffi;
 use serde::Serialize;
@@ -212,12 +215,10 @@ impl StatementSync {
     params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
-
     if let Some(params) = params {
       let len = params.length();
       for i in 0..len {
         let value = params.get(i);
-
         if value.is_number() {
           let value = value.number_value(scope).unwrap();
 
@@ -228,7 +229,6 @@ impl StatementSync {
           }
         } else if value.is_string() {
           let value = value.to_rust_string_lossy(scope);
-
           // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
           // as it lives as long as the StatementSync instance.
           //
@@ -280,6 +280,39 @@ impl StatementSync {
           unsafe {
             ffi::sqlite3_bind_int64(raw, i + 1, as_int);
           }
+        } else if value.is_object() {
+            let mut params: HashMap<String, String> = HashMap::new();
+            let value: v8::Local::<v8::Object> = value.try_into().unwrap();
+            let maybe_keys = value.get_property_names(scope, GetPropertyNamesArgs::default());
+
+            if let Some(keys) = maybe_keys {
+              let length = keys.length();
+
+              for i in 0..length {
+                  if let Some(key) = keys.get_index(scope, i) {
+                      if let Some(key_str) = key.to_string(scope) {
+                          let key_str = key_str.to_rust_string_lossy(scope);
+                            if let Some(value) = value.get(scope, key) {
+                              let value_str = value.to_string(scope).unwrap().to_rust_string_lossy(scope);
+                              params.insert(key_str, value_str);
+                          }
+                      }
+                  }
+              }
+          }
+          let mut count = 0;
+          for (key, value) in params {
+            unsafe { 
+                ffi::sqlite3_bind_parameter_index(raw, key.as_ptr() as *const _);
+
+                if ffi::sqlite3_bind_text(raw, count+1, value.as_ptr() as *const _, value.len() as i32 , ffi::SQLITE_TRANSIENT()) != ffi::SQLITE_OK {
+                    return Err(SqliteError::FailedBind("failed to bind param"));
+                }
+                count += 1
+            }
+        }
+    
+  
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));
         }
