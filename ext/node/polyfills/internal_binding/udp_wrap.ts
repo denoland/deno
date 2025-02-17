@@ -330,7 +330,7 @@ export class UDP extends HandleWrap {
       port,
       hostname: ip,
       transport: "udp" as const,
-      reuseAddress: (_flags & os.UV_UDP_REUSEADDR ?? 0 ) !== 0,
+      reuseAddress: (_flags & os.UV_UDP_REUSEADDR ?? 0) !== 0,
     };
 
     let listener;
