@@ -1,2 +1,9 @@
-[WILDCARD]Found 1 problem
+error[test-plugin/my-rule]: should be _b
+ --> [WILDCARD]a.ts:1:7
+  | 
+1 | const _a = "foo";
+  |       ^^
+
+
+Found 1 problem
 Checked 1 file
