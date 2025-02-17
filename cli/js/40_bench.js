@@ -20,6 +20,7 @@ const {
   ArrayPrototypeSort,
   ArrayPrototypeSlice,
   Error,
+  MathMax,
   MathMin,
   MathCeil,
   SymbolToStringTag,
@@ -34,8 +35,8 @@ const {
  *   origin: string,
  *   ignore: boolean,
  *   only: boolean.
- *   iterations?: number;
- *   warmups?: number;
+ *   n?: number;
+ *   warmup?: number;
  *   sanitizeExit: boolean,
  *   permissions: PermissionOptions,
  * }} BenchDescription
@@ -251,8 +252,8 @@ async function benchMeasure(timeBudget, fn, desc, context) {
 
   // warmup step
   let c = 0;
-  let iterations = desc.warmups > 0 ? desc.warmups : 20;
-  let budget = desc.warmups == null ? 10 * 1e6 : 0;
+  let iterations = desc.warmup > 0 ? desc.warmup : 20;
+  let budget = 10 * 1e6;
 
   if (!desc.async) {
     while (budget > 0 || iterations-- > 0) {
@@ -297,10 +298,10 @@ async function benchMeasure(timeBudget, fn, desc, context) {
   wavg /= c;
 
   // measure step
-  iterations = desc.iterations > 0 ? desc.iterations : 10;
-  budget = desc.iterations == null ? timeBudget * 1e6 : 0;
+  iterations = desc.n > 0 ? desc.n : 10;
+  budget = timeBudget * 1e6;
 
-  if (wavg > lowPrecisionThresholdInNs || desc.iterations > 0) {
+  if (wavg > lowPrecisionThresholdInNs) {
     if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
@@ -357,6 +358,7 @@ async function benchMeasure(timeBudget, fn, desc, context) {
   } else {
     context.start = function start() {};
     context.end = function end() {};
+    iterations = MathMax(MathCeil(iterations / lowPrecisionThresholdInNs), 10);
 
     if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {

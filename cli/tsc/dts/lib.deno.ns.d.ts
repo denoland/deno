@@ -1243,9 +1243,9 @@ declare namespace Deno {
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
     /** Number of iterations to perform. */
-    iterations?: number;
+    n?: number;
     /** Number of warmups to do before running the benchmark. */
-    warmups?: number;
+    warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
