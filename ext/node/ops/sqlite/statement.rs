@@ -402,6 +402,7 @@ impl StatementSync {
                         mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#next expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
       let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
 
       let names = &[
@@ -448,6 +449,7 @@ impl StatementSync {
                           mut rv: v8::ReturnValue| {
       let context = v8::Local::<v8::External>::try_from(args.data())
         .expect("Iterator#return expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
       let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
 
       statement.is_iter_finished = true;
