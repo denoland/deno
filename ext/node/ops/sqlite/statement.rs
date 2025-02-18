@@ -28,6 +28,7 @@ pub struct StatementSync {
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
 
   pub use_big_ints: Cell<bool>,
+  pub is_iter_finished: bool,
 }
 
 impl Drop for StatementSync {
@@ -396,35 +397,19 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    #[derive(Debug)]
-    struct IteratorContext {
-      inner: *mut ffi::sqlite3_stmt,
-      db: Rc<RefCell<Option<rusqlite::Connection>>>,
-      is_finished: bool,
-      use_big_ints: Cell<bool>,
-    }
-
-    impl<'a> From<&'a mut IteratorContext> for StatementSync {
-      fn from(ctx: &'a mut IteratorContext) -> StatementSync {
-        StatementSync {
-          inner: ctx.inner,
-          db: ctx.db.clone(),
-          use_big_ints: ctx.use_big_ints.clone(),
-        }
-      }
-    }
-
     let iterate_next = |scope: &mut v8::HandleScope,
                         args: v8::FunctionCallbackArguments,
                         mut rv: v8::ReturnValue| {
-      let context = v8::Local::<v8::External>::try_from(args.data()).unwrap();
-      let context = unsafe { &mut *(context.value() as *mut IteratorContext) };
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#next expected external data");
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
 
-      if context.is_finished {
-        let names = &[
-          DONE.v8_string(scope).unwrap().into(),
-          VALUE.v8_string(scope).unwrap().into(),
-        ];
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+
+      if statement.is_iter_finished {
         let values = &[
           v8::Boolean::new(scope, true).into(),
           v8::undefined(scope).into(),
@@ -436,17 +421,10 @@ impl StatementSync {
         return;
       }
 
-      let statement =
-        std::mem::ManuallyDrop::new(StatementSync::from(&mut *context));
-
       let Ok(Some(row)) = statement.read_row(scope) else {
         statement.reset();
-        context.is_finished = true;
+        statement.is_iter_finished = true;
 
-        let names = &[
-          DONE.v8_string(scope).unwrap().into(),
-          VALUE.v8_string(scope).unwrap().into(),
-        ];
         let values = &[
           v8::Boolean::new(scope, true).into(),
           v8::undefined(scope).into(),
@@ -458,10 +436,6 @@ impl StatementSync {
         return;
       };
 
-      let names = &[
-        DONE.v8_string(scope).unwrap().into(),
-        VALUE.v8_string(scope).unwrap().into(),
-      ];
       let values = &[v8::Boolean::new(scope, false).into(), row.into()];
       let null = v8::null(scope).into();
       let result =
@@ -472,14 +446,12 @@ impl StatementSync {
     let iterate_return = |scope: &mut v8::HandleScope,
                           args: v8::FunctionCallbackArguments,
                           mut rv: v8::ReturnValue| {
-      let context = v8::Local::<v8::External>::try_from(args.data()).unwrap();
-      let context = unsafe { &mut *(context.value() as *mut IteratorContext) };
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#return expected external data");
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
 
-      context.is_finished = true;
-
-      unsafe {
-        ffi::sqlite3_reset(context.inner);
-      }
+      statement.is_iter_finished = true;
+      statement.reset();
 
       let names = &[
         DONE.v8_string(scope).unwrap().into(),
@@ -496,21 +468,15 @@ impl StatementSync {
       rv.set(result.into());
     };
 
-    let context = Box::new(IteratorContext {
-      inner: self.inner,
-      use_big_ints: self.use_big_ints.clone(),
-      db: self.db.clone(),
-      is_finished: false,
-    });
-    let external = v8::External::new(scope, Box::into_raw(context) as _);
+    let external = v8::External::new(scope, self as *const _ as _);
     let next_func = v8::Function::builder(iterate_next)
       .data(external.into())
       .build(scope)
-      .unwrap();
+      .expect("Failed to create Iterator#next function");
     let return_func = v8::Function::builder(iterate_return)
       .data(external.into())
       .build(scope)
-      .unwrap();
+      .expect("Failed to create Iterator#return function");
 
     let global = scope.get_current_context().global(scope);
     let iter_str = ITERATOR.v8_string(scope).unwrap();

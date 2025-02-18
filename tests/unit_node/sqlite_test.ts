@@ -197,3 +197,17 @@ CREATE TABLE two(id int PRIMARY KEY) STRICT;`);
 
   db.close();
 });
+
+Deno.test("[node/sqlite] StatementSync#iterate", () => {
+  const db = new DatabaseSync(":memory:");
+  const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
+
+  const result = [];
+  // @ts-ignore: types are not up to date
+  for (const row of stmt.iterate()) {
+    result.push(row);
+  }
+
+  assertEquals(result, stmt.all());
+  db.close();
+});

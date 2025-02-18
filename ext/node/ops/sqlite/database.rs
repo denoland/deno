@@ -205,6 +205,7 @@ impl DatabaseSync {
       inner: raw_stmt,
       db: self.conn.clone(),
       use_big_ints: Cell::new(false),
+      is_iter_finished: false,
     })
   }
 
