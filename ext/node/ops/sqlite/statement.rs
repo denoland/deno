@@ -6,6 +6,7 @@ use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::GarbageCollected;
 use libsqlite3_sys as ffi;
 use serde::Serialize;
@@ -217,6 +218,7 @@ impl StatementSync {
 
     if let Some(params) = params {
       let len = params.length();
+      let mut param_count = 0;
       for i in 0..len {
         let value = params.get(i);
 
@@ -226,8 +228,9 @@ impl StatementSync {
           // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
           // as it lives as long as the StatementSync instance.
           unsafe {
-            ffi::sqlite3_bind_double(raw, i + 1, value);
+            ffi::sqlite3_bind_double(raw, param_count + 1, value);
           }
+          param_count += 1
         } else if value.is_string() {
           let value = value.to_rust_string_lossy(scope);
 
@@ -238,18 +241,20 @@ impl StatementSync {
           unsafe {
             ffi::sqlite3_bind_text(
               raw,
-              i + 1,
+              param_count + 1,
               value.as_ptr() as *const _,
               value.len() as i32,
               ffi::SQLITE_TRANSIENT(),
             );
           }
+          param_count += 1;
         } else if value.is_null() {
           // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
           // as it lives as long as the StatementSync instance.
           unsafe {
-            ffi::sqlite3_bind_null(raw, i + 1);
+            ffi::sqlite3_bind_null(raw, param_count + 1);
           }
+          param_count += 1;
         } else if value.is_array_buffer_view() {
           let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
           let data = value.data();
@@ -262,12 +267,13 @@ impl StatementSync {
           unsafe {
             ffi::sqlite3_bind_blob(
               raw,
-              i + 1,
+              param_count + 1,
               data,
               size as i32,
               ffi::SQLITE_TRANSIENT(),
             );
           }
+          param_count += 1
         } else if value.is_big_int() {
           let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
           let (as_int, lossless) = value.i64_value();
@@ -280,7 +286,32 @@ impl StatementSync {
           // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
           // as it lives as long as the StatementSync instance.
           unsafe {
-            ffi::sqlite3_bind_int64(raw, i + 1, as_int);
+            ffi::sqlite3_bind_int64(raw, param_count + 1, as_int);
+          }
+          param_count += 1;
+        } else if value.is_object() {
+          let value: v8::Local<v8::Object> = value.try_into().unwrap();
+          let maybe_keys =
+            value.get_property_names(scope, GetPropertyNamesArgs::default());
+
+          if let Some(keys) = maybe_keys {
+            let length = keys.length();
+            for i in 0..length {
+              if let Some(key) = keys.get_index(scope, i) {
+                if let Some(key_str) = key.to_string(scope) {
+                  let key_str = key_str.to_rust_string_lossy(scope);
+                  if let Some(value) = value.get(scope, key) {
+                    self.bind_params_object(
+                      scope,
+                      key_str,
+                      value,
+                      param_count,
+                    )?;
+                    param_count += 1;
+                  }
+                }
+              }
+            }
           }
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));
@@ -288,6 +319,88 @@ impl StatementSync {
       }
     }
 
+    Ok(())
+  }
+
+  //helper function that binds the object attribute to named param
+  fn bind_params_object(
+    &self,
+    scope: &mut v8::HandleScope,
+    key: String,
+    value: v8::Local<v8::Value>,
+    count: i32,
+  ) -> Result<(), SqliteError> {
+    let raw = self.inner;
+
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
+    unsafe {
+      ffi::sqlite3_bind_parameter_index(raw, key.as_ptr() as *const _);
+    }
+
+    if value.is_number() {
+      let value = value.number_value(scope).unwrap();
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe {
+        ffi::sqlite3_bind_double(raw, count + 1, value);
+      }
+    } else if value.is_string() {
+      let value = value.to_rust_string_lossy(scope);
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe {
+        ffi::sqlite3_bind_text(
+          raw,
+          count + 1,
+          value.as_ptr() as *const _,
+          value.len() as i32,
+          ffi::SQLITE_TRANSIENT(),
+        );
+      }
+    } else if value.is_null() {
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe {
+        ffi::sqlite3_bind_null(raw, count + 1);
+      }
+    } else if value.is_array_buffer_view() {
+      let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
+      let data = value.data();
+      let size = value.byte_length();
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      //
+      // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
+      unsafe {
+        ffi::sqlite3_bind_blob(
+          raw,
+          count + 1,
+          data,
+          size as i32,
+          ffi::SQLITE_TRANSIENT(),
+        );
+      }
+    } else if value.is_big_int() {
+      let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
+      let (as_int, lossless) = value.i64_value();
+      if !lossless {
+        return Err(SqliteError::FailedBind(
+          "BigInt value is too large to bind",
+        ));
+      }
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe {
+        ffi::sqlite3_bind_int64(raw, count + 1, as_int);
+      }
+    } else {
+      return Err(SqliteError::FailedBind("Unsupported type"));
+    }
     Ok(())
   }
 }
@@ -542,7 +655,6 @@ impl StatementSync {
         .to_string_lossy()
         .into_owned();
       ffi::sqlite3_free(raw as _);
-
       Ok(sql)
     }
   }

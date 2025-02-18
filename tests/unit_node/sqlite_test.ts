@@ -198,6 +198,25 @@ CREATE TABLE two(id int PRIMARY KEY) STRICT;`);
   db.close();
 });
 
+Deno.test("[node/sqlite] query should handle mixed positional and named parameters", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT)`);
+  db.exec(
+    `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
+  );
+
+  const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";
+  const result = db.prepare(query).all({ var1: "test", var2: 1 });
+  assertEquals(result, [{
+    __proto__: null,
+    variable1: "test",
+    variable2: 1,
+    variable3: 2,
+  }]);
+
+  db.close();
+});
+
 Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const db = new DatabaseSync(":memory:");
   const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
