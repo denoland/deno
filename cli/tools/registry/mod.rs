@@ -126,8 +126,9 @@ pub async fn publish(
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
   let module_content_provider = Arc::new(ModuleContentProvider::new(
-    specifier_unfurler,
     cli_factory.parsed_source_cache().clone(),
+    specifier_unfurler,
+    cli_factory.tsconfig_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
     GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),

@@ -208,7 +208,7 @@ impl SpecifierUnfurler {
     }
   }
 
-  fn unfurl_specifier_reporting_diagnostic(
+  pub fn unfurl_specifier_reporting_diagnostic(
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
