@@ -209,6 +209,8 @@ impl GPUDevice {
       instance: self.instance.clone(),
       error_handler: self.error_handler.clone(),
       id,
+      device_id: self.id,
+      queue_id: self.queue,
       label: descriptor.label,
       size: wgpu_descriptor.size,
       mip_level_count: wgpu_descriptor.mip_level_count,
