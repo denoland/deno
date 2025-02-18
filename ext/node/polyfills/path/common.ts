@@ -6,8 +6,10 @@ const {
   StringPrototypeSubstring,
   StringPrototypeLastIndexOf,
   StringPrototypeSplit,
-  StringPrototypeSlice,
+  ArrayPrototypeSlice,
   StringPrototypeEndsWith,
+  ArrayPrototypeJoin,
+  ArrayFrom,
 } = primordials;
 import { SEP } from "ext:deno_node/path/separator.ts";
 
@@ -23,7 +25,7 @@ import { SEP } from "ext:deno_node/path/separator.ts";
  * ```
  */
 export function common(paths: string[], sep = SEP): string {
-  const [first = "", ...remaining] = paths;
+  const [first = "", ...remaining] = ArrayFrom(paths);
   if (first === "" || remaining.length === 0) {
     return StringPrototypeSubstring(
       first,
@@ -46,6 +48,6 @@ export function common(paths: string[], sep = SEP): string {
       return "";
     }
   }
-  const prefix = StringPrototypeSlice(parts, 0, endOfPrefix).join(sep);
+  const prefix = ArrayPrototypeJoin(ArrayPrototypeSlice(parts, 0, endOfPrefix), sep);
   return StringPrototypeEndsWith(prefix, sep) ? prefix : `${prefix}${sep}`;
 }
