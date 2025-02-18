@@ -1408,3 +1408,12 @@ pub async fn op_raw_write_vectored(
   let nwritten = resource.write_vectored(&buf1, &buf2).await?;
   Ok(nwritten)
 }
+
+#[op2(fast)]
+pub fn op_http_metric_handle_otel_error(external: *const c_void) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+
+  http.otel_info_set_error("user");
+}

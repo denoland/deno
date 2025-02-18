@@ -1,5 +1,6 @@
-use std::borrow::Cow;
 // Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -561,6 +562,14 @@ impl HttpRecord {
     let mut info = self.0.borrow_mut();
     if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
       info.attributes.http_response_status_code = Some(status as _);
+      info.handle_duration_and_request_size();
+    }
+  }
+
+  pub fn otel_info_set_error(&self, error: &'static str) {
+    let mut info = self.0.borrow_mut();
+    if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
+      info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
     }
   }

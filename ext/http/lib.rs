@@ -170,6 +170,7 @@ deno_core::extension!(
     http_next::op_http_wait,
     http_next::op_http_close,
     http_next::op_http_cancel,
+    http_next::op_http_metric_handle_otel_error,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -482,7 +483,7 @@ fn handle_error_otel(
     if let Some(otel_info) = maybe_otel_info.as_mut() {
       otel_info.attributes.error_type = Some(match error {
         HttpError::Resource(_) => "resource",
-        HttpError::Canceled(_) => "cancelled",
+        HttpError::Canceled(_) => "canceled",
         HttpError::HyperV014(_) => "hyper",
         HttpError::InvalidHeaderName(_) => "invalid header name",
         HttpError::InvalidHeaderValue(_) => "invalid header value",
@@ -498,7 +499,7 @@ fn handle_error_otel(
         HttpError::NoResponseHeaders => "no response headers",
         HttpError::ResponseAlreadyCompleted => "response already completed",
         HttpError::UpgradeBodyUsed => "upgrade body used",
-        HttpError::Other(_) => "other",
+        HttpError::Other(_) => "unknown",
       });
     }
   }
