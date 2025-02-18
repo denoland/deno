@@ -2,21 +2,18 @@
 
 use std::fmt::Write as FmtWrite;
 use std::io::Write;
-use std::path::Path;
 
 use bytes::Bytes;
-use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
+use deno_graph::ModuleGraph;
 use sha2::Digest;
 use tar::Header;
 
-use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::paths::CollectedPublishPath;
-use super::unfurl::SpecifierUnfurler;
-use crate::cache::LazyGraphSourceParser;
+use super::text_content::ModuleContentProvider;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {
@@ -34,10 +31,10 @@ pub struct PublishableTarball {
 }
 
 pub fn create_gzipped_tarball(
-  publish_paths: Vec<CollectedPublishPath>,
-  source_parser: LazyGraphSourceParser,
+  module_content_provider: &ModuleContentProvider,
+  graph: &ModuleGraph,
   diagnostics_collector: &PublishDiagnosticsCollector,
-  unfurler: &SpecifierUnfurler,
+  publish_paths: Vec<CollectedPublishPath>,
 ) -> Result<PublishableTarball, AnyError> {
   let mut tar = TarGzArchive::new();
   let mut files = vec![];
@@ -48,12 +45,11 @@ pub fn create_gzipped_tarball(
 
     let content = match path.maybe_content {
       Some(content) => content.clone(),
-      None => resolve_content_maybe_unfurling(
+      None => module_content_provider.resolve_content_maybe_unfurling(
+        graph,
+        diagnostics_collector,
         &path.path,
         specifier,
-        unfurler,
-        source_parser,
-        diagnostics_collector,
       )?,
     };
 
@@ -86,64 +82,6 @@ pub fn create_gzipped_tarball(
     hash,
     bytes: Bytes::from(v),
   })
-}
-
-fn resolve_content_maybe_unfurling(
-  path: &Path,
-  specifier: &Url,
-  unfurler: &SpecifierUnfurler,
-  source_parser: LazyGraphSourceParser,
-  diagnostics_collector: &PublishDiagnosticsCollector,
-) -> Result<Vec<u8>, AnyError> {
-  let parsed_source = match source_parser.get_or_parse_source(specifier)? {
-    Some(parsed_source) => parsed_source,
-    None => {
-      let data = std::fs::read(path)
-        .with_context(|| format!("Unable to read file '{}'", path.display()))?;
-      let media_type = MediaType::from_specifier(specifier);
-
-      match media_type {
-        MediaType::JavaScript
-        | MediaType::Jsx
-        | MediaType::Mjs
-        | MediaType::Cjs
-        | MediaType::TypeScript
-        | MediaType::Mts
-        | MediaType::Cts
-        | MediaType::Dts
-        | MediaType::Dmts
-        | MediaType::Dcts
-        | MediaType::Tsx => {
-          // continue
-        }
-        MediaType::SourceMap
-        | MediaType::Unknown
-        | MediaType::Json
-        | MediaType::Wasm
-        | MediaType::Css => {
-          // not unfurlable data
-          return Ok(data);
-        }
-      }
-
-      let text = String::from_utf8(data)?;
-      deno_ast::parse_module(deno_ast::ParseParams {
-        specifier: specifier.clone(),
-        text: text.into(),
-        media_type,
-        capture_tokens: false,
-        maybe_syntax: None,
-        scope_analysis: false,
-      })?
-    }
-  };
-
-  log::debug!("Unfurling {}", specifier);
-  let mut reporter = |diagnostic| {
-    diagnostics_collector.push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
-  };
-  let content = unfurler.unfurl(specifier, &parsed_source, &mut reporter);
-  Ok(content.into_bytes())
 }
 
 struct TarGzArchive {

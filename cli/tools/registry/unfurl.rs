@@ -15,6 +15,7 @@ use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceTextInfo;
 use deno_ast::SourceTextProvider;
+use deno_ast::TextChange;
 use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
@@ -511,13 +512,13 @@ impl SpecifierUnfurler {
     }
   }
 
-  pub fn unfurl(
+  pub fn unfurl_to_changes(
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
+    text_changes: &mut Vec<TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
-  ) -> String {
-    let mut text_changes = Vec::new();
+  ) {
     let text_info = parsed_source.text_info_lazy();
     let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
@@ -564,7 +565,7 @@ impl SpecifierUnfurler {
             &dep.specifier,
             &dep.specifier_range,
             resolution_kind,
-            &mut text_changes,
+            text_changes,
             diagnostic_reporter,
           );
         }
@@ -573,7 +574,7 @@ impl SpecifierUnfurler {
             url,
             text_info,
             dep,
-            &mut text_changes,
+            text_changes,
             diagnostic_reporter,
           );
 
@@ -602,7 +603,7 @@ impl SpecifierUnfurler {
         &specifier_with_range.text,
         &specifier_with_range.range,
         deno_resolver::workspace::ResolutionKind::Types,
-        &mut text_changes,
+        text_changes,
         diagnostic_reporter,
       );
     }
@@ -611,7 +612,7 @@ impl SpecifierUnfurler {
         &jsdoc.specifier.text,
         &jsdoc.specifier.range,
         deno_resolver::workspace::ResolutionKind::Types,
-        &mut text_changes,
+        text_changes,
         diagnostic_reporter,
       );
     }
@@ -620,7 +621,7 @@ impl SpecifierUnfurler {
         &specifier_with_range.text,
         &specifier_with_range.range,
         deno_resolver::workspace::ResolutionKind::Execution,
-        &mut text_changes,
+        text_changes,
         diagnostic_reporter,
       );
     }
@@ -629,14 +630,10 @@ impl SpecifierUnfurler {
         &specifier_with_range.text,
         &specifier_with_range.range,
         deno_resolver::workspace::ResolutionKind::Types,
-        &mut text_changes,
+        text_changes,
         diagnostic_reporter,
       );
     }
-
-    let rewritten_text =
-      deno_ast::apply_text_changes(text_info.text_str(), text_changes);
-    rewritten_text
   }
 }
 
@@ -790,7 +787,8 @@ const warn2 = await import(`${expr}`);
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      let unfurled_source =
+        unfurl(&unfurler, &specifier, &source, &mut reporter);
       assert_eq!(d.len(), 2);
       assert!(
         matches!(
@@ -850,7 +848,8 @@ export type * from "./c";
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      let unfurled_source =
+        unfurl(&unfurler, &specifier, &source, &mut reporter);
       assert_eq!(d.len(), 0);
       let expected_source = r#"import express from "npm:express@5";"
 export type * from "./c.d.ts";
@@ -928,7 +927,8 @@ console.log(add, subtract);
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      let unfurled_source =
+        unfurl(&unfurler, &specifier, &source, &mut reporter);
       assert_eq!(d.len(), 0);
       // it will inline the version
       let expected_source = r#"import add from "npm:add@~0.1.0";
@@ -949,7 +949,8 @@ console.log(nonExistent);
       let source = parse_ast(&specifier, source_code);
       let mut d = Vec::new();
       let mut reporter = |diagnostic| d.push(diagnostic);
-      let unfurled_source = unfurler.unfurl(&specifier, &source, &mut reporter);
+      let unfurled_source =
+        unfurl(&unfurler, &specifier, &source, &mut reporter);
       assert_eq!(d.len(), 1);
       match &d[0] {
         SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
@@ -966,5 +967,25 @@ console.log(nonExistent);
       assert!(matches!(d[0].level(), DiagnosticLevel::Error));
       assert_eq!(unfurled_source, source_code);
     }
+  }
+
+  fn unfurl(
+    unfurler: &SpecifierUnfurler,
+    url: &ModuleSpecifier,
+    parsed_source: &ParsedSource,
+    diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
+  ) -> String {
+    let text_info = parsed_source.text_info_lazy();
+    let mut text_changes = Vec::new();
+    unfurler.unfurl_to_changes(
+      url,
+      parsed_source,
+      &mut text_changes,
+      diagnostic_reporter,
+    );
+
+    let rewritten_text =
+      deno_ast::apply_text_changes(text_info.text_str(), text_changes);
+    rewritten_text
   }
 }
