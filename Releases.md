@@ -8,7 +8,6 @@ https://github.com/denoland/deno_install
 
 ### 2.2.0 / 2025.02.18
 
-- Revert "refactor: remove tsc snapshot (#27987)" (#28052)
 - feat(bench): add `--permit-no-files` (#27048)
 - feat(bench): add `warmup` and `n` for controlling number of iterations
   (#28123)
