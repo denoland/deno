@@ -12,8 +12,8 @@ use sha2::Digest;
 use tar::Header;
 
 use super::diagnostics::PublishDiagnosticsCollector;
+use super::module_content::ModuleContentProvider;
 use super::paths::CollectedPublishPath;
-use super::text_content::ModuleContentProvider;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishableTarballFile {

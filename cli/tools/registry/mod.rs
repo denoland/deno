@@ -53,12 +53,12 @@ mod auth;
 
 mod diagnostics;
 mod graph;
+mod module_content;
 mod paths;
 mod pm;
 mod provenance;
 mod publish_order;
 mod tar;
-mod text_content;
 mod unfurl;
 
 use auth::get_auth_method;
@@ -73,9 +73,9 @@ use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
 use self::graph::GraphDiagnosticsCollector;
+use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
-use self::text_content::ModuleContentProvider;
 use super::check::TypeChecker;
 
 pub async fn publish(
