@@ -661,6 +661,8 @@ const NOT_IMPORTED_OPS = [
   // Related to `Deno.jupyter` API
   "op_jupyter_broadcast",
   "op_jupyter_input",
+  "op_jupyter_create_png_from_texture",
+  "op_jupyter_get_buffer",
   // Used in jupyter API
   "op_base64_encode",
 
