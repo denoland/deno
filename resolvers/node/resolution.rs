@@ -2094,7 +2094,10 @@ fn types_package_name(package_name: &str) -> String {
   debug_assert!(!package_name.starts_with("@types/"));
   // Scoped packages will get two underscores for each slash
   // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
-  format!("@types/{}", package_name.replace('/', "__"))
+  format!(
+    "@types/{}",
+    package_name.trim_start_matches('@').replace('/', "__")
+  )
 }
 
 /// Ex. returns `fs` for `node:fs`
