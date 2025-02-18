@@ -2,7 +2,7 @@
 // This module is browser compatible.
 
 import { primordials } from "ext:core/mod.js";
-const { 
+const {
   StringPrototypeSubstring,
   StringPrototypeLastIndexOf,
   StringPrototypeSplit,
