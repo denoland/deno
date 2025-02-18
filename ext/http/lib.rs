@@ -317,8 +317,8 @@ impl OtelInfoAttributes {
       Version::HTTP_09 => "0.9",
       Version::HTTP_10 => "1.0",
       Version::HTTP_11 => "1.1",
-      Version::HTTP_2 => "2.0",
-      Version::HTTP_3 => "3.0",
+      Version::HTTP_2 => "2",
+      Version::HTTP_3 => "3",
       _ => unreachable!(),
     }
   }
