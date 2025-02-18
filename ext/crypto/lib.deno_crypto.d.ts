@@ -276,8 +276,7 @@ interface SubtleCrypto {
     keyUsages: KeyUsage[],
   ): Promise<CryptoKeyPair>;
   /**
-  *
-   This method is used to generate a cryptographic key.
+   * This method is used to generate a cryptographic key.
    *
    *
    * @example
