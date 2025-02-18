@@ -20,7 +20,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:[WILDCARD]/"
+            "stringValue": "http://localhost:8080/"
           }
         },
         {
@@ -78,7 +78,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:[WILDCARD]/"
+            "stringValue": "http://localhost:8080/"
           }
         },
         {
@@ -117,16 +117,53 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000002",
+      "traceId": "00000000000000000000000000000001",
       "spanId": "0000000000000003",
       "traceState": "",
-      "parentSpanId": "0000000000000002",
+      "parentSpanId": "0000000000000001",
       "flags": 1,
-      "name": "outer span",
-      "kind": 1,
+      "name": "GET",
+      "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:8080/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "events": [],
       "droppedEventsCount": 0,
@@ -138,16 +175,169 @@
       }
     },
     {
-      "traceId": "00000000000000000000000000000002",
+      "traceId": "00000000000000000000000000000003",
       "spanId": "0000000000000004",
       "traceState": "",
-      "parentSpanId": "0000000000000003",
+      "parentSpanId": "",
       "flags": 1,
-      "name": "inner span",
-      "kind": 1,
+      "name": "GET",
+      "kind": 2,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
-      "attributes": [],
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:8080/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000001",
+      "spanId": "0000000000000005",
+      "traceState": "",
+      "parentSpanId": "0000000000000001",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:8080/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000006",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDCARD]",
+      "endTimeUnixNano": "[WILDCARD]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:8080/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
       "droppedAttributesCount": 0,
       "events": [],
       "droppedEventsCount": 0,
@@ -159,36 +349,7 @@
       }
     }
   ],
-  "logs": [
-    {
-      "timeUnixNano": "0",
-      "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 9,
-      "severityText": "INFO",
-      "body": {
-        "stringValue": "log 1\n"
-      },
-      "attributes": [],
-      "droppedAttributesCount": 0,
-      "flags": 1,
-      "traceId": "00000000000000000000000000000002",
-      "spanId": "0000000000000004"
-    },
-    {
-      "timeUnixNano": "0",
-      "observedTimeUnixNano": "[WILDCARD]",
-      "severityNumber": 9,
-      "severityText": "INFO",
-      "body": {
-        "stringValue": "log 2\n"
-      },
-      "attributes": [],
-      "droppedAttributesCount": 0,
-      "flags": 1,
-      "traceId": "00000000000000000000000000000002",
-      "spanId": "0000000000000004"
-    }
-  ],
+  "logs": [],
   "metrics": [
     {
       "name": "http.server.active_requests",
@@ -259,10 +420,10 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": 3,
             "sum": 0,
             "bucketCounts": [
-              1,
+              3,
               0,
               0,
               0,
@@ -329,10 +490,10 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": 3,
             "sum": [WILDCARD],
             "bucketCounts": [
-              1,
+              3,
               0,
               0,
               0,
@@ -409,10 +570,10 @@
             ],
             "startTimeUnixNano": "[WILDCARD]",
             "timeUnixNano": "[WILDCARD]",
-            "count": 1,
+            "count": 3,
             "sum": 0,
             "bucketCounts": [
-              1,
+              3,
               0,
               0,
               0,
