@@ -22,11 +22,13 @@ pub struct RunStatementResult {
   changes: u64,
 }
 
+#[derive(Debug)]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
 
   pub use_big_ints: Cell<bool>,
+  pub is_iter_finished: bool,
 }
 
 impl Drop for StatementSync {
@@ -367,6 +369,143 @@ impl StatementSync {
 
     let arr = v8::Array::new_with_elements(scope, &arr);
     Ok(arr)
+  }
+
+  fn iterate<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
+    macro_rules! v8_static_strings {
+      ($($ident:ident = $str:literal),* $(,)?) => {
+        $(
+          pub static $ident: deno_core::FastStaticString = deno_core::ascii_str!($str);
+        )*
+      };
+    }
+
+    v8_static_strings! {
+      ITERATOR = "Iterator",
+      PROTOTYPE = "prototype",
+      NEXT = "next",
+      RETURN = "return",
+      DONE = "done",
+      VALUE = "value",
+    }
+
+    self.reset();
+
+    self.bind_params(scope, params)?;
+
+    let iterate_next = |scope: &mut v8::HandleScope,
+                        args: v8::FunctionCallbackArguments,
+                        mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#next expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+
+      if statement.is_iter_finished {
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      }
+
+      let Ok(Some(row)) = statement.read_row(scope) else {
+        statement.reset();
+        statement.is_iter_finished = true;
+
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      };
+
+      let values = &[v8::Boolean::new(scope, false).into(), row.into()];
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let iterate_return = |scope: &mut v8::HandleScope,
+                          args: v8::FunctionCallbackArguments,
+                          mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#return expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+
+      statement.is_iter_finished = true;
+      statement.reset();
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+      let values = &[
+        v8::Boolean::new(scope, true).into(),
+        v8::undefined(scope).into(),
+      ];
+
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let external = v8::External::new(scope, self as *const _ as _);
+    let next_func = v8::Function::builder(iterate_next)
+      .data(external.into())
+      .build(scope)
+      .expect("Failed to create Iterator#next function");
+    let return_func = v8::Function::builder(iterate_return)
+      .data(external.into())
+      .build(scope)
+      .expect("Failed to create Iterator#return function");
+
+    let global = scope.get_current_context().global(scope);
+    let iter_str = ITERATOR.v8_string(scope).unwrap();
+    let js_iterator: v8::Local<v8::Object> = {
+      global
+        .get(scope, iter_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap()
+    };
+
+    let proto_str = PROTOTYPE.v8_string(scope).unwrap();
+    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+
+    let names = &[
+      NEXT.v8_string(scope).unwrap().into(),
+      RETURN.v8_string(scope).unwrap().into(),
+    ];
+    let values = &[next_func.into(), return_func.into()];
+    let iterator = v8::Object::with_prototype_and_properties(
+      scope,
+      js_iterator_proto,
+      names,
+      values,
+    );
+
+    Ok(iterator)
   }
 
   #[fast]
