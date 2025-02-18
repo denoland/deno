@@ -196,6 +196,8 @@ pub fn op_jupyter_create_png_from_texture(
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
 
+  // We only support the 8 bit per pixel formats with 4 channels
+  // as such a pixel has 4 bytes
   const BYTES_PER_PIXEL: u32 = 4;
 
   let unpadded_bytes_per_row = texture.size.width * BYTES_PER_PIXEL;
@@ -323,10 +325,6 @@ pub fn op_jupyter_create_png_from_texture(
     GPUTextureFormat::Rgba8sint => ExtendedColorType::Rgba8,
     GPUTextureFormat::Bgra8unorm => ExtendedColorType::Bgra8,
     GPUTextureFormat::Bgra8unormSrgb => ExtendedColorType::Bgra8,
-    GPUTextureFormat::Rgba16uint => ExtendedColorType::Rgba16,
-    GPUTextureFormat::Rgba16sint => ExtendedColorType::Rgba16,
-    GPUTextureFormat::Rgba16float => ExtendedColorType::Rgba16,
-    GPUTextureFormat::Rgba32float => ExtendedColorType::Rgba32F,
     _ => {
       return Err(JsErrorBox::type_error(format!(
         "Unsupported texture format '{}'",
