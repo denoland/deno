@@ -22,6 +22,7 @@ pub struct RunStatementResult {
   changes: u64,
 }
 
+#[derive(Debug)]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
@@ -367,6 +368,176 @@ impl StatementSync {
 
     let arr = v8::Array::new_with_elements(scope, &arr);
     Ok(arr)
+  }
+
+  fn iterate<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
+    macro_rules! v8_static_strings {
+      ($($ident:ident = $str:literal),* $(,)?) => {
+        $(
+          pub static $ident: deno_core::FastStaticString = deno_core::ascii_str!($str);
+        )*
+      };
+    }
+
+    v8_static_strings! {
+      ITERATOR = "Iterator",
+      PROTOTYPE = "prototype",
+      NEXT = "next",
+      RETURN = "return",
+      DONE = "done",
+      VALUE = "value",
+    }
+
+    self.reset();
+
+    self.bind_params(scope, params)?;
+
+    #[derive(Debug)]
+    struct IteratorContext {
+      inner: *mut ffi::sqlite3_stmt,
+      db: Rc<RefCell<Option<rusqlite::Connection>>>,
+      is_finished: bool,
+      use_big_ints: Cell<bool>,
+    }
+
+    impl<'a> From<&'a mut IteratorContext> for StatementSync {
+      fn from(ctx: &'a mut IteratorContext) -> StatementSync {
+        StatementSync {
+          inner: ctx.inner,
+          db: ctx.db.clone(),
+          use_big_ints: ctx.use_big_ints.clone(),
+        }
+      }
+    }
+
+    let iterate_next = |scope: &mut v8::HandleScope,
+                        args: v8::FunctionCallbackArguments,
+                        mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data()).unwrap();
+      let context = unsafe { &mut *(context.value() as *mut IteratorContext) };
+
+      if context.is_finished {
+        let names = &[
+          DONE.v8_string(scope).unwrap().into(),
+          VALUE.v8_string(scope).unwrap().into(),
+        ];
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      }
+
+      let statement =
+        std::mem::ManuallyDrop::new(StatementSync::from(&mut *context));
+
+      let Ok(Some(row)) = statement.read_row(scope) else {
+        statement.reset();
+        context.is_finished = true;
+
+        let names = &[
+          DONE.v8_string(scope).unwrap().into(),
+          VALUE.v8_string(scope).unwrap().into(),
+        ];
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      };
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+      let values = &[v8::Boolean::new(scope, false).into(), row.into()];
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let iterate_return = |scope: &mut v8::HandleScope,
+                          args: v8::FunctionCallbackArguments,
+                          mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data()).unwrap();
+      let context = unsafe { &mut *(context.value() as *mut IteratorContext) };
+
+      context.is_finished = true;
+
+      unsafe {
+        ffi::sqlite3_reset(context.inner);
+      }
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+      let values = &[
+        v8::Boolean::new(scope, true).into(),
+        v8::undefined(scope).into(),
+      ];
+
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let context = Box::new(IteratorContext {
+      inner: self.inner,
+      use_big_ints: self.use_big_ints.clone(),
+      db: self.db.clone(),
+      is_finished: false,
+    });
+    let external = v8::External::new(scope, Box::into_raw(context) as _);
+    let next_func = v8::Function::builder(iterate_next)
+      .data(external.into())
+      .build(scope)
+      .unwrap();
+    let return_func = v8::Function::builder(iterate_return)
+      .data(external.into())
+      .build(scope)
+      .unwrap();
+
+    let global = scope.get_current_context().global(scope);
+    let iter_str = ITERATOR.v8_string(scope).unwrap();
+    let js_iterator: v8::Local<v8::Object> = {
+      global
+        .get(scope, iter_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap()
+    };
+
+    let proto_str = PROTOTYPE.v8_string(scope).unwrap();
+    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+
+    let names = &[
+      NEXT.v8_string(scope).unwrap().into(),
+      RETURN.v8_string(scope).unwrap().into(),
+    ];
+    let values = &[next_func.into(), return_func.into()];
+    let iterator = v8::Object::with_prototype_and_properties(
+      scope,
+      js_iterator_proto,
+      names,
+      values,
+    );
+
+    Ok(iterator)
   }
 
   #[fast]
