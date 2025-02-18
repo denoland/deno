@@ -48,6 +48,9 @@ export function common(paths: string[], sep = SEP): string {
       return "";
     }
   }
-  const prefix = ArrayPrototypeJoin(ArrayPrototypeSlice(parts, 0, endOfPrefix), sep);
+  const prefix = ArrayPrototypeJoin(
+    ArrayPrototypeSlice(parts, 0, endOfPrefix),
+    sep,
+  );
   return StringPrototypeEndsWith(prefix, sep) ? prefix : `${prefix}${sep}`;
 }
