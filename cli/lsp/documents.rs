@@ -23,6 +23,8 @@ use deno_core::futures::future;
 use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
+use deno_core::resolve_url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::Resolution;
@@ -36,6 +38,7 @@ use indexmap::IndexSet;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
 
 use super::cache::calculate_fs_version;
@@ -48,8 +51,8 @@ use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
-use super::tsc::AssetDocument;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::tsc::MaybeStaticSource;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -180,10 +183,85 @@ impl IndexValid {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
+#[derive(Debug)]
+pub struct AssetDocument {
+  specifier: ModuleSpecifier,
+  text: MaybeStaticSource,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
+}
+
+impl AssetDocument {
+  pub fn new(specifier: ModuleSpecifier, text: MaybeStaticSource) -> Self {
+    let line_index = Arc::new(LineIndex::new(text.as_ref()));
+    Self {
+      specifier,
+      text,
+      line_index,
+      maybe_navigation_tree: Default::default(),
+    }
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.specifier
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
+  }
+
+  pub fn text(&self) -> MaybeStaticSource {
+    self.text.clone()
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
+    self.maybe_navigation_tree.lock().clone()
+  }
+}
+
+#[derive(Debug)]
+pub struct AssetDocuments {
+  inner: RwLock<HashMap<ModuleSpecifier, Arc<AssetDocument>>>,
+}
+
+impl AssetDocuments {
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.inner.read().contains_key(k)
+  }
+
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<Arc<AssetDocument>> {
+    self.inner.read().get(k).cloned()
+  }
+}
+
+pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
+  Lazy::new(|| AssetDocuments {
+    inner: RwLock::new(
+      crate::tsc::LAZILY_LOADED_STATIC_ASSETS
+        .iter()
+        .map(|(k, v)| {
+          let url_str = format!("asset:///{k}");
+          let specifier = resolve_url(&url_str).unwrap();
+          let asset = Arc::new(AssetDocument::new(specifier.clone(), v.get()));
+          (specifier, asset)
+        })
+        .collect(),
+    ),
+  });
+
 #[derive(Debug, Clone)]
 pub enum AssetOrDocument {
   Document(Arc<Document>),
-  Asset(AssetDocument),
+  Asset(Arc<AssetDocument>),
 }
 
 impl AssetOrDocument {
@@ -218,10 +296,12 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text(&self) -> MaybeStaticSource {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text.clone(),
+      AssetOrDocument::Document(d) => {
+        MaybeStaticSource::Computed(d.text.clone())
+      }
     }
   }
 
@@ -269,6 +349,16 @@ impl AssetOrDocument {
     match self {
       AssetOrDocument::Asset(_) => ResolutionMode::Import,
       AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    match self {
+      AssetOrDocument::Asset(a) => a.cache_navigation_tree(navigation_tree),
+      AssetOrDocument::Document(d) => d.cache_navigation_tree(navigation_tree),
     }
   }
 }
