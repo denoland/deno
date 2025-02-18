@@ -16,12 +16,31 @@ const {
   op_bench_now,
 } = core.ops;
 const {
-  ArrayPrototypePush,
+  Array,
+  ArrayPrototypeSort,
+  ArrayPrototypeSlice,
   Error,
+  MathMax,
+  MathMin,
   MathCeil,
   SymbolToStringTag,
   TypeError,
 } = primordials;
+
+/**
+ * @typedef {{
+ *   id: number,
+ *   name: string,
+ *   fn: BenchFunction
+ *   origin: string,
+ *   ignore: boolean,
+ *   only: boolean.
+ *   n?: number;
+ *   warmup?: number;
+ *   sanitizeExit: boolean,
+ *   permissions: PermissionOptions,
+ * }} BenchDescription
+ */
 
 /** @type {number | null} */
 let currentBenchId = null;
@@ -199,37 +218,43 @@ function benchStats(
   min,
   max,
   all,
+  allLength,
 ) {
   return {
     n,
     min,
     max,
-    p75: all[MathCeil(n * (75 / 100)) - 1],
-    p99: all[MathCeil(n * (99 / 100)) - 1],
-    p995: all[MathCeil(n * (99.5 / 100)) - 1],
-    p999: all[MathCeil(n * (99.9 / 100)) - 1],
+    p75: all[MathCeil(allLength * (75 / 100)) - 1],
+    p99: all[MathCeil(allLength * (99 / 100)) - 1],
+    p995: all[MathCeil(allLength * (99.5 / 100)) - 1],
+    p999: all[MathCeil(allLength * (99.9 / 100)) - 1],
     avg: !highPrecision ? (avg / n) : MathCeil(avg / n),
     highPrecision,
     usedExplicitTimers,
   };
 }
 
-async function benchMeasure(timeBudget, fn, async, context) {
+// reuse the same array across all benchmarks
+// and cap the length so that we don't spend
+// too much time sorting
+const allMaxLength = 10_000_000;
+let all = new Array(allMaxLength);
+const lowPrecisionThresholdInNs = 1e4;
+
+async function benchMeasure(timeBudget, fn, desc, context) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
   let usedExplicitTimers = false;
-  const all = [];
   let min = Infinity;
   let max = -Infinity;
-  const lowPrecisionThresholdInNs = 1e4;
 
   // warmup step
   let c = 0;
-  let iterations = 20;
+  let iterations = desc.warmup > 0 ? desc.warmup : 20;
   let budget = 10 * 1e6;
 
-  if (!async) {
+  if (!desc.async) {
     while (budget > 0 || iterations-- > 0) {
       const t1 = benchNow();
       fn(context);
@@ -272,11 +297,11 @@ async function benchMeasure(timeBudget, fn, async, context) {
   wavg /= c;
 
   // measure step
-  if (wavg > lowPrecisionThresholdInNs) {
-    let iterations = 10;
-    let budget = timeBudget * 1e6;
+  iterations = desc.n > 0 ? desc.n : 10;
+  budget = timeBudget * 1e6;
 
-    if (!async) {
+  if (wavg > lowPrecisionThresholdInNs) {
+    if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
         fn(context);
@@ -292,10 +317,13 @@ async function benchMeasure(timeBudget, fn, async, context) {
           currentBenchUserExplicitEnd = null;
         }
 
+        if (n < allMaxLength) {
+          all[n] = measuredTime;
+        }
+
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -315,10 +343,13 @@ async function benchMeasure(timeBudget, fn, async, context) {
           currentBenchUserExplicitEnd = null;
         }
 
+        if (n < allMaxLength) {
+          all[n] = measuredTime;
+        }
+
         n++;
         avg += measuredTime;
         budget -= totalTime;
-        ArrayPrototypePush(all, measuredTime);
         if (measuredTime < min) min = measuredTime;
         if (measuredTime > max) max = measuredTime;
       }
@@ -326,10 +357,9 @@ async function benchMeasure(timeBudget, fn, async, context) {
   } else {
     context.start = function start() {};
     context.end = function end() {};
-    let iterations = 10;
-    let budget = timeBudget * 1e6;
+    iterations = MathMax(MathCeil(iterations / lowPrecisionThresholdInNs), 10);
 
-    if (!async) {
+    if (!desc.async) {
       while (budget > 0 || iterations-- > 0) {
         const t1 = benchNow();
         for (let c = 0; c < lowPrecisionThresholdInNs; c++) {
@@ -337,9 +367,12 @@ async function benchMeasure(timeBudget, fn, async, context) {
         }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
+        if (n < allMaxLength) {
+          all[n] = iterationTime;
+        }
+
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -354,9 +387,12 @@ async function benchMeasure(timeBudget, fn, async, context) {
         }
         const iterationTime = (benchNow() - t1) / lowPrecisionThresholdInNs;
 
+        if (n < allMaxLength) {
+          all[n] = iterationTime;
+        }
+
         n++;
         avg += iterationTime;
-        ArrayPrototypePush(all, iterationTime);
         if (iterationTime < min) min = iterationTime;
         if (iterationTime > max) max = iterationTime;
         budget -= iterationTime * lowPrecisionThresholdInNs;
@@ -364,7 +400,10 @@ async function benchMeasure(timeBudget, fn, async, context) {
     }
   }
 
-  all.sort(compareMeasurements);
+  const allLength = MathMin(allMaxLength, n);
+  const allSlice = ArrayPrototypeSlice(all, 0, allLength);
+  ArrayPrototypeSort(allSlice, compareMeasurements);
+
   return benchStats(
     n,
     wavg > lowPrecisionThresholdInNs,
@@ -372,7 +411,8 @@ async function benchMeasure(timeBudget, fn, async, context) {
     avg,
     min,
     max,
-    all,
+    allSlice,
+    allLength,
   );
 }
 
@@ -440,7 +480,7 @@ function wrapBenchmark(desc) {
       const stats = await benchMeasure(
         benchTimeInMs,
         fn,
-        desc.async,
+        desc,
         context,
       );
 

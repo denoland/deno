@@ -75,17 +75,6 @@ const DenoNs = globalThis.Deno;
  *   completed: boolean,
  *   failed: boolean,
  * }} TestStepState
- *
- * @typedef {{
- *   id: number,
- *   name: string,
- *   fn: BenchFunction
- *   origin: string,
- *   ignore: boolean,
- *   only: boolean.
- *   sanitizeExit: boolean,
- *   permissions: PermissionOptions,
- * }} BenchDescription
  */
 
 /** @type {Map<number, TestState | TestStepState>} */
