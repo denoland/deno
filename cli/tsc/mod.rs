@@ -169,7 +169,8 @@ pub enum StaticAssetSource {
 }
 
 /// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum MaybeStaticSource {
   Computed(Arc<str>),
   Static(&'static str),

@@ -50,6 +50,7 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::AssetDocument;
 use crate::graph_util::CliJsrUrlProvider;
+use crate::tsc::MaybeStaticSource;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -218,10 +219,12 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text(&self) -> MaybeStaticSource {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text.clone(),
+      AssetOrDocument::Document(d) => {
+        MaybeStaticSource::Computed(d.text.clone())
+      }
     }
   }
 

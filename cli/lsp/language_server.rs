@@ -2805,7 +2805,7 @@ impl Inner {
             }
             Ok(span.to_folding_range(
               asset_or_doc.line_index(),
-              asset_or_doc.text().as_bytes(),
+              asset_or_doc.text().as_ref().as_bytes(),
               self.config.line_folding_only_capable(),
             ))
           })

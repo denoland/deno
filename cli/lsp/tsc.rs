@@ -97,6 +97,7 @@ use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::logging::lsp_warn;
 use crate::tsc;
+use crate::tsc::MaybeStaticSource;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
@@ -1403,18 +1404,18 @@ impl TsServer {
 #[derive(Debug, Clone)]
 pub struct AssetDocument {
   specifier: ModuleSpecifier,
-  text: Arc<str>,
+  text: MaybeStaticSource,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Option<Arc<NavigationTree>>,
 }
 
 impl AssetDocument {
-  pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
-    let text = text.as_ref();
+  pub fn new(specifier: ModuleSpecifier, text: MaybeStaticSource) -> Self {
+    let line_index = Arc::new(LineIndex::new(text.as_ref()));
     Self {
       specifier,
-      text: text.into(),
-      line_index: Arc::new(LineIndex::new(text)),
+      text,
+      line_index,
       maybe_navigation_tree: None,
     }
   }
@@ -1430,7 +1431,7 @@ impl AssetDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text(&self) -> MaybeStaticSource {
     self.text.clone()
   }
 
@@ -4622,7 +4623,7 @@ enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: Arc<str>,
+  data: MaybeStaticSource,
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
