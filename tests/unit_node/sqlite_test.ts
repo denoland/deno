@@ -201,13 +201,19 @@ CREATE TABLE two(id int PRIMARY KEY) STRICT;`);
 Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const db = new DatabaseSync(":memory:");
   const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
+  // @ts-ignore: types are not up to date
+  const iter = stmt.iterate();
 
   const result = [];
-  // @ts-ignore: types are not up to date
-  for (const row of stmt.iterate()) {
+  for (const row of iter) {
     result.push(row);
   }
 
   assertEquals(result, stmt.all());
+
+  const { done, value } = iter.next();
+  assertEquals(done, true);
+  assertEquals(value, undefined);
+
   db.close();
 });
