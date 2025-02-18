@@ -331,18 +331,25 @@ impl StatementSync {
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
 
+    // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+    // as it lives as long as the StatementSync instance.
     unsafe {
       ffi::sqlite3_bind_parameter_index(raw, key.as_ptr() as *const _);
     }
 
     if value.is_number() {
       let value = value.number_value(scope).unwrap();
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
       unsafe {
         ffi::sqlite3_bind_double(raw, count + 1, value);
       }
     } else if value.is_string() {
       let value = value.to_rust_string_lossy(scope);
 
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
       unsafe {
         ffi::sqlite3_bind_text(
           raw,
@@ -353,6 +360,8 @@ impl StatementSync {
         );
       }
     } else if value.is_null() {
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
       unsafe {
         ffi::sqlite3_bind_null(raw, count + 1);
       }
@@ -360,6 +369,11 @@ impl StatementSync {
       let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
       let data = value.data();
       let size = value.byte_length();
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      //
+      // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
       unsafe {
         ffi::sqlite3_bind_blob(
           raw,
@@ -378,6 +392,8 @@ impl StatementSync {
         ));
       }
 
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
       unsafe {
         ffi::sqlite3_bind_int64(raw, count + 1, as_int);
       }
