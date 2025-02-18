@@ -17713,3 +17713,64 @@ fn ambient_module_errors_suppressed() {
     ])
   );
 }
+
+#[test]
+#[timeout(300_000)]
+fn definitely_typed_fallback() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import { foo } from "@denotest/index-export-no-types";
+
+      const _res: boolean = foo(1, 2);
+      console.log(_res);
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+      "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+      "oldtypes": "npm:@types/denotest__index-export-no-types@0.5.0"
+    }
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+    client.read_diagnostics();
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 1);
+    assert_eq!(
+      json!(diagnostics.all()),
+      json!([
+        {
+          "range": source.range_of("_res"),
+          "severity": 1,
+          "code": 2322,
+          "source": "deno-ts",
+          "message": "Type 'number' is not assignable to type 'boolean'."
+        }
+      ])
+    );
+    client.did_close_file(&source);
+  }
+}
