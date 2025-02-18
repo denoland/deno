@@ -7,7 +7,7 @@ const {
   StringPrototypeLastIndexOf,
   StringPrototypeSplit,
   StringPrototypeSlice,
-  StringPrototypeEndsWith
+  StringPrototypeEndsWith,
 } = primordials;
 import { SEP } from "ext:deno_node/path/separator.ts";
 
@@ -25,7 +25,11 @@ import { SEP } from "ext:deno_node/path/separator.ts";
 export function common(paths: string[], sep = SEP): string {
   const [first = "", ...remaining] = paths;
   if (first === "" || remaining.length === 0) {
-    return StringPrototypeSubstring(first, 0, StringPrototypeLastIndexOf(first, sep) + 1);
+    return StringPrototypeSubstring(
+      first,
+      0,
+      StringPrototypeLastIndexOf(first, sep) + 1,
+    );
   }
   const parts = StringPrototypeSplit(first, sep);
 
