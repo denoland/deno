@@ -205,8 +205,8 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
     `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
   );
 
-  const query = "SELECT * FROM one WHERE variable3=:test1";
-  const result = db.prepare(query).all({ test1: 2 });
+  const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";
+  const result = db.prepare(query).all({ var1: "test", var2: 1 });
   assertEquals(result, [{
     __proto__: null,
     variable1: "test",

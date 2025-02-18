@@ -2,13 +2,11 @@
 
 use std::cell::Cell;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
-use deno_core::v8::Local;
 use deno_core::GarbageCollected;
 use libsqlite3_sys as ffi;
 use serde::Serialize;
@@ -290,7 +288,6 @@ impl StatementSync {
           }
           param_count += 1;
         } else if value.is_object() {
-          let mut params: HashMap<String, Local<v8::Value>> = HashMap::new();
           let value: v8::Local<v8::Object> = value.try_into().unwrap();
           let maybe_keys =
             value.get_property_names(scope, GetPropertyNamesArgs::default());
@@ -302,15 +299,17 @@ impl StatementSync {
                 if let Some(key_str) = key.to_string(scope) {
                   let key_str = key_str.to_rust_string_lossy(scope);
                   if let Some(value) = value.get(scope, key) {
-                    params.insert(key_str, value);
+                    self.bind_params_object(
+                      scope,
+                      key_str,
+                      value,
+                      param_count,
+                    )?;
+                    param_count += 1;
                   }
                 }
               }
             }
-          }
-          for (key, value) in params {
-            self.bind_params_object(scope, key, value, param_count)?;
-            param_count += 1;
           }
         } else {
           return Err(SqliteError::FailedBind("Unsupported type"));
@@ -326,7 +325,7 @@ impl StatementSync {
     &self,
     scope: &mut v8::HandleScope,
     key: String,
-    value: Local<v8::Value>,
+    value: v8::Local<v8::Value>,
     count: i32,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
@@ -517,7 +516,6 @@ impl StatementSync {
         .to_string_lossy()
         .into_owned();
       ffi::sqlite3_free(raw as _);
-
       Ok(sql)
     }
   }
