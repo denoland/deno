@@ -740,7 +740,7 @@ function serve(arg1, arg2) {
   }
 
   const listenOpts = {
-    hostname: options.hostname ?? "0.0.0.0",
+    hostname: options.hostname ?? "localhost",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
