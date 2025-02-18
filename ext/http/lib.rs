@@ -412,12 +412,34 @@ impl OtelInfo {
         .u64_histogram("http.server.request.body.size")
         .with_unit("By")
         .with_description("Size of HTTP server request bodies.")
+        .with_boundaries(vec![
+          0.0,
+          100.0,
+          1000.0,
+          10000.0,
+          100000.0,
+          1000000.0,
+          10000000.0,
+          100000000.0,
+          1000000000.0,
+        ])
         .build();
 
       let response_size = meter
         .u64_histogram("http.server.response.body.size")
         .with_unit("By")
         .with_description("Size of HTTP server response bodies.")
+        .with_boundaries(vec![
+          0.0,
+          100.0,
+          1000.0,
+          10000.0,
+          100000.0,
+          1000000.0,
+          10000000.0,
+          100000000.0,
+          1000000000.0,
+        ])
         .build();
 
       OtelCollectors {

@@ -559,16 +559,16 @@ impl HttpRecord {
   }
 
   pub fn otel_info_set_status(&self, status: u16) {
-    let mut info = self.0.borrow_mut();
-    if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
       info.attributes.http_response_status_code = Some(status as _);
       info.handle_duration_and_request_size();
     }
   }
 
   pub fn otel_info_set_error(&self, error: &'static str) {
-    let mut info = self.0.borrow_mut();
-    if let Some(info) = info.as_mut().unwrap().otel_info.as_mut() {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
       info.attributes.error_type = Some(error);
       info.handle_duration_and_request_size();
     }
