@@ -1999,7 +1999,6 @@ mod tests {
       StateSnapshot {
         project_version: 0,
         documents: Arc::new(documents),
-        assets: Default::default(),
         config: Arc::new(config),
         resolver,
       },
