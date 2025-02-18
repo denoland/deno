@@ -1399,48 +1399,6 @@ impl TsServer {
   }
 }
 
-/// An lsp representation of an asset in memory, that has either been retrieved
-/// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug)]
-pub struct AssetDocument {
-  specifier: ModuleSpecifier,
-  text: MaybeStaticSource,
-  line_index: Arc<LineIndex>,
-  maybe_navigation_tree: Mutex<Option<Arc<NavigationTree>>>,
-}
-
-impl AssetDocument {
-  pub fn new(specifier: ModuleSpecifier, text: MaybeStaticSource) -> Self {
-    let line_index = Arc::new(LineIndex::new(text.as_ref()));
-    Self {
-      specifier,
-      text,
-      line_index,
-      maybe_navigation_tree: Default::default(),
-    }
-  }
-
-  pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.specifier
-  }
-
-  pub fn cache_navigation_tree(&self, navigation_tree: Arc<NavigationTree>) {
-    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
-  }
-
-  pub fn text(&self) -> MaybeStaticSource {
-    self.text.clone()
-  }
-
-  pub fn line_index(&self) -> Arc<LineIndex> {
-    self.line_index.clone()
-  }
-
-  pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
-    self.maybe_navigation_tree.lock().clone()
-  }
-}
-
 fn get_tag_body_text(
   tag: &JsDocTagInfo,
   language_server: &language_server::Inner,
