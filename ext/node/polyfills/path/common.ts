@@ -9,7 +9,7 @@ const {
   ArrayPrototypeSlice,
   StringPrototypeEndsWith,
   ArrayPrototypeJoin,
-  ArrayFrom,
+  SafeArrayIterator,
 } = primordials;
 import { SEP } from "ext:deno_node/path/separator.ts";
 
@@ -25,7 +25,7 @@ import { SEP } from "ext:deno_node/path/separator.ts";
  * ```
  */
 export function common(paths: string[], sep = SEP): string {
-  const [first = "", ...remaining] = ArrayFrom(paths);
+  const [first = "", ...remaining] = new SafeArrayIterator(paths);
   if (first === "" || remaining.length === 0) {
     return StringPrototypeSubstring(
       first,
@@ -36,7 +36,7 @@ export function common(paths: string[], sep = SEP): string {
   const parts = StringPrototypeSplit(first, sep);
 
   let endOfPrefix = parts.length;
-  for (const path of remaining) {
+  for (const path of new SafeArrayIterator(remaining)) {
     const compare = StringPrototypeSplit(path, sep);
     for (let i = 0; i < endOfPrefix; i++) {
       if (compare[i] !== parts[i]) {
