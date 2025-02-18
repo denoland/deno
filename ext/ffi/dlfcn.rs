@@ -212,6 +212,7 @@ where
 
         let func_key = v8::String::new(scope, &symbol_key).unwrap();
         let sym = Box::new(Symbol {
+          name: symbol_key.clone(),
           cif,
           ptr,
           parameter_types: foreign_fn.parameters,
@@ -259,9 +260,16 @@ fn make_sync_fn<'s>(
   symbol: Box<Symbol>,
 ) -> v8::Local<'s, v8::Function> {
   let turbocall = if turbocall::is_compatible(&symbol) {
-    let trampoline = turbocall::compile_trampoline(&symbol);
-    let turbocall = turbocall::make_template(&symbol, trampoline);
-    Some(turbocall)
+    match turbocall::compile_trampoline(&symbol) {
+      Ok(trampoline) => {
+        let turbocall = turbocall::make_template(&symbol, trampoline);
+        Some(turbocall)
+      }
+      Err(e) => {
+        log::warn!("Failed to compile FFI turbocall: {e}");
+        None
+      }
+    }
   } else {
     None
   };
