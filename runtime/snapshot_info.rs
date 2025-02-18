@@ -271,7 +271,7 @@ pub fn get_extensions_in_snapshot() -> Vec<Extension> {
       Default::default(),
     ),
     deno_webgpu::deno_webgpu::init_ops(),
-    deno_canvas::deno_canvas::init_ops(),
+    deno_canvas::deno_canvas::init_ops(Default::default()),
     deno_fetch::deno_fetch::init_ops::<Permissions>(Default::default()),
     deno_cache::deno_cache::init_ops(None),
     deno_websocket::deno_websocket::init_ops::<Permissions>(

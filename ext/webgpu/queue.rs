@@ -5,6 +5,7 @@ use deno_core::op2;
 use deno_core::GarbageCollected;
 use deno_core::WebIDL;
 use deno_error::JsErrorBox;
+use tokio::sync::oneshot;
 
 use crate::buffer::GPUBuffer;
 use crate::command_buffer::GPUCommandBuffer;
@@ -74,9 +75,18 @@ impl GPUQueue {
 
   #[async_method]
   async fn on_submitted_work_done(&self) -> Result<(), JsErrorBox> {
-    Err(JsErrorBox::generic(
-      "This operation is currently not supported",
-    ))
+    let (sender, receiver) = oneshot::channel::<()>();
+
+    self.instance.queue_on_submitted_work_done(
+      self.id,
+      Box::new(|| {
+        sender.send(()).unwrap();
+      }),
+    );
+
+    let _ = receiver.await;
+
+    Ok(())
   }
 
   #[required(3)]

@@ -20,6 +20,7 @@ mod bind_group;
 mod bind_group_layout;
 pub mod buffer;
 mod byow;
+pub mod canvas;
 mod command_buffer;
 mod command_encoder;
 mod compute_pass;

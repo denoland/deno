@@ -1,9 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
+pub mod bitmaprenderer;
+pub mod canvas;
 mod image_ops;
 mod op_create_image_bitmap;
+
 pub use image;
 use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
@@ -46,7 +50,15 @@ deno_core::extension!(
   deno_canvas,
   deps = [deno_webidl, deno_web, deno_webgpu],
   ops = [op_create_image_bitmap],
+  objects = [op_create_image_bitmap::ImageBitmap],
   lazy_loaded_esm = ["01_image.js"],
+    options = {
+    contexts: HashMap<String, canvas::CreateCanvasContext>,
+  },
+  state = |state, options| {
+    state.put(canvas::RegisteredContexts(options.contexts));
+  },
+
 );
 
 pub fn get_declaration() -> PathBuf {

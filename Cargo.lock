@@ -1717,12 +1717,9 @@ dependencies = [
  "bytemuck",
  "deno_core",
  "deno_error",
- "deno_terminal 0.2.0",
- "deno_webgpu",
  "image",
  "lcms2",
  "num-traits",
- "serde",
  "thiserror 2.0.3",
 ]
 
@@ -2796,6 +2793,7 @@ dependencies = [
 name = "deno_webgpu"
 version = "0.157.0"
 dependencies = [
+ "deno_canvas",
  "deno_core",
  "deno_error",
  "deno_unsync",
