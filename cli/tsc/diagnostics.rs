@@ -152,7 +152,7 @@ pub struct Diagnostic {
 
 impl Diagnostic {
   pub fn from_missing_error(
-    specifier: &ModuleSpecifier,
+    specifier: &str,
     maybe_range: Option<&deno_graph::Range>,
     additional_message: Option<String>,
   ) -> Self {
