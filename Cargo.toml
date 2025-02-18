@@ -128,7 +128,7 @@ ctr = { version = "0.9.2", features = ["alloc"] }
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-deno_cache_dir = "=0.17.0"
+deno_cache_dir = "=0.18.0"
 deno_error = "=0.5.5"
 deno_package_json = { version = "=0.4.2", default-features = false }
 deno_unsync = "0.4.2"
