@@ -1,9 +1,14 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // This module is browser compatible.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
+import { primordials } from "ext:core/mod.js";
+const { 
+  StringPrototypeSubstring,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSplit,
+  StringPrototypeSlice,
+  StringPrototypeEndsWith
+} = primordials;
 import { SEP } from "ext:deno_node/path/separator.ts";
 
 /** Determines the common path from a set of paths, using an optional separator,
@@ -20,13 +25,13 @@ import { SEP } from "ext:deno_node/path/separator.ts";
 export function common(paths: string[], sep = SEP): string {
   const [first = "", ...remaining] = paths;
   if (first === "" || remaining.length === 0) {
-    return first.substring(0, first.lastIndexOf(sep) + 1);
+    return StringPrototypeSubstring(first, 0, StringPrototypeLastIndexOf(first, sep) + 1);
   }
-  const parts = first.split(sep);
+  const parts = StringPrototypeSplit(first, sep);
 
   let endOfPrefix = parts.length;
   for (const path of remaining) {
-    const compare = path.split(sep);
+    const compare = StringPrototypeSplit(path, sep);
     for (let i = 0; i < endOfPrefix; i++) {
       if (compare[i] !== parts[i]) {
         endOfPrefix = i;
@@ -37,6 +42,6 @@ export function common(paths: string[], sep = SEP): string {
       return "";
     }
   }
-  const prefix = parts.slice(0, endOfPrefix).join(sep);
-  return prefix.endsWith(sep) ? prefix : `${prefix}${sep}`;
+  const prefix = StringPrototypeSlice(parts, 0, endOfPrefix).join(sep);
+  return StringPrototypeEndsWith(prefix, sep) ? prefix : `${prefix}${sep}`;
 }
