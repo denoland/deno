@@ -170,6 +170,8 @@ class Stdin {
     if (this.#opPromise) {
       core.unrefOpPromise(this.#opPromise);
     }
+    // Reset the promise so that it can be re-ref'd.
+    this.#opPromise = undefined;
   }
 }
 
