@@ -597,29 +597,6 @@ impl LspResolver {
     has_node_modules_dir(specifier)
   }
 
-  pub fn is_bare_package_json_dep(
-    &self,
-    specifier_text: &str,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-  ) -> bool {
-    let resolver = self.get_scope_resolver(Some(referrer));
-    let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
-    else {
-      return false;
-    };
-    npm_pkg_req_resolver
-      .resolve_if_for_npm_pkg(
-        specifier_text,
-        referrer,
-        resolution_mode,
-        NodeResolutionKind::Types,
-      )
-      .ok()
-      .flatten()
-      .is_some()
-  }
-
   pub fn resolve_redirects(
     &self,
     specifier: &ModuleSpecifier,
