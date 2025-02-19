@@ -1847,11 +1847,7 @@ impl Inner {
         }
       }
     }
-    if let Some(document) = asset_or_doc.document() {
-      code_actions
-        .add_source_actions(document, &params.range, self)
-        .await;
-    }
+
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
