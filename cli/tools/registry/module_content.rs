@@ -5,13 +5,16 @@ use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_ast::ParsedSource;
 use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
+use deno_ast::TextChange;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::workspace::ResolutionKind;
+use lazy_regex::Lazy;
 
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
@@ -100,16 +103,24 @@ impl ModuleContentProvider {
         .push(PublishDiagnostic::SpecifierUnfurl(diagnostic));
     };
     let text_info = parsed_source.text_info_lazy();
+    let module_info =
+      deno_graph::ParserModuleAnalyzer::module_info(&parsed_source);
     let mut text_changes = Vec::new();
     if media_type.is_jsx() {
-      let jsx_options =
-        self.resolve_jsx_options(text_info, &mut reporter, specifier);
-      // todo: update the text with these jsx options, but only if no
-      // existing pragma exists
+      self.add_jsx_text_changes(
+        specifier,
+        &parsed_source,
+        text_info,
+        &module_info,
+        &mut reporter,
+        &mut text_changes,
+      )?;
     }
+
     self.specifier_unfurler.unfurl_to_changes(
       specifier,
       &parsed_source,
+      &module_info,
       &mut text_changes,
       &mut reporter,
     );
@@ -119,12 +130,90 @@ impl ModuleContentProvider {
     Ok(rewritten_text.into_bytes())
   }
 
-  fn resolve_jsx_options<'a>(
+  fn add_jsx_text_changes(
     &self,
+    specifier: &Url,
+    parsed_source: &ParsedSource,
+    text_info: &SourceTextInfo,
+    module_info: &deno_graph::ModuleInfo,
+    diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
+    text_changes: &mut Vec<TextChange>,
+  ) -> Result<(), AnyError> {
+    static JSX_RUNTIME_RE: Lazy<regex::Regex> =
+      lazy_regex::lazy_regex!(r"(?i)^[\s*]*@jsxRuntime\s+(\S+)");
+    static JSX_FACTORY_RE: Lazy<regex::Regex> =
+      lazy_regex::lazy_regex!(r"(?i)^[\s*]*@jsxFactory\s+(\S+)");
+    static JSX_FRAGMENT_FACTORY_RE: Lazy<regex::Regex> =
+      lazy_regex::lazy_regex!(r"(?i)^[\s*]*@jsxFragmentFactory\s+(\S+)");
+
+    let start_pos = if parsed_source.program_ref().shebang().is_some() {
+      match text_info.text_str().find('\n') {
+        Some(index) => index + 1,
+        None => return Ok(()), // nothing in this file
+      }
+    } else {
+      0
+    };
+    let mut add_text_change = |text: String| {
+      text_changes.push(TextChange {
+        range: start_pos..start_pos,
+        new_text: text,
+      })
+    };
+    let jsx_options =
+      self.resolve_jsx_options(specifier, text_info, diagnostic_reporter)?;
+    if module_info.jsx_import_source.is_none() {
+      if let Some(import_source) = jsx_options.jsx_import_source {
+        add_text_change(format!("/** @jsxImportSource {} */", import_source));
+      }
+    }
+    if module_info.jsx_import_source_types.is_none() {
+      if let Some(import_source) = jsx_options.jsx_import_source_types {
+        add_text_change(format!(
+          "/** @jsxImportSourceTypes {} */",
+          import_source
+        ));
+      }
+    }
+    let leading_comments = parsed_source.get_leading_comments();
+    let leading_comments_has_re = |regex: &regex::Regex| {
+      leading_comments
+        .as_ref()
+        .map(|comments| {
+          comments.iter().any(|c| {
+            c.kind == deno_ast::swc::common::comments::CommentKind::Block
+              && regex.is_match(c.text.as_str())
+          })
+        })
+        .unwrap_or(false)
+    };
+    if !leading_comments_has_re(&JSX_RUNTIME_RE) {
+      add_text_change(format!(
+        "/** @jsxRuntime {} */",
+        jsx_options.jsx_runtime,
+      ));
+    }
+    if !leading_comments_has_re(&JSX_FACTORY_RE) {
+      add_text_change(format!(
+        "/** @jsxFactory {} */",
+        jsx_options.jsx_factory,
+      ));
+    }
+    if !leading_comments_has_re(&JSX_FRAGMENT_FACTORY_RE) {
+      add_text_change(format!(
+        "/** @jsxFragmentFactory {} */",
+        jsx_options.jsx_fragment_factory,
+      ));
+    }
+    Ok(())
+  }
+
+  fn resolve_jsx_options<'a>(
+    &'a self,
+    specifier: &Url,
     text_info: &SourceTextInfo,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
-    specifier: &Url,
-  ) -> JsxFolderOptions<'a> {
+  ) -> Result<JsxFolderOptions<'a>, AnyError> {
     let tsconfig_folder_info =
       self.tsconfig_resolver.folder_for_specifier(specifier);
     let transpile_options =
@@ -163,13 +252,13 @@ impl ModuleContentProvider {
       .map(|jsx_import_source_types| {
         unfurl_import_source(jsx_import_source_types, ResolutionKind::Types)
       });
-    JsxFolderOptions {
+    Ok(JsxFolderOptions {
       jsx_runtime,
       jsx_factory: &transpile_options.jsx_factory,
       jsx_fragment_factory: &transpile_options.jsx_fragment_factory,
       jsx_import_source,
       jsx_import_source_types,
-    }
+    })
   }
 }
 

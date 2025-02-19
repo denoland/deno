@@ -516,11 +516,11 @@ impl SpecifierUnfurler {
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
+    module_info: &deno_graph::ModuleInfo,
     text_changes: &mut Vec<TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) {
     let text_info = parsed_source.text_info_lazy();
-    let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
@@ -977,9 +977,11 @@ console.log(nonExistent);
   ) -> String {
     let text_info = parsed_source.text_info_lazy();
     let mut text_changes = Vec::new();
+    let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     unfurler.unfurl_to_changes(
       url,
       parsed_source,
+      &module_info,
       &mut text_changes,
       diagnostic_reporter,
     );
