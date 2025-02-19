@@ -2310,7 +2310,7 @@ mod tests {
     assert_eq!(types_package_name("name"), "@types/name");
     assert_eq!(
       types_package_name("@scoped/package"),
-      "@types/@scoped__package"
+      "@types/scoped__package"
     );
   }
 }
