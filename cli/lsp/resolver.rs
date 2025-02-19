@@ -11,7 +11,7 @@ use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_cache_dir::npm::NpmCacheDir;
 use deno_cache_dir::HttpCache;
-use deno_config::deno_json::JsxImportSourceConfig;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Url;
 use deno_graph::GraphImport;
@@ -997,7 +997,7 @@ impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
   ) -> Option<String> {
     self
       .jsx_import_source_config
-      .and_then(|c| c.default_specifier.clone())
+      .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn default_jsx_import_source_types(
@@ -1006,7 +1006,7 @@ impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
   ) -> Option<String> {
     self
       .jsx_import_source_config
-      .and_then(|c| c.default_types_specifier.clone())
+      .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn jsx_import_source_module(&self, _referrer: &ModuleSpecifier) -> &str {
