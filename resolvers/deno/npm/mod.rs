@@ -379,7 +379,7 @@ impl<
     match resolution_result {
       Ok(url) => Ok(url),
       Err(err) => {
-        if let Some(_) = err.as_types_not_found() {
+        if err.as_types_not_found().is_some() {
           let maybe_definitely_typed_req =
             if let Some(npm_resolver) = self.npm_resolver.as_managed() {
               let snapshot = npm_resolver.resolution().snapshot();
@@ -562,12 +562,11 @@ pub fn find_definitely_typed_package<'a>(
     }
     if type_nv.version.major == nv.version.major
       && type_nv.version.minor == nv.version.minor
+      && type_nv.version.patch >= best_patch
       && type_nv.version.pre == nv.version.pre
     {
-      if type_nv.version.patch >= best_patch {
-        best = Some((req, type_nv));
-        best_patch = type_nv.version.patch;
-      }
+      best = Some((req, type_nv));
+      best_patch = type_nv.version.patch;
     }
 
     if let Some((_, highest_nv)) = highest {

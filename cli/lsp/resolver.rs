@@ -555,7 +555,6 @@ impl LspResolver {
     specifier: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
-    eprintln!("file_url_to_package_json_dep: {specifier}");
     let resolver = self.get_scope_resolver(file_referrer);
     resolver
       .package_json_deps_by_resolution

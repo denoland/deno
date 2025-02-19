@@ -577,7 +577,7 @@ fn maybe_reverse_definitely_typed(
   let reqs = resolution
     .package_reqs()
     .into_iter()
-    .filter_map(|(req, nv)| (&*nv.name == package_name).then_some(req))
+    .filter_map(|(req, nv)| (*nv.name == package_name).then_some(req))
     .collect::<Vec<_>>();
 
   if reqs.is_empty() {
