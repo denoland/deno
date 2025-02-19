@@ -1582,9 +1582,9 @@ impl Documents {
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
       let dep_info = dep_info_by_scope.entry(Some(scope.clone())).or_default();
       (|| {
-        let config_file = config_data.maybe_deno_json()?;
+        let member_dir = config_data.member_dir;
         let jsx_config =
-          config_file.to_maybe_jsx_import_source_config().ok()??;
+          member_dir.to_maybe_jsx_import_source_config().ok()??;
         let type_specifier = jsx_config.default_types_specifier.as_ref()?;
         let code_specifier = jsx_config.default_specifier.as_ref()?;
         let cli_resolver = self.resolver.as_cli_resolver(Some(scope));

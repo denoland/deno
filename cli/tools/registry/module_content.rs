@@ -1,12 +1,10 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
-use deno_ast::SourceRanged;
 use deno_ast::SourceTextInfo;
 use deno_ast::TextChange;
 use deno_core::anyhow::Context;
@@ -15,31 +13,44 @@ use deno_core::url::Url;
 use deno_graph::ModuleGraph;
 use deno_resolver::workspace::ResolutionKind;
 use lazy_regex::Lazy;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
-use crate::args::deno_json::TsConfigFolderInfo;
 use crate::args::deno_json::TsConfigResolver;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
+use crate::sys::CliSys;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 
-pub struct ModuleContentProvider {
-  specifier_unfurler: SpecifierUnfurler,
+struct JsxFolderOptions<'a> {
+  jsx_factory: &'a str,
+  jsx_fragment_factory: &'a str,
+  jsx_runtime: &'static str,
+  jsx_import_source: Option<String>,
+  jsx_import_source_types: Option<String>,
+}
+
+pub struct ModuleContentProvider<TSys: FsMetadata + FsRead = CliSys> {
+  specifier_unfurler: SpecifierUnfurler<TSys>,
   parsed_source_cache: Arc<ParsedSourceCache>,
+  sys: TSys,
   tsconfig_resolver: Arc<TsConfigResolver>,
 }
 
-impl ModuleContentProvider {
+impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
   pub fn new(
     parsed_source_cache: Arc<ParsedSourceCache>,
-    specifier_unfurler: SpecifierUnfurler,
+    specifier_unfurler: SpecifierUnfurler<TSys>,
+    sys: TSys,
     tsconfig_resolver: Arc<TsConfigResolver>,
   ) -> Self {
     Self {
       specifier_unfurler,
       parsed_source_cache,
+      sys,
       tsconfig_resolver,
     }
   }
@@ -57,7 +68,7 @@ impl ModuleContentProvider {
     let parsed_source = match source_parser.get_or_parse_source(specifier)? {
       Some(parsed_source) => parsed_source,
       None => {
-        let data = std::fs::read(path).with_context(|| {
+        let data = self.sys.fs_read(path).with_context(|| {
           format!("Unable to read file '{}'", path.display())
         })?;
 
@@ -81,11 +92,11 @@ impl ModuleContentProvider {
           | MediaType::Wasm
           | MediaType::Css => {
             // not unfurlable data
-            return Ok(data);
+            return Ok(data.into_owned());
           }
         }
 
-        let text = String::from_utf8(data)?;
+        let text = String::from_utf8_lossy(&data);
         deno_ast::parse_module(deno_ast::ParseParams {
           specifier: specifier.clone(),
           text: text.into(),
@@ -162,19 +173,6 @@ impl ModuleContentProvider {
     };
     let jsx_options =
       self.resolve_jsx_options(specifier, text_info, diagnostic_reporter)?;
-    if module_info.jsx_import_source.is_none() {
-      if let Some(import_source) = jsx_options.jsx_import_source {
-        add_text_change(format!("/** @jsxImportSource {} */", import_source));
-      }
-    }
-    if module_info.jsx_import_source_types.is_none() {
-      if let Some(import_source) = jsx_options.jsx_import_source_types {
-        add_text_change(format!(
-          "/** @jsxImportSourceTypes {} */",
-          import_source
-        ));
-      }
-    }
     let leading_comments = parsed_source.get_leading_comments();
     let leading_comments_has_re = |regex: &regex::Regex| {
       leading_comments
@@ -192,6 +190,19 @@ impl ModuleContentProvider {
         "/** @jsxRuntime {} */",
         jsx_options.jsx_runtime,
       ));
+    }
+    if module_info.jsx_import_source.is_none() {
+      if let Some(import_source) = jsx_options.jsx_import_source {
+        add_text_change(format!("/** @jsxImportSource {} */", import_source));
+      }
+    }
+    if module_info.jsx_import_source_types.is_none() {
+      if let Some(import_source) = jsx_options.jsx_import_source_types {
+        add_text_change(format!(
+          "/** @jsxImportSourceTypes {} */",
+          import_source
+        ));
+      }
     }
     if !leading_comments_has_re(&JSX_FACTORY_RE) {
       add_text_change(format!(
@@ -228,7 +239,7 @@ impl ModuleContentProvider {
         let maybe_import_source = self
           .specifier_unfurler
           .unfurl_specifier_reporting_diagnostic(
-            &specifier,
+            specifier,
             import_source,
             resolution_kind,
             text_info,
@@ -244,6 +255,12 @@ impl ModuleContentProvider {
         .map(|jsx_import_source| {
           unfurl_import_source(jsx_import_source, ResolutionKind::Execution)
         });
+    eprintln!(
+      "TSCONFIG: {:?}",
+      tsconfig_folder_info
+        .lib_tsconfig(deno_config::deno_json::TsTypeLib::DenoWindow)?
+        .0
+    );
     let jsx_import_source_types = tsconfig_folder_info
       .lib_tsconfig(deno_config::deno_json::TsTypeLib::DenoWindow)?
       .0
@@ -262,10 +279,103 @@ impl ModuleContentProvider {
   }
 }
 
-struct JsxFolderOptions<'a> {
-  jsx_factory: &'a str,
-  jsx_fragment_factory: &'a str,
-  jsx_runtime: &'static str,
-  jsx_import_source: Option<String>,
-  jsx_import_source_types: Option<String>,
+#[cfg(test)]
+mod test {
+  use std::path::PathBuf;
+
+  use deno_config::workspace::WorkspaceDiscoverStart;
+  use deno_path_util::url_from_file_path;
+  use deno_resolver::workspace::WorkspaceResolver;
+  use pretty_assertions::assert_eq;
+  use sys_traits::impls::InMemorySys;
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsWrite;
+
+  use super::*;
+
+  #[test]
+  fn test_module_content_jsx() {
+    run_test(&[
+      (
+        "/deno.json",
+        r#"{ "workspace": ["package-a", "package-b"] }"#,
+        None,
+      ),
+      (
+        "/package-a/deno.json",
+        r#"{ "compilerOptions": {
+        "jsx": "react-jsx",
+        "jsxImportSource": "react",
+        "jsxImportSourceTypes": "@types/react",
+      },
+      "imports": {
+        "react": "npm:react"
+        "@types/react": "npm:@types/react"
+      }
+    }"#,
+        None,
+      ),
+      ("/package-b/deno.json", "{}", None),
+      (
+        "/package-a/main.tsx",
+        "export const component = <div></div>;",
+        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+      ),
+    ]);
+  }
+
+  fn run_test(files: &[(&'static str, &'static str, Option<&'static str>)]) {
+    let in_memory_sys = InMemorySys::default();
+    for (path, text, _) in files {
+      let path = PathBuf::from(path);
+      in_memory_sys
+        .fs_create_dir_all(path.parent().unwrap())
+        .unwrap();
+      in_memory_sys.fs_write(path, text).unwrap();
+    }
+    let provider = module_content_provider(in_memory_sys);
+    for (path, _, expected) in files {
+      let Some(expected) = expected else {
+        continue;
+      };
+      let path = PathBuf::from(path);
+      let bytes = provider
+        .resolve_content_maybe_unfurling(
+          &ModuleGraph::new(deno_graph::GraphKind::All),
+          &Default::default(),
+          &path,
+          &url_from_file_path(&path).unwrap(),
+        )
+        .unwrap();
+      assert_eq!(String::from_utf8_lossy(&bytes), *expected);
+    }
+  }
+
+  fn module_content_provider(
+    sys: InMemorySys,
+  ) -> ModuleContentProvider<InMemorySys> {
+    let workspace_dir = deno_config::workspace::WorkspaceDirectory::discover(
+      &sys,
+      WorkspaceDiscoverStart::Paths(&[PathBuf::from("/")]),
+      &Default::default(),
+    )
+    .unwrap();
+    let resolver = Arc::new(
+      WorkspaceResolver::from_workspace(
+        &workspace_dir.workspace,
+        sys.clone(),
+        Default::default(),
+      )
+      .unwrap(),
+    );
+    let specifier_unfurler = SpecifierUnfurler::new(resolver, false);
+    let tsconfig_resolver =
+      Arc::new(TsConfigResolver::from_workspace(&workspace_dir.workspace));
+    ModuleContentProvider::new(
+      Arc::new(ParsedSourceCache::default()),
+      specifier_unfurler,
+      sys,
+      tsconfig_resolver,
+    )
+  }
 }

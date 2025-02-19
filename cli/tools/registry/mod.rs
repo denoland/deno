@@ -128,6 +128,7 @@ pub async fn publish(
   let module_content_provider = Arc::new(ModuleContentProvider::new(
     cli_factory.parsed_source_cache().clone(),
     specifier_unfurler,
+    cli_factory.sys(),
     cli_factory.tsconfig_resolver()?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
