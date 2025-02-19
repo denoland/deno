@@ -18,6 +18,7 @@ use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_lint::diagnostic::LintDiagnosticRange;
+use deno_npm::NpmPackageId;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::workspace::MappedResolution;
@@ -370,9 +371,13 @@ impl<'a> TsResponseImportMapper<'a> {
         if let Ok(Some(pkg_id)) =
           npm_resolver.resolve_pkg_id_from_specifier(specifier)
         {
-          let pkg_reqs = npm_resolver
-            .resolution()
-            .resolve_pkg_reqs_from_pkg_id(&pkg_id);
+          let pkg_reqs =
+            maybe_reverse_definitely_typed(&pkg_id, npm_resolver.resolution())
+              .unwrap_or_else(|| {
+                npm_resolver
+                  .resolution()
+                  .resolve_pkg_reqs_from_pkg_id(&pkg_id)
+              });
           // check if any pkg reqs match what is found in an import map
           if !pkg_reqs.is_empty() {
             let sub_path = npm_resolver
@@ -555,6 +560,30 @@ impl<'a> TsResponseImportMapper<'a> {
         NodeResolutionKind::Types,
       )
       .is_ok()
+  }
+}
+
+fn maybe_reverse_definitely_typed(
+  pkg_id: &NpmPackageId,
+  resolution: &NpmResolutionCell,
+) -> Option<Vec<PackageReq>> {
+  let rest = pkg_id.nv.name.strip_prefix("@types/")?;
+  let package_name = if rest.contains("__") {
+    Cow::Owned(format!("@{}", rest.replace("__", "/")))
+  } else {
+    Cow::Borrowed(rest)
+  };
+
+  let reqs = resolution
+    .package_reqs()
+    .into_iter()
+    .filter_map(|(req, nv)| (&*nv.name == package_name).then_some(req))
+    .collect::<Vec<_>>();
+
+  if reqs.is_empty() {
+    None
+  } else {
+    Some(reqs)
   }
 }
 

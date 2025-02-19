@@ -189,32 +189,34 @@ impl LspScopeResolver {
       let result = dependencies
         .iter()
         .flat_map(|(name, _)| {
-          let req_ref =
-            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()?;
-          let specifier = into_specifier_and_media_type(Some(
-            npm_pkg_req_resolver
+          let mut deps = Vec::with_capacity(2);
+          for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution]
+          {
+            let Some(req_ref) =
+              NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
+            else {
+              continue;
+            };
+            let Some(req) = npm_pkg_req_resolver
               .resolve_req_reference(
                 &req_ref,
                 &referrer,
                 // todo(dsherret): this is wrong because it doesn't consider CJS referrers
                 ResolutionMode::Import,
-                NodeResolutionKind::Types,
+                kind,
               )
-              .or_else(|_| {
-                npm_pkg_req_resolver.resolve_req_reference(
-                  &req_ref,
-                  &referrer,
-                  // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-                  ResolutionMode::Import,
-                  NodeResolutionKind::Execution,
-                )
-              })
-              .ok()?
-              .into_url()
-              .ok()?,
-          ))
-          .0;
-          Some((specifier, name.clone()))
+              .ok()
+            else {
+              continue;
+            };
+
+            let Some(url) = req.into_url().ok() else {
+              continue;
+            };
+            let specifier = into_specifier_and_media_type(Some(url)).0;
+            deps.push((specifier, name.clone()))
+          }
+          deps
         })
         .collect();
       Some(result)
@@ -516,6 +518,22 @@ impl LspResolver {
     resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    self.npm_to_file_url_with_kind(
+      req_ref,
+      referrer,
+      resolution_mode,
+      file_referrer,
+      NodeResolutionKind::Types,
+    )
+  }
+  pub fn npm_to_file_url_with_kind(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
+    file_referrer: Option<&ModuleSpecifier>,
+    resolution_kind: NodeResolutionKind,
+  ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
     let npm_pkg_req_resolver = resolver.npm_pkg_req_resolver.as_ref()?;
     Some(into_specifier_and_media_type(Some(
@@ -524,7 +542,7 @@ impl LspResolver {
           req_ref,
           referrer,
           resolution_mode,
-          NodeResolutionKind::Types,
+          resolution_kind,
         )
         .ok()?
         .into_url()
@@ -537,6 +555,7 @@ impl LspResolver {
     specifier: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<String> {
+    eprintln!("file_url_to_package_json_dep: {specifier}");
     let resolver = self.get_scope_resolver(file_referrer);
     resolver
       .package_json_deps_by_resolution
