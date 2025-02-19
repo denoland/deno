@@ -189,32 +189,34 @@ impl LspScopeResolver {
       let result = dependencies
         .iter()
         .flat_map(|(name, _)| {
-          let req_ref =
-            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()?;
-          let specifier = into_specifier_and_media_type(Some(
-            npm_pkg_req_resolver
+          let mut deps = Vec::with_capacity(2);
+          let Some(req_ref) =
+            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
+          else {
+            return vec![];
+          };
+          for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution]
+          {
+            let Some(req) = npm_pkg_req_resolver
               .resolve_req_reference(
                 &req_ref,
                 &referrer,
                 // todo(dsherret): this is wrong because it doesn't consider CJS referrers
                 ResolutionMode::Import,
-                NodeResolutionKind::Types,
+                kind,
               )
-              .or_else(|_| {
-                npm_pkg_req_resolver.resolve_req_reference(
-                  &req_ref,
-                  &referrer,
-                  // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-                  ResolutionMode::Import,
-                  NodeResolutionKind::Execution,
-                )
-              })
-              .ok()?
-              .into_url()
-              .ok()?,
-          ))
-          .0;
-          Some((specifier, name.clone()))
+              .ok()
+            else {
+              continue;
+            };
+
+            let Some(url) = req.into_url().ok() else {
+              continue;
+            };
+            let specifier = into_specifier_and_media_type(Some(url)).0;
+            deps.push((specifier, name.clone()))
+          }
+          deps
         })
         .collect();
       Some(result)
@@ -577,29 +579,6 @@ impl LspResolver {
     }
 
     has_node_modules_dir(specifier)
-  }
-
-  pub fn is_bare_package_json_dep(
-    &self,
-    specifier_text: &str,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-  ) -> bool {
-    let resolver = self.get_scope_resolver(Some(referrer));
-    let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
-    else {
-      return false;
-    };
-    npm_pkg_req_resolver
-      .resolve_if_for_npm_pkg(
-        specifier_text,
-        referrer,
-        resolution_mode,
-        NodeResolutionKind::Types,
-      )
-      .ok()
-      .flatten()
-      .is_some()
   }
 
   pub fn resolve_redirects(

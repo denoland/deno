@@ -1131,8 +1131,42 @@ fn resolve_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
+              let reqs = npm
+                .npm_resolver
+                .as_managed()
+                .unwrap()
+                .resolution()
+                .package_reqs();
+              if let Some((_, types_nv)) =
+                deno_resolver::npm::find_definitely_typed_package(
+                  module.nv_reference.nv(),
+                  reqs.iter().map(|tup| (&tup.0, &tup.1)),
+                )
+              {
+                let package_folder = npm
+                  .npm_resolver
+                  .as_managed()
+                  .unwrap() // should never be byonm because it won't create Module::Npm
+                  .resolve_pkg_folder_from_deno_module(types_nv)?;
+                let res_result =
+                  npm.node_resolver.resolve_package_subpath_from_deno_module(
+                    &package_folder,
+                    module.nv_reference.sub_path(),
+                    Some(referrer),
+                    resolution_mode,
+                    NodeResolutionKind::Types,
+                  );
+                if let Ok(res_result) = res_result {
+                  Some(res_result.into_url()?)
+                } else {
+                  None
+                }
+              } else {
+                None
+              }
+            }
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };
