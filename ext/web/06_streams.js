@@ -3,7 +3,7 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
