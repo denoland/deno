@@ -17,6 +17,7 @@ use node_resolver::errors::PackageNotFoundError;
 use node_resolver::errors::PackageResolveErrorKind;
 use node_resolver::errors::PackageSubpathResolveError;
 use node_resolver::errors::TypesNotFoundError;
+use node_resolver::types_package_name;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
@@ -26,6 +27,7 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
+
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -397,7 +399,7 @@ impl<
               Some(
                 PackageReq::from_str(&format!(
                   "{}@*",
-                  definitely_typed_package_name(&req.name)
+                  types_package_name(&req.name)
                 ))
                 .unwrap(),
               )
@@ -539,10 +541,6 @@ impl<
   }
 }
 
-pub fn definitely_typed_package_name(name: &str) -> String {
-  format!("@types/{}", name.trim_start_matches('@').replace("/", "__"))
-}
-
 /// Attempt to choose the "best" `@types/*` package
 /// if possible. If multiple versions exist, try to match
 /// the major and minor versions of the `@types` package with the
@@ -551,7 +549,7 @@ pub fn find_definitely_typed_package<'a>(
   nv: &'a PackageNv,
   packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
 ) -> Option<(&PackageReq, &PackageNv)> {
-  let types_name = definitely_typed_package_name(&nv.name);
+  let types_name = types_package_name(&nv.name);
   let mut best_patch = 0;
   let mut highest: Option<(&PackageReq, &PackageNv)> = None;
   let mut best = None;

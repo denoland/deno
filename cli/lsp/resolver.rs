@@ -190,13 +190,13 @@ impl LspScopeResolver {
         .iter()
         .flat_map(|(name, _)| {
           let mut deps = Vec::with_capacity(2);
+          let Some(req_ref) =
+            NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
+          else {
+            return vec![];
+          };
           for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution]
           {
-            let Some(req_ref) =
-              NpmPackageReqReference::from_str(&format!("npm:{name}")).ok()
-            else {
-              continue;
-            };
             let Some(req) = npm_pkg_req_resolver
               .resolve_req_reference(
                 &req_ref,
@@ -518,22 +518,6 @@ impl LspResolver {
     resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
-    self.npm_to_file_url_with_kind(
-      req_ref,
-      referrer,
-      resolution_mode,
-      file_referrer,
-      NodeResolutionKind::Types,
-    )
-  }
-  pub fn npm_to_file_url_with_kind(
-    &self,
-    req_ref: &NpmPackageReqReference,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-    file_referrer: Option<&ModuleSpecifier>,
-    resolution_kind: NodeResolutionKind,
-  ) -> Option<(ModuleSpecifier, MediaType)> {
     let resolver = self.get_scope_resolver(file_referrer);
     let npm_pkg_req_resolver = resolver.npm_pkg_req_resolver.as_ref()?;
     Some(into_specifier_and_media_type(Some(
@@ -542,7 +526,7 @@ impl LspResolver {
           req_ref,
           referrer,
           resolution_mode,
-          resolution_kind,
+          NodeResolutionKind::Types,
         )
         .ok()?
         .into_url()

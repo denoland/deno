@@ -2090,7 +2090,7 @@ fn pattern_key_compare(a: &str, b: &str) -> i32 {
 }
 
 /// Gets the corresponding @types package for the provided package name.
-fn types_package_name(package_name: &str) -> String {
+pub fn types_package_name(package_name: &str) -> String {
   debug_assert!(!package_name.starts_with("@types/"));
   // Scoped packages will get two underscores for each slash
   // https://github.com/DefinitelyTyped/DefinitelyTyped/tree/15f1ece08f7b498f4b9a2147c2a46e94416ca777#what-about-scoped-packages
