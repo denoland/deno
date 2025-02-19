@@ -3,7 +3,6 @@
 mod in_memory_broadcast_channel;
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 
 use async_trait::async_trait;
@@ -160,8 +159,3 @@ deno_core::extension!(deno_broadcast_channel,
     state.put(options.bc);
   },
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .join("lib.deno_broadcast_channel.d.ts")
-}

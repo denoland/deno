@@ -16,6 +16,17 @@ fn compress_decls(out_dir: &Path) {
     "lib.deno.shared_globals.d.ts",
     "lib.deno.ns.d.ts",
     "lib.deno.unstable.d.ts",
+    "lib.deno_console.d.ts",
+    "lib.deno_url.d.ts",
+    "lib.deno_web.d.ts",
+    "lib.deno_fetch.d.ts",
+    "lib.deno_websocket.d.ts",
+    "lib.deno_webstorage.d.ts",
+    "lib.deno_canvas.d.ts",
+    "lib.deno_crypto.d.ts",
+    "lib.deno_cache.d.ts",
+    "lib.deno_net.d.ts",
+    "lib.deno_broadcast_channel.d.ts",
     "lib.decorators.d.ts",
     "lib.decorators.legacy.d.ts",
     "lib.dom.asynciterable.d.ts",
@@ -115,23 +126,6 @@ fn compress_decls(out_dir: &Path) {
   ];
   for decl in decls {
     let file = format!("./tsc/dts/{decl}");
-    compress_source(out_dir, &file);
-  }
-  let ext_decls = [
-    "console/lib.deno_console.d.ts",
-    "url/lib.deno_url.d.ts",
-    "web/lib.deno_web.d.ts",
-    "fetch/lib.deno_fetch.d.ts",
-    "websocket/lib.deno_websocket.d.ts",
-    "webstorage/lib.deno_webstorage.d.ts",
-    "canvas/lib.deno_canvas.d.ts",
-    "crypto/lib.deno_crypto.d.ts",
-    "cache/lib.deno_cache.d.ts",
-    "net/lib.deno_net.d.ts",
-    "broadcast_channel/lib.deno_broadcast_channel.d.ts",
-  ];
-  for ext_decl in ext_decls {
-    let file = format!("../ext/{ext_decl}");
     compress_source(out_dir, &file);
   }
 }
