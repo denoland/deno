@@ -114,7 +114,7 @@ pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
   ToMaybeJsxImportSourceConfig(
-    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+    #[from] deno_config::workspace::ToMaybeJsxImportSourceConfigError,
   ),
   #[class(inherit)]
   #[error(transparent)]

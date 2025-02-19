@@ -8,9 +8,10 @@ use std::sync::Arc;
 
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
-use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::JsrPackageConfig;
+use deno_config::workspace::JsxImportSourceConfig;
+use deno_config::workspace::ToMaybeJsxImportSourceConfigError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
@@ -568,9 +569,7 @@ pub enum BuildGraphWithNpmResolutionError {
   SerdeJson(#[from] serde_json::Error),
   #[class(inherit)]
   #[error(transparent)]
-  ToMaybeJsxImportSourceConfig(
-    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
-  ),
+  ToMaybeJsxImportSourceConfig(#[from] ToMaybeJsxImportSourceConfigError),
   #[class(inherit)]
   #[error(transparent)]
   NodeModulesDirParse(#[from] deno_json::NodeModulesDirParseError),
@@ -868,7 +867,7 @@ impl ModuleGraphBuilder {
     &self,
     graph: &mut ModuleGraph,
     options: BuildFastCheckGraphOptions,
-  ) -> Result<(), deno_json::ToMaybeJsxImportSourceConfigError> {
+  ) -> Result<(), ToMaybeJsxImportSourceConfigError> {
     if !graph.graph_kind().include_types() {
       return Ok(());
     }
@@ -958,8 +957,7 @@ impl ModuleGraphBuilder {
 
   fn create_graph_resolver(
     &self,
-  ) -> Result<CliGraphResolver, deno_json::ToMaybeJsxImportSourceConfigError>
-  {
+  ) -> Result<CliGraphResolver, ToMaybeJsxImportSourceConfigError> {
     let jsx_import_source_config_unscoped = self
       .cli_options
       .start_dir
@@ -1368,7 +1366,7 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
   ) -> Option<String> {
     self
       .resolve_jsx_import_source_config(referrer)
-      .and_then(|c| c.default_specifier.clone())
+      .and_then(|c| c.import_source.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn default_jsx_import_source_types(
@@ -1377,7 +1375,7 @@ impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
   ) -> Option<String> {
     self
       .resolve_jsx_import_source_config(referrer)
-      .and_then(|c| c.default_types_specifier.clone())
+      .and_then(|c| c.import_source_types.as_ref().map(|s| s.specifier.clone()))
   }
 
   fn jsx_import_source_module(&self, referrer: &ModuleSpecifier) -> &str {

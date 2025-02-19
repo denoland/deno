@@ -1585,13 +1585,13 @@ impl Documents {
         let member_dir = &config_data.member_dir;
         let jsx_config =
           member_dir.to_maybe_jsx_import_source_config().ok()??;
-        let type_specifier = jsx_config.default_types_specifier.as_ref()?;
-        let code_specifier = jsx_config.default_specifier.as_ref()?;
+        let import_source_types = jsx_config.import_source_types.as_ref()?;
+        let import_source = jsx_config.import_source.as_ref()?;
         let cli_resolver = self.resolver.as_cli_resolver(Some(scope));
         let type_specifier = cli_resolver
           .resolve(
-            type_specifier,
-            &jsx_config.base_url,
+            &import_source_types.specifier,
+            &import_source_types.base,
             deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
             ResolutionMode::Import,
@@ -1600,8 +1600,8 @@ impl Documents {
           .ok()?;
         let code_specifier = cli_resolver
           .resolve(
-            code_specifier,
-            &jsx_config.base_url,
+            &import_source.specifier,
+            &import_source.base,
             deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
             ResolutionMode::Import,
