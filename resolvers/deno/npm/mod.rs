@@ -27,7 +27,6 @@ use node_resolver::NpmPackageFolderResolver;
 use node_resolver::ResolutionMode;
 use node_resolver::UrlOrPath;
 use node_resolver::UrlOrPathRef;
-
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
