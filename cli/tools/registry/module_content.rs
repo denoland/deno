@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::Cell;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -165,10 +166,12 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     } else {
       0
     };
-    let mut add_text_change = |text: String| {
+    let had_change = Cell::new(false);
+    let mut add_text_change = |new_text: String| {
+      had_change.set(true);
       text_changes.push(TextChange {
         range: start_pos..start_pos,
-        new_text: text,
+        new_text,
       })
     };
     let jsx_options =
@@ -216,6 +219,23 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         jsx_options.jsx_fragment_factory,
       ));
     }
+    // add a newline at the end
+    if had_change.get() {
+      let file_text = text_info.text_str();
+      let is_crlf = file_text
+        .find('\n')
+        .and_then(|index| {
+          let index_before = index.checked_sub(1)?;
+          let char_before = file_text.get(index_before..index)?;
+          Some(matches!(char_before, "\r"))
+        })
+        .unwrap_or(false);
+      add_text_change(if is_crlf {
+        "\r\n".to_string()
+      } else {
+        "\n".to_string()
+      });
+    }
     Ok(())
   }
 
@@ -227,6 +247,9 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
   ) -> Result<JsxFolderOptions<'a>, AnyError> {
     let tsconfig_folder_info =
       self.tsconfig_resolver.folder_for_specifier(specifier);
+    let jsx_config = tsconfig_folder_info
+      .dir
+      .to_maybe_jsx_import_source_config()?;
     let transpile_options =
       &tsconfig_folder_info.transpile_options()?.transpile;
     let jsx_runtime = if transpile_options.jsx_automatic {
@@ -235,11 +258,11 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
       "classic"
     };
     let mut unfurl_import_source =
-      |import_source: &str, resolution_kind: ResolutionKind| {
+      |import_source: &str, referrer: &Url, resolution_kind: ResolutionKind| {
         let maybe_import_source = self
           .specifier_unfurler
           .unfurl_specifier_reporting_diagnostic(
-            specifier,
+            referrer,
             import_source,
             resolution_kind,
             text_info,
@@ -248,26 +271,25 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           );
         maybe_import_source.unwrap_or_else(|| import_source.to_string())
       };
-    let jsx_import_source =
-      transpile_options
-        .jsx_import_source
-        .as_ref()
-        .map(|jsx_import_source| {
-          unfurl_import_source(jsx_import_source, ResolutionKind::Execution)
-        });
-    eprintln!(
-      "TSCONFIG: {:?}",
-      tsconfig_folder_info
-        .lib_tsconfig(deno_config::deno_json::TsTypeLib::DenoWindow)?
-        .0
-    );
-    let jsx_import_source_types = tsconfig_folder_info
-      .lib_tsconfig(deno_config::deno_json::TsTypeLib::DenoWindow)?
-      .0
-      .get("jsxImportSourceTypes")
-      .and_then(|s| s.as_str())
+    let jsx_import_source = jsx_config
+      .as_ref()
+      .and_then(|c| c.import_source.as_ref())
+      .map(|jsx_import_source| {
+        unfurl_import_source(
+          &jsx_import_source.specifier,
+          &jsx_import_source.base,
+          ResolutionKind::Execution,
+        )
+      });
+    let jsx_import_source_types = jsx_config
+      .as_ref()
+      .and_then(|c| c.import_source_types.as_ref())
       .map(|jsx_import_source_types| {
-        unfurl_import_source(jsx_import_source_types, ResolutionKind::Types)
+        unfurl_import_source(
+          &jsx_import_source_types.specifier,
+          &jsx_import_source_types.base,
+          ResolutionKind::Types,
+        )
       });
     Ok(JsxFolderOptions {
       jsx_runtime,
@@ -319,7 +341,33 @@ mod test {
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */
+export const component = <div></div>;"),
+      ),
+      (
+        "/package-a/other.tsx",
+        "/** @jsxImportSource npm:preact */
+        /** @jsxFragmentFactory h1 */
+        /** @jsxImportSourceTypes npm:@types/example */
+        /** @jsxFactory h2 */
+        /** @jsxRuntime automatic */
+        export const component = <div></div>;",
+        Some(
+        "/** @jsxImportSource npm:preact */
+        /** @jsxFragmentFactory h1 */
+        /** @jsxImportSourceTypes npm:@types/example */
+        /** @jsxFactory h2 */
+        /** @jsxRuntime automatic */
+        export const component = <div></div>;",
+        )
+      ),
+      (
+        "/package-b/main.tsx",
+        // will use \r\n newlines because the file was detected as using that
+        "export const component = <div></div>;\r\n",
+        Some(
+        "/** @jsxRuntime classic *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */\r\nexport const component = <div></div>;\r\n",
+        )
       ),
     ]);
   }
