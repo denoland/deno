@@ -108,9 +108,6 @@ pub enum PublishDiagnostic {
     text_info: SourceTextInfo,
     referrer: deno_graph::Range,
   },
-  UnsupportedJsxTsx {
-    specifier: Url,
-  },
   ExcludedModule {
     specifier: Url,
   },
@@ -174,7 +171,6 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => DiagnosticLevel::Error,
       UnsupportedFileType { .. } => DiagnosticLevel::Warning,
       InvalidExternalImport { .. } => DiagnosticLevel::Error,
-      UnsupportedJsxTsx { .. } => DiagnosticLevel::Warning,
       ExcludedModule { .. } => DiagnosticLevel::Error,
       MissingConstraint { .. } => DiagnosticLevel::Error,
       BannedTripleSlashDirectives { .. } => DiagnosticLevel::Error,
@@ -192,7 +188,6 @@ impl Diagnostic for PublishDiagnostic {
       DuplicatePath { .. } => Cow::Borrowed("case-insensitive-duplicate-path"),
       UnsupportedFileType { .. } => Cow::Borrowed("unsupported-file-type"),
       InvalidExternalImport { .. } => Cow::Borrowed("invalid-external-import"),
-      UnsupportedJsxTsx { .. } => Cow::Borrowed("unsupported-jsx-tsx"),
       ExcludedModule { .. } => Cow::Borrowed("excluded-module"),
       MissingConstraint { .. } => Cow::Borrowed("missing-constraint"),
       BannedTripleSlashDirectives { .. } => {
@@ -216,7 +211,6 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Owned(format!("unsupported file type '{kind}'"))
       }
       InvalidExternalImport { kind, .. } => Cow::Owned(format!("invalid import to a {kind} specifier")),
-      UnsupportedJsxTsx { .. } => Cow::Borrowed("JSX and TSX files are currently not supported"),
       ExcludedModule { .. } => Cow::Borrowed("module in package's module graph was excluded from publishing"),
       MissingConstraint { specifier, .. } => Cow::Owned(format!("specifier '{}' is missing a version constraint", specifier)),
       BannedTripleSlashDirectives { .. } => Cow::Borrowed("triple slash directives that modify globals are not allowed"),
@@ -258,9 +252,6 @@ impl Diagnostic for PublishDiagnostic {
         text_info,
         ..
       } => from_referrer_range(referrer, text_info),
-      UnsupportedJsxTsx { specifier } => DiagnosticLocation::Module {
-        specifier: Cow::Borrowed(specifier),
-      },
       ExcludedModule { specifier } => DiagnosticLocation::Module {
         specifier: Cow::Borrowed(specifier),
       },
@@ -325,7 +316,6 @@ impl Diagnostic for PublishDiagnostic {
         text_info,
         ..
       } => from_range(text_info, referrer),
-      UnsupportedJsxTsx { .. } => None,
       ExcludedModule { .. } => None,
       MissingConstraint {
         referrer,
@@ -365,7 +355,6 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Borrowed("remove the file, or add it to 'publish.exclude' in the config file"),
       ),
       InvalidExternalImport { .. } => Some(Cow::Borrowed("replace this import with one from jsr or npm, or vendor the dependency into your package")),
-      UnsupportedJsxTsx { .. } => None,
       ExcludedModule { .. } => Some(
         Cow::Borrowed("remove the module from 'exclude' and/or 'publish.exclude' in the config file or use 'publish.exclude' with a negative glob to unexclude from gitignore"),
       ),
@@ -416,7 +405,6 @@ impl Diagnostic for PublishDiagnostic {
       | InvalidPath { .. }
       | DuplicatePath { .. }
       | UnsupportedFileType { .. }
-      | UnsupportedJsxTsx { .. }
       | ExcludedModule { .. }
       | MissingConstraint { .. }
       | BannedTripleSlashDirectives { .. }
@@ -443,9 +431,6 @@ impl Diagnostic for PublishDiagnostic {
         Cow::Owned(format!("the import was resolved to '{}'", imported)),
         Cow::Borrowed("this specifier is not allowed to be imported on jsr"),
         Cow::Borrowed("jsr only supports importing `jsr:`, `npm:`, `data:`, `bun:`, and `node:` specifiers"),
-      ]),
-      UnsupportedJsxTsx { .. } => Cow::Owned(vec![
-        Cow::Borrowed("follow https://github.com/jsr-io/jsr/issues/24 for updates"),
       ]),
       ExcludedModule { .. } => Cow::Owned(vec![
         Cow::Borrowed("excluded modules referenced via a package export will error at runtime due to not existing in the package"),
@@ -483,7 +468,6 @@ impl Diagnostic for PublishDiagnostic {
       InvalidExternalImport { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/invalid-external-import"))
       }
-      UnsupportedJsxTsx { .. } => None,
       ExcludedModule { .. } => {
         Some(Cow::Borrowed("https://jsr.io/go/excluded-module"))
       }
