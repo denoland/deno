@@ -4,16 +4,16 @@ import { Node, Project, ts } from "npm:ts-morph@22.0.0";
 import { join, ROOT_PATH } from "./util.js";
 
 const libs = [
-  join(ROOT_PATH, "ext/cache/lib.deno_cache.d.ts"),
-  join(ROOT_PATH, "ext/console/lib.deno_console.d.ts"),
-  join(ROOT_PATH, "ext/url/lib.deno_url.d.ts"),
-  join(ROOT_PATH, "ext/web/lib.deno_web.d.ts"),
-  join(ROOT_PATH, "ext/fetch/lib.deno_fetch.d.ts"),
-  join(ROOT_PATH, "ext/websocket/lib.deno_websocket.d.ts"),
-  join(ROOT_PATH, "ext/webstorage/lib.deno_webstorage.d.ts"),
-  join(ROOT_PATH, "ext/canvas/lib.deno_canvas.d.ts"),
-  join(ROOT_PATH, "ext/crypto/lib.deno_crypto.d.ts"),
-  join(ROOT_PATH, "ext/net/lib.deno_net.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_cache.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_console.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_url.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_web.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_fetch.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_websocket.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_webstorage.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_canvas.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_crypto.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_net.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.ns.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.shared_globals.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.window.d.ts"),
@@ -21,7 +21,7 @@ const libs = [
 ];
 
 const unstableLibs = [
-  join(ROOT_PATH, "ext/broadcast_channel/lib.deno_broadcast_channel.d.ts"),
+  join(ROOT_PATH, "cli/tsc/dts/lib.deno_broadcast_channel.d.ts"),
   join(ROOT_PATH, "cli/tsc/dts/lib.deno.unstable.d.ts"),
 ];
 

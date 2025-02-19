@@ -1,7 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::PathBuf;
-
 mod image_ops;
 mod op_create_image_bitmap;
 pub use image;
@@ -48,7 +46,3 @@ deno_core::extension!(
   ops = [op_create_image_bitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_canvas.d.ts")
-}
