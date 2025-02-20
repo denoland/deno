@@ -363,7 +363,7 @@ Deno.test({
               assert(data);
               assert(bytesRead);
               assertStrictEquals(bytesRead, 11);
-              assertEquals(data == buf, true);
+              assertEquals(data === buf, true);
               const got = decoder.decode(
                 data.subarray(
                   offset,

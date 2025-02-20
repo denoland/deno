@@ -126,7 +126,7 @@ function cloneInnerResponse(response) {
     statusMessage: response.statusMessage,
     aborted: response.aborted,
     url() {
-      if (this.urlList.length == 0) return null;
+      if (this.urlList.length === 0) return null;
       return this.urlList[this.urlList.length - 1];
     },
   };
@@ -145,7 +145,7 @@ function newInnerResponse(status = 200, statusMessage = "") {
     statusMessage,
     aborted: false,
     url() {
-      if (this.urlList.length == 0) return null;
+      if (this.urlList.length === 0) return null;
       return this.urlList[this.urlList.length - 1];
     },
   };
@@ -179,7 +179,7 @@ function abortedNetworkError() {
  */
 function initializeAResponse(response, init, bodyWithType) {
   // 1.
-  if ((init.status < 200 || init.status > 599) && init.status != 101) {
+  if ((init.status < 200 || init.status > 599) && init.status !== 101) {
     throw new RangeError(
       `The status provided (${init.status}) is not equal to 101 and outside the range [200, 599]`,
     );

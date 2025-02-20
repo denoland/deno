@@ -215,14 +215,14 @@ Deno.test(function permissionDescriptorValidationSync() {
 // Regression test for https://github.com/denoland/deno/issues/15894.
 Deno.test(async function permissionStatusObjectsNotEqual() {
   assert(
-    await Deno.permissions.query({ name: "env", variable: "A" }) !=
+    await Deno.permissions.query({ name: "env", variable: "A" }) !==
       await Deno.permissions.query({ name: "env", variable: "B" }),
   );
 });
 
 Deno.test(function permissionStatusObjectsNotEqualSync() {
   assert(
-    Deno.permissions.querySync({ name: "env", variable: "A" }) !=
+    Deno.permissions.querySync({ name: "env", variable: "A" }) !==
       Deno.permissions.querySync({ name: "env", variable: "B" }),
   );
 });

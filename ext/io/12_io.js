@@ -60,7 +60,7 @@ async function readAll(r) {
   while (true) {
     const buf = new Uint8Array(READ_PER_ITER);
     const read = await r.read(buf);
-    if (typeof read == "number") {
+    if (typeof read === "number") {
       ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, read));
     } else {
       break;
@@ -76,7 +76,7 @@ function readAllSync(r) {
   while (true) {
     const buf = new Uint8Array(READ_PER_ITER);
     const read = r.readSync(buf);
-    if (typeof read == "number") {
+    if (typeof read === "number") {
       ArrayPrototypePush(buffers, TypedArrayPrototypeSubarray(buf, 0, read));
     } else {
       break;

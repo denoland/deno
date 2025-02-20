@@ -27,7 +27,7 @@ const locationConstructorKey = Symbol("locationConstructorKey");
 // - https://heycam.github.io/webidl/#LegacyUnforgeable
 class Location {
   constructor(href = null, key = null) {
-    if (key != locationConstructorKey) {
+    if (key !== locationConstructorKey) {
       throw new TypeError("Illegal constructor");
     }
     const url = new URL(href);
@@ -228,7 +228,7 @@ const workerLocationUrls = new SafeWeakMap();
 
 class WorkerLocation {
   constructor(href = null, key = null) {
-    if (key != locationConstructorKey) {
+    if (key !== locationConstructorKey) {
       throw new TypeError("Illegal constructor");
     }
     const url = new URL(href);
@@ -243,7 +243,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.hash;
@@ -255,7 +255,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.host;
@@ -267,7 +267,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.hostname;
@@ -279,7 +279,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.href;
@@ -291,7 +291,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.origin;
@@ -303,7 +303,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.pathname;
@@ -315,7 +315,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.port;
@@ -327,7 +327,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.protocol;
@@ -339,7 +339,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     get() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.search;
@@ -351,7 +351,7 @@ ObjectDefineProperties(WorkerLocation.prototype, {
     __proto__: null,
     value: function toString() {
       const url = WeakMapPrototypeGet(workerLocationUrls, this);
-      if (url == null) {
+      if (url === undefined) {
         throw new TypeError("Illegal invocation");
       }
       return url.href;
@@ -420,7 +420,7 @@ const locationDescriptor = {
 };
 const workerLocationDescriptor = {
   get() {
-    if (workerLocation == null) {
+    if (workerLocation === undefined) {
       throw new Error(
         `Assertion: "globalThis.location" must be defined in a worker`,
       );

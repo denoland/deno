@@ -413,7 +413,7 @@ function pathFromURLWin32(url) {
     "%25",
   );
   let path = decodeURIComponent(p);
-  if (url.hostname != "") {
+  if (url.hostname !== "") {
     // Note: The `URL` implementation guarantees that the drive letter and
     // hostname are mutually exclusive. Otherwise it would not have been valid
     // to append the hostname and path like this.
@@ -443,11 +443,11 @@ function pathFromURLPosix(url) {
 
 function pathFromURL(pathOrUrl) {
   if (ObjectPrototypeIsPrototypeOf(URLPrototype, pathOrUrl)) {
-    if (pathOrUrl.protocol != "file:") {
+    if (pathOrUrl.protocol !== "file:") {
       throw new TypeError("Must be a file URL");
     }
 
-    return core.build.os == "windows"
+    return core.build.os === "windows"
       ? pathFromURLWin32(pathOrUrl)
       : pathFromURLPosix(pathOrUrl);
   }

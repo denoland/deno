@@ -185,14 +185,14 @@ class NodeWorker extends EventEmitter {
       this.#refCount--;
     }
 
-    if (!ref && this.#refCount == 0) {
+    if (!ref && this.#refCount === 0) {
       if (this.#controlPromise) {
         core.unrefOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.unrefOpPromise(this.#messagePromise);
       }
-    } else if (ref && this.#refCount == 1) {
+    } else if (ref && this.#refCount === 1) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }
@@ -532,19 +532,19 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
       patchMessagePortIfFound(ev.data);
       listener(ev.data);
     };
-    if (name == "message") {
+    if (name === "message") {
       if (port.onmessage === null) {
         port.onmessage = _listener;
       } else {
         port.addEventListener("message", _listener);
       }
-    } else if (name == "messageerror") {
+    } else if (name === "messageerror") {
       if (port.onmessageerror === null) {
         port.onmessageerror = _listener;
       } else {
         port.addEventListener("messageerror", _listener);
       }
-    } else if (name == "close") {
+    } else if (name === "close") {
       port.addEventListener("close", _listener);
     } else {
       throw new Error(`Unknown event: "${name}"`);
@@ -557,11 +557,11 @@ function webMessagePortToNodeMessagePort(port: MessagePort) {
     name,
     listener,
   ) {
-    if (name == "message") {
+    if (name === "message") {
       port.removeEventListener("message", listeners.get(listener)!);
-    } else if (name == "messageerror") {
+    } else if (name === "messageerror") {
       port.removeEventListener("messageerror", listeners.get(listener)!);
-    } else if (name == "close") {
+    } else if (name === "close") {
       port.removeEventListener("close", listeners.get(listener)!);
     } else {
       throw new Error(`Unknown event: "${name}"`);

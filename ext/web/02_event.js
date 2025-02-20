@@ -476,7 +476,7 @@ function isShadowRoot(nodeImpl) {
     nodeImpl &&
       isNode(nodeImpl) &&
       nodeImpl.nodeType === DOCUMENT_FRAGMENT_NODE &&
-      getHost(nodeImpl) != null,
+      getHost(nodeImpl) !== null,
   );
 }
 
@@ -1473,7 +1473,7 @@ function reportException(error) {
     for (let i = 0; i < frames.length; ++i) {
       const frame = frames[i];
       if (
-        typeof frame.fileName == "string" &&
+        typeof frame.fileName === "string" &&
         !StringPrototypeStartsWith(frame.fileName, "ext:")
       ) {
         filename = frame.fileName;

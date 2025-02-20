@@ -359,7 +359,7 @@ export function join(...paths: string[]): string {
   //   path.join('//server', 'share') -> '\\\\server\\share\\')
   let needsReplace = true;
   let slashCount = 0;
-  assert(firstPart != null);
+  assert(firstPart !== null);
   if (isPathSeparator(firstPart.charCodeAt(0))) {
     ++slashCount;
     const firstLen = firstPart.length;

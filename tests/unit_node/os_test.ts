@@ -20,9 +20,9 @@ Deno.test({
 Deno.test({
   name: "build architecture",
   fn() {
-    if (Deno.build.arch == "x86_64") {
+    if (Deno.build.arch === "x86_64") {
       assertEquals(os.arch(), "x64");
-    } else if (Deno.build.arch == "aarch64") {
+    } else if (Deno.build.arch === "aarch64") {
       assertEquals(os.arch(), "arm64");
     } else {
       throw new Error("unreachable");
@@ -33,7 +33,7 @@ Deno.test({
 Deno.test({
   name: "os machine (arch)",
   fn() {
-    if (Deno.build.arch == "aarch64") {
+    if (Deno.build.arch === "aarch64") {
       assertEquals(os.machine(), "arm64");
     } else {
       assertEquals(os.machine(), Deno.build.arch);
@@ -203,7 +203,7 @@ Deno.test({
 Deno.test({
   name: "EOL is as expected",
   fn() {
-    assert(os.EOL == "\r\n" || os.EOL == "\n");
+    assert(os.EOL === "\r\n" || os.EOL === "\n");
   },
 });
 
@@ -218,7 +218,7 @@ Deno.test({
   name: "Load average is an array of 3 numbers",
   fn() {
     const result = os.loadavg();
-    assert(result.length == 3);
+    assert(result.length === 3);
     assertEquals(typeof result[0], "number");
     assertEquals(typeof result[1], "number");
     assertEquals(typeof result[2], "number");

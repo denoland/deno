@@ -122,7 +122,7 @@ function createMessagePort(id) {
 
 function nodeWorkerThreadMaybeInvokeCloseCb(port) {
   if (
-    typeof port[nodeWorkerThreadCloseCb] == "function" &&
+    typeof port[nodeWorkerThreadCloseCb] === "function" &&
     !port[nodeWorkerThreadCloseCbInvoked]
   ) {
     port[nodeWorkerThreadCloseCb]();
@@ -290,7 +290,7 @@ class MessagePort extends EventTarget {
   }
 
   removeEventListener(...args) {
-    if (args[0] == "message") {
+    if (args[0] === "message") {
       if (--this[_messageEventListenerCount] === 0 && this[_refed]) {
         refedMessagePortsCount--;
         this[_refed] = false;
@@ -300,7 +300,7 @@ class MessagePort extends EventTarget {
   }
 
   addEventListener(...args) {
-    if (args[0] == "message") {
+    if (args[0] === "message") {
       if (++this[_messageEventListenerCount] === 1 && !this[_refed]) {
         refedMessagePortsCount++;
         this[_refed] = true;
