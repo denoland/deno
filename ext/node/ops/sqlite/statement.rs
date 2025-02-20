@@ -138,7 +138,7 @@ impl StatementSync {
           if self.use_big_ints.get() {
             v8::BigInt::new_from_i64(scope, value).into()
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
-            v8::Integer::new(scope, value as _).into()
+            v8::Number::new(scope, value as f64).into()
           } else {
             return Err(SqliteError::NumberTooLarge(index, value));
           }
