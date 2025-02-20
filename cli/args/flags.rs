@@ -1004,7 +1004,7 @@ impl Flags {
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = url_to_file_path(&module_specifier) {
-              Some(vec![p.parent().unwrap().to_path_buf()])
+              p.parent().map(|parent| vec![parent.to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
             }
