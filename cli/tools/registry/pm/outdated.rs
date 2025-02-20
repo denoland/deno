@@ -257,13 +257,18 @@ pub async fn outdated(
   Ok(())
 }
 
+enum ChosenVersionReq {
+  Some(VersionReq),
+  None { latest_available: bool },
+}
+
 fn choose_new_version_req(
   dep: &Dep,
   resolved: Option<&PackageNv>,
   latest_versions: &PackageLatestVersion,
   update_to_latest: bool,
   filter_set: &filter::FilterSet,
-) -> Option<VersionReq> {
+) -> ChosenVersionReq {
   let explicit_version_req = filter_set
     .matching_filter(dep.alias.as_deref().unwrap_or(&dep.req.name))
     .version_spec()
@@ -273,25 +278,42 @@ fn choose_new_version_req(
     if let Some(resolved) = resolved {
       // todo(nathanwhit): handle tag
       if version_req.tag().is_none() && version_req.matches(&resolved.version) {
-        return None;
+        return ChosenVersionReq::None {
+          latest_available: false,
+        };
       }
     }
-    Some(version_req)
+    ChosenVersionReq::Some(version_req)
   } else {
-    let preferred = if update_to_latest {
-      latest_versions.latest.as_ref()?
-    } else {
-      latest_versions.semver_compatible.as_ref()?
+    let Some(resolved) = resolved else {
+      return ChosenVersionReq::None {
+        latest_available: false,
+      };
     };
-    if preferred.version <= resolved?.version {
-      return None;
+    let Some(preferred) = (if update_to_latest {
+      latest_versions.latest.as_ref()
+    } else {
+      latest_versions.semver_compatible.as_ref()
+    }) else {
+      return ChosenVersionReq::None {
+        latest_available: false,
+      };
+    };
+    if preferred.version <= resolved.version {
+      return ChosenVersionReq::None {
+        latest_available: !update_to_latest
+          && latest_versions
+            .latest
+            .as_ref()
+            .is_some_and(|nv| nv.version > resolved.version),
+      };
     }
     let exact = if let Some(range) = dep.req.version_req.range() {
       range.0[0].start == range.0[0].end
     } else {
       false
     };
-    Some(
+    ChosenVersionReq::Some(
       VersionReq::parse_from_specifier(
         format!("{}{}", if exact { "" } else { "^" }, preferred.version)
           .as_str(),
@@ -310,6 +332,8 @@ async fn update(
 ) -> Result<(), AnyError> {
   let mut to_update = Vec::new();
 
+  let mut can_update_to_latest = false;
+
   for (dep_id, resolved, latest_versions) in deps
     .deps_with_resolved_latest_versions()
     .into_iter()
@@ -323,8 +347,12 @@ async fn update(
       update_to_latest,
       filter_set,
     );
-    let Some(new_version_req) = new_version_req else {
-      continue;
+    let new_version_req = match new_version_req {
+      ChosenVersionReq::Some(version_req) => version_req,
+      ChosenVersionReq::None { latest_available } => {
+        can_update_to_latest = can_update_to_latest || latest_available;
+        continue;
+      }
     };
 
     to_update.push((
@@ -469,14 +497,19 @@ async fn update(
       );
     }
   } else {
-    log::info!(
-      "All {}dependencies are up to date.",
-      if filter_set.is_empty() {
-        ""
-      } else {
-        "matching "
-      }
-    );
+    let maybe_matching = if filter_set.is_empty() {
+      ""
+    } else {
+      "matching "
+    };
+    if !update_to_latest && can_update_to_latest {
+      let note = deno_terminal::colors::intense_blue("note");
+      log::info!(
+        "All {maybe_matching}dependencies are at newest compatible versions.\n{note}: newer, incompatible versions are available.\n      Run with `--latest` to update",
+      );
+    } else {
+      log::info!("All {maybe_matching}dependencies are up to date.");
+    }
   }
 
   Ok(())
