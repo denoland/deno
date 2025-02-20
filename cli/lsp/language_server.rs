@@ -75,6 +75,7 @@ use super::documents::Document;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
+use super::documents::ASSET_DOCUMENTS;
 use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
@@ -89,8 +90,6 @@ use super::resolver::LspResolver;
 use super::testing;
 use super::text;
 use super::tsc;
-use super::tsc::Assets;
-use super::tsc::AssetsSnapshot;
 use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
@@ -145,7 +144,6 @@ pub struct LanguageServer {
 #[derive(Clone, Debug, Default)]
 pub struct StateSnapshot {
   pub project_version: usize,
-  pub assets: AssetsSnapshot,
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
   pub resolver: Arc<LspResolver>,
@@ -191,9 +189,6 @@ impl LanguageServerTaskQueue {
 
 #[derive(Debug)]
 pub struct Inner {
-  /// Cached versions of "fixed" assets that can either be inlined in Rust or
-  /// are part of the TypeScript snapshot and have to be fetched out.
-  assets: Assets,
   cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
@@ -498,13 +493,11 @@ impl Inner {
       ts_server.clone(),
       diagnostics_state.clone(),
     );
-    let assets = Assets::new();
     let initial_cwd = std::env::current_dir().unwrap_or_else(|_| {
       panic!("Could not resolve current working directory")
     });
 
     Self {
-      assets,
       cache,
       client,
       config,
@@ -553,7 +546,7 @@ impl Inner {
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
     if specifier.scheme() == "asset" {
-      self.assets.get(specifier).map(AssetOrDocument::Asset)
+      ASSET_DOCUMENTS.get(specifier).map(AssetOrDocument::Asset)
     } else {
       self.documents.get(specifier).map(AssetOrDocument::Document)
     }
@@ -584,14 +577,7 @@ impl Inner {
           )
           .await?;
         let navigation_tree = Arc::new(navigation_tree);
-        match asset_or_doc {
-          AssetOrDocument::Asset(_) => self
-            .assets
-            .cache_navigation_tree(specifier, navigation_tree.clone())?,
-          AssetOrDocument::Document(doc) => {
-            doc.cache_navigation_tree(navigation_tree.clone());
-          }
-        }
+        asset_or_doc.cache_navigation_tree(navigation_tree.clone());
         navigation_tree
       };
     self.performance.measure(mark);
@@ -627,7 +613,6 @@ impl Inner {
   pub fn snapshot(&self) -> Arc<StateSnapshot> {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
-      assets: self.assets.snapshot(),
       config: Arc::new(self.config.clone()),
       documents: Arc::new(self.documents.clone()),
       resolver: self.resolver.snapshot(),
@@ -1862,11 +1847,7 @@ impl Inner {
         }
       }
     }
-    if let Some(document) = asset_or_doc.document() {
-      code_actions
-        .add_source_actions(document, &params.range, self)
-        .await;
-    }
+
     code_actions.set_preferred_fixes();
     all_actions.extend(code_actions.get_response());
 
@@ -2805,7 +2786,7 @@ impl Inner {
             }
             Ok(span.to_folding_range(
               asset_or_doc.line_index(),
-              asset_or_doc.text().as_bytes(),
+              asset_or_doc.text().as_ref().as_bytes(),
               self.config.line_folding_only_capable(),
             ))
           })

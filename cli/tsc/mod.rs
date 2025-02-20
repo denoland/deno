@@ -147,18 +147,6 @@ macro_rules! maybe_compressed_lib {
   };
 }
 
-macro_rules! maybe_compressed_ext_lib {
-  ($name: expr, $file: expr) => {
-    (
-      $name,
-      maybe_compressed_source!(
-        compressed = concat!("ext/", $file),
-        uncompressed = concat!("../ext/", $file)
-      ),
-    )
-  };
-}
-
 #[derive(Clone)]
 pub enum StaticAssetSource {
   #[cfg_attr(any(debug_assertions, feature = "hmr"), allow(dead_code))]
@@ -169,7 +157,8 @@ pub enum StaticAssetSource {
 }
 
 /// Like a `Cow` but the owned form is an `Arc<str>` instead of `String`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(untagged)]
 pub enum MaybeStaticSource {
   Computed(Arc<str>),
   Static(&'static str),
@@ -250,41 +239,23 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
 > = Lazy::new(|| {
   ([
     // compressed in build.rs
-    maybe_compressed_ext_lib!(
-      "lib.deno.console.d.ts",
-      "console/lib.deno_console.d.ts"
-    ),
-    maybe_compressed_ext_lib!("lib.deno.url.d.ts", "url/lib.deno_url.d.ts"),
-    maybe_compressed_ext_lib!("lib.deno.web.d.ts", "web/lib.deno_web.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.fetch.d.ts",
-      "fetch/lib.deno_fetch.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.websocket.d.ts",
-      "websocket/lib.deno_websocket.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
+    maybe_compressed_lib!("lib.deno.console.d.ts", "lib.deno_console.d.ts"),
+    maybe_compressed_lib!("lib.deno.url.d.ts", "lib.deno_url.d.ts"),
+    maybe_compressed_lib!("lib.deno.web.d.ts", "lib.deno_web.d.ts"),
+    maybe_compressed_lib!("lib.deno.fetch.d.ts", "lib.deno_fetch.d.ts"),
+    maybe_compressed_lib!("lib.deno.websocket.d.ts", "lib.deno_websocket.d.ts"),
+    maybe_compressed_lib!(
       "lib.deno.webstorage.d.ts",
-      "webstorage/lib.deno_webstorage.d.ts"
+      "lib.deno_webstorage.d.ts"
     ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.canvas.d.ts",
-      "canvas/lib.deno_canvas.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
-      "lib.deno.crypto.d.ts",
-      "crypto/lib.deno_crypto.d.ts"
-    ),
-    maybe_compressed_ext_lib!(
+    maybe_compressed_lib!("lib.deno.canvas.d.ts", "lib.deno_canvas.d.ts"),
+    maybe_compressed_lib!("lib.deno.crypto.d.ts", "lib.deno_crypto.d.ts"),
+    maybe_compressed_lib!(
       "lib.deno.broadcast_channel.d.ts",
-      "broadcast_channel/lib.deno_broadcast_channel.d.ts"
+      "lib.deno_broadcast_channel.d.ts"
     ),
-    maybe_compressed_ext_lib!("lib.deno.net.d.ts", "net/lib.deno_net.d.ts"),
-    maybe_compressed_ext_lib!(
-      "lib.deno.cache.d.ts",
-      "cache/lib.deno_cache.d.ts"
-    ),
+    maybe_compressed_lib!("lib.deno.net.d.ts", "lib.deno_net.d.ts"),
+    maybe_compressed_lib!("lib.deno.cache.d.ts", "lib.deno_cache.d.ts"),
     maybe_compressed_lib!("lib.deno.webgpu.d.ts", "lib.deno_webgpu.d.ts"),
     maybe_compressed_lib!("lib.deno.window.d.ts"),
     maybe_compressed_lib!("lib.deno.worker.d.ts"),
@@ -1160,8 +1131,42 @@ fn resolve_graph_specifier_types(
         let maybe_url = match res_result {
           Ok(path_or_url) => Some(path_or_url.into_url()?),
           Err(err) => match err.code() {
-            NodeJsErrorCode::ERR_TYPES_NOT_FOUND
-            | NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
+            NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
+              let reqs = npm
+                .npm_resolver
+                .as_managed()
+                .unwrap()
+                .resolution()
+                .package_reqs();
+              if let Some((_, types_nv)) =
+                deno_resolver::npm::find_definitely_typed_package(
+                  module.nv_reference.nv(),
+                  reqs.iter().map(|tup| (&tup.0, &tup.1)),
+                )
+              {
+                let package_folder = npm
+                  .npm_resolver
+                  .as_managed()
+                  .unwrap() // should never be byonm because it won't create Module::Npm
+                  .resolve_pkg_folder_from_deno_module(types_nv)?;
+                let res_result =
+                  npm.node_resolver.resolve_package_subpath_from_deno_module(
+                    &package_folder,
+                    module.nv_reference.sub_path(),
+                    Some(referrer),
+                    resolution_mode,
+                    NodeResolutionKind::Types,
+                  );
+                if let Ok(res_result) = res_result {
+                  Some(res_result.into_url()?)
+                } else {
+                  None
+                }
+              } else {
+                None
+              }
+            }
+            NodeJsErrorCode::ERR_MODULE_NOT_FOUND => None,
             _ => return Err(ResolveError::PackageSubpathResolve(err)),
           },
         };

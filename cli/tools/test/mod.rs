@@ -67,6 +67,7 @@ use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use tokio::signal;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -615,6 +616,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
+  sender: UnboundedSender<jupyter_runtime::messaging::content::StreamContent>,
 ) -> Result<
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,
@@ -627,6 +629,7 @@ async fn configure_main_worker(
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
         ops::lint::deno_lint_ext_for_test::init_ops(),
+        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -672,12 +675,14 @@ pub async fn test_specifier(
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
+  let jupyter_channel = tokio::sync::mpsc::unbounded_channel();
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
     permissions_container,
     worker_sender,
     &options,
+    jupyter_channel.0,
   )
   .await?;
 

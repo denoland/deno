@@ -12,7 +12,6 @@ use std::cmp::min;
 use std::convert::From;
 use std::future;
 use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -274,9 +273,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
-}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {

@@ -40,6 +40,17 @@ const server = Deno.serve(
           data.spans.sort((a, b) =>
             Number(BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`))
           );
+          data.metrics.sort((a, b) => a.name.localeCompare(b.name));
+          for (const metric of data.metrics) {
+            if ("histogram" in metric) {
+              for (const dataPoint of metric.histogram.dataPoints) {
+                dataPoint.attributes.sort((a, b) => {
+                  return a.key.localeCompare(b.key);
+                });
+              }
+            }
+          }
+
           console.log(JSON.stringify(data, null, 2));
         });
     },

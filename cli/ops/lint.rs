@@ -146,10 +146,14 @@ impl LintPluginContainer {
       })
       .collect::<Result<Vec<LintFixChange>, LintReportError>>()?;
 
-    let fixes = vec![LintFix {
-      changes,
-      description: format!("Fix this {} problem", id).into(),
-    }];
+    let mut fixes = vec![];
+
+    if !changes.is_empty() {
+      fixes.push(LintFix {
+        changes,
+        description: format!("Fix this {} problem", id).into(),
+      });
+    }
 
     let lint_diagnostic = LintDiagnostic {
       specifier,
