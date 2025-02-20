@@ -299,8 +299,9 @@ export function dlopen(module, filename, _flags) {
   return module;
 }
 
-export function kill(pid: number, sig: string | number = "SIGTERM") {
-  if (pid !== (pid | 0)) {
+export function kill(pid: string | number, sig: string | number = "SIGTERM") {
+  // deno-lint-ignore eqeqeq
+  if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
   }
 
