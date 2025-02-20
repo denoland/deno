@@ -345,11 +345,11 @@ mod test {
 
   fn run_test(files: &[(&'static str, &'static str, Option<&'static str>)]) {
     fn get_path(path: &str) -> String {
-      let path = if cfg!(windows) {
+      if cfg!(windows) {
         format!("C:{}", path.replace('/', "\\"))
       } else {
         path.to_string()
-      };
+      }
     }
 
     let in_memory_sys = InMemorySys::default();
