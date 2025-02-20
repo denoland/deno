@@ -12,3 +12,8 @@ console.log(zoned.timeZone);
 
 const duration = Temporal.Duration.from("P1DT6H30M");
 console.log(duration.toLocaleString("en-US"));
+
+const transition = Temporal.ZonedDateTime.from(
+  "2020-01-01T00:00:00-05:00[America/New_York]",
+).getTimeZoneTransition("next");
+console.log(transition);

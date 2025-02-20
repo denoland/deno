@@ -470,15 +470,21 @@ fn resolve_flags_and_init(
   }
 
   let default_v8_flags = match flags.subcommand {
-    // Using same default as VSCode:
-    // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-    DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+    DenoSubcommand::Lsp => vec![
+      "--stack-size=1024".to_string(),
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      "--max-old-space-size=3072".to_string(),
+    ],
     _ => {
-      // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-      // and its settings.
-      // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-      // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-      vec!["--no-harmony-import-assertions".to_string()]
+      vec![
+        "--stack-size=1024".to_string(),
+        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+        // and its settings.
+        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+        "--no-harmony-import-assertions".to_string(),
+      ]
     }
   };
 

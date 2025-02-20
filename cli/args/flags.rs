@@ -1006,7 +1006,7 @@ impl Flags {
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = url_to_file_path(&module_specifier) {
-              Some(vec![p.parent().unwrap().to_path_buf()])
+              p.parent().map(|parent| vec![parent.to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
             }
@@ -3026,6 +3026,7 @@ Evaluate a task from string
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
+      .arg(frozen_lockfile_arg())
       .arg(
         Arg::new("cwd")
           .long("cwd")
@@ -5258,6 +5259,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {

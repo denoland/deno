@@ -31,6 +31,7 @@ pub use path::UrlOrPath;
 pub use path::UrlOrPathRef;
 pub use resolution::parse_npm_pkg_name;
 pub use resolution::resolve_specifier_into_node_modules;
+pub use resolution::types_package_name;
 pub use resolution::ConditionsFromResolutionMode;
 pub use resolution::NodeResolution;
 pub use resolution::NodeResolutionKind;

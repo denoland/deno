@@ -1,4 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cell::Ref;
 use std::cell::RefCell;
@@ -30,6 +32,8 @@ use tokio::sync::oneshot;
 use crate::request_properties::HttpConnectionProperties;
 use crate::response_body::ResponseBytesInner;
 use crate::response_body::ResponseStreamResult;
+use crate::OtelInfo;
+use crate::OtelInfoAttributes;
 
 pub type Request = hyper::Request<Incoming>;
 pub type Response = hyper::Response<HttpRecordResponse>;
@@ -184,12 +188,38 @@ pub(crate) async fn handle_request(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> Result<Response, hyper_v014::Error> {
+  let otel_info = if deno_telemetry::OTEL_GLOBALS.get().is_some() {
+    let instant = std::time::Instant::now();
+    let size_hint = request.size_hint();
+    Some(OtelInfo::new(
+      instant,
+      size_hint.upper().unwrap_or(size_hint.lower()),
+      OtelInfoAttributes {
+        http_request_method: OtelInfoAttributes::method(request.method()),
+        url_scheme: request
+          .uri()
+          .scheme_str()
+          .map(|s| Cow::Owned(s.to_string()))
+          .unwrap_or_else(|| Cow::Borrowed("http")),
+        network_protocol_version: OtelInfoAttributes::version(
+          request.version(),
+        ),
+        server_address: request.uri().host().map(|host| host.to_string()),
+        server_port: request.uri().port_u16().map(|port| port as i64),
+        error_type: Default::default(),
+        http_response_status_code: Default::default(),
+      },
+    ))
+  } else {
+    None
+  };
+
   // If the underlying TCP connection is closed, this future will be dropped
   // and execution could stop at any await point.
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state),
+    HttpRecord::new(request, request_info, server_state, otel_info),
     HttpRecord::cancel,
   );
 
@@ -228,6 +258,7 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
+  otel_info: Option<OtelInfo>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -248,6 +279,7 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
+    otel_info: Option<OtelInfo>,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
     let request_body = Some(request_body.into());
@@ -284,6 +316,7 @@ impl HttpRecord {
       been_dropped: false,
       finished: false,
       needs_close_after_finish: false,
+      otel_info,
     });
     record
   }
@@ -487,6 +520,7 @@ impl HttpRecord {
       ) -> Poll<Self::Output> {
         let mut mut_self = self.0.self_mut();
         if mut_self.response_ready {
+          mut_self.otel_info.take();
           return Poll::Ready(());
         }
         mut_self.response_waker = Some(cx.waker().clone());
@@ -522,6 +556,22 @@ impl HttpRecord {
     }
 
     HttpRecordFinished(self)
+  }
+
+  pub fn otel_info_set_status(&self, status: u16) {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
+      info.attributes.http_response_status_code = Some(status as _);
+      info.handle_duration_and_request_size();
+    }
+  }
+
+  pub fn otel_info_set_error(&self, error: &'static str) {
+    let mut inner = self.self_mut();
+    if let Some(info) = inner.otel_info.as_mut() {
+      info.attributes.error_type = Some(error);
+      info.handle_duration_and_request_size();
+    }
   }
 }
 
@@ -579,6 +629,16 @@ impl Body for HttpRecordResponse {
       }
       record.take_response_body();
     }
+
+    if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
+      let mut http = self.0 .0.borrow_mut();
+      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
+        if let Some(response_size) = &mut otel_info.response_size {
+          *response_size += buf.len() as u64;
+        }
+      }
+    }
+
     Poll::Ready(res.into())
   }
 

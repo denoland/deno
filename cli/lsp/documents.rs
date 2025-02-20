@@ -23,6 +23,7 @@ use deno_core::futures::future;
 use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::Resolution;
@@ -36,6 +37,7 @@ use indexmap::IndexSet;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
 
 use super::cache::calculate_fs_version;
@@ -48,7 +50,6 @@ use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
-use super::tsc::AssetDocument;
 use crate::graph_util::CliJsrUrlProvider;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
@@ -180,10 +181,83 @@ impl IndexValid {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
+#[derive(Debug)]
+pub struct AssetDocument {
+  specifier: ModuleSpecifier,
+  text: &'static str,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
+}
+
+impl AssetDocument {
+  pub fn new(specifier: ModuleSpecifier, text: &'static str) -> Self {
+    let line_index = Arc::new(LineIndex::new(text));
+    Self {
+      specifier,
+      text,
+      line_index,
+      maybe_navigation_tree: Default::default(),
+    }
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.specifier
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
+  }
+
+  pub fn text(&self) -> &'static str {
+    self.text
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
+    self.maybe_navigation_tree.lock().clone()
+  }
+}
+
+#[derive(Debug)]
+pub struct AssetDocuments {
+  inner: HashMap<ModuleSpecifier, Arc<AssetDocument>>,
+}
+
+impl AssetDocuments {
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.inner.contains_key(k)
+  }
+
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<Arc<AssetDocument>> {
+    self.inner.get(k).cloned()
+  }
+}
+
+pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
+  Lazy::new(|| AssetDocuments {
+    inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
+      .iter()
+      .map(|(k, v)| {
+        let url_str = format!("asset:///{k}");
+        let specifier = resolve_url(&url_str).unwrap();
+        let asset = Arc::new(AssetDocument::new(specifier.clone(), v.as_str()));
+        (specifier, asset)
+      })
+      .collect(),
+  });
+
 #[derive(Debug, Clone)]
 pub enum AssetOrDocument {
   Document(Arc<Document>),
-  Asset(AssetDocument),
+  Asset(Arc<AssetDocument>),
 }
 
 impl AssetOrDocument {
@@ -218,10 +292,17 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text_str(&self) -> &str {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text.clone(),
+      AssetOrDocument::Document(d) => d.text.as_ref(),
+    }
+  }
+
+  pub fn text_fast_string(&self) -> deno_core::FastString {
+    match self {
+      AssetOrDocument::Asset(a) => deno_core::FastString::from_static(a.text()),
+      AssetOrDocument::Document(d) => d.text.clone().into(),
     }
   }
 
@@ -269,6 +350,16 @@ impl AssetOrDocument {
     match self {
       AssetOrDocument::Asset(_) => ResolutionMode::Import,
       AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    match self {
+      AssetOrDocument::Asset(a) => a.cache_navigation_tree(navigation_tree),
+      AssetOrDocument::Document(d) => d.cache_navigation_tree(navigation_tree),
     }
   }
 }
@@ -1297,7 +1388,7 @@ impl Documents {
   /// For a given set of string specifiers, resolve each one from the graph,
   /// for a given referrer. This is used to provide resolution information to
   /// tsc when type checking.
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve(
     &self,
     // (is_cjs: bool, raw_specifier: String)
@@ -1492,16 +1583,16 @@ impl Documents {
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
       let dep_info = dep_info_by_scope.entry(Some(scope.clone())).or_default();
       (|| {
-        let config_file = config_data.maybe_deno_json()?;
+        let member_dir = &config_data.member_dir;
         let jsx_config =
-          config_file.to_maybe_jsx_import_source_config().ok()??;
-        let type_specifier = jsx_config.default_types_specifier.as_ref()?;
-        let code_specifier = jsx_config.default_specifier.as_ref()?;
+          member_dir.to_maybe_jsx_import_source_config().ok()??;
+        let import_source_types = jsx_config.import_source_types.as_ref()?;
+        let import_source = jsx_config.import_source.as_ref()?;
         let cli_resolver = self.resolver.as_cli_resolver(Some(scope));
         let type_specifier = cli_resolver
           .resolve(
-            type_specifier,
-            &jsx_config.base_url,
+            &import_source_types.specifier,
+            &import_source_types.base,
             deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
             ResolutionMode::Import,
@@ -1510,8 +1601,8 @@ impl Documents {
           .ok()?;
         let code_specifier = cli_resolver
           .resolve(
-            code_specifier,
-            &jsx_config.base_url,
+            &import_source.specifier,
+            &import_source.base,
             deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
             ResolutionMode::Import,
@@ -1556,7 +1647,7 @@ impl Documents {
     self.dirty = false;
   }
 
-  #[tracing::instrument(skip_all)]
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
