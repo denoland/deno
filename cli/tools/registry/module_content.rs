@@ -343,19 +343,18 @@ mod test {
     ]);
   }
 
-  fn run_test(files: &[(&'static str, &'static str, Option<&'static str>)]) {
-    fn get_path(path: &str) -> String {
-      if cfg!(windows) {
-        format!("C:{}", path.replace('/', "\\"))
-      } else {
-        path.to_string()
-      }
-    }
+  fn get_path(path: &str) -> PathBuf {
+    PathBuf::from(if cfg!(windows) {
+      format!("C:{}", path.replace('/', "\\"))
+    } else {
+      path.to_string()
+    })
+  }
 
+  fn run_test(files: &[(&'static str, &'static str, Option<&'static str>)]) {
     let in_memory_sys = InMemorySys::default();
     for (path, text, _) in files {
       let path = get_path(path);
-      let path = PathBuf::from(path);
       in_memory_sys
         .fs_create_dir_all(path.parent().unwrap())
         .unwrap();
@@ -367,7 +366,6 @@ mod test {
         continue;
       };
       let path = get_path(path);
-      let path = PathBuf::from(path);
       let bytes = provider
         .resolve_content_maybe_unfurling(
           &ModuleGraph::new(deno_graph::GraphKind::All),
@@ -385,7 +383,7 @@ mod test {
   ) -> ModuleContentProvider<InMemorySys> {
     let workspace_dir = deno_config::workspace::WorkspaceDirectory::discover(
       &sys,
-      WorkspaceDiscoverStart::Paths(&[PathBuf::from("/")]),
+      WorkspaceDiscoverStart::Paths(&[get_path("/")]),
       &Default::default(),
     )
     .unwrap();
