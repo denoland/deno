@@ -111,6 +111,100 @@ impl From<GPUExtent3D> for wgpu_types::Extent3d {
 
 #[derive(WebIDL)]
 #[webidl(dictionary)]
+pub(crate) struct GPUOrigin2DDict {
+  #[webidl(default = 0)]
+  #[options(enforce_range = true)]
+  x: u32,
+  #[webidl(default = 0)]
+  #[options(enforce_range = true)]
+  y: u32,
+}
+
+pub(crate) enum GPUOrigin2D {
+  Dict(GPUOrigin2DDict),
+  Sequence((u32, u32)),
+}
+
+impl Default for GPUOrigin2D {
+  fn default() -> Self {
+    GPUOrigin2D::Sequence((0, 0))
+  }
+}
+
+impl<'a> WebIdlConverter<'a> for GPUOrigin2D {
+  type Options = ();
+
+  fn convert<'b>(
+    scope: &mut v8::HandleScope<'a>,
+    value: v8::Local<'a, v8::Value>,
+    prefix: Cow<'static, str>,
+    context: ContextFn<'b>,
+    options: &Self::Options,
+  ) -> Result<Self, WebIdlError> {
+    if value.is_null_or_undefined() {
+      return Ok(GPUOrigin2D::Dict(GPUOrigin2DDict::convert(
+        scope,
+        value,
+        prefix,
+        context.borrowed(),
+        options,
+      )?));
+    }
+    if let Ok(obj) = value.try_cast::<v8::Object>() {
+      let iter = v8::Symbol::get_iterator(scope);
+      if let Some(iter) = obj.get(scope, iter.into()) {
+        if !iter.is_undefined() {
+          let conv = <Vec<u32>>::convert(
+            scope,
+            value,
+            prefix.clone(),
+            context.borrowed(),
+            &IntOptions {
+              clamp: false,
+              enforce_range: true,
+            },
+          )?;
+          if conv.len() > 2 {
+            return Err(WebIdlError::other(prefix, context, JsErrorBox::type_error(format!("A sequence of number used as a GPUOrigin2D must have at most 2 elements, received {} elements", conv.len()))));
+          }
+
+          let mut iter = conv.into_iter();
+          return Ok(GPUOrigin2D::Sequence((
+            iter.next().unwrap_or(0),
+            iter.next().unwrap_or(0),
+          )));
+        }
+      }
+
+      return Ok(GPUOrigin2D::Dict(GPUOrigin2DDict::convert(
+        scope, value, prefix, context, options,
+      )?));
+    }
+
+    Err(WebIdlError::new(
+      prefix,
+      context,
+      WebIdlErrorKind::ConvertToConverterType(
+        "sequence<GPUIntegerCoordinate> or GPUOrigin2DDict",
+      ),
+    ))
+  }
+}
+
+impl From<GPUOrigin2D> for wgpu_types::Origin2d {
+  fn from(value: GPUOrigin2D) -> Self {
+    match value {
+      GPUOrigin2D::Dict(dict) => Self {
+        x: dict.x,
+        y: dict.y,
+      },
+      GPUOrigin2D::Sequence((x, y)) => Self { x, y },
+    }
+  }
+}
+
+#[derive(WebIDL)]
+#[webidl(dictionary)]
 pub(crate) struct GPUOrigin3DDict {
   #[webidl(default = 0)]
   #[options(enforce_range = true)]

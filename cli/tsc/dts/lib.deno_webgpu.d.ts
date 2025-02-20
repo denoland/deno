@@ -967,6 +967,21 @@ interface GPUTexelCopyTextureInfo {
 }
 
 /** @category GPU */
+interface GPUCopyExternalImageDestInfo extends GPUTexelCopyTextureInfo {
+  colorSpace?: PredefinedColorSpace;
+  premultipliedAlpha?: boolean;
+}
+
+/** @category GPU */
+type GPUCopyExternalImageSource = ImageBitmap;
+
+interface GPUCopyExternalImageSourceInfo {
+  source: GPUCopyExternalImageSource;
+  origin?: GPUOrigin2D;
+  flipY?: boolean;
+}
+
+/** @category GPU */
 interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
@@ -1286,6 +1301,12 @@ declare class GPUQueue implements GPUObjectBase {
     dataLayout: GPUTexelCopyBufferLayout,
     size: GPUExtent3D,
   ): undefined;
+
+  copyExternalImageToTexture(
+    source: GPUCopyExternalImageSourceInfo,
+    destination: GPUCopyExternalImageDestInfo,
+    copySize: GPUExtent3D,
+  );
 }
 
 /** @category GPU */
@@ -1364,6 +1385,15 @@ interface GPUColorDict {
 
 /** @category GPU */
 type GPUColor = number[] | GPUColorDict;
+
+/** @category GPU */
+interface GPUOrigin2DDict {
+  x?: number;
+  y?: number;
+}
+
+/** @category GPU */
+type GPUOrigin2D = number[] | GPUOrigin2DDict;
 
 /** @category GPU */
 interface GPUOrigin3DDict {
