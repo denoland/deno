@@ -200,19 +200,71 @@ CREATE TABLE two(id int PRIMARY KEY) STRICT;`);
 
 Deno.test("[node/sqlite] query should handle mixed positional and named parameters", () => {
   const db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT)`);
-  db.exec(
-    `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
+  db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT);`);
+
+  db.exec(`INSERT INTO one (variable1, variable2, variable3) VALUES 
+    ('test1', 1, 100), 
+    ('test2', 2, NULL), 
+    ('test3', -1, 300),
+    ('test4', 0, 400),
+    ('test5', 5, 500);`);
+
+  const namedQuery =
+    "SELECT * FROM one WHERE variable1 = :var1 AND variable2 = :var2";
+  const namedResult = db.prepare(namedQuery).all({ var1: "test1", var2: 1 });
+
+  assertEquals(namedResult, [{
+    __proto__: null,
+    variable1: "test1",
+    variable2: 1,
+    variable3: 100,
+  }]);
+
+  const positionalQuery =
+    "SELECT * FROM one WHERE variable2 = ? AND variable3 = ?";
+  const positionalResult = db.prepare(positionalQuery).all(-1, 300);
+
+  assertEquals(positionalResult, [{
+    __proto__: null,
+    variable1: "test3",
+    variable2: -1,
+    variable3: 300,
+  }]);
+
+  const mixedQuery =
+    "SELECT * FROM one WHERE variable1 = :var1 OR variable2 = ?";
+  const mixedResult = db.prepare(mixedQuery).all({ var1: "test4" }, 5);
+
+  assertEquals(mixedResult, [
+    {
+      __proto__: null,
+      variable1: "test4",
+      variable2: 0,
+      variable3: 400,
+    },
+    {
+      __proto__: null,
+      variable1: "test5",
+      variable2: 5,
+      variable3: 500,
+    },
+  ]);
+
+  const mixedQuery2 =
+    "SELECT * FROM one WHERE variable3 = :var3 AND variable2 = ? AND variable1 = :var1";
+  const mixedResult2 = db.prepare(mixedQuery2).all(
+    { var1: "test4", var3: 400 },
+    0,
   );
 
-  const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";
-  const result = db.prepare(query).all({ var1: "test", var2: 1 });
-  assertEquals(result, [{
-    __proto__: null,
-    variable1: "test",
-    variable2: 1,
-    variable3: 2,
-  }]);
+  assertEquals(mixedResult2, [
+    {
+      __proto__: null,
+      variable1: "test4",
+      variable2: 0,
+      variable3: 400,
+    },
+  ]);
 
   db.close();
 });
