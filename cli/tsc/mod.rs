@@ -19,6 +19,7 @@ use deno_core::serde::Serialize;
 use deno_core::serde::Serializer;
 use deno_core::serde_json::json;
 use deno_core::url::Url;
+use deno_core::FastString;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
 use deno_core::OpState;
@@ -631,7 +632,7 @@ pub enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: String,
+  data: FastString,
   version: Option<String>,
   script_kind: i32,
   is_cjs: bool,
@@ -655,7 +656,7 @@ fn op_load_inner(
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<String, LoadError> {
+  ) -> Result<FastString, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
     let code = std::fs::read_to_string(&file_path).map_err(|err| {
@@ -670,8 +671,7 @@ fn op_load_inner(
         npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
-    // todo(dsherret): how to avoid cloning here?
-    Ok(code.to_string())
+    Ok(code.into())
   }
 
   let state = state.borrow_mut::<State>();
@@ -684,16 +684,19 @@ fn op_load_inner(
   let mut is_cjs = false;
 
   let data = if load_specifier == "internal:///.tsbuildinfo" {
-    state.maybe_tsbuildinfo.as_deref().map(Cow::Borrowed)
+    state
+      .maybe_tsbuildinfo
+      .as_deref()
+      .map(|s| s.to_string().into())
   // in certain situations we return a "blank" module to tsc and we need to
   // handle the request for that module here.
   } else if load_specifier == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else if let Some(name) = load_specifier.strip_prefix("asset:///") {
-    let maybe_source = get_lazily_loaded_asset(name).map(Cow::from);
-    hash = get_maybe_hash(maybe_source.as_deref(), state.hash_data);
+    let maybe_source = get_lazily_loaded_asset(name);
+    hash = get_maybe_hash(maybe_source, state.hash_data);
     media_type = MediaType::from_str(load_specifier);
-    maybe_source
+    maybe_source.map(FastString::from_static)
   } else {
     let specifier = if let Some(remapped_specifier) =
       state.maybe_remapped_specifier(load_specifier)
@@ -707,7 +710,7 @@ fn op_load_inner(
       Err(err) => match err {
         deno_graph::ModuleError::UnsupportedMediaType(_, media_type, _) => {
           return Ok(Some(LoadResponse {
-            data: "".to_string(),
+            data: FastString::from_static(""),
             version: Some("1".to_string()),
             script_kind: as_ts_script_kind(*media_type),
             is_cjs: false,
@@ -727,19 +730,20 @@ fn op_load_inner(
               module.is_script,
             )?;
           }
-          let source = module
-            .fast_check_module()
-            .map(|m| &*m.source)
-            .unwrap_or(&*module.source);
-          Some(Cow::Borrowed(source))
+          Some(
+            module
+              .fast_check_module()
+              .map(|m| FastString::from(m.source.clone()))
+              .unwrap_or(module.source.clone().into()),
+          )
         }
         Module::Json(module) => {
           media_type = MediaType::Json;
-          Some(Cow::Borrowed(&*module.source))
+          Some(FastString::from(module.source.clone()))
         }
         Module::Wasm(module) => {
           media_type = MediaType::Dts;
-          Some(Cow::Borrowed(&*module.source_dts))
+          Some(FastString::from(module.source_dts.clone()))
         }
         Module::Npm(_) | Module::Node(_) => None,
         Module::External(module) => {
@@ -751,12 +755,12 @@ fn op_load_inner(
               &CliSys::default(),
               &module.specifier,
             );
-            Some(Cow::Owned(load_from_node_modules(
+            Some(load_from_node_modules(
               &specifier,
               state.maybe_npm.as_ref(),
               &mut media_type,
               &mut is_cjs,
-            )?))
+            )?)
           }
         }
       }
@@ -765,12 +769,12 @@ fn op_load_inner(
       .as_ref()
       .filter(|npm| npm.node_resolver.in_npm_package(specifier))
     {
-      Some(Cow::Owned(load_from_node_modules(
+      Some(load_from_node_modules(
         specifier,
         Some(npm),
         &mut media_type,
         &mut is_cjs,
-      )?))
+      )?)
     } else {
       None
     };
@@ -781,8 +785,7 @@ fn op_load_inner(
     return Ok(None);
   };
   Ok(Some(LoadResponse {
-    // todo(dsherret): return a static string here in some cases
-    data: data.into_owned(),
+    data,
     version: hash,
     script_kind: as_ts_script_kind(media_type),
     is_cjs,
@@ -1646,7 +1649,7 @@ mod tests {
       .expect("should have invoked op")
       .expect("load should have succeeded");
     let expected = get_lazily_loaded_asset("lib.dom.d.ts").unwrap();
-    assert_eq!(actual.data, expected);
+    assert_eq!(actual.data.to_string(), expected.to_string());
     assert!(actual.version.is_some());
     assert_eq!(actual.script_kind, 3);
   }
