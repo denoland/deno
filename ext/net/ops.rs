@@ -169,7 +169,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr, Fd), NetError> {
+) -> Result<(ResourceId, IpAddr, IpAddr, Option<Fd>), NetError> {
   let resource = state
     .borrow()
     .resource_table
@@ -184,8 +184,12 @@ pub async fn op_net_accept_tcp(
     .try_or_cancel(cancel)
     .await
     .map_err(accept_err)?;
-  let fd = tcp_stream.as_fd();
-  let fd_raw = fd.as_raw_fd() as u32;
+  let mut fd_raw: Option<Fd> = None;
+  #[cfg(not(windows))]
+  {
+    let fd = tcp_stream.as_fd();
+    fd_raw = Some(fd.as_raw_fd() as u32);
+  }
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
