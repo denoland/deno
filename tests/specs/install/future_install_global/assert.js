@@ -1,4 +1,4 @@
-const dirs = Deno.readDir("./bins/bin");
+const dirs = Deno.readDir("./bins");
 
 let found = false;
 for await (const entry of dirs) {
