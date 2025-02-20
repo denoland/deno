@@ -76,6 +76,7 @@ use super::config::LspTsConfig;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
 use super::documents::DocumentsFilter;
+use super::documents::ASSET_DOCUMENTS;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::logging::lsp_log;
@@ -96,7 +97,6 @@ use super::urls::INVALID_URI;
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::logging::lsp_warn;
-use crate::tsc;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
@@ -1395,124 +1395,6 @@ impl TsServer {
         Err(anyhow!("request cancelled"))
       }
     }
-  }
-}
-
-/// An lsp representation of an asset in memory, that has either been retrieved
-/// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug, Clone)]
-pub struct AssetDocument {
-  specifier: ModuleSpecifier,
-  text: Arc<str>,
-  line_index: Arc<LineIndex>,
-  maybe_navigation_tree: Option<Arc<NavigationTree>>,
-}
-
-impl AssetDocument {
-  pub fn new(specifier: ModuleSpecifier, text: impl AsRef<str>) -> Self {
-    let text = text.as_ref();
-    Self {
-      specifier,
-      text: text.into(),
-      line_index: Arc::new(LineIndex::new(text)),
-      maybe_navigation_tree: None,
-    }
-  }
-
-  pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.specifier
-  }
-
-  pub fn with_navigation_tree(&self, tree: Arc<NavigationTree>) -> Self {
-    Self {
-      maybe_navigation_tree: Some(tree),
-      ..self.clone()
-    }
-  }
-
-  pub fn text(&self) -> Arc<str> {
-    self.text.clone()
-  }
-
-  pub fn line_index(&self) -> Arc<LineIndex> {
-    self.line_index.clone()
-  }
-
-  pub fn maybe_navigation_tree(&self) -> Option<Arc<NavigationTree>> {
-    self.maybe_navigation_tree.clone()
-  }
-}
-
-type AssetsMap = HashMap<ModuleSpecifier, AssetDocument>;
-
-fn new_assets_map() -> Arc<Mutex<AssetsMap>> {
-  let assets = tsc::LAZILY_LOADED_STATIC_ASSETS
-    .iter()
-    .map(|(k, v)| {
-      let url_str = format!("asset:///{k}");
-      let specifier = resolve_url(&url_str).unwrap();
-      let asset = AssetDocument::new(specifier.clone(), v.get());
-      (specifier, asset)
-    })
-    .collect::<AssetsMap>();
-  Arc::new(Mutex::new(assets))
-}
-
-/// Snapshot of Assets.
-#[derive(Debug, Clone)]
-pub struct AssetsSnapshot(Arc<Mutex<AssetsMap>>);
-
-impl Default for AssetsSnapshot {
-  fn default() -> Self {
-    Self(new_assets_map())
-  }
-}
-
-impl AssetsSnapshot {
-  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.0.lock().contains_key(k)
-  }
-
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<AssetDocument> {
-    self.0.lock().get(k).cloned()
-  }
-}
-
-/// Assets are never updated and so we can safely use this struct across
-/// multiple threads without needing to worry about race conditions.
-#[derive(Debug, Clone)]
-pub struct Assets {
-  assets: Arc<Mutex<AssetsMap>>,
-}
-
-impl Assets {
-  pub fn new() -> Self {
-    Self {
-      assets: new_assets_map(),
-    }
-  }
-
-  pub fn snapshot(&self) -> AssetsSnapshot {
-    // it's ok to not make a complete copy for snapshotting purposes
-    // because assets are static
-    AssetsSnapshot(self.assets.clone())
-  }
-
-  pub fn get(&self, specifier: &ModuleSpecifier) -> Option<AssetDocument> {
-    self.assets.lock().get(specifier).cloned()
-  }
-
-  pub fn cache_navigation_tree(
-    &self,
-    specifier: &ModuleSpecifier,
-    navigation_tree: Arc<NavigationTree>,
-  ) -> Result<(), AnyError> {
-    let mut assets = self.assets.lock();
-    let doc = assets
-      .get_mut(specifier)
-      .ok_or_else(|| anyhow!("Missing asset."))?;
-    *doc = doc.with_navigation_tree(navigation_tree);
-    Ok(())
   }
 }
 
@@ -4553,9 +4435,8 @@ impl State {
     &self,
     specifier: &ModuleSpecifier,
   ) -> Option<AssetOrDocument> {
-    let snapshot = &self.state_snapshot;
     if specifier.scheme() == "asset" {
-      snapshot.assets.get(specifier).map(AssetOrDocument::Asset)
+      ASSET_DOCUMENTS.get(specifier).map(AssetOrDocument::Asset)
     } else {
       let document = self.get_document(specifier);
       document.map(AssetOrDocument::Document)
@@ -4564,7 +4445,7 @@ impl State {
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
     if specifier.scheme() == "asset" {
-      if self.state_snapshot.assets.contains_key(specifier) {
+      if ASSET_DOCUMENTS.contains_key(specifier) {
         Some("1".to_string())
       } else {
         None
@@ -4622,7 +4503,7 @@ enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: Arc<str>,
+  data: deno_core::FastString,
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
@@ -4640,22 +4521,23 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
+  let asset_or_document = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER
+  {
+    None
+  } else {
+    state.get_asset_or_document(&specifier)
+  };
   let maybe_load_response =
-    if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
-      None
-    } else {
-      let asset_or_document = state.get_asset_or_document(&specifier);
-      asset_or_document.map(|doc| LoadResponse {
-        data: doc.text(),
-        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-        version: state.script_version(&specifier),
-        is_cjs: doc
-          .document()
-          .map(|d| d.resolution_mode())
-          .unwrap_or(ResolutionMode::Import)
-          == ResolutionMode::Require,
-      })
-    };
+    asset_or_document.as_ref().map(|doc| LoadResponse {
+      data: doc.text_fast_string(),
+      script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+      version: state.script_version(&specifier),
+      is_cjs: doc
+        .document()
+        .map(|d| d.resolution_mode())
+        .unwrap_or(ResolutionMode::Import)
+        == ResolutionMode::Require,
+    });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
@@ -5192,10 +5074,10 @@ deno_core::extension!(deno_tsc,
   },
   customizer = |ext: &mut deno_core::Extension| {
     use deno_core::ExtensionFileSource;
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
-    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.as_str().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.as_str().into()));
     ext.esm_entry_point = Some("ext:deno_tsc/99_main_compiler.js");
   }
 );
@@ -5876,7 +5758,6 @@ mod tests {
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
       documents: Arc::new(documents),
-      assets: Default::default(),
       config: Arc::new(config),
       resolver,
     });

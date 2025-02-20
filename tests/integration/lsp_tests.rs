@@ -6495,136 +6495,6 @@ fn lsp_code_actions_deno_cache_all() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_code_actions_deno_types_for_npm() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .add_npm_env_vars()
-    .build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", json!({}).to_string());
-  temp_dir.write(
-    "package.json",
-    json!({
-      "dependencies": {
-        "react": "^18.2.0",
-        "@types/react": "^18.3.10",
-      },
-    })
-    .to_string(),
-  );
-  temp_dir.write(
-    "managed_node_modules/deno.json",
-    json!({
-      "nodeModulesDir": false,
-    })
-    .to_string(),
-  );
-  context.run_npm("install");
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import \"react\";\n",
-    }
-  }));
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("file.ts").unwrap(),
-      },
-      "range": {
-        "start": { "line": 0, "character": 7 },
-        "end": { "line": 0, "character": 7 },
-      },
-      "context": { "diagnostics": [], "only": ["quickfix"] },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "title": "Add @ts-types directive for \"@types/react\"",
-        "kind": "quickfix",
-        "edit": {
-          "changes": {
-            temp_dir.url().join("file.ts").unwrap(): [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 0, "character": 0 },
-                },
-                "newText": "// @ts-types=\"@types/react\"\n",
-              },
-            ],
-          },
-        },
-      },
-    ]),
-  );
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import \"npm:react\";\n",
-    }
-  }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      ],
-    }),
-  );
-  client.read_diagnostics();
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      },
-      "range": {
-        "start": { "line": 0, "character": 7 },
-        "end": { "line": 0, "character": 7 },
-      },
-      "context": { "diagnostics": [], "only": ["quickfix"] },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "title": "Add @ts-types directive for \"npm:@types/react@^18.3.10\"",
-        "kind": "quickfix",
-        "edit": {
-          "changes": {
-            temp_dir.url().join("managed_node_modules/file.ts").unwrap(): [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 0, "character": 0 },
-                },
-                "newText": "// @ts-types=\"npm:@types/react@^18.3.10\"\n",
-              },
-            ],
-          },
-        },
-      },
-    ]),
-  );
-  client.shutdown();
-}
-
-#[test]
-#[timeout(300_000)]
 fn lsp_cache_on_save() {
   let context = TestContextBuilder::new()
     .use_http_server()
@@ -17712,4 +17582,152 @@ fn ambient_module_errors_suppressed() {
       }
     ])
   );
+}
+
+#[test]
+#[timeout(300_000)]
+fn definitely_typed_fallback() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import { foo } from "@denotest/index-export-no-types";
+
+      const _res: boolean = foo(1, 2);
+      console.log(_res);
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+      "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+    }
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+    client.read_diagnostics();
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 1);
+    assert_eq!(
+      json!(diagnostics.all()),
+      json!([
+        {
+          "range": source.range_of("_res"),
+          "severity": 1,
+          "code": 2322,
+          "source": "deno-ts",
+          "message": "Type 'number' is not assignable to type 'boolean'."
+        }
+      ])
+    );
+    client.did_close_file(&source);
+  }
+}
+
+#[test]
+#[timeout(300_000)]
+fn do_not_auto_import_from_definitely_typed() {
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+    let mut client = context.new_lsp_command().build();
+    let temp = context.temp_dir();
+    let temp_dir = temp.path();
+    let source = source_file(
+      temp_dir.join("index.ts"),
+      r#"
+      import {} from "@denotest/index-export-no-types";
+
+      foo
+    "#,
+    );
+
+    let deno_json = json!({
+      "imports": {
+        "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+        "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+      },
+      "nodeModulesDir": node_modules_dir
+    });
+    if node_modules_dir == "manual" {
+      // TODO: there's a (pre-existing) bug that prevents auto-imports
+      // from working with nodeModuleDir "manual" w/o a package.json
+      temp.write(
+        "package.json",
+        json!({
+          "dependencies": {
+            "@denotest/index-export-no-types": "1.0.0",
+          },
+          "devDependencies": {
+            "@types/denotest__index-export-no-types": "1.0.0",
+          }
+        })
+        .to_string(),
+      );
+    }
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+
+    client.initialize_default();
+
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    client.did_open_file(&source);
+    let pos = source.range_of("foo").end;
+    let completions = client.get_completion_list(
+      source.uri().as_str(),
+      (pos.line as usize, pos.character as usize),
+      json!({
+        "triggerKind": 2,
+      }),
+    );
+    let item = completions
+      .items
+      .iter()
+      .find(|it| it.label == "foo")
+      .unwrap();
+    eprintln!("item: {item:#?}");
+    let res = client.write_request("completionItem/resolve", json!(item));
+    eprintln!("resolved: {res}");
+    assert_json_subset(
+      res,
+      json!({
+        "label": "foo",
+        "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
+        "additionalTextEdits": [json!({
+          "range": source.range_of("{}"),
+          "newText": "{ foo }"
+        })]
+      }),
+    );
+
+    client.did_close_file(&source);
+  }
 }
