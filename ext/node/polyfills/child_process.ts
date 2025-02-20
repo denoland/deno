@@ -196,7 +196,8 @@ export function spawn(
   maybeOptions?: SpawnOptions,
 ): ChildProcess {
   const args = Array.isArray(argsOrOptions) ? argsOrOptions : [];
-  let options = !Array.isArray(argsOrOptions) && argsOrOptions !== undefined &&
+  let options = !Array.isArray(argsOrOptions) &&
+      argsOrOptions !== undefined &&
       argsOrOptions !== null
     ? argsOrOptions
     : maybeOptions as SpawnOptions;
@@ -230,10 +231,10 @@ function validateMaxBuffer(maxBuffer: number | undefined | null) {
   }
 }
 
-function sanitizeKillSignal(killSignal?: string | number) {
+function sanitizeKillSignal(killSignal: string | number | undefined | null) {
   if (typeof killSignal === "string" || typeof killSignal === "number") {
     return convertToValidSignal(killSignal);
-  } else if (killSignal !== undefined) {
+  } else if (killSignal !== undefined && killSignal !== null) {
     throw new ERR_INVALID_ARG_TYPE(
       "options.killSignal",
       ["string", "number"],

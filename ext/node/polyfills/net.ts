@@ -1353,7 +1353,10 @@ export class Socket extends Duplex {
     // `options.port === null` will be checked later.
     if (
       (options as TcpSocketConnectOptions).port === undefined &&
-      (options as IpcSocketConnectOptions).path === null
+      (
+        (options as IpcSocketConnectOptions).path === undefined ||
+        (options as IpcSocketConnectOptions).path === null
+      )
     ) {
       throw new ERR_MISSING_ARGS(["options", "port", "path"]);
     }
