@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use deno_core::error::AnyError;
 use deno_core::ModuleSpecifier;
+use deno_lib::util::checksum;
 use lsp::Range;
 use tower_lsp::lsp_types as lsp;
 
@@ -15,7 +16,6 @@ use crate::lsp::logging::lsp_warn;
 use crate::lsp::urls::url_to_uri;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestStepDescription;
-use crate::util::checksum;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TestDefinition {

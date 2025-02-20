@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::num::NonZeroU32;
-use std::path::PathBuf;
 
 use aes_kw::KekAes128;
 use aes_kw::KekAes192;
@@ -98,6 +97,7 @@ deno_core::extension!(deno_crypto,
     op_crypto_base64url_decode,
     op_crypto_base64url_encode,
     x25519::op_crypto_generate_x25519_keypair,
+    x25519::op_crypto_x25519_public_key,
     x25519::op_crypto_derive_bits_x25519,
     x25519::op_crypto_import_spki_x25519,
     x25519::op_crypto_import_pkcs8_x25519,
@@ -782,10 +782,6 @@ pub fn op_crypto_unwrap_key(
     }
     _ => Err(CryptoError::UnsupportedAlgorithm),
   }
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_crypto.d.ts")
 }
 
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";

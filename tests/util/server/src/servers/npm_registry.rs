@@ -301,9 +301,12 @@ fn replace_default_npm_registry_url_with_test_npm_registry_url(
   npm_registry: &npm::TestNpmRegistry,
   package_name: &str,
 ) -> String {
+  let package_name = percent_encoding::percent_decode_str(package_name)
+    .decode_utf8()
+    .unwrap();
   text.replace(
     &format!("https://registry.npmjs.org/{}/-/", package_name),
-    &npm_registry.package_url(package_name),
+    &npm_registry.package_url(&package_name),
   )
 }
 

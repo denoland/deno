@@ -8,6 +8,8 @@ const data = {
 
 const server = Deno.serve(
   {
+    key: Deno.readTextFileSync("../../../testdata/tls/localhost.key"),
+    cert: Deno.readTextFileSync("../../../testdata/tls/localhost.crt"),
     port: 0,
     onListen({ port }) {
       const command = new Deno.Command(Deno.execPath(), {
@@ -16,7 +18,8 @@ const server = Deno.serve(
           OTEL_DENO: "true",
           DENO_UNSTABLE_OTEL_DETERMINISTIC: "1",
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
-          OTEL_EXPORTER_OTLP_ENDPOINT: `http://localhost:${port}`,
+          OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
+          OTEL_EXPORTER_OTLP_CERTIFICATE: "../../../testdata/tls/RootCA.crt",
         },
         stdout: "null",
       });
@@ -37,6 +40,17 @@ const server = Deno.serve(
           data.spans.sort((a, b) =>
             Number(BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`))
           );
+          data.metrics.sort((a, b) => a.name.localeCompare(b.name));
+          for (const metric of data.metrics) {
+            if ("histogram" in metric) {
+              for (const dataPoint of metric.histogram.dataPoints) {
+                dataPoint.attributes.sort((a, b) => {
+                  return a.key.localeCompare(b.key);
+                });
+              }
+            }
+          }
+
           console.log(JSON.stringify(data, null, 2));
         });
     },

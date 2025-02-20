@@ -33,8 +33,10 @@ import {
   unzipSync,
 } from "ext:deno_node/_zlib.mjs";
 import {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   createBrotliCompress,
@@ -45,6 +47,7 @@ import { validateUint32 } from "ext:deno_node/internal/validators.mjs";
 import { op_zlib_crc32 } from "ext:core/ops";
 import { core, primordials } from "ext:core/mod.js";
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
+import { isArrayBufferView } from "ext:deno_node/internal/util/types.ts";
 const {
   Uint8Array,
   TypedArrayPrototypeGetBuffer,
@@ -112,21 +115,7 @@ export class BrotliOptions {
     notImplemented("BrotliOptions.prototype.constructor");
   }
 }
-export class BrotliCompress {
-  constructor() {
-    notImplemented("BrotliCompress.prototype.constructor");
-  }
-}
-export class BrotliDecompress {
-  constructor() {
-    notImplemented("BrotliDecompress.prototype.constructor");
-  }
-}
-export class ZlibBase {
-  constructor() {
-    notImplemented("ZlibBase.prototype.constructor");
-  }
-}
+
 export { constants };
 
 export default {
@@ -215,12 +204,13 @@ export default {
   Z_SYNC_FLUSH: constants.Z_SYNC_FLUSH,
   Z_VERSION_ERROR: constants.Z_VERSION_ERROR,
   ZLIB_VERNUM: constants.ZLIB_VERNUM,
-  ZlibBase,
 };
 
 export {
+  BrotliCompress,
   brotliCompress,
   brotliCompressSync,
+  BrotliDecompress,
   brotliDecompress,
   brotliDecompressSync,
   codes,

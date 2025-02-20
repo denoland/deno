@@ -2,7 +2,7 @@
   "version": "4",
   "specifiers": {
     "npm:@denotest/bin@1": "1.0.0",
-    "npm:@denotest/breaking-change-between-versions@2": "2.0.0",
+    "npm:@denotest/breaking-change-between-versions@2.0.0": "2.0.0",
     "npm:@denotest/has-patch-versions@0.2": "0.2.0"
   },
   "npm": {
@@ -20,7 +20,7 @@
     "packageJson": {
       "dependencies": [
         "npm:@denotest/bin@1",
-        "npm:@denotest/breaking-change-between-versions@2",
+        "npm:@denotest/breaking-change-between-versions@2.0.0",
         "npm:@denotest/has-patch-versions@0.2"
       ]
     }

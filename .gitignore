@@ -36,3 +36,6 @@ junit.xml
 # Jupyter files
 .ipynb_checkpoints/
 Untitled*.ipynb
+
+# playwright browser binary cache
+/.ms-playwright

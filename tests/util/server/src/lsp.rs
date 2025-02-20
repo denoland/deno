@@ -437,8 +437,8 @@ impl InitializeParamsBuilder {
 }
 
 pub struct LspClientBuilder {
-  print_stderr: bool,
-  capture_stderr: bool,
+  stderr_inherit: bool,
+  stderr_null: bool,
   log_debug: bool,
   deno_exe: PathRef,
   root_dir: PathRef,
@@ -456,8 +456,8 @@ impl LspClientBuilder {
 
   pub fn new_with_dir(deno_dir: TempDir) -> Self {
     Self {
-      print_stderr: false,
-      capture_stderr: false,
+      stderr_inherit: false,
+      stderr_null: false,
       log_debug: false,
       deno_exe: deno_exe_path(),
       root_dir: deno_dir.path().clone(),
@@ -476,13 +476,13 @@ impl LspClientBuilder {
   // not deprecated, this is just here so you don't accidentally
   // commit code with this enabled
   #[deprecated]
-  pub fn print_stderr(mut self) -> Self {
-    self.print_stderr = true;
+  pub fn stderr_inherit(mut self) -> Self {
+    self.stderr_inherit = true;
     self
   }
 
-  pub fn capture_stderr(mut self) -> Self {
-    self.capture_stderr = true;
+  pub fn stderr_null(mut self) -> Self {
+    self.stderr_null = true;
     self
   }
 
@@ -493,9 +493,10 @@ impl LspClientBuilder {
 
   /// Whether to collect performance records (marks / measures, as emitted
   /// by the lsp in the `performance` module).
-  /// Implies `capture_stderr`.
+  /// Disables `stderr_inherit` and `stderr_null`.
   pub fn collect_perf(mut self) -> Self {
-    self.capture_stderr = true;
+    self.stderr_inherit = false;
+    self.stderr_null = false;
     self.collect_perf = true;
     self
   }
@@ -550,10 +551,10 @@ impl LspClientBuilder {
     for (key, value) in &self.envs {
       command.env(key, value);
     }
-    if self.capture_stderr {
-      command.stderr(Stdio::piped());
-    } else if !self.print_stderr {
+    if self.stderr_null {
       command.stderr(Stdio::null());
+    } else if !self.stderr_inherit {
+      command.stderr(Stdio::piped());
     }
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().unwrap();
@@ -563,52 +564,52 @@ impl LspClientBuilder {
     let stdin = child.stdin.take().unwrap();
     let writer = io::BufWriter::new(stdin);
 
-    let (stderr_lines_rx, perf_rx) = if self.capture_stderr {
-      let stderr = child.stderr.take().unwrap();
-      let print_stderr = self.print_stderr;
-      let (tx, rx) = mpsc::channel::<String>();
-      let (perf_tx, perf_rx) =
-        self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
-      std::thread::spawn(move || {
-        let stderr = BufReader::new(stderr);
-        for line in stderr.lines() {
-          match line {
-            Ok(line) => {
-              #[allow(clippy::print_stderr)]
-              if print_stderr {
-                eprintln!("{}", line);
-              }
-              if let Some(tx) = perf_tx.as_ref() {
-                // look for perf records
-                if line.starts_with('{') && line.ends_with("},") {
-                  match serde_json::from_str::<PerfRecord>(
-                    line.trim_end_matches(','),
-                  ) {
-                    Ok(record) => {
-                      tx.send(record).unwrap();
-                      continue;
-                    }
-                    Err(err) => {
-                      #[allow(clippy::print_stderr)]
-                      {
-                        eprintln!("failed to parse perf record: {:#}", err);
+    let (stderr_lines_rx, perf_rx) =
+      if !self.stderr_null && !self.stderr_inherit {
+        let stderr = child.stderr.take().unwrap();
+        let (tx, rx) = mpsc::channel::<String>();
+        let (perf_tx, perf_rx) =
+          self.collect_perf.then(mpsc::channel::<PerfRecord>).unzip();
+        std::thread::spawn(move || {
+          let stderr = BufReader::new(stderr);
+          for line in stderr.lines() {
+            match line {
+              Ok(line) => {
+                #[allow(clippy::print_stderr)]
+                {
+                  eprintln!("{}", line);
+                }
+                if let Some(tx) = perf_tx.as_ref() {
+                  // look for perf records
+                  if line.starts_with('{') && line.ends_with("},") {
+                    match serde_json::from_str::<PerfRecord>(
+                      line.trim_end_matches(','),
+                    ) {
+                      Ok(record) => {
+                        tx.send(record).unwrap();
+                        continue;
+                      }
+                      Err(err) => {
+                        #[allow(clippy::print_stderr)]
+                        {
+                          eprintln!("failed to parse perf record: {:#}", err);
+                        }
                       }
                     }
                   }
                 }
+                tx.send(line).unwrap();
               }
-              tx.send(line).unwrap();
-            }
-            Err(err) => {
-              panic!("failed to read line from stderr: {:#}", err);
+              Err(err) => {
+                panic!("failed to read line from stderr: {:#}", err);
+              }
             }
           }
-        }
-      });
-      (Some(rx), perf_rx)
-    } else {
-      (None, None)
-    };
+        });
+        (Some(rx), perf_rx)
+      } else {
+        (None, None)
+      };
 
     Ok(LspClient {
       child,
@@ -775,7 +776,7 @@ impl LspClient {
     let lines_rx = self
       .stderr_lines_rx
       .as_ref()
-      .expect("must setup with client_builder.capture_stderr()");
+      .expect("must not setup with client_builder.stderr_null() or client_builder.stderr_inherit()");
     let mut found_lines = Vec::new();
     while Instant::now() < timeout_time {
       if let Ok(line) = lines_rx.try_recv() {
@@ -898,6 +899,20 @@ impl LspClient {
   pub fn did_open(&mut self, params: Value) -> CollectedDiagnostics {
     self.did_open_raw(params);
     self.read_diagnostics()
+  }
+
+  pub fn did_close_file(&mut self, file: &SourceFile) {
+    self.did_close(json!({
+        "textDocument": file.identifier(),
+    }))
+  }
+
+  pub fn did_close(&mut self, params: Value) {
+    self.did_close_raw(params);
+  }
+
+  pub fn did_close_raw(&mut self, params: Value) {
+    self.write_notification("textDocument/didClose", params);
   }
 
   pub fn did_open_raw(&mut self, params: Value) {

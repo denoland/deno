@@ -2,7 +2,7 @@
   "name": "@denotest/member-b",
   "version": "0.1.0",
   "dependencies": {
-    "@denotest/has-patch-versions": "^0.2.0",
-    "aliased": "npm:@denotest/bin@^1.0.0"
+    "@denotest/has-patch-versions": "0.2.0",
+    "aliased": "npm:@denotest/bin@1.0.0"
   }
 }

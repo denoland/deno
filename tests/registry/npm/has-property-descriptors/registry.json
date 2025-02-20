@@ -94,6 +94,5 @@
   "bugs": {
     "url": "https://github.com/inspect-js/has-property-descriptors/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

@@ -9,7 +9,7 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_io::fs::FsError;
+pub use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
 
 pub use crate::interface::AccessCheckCb;
@@ -23,6 +23,7 @@ pub use crate::ops::FsOpsError;
 pub use crate::ops::FsOpsErrorKind;
 pub use crate::ops::OperationError;
 use crate::ops::*;
+pub use crate::std_fs::open_options_with_access_check;
 pub use crate::std_fs::RealFs;
 pub use crate::sync::MaybeSend;
 pub use crate::sync::MaybeSync;

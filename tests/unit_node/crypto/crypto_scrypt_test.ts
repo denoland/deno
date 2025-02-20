@@ -188,3 +188,13 @@ Deno.test("scryptSync with options works correctly", () => {
     ]),
   );
 });
+
+Deno.test("log_n > 64 doesn't panic", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+
+  scrypt("password", "salt", 128, () => {
+    resolve();
+  });
+
+  await promise;
+});

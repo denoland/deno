@@ -15,6 +15,7 @@ import {
   op_otel_metric_record2,
   op_otel_metric_record3,
   op_otel_metric_wait_to_observe,
+  op_otel_span_add_link,
   op_otel_span_attribute1,
   op_otel_span_attribute2,
   op_otel_span_attribute3,
@@ -138,8 +139,8 @@ interface IKeyValue {
   value: IAnyValue;
 }
 
-function hrToSecs(hr: [number, number]): number {
-  return (hr[0] * 1e3 + hr[1] / 1e6) / 1000;
+function hrToMs(hr: [number, number]): number {
+  return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
 export function enterSpan(span: Span): Context | undefined {
@@ -186,7 +187,6 @@ interface OtelSpan {
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
   dropEvent(): void;
-  dropLink(): void;
   end(endTime: number): void;
 }
 
@@ -276,7 +276,7 @@ class Tracer {
 
     let startTime = options?.startTime;
     if (startTime && ArrayIsArray(startTime)) {
-      startTime = hrToSecs(startTime);
+      startTime = hrToMs(startTime);
     } else if (startTime && isDate(startTime)) {
       startTime = DatePrototypeGetTime(startTime);
     }
@@ -359,21 +359,31 @@ class Span {
     return this;
   }
 
-  addLink(_link: Link): Span {
-    this.#otelSpan?.dropLink();
+  addLink(link: Link): Span {
+    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
+      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+    const valid = op_otel_span_add_link(
+      this.#otelSpan,
+      link.context.traceId,
+      link.context.spanId,
+      link.context.traceFlags,
+      link.context.isRemote ?? false,
+      droppedAttributeCount,
+    );
+    if (!valid) return this;
     return this;
   }
 
   addLinks(links: Link[]): Span {
     for (let i = 0; i < links.length; i++) {
-      this.#otelSpan?.dropLink();
+      this.addLink(links[i]);
     }
     return this;
   }
 
   end(endTime?: TimeInput): void {
     if (endTime && ArrayIsArray(endTime)) {
-      endTime = hrToSecs(endTime);
+      endTime = hrToMs(endTime);
     } else if (endTime && isDate(endTime)) {
       endTime = DatePrototypeGetTime(endTime);
     }

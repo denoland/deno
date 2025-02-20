@@ -81,7 +81,7 @@ fn hash_data_specifier(specifier: &ModuleSpecifier) -> String {
     file_name_str.push('?');
     file_name_str.push_str(query);
   }
-  crate::util::checksum::gen(&[file_name_str.as_bytes()])
+  deno_lib::util::checksum::gen(&[file_name_str.as_bytes()])
 }
 
 fn to_deno_uri(specifier: &Url) -> String {
@@ -219,7 +219,8 @@ impl LspUrlMap {
         let uri_str = if specifier.scheme() == "asset" {
           format!("deno:/asset{}", specifier.path())
         } else if specifier.scheme() == "data" {
-          let data_url = deno_graph::source::RawDataUrl::parse(specifier)?;
+          let data_url =
+            deno_media_type::data_url::RawDataUrl::parse(specifier)?;
           let media_type = data_url.media_type();
           let extension = if media_type == MediaType::Unknown {
             ""

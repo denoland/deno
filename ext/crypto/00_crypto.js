@@ -4,7 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../webidl/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { core, primordials } from "ext:core/mod.js";
 const {
@@ -48,6 +48,7 @@ import {
   op_crypto_verify_ed25519,
   op_crypto_verify_key,
   op_crypto_wrap_key,
+  op_crypto_x25519_public_key,
 } from "ext:core/ops";
 const {
   ArrayBufferIsView,
@@ -2987,8 +2988,8 @@ function importKeyAES(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3162,8 +3163,8 @@ function importKeyHMAC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3428,8 +3429,8 @@ function importKeyEC(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -3842,8 +3843,8 @@ function importKeyRSA(
 
         if (
           !ArrayPrototypeEvery(
-            jwk.key_ops,
-            (u) => ArrayPrototypeIncludes(keyUsages, u),
+            keyUsages,
+            (u) => ArrayPrototypeIncludes(jwk.key_ops, u),
           )
         ) {
           throw new DOMException(
@@ -4532,17 +4533,18 @@ function exportKeyX25519(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(pkcs8Der);
     }
     case "jwk": {
-      if (key[_type] === "private") {
-        throw new DOMException("Not implemented", "NotSupportedError");
-      }
-      const x = op_crypto_base64url_encode(innerKey);
       const jwk = {
         kty: "OKP",
         crv: "X25519",
-        x,
         "key_ops": key.usages,
         ext: key[_extractable],
       };
+      if (key[_type] === "private") {
+        jwk.x = op_crypto_x25519_public_key(innerKey);
+        jwk.d = op_crypto_base64url_encode(innerKey);
+      } else {
+        jwk.x = op_crypto_base64url_encode(innerKey);
+      }
       return jwk;
     }
     default:

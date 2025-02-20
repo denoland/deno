@@ -1,9 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-mod byonm;
 pub mod installer;
 mod managed;
-mod permission_checker;
 
 use std::sync::Arc;
 
@@ -11,21 +9,19 @@ use dashmap::DashMap;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
+use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
-use deno_runtime::ops::process::NpmProcessStateProviderRc;
+use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use http::HeaderName;
 use http::HeaderValue;
 
-pub use self::byonm::CliByonmNpmResolverCreateOptions;
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
 pub use self::managed::NpmResolutionInitializer;
 pub use self::managed::ResolveSnapshotError;
-pub use self::permission_checker::NpmRegistryReadPermissionChecker;
-pub use self::permission_checker::NpmRegistryReadPermissionCheckerMode;
 use crate::file_fetcher::CliFileFetcher;
 use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
@@ -40,6 +36,8 @@ pub type CliNpmResolver = deno_resolver::npm::NpmResolver<CliSys>;
 pub type CliManagedNpmResolver = deno_resolver::npm::ManagedNpmResolver<CliSys>;
 pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
+pub type CliByonmNpmResolverCreateOptions =
+  ByonmNpmResolverCreateOptions<CliSys>;
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {
@@ -56,19 +54,6 @@ impl CliNpmCacheHttpClient {
       http_client_provider,
       progress_bar,
     }
-  }
-}
-
-pub fn create_npm_process_state_provider(
-  npm_resolver: &CliNpmResolver,
-) -> NpmProcessStateProviderRc {
-  match npm_resolver {
-    CliNpmResolver::Byonm(byonm_npm_resolver) => Arc::new(
-      byonm::CliByonmNpmProcessStateProvider(byonm_npm_resolver.clone()),
-    ),
-    CliNpmResolver::Managed(managed_npm_resolver) => Arc::new(
-      managed::CliManagedNpmProcessStateProvider(managed_npm_resolver.clone()),
-    ),
   }
 }
 
@@ -167,24 +152,16 @@ impl NpmFetchResolver {
     // todo(#27198): use RegistryInfoProvider instead
     let fetch_package_info = || async {
       let info_url = deno_npm_cache::get_package_url(&self.npmrc, name);
-      let file_fetcher = self.file_fetcher.clone();
       let registry_config = self.npmrc.get_registry_config(name);
       // TODO(bartlomieju): this should error out, not use `.ok()`.
       let maybe_auth_header =
         deno_npm_cache::maybe_auth_header_for_npm_registry(registry_config)
           .ok()?;
-      // spawn due to the lsp's `Send` requirement
-      let file = deno_core::unsync::spawn(async move {
-        file_fetcher
-          .fetch_bypass_permissions_with_maybe_auth(
-            &info_url,
-            maybe_auth_header,
-          )
-          .await
-          .ok()
-      })
-      .await
-      .ok()??;
+      let file = self
+        .file_fetcher
+        .fetch_bypass_permissions_with_maybe_auth(&info_url, maybe_auth_header)
+        .await
+        .ok()?;
       serde_json::from_slice::<NpmPackageInfo>(&file.source).ok()
     };
     let info = fetch_package_info().await.map(Arc::new);
@@ -198,8 +175,8 @@ pub const NPM_CONFIG_USER_AGENT_ENV_VAR: &str = "npm_config_user_agent";
 pub fn get_npm_config_user_agent() -> String {
   format!(
     "deno/{} npm/? deno/{} {} {}",
-    env!("CARGO_PKG_VERSION"),
-    env!("CARGO_PKG_VERSION"),
+    DENO_VERSION_INFO.deno,
+    DENO_VERSION_INFO.deno,
     std::env::consts::OS,
     std::env::consts::ARCH
   )

@@ -13,37 +13,31 @@ repository.workspace = true
 path = "lib.rs"
 
 [features]
-run = []
 upgrade = []
 
 [[test]]
 name = "integration_tests"
 path = "integration/mod.rs"
-required-features = ["run"]
 
 [[test]]
 name = "specs"
 path = "specs/mod.rs"
-required-features = ["run"]
 harness = false
 
 [[test]]
 name = "node_compat_tests"
 path = "node_compat/test_runner.rs"
-required-features = ["run"]
 
 [dev-dependencies]
+anyhow.workspace = true
 bytes.workspace = true
 chrono = { workspace = true, features = ["now"] }
-deno_ast.workspace = true
 deno_bench_util.workspace = true
 deno_cache_dir = { workspace = true }
-deno_core = { workspace = true, features = ["include_js_files_for_snapshotting", "unsafe_use_unprotected_platform"] }
-deno_fetch.workspace = true
 deno_lockfile.workspace = true
 deno_semver.workspace = true
 deno_terminal.workspace = true
-deno_tls.workspace = true
+deno_unsync.workspace = true
 fastwebsockets = { workspace = true, features = ["upgrade", "unstable-split"] }
 file_test_runner = "0.7.3"
 flaky_test = "=0.2.2"
@@ -54,18 +48,24 @@ http.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
+ntest_timeout.workspace = true
 once_cell.workspace = true
 os_pipe.workspace = true
 pretty_assertions.workspace = true
 regex.workspace = true
 reqwest.workspace = true
+rustls.workspace = true
+rustls-pemfile.workspace = true
+rustls-tokio-stream.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sys_traits = { workspace = true, features = ["real", "getrandom", "libc", "winapi"] }
 test_util.workspace = true
 tokio.workspace = true
 tower-lsp.workspace = true
 url.workspace = true
 uuid = { workspace = true, features = ["serde"] }
+walkdir.workspace = true
 zeromq.workspace = true
 
 [target.'cfg(unix)'.dev-dependencies]

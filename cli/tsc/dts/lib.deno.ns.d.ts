@@ -1242,6 +1242,10 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
+    /** Number of iterations to perform. */
+    n?: number;
+    /** Number of warmups to do before running the benchmark. */
+    warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
@@ -1786,7 +1790,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly readable: ReadableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /** A {@linkcode WritableStream} instance to write the contents of the
      * file. This makes it easy to interoperate with other web streams based
      * APIs.
@@ -1801,7 +1805,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /** Write the contents of the array buffer (`p`) to the file.
      *
      * Resolves to the number of bytes written.
@@ -2268,7 +2272,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A readable stream interface to `stdin`. */
-    readonly readable: ReadableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
     /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
@@ -2346,7 +2350,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stdout`. */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /**
      * Checks if `stdout` is a TTY (terminal).
      *
@@ -2410,7 +2414,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stderr`. */
-    readonly writable: WritableStream<Uint8Array>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
     /**
      * Checks if `stderr` is a TTY (terminal).
      *
@@ -2905,7 +2909,7 @@ declare namespace Deno {
 
   /** Reads and resolves to the entire contents of a file as an array of bytes.
    * `TextDecoder` can be used to transform the bytes to string if required.
-   * Reading a directory returns an empty data array.
+   * Rejects with an error when reading a directory.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2921,11 +2925,11 @@ declare namespace Deno {
   export function readFile(
     path: string | URL,
     options?: ReadFileOptions,
-  ): Promise<Uint8Array>;
+  ): Promise<Uint8Array<ArrayBuffer>>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
-   * required. Reading a directory returns an empty data array.
+   * required. Throws an error when reading a directory.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2938,7 +2942,7 @@ declare namespace Deno {
    * @tags allow-read
    * @category File System
    */
-  export function readFileSync(path: string | URL): Uint8Array;
+  export function readFileSync(path: string | URL): Uint8Array<ArrayBuffer>;
 
   /** Provides information about a file and is returned by
    * {@linkcode Deno.stat}, {@linkcode Deno.lstat}, {@linkcode Deno.statSync},
@@ -3124,7 +3128,7 @@ declare namespace Deno {
    * @tags allow-read
    * @category File System
    */
-  export function readDirSync(path: string | URL): Iterable<DirEntry>;
+  export function readDirSync(path: string | URL): IteratorObject<DirEntry>;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -3731,9 +3735,9 @@ declare namespace Deno {
    * @category Subprocess
    */
   export class ChildProcess implements AsyncDisposable {
-    get stdin(): WritableStream<Uint8Array>;
-    get stdout(): ReadableStream<Uint8Array>;
-    get stderr(): ReadableStream<Uint8Array>;
+    get stdin(): WritableStream<Uint8Array<ArrayBufferLike>>;
+    get stdout(): ReadableStream<Uint8Array<ArrayBuffer>>;
+    get stderr(): ReadableStream<Uint8Array<ArrayBuffer>>;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<CommandStatus>;
@@ -3845,9 +3849,9 @@ declare namespace Deno {
    */
   export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
-    readonly stdout: Uint8Array;
+    readonly stdout: Uint8Array<ArrayBuffer>;
     /** The buffered output from the child process' `stderr`. */
-    readonly stderr: Uint8Array;
+    readonly stderr: Uint8Array<ArrayBuffer>;
   }
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.

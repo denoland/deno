@@ -1,4 +1,4 @@
-⚠️ `deno bundle` was removed in Deno 2.
+`deno bundle` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations
 
@@ -6,5 +6,5 @@ Usage: deno bundle [OPTIONS]
 
 Options:
   -q, --quiet     Suppress diagnostic output
-      --unstable  Enable all unstable features and APIs. Instead of using this flag, consider enabling individual unstable features
+      --unstable  The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
                     To view the list of individual unstable feature flags, run this command again with --help=unstable

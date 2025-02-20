@@ -66,6 +66,5 @@
   "bugs": {
     "url": "https://github.com/ChALkeR/safer-buffer/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "Readme.md"
+  "license": "MIT"
 }

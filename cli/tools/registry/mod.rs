@@ -39,8 +39,6 @@ use crate::args::jsr_url;
 use crate::args::CliOptions;
 use crate::args::Flags;
 use crate::args::PublishFlags;
-use crate::cache::LazyGraphSourceParser;
-use crate::cache::ParsedSourceCache;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
@@ -55,6 +53,7 @@ mod auth;
 
 mod diagnostics;
 mod graph;
+mod module_content;
 mod paths;
 mod pm;
 mod provenance;
@@ -74,6 +73,7 @@ use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
 
 use self::graph::GraphDiagnosticsCollector;
+use self::module_content::ModuleContentProvider;
 use self::paths::CollectedPublishPath;
 use self::tar::PublishableTarball;
 use super::check::TypeChecker;
@@ -119,20 +119,22 @@ pub async fn publish(
     }
   }
 
-  let specifier_unfurler = Arc::new(SpecifierUnfurler::new(
-    cli_factory.sloppy_imports_resolver()?.cloned(),
+  let specifier_unfurler = SpecifierUnfurler::new(
     cli_factory.workspace_resolver().await?.clone(),
     cli_options.unstable_bare_node_builtins(),
-  ));
+  );
 
   let diagnostics_collector = PublishDiagnosticsCollector::default();
+  let module_content_provider = Arc::new(ModuleContentProvider::new(
+    specifier_unfurler,
+    cli_factory.parsed_source_cache().clone(),
+  ));
   let publish_preparer = PublishPreparer::new(
     GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),
     cli_factory.module_graph_creator().await?.clone(),
-    cli_factory.parsed_source_cache().clone(),
     cli_factory.type_checker().await?.clone(),
     cli_options.clone(),
-    specifier_unfurler,
+    module_content_provider,
   );
 
   let prepared_data = publish_preparer
@@ -212,28 +214,25 @@ struct PreparePackagesData {
 struct PublishPreparer {
   graph_diagnostics_collector: GraphDiagnosticsCollector,
   module_graph_creator: Arc<ModuleGraphCreator>,
-  source_cache: Arc<ParsedSourceCache>,
   type_checker: Arc<TypeChecker>,
   cli_options: Arc<CliOptions>,
-  specifier_unfurler: Arc<SpecifierUnfurler>,
+  module_content_provider: Arc<ModuleContentProvider>,
 }
 
 impl PublishPreparer {
   pub fn new(
     graph_diagnostics_collector: GraphDiagnosticsCollector,
     module_graph_creator: Arc<ModuleGraphCreator>,
-    source_cache: Arc<ParsedSourceCache>,
     type_checker: Arc<TypeChecker>,
     cli_options: Arc<CliOptions>,
-    specifier_unfurler: Arc<SpecifierUnfurler>,
+    module_content_provider: Arc<ModuleContentProvider>,
   ) -> Self {
     Self {
       graph_diagnostics_collector,
       module_graph_creator,
-      source_cache,
       type_checker,
       cli_options,
-      specifier_unfurler,
+      module_content_provider,
     }
   }
 
@@ -364,14 +363,13 @@ impl PublishPreparer {
       } else {
         // fast check passed, type check the output as a temporary measure
         // until we know that it's reliable and stable
-        let (graph, check_diagnostics) = self
+        let mut diagnostics_by_folder = self
           .type_checker
           .check_diagnostics(
             graph,
             CheckOptions {
               build_fast_check_graph: false, // already built
               lib: self.cli_options.ts_type_lib_window(),
-              log_ignored_options: false,
               reload: self.cli_options.reload_flag(),
               type_check_mode: self.cli_options.type_check_mode(),
             },
@@ -379,20 +377,23 @@ impl PublishPreparer {
           .await?;
         // ignore unused parameter diagnostics that may occur due to fast check
         // not having function body implementations
-        let check_diagnostics =
-          check_diagnostics.filter(|d| d.include_when_remote());
-        if !check_diagnostics.is_empty() {
-          bail!(
-            concat!(
-            "Failed ensuring public API type output is valid.\n\n",
-            "{:#}\n\n",
-            "You may have discovered a bug in Deno. Please open an issue at: ",
-            "https://github.com/denoland/deno/issues/"
-          ),
-            check_diagnostics
-          );
+        for result in diagnostics_by_folder.by_ref() {
+          let check_diagnostics = result?;
+          let check_diagnostics =
+            check_diagnostics.filter(|d| d.include_when_remote());
+          if check_diagnostics.has_diagnostic() {
+            bail!(
+              concat!(
+                "Failed ensuring public API type output is valid.\n\n",
+                "{:#}\n\n",
+                "You may have discovered a bug in Deno. Please open an issue at: ",
+                "https://github.com/denoland/deno/issues/"
+              ),
+              check_diagnostics
+            );
+          }
         }
-        Ok(graph)
+        Ok(diagnostics_by_folder.into_graph())
       }
     }
   }
@@ -423,9 +424,8 @@ impl PublishPreparer {
 
     let tarball = deno_core::unsync::spawn_blocking({
       let diagnostics_collector = diagnostics_collector.clone();
-      let unfurler = self.specifier_unfurler.clone();
+      let module_content_provider = self.module_content_provider.clone();
       let cli_options = self.cli_options.clone();
-      let source_cache = self.source_cache.clone();
       let config_path = config_path.clone();
       let config_url = deno_json.specifier.clone();
       let has_license_field = package.license.is_some();
@@ -471,10 +471,10 @@ impl PublishPreparer {
         }
 
         tar::create_gzipped_tarball(
-          publish_paths,
-          LazyGraphSourceParser::new(&source_cache, &graph),
+          &module_content_provider,
+          &graph,
           &diagnostics_collector,
-          &unfurler,
+          publish_paths,
         )
         .context("Failed to create a tarball")
       }
