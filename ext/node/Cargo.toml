@@ -98,6 +98,7 @@ sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld = "0.2"
+tower-service.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true
