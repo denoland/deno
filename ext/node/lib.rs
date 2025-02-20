@@ -829,7 +829,15 @@ pub trait ExtNodeSys:
 {
 }
 
-impl ExtNodeSys for sys_traits::impls::RealSys {}
+impl<
+    T: sys_traits::BaseFsCanonicalize
+      + sys_traits::BaseFsMetadata
+      + sys_traits::BaseFsRead
+      + sys_traits::EnvCurrentDir
+      + Clone,
+  > ExtNodeSys for T
+{
+}
 
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<

@@ -15,9 +15,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_graph::Module;
-use deno_graph::ModuleError;
 use deno_graph::ModuleGraph;
-use deno_graph::ModuleLoadError;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_terminal::colors;
@@ -38,6 +36,8 @@ use crate::cache::Caches;
 use crate::cache::TypeCheckCache;
 use crate::factory::CliFactory;
 use crate::graph_util::maybe_additional_sloppy_imports_message;
+use crate::graph_util::module_error_for_tsc_diagnostic;
+use crate::graph_util::resolution_error_for_tsc_diagnostic;
 use crate::graph_util::BuildFastCheckGraphOptions;
 use crate::graph_util::ModuleGraphBuilder;
 use crate::node::CliNodeResolver;
@@ -114,7 +114,7 @@ pub enum CheckError {
   #[class(inherit)]
   #[error(transparent)]
   ToMaybeJsxImportSourceConfig(
-    #[from] deno_json::ToMaybeJsxImportSourceConfigError,
+    #[from] deno_config::workspace::ToMaybeJsxImportSourceConfigError,
   ),
   #[class(inherit)]
   #[error(transparent)]
@@ -722,7 +722,7 @@ impl<'a> GraphWalker<'a> {
             self
               .missing_diagnostics
               .push(tsc::Diagnostic::from_missing_error(
-                specifier,
+                specifier.as_str(),
                 None,
                 maybe_additional_sloppy_imports_message(self.sys, specifier),
               ));
@@ -763,36 +763,23 @@ impl<'a> GraphWalker<'a> {
       let module = match self.graph.try_get(specifier) {
         Ok(Some(module)) => module,
         Ok(None) => continue,
-        Err(ModuleError::Missing(specifier, maybe_range)) => {
+        Err(err) => {
           if !is_dynamic {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                specifier,
-                maybe_range.as_ref(),
-                maybe_additional_sloppy_imports_message(self.sys, specifier),
-              ));
+            if let Some(err) = module_error_for_tsc_diagnostic(self.sys, err) {
+              self.missing_diagnostics.push(
+                tsc::Diagnostic::from_missing_error(
+                  err.specifier.as_str(),
+                  err.maybe_range,
+                  maybe_additional_sloppy_imports_message(
+                    self.sys,
+                    err.specifier,
+                  ),
+                ),
+              );
+            }
           }
           continue;
         }
-        Err(ModuleError::LoadingErr(
-          specifier,
-          maybe_range,
-          ModuleLoadError::Loader(_),
-        )) => {
-          // these will be errors like attempting to load a directory
-          if !is_dynamic {
-            self
-              .missing_diagnostics
-              .push(tsc::Diagnostic::from_missing_error(
-                specifier,
-                maybe_range.as_ref(),
-                maybe_additional_sloppy_imports_message(self.sys, specifier),
-              ));
-          }
-          continue;
-        }
-        Err(_) => continue,
       };
       if is_dynamic && !self.seen.insert(specifier) {
         continue;
@@ -831,11 +818,26 @@ impl<'a> GraphWalker<'a> {
       if let Some(deps) = maybe_module_dependencies {
         for dep in deps.values() {
           // walk both the code and type dependencies
-          if let Some(specifier) = dep.get_code() {
-            self.handle_specifier(specifier, dep.is_dynamic);
-          }
-          if let Some(specifier) = dep.get_type() {
-            self.handle_specifier(specifier, dep.is_dynamic);
+          for resolution in [&dep.maybe_type, &dep.maybe_code] {
+            match resolution {
+              deno_graph::Resolution::Ok(resolution) => {
+                self.handle_specifier(&resolution.specifier, dep.is_dynamic);
+              }
+              deno_graph::Resolution::Err(resolution_error) => {
+                if let Some(err) =
+                  resolution_error_for_tsc_diagnostic(resolution_error)
+                {
+                  self.missing_diagnostics.push(
+                    tsc::Diagnostic::from_missing_error(
+                      err.specifier,
+                      err.maybe_range,
+                      None,
+                    ),
+                  );
+                }
+              }
+              deno_graph::Resolution::None => {}
+            }
           }
         }
       }

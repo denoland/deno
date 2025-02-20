@@ -1,9 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::PathBuf;
-
 mod image_ops;
 mod op_create_image_bitmap;
+pub use image;
 use image::ColorType;
 use op_create_image_bitmap::op_create_image_bitmap;
 
@@ -11,7 +10,7 @@ use op_create_image_bitmap::op_create_image_bitmap;
 pub enum CanvasError {
   /// Image formats that is 32-bit depth are not supported currently due to the following reasons:
   /// - e.g. OpenEXR, it's not covered by the spec.
-  /// - JPEG XL supported by WebKit, but it cannot be called a standard today.  
+  /// - JPEG XL supported by WebKit, but it cannot be called a standard today.
   ///   https://github.com/whatwg/mimesniff/issues/143
   ///
   #[class(type)]
@@ -47,7 +46,3 @@ deno_core::extension!(
   ops = [op_create_image_bitmap],
   lazy_loaded_esm = ["01_image.js"],
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_canvas.d.ts")
-}
