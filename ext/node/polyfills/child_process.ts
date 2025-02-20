@@ -207,7 +207,7 @@ export function spawn(
   return new ChildProcess(command, args, options);
 }
 
-function validateTimeout(timeout?: number | null) {
+function validateTimeout(timeout: number | undefined | null) {
   if (
     timeout !== undefined && timeout !== null &&
     !(Number.isInteger(timeout) && timeout >= 0)
@@ -216,7 +216,7 @@ function validateTimeout(timeout?: number | null) {
   }
 }
 
-function validateMaxBuffer(maxBuffer?: number | null) {
+function validateMaxBuffer(maxBuffer: number | undefined | null) {
   if (
     maxBuffer !== undefined &&
     maxBuffer !== null &&
