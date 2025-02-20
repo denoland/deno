@@ -207,15 +207,19 @@ export function spawn(
   return new ChildProcess(command, args, options);
 }
 
-function validateTimeout(timeout?: number) {
-  if (timeout !== undefined && !(Number.isInteger(timeout) && timeout >= 0)) {
+function validateTimeout(timeout?: number | null) {
+  if (
+    timeout !== undefined && timeout !== null &&
+    !(Number.isInteger(timeout) && timeout >= 0)
+  ) {
     throw new ERR_OUT_OF_RANGE("timeout", "an unsigned integer", timeout);
   }
 }
 
-function validateMaxBuffer(maxBuffer?: number) {
+function validateMaxBuffer(maxBuffer?: number | null) {
   if (
     maxBuffer !== undefined &&
+    maxBuffer !== null &&
     !(typeof maxBuffer === "number" && maxBuffer >= 0)
   ) {
     throw new ERR_OUT_OF_RANGE(
