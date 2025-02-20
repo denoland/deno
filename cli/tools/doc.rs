@@ -515,7 +515,7 @@ fn print_docs_to_stdout(
   doc_flags: DocFlags,
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
-  doc_nodes.retain(|doc_node| doc_node.kind() != doc::DocNodeKind::Import);
+  doc_nodes.retain(|doc_node| doc_node.import_def().is_none());
   let details = if let Some(filter) = doc_flags.filter {
     let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
     if nodes.is_empty() {
