@@ -78,7 +78,7 @@ function ucs2decode(str: string) {
       // It's a high surrogate, and there is a next character.
       const extra = str.charCodeAt(counter++);
 
-      if ((extra & 0xFC00) == 0xDC00) { // Low surrogate.
+      if ((extra & 0xFC00) === 0xDC00) { // Low surrogate.
         output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
       } else {
         // It's an unmatched surrogate; only append this code unit, in case the

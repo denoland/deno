@@ -110,7 +110,7 @@ function checkOptionUsage(config, token) {
     );
   }
   // (Idiomatic test for undefined||null, expecting undefined.)
-  if (type === "boolean" && token.value != null) {
+  if (type === "boolean" && token.value !== undefined && token.value !== null) {
     throw new ERR_PARSE_ARGS_INVALID_OPTION_VALUE(
       `Option '${shortAndLong}' does not take an argument`,
     );
@@ -227,7 +227,7 @@ function argsToTokens(args, options) {
           inlineValue,
         },
       );
-      if (value != null) ++index;
+      if (value !== undefined) ++index;
       continue;
     }
 
@@ -298,7 +298,7 @@ function argsToTokens(args, options) {
           inlineValue,
         },
       );
-      if (value != null) ++index;
+      if (value !== undefined) ++index;
       continue;
     }
 

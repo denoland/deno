@@ -21,7 +21,7 @@ async function getUidAndGid(): Promise<{ uid: number; gid: number }> {
 }
 
 Deno.test(
-  { ignore: Deno.build.os == "windows", permissions: { write: false } },
+  { ignore: Deno.build.os === "windows", permissions: { write: false } },
   async function chownNoWritePermission() {
     const filePath = "chown_test_file.txt";
     await assertRejects(async () => {
@@ -33,7 +33,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownSyncFileNotExist() {
     const { uid, gid } = await getUidAndGid();
@@ -52,7 +52,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownFileNotExist() {
     const { uid, gid } = await getUidAndGid();
@@ -69,7 +69,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { write: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { write: true }, ignore: Deno.build.os === "windows" },
   function chownSyncPermissionDenied() {
     const dirPath = Deno.makeTempDirSync();
     const filePath = dirPath + "/chown_test_file.txt";
@@ -84,7 +84,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { write: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { write: true }, ignore: Deno.build.os === "windows" },
   async function chownPermissionDenied() {
     const dirPath = await Deno.makeTempDir();
     const filePath = dirPath + "/chown_test_file.txt";
@@ -101,7 +101,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownSyncSucceed() {
     // TODO(bartlomieju): when a file's owner is actually being changed,
@@ -124,7 +124,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownSyncWithUrl() {
     const { uid, gid } = await getUidAndGid();
@@ -139,7 +139,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownSucceed() {
     const { uid, gid } = await getUidAndGid();
@@ -154,7 +154,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownUidOnly() {
     const { uid } = await getUidAndGid();
@@ -169,7 +169,7 @@ Deno.test(
 Deno.test(
   {
     permissions: { run: true, write: true },
-    ignore: Deno.build.os == "windows",
+    ignore: Deno.build.os === "windows",
   },
   async function chownWithUrl() {
     // TODO(bartlomieju): same as chownSyncSucceed

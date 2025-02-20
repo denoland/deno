@@ -744,7 +744,7 @@ function createDictionaryConverter(name, ...dictionaries) {
     }
   }
   ArrayPrototypeSort(allMembers, (a, b) => {
-    if (a.key == b.key) {
+    if (a.key === b.key) {
       return 0;
     }
     return a.key < b.key ? -1 : 1;

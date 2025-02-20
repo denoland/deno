@@ -868,7 +868,7 @@ function _lookupAndConnect(
 
   port |= 0;
 
-  if (autoSelectFamily != null) {
+  if (autoSelectFamily !== undefined && autoSelectFamily !== null) {
     validateBoolean(autoSelectFamily, "options.autoSelectFamily");
   } else {
     autoSelectFamily = autoSelectFamilyDefault;
@@ -1353,7 +1353,7 @@ export class Socket extends Duplex {
     // `options.port === null` will be checked later.
     if (
       (options as TcpSocketConnectOptions).port === undefined &&
-      (options as IpcSocketConnectOptions).path == null
+      (options as IpcSocketConnectOptions).path === null
     ) {
       throw new ERR_MISSING_ARGS(["options", "port", "path"]);
     }

@@ -135,7 +135,7 @@ async function mainFetch(req, recursive, terminator) {
       body,
       type: "basic",
       url() {
-        if (this.urlList.length == 0) return null;
+        if (this.urlList.length === 0) return null;
         return this.urlList[this.urlList.length - 1];
       },
       urlList: recursive
@@ -212,7 +212,7 @@ async function mainFetch(req, recursive, terminator) {
     statusMessage: resp.statusText,
     type: "basic",
     url() {
-      if (this.urlList.length == 0) return null;
+      if (this.urlList.length === 0) return null;
       return this.urlList[this.urlList.length - 1];
     },
     urlList: req.urlListProcessed,

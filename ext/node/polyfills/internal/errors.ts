@@ -679,7 +679,7 @@ export class ERR_INVALID_ARG_VALUE extends NodeTypeError {
 // A helper function to simplify checking for ERR_INVALID_ARG_TYPE output.
 // deno-lint-ignore no-explicit-any
 function invalidArgTypeHelper(input: any) {
-  if (input == null) {
+  if (input === undefined || input === null) {
     return ` Received ${input}`;
   }
   if (typeof input === "function" && input.name) {
@@ -2713,7 +2713,7 @@ const genericNodeError = hideStackFrames(
  */
 // deno-lint-ignore no-explicit-any
 function determineSpecificType(value: any) {
-  if (value == null) {
+  if (value === undefined || value === null) {
     return "" + value;
   }
   if (typeof value === "function" && value.name) {

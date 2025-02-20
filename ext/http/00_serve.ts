@@ -195,7 +195,7 @@ class InnerRequest {
     }
 
     // upgradeHttpRaw is sync
-    if (upgradeType == "upgradeHttpRaw") {
+    if (upgradeType === "upgradeHttpRaw") {
       const external = this.#external;
       const underlyingConn = originalArgs[0];
 
@@ -217,7 +217,7 @@ class InnerRequest {
     }
 
     // upgradeWebSocket is sync
-    if (upgradeType == "upgradeWebSocket") {
+    if (upgradeType === "upgradeWebSocket") {
       const response = originalArgs[0];
       const ws = originalArgs[1];
 
@@ -290,12 +290,12 @@ class InnerRequest {
     }
 
     // If the path is empty, return the authority (valid for CONNECT)
-    if (path == "") {
+    if (path === "") {
       return (this.#urlValue = this.#methodAndUri[1]);
     }
 
     // CONNECT requires an authority
-    if (this.#methodAndUri[0] == "CONNECT") {
+    if (this.#methodAndUri[0] === "CONNECT") {
       return (this.#urlValue = this.#methodAndUri[1]);
     }
 
@@ -363,7 +363,7 @@ class InnerRequest {
     }
     // If the method is GET or HEAD, we do not want to include a body here, even if the Rust
     // side of the code is willing to provide it to us.
-    if (this.method == "GET" || this.method == "HEAD") {
+    if (this.method === "GET" || this.method === "HEAD") {
       this.#body = null;
       return null;
     }
@@ -611,7 +611,7 @@ function mapToCallback(context, callback, onError) {
     const status = inner.status;
     const headers = inner.headerList;
     if (headers && headers.length > 0) {
-      if (headers.length == 1) {
+      if (headers.length === 1) {
         op_http_set_response_header(req, headers[0][0], headers[0][1]);
       } else {
         op_http_set_response_headers(req, headers);
@@ -679,7 +679,7 @@ function formatHostName(hostname: string): string {
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
     Deno.build.os === "windows" &&
-    (hostname == "0.0.0.0" || hostname == "::")
+    (hostname === "0.0.0.0" || hostname === "::")
   ) {
     return "localhost";
   }

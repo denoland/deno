@@ -24,7 +24,7 @@ for (let i = 0; i < 6; i++) {
   }
 }
 
-await $`docker run 
+await $`docker run
   --name fuzzingserver
   -v ${pwd}/fuzzingclient.json:/fuzzingclient.json:ro
   -v ${pwd}/reports:/reports
@@ -47,7 +47,7 @@ const failedtests = result.filter((outcome) => failed(outcome.behavior));
 
 console.log(
   `%c${result.length - failedtests.length} / ${result.length} tests OK`,
-  `color: ${failedtests.length == 0 ? "green" : "red"}`,
+  `color: ${failedtests.length === 0 ? "green" : "red"}`,
 );
 
-Deno.exit(failedtests.length == 0 ? 0 : 1);
+Deno.exit(failedtests.length === 0 ? 0 : 1);

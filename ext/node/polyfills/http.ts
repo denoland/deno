@@ -1810,7 +1810,7 @@ export class ServerImpl extends EventEmitter {
     if (typeof opts === "function") {
       requestListener = opts;
       opts = kEmptyObject;
-    } else if (opts == null) {
+    } else if (ops === undefined || opts === null) {
       opts = kEmptyObject;
     } else {
       validateObject(opts, "options");
@@ -1845,7 +1845,7 @@ export class ServerImpl extends EventEmitter {
     // TODO(bnoordhuis) Node prefers [::] when host is omitted,
     // we on the other hand default to 0.0.0.0.
     let hostname = options.host ?? "0.0.0.0";
-    if (hostname == "localhost") {
+    if (hostname === "localhost") {
       hostname = "127.0.0.1";
     }
     this.#addr = {

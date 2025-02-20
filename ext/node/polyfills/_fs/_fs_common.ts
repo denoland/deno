@@ -59,9 +59,13 @@ export function isFileOptions(
   if (!fileOptions) return false;
 
   return (
+    // deno-lint-ignore eqeqeq
     (fileOptions as FileOptions).encoding != undefined ||
+    // deno-lint-ignore eqeqeq
     (fileOptions as FileOptions).flag != undefined ||
+    // deno-lint-ignore eqeqeq
     (fileOptions as FileOptions).signal != undefined ||
+    // deno-lint-ignore eqeqeq
     (fileOptions as WriteFileOptions).mode != undefined
   );
 }

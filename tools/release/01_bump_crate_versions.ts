@@ -106,7 +106,7 @@ async function bumpCiCacheVersion() {
   const fileText = generateScript.readTextSync();
   const cacheVersionRegex = /const cacheVersion = ([0-9]+);/;
   const version = fileText.match(cacheVersionRegex)?.[1];
-  if (version == null) {
+  if (version === null) {
     throw new Error("Could not find cache version in text.");
   }
   const toVersion = parseInt(version, 10) + 1;

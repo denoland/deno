@@ -28,7 +28,7 @@ export function mkdir(
   let mode = 0o777;
   let recursive = false;
 
-  if (typeof options == "function") {
+  if (typeof options === "function") {
     callback = options;
   } else if (typeof options === "number") {
     mode = options;

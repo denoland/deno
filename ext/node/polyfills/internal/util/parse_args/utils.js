@@ -47,7 +47,7 @@ function optionsGetOwn(options, longOption, prop) {
  * isOptionValue(undefined) // returns false
  */
 function isOptionValue(value) {
-  if (value == null) return false;
+  if (value === undefined || value === null) return false;
 
   // Open Group Utility Conventions are that an option-argument
   // is the argument after the option, and may start with a dash.
@@ -60,7 +60,7 @@ function isOptionValue(value) {
  * In strict mode we throw errors if value is option-like.
  */
 function isOptionLikeValue(value) {
-  if (value == null) return false;
+  if (value === undefined || value === null) return false;
 
   return value.length > 1 && StringPrototypeCharAt(value, 0) === "-";
 }

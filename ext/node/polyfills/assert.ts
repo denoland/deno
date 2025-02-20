@@ -247,6 +247,7 @@ function equal(
     throw new ERR_MISSING_ARGS("actual", "expected");
   }
 
+  // deno-lint-ignore eqeqeq
   if (actual == expected) {
     return;
   }
@@ -290,6 +291,7 @@ function notEqual(
       expected,
     });
   }
+  // deno-lint-ignore eqeqeq
   if (actual != expected) {
     return;
   }
@@ -397,11 +399,13 @@ function notDeepStrictEqual(
 }
 
 function fail(message?: string | Error): never {
-  if (typeof message === "string" || message == null) {
+  if (
+    typeof message === "string" || message === undefined || message === null
+  ) {
     throw createAssertionError({
       message: message ?? "Failed",
       operator: "fail",
-      generatedMessage: message == null,
+      generatedMessage: message === undefined || message === null,
     });
   } else {
     throw message;
@@ -724,7 +728,7 @@ function validateThrownError(
   options: ValidateThrownErrorOptions,
 ): boolean {
   if (typeof error === "string") {
-    if (message != null) {
+    if (message !== undefined && message !== null) {
       throw new ERR_INVALID_ARG_TYPE(
         "error",
         ["Object", "Error", "Function", "RegExp"],
@@ -806,13 +810,13 @@ function validateThrownError(
       keys.push("name", "message");
     }
     for (const k of keys) {
-      if (e == null) {
+      if (e === undefined || e === null) {
         throw createAssertionError({
           message: message || "object is expected to thrown, but got null",
           actual: e,
           expected: error,
           operator: options.operator.name,
-          generatedMessage: message == null,
+          generatedMessage: message === undefined || message === null,
         });
       }
 
@@ -823,7 +827,7 @@ function validateThrownError(
           actual: e,
           expected: error,
           operator: options.operator.name,
-          generatedMessage: message == null,
+          generatedMessage: message === undefined || message === null,
         });
       }
       if (typeof e === "number") {
@@ -833,7 +837,7 @@ function validateThrownError(
           actual: e,
           expected: error,
           operator: options.operator.name,
-          generatedMessage: message == null,
+          generatedMessage: message === undefined || message === null,
         });
       }
       if (!(k in e)) {
@@ -842,7 +846,7 @@ function validateThrownError(
           actual: e,
           expected: error,
           operator: options.operator.name,
-          generatedMessage: message == null,
+          generatedMessage: message === undefined || message === null,
         });
       }
       const actual = e[k];

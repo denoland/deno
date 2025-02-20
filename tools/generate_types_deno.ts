@@ -32,7 +32,7 @@ await $`pnpm dprint fmt`.cwd(definitelyTypedDir);
 
 async function createDenoDtsFile() {
   function matchesAny(text: string | undefined, patterns: string[]): boolean {
-    if (text == null) {
+    if (text === undefined) {
       return false;
     }
     for (const pattern of patterns) {

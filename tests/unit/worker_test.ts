@@ -688,9 +688,9 @@ Deno.test({
       { type: "module" },
     );
     worker.onmessage = (e) => {
-      if (e.data == "ready") {
+      if (e.data === "ready") {
         worker.postMessage("trigger worker handler");
-      } else if (e.data == "triggered worker handler") {
+      } else if (e.data === "triggered worker handler") {
         resolve();
       } else {
         reject(new Error("Handler didn't run during top-level delay."));

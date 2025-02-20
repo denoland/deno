@@ -743,11 +743,11 @@ function isReadableStreamDisturbed(stream) {
  * @returns {string}
  */
 function extractStringErrorFromError(error) {
-  if (typeof error == "string") {
+  if (typeof error === "string") {
     return error;
   }
   const message = error?.message;
-  const stringMessage = typeof message == "string" ? message : String(message);
+  const stringMessage = typeof message === "string" ? message : String(message);
   return stringMessage;
 }
 
@@ -781,20 +781,20 @@ class ResourceStreamResourceSink {
  */
 async function readableStreamWriteChunkFn(reader, sink, chunk) {
   // Empty chunk. Re-read.
-  if (chunk.length == 0) {
+  if (chunk.length === 0) {
     await readableStreamReadFn(reader, sink);
     return;
   }
 
   const res = op_readable_stream_resource_write_sync(sink.external, chunk);
-  if (res == 0) {
+  if (res === 0) {
     // Closed
     await reader.cancel("resource closed");
     sink.close();
-  } else if (res == 1) {
+  } else if (res === 1) {
     // Successfully written (synchronous). Re-read.
     await readableStreamReadFn(reader, sink);
-  } else if (res == 2) {
+  } else if (res === 2) {
     // Full. If the channel is full, we perform an async await until we can write, and then return
     // to a synchronous loop.
     if (
@@ -883,7 +883,7 @@ function resourceForReadableStream(stream, length) {
   const reader = acquireReadableStreamDefaultReader(stream);
 
   // Allocate the resource
-  const rid = typeof length == "number"
+  const rid = typeof length === "number"
     ? op_readable_stream_resource_allocate_sized(length)
     : op_readable_stream_resource_allocate();
 
@@ -6384,7 +6384,7 @@ class WritableStream {
       prefix,
       "underlyingSink",
     );
-    if (underlyingSinkDict.type != null) {
+    if (underlyingSinkDict !== undefined && underlyingSinkDict.type !== null) {
       throw new RangeError(
         `${prefix}: WritableStream does not support 'type' in the underlying sink`,
       );

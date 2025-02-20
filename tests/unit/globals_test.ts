@@ -9,6 +9,7 @@ import {
 } from "./test_util.ts";
 
 Deno.test(function globalThisExists() {
+  // deno-lint-ignore eqeqeq
   assert(globalThis != null);
 });
 
@@ -20,6 +21,7 @@ Deno.test(function noInternalGlobals() {
 });
 
 Deno.test(function selfExists() {
+  // deno-lint-ignore eqeqeq
   assert(self != null);
 });
 
@@ -46,6 +48,7 @@ Deno.test(function navigatorInstanceofNavigator() {
 });
 
 Deno.test(function DenoNamespaceExists() {
+  // deno-lint-ignore eqeqeq
   assert(Deno != null);
 });
 

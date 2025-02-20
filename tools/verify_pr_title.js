@@ -4,7 +4,7 @@
 
 const prTitle = Deno.args[0];
 
-if (prTitle == null) {
+if (prTitle === undefined) {
   Deno.exit(0); // not a PR
 }
 

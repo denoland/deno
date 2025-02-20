@@ -116,7 +116,7 @@ class HttpConn {
       }
       throw error;
     }
-    if (nextRequest == null) {
+    if (nextRequest === undefined || nextRequest === null) {
       // Work-around for servers (deno_std/http in particular) that call
       // `nextRequest()` before upgrading a previous request which has a
       // `connection: upgrade` header.
@@ -269,7 +269,7 @@ function createRespondWith(
         const connError = httpConn[connErrorSymbol];
         if (
           ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-          connError != null
+          connError !== undefined && connError !== null
         ) {
           // deno-lint-ignore no-ex-assign
           error = new connError.constructor(connError.message);
@@ -310,7 +310,7 @@ function createRespondWith(
             const connError = httpConn[connErrorSymbol];
             if (
               ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-              connError != null
+              connError !== undefined && connError !== null
             ) {
               // deno-lint-ignore no-ex-assign
               error = new connError.constructor(connError.message);
@@ -335,7 +335,7 @@ function createRespondWith(
               const connError = httpConn[connErrorSymbol];
               if (
                 ObjectPrototypeIsPrototypeOf(BadResourcePrototype, error) &&
-                connError != null
+                connError !== undefined && connError !== null
               ) {
                 // deno-lint-ignore no-ex-assign
                 error = new connError.constructor(connError.message);

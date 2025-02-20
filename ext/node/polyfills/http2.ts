@@ -334,7 +334,7 @@ export class Http2Session extends EventEmitter {
         ? new ERR_HTTP2_SESSION_ERROR(code)
         : undefined;
     }
-    if (code === undefined && error != null) {
+    if (code === undefined && error !== undefined && error !== null) {
       code = constants.NGHTTP2_INTERNAL_ERROR;
     }
 
@@ -1208,7 +1208,7 @@ export class ClientHttp2Stream extends Duplex {
     const sessionCode = sessionState.goawayCode || sessionState.destroyCode;
 
     let code = this.closed ? this.rstCode : sessionCode;
-    if (err != null) {
+    if (err !== undefined && err !== null) {
       if (sessionCode) {
         code = sessionCode;
       } else if (err instanceof AbortError) {
@@ -1231,7 +1231,8 @@ export class ClientHttp2Stream extends Duplex {
 
     const nameForErrorCode = {};
     if (
-      err == null && code !== constants.NGHTTP2_NO_ERROR &&
+      (err === undefined || err === null) &&
+      code !== constants.NGHTTP2_NO_ERROR &&
       code !== constants.NGHTTP2_CANCEL
     ) {
       err = new ERR_HTTP2_STREAM_ERROR(nameForErrorCode[code] || code);
@@ -1341,7 +1342,7 @@ function closeStream(stream, code, rstStreamStatus = kSubmitRstStream) {
     stream.end();
   }
 
-  if (rstStreamStatus != kNoRstStream) {
+  if (rstStreamStatus !== kNoRstStream) {
     debugHttp2(
       ">>> closeStream",
       !ending,
@@ -1477,7 +1478,7 @@ export class ServerHttp2Stream extends Http2Stream {
     const response: ResponseInit = {};
     if (headers) {
       for (const [name, value] of Object.entries(headers)) {
-        if (name == constants.HTTP2_HEADER_STATUS) {
+        if (name === constants.HTTP2_HEADER_STATUS) {
           response.status = Number(value);
         }
       }
@@ -1783,7 +1784,7 @@ export function connect(
     port = 443;
   }
 
-  if (port == 0) {
+  if (port === 0) {
     throw new Error("Invalid port");
   }
 
@@ -1802,17 +1803,17 @@ export function connect(
   let url, socket;
 
   if (typeof options.createConnection === "function") {
-    url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+    url = `http://${host}${port === 80 ? "" : (":" + port)}`;
     socket = options.createConnection(host, options);
   } else {
     switch (protocol) {
       case "http:":
-        url = `http://${host}${port == 80 ? "" : (":" + port)}`;
+        url = `http://${host}${port === 80 ? "" : (":" + port)}`;
         socket = netConnect({ port, host, ...options, pauseOnCreate: true });
         break;
       case "https:":
         // TODO(bartlomieju): handle `initializeTLSOptions` here
-        url = `https://${host}${port == 443 ? "" : (":" + port)}`;
+        url = `https://${host}${port === 443 ? "" : (":" + port)}`;
         socket = tlsConnect(port, host, {
           manualStart: true,
           ALPNProtocols: ["h2", "http/1.1"],

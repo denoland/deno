@@ -1,6 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// deno-lint-ignore-file no-console
+// deno-lint-ignore-file eqeqeq no-console
 
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
@@ -1191,8 +1191,8 @@ Deno.test(
 
 function createStreamTest(count: number, delay: number, action: string) {
   function doAction(controller: ReadableStreamDefaultController, i: number) {
-    if (i == count) {
-      if (action == "Throw") {
+    if (i === count) {
+      if (action === "Throw") {
         controller.error(new Error("Expected error!"));
       } else {
         controller.close();
@@ -1200,7 +1200,7 @@ function createStreamTest(count: number, delay: number, action: string) {
     } else {
       controller.enqueue(`a${i}`);
 
-      if (delay == 0) {
+      if (delay === 0) {
         doAction(controller, i + 1);
       } else {
         setTimeout(() => doAction(controller, i + 1), delay);
@@ -1211,7 +1211,7 @@ function createStreamTest(count: number, delay: number, action: string) {
   function makeStream(_count: number, delay: number): ReadableStream {
     return new ReadableStream({
       start(controller) {
-        if (delay == 0) {
+        if (delay === 0) {
           doAction(controller, 0);
         } else {
           setTimeout(() => doAction(controller, 0), delay);
@@ -1236,7 +1236,7 @@ function createStreamTest(count: number, delay: number, action: string) {
     try {
       await promise;
       const resp = await fetch(`http://127.0.0.1:${servePort}/`);
-      if (action == "Throw") {
+      if (action === "Throw") {
         await assertRejects(async () => {
           await resp.text();
         });
@@ -2476,10 +2476,10 @@ function createServerLengthTest(name: string, testCase: TestCase) {
       msg += decoder.decode(buf.subarray(0, readResult));
       try {
         assert(
-          testCase.expectsChunked == hasHeader(msg, "Transfer-Encoding:"),
+          testCase.expectsChunked === hasHeader(msg, "Transfer-Encoding:"),
         );
-        assert(testCase.expectsChunked == hasHeader(msg, "chunked"));
-        assert(testCase.expectsConnLen == hasHeader(msg, "Content-Length:"));
+        assert(testCase.expectsChunked === hasHeader(msg, "chunked"));
+        assert(testCase.expectsConnLen === hasHeader(msg, "Content-Length:"));
 
         const n = msg.indexOf("\r\n\r\n") + 4;
 
@@ -2901,7 +2901,7 @@ for (const testCase of compressionTestCases) {
               resp.headers.get("content-encoding"),
               testCase.out["Content-Encoding"] || null,
             );
-          } else if (testCase.expect == "gzip") {
+          } else if (testCase.expect === "gzip") {
             // Note the fetch will transparently decompress this response, BUT we can detect that a response
             // was compressed by the lack of a content length.
             assertEquals(body.byteLength, testCase.length);
@@ -2966,7 +2966,7 @@ for (const delay of ["delay", "nodelay"]) {
       name: `httpServerTcpCancellation_${url}_${delay}`,
       fn: async function () {
         const ac = new AbortController();
-        const streamCancelled = url == "stream"
+        const streamCancelled = url === "stream"
           ? Promise.withResolvers<void>()
           : undefined;
         const listeningDeferred = Promise.withResolvers<void>();
@@ -2997,7 +2997,7 @@ for (const delay of ["delay", "nodelay"]) {
             waitForRequest.resolve();
             await waitForAbort.promise;
 
-            if (delay == "delay") {
+            if (delay === "delay") {
               await new Promise((r) => setTimeout(r, 1000));
             }
             // Allocate the request body

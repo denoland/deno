@@ -128,7 +128,7 @@ Deno.test({
       expectedValue: 42,
       intervalMs: 100,
       iterations: 3,
-      tolerancePercent: Deno.env.get("CI") != null ? 75 : 50,
+      tolerancePercent: Deno.env.get("CI") !== undefined ? 75 : 50,
     };
 
     const { setInterval } = timersPromises;
@@ -210,7 +210,7 @@ Deno.test({
     const INTERVAL_MS = 500;
     const TOTAL_DURATION_MS = 3000;
     const TOLERANCE_MS = 500;
-    const DELTA_TOLERANCE_MS = Deno.env.get("CI") != null ? 100 : 50;
+    const DELTA_TOLERANCE_MS = Deno.env.get("CI") !== undefined ? 100 : 50;
 
     const abortController = new AbortController();
     const { setInterval } = timersPromises;

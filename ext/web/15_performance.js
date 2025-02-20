@@ -362,7 +362,7 @@ webidl.configureInterface(PerformanceMeasure);
 const PerformanceMeasurePrototype = PerformanceMeasure.prototype;
 class Performance extends EventTarget {
   constructor(key = null) {
-    if (key != illegalConstructorKey) {
+    if (key !== illegalConstructorKey) {
       webidl.illegalConstructor();
     }
 

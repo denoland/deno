@@ -91,7 +91,7 @@ Deno.test({ permissions: { read: false } }, async function readDirPerm() {
 });
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { read: true }, ignore: Deno.build.os === "windows" },
   async function readDirDevFd(): Promise<
     void
   > {
@@ -102,7 +102,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { read: true }, ignore: Deno.build.os == "windows" },
+  { permissions: { read: true }, ignore: Deno.build.os === "windows" },
   function readDirDevFdSync() {
     for (const _ of Deno.readDirSync("/dev/fd")) {
       // We don't actually care whats in here; just that we don't panic on non regular file entries

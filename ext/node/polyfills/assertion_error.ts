@@ -403,7 +403,7 @@ export class AssertionError extends Error {
     const limit = (Error as ErrorWithStackTraceLimit).stackTraceLimit;
     (Error as ErrorWithStackTraceLimit).stackTraceLimit = 0;
 
-    if (message != null) {
+    if (message !== undefined && message !== null) {
       super(String(message));
     } else {
       if (io.stderr.isTerminal()) {

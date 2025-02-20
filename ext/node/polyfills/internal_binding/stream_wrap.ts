@@ -336,7 +336,7 @@ export class LibuvStreamWrap extends HandleWrap {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
       if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+        ridBefore !== this[kStreamBaseField]![internalRidSymbol]
       ) {
         return this.#read();
       }
@@ -407,7 +407,7 @@ export class LibuvStreamWrap extends HandleWrap {
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
       if (
-        ridBefore != this[kStreamBaseField]![internalRidSymbol]
+        ridBefore !== this[kStreamBaseField]![internalRidSymbol]
       ) {
         return this.#write(req, data.subarray(nwritten));
       }

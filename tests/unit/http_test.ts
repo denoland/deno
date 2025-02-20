@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // @ts-nocheck `Deno.serveHttp()` was soft-removed in Deno 2.
 
-// deno-lint-ignore-file no-deprecated-deno-api
+// deno-lint-ignore-file eqeqeq no-deprecated-deno-api
 
 import { Buffer, type Reader } from "@std/io";
 import { TextProtoReader } from "../testdata/run/textproto.ts";

@@ -280,11 +280,11 @@ class Listener {
     if (this.#unref) core.unrefOpPromise(promise);
     const { 0: rid, 1: localAddr, 2: remoteAddr } = await promise;
     this.#promise = null;
-    if (this.addr.transport == "tcp") {
+    if (this.addr.transport === "tcp") {
       localAddr.transport = "tcp";
       remoteAddr.transport = "tcp";
       return new TcpConn(rid, remoteAddr, localAddr);
-    } else if (this.addr.transport == "unix") {
+    } else if (this.addr.transport === "unix") {
       return new UnixConn(
         rid,
         { transport: "unix", path: remoteAddr },

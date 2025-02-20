@@ -305,7 +305,7 @@ export class Context {
    */
   report(data) {
     const range = data.node ? data.node.range : data.range ? data.range : null;
-    if (range == null) {
+    if (range === null || range === undefined) {
       throw new Error(
         "Either `node` or `range` must be provided when reporting an error",
       );

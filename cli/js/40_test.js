@@ -139,10 +139,10 @@ function wrapInner(fn) {
     function getRunningStepDescs() {
       const results = [];
       let childDesc = desc;
-      while (childDesc.parent != null) {
+      while (childDesc.parent !== undefined && childDesc.parent !== null) {
         const state = MapPrototypeGet(testStates, childDesc.parent.id);
         for (const siblingDesc of state.children) {
-          if (siblingDesc.id == childDesc.id) {
+          if (siblingDesc.id === childDesc.id) {
             continue;
           }
           const siblingState = MapPrototypeGet(testStates, siblingDesc.id);
@@ -188,7 +188,7 @@ function wrapInner(fn) {
         failedSteps++;
       }
     }
-    return failedSteps == 0 ? null : { failed: { failedSteps } };
+    return failedSteps === 0 ? null : { failed: { failedSteps } };
   };
 }
 
@@ -229,12 +229,12 @@ function testInner(
       if (!maybeFn || typeof maybeFn !== "function") {
         throw new TypeError("Missing test function");
       }
-      if (optionsOrFn.fn != undefined) {
+      if (optionsOrFn.fn !== undefined && optionsOrFn.fn !== null) {
         throw new TypeError(
           "Unexpected 'fn' field in options, test function is already provided as the third argument",
         );
       }
-      if (optionsOrFn.name != undefined) {
+      if (optionsOrFn.name !== undefined && optionsOrFn.name !== null) {
         throw new TypeError(
           "Unexpected 'name' field in options, test name is already provided as the first argument",
         );
@@ -250,10 +250,10 @@ function testInner(
     if (!nameOrFnOrOptions.name) {
       throw new TypeError("The test function must have a name");
     }
-    if (optionsOrFn != undefined) {
+    if (optionsOrFn !== undefined && optionsOrFn !== null) {
       throw new TypeError("Unexpected second argument to Deno.test()");
     }
-    if (maybeFn != undefined) {
+    if (maybeFn !== undefined && maybeFn !== null) {
       throw new TypeError("Unexpected third argument to Deno.test()");
     }
     testDesc = {
@@ -266,7 +266,7 @@ function testInner(
     let name;
     if (typeof optionsOrFn === "function") {
       fn = optionsOrFn;
-      if (nameOrFnOrOptions.fn != undefined) {
+      if (nameOrFnOrOptions.fn !== undefined && nameOrFnOrOptions.fn !== null) {
         throw new TypeError(
           "Unexpected 'fn' field in options, test function is already provided as the second argument",
         );
@@ -294,7 +294,7 @@ function testInner(
   // Delete this prop in case the user passed it. It's used to detect steps.
   delete testDesc.parent;
 
-  if (cachedOrigin == undefined) {
+  if (cachedOrigin === undefined || cachedOrigin === null) {
     cachedOrigin = op_test_get_origin();
   }
 
@@ -425,7 +425,7 @@ function createTestContext(desc) {
         if (!nameOrFnOrOptions.name) {
           throw new TypeError("The step function must have a name");
         }
-        if (maybeFn != undefined) {
+        if (maybeFn !== undefined && maybeFn !== null) {
           throw new TypeError(
             "Unexpected second argument to TestContext.step()",
           );
@@ -482,7 +482,7 @@ function createTestContext(desc) {
       const elapsed = DateNow() - earlier;
       state.failed = !!result.failed;
       stepReportResult(stepDesc, result, elapsed);
-      return result == "ok";
+      return result === "ok";
     },
   };
 }

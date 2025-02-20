@@ -94,7 +94,7 @@ class PermissionStatus extends EventTarget {
    * @param {unknown} key
    */
   constructor(status = null, key = null) {
-    if (key != illegalConstructorKey) {
+    if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor");
     }
     super();
@@ -193,7 +193,7 @@ function formDescriptor(desc) {
 
 class Permissions {
   constructor(key = null) {
-    if (key != illegalConstructorKey) {
+    if (key !== illegalConstructorKey) {
       throw new TypeError("Illegal constructor");
     }
   }
@@ -266,7 +266,7 @@ const permissions = new Permissions(illegalConstructorKey);
 
 /** Converts all file URLs in FS allowlists to paths. */
 function serializePermissions(permissions) {
-  if (typeof permissions == "object" && permissions != null) {
+  if (typeof permissions === "object" && permissions !== null) {
     const serializedPermissions = { __proto__: null };
     for (
       const key of new SafeArrayIterator([

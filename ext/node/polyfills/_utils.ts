@@ -101,7 +101,9 @@ export function spliceOne(list: string[], index: number) {
 export function normalizeEncoding(
   enc: string | null,
 ): TextEncodings | undefined {
-  if (enc == null || enc === "utf8" || enc === "utf-8") return "utf8";
+  if (enc === undefined || enc === null || enc === "utf8" || enc === "utf-8") {
+    return "utf8";
+  }
   return slowCases(enc);
 }
 

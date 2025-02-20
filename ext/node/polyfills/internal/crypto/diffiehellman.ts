@@ -144,17 +144,17 @@ export class DiffieHellman {
   #checkGenerator(): number {
     let generator: number;
 
-    if (this.#generator.length == 0) {
+    if (this.#generator.length === 0) {
       throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
-    } else if (this.#generator.length == 1) {
+    } else if (this.#generator.length === 1) {
       generator = this.#generator.readUint8();
-    } else if (this.#generator.length == 2) {
+    } else if (this.#generator.length === 2) {
       generator = this.#generator.readUint16BE();
     } else {
       generator = this.#generator.readUint32BE();
     }
 
-    if (generator != 2 && generator != 5) {
+    if (generator !== 2 && generator !== 5) {
       throw new NodeError("ERR_OSSL_DH_BAD_GENERATOR", "bad generator");
     }
 
@@ -181,7 +181,7 @@ export class DiffieHellman {
     outputEncoding?: BinaryToTextEncoding,
   ): Buffer | string {
     let buf;
-    if (inputEncoding != undefined && inputEncoding != "buffer") {
+    if (inputEncoding !== undefined && inputEncoding !== "buffer") {
       buf = Buffer.from(otherPublicKey.buffer, inputEncoding);
     } else {
       buf = Buffer.from(otherPublicKey.buffer);
@@ -193,7 +193,7 @@ export class DiffieHellman {
       buf,
     );
 
-    if (outputEncoding == undefined || outputEncoding == "buffer") {
+    if (outputEncoding === undefined || outputEncoding === "buffer") {
       return Buffer.from(sharedSecret.buffer);
     }
 
@@ -219,7 +219,7 @@ export class DiffieHellman {
   getGenerator(): Buffer;
   getGenerator(encoding: BinaryToTextEncoding): string;
   getGenerator(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != "buffer") {
+    if (encoding !== undefined && encoding !== "buffer") {
       return this.#generator.toString(encoding);
     }
 
@@ -229,7 +229,7 @@ export class DiffieHellman {
   getPrime(): Buffer;
   getPrime(encoding: BinaryToTextEncoding): string;
   getPrime(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != "buffer") {
+    if (encoding !== undefined && encoding !== "buffer") {
       return this.#prime.toString(encoding);
     }
 
@@ -239,7 +239,7 @@ export class DiffieHellman {
   getPrivateKey(): Buffer;
   getPrivateKey(encoding: BinaryToTextEncoding): string;
   getPrivateKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != "buffer") {
+    if (encoding !== undefined && encoding !== "buffer") {
       return this.#privateKey.toString(encoding);
     }
 
@@ -249,7 +249,7 @@ export class DiffieHellman {
   getPublicKey(): Buffer;
   getPublicKey(encoding: BinaryToTextEncoding): string;
   getPublicKey(encoding?: BinaryToTextEncoding): Buffer | string {
-    if (encoding !== undefined && encoding != "buffer") {
+    if (encoding !== undefined && encoding !== "buffer") {
       return this.#publicKey.toString(encoding);
     }
 
@@ -262,7 +262,7 @@ export class DiffieHellman {
     privateKey: ArrayBufferView | string,
     encoding?: BufferEncoding,
   ) {
-    if (encoding == undefined || encoding == "buffer") {
+    if (encoding === undefined || encoding === "buffer") {
       this.#privateKey = Buffer.from(privateKey);
     } else {
       this.#privateKey = Buffer.from(privateKey, encoding);
@@ -275,7 +275,7 @@ export class DiffieHellman {
     publicKey: ArrayBufferView | string,
     encoding?: BufferEncoding,
   ) {
-    if (encoding == undefined || encoding == "buffer") {
+    if (encoding === undefined || encoding === "buffer") {
       this.#publicKey = Buffer.from(publicKey);
     } else {
       this.#publicKey = Buffer.from(publicKey, encoding);
@@ -1188,8 +1188,8 @@ export class ECDH {
   constructor(curve: string) {
     validateString(curve, "curve");
 
-    const c = ellipticCurves.find((x) => x.name == curve);
-    if (c == undefined) {
+    const c = ellipticCurves.find((x) => x.name === curve);
+    if (c === undefined) {
       throw new Error("invalid curve");
     }
 
@@ -1246,7 +1246,7 @@ export class ECDH {
     format: ECDHKeyFormat = "uncompressed",
   ): Buffer | string {
     this.#pubbuf = Buffer.alloc(
-      format == "compressed"
+      format === "compressed"
         ? this.#curve.publicKeySizeCompressed
         : this.#curve.publicKeySize,
     );
@@ -1281,7 +1281,7 @@ export class ECDH {
     const pubbuf = Buffer.from(op_node_ecdh_encode_pubkey(
       this.#curve.name,
       this.#pubbuf,
-      format == "compressed",
+      format === "compressed",
     ));
     if (encoding !== undefined) {
       return pubbuf.toString(encoding);

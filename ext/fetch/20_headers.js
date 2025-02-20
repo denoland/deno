@@ -140,7 +140,7 @@ function appendHeader(headers, name, value) {
   }
 
   // 3.
-  if (headers[_guard] == "immutable") {
+  if (headers[_guard] === "immutable") {
     throw new TypeError("Cannot change header: headers are immutable");
   }
 
@@ -332,7 +332,7 @@ class Headers {
     if (!checkHeaderNameForHttpTokenCodePoint(name)) {
       throw new TypeError(`Invalid header name: "${name}"`);
     }
-    if (this[_guard] == "immutable") {
+    if (this[_guard] === "immutable") {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 
@@ -421,7 +421,7 @@ class Headers {
       throw new TypeError(`Invalid header value: "${value}"`);
     }
 
-    if (this[_guard] == "immutable") {
+    if (this[_guard] === "immutable") {
       throw new TypeError("Cannot change headers: headers are immutable");
     }
 

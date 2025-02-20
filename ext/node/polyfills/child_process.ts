@@ -86,11 +86,11 @@ export function fork(
     args = arguments[pos++];
   }
 
-  if (pos < arguments.length && arguments[pos] == null) {
+  if (pos < arguments.length && arguments[pos] === undefined) {
     pos++;
   }
 
-  if (pos < arguments.length && arguments[pos] != null) {
+  if (pos < arguments.length && arguments[pos] !== undefined) {
     if (typeof arguments[pos] !== "object") {
       throw new ERR_INVALID_ARG_VALUE(`arguments[${pos}]`, arguments[pos]);
     }
@@ -101,7 +101,10 @@ export function fork(
   // Prepare arguments for fork:
   execArgv = options.execArgv || process.execArgv;
 
-  if (execArgv === process.execArgv && process._eval != null) {
+  if (
+    execArgv === process.execArgv && process._eval !== undefined &&
+    process._eval !== null
+  ) {
     const index = execArgv.lastIndexOf(process._eval);
     if (index > 0) {
       // Remove the -e switch to avoid fork bombing ourselves.
@@ -193,7 +196,8 @@ export function spawn(
   maybeOptions?: SpawnOptions,
 ): ChildProcess {
   const args = Array.isArray(argsOrOptions) ? argsOrOptions : [];
-  let options = !Array.isArray(argsOrOptions) && argsOrOptions != null
+  let options = !Array.isArray(argsOrOptions) && argsOrOptions !== undefined &&
+      argsOrOptions !== null
     ? argsOrOptions
     : maybeOptions as SpawnOptions;
 
@@ -204,14 +208,14 @@ export function spawn(
 }
 
 function validateTimeout(timeout?: number) {
-  if (timeout != null && !(Number.isInteger(timeout) && timeout >= 0)) {
+  if (timeout !== undefined && !(Number.isInteger(timeout) && timeout >= 0)) {
     throw new ERR_OUT_OF_RANGE("timeout", "an unsigned integer", timeout);
   }
 }
 
 function validateMaxBuffer(maxBuffer?: number) {
   if (
-    maxBuffer != null &&
+    maxBuffer !== undefined &&
     !(typeof maxBuffer === "number" && maxBuffer >= 0)
   ) {
     throw new ERR_OUT_OF_RANGE(
@@ -225,7 +229,7 @@ function validateMaxBuffer(maxBuffer?: number) {
 function sanitizeKillSignal(killSignal?: string | number) {
   if (typeof killSignal === "string" || typeof killSignal === "number") {
     return convertToValidSignal(killSignal);
-  } else if (killSignal != null) {
+  } else if (killSignal !== undefined) {
     throw new ERR_INVALID_ARG_TYPE(
       "options.killSignal",
       ["string", "number"],
@@ -759,7 +763,7 @@ function normalizeExecFileArgs(
 } {
   if (ArrayIsArray(args)) {
     args = ArrayPrototypeSlice(args);
-  } else if (args != null && typeof args === "object") {
+  } else if (args !== undefined && args !== null && typeof args === "object") {
     callback = options as ExecFileCallback;
     options = args as ExecFileSyncOptions;
     args = null;
@@ -769,29 +773,29 @@ function normalizeExecFileArgs(
     args = null;
   }
 
-  if (args == null) {
+  if (args === undefined || args === null) {
     args = [];
   }
 
   if (typeof options === "function") {
     callback = options as ExecFileCallback;
-  } else if (options != null) {
+  } else if (options !== undefined && options !== null) {
     validateObject(options, "options");
   }
 
-  if (options == null) {
+  if (options === undefined || options === null) {
     options = kEmptyObject;
   }
 
   args = args as string[];
   options = options as ExecFileSyncOptions;
 
-  if (callback != null) {
+  if (callback !== undefined && callback !== null) {
     validateFunction(callback, "callback");
   }
 
   // Validate argv0, if present.
-  if (options.argv0 != null) {
+  if (options.argv0 !== undefined && options.argv0 !== null) {
     validateString(options.argv0, "options.argv0");
   }
 
@@ -835,7 +839,7 @@ export function execFileSync(
 
 function setupChildProcessIpcChannel() {
   const fd = op_node_child_ipc_pipe();
-  if (typeof fd != "number" || fd < 0) return;
+  if (typeof fd !== "number" || fd < 0) return;
   const control = setupChannel(process, fd);
   process.on("newListener", (name: string) => {
     if (name === "message" || name === "disconnect") {

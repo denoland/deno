@@ -8,7 +8,7 @@ class Tracing {
 }
 
 function createTracing(opts) {
-  if (typeof opts !== "object" || opts == null) {
+  if (typeof opts !== "object" || opts === null) {
     throw new ERR_INVALID_ARG_TYPE("options", "Object", opts);
   }
 

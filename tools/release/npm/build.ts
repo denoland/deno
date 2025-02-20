@@ -2,6 +2,9 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 // NOTICE: This deployment/npm folder was lifted from https://github.com/dprint/dprint/blob/0ba79811cc96d2dee8e0cf766a8c8c0fc44879c2/deployment/npm/
 // with permission (Copyright 2019-2023 David Sherret)
+
+// deno-lint-ignore-file eqeqeq
+
 import $ from "jsr:@david/dax@^0.42.0";
 // @ts-types="npm:@types/decompress@4.2.7"
 import decompress from "npm:decompress@4.2.1";
@@ -156,7 +159,7 @@ await $`mkdir -p ${denoDir} ${scopeDir}`;
 // verify that the package is created correctly
 {
   $.logStep("Verifying packages...");
-  const testPlatform = Deno.build.os == "windows"
+  const testPlatform = Deno.build.os === "windows"
     ? (Deno.build.arch === "x86_64" ? "@deno/win32-x64" : "@deno/win32-arm64")
     : Deno.build.os === "darwin"
     ? (Deno.build.arch === "x86_64" ? "@deno/darwin-x64" : "@deno/darwin-arm64")

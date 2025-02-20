@@ -477,7 +477,7 @@ function enableJupyter() {
           evalue: err.message,
           traceback: [],
         });
-      } else if (typeof err == "string") {
+      } else if (typeof err === "string") {
         await broadcast("error", {
           ename: "Error",
           evalue: err,

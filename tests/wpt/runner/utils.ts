@@ -130,7 +130,7 @@ export function runPy<T extends Omit<Deno.CommandOptions, "cwd">>(
   args: string[],
   options: T,
 ): Deno.ChildProcess {
-  const cmd = Deno.build.os == "windows" ? "python.exe" : "python3";
+  const cmd = Deno.build.os === "windows" ? "python.exe" : "python3";
   return new Deno.Command(cmd, {
     args,
     stdout: "inherit",
@@ -158,7 +158,7 @@ export async function checkPy3Available() {
   assert(
     output.includes("Python 3.11"),
     `The ${
-      Deno.build.os == "windows" ? "python.exe" : "python3"
+      Deno.build.os === "windows" ? "python.exe" : "python3"
     } in your path is not Python 3.11.x. See https://github.com/web-platform-tests/wpt/issues/44427 for more details.`,
   );
 }

@@ -35,7 +35,7 @@ Deno.test(async function websocketH2SendSmallPacket() {
     ws.send("a".repeat(16));
   };
   ws.onmessage = () => {
-    if (++messageCount == 3) {
+    if (++messageCount === 3) {
       ws.close();
     }
   };
@@ -57,7 +57,7 @@ Deno.test(async function websocketH2SendLargePacket() {
     ws.send("a".repeat(65000));
   };
   ws.onmessage = () => {
-    if (++messageCount == 3) {
+    if (++messageCount === 3) {
       ws.close();
     }
   };
@@ -238,7 +238,7 @@ Deno.test({
   assertEquals(ws.url, serveUrl);
   ws.onerror = () => fail();
   ws.onmessage = (m: MessageEvent) => {
-    if (m.data == "Hello") ws.send("bye");
+    if (m.data === "Hello") ws.send("bye");
   };
   ws.onclose = () => {
     deferred.resolve();
@@ -281,7 +281,7 @@ Deno.test({
   let seenBye = false;
   ws.onerror = () => fail();
   ws.onmessage = ({ data }) => {
-    if (data == "Hello") {
+    if (data === "Hello") {
       ws.send("Hello!");
     } else {
       assertEquals(data, "Bye");
@@ -379,10 +379,10 @@ Deno.test(
           idleTimeout: 0,
         });
         socket.onopen = function () {
-          assert(typeof socket.url == "string");
-          assert(socket.readyState == WebSocket.OPEN);
-          assert(socket.protocol == "");
-          assert(socket.binaryType == "arraybuffer");
+          assert(typeof socket.url === "string");
+          assert(socket.readyState === WebSocket.OPEN);
+          assert(socket.protocol === "");
+          assert(socket.binaryType === "arraybuffer");
           socket.close();
         };
         socket.onclose = () => ac.abort();

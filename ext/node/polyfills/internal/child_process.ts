@@ -130,7 +130,7 @@ function maybeClose(child: ChildProcess) {
 function flushStdio(subprocess: ChildProcess) {
   const stdio = subprocess.stdio;
 
-  if (stdio == null) return;
+  if (stdio === undefined || stdio === null) return;
 
   for (let i = 0; i < stdio.length; i++) {
     const stream = stdio[i];
@@ -381,7 +381,7 @@ export class ChildProcess extends EventEmitter {
       }
 
       const pipeRid = internals.getIpcPipeRid(this.#process);
-      if (typeof pipeRid == "number") {
+      if (typeof pipeRid === "number") {
         setupChannel(this, pipeRid);
         this[kClosesNeeded]++;
         this.on("disconnect", () => {
@@ -393,8 +393,8 @@ export class ChildProcess extends EventEmitter {
         const status = await this.#process.status;
         this.exitCode = status.code;
         this.#spawned.promise.then(async () => {
-          const exitCode = this.signalCode == null ? this.exitCode : null;
-          const signalCode = this.signalCode == null ? null : this.signalCode;
+          const exitCode = this.signalCode === null ? this.exitCode : null;
+          const signalCode = this.signalCode === null ? null : this.signalCode;
           // The 'exit' and 'close' events must be emitted after the 'spawn' event.
           this.emit("exit", exitCode, signalCode);
           await this.#_waitForChildStreamsToClose();
@@ -420,7 +420,9 @@ export class ChildProcess extends EventEmitter {
       return this.killed;
     }
 
-    const denoSignal = signal == null ? "SIGTERM" : toDenoSignal(signal);
+    const denoSignal = signal === undefined || signal === null
+      ? "SIGTERM"
+      : toDenoSignal(signal);
     this.#closePipes();
     try {
       this.#process.kill(denoSignal);
@@ -690,7 +692,7 @@ export function normalizeSpawnArguments(
 
   if (ArrayIsArray(args)) {
     args = ArrayPrototypeSlice(args);
-  } else if (args == null) {
+  } else if (args === undefined || args === null) {
     args = [];
   } else if (typeof args !== "object") {
     throw new ERR_INVALID_ARG_TYPE("args", "object", args);
@@ -708,28 +710,33 @@ export function normalizeSpawnArguments(
   let cwd = options.cwd;
 
   // Validate the cwd, if present.
-  if (cwd != null) {
+  if (cwd !== undefined && cwd !== null) {
     cwd = getValidatedPath(cwd, "options.cwd") as string;
   }
 
   // Validate detached, if present.
-  if (options.detached != null) {
+  if (options.detached !== undefined && options.detached !== null) {
     validateBoolean(options.detached, "options.detached");
   }
 
   // Validate the uid, if present.
-  if (options.uid != null && !isInt32(options.uid)) {
+  if (
+    options.uid !== undefined && options.uid !== null && !isInt32(options.uid)
+  ) {
     throw new ERR_INVALID_ARG_TYPE("options.uid", "int32", options.uid);
   }
 
   // Validate the gid, if present.
-  if (options.gid != null && !isInt32(options.gid)) {
+  if (
+    options.gid !== undefined && options.gid !== null && !isInt32(options.gid)
+  ) {
     throw new ERR_INVALID_ARG_TYPE("options.gid", "int32", options.gid);
   }
 
   // Validate the shell, if present.
   if (
-    options.shell != null &&
+    options.shell !== undefined &&
+    options.shell !== null &&
     typeof options.shell !== "boolean" &&
     typeof options.shell !== "string"
   ) {
@@ -741,18 +748,20 @@ export function normalizeSpawnArguments(
   }
 
   // Validate argv0, if present.
-  if (options.argv0 != null) {
+  if (options.argv0 !== undefined && options.argv0 !== null) {
     validateString(options.argv0, "options.argv0");
   }
 
   // Validate windowsHide, if present.
-  if (options.windowsHide != null) {
+  if (options.windowsHide !== undefined && options.windowsHide !== null) {
     validateBoolean(options.windowsHide, "options.windowsHide");
   }
 
   // Validate windowsVerbatimArguments, if present.
   let { windowsVerbatimArguments } = options;
-  if (windowsVerbatimArguments != null) {
+  if (
+    windowsVerbatimArguments !== undefined && windowsVerbatimArguments !== null
+  ) {
     validateBoolean(
       windowsVerbatimArguments,
       "options.windowsVerbatimArguments",
@@ -1017,7 +1026,7 @@ export function spawnSync(
       env: mapValues(env, (value) => value.toString()),
       stdout: toDenoStdio(stdout_),
       stderr: toDenoStdio(stderr_),
-      stdin: stdin_ == "inherit" ? "inherit" : "null",
+      stdin: stdin_ === "inherit" ? "inherit" : "null",
       uid,
       gid,
       windowsRawArguments: windowsVerbatimArguments,

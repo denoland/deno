@@ -231,7 +231,7 @@ export function signOneShot(
   key: KeyLike | SignKeyObjectInput | SignPrivateKeyInput,
   callback?: (error: Error | null, data: Buffer) => void,
 ): Buffer | void {
-  if (algorithm != null) {
+  if (algorithm !== undefined && algorithm !== null) {
     validateString(algorithm, "algorithm");
   }
 
@@ -258,12 +258,14 @@ export function signOneShot(
 
   let result: Buffer;
   if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
-    if (algorithm != null && algorithm !== "sha512") {
+    if (
+      algorithm !== undefined && algorithm !== null && algorithm !== "sha512"
+    ) {
       throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
     result = new Buffer(64);
     op_node_sign_ed25519(handle, data, result);
-  } else if (algorithm == null) {
+  } else if (algorithm === undefined || algorithm === null) {
     throw new TypeError(
       "Algorithm must be specified when using non-Ed25519 keys",
     );
@@ -286,7 +288,7 @@ export function verifyOneShot(
   signature: BinaryLike,
   callback?: (error: Error | null, result: boolean) => void,
 ): boolean | void {
-  if (algorithm != null) {
+  if (algorithm !== undefined && algorithm !== null) {
     validateString(algorithm, "algorithm");
   }
 
@@ -313,11 +315,13 @@ export function verifyOneShot(
 
   let result: boolean;
   if (op_node_get_asymmetric_key_type(handle) === "ed25519") {
-    if (algorithm != null && algorithm !== "sha512") {
+    if (
+      algorithm !== undefined && algorithm !== null && algorithm !== "sha512"
+    ) {
       throw new TypeError("Only 'sha512' is supported for Ed25519 keys");
     }
     result = op_node_verify_ed25519(handle, data, signature);
-  } else if (algorithm == null) {
+  } else if (algorithm === undefined || algorithm === null) {
     throw new TypeError(
       "Algorithm must be specified when using non-Ed25519 keys",
     );

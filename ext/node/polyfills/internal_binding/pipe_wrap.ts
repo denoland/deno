@@ -245,9 +245,9 @@ export class Pipe extends ConnectionWrap {
    */
   fchmod(mode: number) {
     if (
-      mode != constants.UV_READABLE &&
-      mode != constants.UV_WRITABLE &&
-      mode != (constants.UV_WRITABLE | constants.UV_READABLE)
+      mode !== constants.UV_READABLE &&
+      mode !== constants.UV_WRITABLE &&
+      mode !== (constants.UV_WRITABLE | constants.UV_READABLE)
     ) {
       return codeMap.get("EINVAL");
     }
