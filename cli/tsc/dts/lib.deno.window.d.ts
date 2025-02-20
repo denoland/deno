@@ -206,34 +206,30 @@ declare var sessionStorage: Storage;
  *
  * @example
  * ```ts
- * // Basic cache operations
- * async function cacheExample() {
- *   // Open (or create) a cache
+ * // Open (or create) a cache
+ * const cache = await caches.open('v1');
+ *
+ * // Store a response
+ * await cache.put('/api/data', new Response('Hello World'));
+ *
+ * // Retrieve from cache with fallback
+ * const response = await caches.match('/api/data') || await fetch('/api/data');
+ *
+ * // Delete specific cache
+ * await caches.delete('v1');
+ *
+ * // List all cache names
+ * const cacheNames = await caches.keys();
+ *
+ * // Cache-first strategy
+ * async function fetchWithCache(request) {
+ *   const cached = await caches.match(request);
+ *   if (cached) return cached;
+ *
+ *   const response = await fetch(request);
  *   const cache = await caches.open('v1');
- *
- *   // Store a response
- *   await cache.put('/api/data', new Response('Hello World'));
- *
- *   // Retrieve from cache with fallback
- *   const response = await caches.match('/api/data') ||
- *     await fetch('/api/data');
- *
- *   // Delete specific cache
- *   await caches.delete('v1');
- *
- *   // List all cache names
- *   const cacheNames = await caches.keys();
- *
- *   // Cache-first strategy
- *   async function fetchWithCache(request) {
- *     const cached = await caches.match(request);
- *     if (cached) return cached;
- *
- *     const response = await fetch(request);
- *     const cache = await caches.open('v1');
- *     await cache.put(request, response.clone());
- *     return response;
- *   }
+ *   await cache.put(request, response.clone());
+ *   return response;
  * }
  * ```
  *
