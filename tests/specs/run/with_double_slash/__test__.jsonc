@@ -1,5 +1,5 @@
 {
   "args": "run //",
   "exitCode": 1,
-  "output": "error: Import '[WILDCARD]' failed.[WILDCARD]"
+  "output": "error: [WILDCARD]"
 }
