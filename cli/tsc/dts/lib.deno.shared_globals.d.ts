@@ -766,6 +766,6 @@ interface ErrorConstructor {
  * @category Fetch
  */
 declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
+  input: RequestInfo | URL,
+  init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;
