@@ -166,9 +166,7 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     } else {
       0
     };
-    let had_change = Cell::new(false);
     let mut add_text_change = |new_text: String| {
-      had_change.set(true);
       text_changes.push(TextChange {
         range: start_pos..start_pos,
         new_text,
@@ -218,23 +216,6 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
         "/** @jsxFragmentFactory {} */",
         jsx_options.jsx_fragment_factory,
       ));
-    }
-    // add a newline at the end
-    if had_change.get() {
-      let file_text = text_info.text_str();
-      let is_crlf = file_text
-        .find('\n')
-        .and_then(|index| {
-          let index_before = index.checked_sub(1)?;
-          let char_before = file_text.get(index_before..index)?;
-          Some(matches!(char_before, "\r"))
-        })
-        .unwrap_or(false);
-      add_text_change(if is_crlf {
-        "\r\n".to_string()
-      } else {
-        "\n".to_string()
-      });
     }
     Ok(())
   }
@@ -341,8 +322,7 @@ mod test {
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
-        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */
-export const component = <div></div>;"),
+        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
       ),
       (
         "/package-a/other.tsx",
@@ -359,14 +339,6 @@ export const component = <div></div>;"),
         /** @jsxFactory h2 */
         /** @jsxRuntime automatic */
         export const component = <div></div>;",
-        )
-      ),
-      (
-        "/package-b/main.tsx",
-        // will use \r\n newlines because the file was detected as using that
-        "export const component = <div></div>;\r\n",
-        Some(
-        "/** @jsxRuntime classic *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */\r\nexport const component = <div></div>;\r\n",
         )
       ),
     ]);
