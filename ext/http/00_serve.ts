@@ -672,10 +672,7 @@ function formatHostName(hostname: string): string {
   // If the hostname is "0.0.0.0", we display "localhost" in console
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
-  if (
-    Deno.build.os === "windows" &&
-    (hostname == "0.0.0.0" || hostname == "::")
-  ) {
+  if (hostname == "0.0.0.0" || hostname == "::") {
     return "localhost";
   }
 
@@ -740,7 +737,7 @@ function serve(arg1, arg2) {
   }
 
   const listenOpts = {
-    hostname: options.hostname ?? "localhost",
+    hostname: options.hostname ?? "0.0.0.0",
     port: options.port ?? 8000,
     reusePort: options.reusePort ?? false,
     loadBalanced: options[kLoadBalanced] ?? false,
