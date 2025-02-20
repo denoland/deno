@@ -5,8 +5,6 @@ use std::cell::RefCell;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
-use std::os::fd::AsFd;
-use std::os::fd::AsRawFd;
 use std::rc::Rc;
 use std::str::FromStr;
 
@@ -187,6 +185,8 @@ pub async fn op_net_accept_tcp(
   let mut _fd_raw: Option<Fd> = None;
   #[cfg(not(windows))]
   {
+    use std::os::fd::AsFd;
+    use std::os::fd::AsRawFd;
     let fd = tcp_stream.as_fd();
     _fd_raw = Some(fd.as_raw_fd() as u32);
   }
