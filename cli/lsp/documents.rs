@@ -193,7 +193,7 @@ pub struct AssetDocument {
 
 impl AssetDocument {
   pub fn new(specifier: ModuleSpecifier, text: &'static str) -> Self {
-    let line_index = Arc::new(LineIndex::new(text.as_ref()));
+    let line_index = Arc::new(LineIndex::new(text));
     Self {
       specifier,
       text,
