@@ -1,21 +1,29 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::path::Path;
 use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
+use deno_config::glob::PathGlobMatch;
+use deno_config::glob::PathOrPattern;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
 use serde_json::Map;
 use serde_json::Value;
+use sys_traits::BaseFsCanonicalize;
+use sys_traits::BaseFsMetadata;
+use sys_traits::BaseFsRead;
+use sys_traits::BaseFsReadDir;
 use sys_traits::FileType;
 use sys_traits::FsCanonicalize;
+use sys_traits::FsDirEntry;
 use sys_traits::FsMetadata;
-use sys_traits::FsRead;
+use sys_traits::FsReadDir;
 use url::Url;
 
 use crate::cache::NodeResolutionSys;
@@ -168,6 +176,22 @@ enum ResolvedMethod {
   PackageSubPath,
 }
 
+pub struct NpmPackageExportedModule {
+  /// Reverse mapping.
+  pub export: String,
+  pub path: PathBuf,
+}
+
+pub trait NodeResolverSys:
+  BaseFsCanonicalize + BaseFsMetadata + BaseFsRead + BaseFsReadDir
+{
+}
+
+impl<T: BaseFsCanonicalize + BaseFsMetadata + BaseFsRead + BaseFsReadDir>
+  NodeResolverSys for T
+{
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -188,7 +212,7 @@ pub struct NodeResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
   is_built_in_node_module_checker: TIsBuiltInNodeModuleChecker,
@@ -202,7 +226,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeResolver<
     TInNpmPackageChecker,
@@ -1338,6 +1362,40 @@ impl<
     )
   }
 
+  /// Gets all the exported modules of the specified package directory.
+  pub fn all_exported_modules_for_package(
+    &self,
+    package_dir: &Path,
+    resolution_mode: ResolutionMode,
+    resolution_kind: NodeResolutionKind,
+  ) -> Vec<NpmPackageExportedModule> {
+    let conditions = self
+      .conditions_from_resolution_mode
+      .resolve(resolution_mode);
+    let pkg_json_path = package_dir.join("package.json");
+    let patterns = match self
+      .pkg_json_resolver
+      .load_package_json(&pkg_json_path)
+      .ok()
+      .flatten()
+    {
+      Some(pkg_json) => {
+        if let Some(exports) = &pkg_json.exports {
+          Some(exports_to_globs(
+            package_dir,
+            exports,
+            conditions,
+            resolution_kind,
+          ))
+        } else {
+          None
+        }
+      }
+      None => None,
+    };
+    collect_modules_in_dir_recursive(&self.sys, package_dir, patterns)
+  }
+
   fn package_resolve(
     &self,
     specifier: &str,
@@ -1791,6 +1849,177 @@ impl<
 
     None
   }
+}
+
+struct ExportGlob {
+  key: String,
+  value: PathOrPattern,
+}
+
+fn exports_to_globs(
+  base: &Path,
+  exports: &serde_json::Map<String, serde_json::Value>,
+  conditions: &[&str],
+  resolution_kind: NodeResolutionKind,
+) -> Vec<ExportGlob> {
+  // create a list of globs based on the exports
+  let mut globs = Vec::new();
+  let mut pending = VecDeque::new();
+  pending.push_back((Cow::Borrowed(""), exports));
+  while let Some((current_path, exports)) = pending.pop_front() {
+    for (key, value) in exports {
+      let was_conditional_match = key == "default"
+        || conditions.contains(&key.as_str())
+        || resolution_kind.is_types() && key.as_str() == "types";
+      let next_path = || {
+        if was_conditional_match {
+          current_path.clone()
+        } else {
+          if current_path.is_empty() {
+            key.to_string().into()
+          } else {
+            let key = key.strip_prefix("./").unwrap_or(key);
+            if current_path.ends_with("/") {
+              format!("{}{}", current_path, key)
+            } else {
+              format!("{}/{}", current_path, key)
+            }
+            .into()
+          }
+        }
+      };
+      let should_handle = was_conditional_match || key.starts_with(".");
+      let mut local_pending = VecDeque::new();
+      if should_handle {
+        local_pending.push_back(value);
+      }
+      while let Some(value) = local_pending.pop_front() {
+        match value {
+          Value::String(value) => {
+            if let Ok(item) = PathOrPattern::from_relative(base, value) {
+              globs.push(ExportGlob {
+                key: next_path().into_owned(),
+                value: item,
+              });
+            }
+          }
+          Value::Array(values) => {
+            for value in values {
+              local_pending.push_back(value);
+            }
+          }
+          Value::Object(map) => {
+            pending.push_back((next_path(), map));
+          }
+          Value::Bool(_) | Value::Number(_) | Value::Null => {}
+        }
+      }
+      if was_conditional_match {
+        break;
+      }
+    }
+  }
+  globs
+}
+
+fn collect_modules_in_dir_recursive(
+  sys: &impl BaseFsReadDir,
+  start_dir: &Path,
+  mut patterns: Option<Vec<ExportGlob>>,
+) -> Vec<NpmPackageExportedModule> {
+  if let Some(patterns) = &mut patterns {
+    // avoid traversing if all the globs are paths
+    if patterns.iter().all(|p| match &p.value {
+      PathOrPattern::Path(_) | PathOrPattern::NegatedPath(_) => true,
+      PathOrPattern::RemoteUrl(_) | PathOrPattern::Pattern(_) => false,
+    }) {
+      return patterns
+        .drain(..)
+        .filter_map(|p| {
+          Some(NpmPackageExportedModule {
+            export: p.key,
+            path: match p.value {
+              PathOrPattern::Path(path) => Some(path),
+              PathOrPattern::NegatedPath(_)
+              | PathOrPattern::RemoteUrl(_)
+              | PathOrPattern::Pattern(_) => None,
+            }?,
+          })
+        })
+        .collect();
+    }
+  }
+  let mut result = Vec::new();
+  let mut pending_dirs = VecDeque::new();
+  pending_dirs.push_back(Cow::Borrowed(start_dir));
+  let patterns = &patterns;
+  let is_match = |path: &Path| {
+    let Some(patterns) = patterns else {
+      return Some(
+        path
+          .strip_prefix(start_dir)
+          .unwrap_or(&path)
+          .to_string_lossy()
+          .replace("\\", "/"),
+      );
+    };
+    for pattern in patterns {
+      if pattern.value.matches_path(&path) == PathGlobMatch::Matched {
+        return Some(pattern.key.clone());
+      }
+    }
+    None
+  };
+  while let Some(dir) = pending_dirs.pop_front() {
+    let Ok(entries) = sys.fs_read_dir(&dir) else {
+      return result;
+    };
+    for entry in entries {
+      let Ok(entry) = entry else {
+        continue;
+      };
+      let Ok(file_type) = entry.file_type() else {
+        continue;
+      };
+
+      match file_type {
+        FileType::File => {
+          let path = entry.path();
+          match MediaType::from_path(&path) {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Tsx
+            | MediaType::Wasm => {
+              if let Some(export) = is_match(&path) {
+                result.push(NpmPackageExportedModule {
+                  export,
+                  path: path.to_path_buf(),
+                });
+              }
+            }
+            MediaType::Css
+            | MediaType::Json
+            | MediaType::SourceMap
+            | MediaType::Unknown => {}
+          }
+        }
+        FileType::Dir => {
+          pending_dirs.push_back(entry.path().into_owned().into());
+        }
+        FileType::Symlink | FileType::Unknown => todo!(),
+      }
+    }
+  }
+
+  result
 }
 
 fn resolve_bin_entry_value<'a>(
@@ -2312,5 +2541,73 @@ mod tests {
       types_package_name("@scoped/package"),
       "@types/scoped__package"
     );
+  }
+
+  #[test]
+  fn test_exports_to_globs() {
+    {
+      let exports = get_exports_to_globs(
+        serde_json::json!({}),
+        &["default"],
+        NodeResolutionKind::Types,
+      );
+      assert!(exports.is_empty());
+    }
+    {
+      let exports = get_exports_to_globs(
+        serde_json::json!({
+          "./test/*": "./test/*",
+          "./other": "./other.js",
+          "./conditional": {
+            "example": "./example.js",
+            "custom-condition": "./custom-condition.js",
+            "default": "./conditional/value.js"
+          },
+          "./types-conditional": {
+            "types": "./types.d.ts",
+            "default": "./conditional/value.js"
+          },
+        }),
+        &["custom-condition"],
+        NodeResolutionKind::Types,
+      );
+      assert_eq!(
+        exports,
+        vec![
+          "./test/*|./test/*",
+          "./other|other.js",
+          "./conditional|custom-condition.js",
+          "./types-conditional|types.d.ts"
+        ]
+      );
+    }
+  }
+
+  fn get_exports_to_globs(
+    exports: serde_json::Value,
+    conditions: &[&str],
+    resolution_kind: NodeResolutionKind,
+  ) -> Vec<String> {
+    let exports = exports.as_object().unwrap();
+    let path = PathBuf::from("/");
+    let globs = exports_to_globs(&path, &exports, conditions, resolution_kind);
+    globs
+      .iter()
+      .map(|g| {
+        let value = match &g.value {
+          PathOrPattern::Path(path_buf) => {
+            path_buf.to_string_lossy().to_string()
+          }
+          PathOrPattern::NegatedPath(path_buf) => {
+            format!("!{}", path_buf.to_string_lossy())
+          }
+          PathOrPattern::RemoteUrl(url) => url.to_string(),
+          PathOrPattern::Pattern(glob_pattern) => {
+            glob_pattern.as_str().to_string()
+          }
+        };
+        format!("{}|{}", g.key, value)
+      })
+      .collect::<Vec<_>>()
   }
 }
