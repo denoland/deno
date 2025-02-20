@@ -136,8 +136,8 @@ declare namespace Deno {
     /** Make the connection not block the event loop from finishing. */
     unref(): void;
 
-    readonly readable: ReadableStream<Uint8Array>;
-    readonly writable: WritableStream<Uint8Array>;
+    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
   }
 
   /** @category Network */
