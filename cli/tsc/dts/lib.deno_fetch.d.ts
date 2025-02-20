@@ -408,7 +408,7 @@ declare var Response: {
  * @category Fetch
  */
 declare function fetch(
-  input: URL | Request | string,
+  input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response>;
 

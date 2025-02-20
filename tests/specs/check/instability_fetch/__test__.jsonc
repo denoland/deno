@@ -1,0 +1,5 @@
+{
+  "args": "check main.ts",
+  "output": "[WILDCARD]",
+  "exitCode": 0 // should be successful
+}
