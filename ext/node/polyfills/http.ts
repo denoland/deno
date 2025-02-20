@@ -1810,7 +1810,7 @@ export class ServerImpl extends EventEmitter {
     if (typeof opts === "function") {
       requestListener = opts;
       opts = kEmptyObject;
-    } else if (ops === undefined || opts === null) {
+    } else if (opts === undefined || opts === null) {
       opts = kEmptyObject;
     } else {
       validateObject(opts, "options");
