@@ -236,3 +236,11 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
 
   db.close();
 });
+
+// https://github.com/denoland/deno/issues/28187
+Deno.test("[node/sqlite] StatementSync for large integers", () => {
+  const db = new DatabaseSync(":memory:");
+  const result = db.prepare("SELECT 2147483648").get();
+  assertEquals(result, { "2147483648": 2147483648, __proto__: null });
+  db.close();
+});
