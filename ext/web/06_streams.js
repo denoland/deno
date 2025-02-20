@@ -6384,7 +6384,9 @@ class WritableStream {
       prefix,
       "underlyingSink",
     );
-    if (underlyingSinkDict !== undefined && underlyingSinkDict.type !== null) {
+    if (
+      underlyingSinkDict.type !== undefined && underlyingSinkDict.type !== null
+    ) {
       throw new RangeError(
         `${prefix}: WritableStream does not support 'type' in the underlying sink`,
       );
