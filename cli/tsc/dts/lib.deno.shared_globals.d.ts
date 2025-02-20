@@ -475,7 +475,7 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
  *
  * @category I/O
  */
- declare var console: Console;
+declare var console: Console;
 
 /** @category Events */
 interface ErrorEventInit extends EventInit {
