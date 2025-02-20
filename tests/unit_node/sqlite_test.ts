@@ -214,6 +214,20 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
     variable3: 2,
   }]);
 
+  const result2 = db.prepare(query).all({ var2: 1, var1: "test" });
+  assertEquals(result2, [{
+    __proto__: null,
+    variable1: "test",
+    variable2: 1,
+    variable3: 2,
+  }]);
+
+  const stmt = db.prepare(query);
+  stmt.setAllowBareNamedParameters(false);
+  assertThrows(() => {
+    stmt.all({ var1: "test", var2: 1 });
+  });
+
   db.close();
 });
 
@@ -234,5 +248,13 @@ Deno.test("[node/sqlite] StatementSync#iterate", () => {
   assertEquals(done, true);
   assertEquals(value, undefined);
 
+  db.close();
+});
+
+// https://github.com/denoland/deno/issues/28187
+Deno.test("[node/sqlite] StatementSync for large integers", () => {
+  const db = new DatabaseSync(":memory:");
+  const result = db.prepare("SELECT 2147483648").get();
+  assertEquals(result, { "2147483648": 2147483648, __proto__: null });
   db.close();
 });
