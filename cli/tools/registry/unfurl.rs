@@ -20,7 +20,6 @@ use deno_core::anyhow;
 use deno_core::ModuleSpecifier;
 use deno_graph::DependencyDescriptor;
 use deno_graph::DynamicTemplatePart;
-use deno_graph::ParserModuleAnalyzer;
 use deno_graph::StaticDependencyKind;
 use deno_graph::TypeScriptReference;
 use deno_package_json::PackageJsonDepValue;
@@ -31,6 +30,8 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::is_builtin_node_module;
 use deno_semver::Version;
 use deno_semver::VersionReq;
+use sys_traits::FsMetadata;
+use sys_traits::FsRead;
 
 use crate::sys::CliSys;
 
@@ -188,14 +189,14 @@ enum UnfurlSpecifierError {
   },
 }
 
-pub struct SpecifierUnfurler {
-  workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
+pub struct SpecifierUnfurler<TSys: FsMetadata + FsRead = CliSys> {
+  workspace_resolver: Arc<WorkspaceResolver<TSys>>,
   bare_node_builtins: bool,
 }
 
-impl SpecifierUnfurler {
+impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   pub fn new(
-    workspace_resolver: Arc<WorkspaceResolver<CliSys>>,
+    workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
     debug_assert_eq!(
@@ -208,7 +209,7 @@ impl SpecifierUnfurler {
     }
   }
 
-  fn unfurl_specifier_reporting_diagnostic(
+  pub fn unfurl_specifier_reporting_diagnostic(
     &self,
     referrer: &ModuleSpecifier,
     specifier: &str,
@@ -516,11 +517,11 @@ impl SpecifierUnfurler {
     &self,
     url: &ModuleSpecifier,
     parsed_source: &ParsedSource,
+    module_info: &deno_graph::ModuleInfo,
     text_changes: &mut Vec<TextChange>,
     diagnostic_reporter: &mut dyn FnMut(SpecifierUnfurlerDiagnostic),
   ) {
     let text_info = parsed_source.text_info_lazy();
-    let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     let analyze_specifier =
       |specifier: &str,
        range: &deno_graph::PositionRange,
@@ -682,6 +683,7 @@ mod tests {
   use deno_config::workspace::ResolverWorkspaceJsrPackage;
   use deno_core::serde_json::json;
   use deno_core::url::Url;
+  use deno_graph::ParserModuleAnalyzer;
   use deno_resolver::workspace::SloppyImportsOptions;
   use deno_runtime::deno_node::PackageJson;
   use deno_semver::Version;
@@ -977,9 +979,11 @@ console.log(nonExistent);
   ) -> String {
     let text_info = parsed_source.text_info_lazy();
     let mut text_changes = Vec::new();
+    let module_info = ParserModuleAnalyzer::module_info(parsed_source);
     unfurler.unfurl_to_changes(
       url,
       parsed_source,
+      &module_info,
       &mut text_changes,
       diagnostic_reporter,
     );

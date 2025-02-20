@@ -6,7 +6,6 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
-use deno_ast::MediaType;
 use deno_ast::ModuleSpecifier;
 use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
@@ -297,13 +296,6 @@ pub fn collect_publish_paths(
             message: err.to_string(),
           });
       }
-    }
-
-    let media_type = MediaType::from_specifier(&specifier);
-    if matches!(media_type, MediaType::Jsx | MediaType::Tsx) {
-      diagnostics_collector.push(PublishDiagnostic::UnsupportedJsxTsx {
-        specifier: specifier.clone(),
-      });
     }
 
     result.push(CollectedPublishPath {
