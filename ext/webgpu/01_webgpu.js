@@ -33,7 +33,6 @@ import {
   GPUSupportedLimits,
   GPUTexture,
   GPUTextureView,
-  // ops
   op_create_gpu,
   op_webgpu_device_start_capture,
   op_webgpu_device_stop_capture,
@@ -759,7 +758,6 @@ webidl.converters["GPUUncapturedErrorEventInit"] = webidl
     dictMembersGPUUncapturedErrorEventInit,
   );
 
-
 function deviceStartCapture(device) {
   op_webgpu_device_start_capture(device);
 }
@@ -785,6 +783,7 @@ function initGPU() {
 }
 
 export {
+  denoNsWebGPU,
   GPU,
   gpu,
   GPUAdapter,
@@ -822,5 +821,4 @@ export {
   GPUUncapturedErrorEvent,
   GPUValidationError,
   initGPU,
-  denoNsWebGPU,
 };
