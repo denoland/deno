@@ -226,7 +226,6 @@ impl StatementSync {
 
     if let Some(params) = params {
       let len = params.length();
-      let mut param_count = 0;
       for i in 0..len {
         let value = params.get(i);
 
@@ -296,7 +295,6 @@ impl StatementSync {
     position: i32,
   ) -> Result<i32, SqliteError> {
     let raw = self.inner;
-
 
     if value.is_number() {
       let value = value.number_value(scope).unwrap();
@@ -399,7 +397,6 @@ impl StatementSync {
       }
     }
     Ok(position)
-
   }
 }
 

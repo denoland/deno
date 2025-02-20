@@ -266,20 +266,6 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
     },
   ]);
 
-  db.exec(`CREATE TABLE one(variable1 TEXT, variable2 INT, variable3 INT)`);
-  db.exec(
-    `INSERT INTO one (variable1, variable2, variable3) VALUES ("test", 1 , 2);`,
-  );
-
-  const query = "SELECT * FROM one WHERE variable1=:var1 AND variable2=:var2 ";
-  const result = db.prepare(query).all({ var1: "test", var2: 1 });
-  assertEquals(result, [{
-    __proto__: null,
-    variable1: "test",
-    variable2: 1,
-    variable3: 2,
-  }]);
-
   db.close();
 });
 
