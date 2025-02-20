@@ -2786,7 +2786,7 @@ impl Inner {
             }
             Ok(span.to_folding_range(
               asset_or_doc.line_index(),
-              asset_or_doc.text().as_ref().as_bytes(),
+              asset_or_doc.text_str().as_bytes(),
               self.config.line_folding_only_capable(),
             ))
           })
@@ -4403,12 +4403,9 @@ impl Inner {
       && specifier.path() == "/status.md"
     {
       let mut contents = String::new();
-      let mut documents_specifiers = self
-        .documents
-        .documents(DocumentsFilter::All)
-        .into_iter()
-        .map(|d| d.specifier().clone())
-        .collect::<Vec<_>>();
+      let documents = self.documents.documents(DocumentsFilter::All);
+      let mut documents_specifiers =
+        documents.iter().map(|d| d.specifier()).collect::<Vec<_>>();
       documents_specifiers.sort();
       let measures = self.performance.to_vec();
       let workspace_settings = self.config.workspace_settings();
@@ -4445,8 +4442,8 @@ impl Inner {
         documents_specifiers.len(),
         documents_specifiers
           .into_iter()
-          .map(|s| s.to_string())
-          .collect::<Vec<String>>()
+          .map(|s| s.as_str())
+          .collect::<Vec<&str>>()
           .join("\n    - "),
         measures.len(),
         measures
@@ -4484,7 +4481,7 @@ impl Inner {
     } else {
       let asset_or_doc = self.get_maybe_asset_or_document(&specifier);
       if let Some(asset_or_doc) = asset_or_doc {
-        Some(asset_or_doc.text().to_string())
+        Some(asset_or_doc.text_str().to_string())
       } else {
         error!("The source was not found: {}", specifier);
         None

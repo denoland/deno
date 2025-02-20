@@ -97,7 +97,6 @@ use super::urls::INVALID_URI;
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::logging::lsp_warn;
-use crate::tsc::MaybeStaticSource;
 use crate::tsc::ResolveArgs;
 use crate::tsc::MISSING_DEPENDENCY_SPECIFIER;
 use crate::util::path::relative_specifier;
@@ -4504,7 +4503,7 @@ enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: MaybeStaticSource,
+  data: deno_core::FastString,
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
@@ -4522,22 +4521,23 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
+  let asset_or_document = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER
+  {
+    None
+  } else {
+    state.get_asset_or_document(&specifier)
+  };
   let maybe_load_response =
-    if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
-      None
-    } else {
-      let asset_or_document = state.get_asset_or_document(&specifier);
-      asset_or_document.map(|doc| LoadResponse {
-        data: doc.text(),
-        script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-        version: state.script_version(&specifier),
-        is_cjs: doc
-          .document()
-          .map(|d| d.resolution_mode())
-          .unwrap_or(ResolutionMode::Import)
-          == ResolutionMode::Require,
-      })
-    };
+    asset_or_document.as_ref().map(|doc| LoadResponse {
+      data: doc.text_fast_string(),
+      script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
+      version: state.script_version(&specifier),
+      is_cjs: doc
+        .document()
+        .map(|d| d.resolution_mode())
+        .unwrap_or(ResolutionMode::Import)
+        == ResolutionMode::Require,
+    });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)
@@ -5074,10 +5074,10 @@ deno_core::extension!(deno_tsc,
   },
   customizer = |ext: &mut deno_core::Extension| {
     use deno_core::ExtensionFileSource;
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.get().into()));
-    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.get().into()));
-    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.get().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/99_main_compiler.js", crate::tsc::MAIN_COMPILER_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/97_ts_host.js", crate::tsc::TS_HOST_SOURCE.as_str().into()));
+    ext.esm_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_tsc/98_lsp.js", crate::tsc::LSP_SOURCE.as_str().into()));
+    ext.js_files.to_mut().push(ExtensionFileSource::new_computed("ext:deno_cli_tsc/00_typescript.js", crate::tsc::TYPESCRIPT_SOURCE.as_str().into()));
     ext.esm_entry_point = Some("ext:deno_tsc/99_main_compiler.js");
   }
 );
