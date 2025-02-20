@@ -344,8 +344,17 @@ mod test {
   }
 
   fn run_test(files: &[(&'static str, &'static str, Option<&'static str>)]) {
+    fn get_path(path: &str) -> String {
+      let path = if cfg!(windows) {
+        format!("C:{}", path.replace('/', "\\"))
+      } else {
+        path.to_string()
+      };
+    }
+
     let in_memory_sys = InMemorySys::default();
     for (path, text, _) in files {
+      let path = get_path(path);
       let path = PathBuf::from(path);
       in_memory_sys
         .fs_create_dir_all(path.parent().unwrap())
@@ -357,6 +366,7 @@ mod test {
       let Some(expected) = expected else {
         continue;
       };
+      let path = get_path(path);
       let path = PathBuf::from(path);
       let bytes = provider
         .resolve_content_maybe_unfurling(
