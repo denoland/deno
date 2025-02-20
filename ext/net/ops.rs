@@ -184,11 +184,11 @@ pub async fn op_net_accept_tcp(
     .try_or_cancel(cancel)
     .await
     .map_err(accept_err)?;
-  let mut fd_raw: Option<Fd> = None;
+  let mut _fd_raw: Option<Fd> = None;
   #[cfg(not(windows))]
   {
     let fd = tcp_stream.as_fd();
-    fd_raw = Some(fd.as_raw_fd() as u32);
+    _fd_raw = Some(fd.as_raw_fd() as u32);
   }
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
@@ -201,7 +201,7 @@ pub async fn op_net_accept_tcp(
     rid,
     IpAddr::from(local_addr),
     IpAddr::from(remote_addr),
-    fd_raw,
+    _fd_raw,
   ))
 }
 
