@@ -1540,12 +1540,12 @@ impl DenoDiagnostic {
           let data = json!({
             "maybeTypesPackage": types_package
           });
-          (format!(". Try installing \"{}\" if it exists", types_package), Some(data))
+          (format!(". Try installing \"{}\"", types_package), Some(data))
         } else {
           (String::new(), None)
         };
 
-        (lsp::DiagnosticSeverity::HINT, format!("Unable to find type declarations for module: {}{}", specifier_str, maybe_install), data)
+        (lsp::DiagnosticSeverity::INFORMATION, format!("Unable to find type declarations for module: {}{}", specifier_str, maybe_install), data)
       }
     };
     lsp::Diagnostic {
@@ -1882,7 +1882,6 @@ fn diagnose_dependency(
         match &**error {
           ResolveError::Specifier(_) | ResolveError::ImportMap(_) => {}
           ResolveError::Other(js_error_box) => {
-            eprintln!("js error box: {js_error_box:?}",);
             if let Some(resolve_error) = js_error_box
               .as_any()
               .downcast_ref::<deno_resolver::DenoResolveErrorKind>(
