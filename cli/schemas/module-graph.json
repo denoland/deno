@@ -1,6 +1,6 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/module-graph.json",
-  "$schema": "http://json-schema.org/draft-07/schema",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A JSON representation of a Deno module dependency graph.",
   "required": [
     "root",
@@ -23,7 +23,7 @@
       "description": "The modules that are part of the graph.",
       "type": "array",
       "items": {
-        "$ref": "#/definitions/module"
+        "$ref": "#/$defs/module"
       }
     },
     "size": {
@@ -32,7 +32,7 @@
       "default": 0
     }
   },
-  "definitions": {
+  "$defs": {
     "module": {
       "type": "object",
       "required": [
@@ -48,11 +48,11 @@
           "type": "array",
           "description": "An array of dependencies of the module.",
           "items": {
-            "$ref": "#/definitions/dependency"
+            "$ref": "#/$defs/dependency"
           }
         },
         "typeDependency": {
-          "$ref": "#/definitions/dependency",
+          "$ref": "#/$defs/dependency",
           "description": "The type dependency for the module. This is set when the file contains a reference to its types or the module was supplied with a types header."
         },
         "size": {
