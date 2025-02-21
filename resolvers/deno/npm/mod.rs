@@ -548,6 +548,9 @@ pub fn find_definitely_typed_package<'a>(
   nv: &'a PackageNv,
   packages: impl IntoIterator<Item = (&'a PackageReq, &'a PackageNv)>,
 ) -> Option<(&PackageReq, &PackageNv)> {
+  if nv.name.starts_with("@types/") {
+    return None;
+  }
   let types_name = types_package_name(&nv.name);
   let mut best_patch = 0;
   let mut highest: Option<(&PackageReq, &PackageNv)> = None;

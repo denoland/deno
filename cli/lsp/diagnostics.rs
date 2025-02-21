@@ -22,6 +22,7 @@ use deno_core::unsync::spawn_blocking;
 use deno_core::unsync::JoinHandle;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_error::JsErrorClass;
 use deno_graph::source::ResolveError;
 use deno_graph::Resolution;
 use deno_graph::ResolutionError;
@@ -1177,6 +1178,12 @@ struct DiagnosticDataImportMapRemap {
   pub to: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticDataTypesNotFound {
+  pub maybe_types_package: String,
+}
+
 /// An enum which represents diagnostic errors which originate from Deno itself.
 pub enum DenoDiagnostic {
   /// A `x-deno-warning` is associated with the specifier and should be displayed
@@ -1209,6 +1216,11 @@ pub enum DenoDiagnostic {
   InvalidNodeSpecifier(ModuleSpecifier),
   /// Bare specifier is used for `node:` specifier
   BareNodeSpecifier(String),
+
+  TypesNotFound {
+    specifier_str: String,
+    maybe_types_package: Option<String>,
+  },
 }
 
 impl DenoDiagnostic {
@@ -1247,6 +1259,7 @@ impl DenoDiagnostic {
       }
       Self::InvalidNodeSpecifier(_) => "resolver-error",
       Self::BareNodeSpecifier(_) => "import-node-prefix-missing",
+      Self::TypesNotFound { .. } => "types-not-found",
     }
   }
 
@@ -1323,6 +1336,30 @@ impl DenoDiagnostic {
               title: "".to_string(),
               command: "deno.cache".to_string(),
               arguments: Some(vec![json!([data.specifier]), json!(&specifier)]),
+            }),
+            ..Default::default()
+          }
+        }
+        "types-not-found" => {
+          let data = diagnostic
+            .data
+            .clone()
+            .ok_or_else(|| anyhow!("Diagnostic is missing data"))?;
+          let data: DiagnosticDataTypesNotFound = serde_json::from_value(data)?;
+          let title = format!("Install \"{}\".", data.maybe_types_package);
+
+          lsp::CodeAction {
+            title,
+            kind: Some(lsp::CodeActionKind::QUICKFIX),
+            diagnostics: Some(vec![diagnostic.clone()]),
+            command: Some(lsp::Command {
+              title: "".to_string(),
+              command: "deno.cache".to_string(),
+              arguments: Some(vec![
+                json!([data.maybe_types_package]),
+                json!(&data.maybe_types_package),
+                json!({"addToConfig": "dev"}),
+              ]),
             }),
             ..Default::default()
           }
@@ -1427,7 +1464,7 @@ impl DenoDiagnostic {
         | "no-attribute-type"
         | "redirect"
         | "import-node-prefix-missing" => true,
-        "no-local" => diagnostic.data.is_some(),
+        "no-local" | "types-not-found" => diagnostic.data.is_some(),
         _ => false,
       }
     } else {
@@ -1496,6 +1533,20 @@ impl DenoDiagnostic {
       )},
       Self::InvalidNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::ERROR, format!("Unknown Node built-in module: {}", specifier.path()), None),
       Self::BareNodeSpecifier(specifier) => (lsp::DiagnosticSeverity::WARNING, format!("\"{}\" is resolved to \"node:{}\". If you want to use a built-in Node module, add a \"node:\" prefix.", specifier, specifier), Some(json!({ "specifier": specifier }))),
+      Self::TypesNotFound { specifier_str , maybe_types_package, ..} => {
+
+        let (maybe_install, data) =if let Some(types_package) =  maybe_types_package.as_ref()
+        {
+          let data = json!({
+            "maybeTypesPackage": types_package
+          });
+          (format!(". Try installing \"{}\" if it exists", types_package), Some(data))
+        } else {
+          (String::new(), None)
+        };
+
+        (lsp::DiagnosticSeverity::HINT, format!("Unable to find type declarations for module: {}{}", specifier_str, maybe_install), data)
+      }
     };
     lsp::Diagnostic {
       range: *range,
@@ -1738,6 +1789,10 @@ fn diagnose_resolution(
   (diagnostics, deferred_diagnostics)
 }
 
+fn definitely_typed_package_name(package: &str) -> String {
+  format!("@types/{}", package.replace('/', "__"))
+}
+
 /// Generate diagnostics related to a dependency. The dependency is analyzed to
 /// determine if it can be remapped to the active import map as well as surface
 /// any diagnostics related to the resolved code or type dependency.
@@ -1784,6 +1839,97 @@ fn diagnose_dependency(
     .iter()
     .map(|i| documents::to_lsp_range(&i.specifier_range))
     .collect();
+
+  if let Some(_managed) = snapshot
+    .resolver
+    .maybe_managed_npm_resolver(referrer_doc.file_referrer())
+  {
+    if let Some(resolved) = &dependency
+      .maybe_type
+      .ok()
+      .or_else(|| dependency.maybe_code.ok())
+    {
+      if let Ok(req_ref) =
+        NpmPackageReqReference::from_specifier(&resolved.specifier)
+      {
+        if let Err(err) = snapshot.resolver.try_npm_to_file_url(
+          &req_ref,
+          referrer,
+          referrer_doc.resolution_mode(),
+          referrer_doc.file_referrer(),
+        ) {
+          if let Some(not_found) = err.as_kind().as_types_not_found() {
+            let definitely_typed_name =
+              definitely_typed_package_name(&req_ref.req().name);
+
+            // TODO(nathanwhit): see if package actually exists
+            let diagnostic = DenoDiagnostic::TypesNotFound {
+              specifier_str: not_found.0.code_specifier.to_string(),
+              maybe_types_package: Some(format!("npm:{definitely_typed_name}")),
+            };
+            diagnostics.extend(
+              import_ranges
+                .iter()
+                .map(|range| diagnostic.to_lsp_diagnostic(range)),
+            );
+          }
+        }
+      }
+    }
+  } else {
+    if let Resolution::Err(err) = &dependency.maybe_type {
+      if let ResolutionError::ResolverError { error, .. } = dbg!(&**err) {
+        match &**error {
+          ResolveError::Specifier(_) | ResolveError::ImportMap(_) => {}
+          ResolveError::Other(js_error_box) => {
+            eprintln!("js error box: {js_error_box:?}",);
+            if let Some(resolve_error) = js_error_box
+              .as_any()
+              .downcast_ref::<deno_resolver::DenoResolveErrorKind>(
+            ) {
+              if let Some(not_found) = resolve_error.as_types_not_found() {
+                let mut maybe_types_package = None;
+                if let Some(resolved) = dependency.maybe_code.ok() {
+                  if snapshot.resolver.in_node_modules(&resolved.specifier) {
+                    if let Some(Some(path)) = (resolved.specifier.scheme()
+                      == "file")
+                      .then(|| resolved.specifier.to_file_path().ok())
+                    {
+                      if let Ok(Some(pkg_json)) = snapshot
+                        .resolver
+                        .pkg_json_resolver(referrer)
+                        .get_closest_package_json(&path)
+                      {
+                        if let Some(package_name) = &pkg_json.name {
+                          if !package_name.starts_with("@types") {
+                            let definitely_typed_name =
+                              definitely_typed_package_name(&package_name);
+
+                            maybe_types_package =
+                              Some(format!("npm:{definitely_typed_name}"));
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                let diagnostic = DenoDiagnostic::TypesNotFound {
+                  specifier_str: not_found.0.code_specifier.to_string(),
+                  maybe_types_package,
+                };
+                diagnostics.extend(
+                  import_ranges
+                    .iter()
+                    .map(|range| diagnostic.to_lsp_diagnostic(range)),
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // TODO(nayeemrmn): This is a crude way of detecting `@ts-types` which has
   // a different specifier and therefore needs a separate call to
   // `diagnose_resolution()`. It would be much cleaner if that were modelled as
