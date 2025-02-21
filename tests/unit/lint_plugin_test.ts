@@ -101,6 +101,31 @@ Deno.test("Plugin - visitor enter/exit", () => {
   assertEquals(both.map((t) => t.selector), ["Identifier", "Identifier:exit"]);
 });
 
+// https://github.com/denoland/deno/issues/28227
+Deno.test("Plugin - visitor enter/exit", () => {
+  const log: string[] = [];
+
+  testPlugin("{}\nfoo;", {
+    create() {
+      return {
+        "*": (node: Deno.lint.Node) => log.push(`-> ${node.type}`),
+        "*:exit": (node: Deno.lint.Node) => log.push(`<- ${node.type}`),
+      };
+    },
+  });
+
+  assertEquals(log, [
+    "-> Program",
+    "-> BlockStatement",
+    "<- BlockStatement",
+    "-> ExpressionStatement",
+    "-> Identifier",
+    "<- Identifier",
+    "<- ExpressionStatement",
+    "<- Program",
+  ]);
+});
+
 Deno.test("Plugin - visitor descendant", () => {
   let result = testVisit(
     "if (false) foo; if (false) bar()",
