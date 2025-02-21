@@ -2262,6 +2262,7 @@ dependencies = [
  "deno_whoami",
  "der",
  "digest",
+ "dotenvy",
  "dsa",
  "ecb",
  "ecdsa",
