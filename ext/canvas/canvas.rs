@@ -51,7 +51,7 @@ impl OffscreenCanvas {
       active_context.resize();
     }
   }
-  
+
   #[getter]
   fn height(&self) -> u32 {
     self.data.borrow().height()
@@ -61,12 +61,11 @@ impl OffscreenCanvas {
     {
       let data = self.data.borrow_mut();
       // TODO
-    }    
+    }
     if let Some((_, active_context)) = self.active_context.get() {
       active_context.resize();
     }
   }
-
 
   #[constructor]
   #[cppgc]
@@ -137,8 +136,14 @@ impl OffscreenCanvas {
         "Canvas hasn't been initialized yet",
       ));
     }
-    
-    self.active_context.get().as_ref().unwrap().1.bitmap_read_hook();
+
+    self
+      .active_context
+      .get()
+      .as_ref()
+      .unwrap()
+      .1
+      .bitmap_read_hook();
 
     let data = self.data.replace_with(|image| {
       let (width, height) = image.dimensions();
@@ -156,8 +161,14 @@ impl OffscreenCanvas {
     &self,
     #[webidl] options: ImageEncodeOptions,
   ) -> Result<Vec<u8>, JsErrorBox> {
-    self.active_context.get().as_ref().unwrap().1.bitmap_read_hook();
-    
+    self
+      .active_context
+      .get()
+      .as_ref()
+      .unwrap()
+      .1
+      .bitmap_read_hook();
+
     let data = self.data.borrow();
 
     let mut out = vec![];
@@ -190,7 +201,7 @@ impl OffscreenCanvas {
 
 pub trait CanvasContext: GarbageCollected {
   fn value(&self) -> v8::Global<v8::Value>;
-  
+
   fn resize(&self);
 
   fn bitmap_read_hook(&self);

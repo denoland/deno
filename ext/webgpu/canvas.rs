@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_canvas::canvas::CanvasContext;
-use deno_canvas::image::DynamicImage;
+use deno_canvas::image::{DynamicImage, RgbImage};
 use deno_canvas::image::GenericImageView;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
@@ -14,8 +14,10 @@ use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::Extent3d;
 
 use crate::device::GPUDevice;
+use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
+use crate::Instance;
 
 struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
@@ -24,7 +26,8 @@ struct GPUCanvasContext {
   texture_descriptor: RefCell<Option<TextureDescriptor<'static>>>,
   configuration: RefCell<Option<GPUCanvasConfiguration>>,
 
-  current_texture: RefCell<Option<v8::Global<v8::Object>>>,
+  current_texture:
+    RefCell<Option<(wgpu_core::id::BufferId, v8::Global<v8::Object>)>>,
 }
 
 impl GarbageCollected for GPUCanvasContext {}
@@ -87,10 +90,9 @@ impl GPUCanvasContext {
 
     let mut current_texture = self.current_texture.borrow_mut();
 
-    if let Some(current_texture) = current_texture.as_ref() {
+    if let Some((_, current_texture)) = current_texture.as_ref() {
       Ok(current_texture.clone())
     } else {
-      // TODO: except with the GPUTexture’s underlying storage pointing to this.[[drawingBuffer]].
       let (id, err) = device.instance.device_create_texture(
         device.id,
         texture_descriptor,
@@ -154,6 +156,44 @@ impl GPUCanvasContext {
         .collect(),
     })
   }
+
+  pub fn copy_texture_to_bitmap(&self, scope: &mut v8::HandleScope) {
+    let texture = self.current_texture.borrow();
+    let configuration = self.configuration.borrow();
+    let texture_descriptor = self.texture_descriptor.borrow();
+
+    if let Some((buffer, texture)) = texture.as_ref() {
+      let val = v8::Local::new(scope, texture);
+      let texture =
+        deno_core::cppgc::try_unwrap_cppgc_object::<'_, GPUTexture>(
+          scope,
+          val.cast(),
+        )
+        .unwrap();
+
+      let GPUCanvasConfiguration { device, .. } =
+        configuration.as_ref().unwrap();
+      let TextureDescriptor { size, .. } = texture_descriptor.as_ref().unwrap();
+
+      let (command_encoder, err) = device.instance.device_create_command_encoder(
+        device.id,
+        &wgpu_types::CommandEncoderDescriptor {
+          label: Some("GPUCanvasContext".into()),
+        },
+        None,
+      );
+
+      let data = copy_texture_to_vec(&device.instance, device.id, device.queue, command_encoder, texture.id, size, *buffer).unwrap();
+
+      self.bitmap.replace_with(|image| {
+        let (width, height) = image.dimensions();
+
+        let image = deno_canvas::image::RgbaImage::from_raw(width, height, data).unwrap();
+
+        DynamicImage::from(image)
+      });
+    }
+  }
 }
 
 impl CanvasContext for GPUCanvasContext {
@@ -163,7 +203,11 @@ impl CanvasContext for GPUCanvasContext {
 
   fn resize(&self) {
     if let Some(configuration) = self.configuration.borrow().as_ref() {
-      self.texture_descriptor.replace(Some(self.get_descriptor_for_configuration(configuration).unwrap()));
+      self.texture_descriptor.replace(Some(
+        self
+          .get_descriptor_for_configuration(configuration)
+          .unwrap(),
+      ));
     }
   }
 
@@ -193,4 +237,136 @@ struct GPUCanvasConfiguration {
 enum GPUCanvasAlphaMode {
   Opaque,
   Premultiplied,
+}
+
+pub struct PaddedSize {
+  pub padded_bytes_per_row: u32,
+  pub unpadded_bytes_per_row: u32,
+}
+
+pub fn create_buffer_for_texture_to_vec(
+  instance: &Instance,
+  device: wgpu_core::id::DeviceId,
+  size: &Extent3d,
+) -> Result<(wgpu_core::id::BufferId, PaddedSize), JsErrorBox> {
+  // We only support the 8 bit per pixel formats with 4 channels
+  // as such a pixel has 4 bytes
+  const BYTES_PER_PIXEL: u32 = 4;
+
+  let unpadded_bytes_per_row = size.width * BYTES_PER_PIXEL;
+  let padded_bytes_per_row_padding = (wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT
+    - (unpadded_bytes_per_row % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT))
+    % wgpu_types::COPY_BYTES_PER_ROW_ALIGNMENT;
+  let padded_bytes_per_row =
+    unpadded_bytes_per_row + padded_bytes_per_row_padding;
+
+
+  let (buffer, maybe_err) = instance.device_create_buffer(
+    device,
+    &wgpu_types::BufferDescriptor {
+      label: None,
+      size: (padded_bytes_per_row * size.height) as _,
+      usage: wgpu_types::BufferUsages::MAP_READ
+        | wgpu_types::BufferUsages::COPY_DST,
+      mapped_at_creation: false,
+    },
+    None,
+  );
+
+  if let Some(maybe_err) = maybe_err {
+    Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()))
+  } else {
+    Ok((buffer, PaddedSize {
+      padded_bytes_per_row,
+      unpadded_bytes_per_row,
+    }))
+  }
+}
+
+pub fn copy_texture_to_vec(
+  instance: &Instance,
+  device: wgpu_core::id::DeviceId,
+  queue: wgpu_core::id::QueueId,
+  command_encoder: wgpu_core::id::CommandEncoderId,
+  texture: wgpu_core::id::TextureId,
+  size: &Extent3d,
+  buffer: wgpu_core::id::BufferId,
+  padded_size: &PaddedSize,
+) -> Result<Vec<u8>, JsErrorBox> {
+  instance
+    .command_encoder_copy_texture_to_buffer(
+      command_encoder,
+      &wgpu_types::TexelCopyTextureInfo {
+        texture,
+        mip_level: 0,
+        origin: Default::default(),
+        aspect: Default::default(),
+      },
+      &wgpu_types::TexelCopyBufferInfo {
+        buffer,
+        layout: wgpu_types::TexelCopyBufferLayout {
+          offset: 0,
+          bytes_per_row: Some(padded_size.padded_bytes_per_row),
+          rows_per_image: None,
+        },
+      },
+      size,
+    )
+    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+
+  let (command_buffer, maybe_err) = instance.command_encoder_finish(
+    command_encoder,
+    &wgpu_types::CommandBufferDescriptor { label: None },
+  );
+  if let Some(maybe_err) = maybe_err {
+    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
+  }
+
+  let maybe_err = instance.queue_submit(queue, &[command_buffer]).err();
+  if let Some((_, maybe_err)) = maybe_err {
+    return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
+  }
+
+  let index = instance
+    .buffer_map_async(
+      buffer,
+      0,
+      None,
+      wgpu_core::resource::BufferMapOperation {
+        host: wgpu_core::device::HostMap::Read,
+        callback: None,
+      },
+    )
+    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+
+  instance
+    .device_poll(device, wgpu_types::Maintain::WaitForSubmissionIndex(index))
+    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+
+  let (slice_pointer, range_size) = instance
+    .buffer_get_mapped_range(buffer, 0, None)
+    .map_err(|e| JsErrorBox::from_err::<GPUError>(e.into()))?;
+
+  let data = {
+    // SAFETY: creating a slice from pointer and length provided by wgpu and
+    // then dropping it before unmapping
+    let slice = unsafe {
+      std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
+    };
+
+    let mut unpadded =
+      Vec::with_capacity((padded_size.unpadded_bytes_per_row * size.height) as _);
+
+    for i in 0..size.height {
+      unpadded.extend_from_slice(
+        &slice[((i * padded_size.padded_bytes_per_row) as usize)
+          ..(((i + 1) * padded_size.padded_bytes_per_row) as usize)]
+          [..(padded_size.unpadded_bytes_per_row as usize)],
+      );
+    }
+
+    unpadded
+  };
+
+  Ok(data)
 }
