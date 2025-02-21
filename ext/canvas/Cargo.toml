@@ -18,7 +18,6 @@ bytemuck = "1.17.1"
 deno_core.workspace = true
 deno_error.workspace = true
 deno_terminal.workspace = true
-deno_webgpu.workspace = true
 image = { version = "0.25.4", default-features = false, features = ["png", "jpeg", "bmp", "ico" # NOTE: Temporarily not supported due to build size concerns
   # https://github.com/denoland/deno/pull/25517#issuecomment-2626044644
   # "webp", "gif"

@@ -1,11 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::OnceCell;
+use std::cell::RefCell;
 use std::io::BufReader;
 use std::io::Cursor;
 
 use deno_core::op2;
+use deno_core::GarbageCollected;
 use deno_core::JsBuffer;
-use deno_core::ToJsBuffer;
 use image::codecs::bmp::BmpDecoder;
 // use image::codecs::gif::GifDecoder;
 use image::codecs::ico::IcoDecoder;
@@ -15,6 +17,7 @@ use image::codecs::png::PngDecoder;
 use image::imageops::overlay;
 use image::imageops::FilterType;
 use image::metadata::Orientation;
+use image::ColorType;
 use image::DynamicImage;
 use image::ImageDecoder;
 use image::RgbaImage;
@@ -222,8 +225,8 @@ fn decode_bitmap_data(
 /// related issue in whatwg
 /// https://github.com/whatwg/html/issues/10578
 ///
-/// reference in wpt  
-/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18  
+/// reference in wpt
+/// https://github.com/web-platform-tests/wpt/blob/d575dc75ede770df322fbc5da3112dcf81f192ec/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html#L18
 /// https://wpt.live/html/canvas/element/manual/imagebitmap/createImageBitmap-colorSpaceConversion.html
 fn apply_color_space_conversion(
   image: DynamicImage,
@@ -369,7 +372,7 @@ fn parse_args(
 }
 
 #[op2]
-#[serde]
+#[cppgc]
 #[allow(clippy::too_many_arguments)]
 pub(super) fn op_create_image_bitmap(
   #[buffer] buf: JsBuffer,
@@ -387,7 +390,7 @@ pub(super) fn op_create_image_bitmap(
   resize_quality: u8,
   image_bitmap_source: u8,
   mime_type: u8,
-) -> Result<(ToJsBuffer, u32, u32), CanvasError> {
+) -> Result<ImageBitmap, CanvasError> {
   let ParsedArgs {
     resize_width,
     resize_height,
@@ -532,7 +535,45 @@ pub(super) fn op_create_image_bitmap(
   let image =
     apply_premultiply_alpha(image, &image_bitmap_source, &premultiply_alpha)?;
 
-  Ok((image.into_bytes().into(), output_width, output_height))
+  Ok(ImageBitmap {
+    detached: Default::default(),
+    data: RefCell::new(image),
+  })
+}
+
+pub struct ImageBitmap {
+  pub detached: OnceCell<()>,
+  pub data: RefCell<DynamicImage>,
+}
+
+impl GarbageCollected for ImageBitmap {}
+
+#[op2]
+impl ImageBitmap {
+  #[getter]
+  fn width(&self) -> u32 {
+    let data = self.data.borrow();
+    data.width()
+  }
+
+  #[getter]
+  fn height(&self) -> u32 {
+    let data = self.data.borrow();
+    data.height()
+  }
+
+  #[fast]
+  fn close(&self) {
+    let _ = self.detached.set(());
+    self.data.replace(DynamicImage::new(0, 0, ColorType::L8));
+  }
+
+  #[buffer]
+  #[symbol("bitmapData")]
+  fn getData(&self) -> Vec<u8> {
+    let data = self.data.borrow();
+    data.as_bytes().to_vec()
+  }
 }
 
 #[cfg(test)]
