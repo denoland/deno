@@ -673,7 +673,7 @@ function formatHostName(hostname: string): string {
   // because browsers in Windows don't resolve "0.0.0.0".
   // See the discussion in https://github.com/denoland/deno_std/issues/1165
   if (
-    Deno.build.os === "windows" &&
+    Deno.build.os === 'windows' &&
     (hostname == "0.0.0.0" || hostname == "::")
   ) {
     return "localhost";
@@ -784,8 +784,8 @@ function serve(arg1, arg2) {
 
       const url = `${scheme}${host}:${addr.port}/`;
       const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
-        ? `(accessible via http://localhost:${addr.port})`
-        : "";
+       ? `(accessible via http://localhost:${addr.port})`
+       : '';
 
       // deno-lint-ignore no-console
       console.error(`Listening on ${url} ${helper}`);
