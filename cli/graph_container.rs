@@ -13,6 +13,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::module_loader::PrepareModuleLoadOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 
@@ -70,21 +71,13 @@ impl MainModuleGraphContainer {
     specifiers: &[ModuleSpecifier],
     ext_overwrite: Option<&String>,
   ) -> Result<(), AnyError> {
-    let mut graph_permit = self.acquire_update_permit().await;
-    let graph = graph_permit.graph_mut();
     self
-      .module_load_preparer
-      .prepare_module_load(
-        graph,
+      .check_specifiers_allow_unknown_media_types(
         specifiers,
-        false,
-        self.cli_options.ts_type_lib_window(),
-        self.root_permissions.clone(),
         ext_overwrite,
+        false,
       )
-      .await?;
-    graph_permit.commit();
-    Ok(())
+      .await
   }
   pub async fn check_specifiers_allow_unknown_media_types(
     &self,
@@ -96,21 +89,16 @@ impl MainModuleGraphContainer {
     let graph = graph_permit.graph_mut();
     self
       .module_load_preparer
-      .prepare_module_load_maybe_validate(
+      .prepare_module_load(PrepareModuleLoadOptions {
         graph,
-        specifiers,
-        false,
-        self.cli_options.ts_type_lib_window(),
-        self.root_permissions.clone(),
+        roots: specifiers,
+        is_dynamic: false,
+        lib: self.cli_options.ts_type_lib_window(),
+        permissions: self.root_permissions.clone(),
         ext_overwrite,
-        false,
-      )
+        allow_unknown_media_types,
+      })
       .await?;
-    self.module_load_preparer.graph_roots_valid_allow_unknown(
-      graph,
-      specifiers,
-      allow_unknown_media_types,
-    )?;
     graph_permit.commit();
     Ok(())
   }

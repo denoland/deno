@@ -940,18 +940,11 @@ impl ModuleGraphBuilder {
     self.graph_roots_valid(
       graph,
       &graph.roots.iter().cloned().collect::<Vec<_>>(),
+      false,
     )
   }
 
   pub fn graph_roots_valid(
-    &self,
-    graph: &ModuleGraph,
-    roots: &[ModuleSpecifier],
-  ) -> Result<(), JsErrorBox> {
-    self.graph_roots_valid_allow_unknown(graph, roots, false)
-  }
-
-  pub fn graph_roots_valid_allow_unknown(
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
