@@ -34,6 +34,10 @@ use serde::Serialize;
 use sha2::Digest;
 use tokio::process::Command;
 
+use self::graph::GraphDiagnosticsCollector;
+use self::module_content::ModuleContentProvider;
+use self::paths::CollectedPublishPath;
+use self::tar::PublishableTarball;
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::args::CliOptions;
@@ -42,10 +46,11 @@ use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::tools::check::CheckOptions;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
 use crate::tools::registry::diagnostics::PublishDiagnostic;
 use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
+use crate::type_checker::CheckOptions;
+use crate::type_checker::TypeChecker;
 use crate::util::display::human_size;
 
 mod api;
@@ -71,12 +76,6 @@ pub use pm::AddCommandName;
 pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
-
-use self::graph::GraphDiagnosticsCollector;
-use self::module_content::ModuleContentProvider;
-use self::paths::CollectedPublishPath;
-use self::tar::PublishableTarball;
-use super::check::TypeChecker;
 
 pub async fn publish(
   flags: Arc<Flags>,
