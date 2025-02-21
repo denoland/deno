@@ -6,6 +6,23 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.1 / 2025.02.20
+
+- fix(check): remove instability in loading lib files (#28202)
+- fix(check/lsp): fall back to `@types/*` packages if npm package doesn't have
+  types (#28185)
+- fix(coverage): exclude scripts with invalid URLs from raw coverage output
+  (#28210)
+- fix(ext/cache): add missing Cargo feature (#28178)
+- fix(ext/node): Fix handling of sqlite large integers (#28193)
+- fix(ext/node): rewrite SQLite named parameter handing (#28197)
+- fix(outdated): hint to use `--latest` if new versions are available in
+  `outdated --update` (#28190)
+- fix(publish): support jsx/tsx (#28188)
+- fix: better jsx workspace config resolution (#28186)
+- fix: don't panic when running with // as a filepath (#28189)
+- fix: move extension file declarations to cli/tsc/dts (#28180)
+
 ### 2.2.0 / 2025.02.18
 
 - feat(bench): add `--permit-no-files` (#27048)
