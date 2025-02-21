@@ -1563,6 +1563,7 @@ pub fn clap_root() -> Command {
         .action(ArgAction::Append)
         .num_args(0..=1)
         .require_equals(true)
+        .value_name("CONTEXT")
         .value_parser(["unstable", "full"])
         .global(true),
     )
