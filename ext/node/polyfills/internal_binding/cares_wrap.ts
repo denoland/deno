@@ -28,7 +28,7 @@
 // deno-lint-ignore-file prefer-primordials
 
 import type { ErrnoException } from "ext:deno_node/internal/errors.ts";
-import { isIPv4 } from "ext:deno_node/internal/net.ts";
+import { isIPv4, isIPv6 } from "ext:deno_node/internal/net.ts";
 import { codeMap } from "ext:deno_node/internal_binding/uv.ts";
 import {
   AsyncWrap,
@@ -36,6 +36,10 @@ import {
 } from "ext:deno_node/internal_binding/async_wrap.ts";
 import { ares_strerror } from "ext:deno_node/internal_binding/ares.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
+import {
+  op_net_get_ips_from_perm_token,
+  op_node_getaddrinfo,
+} from "ext:core/ops";
 
 interface LookupAddress {
   address: string;
@@ -45,6 +49,7 @@ interface LookupAddress {
 export class GetAddrInfoReqWrap extends AsyncWrap {
   family!: number;
   hostname!: string;
+  port: number | undefined;
 
   callback!: (
     err: ErrnoException | null,
@@ -53,7 +58,11 @@ export class GetAddrInfoReqWrap extends AsyncWrap {
   ) => void;
   resolve!: (addressOrAddresses: LookupAddress | LookupAddress[]) => void;
   reject!: (err: ErrnoException | null) => void;
-  oncomplete!: (err: number | null, addresses: string[]) => void;
+  oncomplete!: (
+    err: number | null,
+    addresses: string[],
+    netPermToken: object | undefined,
+  ) => void;
 
   constructor() {
     super(providerType.GETADDRINFOREQWRAP);
@@ -67,30 +76,27 @@ export function getaddrinfo(
   _hints: number,
   verbatim: boolean,
 ): number {
-  const addresses: string[] = [];
+  let addresses: string[] = [];
 
   // TODO(cmorten): use hints
   // REF: https://nodejs.org/api/dns.html#dns_supported_getaddrinfo_flags
 
-  const recordTypes: ("A" | "AAAA")[] = [];
-
-  if (family === 0 || family === 4) {
-    recordTypes.push("A");
-  }
-  if (family === 0 || family === 6) {
-    recordTypes.push("AAAA");
-  }
-
   (async () => {
-    await Promise.allSettled(
-      recordTypes.map((recordType) =>
-        Deno.resolveDns(hostname, recordType).then((records) => {
-          records.forEach((record) => addresses.push(record));
-        })
-      ),
-    );
-
-    const error = addresses.length ? 0 : codeMap.get("EAI_NODATA")!;
+    let error = 0;
+    let netPermToken: object | undefined;
+    try {
+      netPermToken = await op_node_getaddrinfo(hostname, req.port || undefined);
+      addresses.push(...op_net_get_ips_from_perm_token(netPermToken));
+      if (addresses.length === 0) {
+        error = codeMap.get("EAI_NODATA")!;
+      }
+    } catch (e) {
+      if (e instanceof Deno.errors.NotCapable) {
+        error = codeMap.get("EPERM")!;
+      } else {
+        error = codeMap.get("EAI_NODATA")!;
+      }
+    }
 
     // TODO(cmorten): needs work
     // REF: https://github.com/nodejs/node/blob/master/src/cares_wrap.cc#L1444
@@ -106,7 +112,13 @@ export function getaddrinfo(
       });
     }
 
-    req.oncomplete(error, addresses);
+    if (family === 4) {
+      addresses = addresses.filter((addr) => isIPv4(addr));
+    } else if (family === 6) {
+      addresses = addresses.filter((addr) => isIPv6(addr));
+    }
+
+    req.oncomplete(error, addresses, netPermToken);
   })();
 
   return 0;
