@@ -77,6 +77,7 @@ use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -1604,7 +1605,10 @@ pub async fn run_tests(
   main_graph_container
     .check_specifiers(
       &specifiers_for_typecheck_and_test,
-      cli_options.ext_flag().as_ref(),
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
     )
     .await?;
 
@@ -1787,7 +1791,10 @@ pub async fn run_tests_with_watch(
         main_graph_container
           .check_specifiers(
             &specifiers_for_typecheck_and_test,
-            cli_options.ext_flag().as_ref(),
+            crate::graph_container::CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              ..Default::default()
+            },
           )
           .await?;
 
