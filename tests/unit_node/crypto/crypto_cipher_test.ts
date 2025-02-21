@@ -447,3 +447,25 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "createDecipheriv - invalid final block len",
+  fn() {
+    const algorithm = "aes-256-cbc";
+    const key = Buffer.from(
+      "84dcdd964968734fdf0de4a2cba471c2e0a753930b841c014b1e77f456b5797b",
+      "hex",
+    );
+    const iv = Buffer.alloc(16, 0);
+
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    decipher.update(Buffer.alloc(12));
+    assertThrows(
+      () => {
+        decipher.final();
+      },
+      RangeError,
+      "Invalid final block length",
+    );
+  },
+});
