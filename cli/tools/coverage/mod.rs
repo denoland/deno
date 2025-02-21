@@ -575,7 +575,7 @@ pub fn cover_files(
     )
   };
 
-  let mut file_reports: Vec<(CoverageReport, String)> = vec![];
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
 
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
