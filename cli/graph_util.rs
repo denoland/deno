@@ -78,6 +78,7 @@ pub struct GraphValidOptions<'a> {
   /// lockfile checksum mismatches and JSR integrity failures.
   /// Otherwise, surfaces integrity errors as errors.
   pub exit_integrity_errors: bool,
+  pub allow_unknown_media_types: bool,
 }
 
 /// Check if `roots` and their deps are available. Returns `Ok(())` if
@@ -104,6 +105,7 @@ pub fn graph_valid(
     GraphWalkErrorsOptions {
       check_js: options.check_js,
       kind: options.kind,
+      allow_unknown_media_types: options.allow_unknown_media_types,
     },
   );
   if let Some(error) = errors.next() {
@@ -143,6 +145,7 @@ pub fn fill_graph_from_lockfile(
 pub struct GraphWalkErrorsOptions<'a> {
   pub check_js: CheckJsOption<'a>,
   pub kind: GraphKind,
+  pub allow_unknown_media_types: bool,
 }
 
 /// Walks the errors found in the module graph that should be surfaced to users
@@ -156,9 +159,10 @@ pub fn graph_walk_errors<'a>(
   fn should_ignore_error(
     sys: &CliSys,
     graph_kind: GraphKind,
+    allow_unknown_media_types: bool,
     error: &ModuleGraphError,
   ) -> bool {
-    if graph_kind == GraphKind::TypesOnly
+    if (graph_kind == GraphKind::TypesOnly || allow_unknown_media_types)
       && matches!(
         error,
         ModuleGraphError::ModuleError(ModuleError::UnsupportedMediaType(..))
@@ -183,8 +187,13 @@ pub fn graph_walk_errors<'a>(
       },
     )
     .errors()
-    .flat_map(|error| {
-      if should_ignore_error(sys, graph.graph_kind(), &error) {
+    .flat_map(move |error| {
+      if should_ignore_error(
+        sys,
+        graph.graph_kind(),
+        options.allow_unknown_media_types,
+        &error,
+      ) {
         log::debug!("Ignoring: {}", error);
         return None;
       }
@@ -939,6 +948,15 @@ impl ModuleGraphBuilder {
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
   ) -> Result<(), JsErrorBox> {
+    self.graph_roots_valid_allow_unknown(graph, roots, false)
+  }
+
+  pub fn graph_roots_valid_allow_unknown(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+    allow_unknown_media_types: bool,
+  ) -> Result<(), JsErrorBox> {
     graph_valid(
       graph,
       &self.sys,
@@ -951,6 +969,7 @@ impl ModuleGraphBuilder {
         },
         check_js: CheckJsOption::Custom(self.tsconfig_resolver.as_ref()),
         exit_integrity_errors: true,
+        allow_unknown_media_types,
       },
     )
   }

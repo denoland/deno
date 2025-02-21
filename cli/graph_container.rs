@@ -86,6 +86,34 @@ impl MainModuleGraphContainer {
     graph_permit.commit();
     Ok(())
   }
+  pub async fn check_specifiers_allow_unknown_media_types(
+    &self,
+    specifiers: &[ModuleSpecifier],
+    ext_overwrite: Option<&String>,
+    allow_unknown_media_types: bool,
+  ) -> Result<(), AnyError> {
+    let mut graph_permit = self.acquire_update_permit().await;
+    let graph = graph_permit.graph_mut();
+    self
+      .module_load_preparer
+      .prepare_module_load_maybe_validate(
+        graph,
+        specifiers,
+        false,
+        self.cli_options.ts_type_lib_window(),
+        self.root_permissions.clone(),
+        ext_overwrite,
+        false,
+      )
+      .await?;
+    self.module_load_preparer.graph_roots_valid_allow_unknown(
+      graph,
+      specifiers,
+      allow_unknown_media_types,
+    )?;
+    graph_permit.commit();
+    Ok(())
+  }
 
   /// Helper around prepare_module_load that loads and type checks
   /// the provided files.

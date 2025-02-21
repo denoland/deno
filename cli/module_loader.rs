@@ -147,7 +147,7 @@ impl ModuleLoadPreparer {
   /// populate the graph data in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
   #[allow(clippy::too_many_arguments)]
-  pub async fn prepare_module_load(
+  pub async fn prepare_module_load_maybe_validate(
     &self,
     graph: &mut ModuleGraph,
     roots: &[ModuleSpecifier],
@@ -155,6 +155,7 @@ impl ModuleLoadPreparer {
     lib: TsTypeLib,
     permissions: PermissionsContainer,
     ext_overwrite: Option<&String>,
+    validate_graph: bool,
   ) -> Result<(), PrepareModuleLoadError> {
     log::debug!("Preparing module load.");
     let _pb_clear_guard = self.progress_bar.clear_guard();
@@ -197,7 +198,9 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.graph_roots_valid(graph, roots)?;
+    if validate_graph {
+      self.graph_roots_valid(graph, roots)?;
+    }
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
@@ -231,12 +234,48 @@ impl ModuleLoadPreparer {
     Ok(())
   }
 
+  #[allow(clippy::too_many_arguments)]
+  pub async fn prepare_module_load(
+    &self,
+    graph: &mut ModuleGraph,
+    roots: &[ModuleSpecifier],
+    is_dynamic: bool,
+    lib: TsTypeLib,
+    permissions: PermissionsContainer,
+    ext_overwrite: Option<&String>,
+  ) -> Result<(), PrepareModuleLoadError> {
+    self
+      .prepare_module_load_maybe_validate(
+        graph,
+        roots,
+        is_dynamic,
+        lib,
+        permissions,
+        ext_overwrite,
+        true,
+      )
+      .await
+  }
+
   pub fn graph_roots_valid(
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
   ) -> Result<(), JsErrorBox> {
     self.module_graph_builder.graph_roots_valid(graph, roots)
+  }
+
+  pub fn graph_roots_valid_allow_unknown(
+    &self,
+    graph: &ModuleGraph,
+    roots: &[ModuleSpecifier],
+    allow_unknown_media_types: bool,
+  ) -> Result<(), JsErrorBox> {
+    self.module_graph_builder.graph_roots_valid_allow_unknown(
+      graph,
+      roots,
+      allow_unknown_media_types,
+    )
   }
 }
 
