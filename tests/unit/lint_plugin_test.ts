@@ -102,7 +102,7 @@ Deno.test("Plugin - visitor enter/exit", () => {
 });
 
 // https://github.com/denoland/deno/issues/28227
-Deno.test("Plugin - visitor enter/exit", () => {
+Deno.test("Plugin - visitor enter/exit #2", () => {
   const log: string[] = [];
 
   testPlugin("{}\nfoo;", {
