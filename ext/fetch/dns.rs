@@ -3,6 +3,7 @@ use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Poll;
 use std::task::{self};
 use std::vec;
@@ -19,6 +20,24 @@ pub enum Resolver {
   Gai(GaiResolver),
   /// hickory-resolver's userspace resolver.
   Hickory(hickory_resolver::Resolver<TokioConnectionProvider>),
+  /// A custom resolver that implements `Resolve`.
+  Custom(Arc<dyn Resolve>),
+}
+
+/// Alias for the `Future` type returned by a custom DNS resolver.
+// The future has to be `Send` as `tokio::spawn` is used to execute the future.
+pub type Resolving =
+  Pin<Box<dyn Future<Output = Result<SocketAddrs, io::Error>> + Send>>;
+
+/// A trait for customizing DNS resolution in ext/fetch.
+// The resolver needs to be `Send` and `Sync` for two reasons. One is it is
+// wrapped inside an `Arc` and will be cloned and moved to an async block to
+// perfrom DNS resolution. That async block will be executed by `tokio::spawn`,
+// so to make that async block `Send`, `Arc<dyn Resolve>` needs to be
+// `Send`. The other is `Resolver` needs to be `Send` to make the wrapping
+// `HttpConnector` `Send`.
+pub trait Resolve: Send + Sync + std::fmt::Debug {
+  fn resolve(&self, name: Name) -> Resolving;
 }
 
 impl Default for Resolver {
@@ -107,7 +126,43 @@ impl Service<Name> for Resolver {
           Ok(iter)
         })
       }
+      Resolver::Custom(resolver) => {
+        let resolver = resolver.clone();
+        tokio::spawn(async move { resolver.resolve(name).await })
+      }
     };
     ResolveFut { inner: task }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use std::str::FromStr;
+
+  use super::*;
+
+  // A resolver that resolves any name into the same address.
+  #[derive(Debug)]
+  struct DebugResolver(SocketAddr);
+
+  impl Resolve for DebugResolver {
+    fn resolve(&self, _name: Name) -> Resolving {
+      let addr = self.0;
+      Box::pin(async move { Ok(vec![addr].into_iter()) })
+    }
+  }
+
+  #[tokio::test]
+  async fn custom_dns_resolver() {
+    let mut resolver = Resolver::Custom(Arc::new(DebugResolver(
+      "127.0.0.1:8080".parse().unwrap(),
+    )));
+    let mut addr = resolver
+      .call(Name::from_str("foo.com").unwrap())
+      .await
+      .unwrap();
+
+    let addr = addr.next().unwrap();
+    assert_eq!(addr, "127.0.0.1:8080".parse().unwrap());
   }
 }
