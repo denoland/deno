@@ -26,6 +26,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
+use deno_resolver::npm::ResolveReqWithSubPathError;
 use deno_resolver::npmrc::create_default_npmrc;
 use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_resolver::workspace::WorkspaceResolver;
@@ -518,9 +519,26 @@ impl LspResolver {
     resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
+    self
+      .try_npm_to_file_url(req_ref, referrer, resolution_mode, file_referrer)
+      .ok()
+      .flatten()
+  }
+
+  pub fn try_npm_to_file_url(
+    &self,
+    req_ref: &NpmPackageReqReference,
+    referrer: &ModuleSpecifier,
+    resolution_mode: ResolutionMode,
+    file_referrer: Option<&ModuleSpecifier>,
+  ) -> Result<Option<(ModuleSpecifier, MediaType)>, ResolveReqWithSubPathError>
+  {
     let resolver = self.get_scope_resolver(file_referrer);
-    let npm_pkg_req_resolver = resolver.npm_pkg_req_resolver.as_ref()?;
-    Some(into_specifier_and_media_type(Some(
+    let Some(npm_pkg_req_resolver) = resolver.npm_pkg_req_resolver.as_ref()
+    else {
+      return Ok(None);
+    };
+    Ok(Some(into_specifier_and_media_type(
       npm_pkg_req_resolver
         .resolve_req_reference(
           req_ref,
@@ -528,9 +546,7 @@ impl LspResolver {
           resolution_mode,
           NodeResolutionKind::Types,
         )
-        .ok()?
-        .into_url()
-        .ok()?,
+        .map(|e| e.into_url().ok())?,
     )))
   }
 
