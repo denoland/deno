@@ -831,6 +831,7 @@ async fn perform_publish(
   assert_eq!(prepared_package_by_name.len(), authorizations.len());
   let mut futures: FuturesUnordered<LocalBoxFuture<Result<String, AnyError>>> =
     Default::default();
+  let mut has_errors = false;
   loop {
     let next_batch = publish_order_graph.next();
 
@@ -881,8 +882,22 @@ async fn perform_publish(
       break;
     };
 
-    let package_name = result?;
-    publish_order_graph.finish_package(&package_name);
+    match result {
+      Ok(package_name) => {
+        publish_order_graph.finish_package(&package_name);
+      }
+      Err(err) => {
+        has_errors = true;
+        #[allow(clippy::print_stderr)]
+        {
+          eprintln!("{}: {}", colors::red("Error publishing"), err);
+        }
+      }
+    }
+  }
+
+  if has_errors {
+    std::process::exit(1);
   }
 
   Ok(())
