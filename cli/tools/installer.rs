@@ -281,7 +281,13 @@ pub(crate) async fn install_from_entrypoints(
   let main_graph_container = factory.main_module_graph_container().await?;
   let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
   main_graph_container
-    .check_specifiers_allow_unknown_media_types(&specifiers, None, true)
+    .check_specifiers(
+      &specifiers,
+      crate::graph_container::CheckSpecifiersOptions {
+        ext_overwrite: None,
+        allow_unknown_media_types: true,
+      },
+    )
     .await?;
   emitter
     .cache_module_emits(&main_graph_container.graph())

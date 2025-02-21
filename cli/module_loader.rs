@@ -124,13 +124,11 @@ pub struct ModuleLoadPreparer {
   type_checker: Arc<TypeChecker>,
 }
 
-pub struct PrepareModuleLoadOptions<'graph, 'roots, 'ext> {
-  pub graph: &'graph mut ModuleGraph,
-  pub roots: &'roots [ModuleSpecifier],
+pub struct PrepareModuleLoadOptions<'a> {
   pub is_dynamic: bool,
   pub lib: TsTypeLib,
   pub permissions: PermissionsContainer,
-  pub ext_overwrite: Option<&'ext String>,
+  pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,
 }
 
@@ -158,12 +156,12 @@ impl ModuleLoadPreparer {
   /// emits where necessary or report any module graph / type checking errors.
   pub async fn prepare_module_load(
     &self,
-    options: PrepareModuleLoadOptions<'_, '_, '_>,
+    graph: &mut ModuleGraph,
+    roots: &[ModuleSpecifier],
+    options: PrepareModuleLoadOptions<'_>,
   ) -> Result<(), PrepareModuleLoadError> {
     log::debug!("Preparing module load.");
     let PrepareModuleLoadOptions {
-      graph,
-      roots,
       is_dynamic,
       lib,
       permissions,
@@ -1105,15 +1103,17 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
       let mut update_permit = graph_container.acquire_update_permit().await;
       let graph = update_permit.graph_mut();
       module_load_preparer
-        .prepare_module_load(PrepareModuleLoadOptions {
+        .prepare_module_load(
           graph,
-          roots: &[specifier],
-          is_dynamic,
-          lib,
-          permissions,
-          ext_overwrite: None,
-          allow_unknown_media_types: false,
-        })
+          &[specifier],
+          PrepareModuleLoadOptions {
+            is_dynamic,
+            lib,
+            permissions,
+            ext_overwrite: None,
+            allow_unknown_media_types: false,
+          },
+        )
         .await
         .map_err(JsErrorBox::from_err)?;
       update_permit.commit();

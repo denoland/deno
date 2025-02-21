@@ -611,15 +611,17 @@ impl DepManager {
 
     self
       .module_load_preparer
-      .prepare_module_load(crate::module_loader::PrepareModuleLoadOptions {
+      .prepare_module_load(
         graph,
-        roots: &roots,
-        is_dynamic: false,
-        lib: deno_config::deno_json::TsTypeLib::DenoWindow,
-        permissions: self.permissions_container.clone(),
-        ext_overwrite: None,
-        allow_unknown_media_types: true,
-      })
+        &roots,
+        crate::module_loader::PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          permissions: self.permissions_container.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: true,
+        },
+      )
       .await?;
 
     self.dependencies_resolved.raise();
