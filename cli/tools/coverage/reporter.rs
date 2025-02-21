@@ -41,13 +41,11 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
 }
 
 pub trait CoverageReporter {
-  fn report(
+  fn done(
     &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError>;
-
-  fn done(&mut self, _coverage_root: &Path) {}
+    coverage_root: &Path,
+    file_reports: &Vec<(CoverageReport, String)>,
+  );
 
   /// Collects the coverage summary of each file or directory.
   fn collect_summary<'a>(
@@ -107,16 +105,12 @@ pub trait CoverageReporter {
   }
 }
 
-struct SummaryCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+struct SummaryCoverageReporter {}
 
 #[allow(clippy::print_stdout)]
 impl SummaryCoverageReporter {
   pub fn new() -> SummaryCoverageReporter {
-    SummaryCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    SummaryCoverageReporter {}
   }
 
   fn print_coverage_line(
@@ -177,19 +171,12 @@ impl SummaryCoverageReporter {
 
 #[allow(clippy::print_stdout)]
 impl CoverageReporter for SummaryCoverageReporter {
-  fn report(
+  fn done(
     &mut self,
-    coverage_report: &CoverageReport,
-    file_text: &str,
-  ) -> Result<(), AnyError> {
-    self
-      .file_reports
-      .push((coverage_report.clone(), file_text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, _coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+    _coverage_root: &Path,
+    file_reports: &Vec<(CoverageReport, String)>,
+  ) {
+    let summary = self.collect_summary(file_reports);
     let root_stats = summary.get("").unwrap();
 
     let mut entries = summary
@@ -221,13 +208,23 @@ impl CoverageReporter for SummaryCoverageReporter {
 
 struct LcovCoverageReporter {}
 
+impl CoverageReporter for LcovCoverageReporter {
+  fn done(
+    &mut self,
+    _coverage_root: &Path,
+    file_reports: &Vec<(CoverageReport, String)>,
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
+  }
+}
+
 impl LcovCoverageReporter {
   pub fn new() -> LcovCoverageReporter {
     LcovCoverageReporter {}
   }
-}
 
-impl CoverageReporter for LcovCoverageReporter {
   fn report(
     &mut self,
     coverage_report: &CoverageReport,
@@ -321,14 +318,24 @@ impl CoverageReporter for LcovCoverageReporter {
 
 struct DetailedCoverageReporter {}
 
-impl DetailedCoverageReporter {
-  pub fn new() -> DetailedCoverageReporter {
-    DetailedCoverageReporter {}
+impl CoverageReporter for DetailedCoverageReporter {
+  fn done(
+    &mut self,
+    _coverage_root: &Path,
+    file_reports: &Vec<(CoverageReport, String)>,
+  ) {
+    file_reports.iter().for_each(|(report, file_text)| {
+      self.report(report, file_text).unwrap();
+    });
   }
 }
 
 #[allow(clippy::print_stdout)]
-impl CoverageReporter for DetailedCoverageReporter {
+impl DetailedCoverageReporter {
+  pub fn new() -> DetailedCoverageReporter {
+    DetailedCoverageReporter {}
+  }
+
   fn report(
     &mut self,
     coverage_report: &CoverageReport,
@@ -391,22 +398,15 @@ impl CoverageReporter for DetailedCoverageReporter {
   }
 }
 
-struct HtmlCoverageReporter {
-  file_reports: Vec<(CoverageReport, String)>,
-}
+struct HtmlCoverageReporter {}
 
 impl CoverageReporter for HtmlCoverageReporter {
-  fn report(
+  fn done(
     &mut self,
-    report: &CoverageReport,
-    text: &str,
-  ) -> Result<(), AnyError> {
-    self.file_reports.push((report.clone(), text.to_string()));
-    Ok(())
-  }
-
-  fn done(&mut self, coverage_root: &Path) {
-    let summary = self.collect_summary(&self.file_reports);
+    coverage_root: &Path,
+    file_reports: &Vec<(CoverageReport, String)>,
+  ) {
+    let summary = self.collect_summary(file_reports);
     let now = chrono::Utc::now().to_rfc2822();
 
     for (node, stats) in &summary {
@@ -438,9 +438,7 @@ impl CoverageReporter for HtmlCoverageReporter {
 
 impl HtmlCoverageReporter {
   pub fn new() -> HtmlCoverageReporter {
-    HtmlCoverageReporter {
-      file_reports: Vec::new(),
-    }
+    HtmlCoverageReporter {}
   }
 
   /// Gets the report path for a single file
