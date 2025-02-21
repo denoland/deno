@@ -137,7 +137,6 @@ pub struct LanguageServer {
   /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
-  shutdown_flag: AsyncFlag,
 }
 
 /// Snapshot of the state used by TSC.
@@ -227,7 +226,7 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
+  pub fn new(client: Client) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
@@ -237,7 +236,6 @@ impl LanguageServer {
       ))),
       init_flag: Default::default(),
       performance,
-      shutdown_flag,
     }
   }
 
@@ -3566,7 +3564,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
-    self.shutdown_flag.raise();
     Ok(())
   }
 
