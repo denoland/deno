@@ -20,7 +20,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -78,7 +78,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -136,7 +136,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -194,7 +194,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -252,7 +252,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -310,7 +310,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:8080/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -493,21 +493,21 @@
             "count": 3,
             "sum": [WILDCARD],
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0.005,
@@ -573,16 +573,16 @@
             "count": 3,
             "sum": 0,
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0,
