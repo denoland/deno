@@ -969,7 +969,7 @@ pub struct SingleReferrerGraphResolver<'a> {
   pub jsx_import_source_config: Option<&'a JsxImportSourceConfig>,
 }
 
-impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
+impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
   fn default_jsx_import_source(
     &self,
     _referrer: &ModuleSpecifier,

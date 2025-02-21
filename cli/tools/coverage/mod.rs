@@ -582,8 +582,7 @@ pub fn cover_files(
     )?;
 
     let maybe_file_result = file_fetcher
-      .get_cached_source_or_local(&module_specifier)
-      .map_err(AnyError::from);
+      .get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
