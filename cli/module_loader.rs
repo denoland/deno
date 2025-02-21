@@ -124,6 +124,14 @@ pub struct ModuleLoadPreparer {
   type_checker: Arc<TypeChecker>,
 }
 
+pub struct PrepareModuleLoadOptions<'a> {
+  pub is_dynamic: bool,
+  pub lib: TsTypeLib,
+  pub permissions: PermissionsContainer,
+  pub ext_overwrite: Option<&'a String>,
+  pub allow_unknown_media_types: bool,
+}
+
 impl ModuleLoadPreparer {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
@@ -146,17 +154,20 @@ impl ModuleLoadPreparer {
   /// module before attempting to `load()` it from a `JsRuntime`. It will
   /// populate the graph data in memory with the necessary source code, write
   /// emits where necessary or report any module graph / type checking errors.
-  #[allow(clippy::too_many_arguments)]
   pub async fn prepare_module_load(
     &self,
     graph: &mut ModuleGraph,
     roots: &[ModuleSpecifier],
-    is_dynamic: bool,
-    lib: TsTypeLib,
-    permissions: PermissionsContainer,
-    ext_overwrite: Option<&String>,
+    options: PrepareModuleLoadOptions<'_>,
   ) -> Result<(), PrepareModuleLoadError> {
     log::debug!("Preparing module load.");
+    let PrepareModuleLoadOptions {
+      is_dynamic,
+      lib,
+      permissions,
+      ext_overwrite,
+      allow_unknown_media_types,
+    } = options;
     let _pb_clear_guard = self.progress_bar.clear_guard();
 
     let mut cache = self.module_graph_builder.create_fetch_cacher(permissions);
@@ -197,7 +208,7 @@ impl ModuleLoadPreparer {
       )
       .await?;
 
-    self.graph_roots_valid(graph, roots)?;
+    self.graph_roots_valid(graph, roots, allow_unknown_media_types)?;
 
     // write the lockfile if there is one
     if let Some(lockfile) = &self.lockfile {
@@ -235,8 +246,13 @@ impl ModuleLoadPreparer {
     &self,
     graph: &ModuleGraph,
     roots: &[ModuleSpecifier],
+    allow_unknown_media_types: bool,
   ) -> Result<(), JsErrorBox> {
-    self.module_graph_builder.graph_roots_valid(graph, roots)
+    self.module_graph_builder.graph_roots_valid(
+      graph,
+      roots,
+      allow_unknown_media_types,
+    )
   }
 }
 
@@ -1067,7 +1083,11 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
           log::debug!("Skipping prepare module load.");
           // roots are already validated so we can skip those
           if !graph.roots.contains(&specifier) {
-            module_load_preparer.graph_roots_valid(&graph, &[specifier])?;
+            module_load_preparer.graph_roots_valid(
+              &graph,
+              &[specifier],
+              false,
+            )?;
           }
           return Ok(());
         }
@@ -1086,10 +1106,13 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
         .prepare_module_load(
           graph,
           &[specifier],
-          is_dynamic,
-          lib,
-          permissions,
-          None,
+          PrepareModuleLoadOptions {
+            is_dynamic,
+            lib,
+            permissions,
+            ext_overwrite: None,
+            allow_unknown_media_types: false,
+          },
         )
         .await
         .map_err(JsErrorBox::from_err)?;

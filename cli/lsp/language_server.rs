@@ -280,6 +280,7 @@ impl LanguageServer {
           kind: GraphKind::All,
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
+          allow_unknown_media_types: true,
         },
       )?;
 

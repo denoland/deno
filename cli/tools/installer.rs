@@ -279,8 +279,15 @@ pub(crate) async fn install_from_entrypoints(
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
+  let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
   main_graph_container
-    .load_and_type_check_files(entrypoints)
+    .check_specifiers(
+      &specifiers,
+      crate::graph_container::CheckSpecifiersOptions {
+        ext_overwrite: None,
+        allow_unknown_media_types: true,
+      },
+    )
     .await?;
   emitter
     .cache_module_emits(&main_graph_container.graph())
