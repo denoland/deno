@@ -608,10 +608,13 @@ impl DepManager {
       .prepare_module_load(
         graph,
         &roots,
-        false,
-        deno_config::deno_json::TsTypeLib::DenoWindow,
-        self.permissions_container.clone(),
-        None,
+        crate::module_loader::PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: deno_config::deno_json::TsTypeLib::DenoWindow,
+          permissions: self.permissions_container.clone(),
+          ext_overwrite: None,
+          allow_unknown_media_types: true,
+        },
       )
       .await?;
 

@@ -13,6 +13,7 @@ use deno_runtime::deno_permissions::PermissionsContainer;
 
 use crate::args::CliOptions;
 use crate::module_loader::ModuleLoadPreparer;
+use crate::module_loader::PrepareModuleLoadOptions;
 use crate::util::fs::collect_specifiers;
 use crate::util::path::is_script_ext;
 
@@ -48,6 +49,12 @@ pub struct MainModuleGraphContainer {
   root_permissions: PermissionsContainer,
 }
 
+#[derive(Default, Debug)]
+pub struct CheckSpecifiersOptions<'a> {
+  pub ext_overwrite: Option<&'a String>,
+  pub allow_unknown_media_types: bool,
+}
+
 impl MainModuleGraphContainer {
   pub fn new(
     cli_options: Arc<CliOptions>,
@@ -68,7 +75,7 @@ impl MainModuleGraphContainer {
   pub async fn check_specifiers(
     &self,
     specifiers: &[ModuleSpecifier],
-    ext_overwrite: Option<&String>,
+    options: CheckSpecifiersOptions<'_>,
   ) -> Result<(), AnyError> {
     let mut graph_permit = self.acquire_update_permit().await;
     let graph = graph_permit.graph_mut();
@@ -77,10 +84,13 @@ impl MainModuleGraphContainer {
       .prepare_module_load(
         graph,
         specifiers,
-        false,
-        self.cli_options.ts_type_lib_window(),
-        self.root_permissions.clone(),
-        ext_overwrite,
+        PrepareModuleLoadOptions {
+          is_dynamic: false,
+          lib: self.cli_options.ts_type_lib_window(),
+          permissions: self.root_permissions.clone(),
+          ext_overwrite: options.ext_overwrite,
+          allow_unknown_media_types: options.allow_unknown_media_types,
+        },
       )
       .await?;
     graph_permit.commit();
@@ -99,7 +109,7 @@ impl MainModuleGraphContainer {
       log::warn!("{} No matching files found.", colors::yellow("Warning"));
     }
 
-    self.check_specifiers(&specifiers, None).await
+    self.check_specifiers(&specifiers, Default::default()).await
   }
 
   pub fn collect_specifiers(
