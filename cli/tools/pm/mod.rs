@@ -623,7 +623,7 @@ impl PackageInfoProvider for Arc<NpmFetchResolver> {
     (**self).req_to_nv(req).await
   }
 
-  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
+  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
     let info = self.package_info(&req.name).await?;
     best_version(info.versions.keys()).cloned()
   }

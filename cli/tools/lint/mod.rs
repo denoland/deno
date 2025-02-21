@@ -605,8 +605,7 @@ fn lint_stdin(
     maybe_plugin_runner: None,
   });
 
-  let r = linter
-    .lint_file(&file_path, deno_ast::strip_bom(source_code), None);
+  let r = linter.lint_file(&file_path, deno_ast::strip_bom(source_code), None);
 
   let success =
     handle_lint_result(&file_path.to_string_lossy(), r, reporter_lock.clone());
