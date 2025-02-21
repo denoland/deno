@@ -20,6 +20,7 @@ mod standalone;
 mod task_runner;
 mod tools;
 mod tsc;
+mod type_checker;
 mod util;
 mod worker;
 
