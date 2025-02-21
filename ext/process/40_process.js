@@ -64,7 +64,7 @@ async function runStatus(rid) {
   if (res.gotSignal) {
     const signal = res.exitSignal;
     return { success: false, code: 128 + signal, signal };
-  } else if (res.exitCode != 0) {
+  } else if (res.exitCode !== 0) {
     return { success: false, code: res.exitCode };
   } else {
     return { success: true, code: 0 };
@@ -140,7 +140,7 @@ function run({
   stderr = "inherit",
   stdin = "inherit",
 }) {
-  if (cmd[0] != null) {
+  if (cmd[0] !== undefined && cmd[0] !== null) {
     cmd = [
       pathFromURL(cmd[0]),
       ...new SafeArrayIterator(ArrayPrototypeSlice(cmd, 1)),
@@ -243,7 +243,7 @@ class ChildProcess {
 
   #stdin = null;
   get stdin() {
-    if (this.#stdin == null) {
+    if (this.#stdin === null) {
       throw new TypeError("Cannot get 'stdin': 'stdin' is not piped");
     }
     return this.#stdin;
@@ -251,7 +251,7 @@ class ChildProcess {
 
   #stdout = null;
   get stdout() {
-    if (this.#stdout == null) {
+    if (this.#stdout === null) {
       throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
     }
     return this.#stdout;
@@ -259,7 +259,7 @@ class ChildProcess {
 
   #stderr = null;
   get stderr() {
-    if (this.#stderr == null) {
+    if (this.#stderr === null) {
       throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
     }
     return this.#stderr;
@@ -336,13 +336,13 @@ class ChildProcess {
       code: status.code,
       signal: status.signal,
       get stdout() {
-        if (stdout == null) {
+        if (stdout === null) {
           throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
         }
         return stdout;
       },
       get stderr() {
-        if (stderr == null) {
+        if (stderr === null) {
           throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
         }
         return stderr;
@@ -431,13 +431,13 @@ function spawnSync(command, {
     code: result.status.code,
     signal: result.status.signal,
     get stdout() {
-      if (result.stdout == null) {
+      if (result.stdout === null) {
         throw new TypeError("Cannot get 'stdout': 'stdout' is not piped");
       }
       return result.stdout;
     },
     get stderr() {
-      if (result.stderr == null) {
+      if (result.stderr === null) {
         throw new TypeError("Cannot get 'stderr': 'stderr' is not piped");
       }
       return result.stderr;

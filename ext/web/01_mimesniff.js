@@ -59,7 +59,7 @@ function parseMimeType(input) {
   const res1 = collectSequenceOfCodepoints(
     input,
     position,
-    (c) => c != "\u002F",
+    (c) => c !== "\u002F",
   );
   const type = res1.result;
   position = res1.position;
@@ -79,7 +79,7 @@ function parseMimeType(input) {
   const res2 = collectSequenceOfCodepoints(
     input,
     position,
-    (c) => c != "\u003B",
+    (c) => c !== "\u003B",
   );
   let subtype = res2.result;
   position = res2.position;
@@ -129,7 +129,7 @@ function parseMimeType(input) {
 
     // 11.5.
     if (position < endOfInput) {
-      if (input[position] == "\u003B") continue;
+      if (input[position] === "\u003B") continue;
       position++;
     }
 
@@ -232,7 +232,7 @@ function extractMimeType(headerValues) {
     const temporaryMimeType = parseMimeType(value);
     if (
       temporaryMimeType === null ||
-      essence(temporaryMimeType) == "*/*"
+      essence(temporaryMimeType) === "*/*"
     ) {
       continue;
     }

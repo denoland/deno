@@ -198,7 +198,7 @@ const documentRegistry = {
       SOURCE_REF_COUNTS.delete(path);
       // We call `cleanupSemanticCache` for other purposes, don't bust the
       // source cache in this case.
-      if (LAST_REQUEST_METHOD.get() != "cleanupSemanticCache") {
+      if (LAST_REQUEST_METHOD.get() !== "cleanupSemanticCache") {
         const mapKey = path + key;
         documentRegistrySourceFileCache.delete(mapKey);
         SCRIPT_SNAPSHOT_CACHE.delete(path);
@@ -497,7 +497,7 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       if (typeof ls[method] === "function") {
         // The `getCompletionEntryDetails()` method returns null if the
         // `source` is `null` for whatever reason. It must be `undefined`.
-        if (method == "getCompletionEntryDetails") {
+        if (method === "getCompletionEntryDetails") {
           args[4] ??= undefined;
         }
         try {

@@ -71,9 +71,9 @@ Deno.test(
     // We should have gotten two fs events.
     const events = await eventsPromise;
     assert(events.length >= 2);
-    assert(events[0].kind == "create");
+    assert(events[0].kind === "create");
     assert(events[0].paths[0].includes(testDir));
-    assert(events[1].kind == "create" || events[1].kind == "modify");
+    assert(events[1].kind === "create" || events[1].kind === "modify");
     assert(events[1].paths[0].includes(testDir));
   },
 );

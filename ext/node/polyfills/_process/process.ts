@@ -25,11 +25,11 @@ import * as fs from "ext:deno_fs/30_fs.js";
 
 /** Returns the operating system CPU architecture for which the Deno binary was compiled */
 export function arch(): string {
-  if (build.arch == "x86_64") {
+  if (build.arch === "x86_64") {
     return "x64";
-  } else if (build.arch == "aarch64") {
+  } else if (build.arch === "aarch64") {
     return "arm64";
-  } else if (build.arch == "riscv64gc") {
+  } else if (build.arch === "riscv64gc") {
     return "riscv64";
   } else {
     throw new Error("unreachable");

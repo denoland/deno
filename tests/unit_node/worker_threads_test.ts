@@ -378,10 +378,10 @@ Deno.test({
       },
     );
     worker.postMessage("Hello");
-    if ((await once(worker, "message"))[0] != "Hello") throw new Error();
+    if ((await once(worker, "message"))[0] !== "Hello") throw new Error();
     await new Promise((resolve) => setTimeout(resolve, 100));
     worker.terminate();
-    if (uint[0] != 1) throw new Error();
+    if (uint[0] !== 1) throw new Error();
   },
   sanitizeResources: false,
 });

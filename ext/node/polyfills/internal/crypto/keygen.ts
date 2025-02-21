@@ -827,7 +827,7 @@ function createJob(mode, type, options) {
       validateUint32(modulusLength, "options.modulusLength");
 
       let { publicExponent } = options;
-      if (publicExponent == null) {
+      if (publicExponent === undefined || publicExponent === null) {
         publicExponent = 0x10001;
       } else {
         validateUint32(publicExponent, "options.publicExponent");
@@ -913,7 +913,7 @@ function createJob(mode, type, options) {
       validateUint32(modulusLength, "options.modulusLength");
 
       let { divisorLength } = options;
-      if (divisorLength == null) {
+      if (divisorLength === undefined || divisorLength === null) {
         divisorLength = 256;
       } else {
         validateInt32(divisorLength, "options.divisorLength", 0);
@@ -933,7 +933,10 @@ function createJob(mode, type, options) {
       const { namedCurve } = options;
       validateString(namedCurve, "options.namedCurve");
       const { paramEncoding } = options;
-      if (paramEncoding == null || paramEncoding === "named") {
+      if (
+        paramEncoding === undefined || paramEncoding === null ||
+        paramEncoding === "named"
+      ) {
         // pass.
       } else if (paramEncoding === "explicit") {
         // TODO(@littledivy): Explicit param encoding is very rarely used, and not supported by the ring crate.
@@ -968,14 +971,14 @@ function createJob(mode, type, options) {
     case "dh": {
       validateObject(options, "options");
       const { group, primeLength, prime, generator } = options;
-      if (group != null) {
-        if (prime != null) {
+      if (group !== undefined && group !== null) {
+        if (prime !== undefined && prime !== null) {
           throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "prime");
         }
-        if (primeLength != null) {
+        if (primeLength !== undefined && primeLength !== null) {
           throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "primeLength");
         }
-        if (generator != null) {
+        if (generator !== undefined && generator !== null) {
           throw new ERR_INCOMPATIBLE_OPTION_PAIR("group", "generator");
         }
 
@@ -988,13 +991,13 @@ function createJob(mode, type, options) {
         }
       }
 
-      if (prime != null) {
-        if (primeLength != null) {
+      if (prime !== undefined && prime !== null) {
+        if (primeLength !== undefined && primeLength !== null) {
           throw new ERR_INCOMPATIBLE_OPTION_PAIR("prime", "primeLength");
         }
 
         validateBuffer(prime, "options.prime");
-      } else if (primeLength != null) {
+      } else if (primeLength !== undefined && primeLength !== null) {
         validateInt32(primeLength, "options.primeLength", 0);
       } else {
         throw new ERR_MISSING_OPTION(
@@ -1002,11 +1005,11 @@ function createJob(mode, type, options) {
         );
       }
 
-      if (generator != null) {
+      if (generator !== undefined && generator !== null) {
         validateInt32(generator, "options.generator", 0);
       }
 
-      const g = generator == null ? 2 : generator;
+      const g = generator === undefined || generator === null ? 2 : generator;
 
       if (mode === kSync) {
         return op_node_generate_dh_key(prime, primeLength ?? 0, g);
