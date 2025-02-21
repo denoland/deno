@@ -13,6 +13,7 @@ use deno_package_json::PackageJsonDepValueParseError;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::errors::NodeResolveError;
 use node_resolver::errors::PackageSubpathResolveError;
+use node_resolver::errors::TypesNotFoundError;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::IsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolution;
@@ -63,7 +64,7 @@ pub struct DenoResolution {
 #[derive(Debug, Boxed, JsError)]
 pub struct DenoResolveError(pub Box<DenoResolveErrorKind>);
 
-#[derive(Debug, Error, JsError)]
+#[derive(Error, JsError)]
 pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
@@ -98,6 +99,60 @@ pub enum DenoResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
+}
+
+impl DenoResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      DenoResolveErrorKind::Node(node_resolve_error) => {
+        node_resolve_error.as_types_not_found()
+      }
+      DenoResolveErrorKind::PackageSubpathResolve(
+        package_subpath_resolve_error,
+      ) => package_subpath_resolve_error.as_types_not_found(),
+      _ => None,
+    }
+  }
+}
+
+impl std::fmt::Debug for DenoResolveErrorKind {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::InvalidVendorFolderImport => write!(f, "InvalidVendorFolderImport"),
+      Self::MappedResolution(arg0) => {
+        f.debug_tuple("MappedResolution").field(arg0).finish()
+      }
+      Self::MissingPackageNodeModulesFolder(arg0) => f
+        .debug_tuple("MissingPackageNodeModulesFolder")
+        .field(arg0)
+        .finish(),
+      Self::Node(arg0) => f.debug_tuple("Node").field(arg0).finish(),
+      Self::NodeModulesOutOfDate(arg0) => {
+        f.debug_tuple("NodeModulesOutOfDate").field(arg0).finish()
+      }
+      Self::PackageJsonDepValueParse(arg0) => f
+        .debug_tuple("PackageJsonDepValueParse")
+        .field(arg0)
+        .finish(),
+      Self::PackageJsonDepValueUrlParse(arg0) => f
+        .debug_tuple("PackageJsonDepValueUrlParse")
+        .field(arg0)
+        .finish(),
+      Self::PackageSubpathResolve(arg0) => f
+        .debug_tuple("DenoResolveErrorKind::PackageSubpathResolve")
+        .field(arg0)
+        .finish(),
+      Self::PathToUrl(arg0) => f.debug_tuple("PathToUrl").field(arg0).finish(),
+      Self::ResolvePkgFolderFromDenoReq(arg0) => f
+        .debug_tuple("ResolvePkgFolderFromDenoReq")
+        .field(arg0)
+        .finish(),
+      Self::WorkspaceResolvePkgJsonFolder(arg0) => f
+        .debug_tuple("WorkspaceResolvePkgJsonFolder")
+        .field(arg0)
+        .finish(),
+    }
+  }
 }
 
 #[derive(Debug)]

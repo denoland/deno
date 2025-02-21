@@ -96,6 +96,7 @@ use super::tsc::TsServer;
 use super::urls;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
+use crate::args::DenoSubcommand;
 use crate::args::Flags;
 use crate::args::InternalFlags;
 use crate::args::UnstableFmtOptions;
@@ -226,6 +227,15 @@ pub struct Inner {
   _tracing: Option<super::trace::TracingGuard>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AddToConfig {
+  #[default]
+  No,
+  Dev,
+  Normal,
+}
+
 impl LanguageServer {
   pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
     let performance = Arc::new(Performance::default());
@@ -249,7 +259,9 @@ impl LanguageServer {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    add_to_config: AddToConfig,
   ) -> LspResult<Option<Value>> {
+    // crate::tools::registry::add(flags, crate::args::AddFlags { packages: (), dev: () }, cmd_name)
     async fn create_graph_for_caching(
       factory: CliFactory,
       roots: Vec<ModuleSpecifier>,
@@ -310,21 +322,44 @@ impl LanguageServer {
       specifiers,
       referrer,
       force_global_cache,
+      add_to_config,
     );
 
     match prepare_cache_result {
       Ok(result) => {
-        // cache outside the lock
-        let cli_factory = result.cli_factory;
-        let roots = result.roots;
-        let open_docs = result.open_docs;
-        let handle = spawn(async move {
-          create_graph_for_caching(cli_factory, roots, open_docs).await
-        });
+        match add_to_config {
+          AddToConfig::No => {
+            // cache outside the lock
+            let cli_factory = result.cli_factory;
+            let roots = result.roots;
+            let open_docs = result.open_docs;
+            let handle = spawn(async move {
+              create_graph_for_caching(cli_factory, roots, open_docs).await
+            });
 
-        if let Err(err) = handle.await.unwrap() {
-          lsp_warn!("Error caching: {:#}", err);
-          self.client.show_message(MessageType::WARNING, err);
+            if let Err(err) = handle.await.unwrap() {
+              lsp_warn!("Error caching: {:#}", err);
+              self.client.show_message(MessageType::WARNING, err);
+            }
+          }
+          AddToConfig::Dev | AddToConfig::Normal => {
+            let handle = spawn(crate::tools::registry::add(
+              result.flags,
+              crate::args::AddFlags {
+                packages: result
+                  .roots
+                  .into_iter()
+                  .map(|s| s.to_string())
+                  .collect(),
+                dev: matches!(add_to_config, AddToConfig::Dev),
+              },
+              crate::tools::registry::AddCommandName::Add,
+            ));
+            if let Err(err) = handle.await.unwrap() {
+              lsp_warn!("Error adding package: {:#}", err);
+              self.client.show_message(MessageType::WARNING, err);
+            }
+          }
         }
 
         // now get the lock back to update with the new information
@@ -1045,7 +1080,10 @@ impl Inner {
               };
               specifier
             };
-            if let Err(err) = ls.cache(vec![specifier], referrer, false).await {
+            if let Err(err) = ls
+              .cache(vec![specifier], referrer, false, Default::default())
+              .await
+            {
               lsp_warn!("{:#}", err);
             }
           });
@@ -1193,7 +1231,10 @@ impl Inner {
     }
     self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
       spawn(async move {
-        if let Err(err) = ls.cache(vec![], specifier.clone(), false).await {
+        if let Err(err) = ls
+          .cache(vec![], specifier.clone(), false, Default::default())
+          .await
+        {
           lsp_warn!("Failed to cache \"{}\" on save: {:#}", &specifier, err);
         }
       });
@@ -1802,6 +1843,8 @@ impl Inner {
                 == Some(NumberOrString::String("not-installed-jsr".to_string()))
               || diagnostic.code
                 == Some(NumberOrString::String("not-installed-npm".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("types-not-found".to_string()))
             {
               includes_no_cache = true;
             }
@@ -3495,6 +3538,8 @@ impl tower_lsp::LanguageServer for LanguageServer {
       struct Options {
         #[serde(default)]
         force_global_cache: bool,
+        #[serde(default)]
+        add_to_config: AddToConfig,
       }
       #[derive(Deserialize)]
       struct Arguments(Vec<Url>, Url, #[serde(default)] Options);
@@ -3502,7 +3547,12 @@ impl tower_lsp::LanguageServer for LanguageServer {
         serde_json::from_value(json!(params.arguments))
           .map_err(|err| LspError::invalid_params(err.to_string()))?;
       self
-        .cache(specifiers, referrer, options.force_global_cache)
+        .cache(
+          specifiers,
+          referrer,
+          options.force_global_cache,
+          options.add_to_config,
+        )
         .await
     } else if params.command == "deno.reloadImportRegistries" {
       self.inner.write().await.reload_import_registries().await
@@ -4012,6 +4062,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
 
 struct PrepareCacheResult {
   cli_factory: CliFactory,
+  flags: Arc<Flags>,
   roots: Vec<ModuleSpecifier>,
   open_docs: Vec<Arc<Document>>,
 }
@@ -4117,6 +4168,7 @@ impl Inner {
     specifiers: Vec<ModuleSpecifier>,
     referrer: ModuleSpecifier,
     force_global_cache: bool,
+    add_to_config: AddToConfig,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
     let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
@@ -4147,7 +4199,7 @@ impl Inner {
     let initial_cwd = config_data
       .and_then(|d| d.scope.to_file_path().ok())
       .unwrap_or_else(|| self.initial_cwd.clone());
-    let mut cli_factory = CliFactory::from_flags(Arc::new(Flags {
+    let flags = Arc::new(Flags {
       internal: InternalFlags {
         cache_path: Some(self.cache.deno_dir().root.clone()),
         ..Default::default()
@@ -4175,8 +4227,18 @@ impl Inner {
         None
       },
       no_lock: force_global_cache,
+      subcommand: match add_to_config {
+        AddToConfig::No => Default::default(),
+        AddToConfig::Dev | AddToConfig::Normal => {
+          DenoSubcommand::Add(crate::args::AddFlags {
+            packages: roots.iter().map(|s| s.to_string()).collect(),
+            dev: matches!(add_to_config, AddToConfig::Dev),
+          })
+        }
+      },
       ..Default::default()
-    }));
+    });
+    let mut cli_factory = CliFactory::from_flags(flags.clone());
     cli_factory.set_initial_cwd(initial_cwd);
     if let Some(d) = &config_data {
       cli_factory.set_workspace_dir(d.member_dir.clone());
@@ -4185,6 +4247,7 @@ impl Inner {
     let open_docs = self.documents.documents(DocumentsFilter::OpenDiagnosable);
     Ok(PrepareCacheResult {
       cli_factory,
+      flags,
       open_docs,
       roots,
     })
