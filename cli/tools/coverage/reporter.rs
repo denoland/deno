@@ -44,13 +44,13 @@ pub trait CoverageReporter {
   fn done(
     &mut self,
     coverage_root: &Path,
-    file_reports: &Vec<(CoverageReport, String)>,
+    file_reports: &[(CoverageReport, String)],
   );
 
   /// Collects the coverage summary of each file or directory.
   fn collect_summary<'a>(
     &'a self,
-    file_reports: &'a Vec<(CoverageReport, String)>,
+    file_reports: &'a [(CoverageReport, String)],
   ) -> CoverageSummary {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
     let root = match util::find_root(urls)
@@ -174,7 +174,7 @@ impl CoverageReporter for SummaryCoverageReporter {
   fn done(
     &mut self,
     _coverage_root: &Path,
-    file_reports: &Vec<(CoverageReport, String)>,
+    file_reports: &[(CoverageReport, String)],
   ) {
     let summary = self.collect_summary(file_reports);
     let root_stats = summary.get("").unwrap();
@@ -212,7 +212,7 @@ impl CoverageReporter for LcovCoverageReporter {
   fn done(
     &mut self,
     _coverage_root: &Path,
-    file_reports: &Vec<(CoverageReport, String)>,
+    file_reports: &[(CoverageReport, String)],
   ) {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
@@ -322,7 +322,7 @@ impl CoverageReporter for DetailedCoverageReporter {
   fn done(
     &mut self,
     _coverage_root: &Path,
-    file_reports: &Vec<(CoverageReport, String)>,
+    file_reports: &[(CoverageReport, String)],
   ) {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
@@ -404,7 +404,7 @@ impl CoverageReporter for HtmlCoverageReporter {
   fn done(
     &mut self,
     coverage_root: &Path,
-    file_reports: &Vec<(CoverageReport, String)>,
+    file_reports: &[(CoverageReport, String)],
   ) {
     let summary = self.collect_summary(file_reports);
     let now = chrono::Utc::now().to_rfc2822();
