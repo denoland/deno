@@ -317,11 +317,22 @@ mod test {
     }"#,
         None,
       ),
-      ("/package-b/deno.json", "{}", None),
+      ("/package-b/deno.json", r#"{
+        "compilerOptions": { "jsx": "react-jsx" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#, None),
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
         Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+      ),
+      (
+        "/package-b/main.tsx",
+        "export const componentB = <div></div>;",
+        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;"),
       ),
       (
         "/package-a/other.tsx",
