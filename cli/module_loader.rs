@@ -81,9 +81,9 @@ use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
-use crate::tools::check;
-use crate::tools::check::CheckError;
-use crate::tools::check::TypeChecker;
+use crate::type_checker::CheckError;
+use crate::type_checker::CheckOptions;
+use crate::type_checker::TypeChecker;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::text_encoding::code_without_source_map;
 use crate::util::text_encoding::source_map_from_code;
@@ -227,7 +227,7 @@ impl ModuleLoadPreparer {
           // the actual graph on the first run and then getting the Arc<ModuleGraph>
           // back from the return value.
           graph.clone(),
-          check::CheckOptions {
+          CheckOptions {
             build_fast_check_graph: true,
             lib,
             reload: self.options.reload_flag(),

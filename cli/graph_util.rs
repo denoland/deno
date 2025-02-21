@@ -64,9 +64,9 @@ use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmGraphResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
-use crate::tools::check;
-use crate::tools::check::CheckError;
-use crate::tools::check::TypeChecker;
+use crate::type_checker::CheckError;
+use crate::type_checker::CheckOptions;
+use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::fs::canonicalize_path;
 
@@ -551,7 +551,7 @@ impl ModuleGraphCreator {
       .type_checker
       .check(
         graph,
-        check::CheckOptions {
+        CheckOptions {
           build_fast_check_graph: true,
           lib: self.options.ts_type_lib_window(),
           reload: self.options.reload_flag(),
