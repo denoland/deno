@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_crypto"
-version = "0.205.0"
+version = "0.206.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -35,12 +35,10 @@ p521 = "0.13.3"
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
-sec1.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 sha1.workspace = true
 sha2.workspace = true
-signature.workspace = true
 spki.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

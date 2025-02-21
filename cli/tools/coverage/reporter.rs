@@ -197,7 +197,12 @@ impl CoverageReporter for SummaryCoverageReporter {
       .filter(|(_, stats)| stats.file_text.is_some())
       .collect::<Vec<_>>();
     entries.sort_by_key(|(node, _)| node.to_owned());
-    let node_max = entries.iter().map(|(node, _)| node.len()).max().unwrap();
+    let node_max = entries
+      .iter()
+      .map(|(node, _)| node.len())
+      .max()
+      .unwrap()
+      .max("All files".len());
 
     let header =
       format!("{node:node_max$}  | Branch % | Line % |", node = "File");
