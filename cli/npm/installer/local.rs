@@ -279,15 +279,23 @@ async fn sync_resolution_with_fs(
       TagsOutdated,
     }
     let initialized_file = folder_path.join(".initialized");
-    let package_state = std::fs::read_to_string(&initialized_file)
-      .map(|s| {
-        if s != tags {
-          PackageFolderState::TagsOutdated
-        } else {
-          PackageFolderState::UpToDate
-        }
-      })
-      .unwrap_or(PackageFolderState::Uninitialized);
+    let package_state = if tags.is_empty() {
+      if initialized_file.exists() {
+        PackageFolderState::UpToDate
+      } else {
+        PackageFolderState::Uninitialized
+      }
+    } else {
+      std::fs::read_to_string(&initialized_file)
+        .map(|s| {
+          if s != tags {
+            PackageFolderState::TagsOutdated
+          } else {
+            PackageFolderState::UpToDate
+          }
+        })
+        .unwrap_or(PackageFolderState::Uninitialized)
+    };
     if !cache
       .cache_setting()
       .should_use_for_npm_package(&package.id.nv.name)
