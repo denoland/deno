@@ -53,6 +53,8 @@ use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::InNpmPackageChecker;
+use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use regex::Captures;
@@ -87,6 +89,7 @@ use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
+use super::resolver::LspScopeResolver;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
@@ -4333,11 +4336,6 @@ impl TscSpecifierMap {
       return specifier.to_string();
     }
     let mut specifier = original.to_string();
-    if !specifier.contains("/node_modules/@types/node/") {
-      // The ts server doesn't give completions from files in
-      // `node_modules/.deno/`. We work around it like this.
-      specifier = specifier.replace("/node_modules/", "/$node_modules/");
-    }
     let media_type = MediaType::from_specifier(original);
     // If the URL-inferred media type doesn't correspond to tsc's path-inferred
     // media type, force it to be the same by appending an extension.
@@ -4362,9 +4360,7 @@ impl TscSpecifierMap {
     if let Some(specifier) = self.normalized_specifiers.get(original) {
       return Ok(specifier.clone());
     }
-    let specifier_str = original
-      .replace(".d.ts.d.ts", ".d.ts")
-      .replace("$node_modules", "node_modules");
+    let specifier_str = original.replace(".d.ts.d.ts", ".d.ts");
     let specifier = match ModuleSpecifier::parse(&specifier_str) {
       Ok(s) => s,
       Err(err) => return Err(err),
@@ -4457,9 +4453,92 @@ impl State {
   }
 }
 
+#[op2]
+#[serde]
+fn op_export_modules_for_module(
+  state: &mut OpState,
+  #[string] module: String,
+) -> IndexSet<String> {
+  let Ok(referrer) = ModuleSpecifier::parse(&module) else {
+    return Default::default();
+  };
+  let state = state.borrow::<State>();
+  let scope_resolver = state
+    .state_snapshot
+    .resolver
+    .get_scope_resolver(Some(&referrer));
+  let config_data = scope_resolver.as_config_data();
+  let mut urls = IndexSet::new();
+
+  get_jsr_and_npm_importable_paths(scope_resolver, &referrer, state, &mut urls);
+
+  // Include all remote modules and any modules in the current
+  // package (or else all user code)
+  let documents = state
+    .state_snapshot
+    .documents
+    .documents(DocumentsFilter::AllDiagnosable);
+  let in_npm_pkg_checker = scope_resolver.as_in_npm_pkg_checker();
+  for document in documents {
+    let should_add = match document.specifier().scheme() {
+      // todo: also filter out specifiers in other packages
+      "file" => !in_npm_pkg_checker.in_npm_package(document.specifier()),
+      "cache" => false,
+      _ => true,
+    };
+    if should_add {
+      urls.insert(state.specifier_map.denormalize(document.specifier()));
+    }
+  }
+
+  urls
+}
+
+fn get_jsr_and_npm_importable_paths(
+  scope_resolver: &LspScopeResolver,
+  referrer: &ModuleSpecifier,
+  state: &State,
+  urls: &mut IndexSet<String>,
+) {
+  // Discover all the npm package export modules
+  if let Some(npm_resolver) = scope_resolver.as_npm_resolver() {
+    if let Some(node_resolver) = scope_resolver.as_node_resolver() {
+      let dep_info = scope_resolver.dep_info();
+      for req in &dep_info.npm_reqs {
+        let maybe_package_folder = npm_resolver
+          .resolve_pkg_folder_from_deno_module_req(&req, referrer)
+          .ok();
+        if let Some(pkg_folder) = maybe_package_folder {
+          let exports = node_resolver.all_exported_modules_for_package(
+            &pkg_folder,
+            // todo: check if the referrer is cjs and provide require
+            ResolutionMode::Import,
+            NodeResolutionKind::Types,
+          );
+          for export in exports {
+            if let Ok(url) = deno_path_util::url_from_file_path(&export.path) {
+              urls.insert(state.specifier_map.denormalize(&url));
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Resolve all the exports of jsr packages
+  if let Some(jsr_cache_resolver) = scope_resolver.as_jsr_cache_resolver() {
+    urls.extend(
+      jsr_cache_resolver
+        .all_jsr_pkg_modules()
+        .into_iter()
+        .map(|i| state.specifier_map.denormalize(&i.url)),
+    );
+  }
+}
+
 #[op2(fast)]
 fn op_is_cancelled(state: &mut OpState) -> bool {
-  let state = state.borrow_mut::<State>();
+  let state = state.borrow::<State>();
   state.token.is_cancelled()
 }
 
@@ -4833,12 +4912,24 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
             lsp_log!("failed to resolve {req_ref} to file URL");
             continue;
           };
-          script_names.insert(resolved.to_string());
+          script_names.insert(state.specifier_map.denormalize(&resolved));
         } else {
-          script_names.insert(specifier.to_string());
+          script_names.insert(state.specifier_map.denormalize(specifier));
         }
       }
     }
+
+    // add the importable paths
+    let scope_resolver = state
+      .state_snapshot
+      .resolver
+      .get_scope_resolver(Some(scope));
+    get_jsr_and_npm_importable_paths(
+      scope_resolver,
+      scope,
+      state,
+      script_names,
+    );
   }
 
   // finally include the documents
@@ -4872,27 +4963,14 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
       if let Some(types_specifier) = &types_specifier {
-        script_names.insert(types_specifier.to_string());
+        script_names.insert(state.specifier_map.denormalize(types_specifier));
       }
       if types_specifier.is_none() || is_open {
-        script_names.insert(specifier.to_string());
+        script_names.insert(state.specifier_map.denormalize(specifier));
       }
     }
   }
 
-  for script_names in result
-    .by_scope
-    .values_mut()
-    .chain(std::iter::once(&mut result.unscoped))
-  {
-    *script_names = std::mem::take(script_names)
-      .into_iter()
-      .map(|s| match ModuleSpecifier::parse(&s) {
-        Ok(s) => state.specifier_map.denormalize(&s),
-        Err(_) => s,
-      })
-      .collect();
-  }
   state.performance.measure(mark);
   result
 }
@@ -5042,6 +5120,7 @@ fn run_tsc_thread(
 
 deno_core::extension!(deno_tsc,
   ops = [
+    op_export_modules_for_module,
     op_is_cancelled,
     op_is_node_file,
     op_load,

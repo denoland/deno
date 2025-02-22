@@ -825,6 +825,7 @@ pub trait ExtNodeSys:
   + sys_traits::BaseFsMetadata
   + sys_traits::BaseFsRead
   + sys_traits::EnvCurrentDir
+  + node_resolver::NodeResolverSys
   + Clone
 {
 }

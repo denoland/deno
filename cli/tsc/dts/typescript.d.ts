@@ -6557,6 +6557,8 @@ declare namespace ts {
         isKnownTypesPackageName?(name: string): boolean;
         installPackage?(options: InstallPackageOptions): Promise<ApplyCodeActionCommandResult>;
         writeFile?(fileName: string, content: string): void;
+        getExportImportablePathsFromModule(filePath: string): string[];
+        getCachedExportInfoMap?(): ExportInfoMap;
         getParsedCommandLine?(fileName: string): ParsedCommandLine | undefined;
         jsDocParsingMode?: JSDocParsingMode | undefined;
     }
@@ -7752,6 +7754,12 @@ declare namespace ts {
         host: LanguageServiceHost;
         span: TextSpan;
         preferences: UserPreferences;
+    }
+    function createCacheableExportInfoMap(host: CacheableExportInfoMapHost): ExportInfoMap;
+    interface CacheableExportInfoMapHost {
+        getCurrentProgram(): Program | undefined;
+        getPackageJsonAutoImportProvider(): Program | undefined;
+        getGlobalTypingsCacheLocation(): string | undefined;
     }
     type ExportMapInfoKey = string & {
         __exportInfoKey: void;

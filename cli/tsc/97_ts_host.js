@@ -91,6 +91,7 @@ export function setLogDebug(debug, source) {
 function printStderr(msg) {
   core.print(msg, true);
 }
+globalThis.printStderr = (text) => printStderr(text + "\n");
 
 /** @param args {any[]} */
 export function debug(...args) {
@@ -430,13 +431,6 @@ const hostImpl = {
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
-  getCachedExportInfoMap() {
-    return exportMapCache;
-  },
-  getGlobalTypingsCacheLocation() {
-    return undefined;
-  },
-  // @ts-ignore Undocumented method.
   toPath(fileName) {
     // @ts-ignore Undocumented function.
     return ts.toPath(
@@ -767,9 +761,6 @@ for (const [key, value] of Object.entries(hostImpl)) {
     host[key] = value;
   }
 }
-
-// @ts-ignore Undocumented function.
-const exportMapCache = ts.createCacheableExportInfoMap(host);
 
 // override the npm install @types package diagnostics to be deno specific
 ts.setLocalizedDiagnosticMessages((() => {
