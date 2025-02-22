@@ -437,7 +437,7 @@ impl<'a> FulcioSigner<'a> {
     let rng = SystemRandom::new();
     let document = EcdsaKeyPair::generate_pkcs8(ALGORITHM, &rng)?;
     let ephemeral_signer =
-      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref(), &rng)?;
+      EcdsaKeyPair::from_pkcs8(ALGORITHM, document.as_ref())?;
 
     Ok(Self {
       ephemeral_signer,
