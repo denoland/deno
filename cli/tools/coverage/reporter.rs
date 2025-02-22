@@ -42,7 +42,7 @@ pub fn create(kind: CoverageType) -> Box<dyn CoverageReporter + Send> {
 
 pub trait CoverageReporter {
   fn done(
-    &mut self,
+    &self,
     coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   );
@@ -105,7 +105,7 @@ pub trait CoverageReporter {
   }
 }
 
-struct SummaryCoverageReporter {}
+pub struct SummaryCoverageReporter {}
 
 #[allow(clippy::print_stdout)]
 impl SummaryCoverageReporter {
@@ -172,7 +172,7 @@ impl SummaryCoverageReporter {
 #[allow(clippy::print_stdout)]
 impl CoverageReporter for SummaryCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -206,11 +206,11 @@ impl CoverageReporter for SummaryCoverageReporter {
   }
 }
 
-struct LcovCoverageReporter {}
+pub struct LcovCoverageReporter {}
 
 impl CoverageReporter for LcovCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -226,7 +226,7 @@ impl LcovCoverageReporter {
   }
 
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     _file_text: &str,
   ) -> Result<(), AnyError> {
@@ -320,7 +320,7 @@ struct DetailedCoverageReporter {}
 
 impl CoverageReporter for DetailedCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     _coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {
@@ -337,7 +337,7 @@ impl DetailedCoverageReporter {
   }
 
   fn report(
-    &mut self,
+    &self,
     coverage_report: &CoverageReport,
     file_text: &str,
   ) -> Result<(), AnyError> {
@@ -398,11 +398,11 @@ impl DetailedCoverageReporter {
   }
 }
 
-struct HtmlCoverageReporter {}
+pub struct HtmlCoverageReporter {}
 
 impl CoverageReporter for HtmlCoverageReporter {
   fn done(
-    &mut self,
+    &self,
     coverage_root: &Path,
     file_reports: &[(CoverageReport, String)],
   ) {

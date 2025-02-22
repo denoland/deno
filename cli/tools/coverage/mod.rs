@@ -27,11 +27,11 @@ use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
+use reporter::CoverageReporter;
 use text_lines::TextLines;
 use uuid::Uuid;
 
 use crate::args::CliOptions;
-use crate::args::CoverageFlags;
 use crate::args::FileFlags;
 use crate::args::Flags;
 use crate::cdp;
@@ -44,7 +44,7 @@ use crate::util::text_encoding::source_map_from_code;
 
 mod merge;
 mod range_tree;
-mod reporter;
+pub mod reporter;
 mod util;
 use merge::ProcessCoverage;
 
@@ -508,9 +508,14 @@ fn filter_coverages(
 
 pub fn cover_files(
   flags: Arc<Flags>,
-  coverage_flags: CoverageFlags,
+  files_include: Vec<String>,
+  files_ignore: Vec<String>,
+  include: Vec<String>,
+  exclude: Vec<String>,
+  output: Option<String>,
+  reporters: &[&dyn CoverageReporter],
 ) -> Result<(), AnyError> {
-  if coverage_flags.files.include.is_empty() {
+  if files_include.is_empty() {
     return Err(anyhow!("No matching coverage profiles found"));
   }
 
@@ -521,26 +526,21 @@ pub fn cover_files(
   let emitter = factory.emitter()?;
   let cjs_tracker = factory.cjs_tracker()?;
 
-  assert!(!coverage_flags.files.include.is_empty());
-
   // Use the first include path as the default output path.
-  let coverage_root = cli_options
-    .initial_cwd()
-    .join(&coverage_flags.files.include[0]);
+  let coverage_root = cli_options.initial_cwd().join(&files_include[0]);
   let script_coverages = collect_coverages(
     cli_options,
-    coverage_flags.files,
+    FileFlags {
+      include: files_include,
+      ignore: files_ignore,
+    },
     cli_options.initial_cwd(),
   )?;
   if script_coverages.is_empty() {
     return Err(anyhow!("No coverage files found"));
   }
-  let script_coverages = filter_coverages(
-    script_coverages,
-    coverage_flags.include,
-    coverage_flags.exclude,
-    in_npm_pkg_checker,
-  );
+  let script_coverages =
+    filter_coverages(script_coverages, include, exclude, in_npm_pkg_checker);
   if script_coverages.is_empty() {
     return Err(anyhow!("No covered files included in the report"));
   }
@@ -557,9 +557,7 @@ pub fn cover_files(
     vec![]
   };
 
-  let mut reporter = reporter::create(coverage_flags.r#type);
-
-  let out_mode = match coverage_flags.output {
+  let out_mode = match output {
     Some(ref path) => match File::create(path) {
       Ok(_) => Some(PathBuf::from(path)),
       Err(e) => {
@@ -644,7 +642,9 @@ pub fn cover_files(
     }
   }
 
-  reporter.done(&coverage_root, &file_reports);
+  for reporter in reporters {
+    reporter.done(&coverage_root, &file_reports);
+  }
 
   Ok(())
 }

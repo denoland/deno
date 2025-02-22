@@ -140,8 +140,17 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       tools::compile::compile(flags, compile_flags).await
     }),
-    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags)
+    DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async move {
+      let reporter = crate::tools::coverage::reporter::create(coverage_flags.r#type.clone());
+      tools::coverage::cover_files(
+        flags,
+        coverage_flags.files.include,
+        coverage_flags.files.ignore,
+        coverage_flags.include,
+        coverage_flags.exclude,
+        coverage_flags.output,
+        &[&*reporter]
+      )
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
