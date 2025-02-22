@@ -1,0 +1,5 @@
+Error formatting: [WILDCARD]wrong_file_ignore.toml
+   Line 5, column 10: expected value
+
+  enabled =
+Checked 1 file
