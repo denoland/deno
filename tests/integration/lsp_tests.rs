@@ -27,6 +27,7 @@ fn lsp_startup_shutdown() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.shutdown();
+  assert!(client.wait_exit().unwrap().success());
 }
 
 #[test]

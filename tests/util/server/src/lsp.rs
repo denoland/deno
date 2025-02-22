@@ -731,7 +731,7 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Ok(Some(_)) => {}
       Err(e) => panic!("pebble error: {e}"),
     }
   }
@@ -1000,6 +1000,10 @@ impl LspClient {
   pub fn shutdown(&mut self) {
     self.write_request("shutdown", json!(null));
     self.write_notification("exit", json!(null));
+  }
+
+  pub fn wait_exit(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    self.child.wait()
   }
 
   // it's flaky to assert for a notification because a notification

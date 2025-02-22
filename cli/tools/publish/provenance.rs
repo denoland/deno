@@ -25,11 +25,11 @@ use spki::der::asn1;
 use spki::der::pem::LineEnding;
 use spki::der::EncodePem;
 
-use super::api::OidcTokenResponse;
 use super::auth::gha_oidc_token;
 use super::auth::is_gha;
 use crate::http_util;
 use crate::http_util::HttpClient;
+use crate::registry::OidcTokenResponse;
 
 const PAE_PREFIX: &str = "DSSEv1";
 

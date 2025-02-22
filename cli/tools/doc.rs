@@ -151,6 +151,7 @@ pub async fn doc(
         GraphWalkErrorsOptions {
           check_js: CheckJsOption::False,
           kind: GraphKind::TypesOnly,
+          allow_unknown_media_types: false,
         },
       );
       for error in errors {

@@ -1186,11 +1186,6 @@ function traverse(ctx, visitors, idx, cancellationToken) {
     if (childIdx > AST_IDX_INVALID) {
       traverse(ctx, visitors, childIdx, cancellationToken);
     }
-
-    const nextIdx = readNext(buf, idx);
-    if (nextIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, nextIdx, cancellationToken);
-    }
   } finally {
     if (exits !== null) {
       for (let i = 0; i < exits.length; i++) {
@@ -1198,6 +1193,11 @@ function traverse(ctx, visitors, idx, cancellationToken) {
         exits[i](node);
       }
     }
+  }
+
+  const nextIdx = readNext(buf, idx);
+  if (nextIdx > AST_IDX_INVALID) {
+    traverse(ctx, visitors, nextIdx, cancellationToken);
   }
 }
 
