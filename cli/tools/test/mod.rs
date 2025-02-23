@@ -1653,6 +1653,10 @@ pub async fn run_tests(
   )
   .await?;
 
+  if test_flags.coverage_raw_data_only {
+    return Ok(());
+  }
+
   if let Some(ref coverage) = test_flags.coverage_dir {
     let reporters: [&dyn reporter::CoverageReporter; 3] = [
       &reporter::SummaryCoverageReporter::new(),
@@ -1673,7 +1677,7 @@ pub async fn run_tests(
       ),
       &reporters,
     ) {
-      eprintln!("Error generating coverage report: {}", err);
+      log::info!("Error generating coverage report: {}", err);
     }
   }
 

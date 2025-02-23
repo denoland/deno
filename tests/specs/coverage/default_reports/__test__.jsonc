@@ -3,7 +3,7 @@
   "steps": [
     {
       "args": "test --coverage --doc",
-      "output": "test_coverage.out",
+      "output": "main.out",
       "exitCode": 0
     },
     {
