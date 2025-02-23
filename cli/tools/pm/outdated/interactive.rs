@@ -20,8 +20,8 @@ use deno_semver::VersionReq;
 use deno_terminal::colors;
 use unicode_width::UnicodeWidthStr;
 
-use crate::tools::registry::pm::deps::DepId;
-use crate::tools::registry::pm::deps::DepKind;
+use crate::tools::pm::deps::DepId;
+use crate::tools::pm::deps::DepKind;
 
 #[derive(Debug)]
 pub struct PackageInfo {

@@ -1570,9 +1570,9 @@ dependencies = [
 
 [[package]]
 name = "deno-tower-lsp-macros"
-version = "0.10.0"
+version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e017686632f7908cde3e02cd1598e25488f57448600a09211834cfd547b9ec39"
+checksum = "61083feefc9c29a3f45670be6b60001ec209286c861b6830cd30ba4af9a6e9d8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1716,9 +1716,9 @@ dependencies = [
 
 [[package]]
 name = "deno_config"
-version = "0.49.0"
+version = "0.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eb717829d8b6071bf54ac6139e4ea53878ad5523c1cbdad4483c09be9b81606"
+checksum = "1bbde052743fd8729836d337de950fbffd79e3edb6fa8d5894e95b7d62dea15b"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -2429,9 +2429,9 @@ dependencies = [
 
 [[package]]
 name = "deno_path_util"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c87b8996966ae1b13ee9c20219b1d10fc53905b9570faae6adfa34614fd15224"
+checksum = "c238a664a0a6f1ce0ff2b73c6854811526d00f442a12f878cb8555b23fe13aa3"
 dependencies = [
  "deno_error",
  "percent-encoding",
@@ -2691,9 +2691,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.3.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c58d75640e2edffc77929064f2f13c308e549b4b5c42ea6159b0607add856675"
+checksum = "c29dce82d67177bbc36468f64cddd8c25242fc31b99369ef0126fa7fad64c5ec"
 dependencies = [
  "async-trait",
  "auto_impl",

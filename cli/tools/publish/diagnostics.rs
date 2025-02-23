@@ -379,7 +379,7 @@ impl Diagnostic for PublishDiagnostic {
     use PublishDiagnostic::*;
     match &self {
       InvalidExternalImport { imported, .. } => {
-        match super::api::get_jsr_alternative(imported) {
+        match crate::registry::get_jsr_alternative(imported) {
           Some(replacement) => {
             let replacement = SourceTextInfo::new(replacement.into());
             let start = replacement.line_start(0);
