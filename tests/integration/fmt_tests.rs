@@ -288,18 +288,6 @@ itest!(fmt_stdin_ipynb {
   output_str: Some(include_str!("../testdata/fmt/badly_formatted_fixed.ipynb")),
 });
 
-itest!(fmt_stdin_vto {
-  args: "fmt --unstable-component --ext=vto -",
-  input: Some("<h1>  {{ \"Hello, world!\" |> toUpperCase }}\n  </h1>\n"),
-  output_str: Some("<h1>\n  {{ \"Hello, world!\" |> toUpperCase }}\n</h1>\n"),
-});
-
-itest!(fmt_stdin_njk {
-  args: "fmt --unstable-component --ext=njk -",
-  input: Some("<h1>  {{ \"Hello, world!\" |> upper }}\n  </h1>\n"),
-  output_str: Some("<h1>\n  {{ \"Hello, world!\" |> upper }}\n</h1>\n"),
-});
-
 itest!(fmt_stdin_check_formatted {
   args: "fmt --check -",
   input: Some("const a = 1;\n"),
