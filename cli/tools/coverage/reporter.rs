@@ -217,7 +217,7 @@ impl CoverageReporter for LcovCoverageReporter {
     file_reports.iter().for_each(|(report, file_text)| {
       self.report(report, file_text).unwrap();
     });
-    if let Some((report, _)) = file_reports.iter().nth(0) {
+    if let Some((report, _)) = file_reports.first() {
       if let Some(ref output) = report.output {
         let path = output.canonicalize().unwrap().to_string_lossy().to_string();
         let url = Url::from_file_path(path).unwrap();

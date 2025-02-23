@@ -15,6 +15,6 @@
       "args": "run -A cat.ts coverage/html/index.html",
       "output": "html_index_html.out",
       "exitCode": 0
-    },
+    }
   ]
 }
