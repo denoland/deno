@@ -1659,7 +1659,7 @@ pub async fn run_tests(
       &reporter::LcovCoverageReporter::new(),
       &reporter::HtmlCoverageReporter::new(),
     ];
-    cover_files(
+    if let Err(err) = cover_files(
       flags,
       vec![coverage.clone()],
       vec![],
@@ -1672,7 +1672,9 @@ pub async fn run_tests(
           .to_string(),
       ),
       &reporters,
-    )?;
+    ) {
+      eprintln!("Error generating coverage report: {}", err);
+    }
   }
 
   Ok(())

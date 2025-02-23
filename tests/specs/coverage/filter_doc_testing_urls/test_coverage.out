@@ -7,3 +7,12 @@ file:///[WILDCARD]/source.ts$[WILDCARD].ts ... ok ([WILDCARD])
 
 ok | 2 passed | 0 failed ([WILDCARD])
 
+--------------------------------
+File       | Branch % | Line % |
+--------------------------------
+ source.ts |    100.0 |  100.0 |
+--------------------------------
+ All files |    100.0 |  100.0 |
+--------------------------------
+Lcov coverage report has been generated at file://[WILDCARD]/coverage/lcov.info
+HTML coverage report has been generated at file://[WILDCARD]/coverage/html/index.html
