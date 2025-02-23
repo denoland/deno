@@ -1,10 +1,10 @@
 {
   "$id": "https://deno.land/x/deno/cli/schemas/config-file.v1.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Deno configuration file Schema",
   "description": "A JSON representation of a Deno configuration file.",
-  "type": "object",
   "required": [],
+  "title": "Deno configuration file Schema",
+  "type": "object",
   "properties": {
     "compilerOptions": {
       "type": "object",
