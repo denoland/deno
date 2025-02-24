@@ -437,6 +437,12 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
           "Run again with `--unstable-net` flag to enable this API.",
         ),
       ];
+    } else if msg.contains("client error (Connect): invalid peer certificate") {
+      return vec![
+        FixSuggestion::hint(
+          "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
+        ),
+      ];
     // Try to capture errors like:
     // ```
     // Uncaught Error: Cannot find module '../build/Release/canvas.node'
