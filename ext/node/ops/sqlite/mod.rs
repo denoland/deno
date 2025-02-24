@@ -17,11 +17,11 @@ pub enum SqliteError {
   #[error(transparent)]
   SqliteError(#[from] rusqlite::Error),
   #[class(generic)]
+  #[error("{0}")]
+  SqliteSysError(String),
+  #[class(generic)]
   #[error("Database is already in use")]
   InUse,
-  #[class(generic)]
-  #[error("Failed to step statement")]
-  FailedStep,
   #[class(generic)]
   #[error("Failed to bind parameter. {0}")]
   FailedBind(&'static str),
