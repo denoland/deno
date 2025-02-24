@@ -1581,9 +1581,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.44.0"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebc7aaabfdb3ddcad32aee1b62d250149dc8b35dfbdccbb125df2bdc62da952"
+checksum = "8b64adab8b7eb6a8713d7ada508b2ef5dc41f201acf6c42d4214ca1917365958"
 dependencies = [
  "base64 0.21.7",
  "deno_error",
@@ -1594,6 +1594,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "sourcemap 9.0.0",
+ "string_capacity",
  "swc_atoms",
  "swc_bundler",
  "swc_common",
@@ -1750,9 +1751,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.338.0"
+version = "0.339.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113f3f08bd5daf99f1a7876c0f99cd8c3c609439fa0b808311ec856a253e95f0"
+checksum = "e849c86341672e56f1a01473be43b04a14404a146f8a6976ee501768fd153df9"
 dependencies = [
  "anyhow",
  "az",
@@ -1844,9 +1845,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.164.0"
+version = "0.168.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1edb02603c7e8a4003c84af2482a05e5eda3a14f1af275434fda89223f054d"
+checksum = "1ffe4164ec8ceefb414b3b99671818d79b31923c57f39cb350eb13ad327a6992"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1984,9 +1985,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.3"
+version = "0.88.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f1d2f0aa5832b72abdc67e904649aa80ec707f0a5f8cc7825859221b56abd31"
+checksum = "8514a537cc6746ee7958b02f62273eff615ada6fa30bf8f5b38eaa68180992a7"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -2143,9 +2144,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.72.1"
+version = "0.73.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5020c50214ba5b42d84b623b58573095e800a81c6060e9589e7e4ea1206f8d"
+checksum = "4f1e122a665f83b462f2974d483d632ecb09eb0a9edb305b1f0422ecf14e9811"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -2373,9 +2374,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.214.0"
+version = "0.215.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ad885bf882be535f7714c713042129acba6f31a8efb5e6b2298f6e40cab9b16"
+checksum = "2dea0097045022cd7be7f613fb9ac3abe75716764644d434c7525acd1b5c6af1"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -3213,9 +3214,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.93.3"
+version = "0.93.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5804d1809f6191a9261f423c41cd51a50e49567d61caa5a8f6224eea94ae0d12"
+checksum = "faae542025e642470671e0cf64a0b86f324d06166663d0d07cfc5e811680ce93"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -7279,9 +7280,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.247.0"
+version = "0.248.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bbfafb7b707cbed49d1eaf48f4aa41b5ff57f813d1a80f77244e6e2fa4507e"
+checksum = "3e7959e4bf14c432206728dd0e1cbb035d3a61abdd8cebb73157d8c88a5479d3"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -7620,6 +7621,15 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "string_capacity"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcd14cb3a5abda6d2626370785f5f788b22e95476f597159faa4a2cc2966961a"
+dependencies = [
+ "itoa",
+]
 
 [[package]]
 name = "string_enum"
@@ -9017,9 +9027,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "134.4.0"
+version = "134.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "224c6c3d1fd3c0356224b2ad355b61c242cdafa9d14cc31b7f161ea177b3b4e9"
+checksum = "21c7a224a7eaf3f98c1bad772fbaee56394dce185ef7b19a2e0ca5e3d274165d"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.8.0",
