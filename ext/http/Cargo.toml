@@ -21,7 +21,7 @@ name = "compressible"
 harness = false
 
 [dependencies]
-async-compression = { version = "0.4", features = ["tokio", "brotli", "gzip"] }
+async-compression = { workspace = true, features = ["tokio", "brotli", "gzip"] }
 async-trait.workspace = true
 base64.workspace = true
 brotli.workspace = true
@@ -39,9 +39,9 @@ httparse.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-itertools = "0.10"
+itertools = { workspace = true }
 memmem.workspace = true
-mime = "0.3.16"
+mime = { workspace = true }
 once_cell.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
