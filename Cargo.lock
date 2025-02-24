@@ -1581,9 +1581,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.44.0"
+version = "0.45.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebc7aaabfdb3ddcad32aee1b62d250149dc8b35dfbdccbb125df2bdc62da952"
+checksum = "4063ccc7a20c4bf23b36d1856a53c56d0d949e6ea4aa83d751674a5dfce6a365"
 dependencies = [
  "base64 0.21.7",
  "deno_error",
@@ -1594,6 +1594,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "sourcemap 9.0.0",
+ "string_capacity",
  "swc_atoms",
  "swc_bundler",
  "swc_common",
@@ -1844,9 +1845,9 @@ dependencies = [
 
 [[package]]
 name = "deno_doc"
-version = "0.164.0"
+version = "0.168.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad1edb02603c7e8a4003c84af2482a05e5eda3a14f1af275434fda89223f054d"
+checksum = "1ffe4164ec8ceefb414b3b99671818d79b31923c57f39cb350eb13ad327a6992"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1984,9 +1985,9 @@ dependencies = [
 
 [[package]]
 name = "deno_graph"
-version = "0.87.3"
+version = "0.88.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f1d2f0aa5832b72abdc67e904649aa80ec707f0a5f8cc7825859221b56abd31"
+checksum = "8514a537cc6746ee7958b02f62273eff615ada6fa30bf8f5b38eaa68180992a7"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -2143,9 +2144,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lint"
-version = "0.72.1"
+version = "0.73.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef5020c50214ba5b42d84b623b58573095e800a81c6060e9589e7e4ea1206f8d"
+checksum = "16d3df8a46c79ec6b1ab18639b8dd0f2ff035712885ac89b9123b5d6533b6869"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -3213,9 +3214,9 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-typescript"
-version = "0.93.3"
+version = "0.93.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5804d1809f6191a9261f423c41cd51a50e49567d61caa5a8f6224eea94ae0d12"
+checksum = "faae542025e642470671e0cf64a0b86f324d06166663d0d07cfc5e811680ce93"
 dependencies = [
  "anyhow",
  "deno_ast",
@@ -7620,6 +7621,15 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "string_capacity"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcd14cb3a5abda6d2626370785f5f788b22e95476f597159faa4a2cc2966961a"
+dependencies = [
+ "itoa",
+]
 
 [[package]]
 name = "string_enum"
