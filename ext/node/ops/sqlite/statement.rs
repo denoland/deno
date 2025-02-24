@@ -287,10 +287,10 @@ impl StatementSync {
 
       // SAFETY: lifetime of the connection is guaranteed by reference
       // counting.
-      let raw_handle = unsafe { db.handle() };
-      let err_str = unsafe { ffi::sqlite3_errmsg(raw_handle) };
+      let err_str = unsafe { ffi::sqlite3_errmsg(db.handle()) };
 
       if !err_str.is_null() {
+        // SAFETY: `err_str` is a valid pointer to a null-terminated string.
         let err_str = unsafe { std::ffi::CStr::from_ptr(err_str) }
           .to_string_lossy()
           .into_owned();
