@@ -18,6 +18,7 @@ use deno_config::glob::FileCollector;
 use deno_config::glob::FilePatterns;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_core::anyhow::anyhow;
+use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_core::futures::FutureExt;
@@ -289,10 +290,14 @@ impl WorkspaceLinter {
     let exclude = lint_options.rules.exclude.clone();
 
     let plugin_specifiers = lint_options.plugins.clone();
-    let lint_rules = self.lint_rule_provider.resolve_lint_rules_err_empty(
+    let lint_rules = self.lint_rule_provider.resolve_lint_rules(
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
-    )?;
+    );
+    if lint_rules.rules.is_empty() && plugin_specifiers.is_empty() {
+      bail!("No rules have been configured")
+    }
+
     let mut maybe_incremental_cache = None;
 
     // TODO(bartlomieju): for now we don't support incremental caching if plugins are being used.
