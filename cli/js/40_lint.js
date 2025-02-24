@@ -17,6 +17,7 @@ const {
 } = core.ops;
 
 let doReport = op_lint_report;
+let doGetSource = op_lint_get_source;
 
 // Keep these in sync with Rust
 const AST_IDX_INVALID = 0;
@@ -264,7 +265,7 @@ export class SourceCode {
    */
   #getSource() {
     if (this.#source === null) {
-      this.#source = op_lint_get_source();
+      this.#source = doGetSource();
     }
     return /** @type {string} */ (this.#source);
   }
@@ -1365,6 +1366,9 @@ function runLintPlugin(plugin, fileName, sourceText) {
       fix,
     });
   };
+  doGetSource = () => {
+    return sourceText;
+  };
   try {
     const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
@@ -1373,6 +1377,7 @@ function runLintPlugin(plugin, fileName, sourceText) {
     resetState();
   }
   doReport = op_lint_report;
+  doGetSource = op_lint_get_source;
   return diagnostics;
 }
 
