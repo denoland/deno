@@ -517,7 +517,7 @@ fn print_docs_to_stdout(
   mut doc_nodes: Vec<deno_doc::DocNode>,
 ) -> Result<(), AnyError> {
   doc_nodes.retain(|doc_node| {
-    matches!(doc_node.def, doc::node::DocNodeDef::Import { .. })
+    !matches!(doc_node.def, doc::node::DocNodeDef::Import { .. })
   });
   let details = if let Some(filter) = doc_flags.filter {
     let nodes = doc::find_nodes_by_name_recursively(doc_nodes, &filter);
