@@ -17,6 +17,7 @@ const {
 } = core.ops;
 
 let doReport = op_lint_report;
+let doGetSource = op_lint_get_source;
 
 // Keep these in sync with Rust
 const AST_IDX_INVALID = 0;
@@ -264,7 +265,7 @@ export class SourceCode {
    */
   #getSource() {
     if (this.#source === null) {
-      this.#source = op_lint_get_source();
+      this.#source = doGetSource();
     }
     return /** @type {string} */ (this.#source);
   }
@@ -1150,54 +1151,52 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
-  if (idx === AST_IDX_INVALID) return;
-  if (cancellationToken.isCancellationRequested()) return;
+  while (idx !== AST_IDX_INVALID) {
+    if (cancellationToken.isCancellationRequested()) return;
 
-  const { buf } = ctx;
-  const nodeType = readType(ctx.buf, idx);
+    const { buf } = ctx;
+    const nodeType = readType(ctx.buf, idx);
 
-  /** @type {VisitorFn[] | null} */
-  let exits = null;
+    /** @type {VisitorFn[] | null} */
+    let exits = null;
 
-  // Only visit if it's an actual node
-  if (nodeType !== AST_GROUP_TYPE) {
-    // Loop over visitors and check if any selector matches
-    for (let i = 0; i < visitors.length; i++) {
-      const v = visitors[i];
-      if (v.matcher(ctx.matcher, idx)) {
-        if (v.info.exit !== NOOP) {
-          if (exits === null) {
-            exits = [v.info.exit];
-          } else {
-            exits.push(v.info.exit);
+    // Only visit if it's an actual node
+    if (nodeType !== AST_GROUP_TYPE) {
+      // Loop over visitors and check if any selector matches
+      for (let i = 0; i < visitors.length; i++) {
+        const v = visitors[i];
+        if (v.matcher(ctx.matcher, idx)) {
+          if (v.info.exit !== NOOP) {
+            if (exits === null) {
+              exits = [v.info.exit];
+            } else {
+              exits.push(v.info.exit);
+            }
+          }
+
+          if (v.info.enter !== NOOP) {
+            const node = /** @type {*} */ (getNode(ctx, idx));
+            v.info.enter(node);
           }
         }
+      }
+    }
 
-        if (v.info.enter !== NOOP) {
+    try {
+      const childIdx = readChild(buf, idx);
+      if (childIdx > AST_IDX_INVALID) {
+        traverse(ctx, visitors, childIdx, cancellationToken);
+      }
+    } finally {
+      if (exits !== null) {
+        for (let i = 0; i < exits.length; i++) {
           const node = /** @type {*} */ (getNode(ctx, idx));
-          v.info.enter(node);
+          exits[i](node);
         }
       }
     }
-  }
 
-  try {
-    const childIdx = readChild(buf, idx);
-    if (childIdx > AST_IDX_INVALID) {
-      traverse(ctx, visitors, childIdx, cancellationToken);
-    }
-  } finally {
-    if (exits !== null) {
-      for (let i = 0; i < exits.length; i++) {
-        const node = /** @type {*} */ (getNode(ctx, idx));
-        exits[i](node);
-      }
-    }
-  }
-
-  const nextIdx = readNext(buf, idx);
-  if (nextIdx > AST_IDX_INVALID) {
-    traverse(ctx, visitors, nextIdx, cancellationToken);
+    idx = readNext(buf, idx);
   }
 }
 
@@ -1367,6 +1366,9 @@ function runLintPlugin(plugin, fileName, sourceText) {
       fix,
     });
   };
+  doGetSource = () => {
+    return sourceText;
+  };
   try {
     const serializedAst = op_lint_create_serialized_ast(fileName, sourceText);
 
@@ -1375,6 +1377,7 @@ function runLintPlugin(plugin, fileName, sourceText) {
     resetState();
   }
   doReport = op_lint_report;
+  doGetSource = op_lint_get_source;
   return diagnostics;
 }
 
