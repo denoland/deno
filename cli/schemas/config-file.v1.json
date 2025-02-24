@@ -111,7 +111,35 @@
           "uniqueItems": true,
           "default": ["deno.window"],
           "items": {
-            "type": "string"
+            "type": "string",
+            "examples": [
+              "deno.ns",
+              "deno.window",
+              "deno.worker",
+              "deno.unstable",
+              "dom",
+              "dom.iterable",
+              "dom.asynciterable",
+              "webworker",
+              "webworker.importscripts",
+              "webworker.iterable",
+              "webworker.asynciterable",
+              "scripthost",
+              "decorators",
+              "decorators.legacy",
+              "es5",
+              "es2015",
+              "es2016",
+              "es2017",
+              "es2018",
+              "es2019",
+              "es2020",
+              "es2021",
+              "es2022",
+              "es2023",
+              "es2024",
+              "esnext"
+            ]
           },
           "markdownDescription": "Specify a set of bundled library declaration files that describe the target runtime environment.\n\nSee more: https://www.typescriptlang.org/tsconfig#lib"
         },
