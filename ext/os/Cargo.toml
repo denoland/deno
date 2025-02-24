@@ -20,7 +20,7 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 deno_telemetry.workspace = true
 libc.workspace = true
-netif = "0.1.6"
+netif = { workspace = true }
 once_cell.workspace = true
 serde.workspace = true
 thiserror.workspace = true

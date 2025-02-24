@@ -28,7 +28,7 @@ deno_permissions.workspace = true
 filetime.workspace = true
 libc.workspace = true
 rand.workspace = true
-rayon = "1.8.0"
+rayon = { workspace = true }
 serde.workspace = true
 thiserror.workspace = true
 
