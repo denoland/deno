@@ -867,11 +867,13 @@ export type * from "./c.d.ts";
     let pkg_json_add = PackageJson::load_from_value(
       cwd.join("add/package.json"),
       json!({ "name": "add", "version": "0.1.0", }),
-    );
+    )
+    .unwrap();
     let pkg_json_subtract = PackageJson::load_from_value(
       cwd.join("subtract/package.json"),
       json!({ "name": "subtract", "version": "0.2.0", }),
-    );
+    )
+    .unwrap();
     let pkg_json_publishing = PackageJson::load_from_value(
       cwd.join("publish/package.json"),
       json!({
@@ -883,11 +885,13 @@ export type * from "./c.d.ts";
           "non-existent": "workspace:~",
         }
       }),
-    );
+    )
+    .unwrap();
     let root_pkg_json = PackageJson::load_from_value(
       cwd.join("package.json"),
       json!({ "workspaces": ["./publish", "./subtract", "./add"] }),
-    );
+    )
+    .unwrap();
     let sys = CliSys::default();
     let workspace_resolver = WorkspaceResolver::new_raw(
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
