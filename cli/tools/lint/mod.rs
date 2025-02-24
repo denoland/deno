@@ -294,9 +294,6 @@ impl WorkspaceLinter {
       lint_options.rules,
       member_dir.maybe_deno_json().map(|c| c.as_ref()),
     );
-    if lint_rules.rules.is_empty() && plugin_specifiers.is_empty() {
-      bail!("No rules have been configured")
-    }
 
     let mut maybe_incremental_cache = None;
 
@@ -337,6 +334,8 @@ impl WorkspaceLinter {
       )
       .await?;
       plugin_runner = Some(Arc::new(runner));
+    } else if lint_rules.rules.is_empty() {
+      bail!("No rules have been configured")
     }
 
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
