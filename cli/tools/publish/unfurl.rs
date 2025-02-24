@@ -731,7 +731,8 @@ mod tests {
           "chalk": 5
         }
       }),
-    );
+    )
+    .unwrap();
     let workspace_resolver = WorkspaceResolver::new_raw(
       Arc::new(ModuleSpecifier::from_directory_path(&cwd).unwrap()),
       Some(import_map),
