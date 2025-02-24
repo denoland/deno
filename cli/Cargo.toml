@@ -100,8 +100,8 @@ boxed_error.workspace = true
 bytes.workspace = true
 capacity_builder.workspace = true
 chrono = { workspace = true, features = ["now"] }
-clap = { version = "=4.5.16", features = ["env", "string", "wrap_help", "error-context"] }
-clap_complete = "=4.5.24"
+clap = { version = "=4.5.30", features = ["env", "string", "wrap_help", "error-context"] }
+clap_complete = "=4.5.45"
 clap_complete_fig = "=4.5.2"
 color-print.workspace = true
 console_static_text.workspace = true

@@ -5,6 +5,7 @@ See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs
 Usage: deno vendor [OPTIONS]
 
 Options:
-  -q, --quiet     Suppress diagnostic output
-      --unstable  The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
-                    To view the list of individual unstable feature flags, run this command again with --help=unstable
+  -h, --help[=<CONTEXT>]  [possible values: unstable, full]
+  -q, --quiet             Suppress diagnostic output
+      --unstable          The `--unstable` flag has been deprecated. Use granular `--unstable-*` flags instead
+                            To view the list of individual unstable feature flags, run this command again with --help=unstable
