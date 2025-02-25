@@ -595,6 +595,7 @@ static CONTENT_TYPES: phf::Set<&'static [u8]> = phf_set! {
   b"text/cmd",
   b"text/css",
   b"text/csv",
+  b"text/event-stream",
   b"text/html",
   b"text/javascript",
   b"text/jsx",
@@ -651,6 +652,7 @@ mod tests {
   #[test]
   fn compressible_content_type() {
     assert!(is_content_compressible("application/json"));
+    assert!(is_content_compressible("text/event-stream"));
     assert!(is_content_compressible("text/plain;charset=UTF-8"));
     assert!(is_content_compressible("text/PlAIn; charset=utf-8"));
   }
