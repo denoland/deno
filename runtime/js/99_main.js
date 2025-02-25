@@ -8,6 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
+  op_bootstrap_color_depth,
   op_bootstrap_is_stderr_tty,
   op_bootstrap_is_stdout_tty,
   op_bootstrap_no_color,
@@ -732,6 +733,7 @@ ObjectDefineProperties(finalDenoNs, {
   // https://github.com/denoland/deno/issues/23004
   ppid: core.propGetterOnly(() => op_ppid()),
   noColor: core.propGetterOnly(() => op_bootstrap_no_color()),
+  colorDepth: core.propGetterOnly(() => op_bootstrap_color_depth()),
   args: core.propGetterOnly(opArgs),
   mainModule: core.propGetterOnly(() => op_main_module()),
   exitCode: {
