@@ -357,6 +357,7 @@ mod test {
         no_terminal: false,
         icon: None,
         include: vec![],
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -382,6 +383,7 @@ mod test {
         include: vec![],
         icon: None,
         no_terminal: false,
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )
