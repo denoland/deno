@@ -138,7 +138,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      tools::compile::compile(flags, compile_flags).await
+      if compile_flags.eszip {
+        tools::compile::compile_eszip(flags, compile_flags).await
+      } else {
+        tools::compile::compile(flags, compile_flags).await
+      }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
       tools::coverage::cover_files(flags, coverage_flags)

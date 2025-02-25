@@ -155,7 +155,6 @@ pub async fn compile_eszip(
   let cli_options = factory.cli_options()?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
-  let binary_writer = factory.create_compile_binary_writer().await?;
   let tsconfig_resolver = factory.tsconfig_resolver()?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
@@ -165,7 +164,7 @@ pub async fn compile_eszip(
     cli_options.initial_cwd(),
   )
   .await?;
-  let (module_roots, include_files) = get_module_roots_and_include_files(
+  let (module_roots, _include_files) = get_module_roots_and_include_files(
     entrypoint,
     &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
     &compile_flags,
@@ -195,28 +194,31 @@ pub async fn compile_eszip(
 
   let transpile_and_emit_options = tsconfig_resolver
     .transpile_and_emit_options(cli_options.workspace().root_dir())?;
-  let transpile_options = transpile_and_emit_options.transpile;
-  let emit_options = transpile_and_emit_options.emit;
+  let transpile_options = transpile_and_emit_options.transpile.clone();
+  let emit_options = transpile_and_emit_options.emit.clone();
 
   let parser = parsed_source_cache.as_capturing_parser();
-  let root_dir_url = resolve_root_dir_from_specifiers(
-    cli_options.workspace().root_dir(),
-    graph.specifiers().map(|(s, _)| s).chain(
-      cli_options
-        .node_modules_dir_path()
-        .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
-        .iter(),
-    ),
-  );
-  log::debug!("Binary root dir: {}", root_dir_url);
-  let root_dir_url = eszip::EszipRelativeFileBaseUrl::new(&root_dir_url);
+  // TODO(bartlomieju): fix it
+  // let root_dir_url = resolve_root_dir_from_specifiers(
+  //   cli_options.workspace().root_dir(),
+  //   graph.specifiers().map(|(s, _)| s).chain(
+  //     cli_options
+  //       .node_modules_dir_path()
+  //       .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+  //       .iter(),
+  //   ),
+  // );
+  // log::debug!("Binary root dir: {}", root_dir_url);
+  // let root_dir_url = eszip::EszipRelativeFileBaseUrl::new(&root_dir_url);
   let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,
     transpile_options,
     emit_options,
+    // TODO(bartlomieju): fix it
     // make all the modules relative to the root folder
-    relative_file_base: Some(root_dir_url),
+    // relative_file_base: Some(root_dir_url),
+    relative_file_base: None,
     npm_packages: None,
     module_kind_resolver: Default::default(),
   })?;
@@ -229,7 +231,7 @@ pub async fn compile_eszip(
   );
   validate_output_path(&output_path)?;
 
-  let file = std::fs::File::create(&output_path).with_context(|| {
+  let mut file = std::fs::File::create(&output_path).with_context(|| {
     format!("Opening ESZip file '{}'", output_path.display())
   })?;
 
