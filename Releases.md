@@ -6,6 +6,28 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.2 / 2025.02.25
+
+- fix(check): regression - implicit jsxImportSource was not resolving (#28228)
+- fix(cli): add `compilerOptions.lib` examples to config-file.v1.json (#28226)
+- fix(config): allow specifying absolute path for patch and fix panic with
+  exports in package.json (#28279)
+- fix(ext/node): decipherIv() range error on invalid final block length (#28215)
+- fix(ext/node): descriptive sqlite error messages (#28272)
+- fix(fmt): support "--ext vto" and "--ext njk" (#28262)
+- fix(http): generate `OtelInfo` only when otel metrics are enabled (#28286)
+- fix(install): don't error on unknown media types in install (#28234)
+- fix(lint): don't recurse infinitely for large ASTs (#28265)
+- fix(lint): give access to SourceCode in 'deno test' (#28278)
+- fix(lint): plugins ignored when no rust rule active (#28269)
+- fix(lint): update deno_lint (#28271)
+- fix(lsp): close server on exit notification (#28232)
+- fix(lsp): create cacheable `ExportInfoMap` per language service (#28240)
+- fix(unstable): lint plugin `:exit` called at wrong time (#28229)
+- fix: add info suggestion for `unsafely-ignore-certificate-errors` and add
+  `--help=full` (#28203)
+- perf(install): only read initialized file if we care about the tags (#28242)
+
 ### 2.2.1 / 2025.02.20
 
 - fix(check): remove instability in loading lib files (#28202)
