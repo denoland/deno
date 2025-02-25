@@ -3462,8 +3462,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.81.0"
-source = "git+https://github.com/bartlomieju/eszip.git?branch=upgrade_deno_graph#ff9c4f595f3666debade2f8758bf157a551306ad"
+version = "0.82.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e4836b6abc01616dbaaac8f6ccf7e08567ada28547eb188ae5bca5a99f40a6d"
 dependencies = [
  "anyhow",
  "async-trait",
