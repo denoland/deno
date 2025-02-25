@@ -127,6 +127,7 @@ pub struct CompileFlags {
   pub no_terminal: bool,
   pub icon: Option<String>,
   pub include: Vec<String>,
+  pub eszip: bool,
 }
 
 impl CompileFlags {
@@ -676,6 +677,7 @@ pub struct Flags {
   pub code_cache_enabled: bool,
   pub permissions: PermissionFlags,
   pub allow_scripts: PackagesAllowedScripts,
+  pub eszip: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
@@ -3833,6 +3835,14 @@ fn runtime_misc_args(app: Command) -> Command {
     .arg(seed_arg())
     .arg(enable_testing_features_arg())
     .arg(strace_ops_arg())
+    .arg(eszip_arg())
+}
+
+fn eszip_arg() -> Arg {
+  Arg::new("eszip-internal-do-not-use")
+    .hide(true)
+    .long("eszip-internal-do-not-use")
+    .action(ArgAction::SetTrue)
 }
 
 fn allow_import_arg() -> Arg {
@@ -4603,6 +4613,7 @@ fn compile_parse(
   let target = matches.remove_one::<String>("target");
   let icon = matches.remove_one::<String>("icon");
   let no_terminal = matches.get_flag("no-terminal");
+  let eszip = matches.get_flag("eszip-internal-do-not-use");
   let include = match matches.remove_many::<String>("include") {
     Some(f) => f.collect(),
     None => vec![],
@@ -4619,6 +4630,7 @@ fn compile_parse(
     no_terminal,
     icon,
     include,
+    eszip,
   });
 
   Ok(())
@@ -5716,7 +5728,14 @@ fn runtime_args_parse(
   enable_testing_features_arg_parse(flags, matches);
   env_file_arg_parse(flags, matches);
   strace_ops_parse(flags, matches);
+  eszip_arg_parse(flags, matches);
   Ok(())
+}
+
+fn eszip_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  if matches.get_flag("eszip-internal-do-not-use") {
+    flags.eszip = true;
+  }
 }
 
 fn inspect_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
@@ -10303,7 +10322,8 @@ mod tests {
           target: None,
           no_terminal: false,
           icon: None,
-          include: vec![]
+          include: vec![],
+          eszip: false,
         }),
         type_check_mode: TypeCheckMode::Local,
         code_cache_enabled: true,
@@ -10327,7 +10347,8 @@ mod tests {
           target: None,
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
-          include: vec![]
+          include: vec![],
+          eszip: true
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
