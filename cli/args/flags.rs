@@ -10348,7 +10348,7 @@ mod tests {
           no_terminal: true,
           icon: Some(String::from("favicon.ico")),
           include: vec![],
-          eszip: true
+          eszip: false
         }),
         import_map_path: Some("import_map.json".to_string()),
         no_remote: true,
