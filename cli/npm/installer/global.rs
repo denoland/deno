@@ -137,8 +137,8 @@ impl<'a> GlobalLifecycleScripts<'a> {
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for GlobalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for GlobalLifecycleScripts<'_>
 {
   fn can_run_scripts(&self) -> bool {
     false

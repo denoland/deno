@@ -1174,7 +1174,7 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
           url_to_file_path(&root_dir_url.join(&relative_path).unwrap())
             .unwrap();
         let pkg_json =
-          deno_package_json::PackageJson::load_from_value(path, json);
+          deno_package_json::PackageJson::load_from_value(path, json).unwrap();
         PackageJsonRc::new(pkg_json)
       })
       .collect();

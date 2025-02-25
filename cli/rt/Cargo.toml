@@ -2,7 +2,7 @@
 
 [package]
 name = "denort"
-version = "2.1.10"
+version = "2.2.2"
 authors.workspace = true
 default-run = "denort"
 edition.workspace = true
@@ -53,11 +53,8 @@ serde_json.workspace = true
 sys_traits = { workspace = true, features = ["getrandom", "filetime", "libc", "real", "strip_unc", "winapi"] }
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
-twox-hash.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-pretty_assertions.workspace = true
 sys_traits = { workspace = true, features = ["memory"] }
 test_util.workspace = true

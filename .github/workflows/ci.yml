@@ -184,8 +184,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: '40-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
-          restore-keys: '40-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
+          key: '43-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-${{ hashFiles(''Cargo.lock'') }}'
+          restore-keys: '43-cargo-home-${{ matrix.os }}-${{ matrix.arch }}-'
         if: '!(matrix.skip)'
       - uses: dsherret/rust-toolchain-file@v1
         if: '!(matrix.skip)'
@@ -279,6 +279,8 @@ jobs:
           # Fix alternatives
           (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
+          clang-19 -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+
           echo "Decompressing sysroot..."
           wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-`uname -m`.tar.xz -O /tmp/sysroot.tar.xz
           cd /
@@ -316,6 +318,7 @@ jobs:
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+            -C link-arg=/tmp/memfd_create_shim.o
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
@@ -327,6 +330,7 @@ jobs:
             -C link-arg=-Wl,--allow-shlib-undefined
             -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
             -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+            -C link-arg=/tmp/memfd_create_shim.o
             --cfg tokio_unstable
             $RUSTFLAGS
           __1
@@ -377,7 +381,7 @@ jobs:
             !./target/*/*.zip
             !./target/*/*.tar.gz
           key: never_saved
-          restore-keys: '40-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
+          restore-keys: '43-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-'
       - name: Apply and update mtime cache
         if: '!(matrix.skip) && (!startsWith(github.ref, ''refs/tags/''))'
         uses: ./.github/mtime_cache
@@ -406,12 +410,14 @@ jobs:
       - name: node_compat/setup.ts --check
         if: '!(matrix.skip) && (matrix.job == ''lint'' && matrix.os == ''linux'')'
         run: deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check
+      - name: Check tracing build
+        if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'' && matrix.os == ''linux'' && matrix.arch == ''x86_64'')'
+        run: 'cargo check -p deno --features=lsp-tracing '
+        env:
+          CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build debug
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.profile == ''debug'')'
-        run: |-
-          df -h
-          cargo build --locked --all-targets
-          df -h
+        run: cargo build --locked --all-targets
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Build release
@@ -693,7 +699,7 @@ jobs:
             !./target/*/gn_root
             !./target/*/*.zip
             !./target/*/*.tar.gz
-          key: '40-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
+          key: '43-cargo-target-${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.profile }}-${{ matrix.job }}-${{ github.sha }}'
   wasm:
     name: build wasm32
     needs:

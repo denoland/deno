@@ -334,6 +334,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       script: script_name,
       ..Default::default()
     }),
+    reload: true,
     ..Default::default()
   };
   crate::tools::run::run_script(

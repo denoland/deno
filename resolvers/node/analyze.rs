@@ -20,6 +20,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::errors::ModuleNotFoundError;
 use crate::resolution::NodeResolverRc;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
@@ -225,6 +226,7 @@ impl<
     Ok(Cow::Owned(translated_source))
   }
 
+  #[allow(clippy::needless_lifetimes)]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -473,7 +475,12 @@ impl<
       last = parent;
     }
 
-    Err(not_found(specifier, referrer_path))
+    Err(JsErrorBox::from_err(ModuleNotFoundError {
+      specifier: UrlOrPath::Path(PathBuf::from(specifier)),
+      typ: "module",
+      maybe_referrer: Some(UrlOrPath::Path(referrer_path.to_path_buf())),
+      suggested_ext: None,
+    }))
   }
 
   fn file_extension_probe(
@@ -509,7 +516,12 @@ impl<
         }
       }
     }
-    Err(not_found(&p.to_string_lossy(), referrer))
+    Err(JsErrorBox::from_err(ModuleNotFoundError {
+      specifier: UrlOrPath::Path(p),
+      maybe_referrer: Some(UrlOrPath::Path(referrer.to_path_buf())),
+      typ: "module",
+      suggested_ext: None,
+    }))
   }
 }
 
@@ -668,15 +680,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   };
 
   Some((package_name, package_subpath))
-}
-
-fn not_found(path: &str, referrer: &Path) -> JsErrorBox {
-  let msg = format!(
-    "[ERR_MODULE_NOT_FOUND] Cannot find module \"{}\" imported from \"{}\"",
-    path,
-    referrer.to_string_lossy()
-  );
-  JsErrorBox::from_err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
 }
 
 fn to_double_quote_string(text: &str) -> String {

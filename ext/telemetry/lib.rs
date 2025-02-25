@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
+#![expect(unexpected_cfgs)]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -38,8 +39,10 @@ use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
+pub use opentelemetry::metrics::Histogram;
 use opentelemetry::metrics::InstrumentBuilder;
-use opentelemetry::metrics::MeterProvider as _;
+pub use opentelemetry::metrics::MeterProvider;
+pub use opentelemetry::metrics::UpDownCounter;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
 use opentelemetry::trace::Link;
@@ -51,10 +54,10 @@ use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
 use opentelemetry::InstrumentationScope;
-use opentelemetry::Key;
-use opentelemetry::KeyValue;
-use opentelemetry::StringValue;
-use opentelemetry::Value;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
@@ -196,7 +199,7 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
 }
 
 #[derive(Clone, Copy)]
-struct OtelSharedRuntime;
+pub struct OtelSharedRuntime;
 
 impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
   fn execute(&self, fut: BoxFuture<'static, ()>) {
@@ -586,19 +589,31 @@ mod hyper_client {
   }
 }
 
-struct OtelGlobals {
-  span_processor: BatchSpanProcessor<OtelSharedRuntime>,
-  log_processor: BatchLogProcessor<OtelSharedRuntime>,
-  id_generator: DenoIdGenerator,
-  meter_provider: SdkMeterProvider,
-  builtin_instrumentation_scope: InstrumentationScope,
+#[derive(Debug)]
+pub struct OtelGlobals {
+  pub span_processor: BatchSpanProcessor<OtelSharedRuntime>,
+  pub log_processor: BatchLogProcessor<OtelSharedRuntime>,
+  pub id_generator: DenoIdGenerator,
+  pub meter_provider: SdkMeterProvider,
+  pub builtin_instrumentation_scope: InstrumentationScope,
+  pub config: OtelConfig,
 }
 
-static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
+impl OtelGlobals {
+  pub fn has_tracing(&self) -> bool {
+    self.config.tracing_enabled
+  }
+
+  pub fn has_metrics(&self) -> bool {
+    self.config.metrics_enabled
+  }
+}
+
+pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 pub fn init(
   rt_config: OtelRuntimeConfig,
-  config: &OtelConfig,
+  config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
@@ -723,6 +738,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
@@ -774,7 +790,7 @@ pub fn handle_log(record: &log::Record) {
 
   struct Visitor<'s>(&'s mut LogRecord);
 
-  impl<'s, 'kvs> log::kv::VisitSource<'kvs> for Visitor<'s> {
+  impl<'kvs> log::kv::VisitSource<'kvs> for Visitor<'_> {
     fn visit_pair(
       &mut self,
       key: log::kv::Key<'kvs>,
@@ -808,7 +824,7 @@ pub fn handle_log(record: &log::Record) {
 }
 
 #[derive(Debug)]
-enum DenoIdGenerator {
+pub enum DenoIdGenerator {
   Random(RandomIdGenerator),
   Deterministic {
     next_trace_id: AtomicU64,
@@ -1708,9 +1724,9 @@ impl OtelMeter {
 
 enum Instrument {
   Counter(opentelemetry::metrics::Counter<f64>),
-  UpDownCounter(opentelemetry::metrics::UpDownCounter<f64>),
+  UpDownCounter(UpDownCounter<f64>),
   Gauge(opentelemetry::metrics::Gauge<f64>),
-  Histogram(opentelemetry::metrics::Histogram<f64>),
+  Histogram(Histogram<f64>),
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 

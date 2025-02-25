@@ -430,13 +430,6 @@ const hostImpl = {
     return projectVersion;
   },
   // @ts-ignore Undocumented method.
-  getCachedExportInfoMap() {
-    return exportMapCache;
-  },
-  getGlobalTypingsCacheLocation() {
-    return undefined;
-  },
-  // @ts-ignore Undocumented method.
   toPath(fileName) {
     // @ts-ignore Undocumented function.
     return ts.toPath(
@@ -732,6 +725,12 @@ const hostImpl = {
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // always return `undefined` in order to short-circuit
+    // a codepath in the TypeScript compiler that always
+    // ends up returning `undefined` in Deno anyway
+    return undefined;
+  },
 };
 
 // these host methods are super noisy (often thousands of calls per TSC request)
@@ -761,9 +760,6 @@ for (const [key, value] of Object.entries(hostImpl)) {
     host[key] = value;
   }
 }
-
-// @ts-ignore Undocumented function.
-const exportMapCache = ts.createCacheableExportInfoMap(host);
 
 // override the npm install @types package diagnostics to be deno specific
 ts.setLocalizedDiagnosticMessages((() => {
