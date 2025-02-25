@@ -101,7 +101,7 @@ impl CliMainWorker {
         let result;
         select! {
           hmr_result = hmr_future => {
-            result = hmr_result.map_err(Into::into);
+            result = hmr_result;
           },
           event_loop_result = event_loop_future => {
             result = event_loop_result;

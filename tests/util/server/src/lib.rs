@@ -636,7 +636,7 @@ pub struct CheckOutputIntegrationTest<'a> {
   pub cwd: Option<&'a str>,
 }
 
-impl<'a> CheckOutputIntegrationTest<'a> {
+impl CheckOutputIntegrationTest<'_> {
   pub fn output(&self) -> TestCommandOutput {
     let mut context_builder = TestContextBuilder::default();
     if self.temp_cwd {

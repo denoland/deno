@@ -85,14 +85,14 @@ impl DepLocation {
 
 struct DebugAdapter<T>(T);
 
-impl<'a> std::fmt::Debug for DebugAdapter<&'a ConfigFileRc> {
+impl std::fmt::Debug for DebugAdapter<&ConfigFileRc> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("ConfigFile")
       .field("specifier", &self.0.specifier)
       .finish()
   }
 }
-impl<'a> std::fmt::Debug for DebugAdapter<&'a PackageJsonRc> {
+impl std::fmt::Debug for DebugAdapter<&PackageJsonRc> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("PackageJson")
       .field("path", &self.0.path)

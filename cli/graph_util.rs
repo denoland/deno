@@ -652,17 +652,17 @@ impl ModuleGraphBuilder {
     }
   }
 
-  pub async fn build_graph_with_npm_resolution<'a>(
+  pub async fn build_graph_with_npm_resolution(
     &self,
     graph: &mut ModuleGraph,
-    options: CreateGraphOptions<'a>,
+    options: CreateGraphOptions<'_>,
   ) -> Result<(), BuildGraphWithNpmResolutionError> {
     enum MutLoaderRef<'a> {
       Borrowed(&'a mut dyn Loader),
       Owned(cache::FetchCacher),
     }
 
-    impl<'a> MutLoaderRef<'a> {
+    impl MutLoaderRef<'_> {
       pub fn as_mut_loader(&mut self) -> &mut dyn Loader {
         match self {
           Self::Borrowed(loader) => *loader,
@@ -673,7 +673,7 @@ impl ModuleGraphBuilder {
 
     struct LockfileLocker<'a>(&'a CliLockfile);
 
-    impl<'a> deno_graph::source::Locker for LockfileLocker<'a> {
+    impl deno_graph::source::Locker for LockfileLocker<'_> {
       fn get_remote_checksum(
         &self,
         specifier: &deno_ast::ModuleSpecifier,
@@ -1357,7 +1357,7 @@ struct CliGraphResolver<'a> {
     BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
 }
 
-impl<'a> CliGraphResolver<'a> {
+impl CliGraphResolver<'_> {
   fn resolve_jsx_import_source_config(
     &self,
     referrer: &ModuleSpecifier,
@@ -1371,7 +1371,7 @@ impl<'a> CliGraphResolver<'a> {
   }
 }
 
-impl<'a> deno_graph::source::Resolver for CliGraphResolver<'a> {
+impl deno_graph::source::Resolver for CliGraphResolver<'_> {
   fn default_jsx_import_source(
     &self,
     referrer: &ModuleSpecifier,
