@@ -389,14 +389,19 @@ impl LspResolver {
       .into_iter()
       .chain(self.by_scope.iter().map(|(s, r)| (Some(s), r)))
     {
-      let dep_info = dep_info_by_scope.get(&scope.cloned());
-      if let Some(dep_info) = dep_info {
-        *resolver.dep_info.lock() = dep_info.clone();
+      let dep_info = dep_info_by_scope
+        .get(&scope.cloned())
+        .cloned()
+        .unwrap_or_default();
+      {
+        let mut resolver_dep_info = resolver.dep_info.lock();
+        if dep_info == *resolver_dep_info {
+          continue;
+        }
+        *resolver_dep_info = dep_info.clone();
       }
       if let Some(npm_installer) = resolver.npm_installer.as_ref() {
-        let reqs = dep_info
-          .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
-          .unwrap_or_default();
+        let reqs = dep_info.npm_reqs.iter().cloned().collect::<Vec<_>>();
         if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
           lsp_warn!("Could not set npm package requirements: {:#}", err);
         }
@@ -630,7 +635,7 @@ impl LspResolver {
   }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
   pub npm_reqs: BTreeSet<PackageReq>,
