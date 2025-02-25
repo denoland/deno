@@ -534,12 +534,13 @@ pub async fn upgrade(
     return Ok(());
   };
 
-  let download_url = get_download_url(
+  let Some(archive_data) = download_package(
+    factory.deno_dir()?.dl_folder_path(),
+    &client,
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )?;
-  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
-  let Some(archive_data) = download_package(&client, download_url).await?
+  )
+  .await?
   else {
     log::error!("Download could not be found, aborting");
     deno_runtime::exit(1)
@@ -883,37 +884,45 @@ fn base_upgrade_url() -> Cow<'static, str> {
   }
 }
 
-fn get_download_url(
+async fn download_package(
+  dl_folder_path: PathBuf,
+  client: &HttpClient,
   version: &str,
   release_channel: ReleaseChannel,
-) -> Result<Url, AnyError> {
-  let download_url = match release_channel {
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let binary_path_suffix = match release_channel {
     ReleaseChannel::Stable => {
-      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("download/v{}/{}", version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Rc => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("v{}/{}", version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Canary => {
-      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+      format!("{}/{}", version, *ARCHIVE_NAME)
     }
     ReleaseChannel::Lts => {
-      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+      format!("v{}/{}", version, *ARCHIVE_NAME)
     }
   };
 
-  Url::parse(&download_url).with_context(|| {
-    format!(
-      "Failed to parse URL to download new release: {}",
-      download_url
-    )
-  })
-}
+  let base_url = match release_channel {
+    ReleaseChannel::Stable => RELEASE_URL,
+    ReleaseChannel::Rc | ReleaseChannel::Lts => DL_RELEASE_URL,
+    ReleaseChannel::Canary => CANARY_URL,
+  };
 
-async fn download_package(
-  client: &HttpClient,
-  download_url: Url,
-) -> Result<Option<Vec<u8>>, AnyError> {
+  let url = format!("{}/{}", base_url, binary_path_suffix);
+  let download_url = Url::parse(&url).with_context(|| {
+    format!("Failed to parse URL to download new release: {}", url,)
+  })?;
+
+  let binary_path = dl_folder_path.join(&binary_path_suffix);
+  if binary_path.exists() {
+    return Ok(Some(fs::read(&binary_path)?));
+  }
+
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+
   let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
   // provide an empty string here in order to prefer the downloading
   // text above which will stay alive after the progress bars are complete
@@ -922,6 +931,12 @@ async fn download_package(
     .download_with_progress_and_retries(download_url.clone(), None, &progress)
     .await
     .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+
+  if let Some(bytes) = &maybe_bytes {
+    fs::create_dir_all(binary_path.parent().unwrap())?;
+    fs::write(&binary_path, bytes)?;
+  }
+
   Ok(maybe_bytes)
 }
 
