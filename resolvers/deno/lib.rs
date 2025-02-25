@@ -292,6 +292,7 @@ impl<
           dep_result,
           alias,
           sub_path,
+          pkg_json,
           ..
         } => {
           // found a specifier in the package.json, so mark that
@@ -305,6 +306,23 @@ impl<
                 .into_box()
             })
             .and_then(|dep| match dep {
+              PackageJsonDepValue::File(specifier) => {
+                let package_dir = pkg_json.dir_path().join(specifier);
+                self
+                  .node_and_npm_resolver
+                  .as_ref()
+                  .unwrap()
+                  .node_resolver
+                  .resolve_package_subpath_from_deno_module(
+                    &package_dir,
+                    sub_path.as_deref(),
+                    Some(referrer),
+                    resolution_mode,
+                    resolution_kind,
+                  )
+                  .map_err(DenoResolveError::from)
+                  .and_then(|r| Ok(r.into_url()?))
+              }
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

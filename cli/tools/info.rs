@@ -89,8 +89,23 @@ pub async fn info(
           alias,
           sub_path,
           dep_result,
+          pkg_json,
           ..
         } => match dep_result.as_ref().map_err(|e| e.clone())? {
+          deno_package_json::PackageJsonDepValue::File(specifier) => {
+            let package_dir = pkg_json.dir_path().join(specifier);
+            Some(
+              node_resolver
+                .resolve_package_subpath_from_deno_module(
+                  &package_dir,
+                  sub_path.as_deref(),
+                  Some(&cwd_url),
+                  node_resolver::ResolutionMode::Import,
+                  node_resolver::NodeResolutionKind::Execution,
+                )?
+                .into_url()?,
+            )
+          }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
               .resolve_workspace_pkg_json_folder_for_pkg_json_dep(

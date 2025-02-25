@@ -118,11 +118,15 @@ impl NpmInstallDepsProvider {
             }
           };
           match dep {
+            PackageJsonDepValue::File(_) => {
+              // nothing to install—users need to run `deno install` separately
+              // in this package
+            }
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
-              // do not resolve to the current package
-              && pkg.pkg_json.path != pkg_json.path
+                // do not resolve to the current package
+                && pkg.pkg_json.path != pkg_json.path
               });
 
               if let Some(pkg) = workspace_pkg {
