@@ -156,6 +156,7 @@ pub async fn compile_eszip(
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
   let binary_writer = factory.create_compile_binary_writer().await?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
   let output_path = resolve_compile_executable_output_path(
@@ -192,13 +193,11 @@ pub async fn compile_eszip(
     graph
   };
 
-  let ts_config_for_emit = cli_options
-    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-  check_warn_tsconfig(&ts_config_for_emit);
-  let (transpile_options, emit_options) =
-    crate::args::ts_config_to_transpile_and_emit_options(
-      ts_config_for_emit.ts_config,
-    )?;
+  let transpile_and_emit_options = tsconfig_resolver
+    .transpile_and_emit_options(cli_options.workspace().root_dir())?;
+  let transpile_options = transpile_and_emit_options.transpile;
+  let emit_options = transpile_and_emit_options.emit;
+
   let parser = parsed_source_cache.as_capturing_parser();
   let root_dir_url = resolve_root_dir_from_specifiers(
     cli_options.workspace().root_dir(),
