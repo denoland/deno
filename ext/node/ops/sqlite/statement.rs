@@ -393,7 +393,7 @@ impl StatementSync {
 
 struct ResetGuard<'a>(&'a StatementSync);
 
-impl<'a> Drop for ResetGuard<'a> {
+impl Drop for ResetGuard<'_> {
   fn drop(&mut self) {
     let _ = self.0.reset();
   }
