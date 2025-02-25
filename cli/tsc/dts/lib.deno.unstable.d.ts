@@ -23,6 +23,7 @@ declare namespace Deno {
    *  | "x11" (Linux)     | Xlib `Window` | Xlib `Display*` |
    *  | "wayland" (Linux) | `wl_surface*` | `wl_display*`   |
    *
+   * @example 
    * ```ts
    * const surface = Deno.UnsafeWindowSurface.create(
    *   "win32",    // system
