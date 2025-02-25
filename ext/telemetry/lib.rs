@@ -595,13 +595,24 @@ pub struct OtelGlobals {
   pub id_generator: DenoIdGenerator,
   pub meter_provider: SdkMeterProvider,
   pub builtin_instrumentation_scope: InstrumentationScope,
+  pub config: OtelConfig,
+}
+
+impl OtelGlobals {
+  pub fn has_tracing(&self) -> bool {
+    self.config.tracing_enabled
+  }
+
+  pub fn has_metrics(&self) -> bool {
+    self.config.metrics_enabled
+  }
 }
 
 pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 pub fn init(
   rt_config: OtelRuntimeConfig,
-  config: &OtelConfig,
+  config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
@@ -726,6 +737,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
