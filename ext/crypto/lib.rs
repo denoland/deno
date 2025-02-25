@@ -360,7 +360,7 @@ pub async fn op_crypto_sign_key(
           .into();
 
         let rng = RingRand::SystemRandom::new();
-        let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
+        let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data)?;
         // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
         // https://briansmith.org/rustdoc/ring/signature/index.html#statics
         if let Some(hash) = args.hash {
@@ -489,9 +489,8 @@ pub async fn op_crypto_verify_key(
 
         let public_key_bytes = match args.key.r#type {
           KeyType::Private => {
-            let rng = RingRand::SystemRandom::new();
             private_key =
-              EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
+              EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data)?;
 
             private_key.public_key().as_ref()
           }

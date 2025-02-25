@@ -377,6 +377,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c4b4d0bd25bd0b74681c0ad21497610ce1b7c91b1022cd21c80c6fbdd9476b0"
 
 [[package]]
+name = "aws-lc-rs"
+version = "1.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4cd755adf9707cf671e31d944a189be3deaaeee11c8bc1d669bb8022ac90fbd0"
+dependencies = [
+ "aws-lc-sys",
+ "paste",
+ "untrusted 0.7.1",
+ "zeroize",
+]
+
+[[package]]
+name = "aws-lc-sys"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f9dd2e03ee80ca2822dd6ea431163d2ef259f2066a4d6ccaca6d9dcb386aa43"
+dependencies = [
+ "bindgen 0.69.5",
+ "cc",
+ "cmake",
+ "dunce",
+ "fs_extra",
+ "paste",
+]
+
+[[package]]
 name = "axum"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -529,12 +555,15 @@ dependencies = [
  "itertools 0.10.5",
  "lazy_static",
  "lazycell",
+ "log",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash 1.1.0",
  "shlex",
  "syn 2.0.87",
+ "which 4.4.2",
 ]
 
 [[package]]
@@ -1450,6 +1479,7 @@ version = "2.2.2"
 dependencies = [
  "anstream",
  "async-trait",
+ "aws-lc-rs",
  "base64 0.21.7",
  "bincode",
  "boxed_error",
@@ -1533,7 +1563,6 @@ dependencies = [
  "quick-junit",
  "rand",
  "regex",
- "ring",
  "runtimelib",
  "rustyline",
  "rustyline-derive",
@@ -1814,6 +1843,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "aes-kw",
+ "aws-lc-rs",
  "base64 0.21.7",
  "cbc",
  "const-oid",
@@ -1830,7 +1860,6 @@ dependencies = [
  "p384",
  "p521",
  "rand",
- "ring",
  "rsa",
  "serde",
  "serde_bytes",
@@ -2023,6 +2052,7 @@ version = "0.191.0"
 dependencies = [
  "async-compression",
  "async-trait",
+ "aws-lc-rs",
  "base64 0.21.7",
  "bencher",
  "brotli",
@@ -2049,7 +2079,6 @@ dependencies = [
  "phf",
  "pin-project",
  "rand",
- "ring",
  "scopeguard",
  "serde",
  "smallvec",
@@ -2115,6 +2144,7 @@ dependencies = [
 name = "deno_lib"
 version = "0.9.0"
 dependencies = [
+ "aws-lc-rs",
  "capacity_builder 0.5.0",
  "deno_error",
  "deno_fs",
@@ -2133,7 +2163,6 @@ dependencies = [
  "log",
  "node_resolver",
  "parking_lot",
- "ring",
  "serde",
  "serde_json",
  "sys_traits",
@@ -2241,6 +2270,7 @@ version = "0.131.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
+ "aws-lc-rs",
  "base64 0.21.7",
  "blake2",
  "boxed_error",
@@ -2296,7 +2326,6 @@ dependencies = [
  "pbkdf2",
  "pkcs8",
  "rand",
- "ring",
  "ripemd",
  "rsa",
  "rusqlite",
@@ -2347,6 +2376,7 @@ name = "deno_npm_cache"
 version = "0.12.0"
 dependencies = [
  "async-trait",
+ "aws-lc-rs",
  "base64 0.21.7",
  "boxed_error",
  "deno_cache_dir",
@@ -2363,7 +2393,6 @@ dependencies = [
  "parking_lot",
  "percent-encoding",
  "rand",
- "ring",
  "serde_json",
  "sys_traits",
  "tar",
@@ -2457,7 +2486,7 @@ dependencies = [
  "percent-encoding",
  "serde",
  "thiserror 2.0.3",
- "which",
+ "which 6.0.1",
  "winapi",
 ]
 
@@ -2483,7 +2512,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.3",
  "tokio",
- "which",
+ "which 6.0.1",
  "winapi",
  "windows-sys 0.59.0",
 ]
@@ -3723,6 +3752,12 @@ dependencies = [
  "rustc_version 0.2.3",
  "winapi",
 ]
+
+[[package]]
+name = "fs_extra"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fsevent-sys"
@@ -6472,6 +6507,7 @@ version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2fe5ef3495d7d2e377ff17b1a8ce2ee2ec2a18cde8b6ad6619d65d0701c135d"
 dependencies = [
+ "aws-lc-rs",
  "bytes",
  "getrandom",
  "rand",
@@ -6796,7 +6832,7 @@ dependencies = [
  "getrandom",
  "libc",
  "spin",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -6957,6 +6993,7 @@ version = "0.23.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4828ea528154ae444e5a642dbb7d5623354030dc9822b83fd9bb79683c7399d0"
 dependencies = [
+ "aws-lc-rs",
  "log",
  "once_cell",
  "ring",
@@ -7016,9 +7053,10 @@ version = "0.102.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9a6fccd794a42c2c105b513a2f62bc3fd8f3ba57a4593677ceb0bd035164d78"
 dependencies = [
+ "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -8956,6 +8994,12 @@ dependencies = [
 
 [[package]]
 name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
+
+[[package]]
+name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
@@ -9039,7 +9083,7 @@ dependencies = [
  "miniz_oxide 0.7.2",
  "once_cell",
  "paste",
- "which",
+ "which 6.0.1",
 ]
 
 [[package]]
@@ -9382,6 +9426,18 @@ dependencies = [
  "log",
  "serde",
  "web-sys",
+]
+
+[[package]]
+name = "which"
+version = "4.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87ba24419a2078cd2b0f2ede2691b6c66d8e47836da3b6db8265ebad47afbfc7"
+dependencies = [
+ "either",
+ "home",
+ "once_cell",
+ "rustix",
 ]
 
 [[package]]
