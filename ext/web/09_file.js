@@ -166,7 +166,7 @@ function processBlobParts(parts, endings) {
       size += element.size;
     } else if (typeof element === "string") {
       const chunk = core.encode(
-        endings == "native" ? convertLineEndingsToNative(element) : element,
+        endings === "native" ? convertLineEndingsToNative(element) : element,
       );
       size += TypedArrayPrototypeGetByteLength(chunk);
       ArrayPrototypePush(processedParts, BlobReference.fromUint8Array(chunk));
@@ -458,7 +458,7 @@ webidl.converters["Blob"] = webidl.createInterfaceConverter(
 );
 webidl.converters["BlobPart"] = (V, prefix, context, opts) => {
   // Union for ((ArrayBuffer or ArrayBufferView) or Blob or USVString)
-  if (typeof V == "object") {
+  if (typeof V === "object") {
     if (ObjectPrototypeIsPrototypeOf(BlobPrototype, V)) {
       return webidl.converters["Blob"](V, prefix, context, opts);
     }

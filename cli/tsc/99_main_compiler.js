@@ -59,7 +59,7 @@ function performanceProgram({ program, fileCount }) {
     stats.push(["Symbols", program.getSymbolCount()]);
     stats.push(["Types", program.getTypeCount()]);
     stats.push(["Instantiations", program.getInstantiationCount()]);
-  } else if (fileCount != null) {
+  } else if (fileCount !== undefined && fileCount !== null) {
     stats.push(["Files", fileCount]);
   }
   const programTime = ts.performance.getDuration("Program");
@@ -162,7 +162,7 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
         continue;
       }
       const sourceFile = program.getSourceFile(checkName);
-      if (sourceFile != null) {
+      if (sourceFile !== undefined && sourceFile !== null) {
         checkFiles.push(sourceFile);
       }
       checkFileNames.add(checkName);
@@ -184,14 +184,14 @@ function exec({ config, debug: debugFlag, rootNames, localOnly }) {
 
   const diagnostics = [
     ...program.getConfigFileParsingDiagnostics(),
-    ...(checkFiles == null
+    ...(checkFiles === undefined || checkFiles === null
       ? program.getSyntacticDiagnostics()
       : ts.sortAndDeduplicateDiagnostics(
         checkFiles.map((s) => program.getSyntacticDiagnostics(s)).flat(),
       )),
     ...program.getOptionsDiagnostics(),
     ...program.getGlobalDiagnostics(),
-    ...(checkFiles == null
+    ...(checkFiles === undefined || checkFiles === null
       ? program.getSemanticDiagnostics()
       : ts.sortAndDeduplicateDiagnostics(
         checkFiles.map((s) => program.getSemanticDiagnostics(s)).flat(),

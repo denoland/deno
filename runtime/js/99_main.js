@@ -288,7 +288,7 @@ function formatException(error) {
     ObjectPrototypeIsPrototypeOf(ErrorPrototype, error)
   ) {
     return null;
-  } else if (typeof error == "string") {
+  } else if (typeof error === "string") {
     return `Uncaught ${
       inspectArgs([quoteString(error, getDefaultInspectOptions())], {
         colors: !getStderrNoColor(),
@@ -862,7 +862,7 @@ function bootstrapMainRuntime(runtimeOptions, warmup = false) {
     // If the `--location` flag isn't set, make `globalThis.location` `undefined` and
     // writable, so that they can mock it themselves if they like. If the flag was
     // set, define `globalThis.location`, using the provided value.
-    if (location_ == null) {
+    if (location_ === null) {
       mainRuntimeGlobalProperties.location = {
         writable: true,
         configurable: true,

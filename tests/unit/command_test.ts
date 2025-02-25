@@ -329,7 +329,7 @@ Deno.test(
       });
     }
 
-    if (Deno.build.os == "windows") {
+    if (Deno.build.os === "windows") {
       assertEquals(dead, null);
     } else {
       assertEquals(dead, "SIGTERM");
@@ -930,7 +930,7 @@ setInterval(() => {
     assert(success);
     const stdoutText = new TextDecoder().decode(stdout);
     const stderrText = new TextDecoder().decode(stderr);
-    assert(stderrText.length == 0);
+    assert(stderrText.length === 0);
     const [line1, line2] = stdoutText.split("\n");
     const pidStr = line1.split(" ").at(-1);
     assert(pidStr);

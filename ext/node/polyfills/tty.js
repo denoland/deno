@@ -57,7 +57,7 @@ export class ReadStream extends Socket {
     }
 
     // We only support `stdin`.
-    if (fd != 0) throw new Error("Only fd 0 is supported.");
+    if (fd !== 0) throw new Error("Only fd 0 is supported.");
 
     const tty = new TTY(io.stdin);
     super({

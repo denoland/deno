@@ -159,7 +159,7 @@ export function endianness(): "BE" | "LE" {
 
 /** Return free memory amount */
 export function freemem(): number {
-  if (Deno.build.os === "linux" || Deno.build.os == "android") {
+  if (Deno.build.os === "linux" || Deno.build.os === "android") {
     // On linux, use 'available' memory
     // https://github.com/libuv/libuv/blob/a5c01d4de3695e9d9da34cfd643b5ff0ba582ea7/src/unix/linux.c#L2064
     return Deno.systemMemoryInfo().available;
@@ -246,7 +246,7 @@ export function version(): string {
 
 /** Returns the machine type as a string */
 export function machine(): string {
-  if (Deno.build.arch == "aarch64") {
+  if (Deno.build.arch === "aarch64") {
     return "arm64";
   }
 

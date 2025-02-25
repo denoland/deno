@@ -1575,7 +1575,7 @@ queueTest("queue delay and now", async (db) => {
   let dequeuedMessage: unknown = null;
   const listener = db.listenQueue((msg) => {
     count += 1;
-    if (count == 2) {
+    if (count === 2) {
       dequeueTime = Date.now();
       dequeuedMessage = msg;
       resolve();
@@ -1794,7 +1794,7 @@ Deno.test({
       // Register long-running handler.
       let listener = db.listenQueue(async (_msg) => {
         count += 1;
-        if (count == 3) {
+        if (count === 3) {
           deferred.resolve();
         }
         await new Promise(() => {});
@@ -1825,7 +1825,7 @@ Deno.test({
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
-        if (count == 3) {
+        if (count === 3) {
           deferred.resolve();
         }
       });
@@ -1881,7 +1881,7 @@ Deno.test({
       // Register a handler that will complete quickly.
       listener = db.listenQueue((_msg) => {
         count += 1;
-        if (count == 3) {
+        if (count === 3) {
           deferred.resolve();
         }
       });

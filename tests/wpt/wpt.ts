@@ -48,7 +48,7 @@ class TestFilter {
   }
 
   matches(path: string): boolean {
-    if (this.filter === undefined || this.filter.length == 0) {
+    if (this.filter === undefined || this.filter.length === 0) {
       return true;
     }
     for (const filter of this.filter) {
@@ -105,12 +105,12 @@ More details at https://docs.deno.com/runtime/manual/references/contributing/web
 }
 
 async function setup() {
-  const hostsPath = Deno.build.os == "windows"
+  const hostsPath = Deno.build.os === "windows"
     ? `${Deno.env.get("SystemRoot")}\\System32\\drivers\\etc\\hosts`
     : "/etc/hosts";
   // TODO(lucacsonato): use this when 1.7.1 is released.
   // const records = await Deno.resolveDns("web-platform.test", "A");
-  // const etcHostsConfigured = records[0] == "127.0.0.1";
+  // const etcHostsConfigured = records[0] === "127.0.0.1";
   const hostsFile = await Deno.readTextFile(hostsPath);
   const etcHostsConfigured = hostsFile.includes("web-platform.test");
 
@@ -145,7 +145,7 @@ async function setup() {
       console.log(`Updated ${hostsPath}`);
     } else {
       console.log(`Please configure the ${hostsPath} entries manually.`);
-      if (Deno.build.os == "windows") {
+      if (Deno.build.os === "windows") {
         console.log("To do this run the following command in PowerShell:");
         console.log("");
         console.log("    cd tests/wpt/suite/");
@@ -344,7 +344,7 @@ function assertAllExpectationsHaveTests(
       const path = `${parent}/${key}`;
       if (!filter.matches(path)) continue;
       if (
-        (typeof expectation == "boolean" || Array.isArray(expectation)) &&
+        (typeof expectation === "boolean" || Array.isArray(expectation)) &&
         key !== "ignore"
       ) {
         if (!tests.has(path)) {
@@ -440,7 +440,7 @@ function newExpectation(
   for (const [path, result] of Object.entries(resultTests)) {
     const { passed, failed, testSucceeded } = result;
     let finalExpectation: boolean | string[];
-    if (failed.length == 0 && testSucceeded) {
+    if (failed.length === 0 && testSucceeded) {
       finalExpectation = true;
     } else if (failed.length > 0 && passed.length > 0 && testSucceeded) {
       finalExpectation = failed;
@@ -528,7 +528,7 @@ function reportFinal(
       }
     } else if (
       test.expectation === false &&
-      expectedFailedAndFailedCount != result.cases.length
+      expectedFailedAndFailedCount !== result.cases.length
     ) {
       finalExpectedFailedButPassedFiles.push(test.path);
     }
@@ -772,7 +772,7 @@ function discoverTestsToRun(
           const finalKey = split[split.length - 1];
 
           const expectation = Array.isArray(parentExpectation) ||
-              typeof parentExpectation == "boolean"
+              typeof parentExpectation === "boolean"
             ? parentExpectation
             : parentExpectation[finalKey];
 
@@ -790,7 +790,7 @@ function discoverTestsToRun(
 
           if (!noIgnore) {
             assert(
-              Array.isArray(expectation) || typeof expectation == "boolean",
+              Array.isArray(expectation) || typeof expectation === "boolean",
               "test entry must not have a folder expectation",
             );
           }
@@ -806,7 +806,7 @@ function discoverTestsToRun(
         }
       } else {
         const expectation = Array.isArray(parentExpectation) ||
-            typeof parentExpectation == "boolean"
+            typeof parentExpectation === "boolean"
           ? parentExpectation
           : parentExpectation[key];
 

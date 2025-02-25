@@ -768,7 +768,7 @@ Object.defineProperty(OutgoingMessage.prototype, "_headers", {
   set: deprecate(
     // deno-lint-ignore no-explicit-any
     function (this: any, val: any) {
-      if (val == null) {
+      if (val === undefined || val === null) {
         this[kOutHeaders] = null;
       } else if (typeof val === "object") {
         const headers = this[kOutHeaders] = Object.create(null);

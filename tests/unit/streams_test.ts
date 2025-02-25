@@ -23,14 +23,12 @@ function helloWorldStream(
   return new ReadableStream({
     start(controller) {
       controller.enqueue("hello, world");
-      if (close == true) {
+      if (close === true) {
         controller.close();
       }
     },
     cancel(reason) {
-      if (cancelResolve != undefined) {
-        cancelResolve(reason);
-      }
+      cancelResolve?.(reason);
     },
   }).pipeThrough(new TextEncoderStream());
 }
@@ -42,10 +40,10 @@ function errorStream(type: "string" | "controller" | "TypeError") {
       controller.enqueue("hello, world");
     },
     pull(controller) {
-      if (type == "string") {
+      if (type === "string") {
         throw "Uh oh (string)!";
       }
-      if (type == "TypeError") {
+      if (type === "TypeError") {
         throw TypeError("Uh oh (TypeError)!");
       }
       controller.error("Uh oh (controller)!");
@@ -60,7 +58,7 @@ function longStream() {
       for (let i = 0; i < 4; i++) {
         setTimeout(() => {
           controller.enqueue(LOREM);
-          if (i == 3) {
+          if (i === 3) {
             controller.close();
           }
         }, i * 100);
@@ -82,9 +80,7 @@ function longAsyncStream(cancelResolve?: (value: unknown) => void) {
       controller.close();
     },
     cancel(reason) {
-      if (cancelResolve != undefined) {
-        cancelResolve(reason);
-      }
+      cancelResolve?.(reason);
       if (currentTimeout !== undefined) {
         clearTimeout(currentTimeout);
       }
@@ -156,8 +152,8 @@ function makeStreamWithCount(
   action: "Throw" | "Close",
 ): ReadableStream {
   function doAction(controller: ReadableStreamDefaultController, i: number) {
-    if (i == count) {
-      if (action == "Throw") {
+    if (i === count) {
+      if (action === "Throw") {
         controller.error(new Error("Expected error!"));
       } else {
         controller.close();
@@ -165,7 +161,7 @@ function makeStreamWithCount(
     } else {
       controller.enqueue(String.fromCharCode("a".charCodeAt(0) + i));
 
-      if (delay == 0) {
+      if (delay === 0) {
         doAction(controller, i + 1);
       } else {
         setTimeout(() => doAction(controller, i + 1), delay);
@@ -175,7 +171,7 @@ function makeStreamWithCount(
 
   return new ReadableStream({
     start(controller) {
-      if (delay == 0) {
+      if (delay === 0) {
         doAction(controller, 0);
       } else {
         setTimeout(() => doAction(controller, 0), delay);
@@ -275,7 +271,7 @@ Deno.test(async function readableStreamLongByPiece() {
   for (let i = 0; i < 100; i++) {
     const length = await core.read(rid, new Uint8Array(16));
     total += length;
-    if (length == 0) {
+    if (length === 0) {
       break;
     }
   }
@@ -393,7 +389,7 @@ Deno.test(async function readableStreamVeryLargePackets() {
     const nread = await core.read(rid, new Uint8Array(96 * 1024));
     total += nread;
     readCounts[nread] = (readCounts[nread] || 0) + 1;
-    if (nread == 0) {
+    if (nread === 0) {
       break;
     }
   }
@@ -427,7 +423,7 @@ function createStreamTest(
         const buffer = new Uint8Array(1);
         await core.read(rid, buffer);
       }
-      if (action == "Throw") {
+      if (action === "Throw") {
         try {
           const buffer = new Uint8Array(1);
           assertEquals(1, await core.read(rid, buffer));

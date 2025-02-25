@@ -1,4 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
+
 import { partition } from "@std/collections/partition";
 import { join } from "@std/path";
 import * as JSONC from "@std/jsonc";
@@ -185,6 +186,6 @@ export async function runNodeCompatTestCase(
 /** Parses the special "Flags:"" syntax in Node.js test files */
 function parseFlags(source: string): string[] {
   const line = /^\/\/ Flags: (.+)$/um.exec(source);
-  if (line == null) return [];
+  if (line === null) return [];
   return line[1].split(" ");
 }

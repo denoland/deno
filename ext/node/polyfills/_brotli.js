@@ -148,7 +148,7 @@ function oneOffCompressOptions(options) {
   // NOTE(bartlomieju): currently the rust-brotli crate panics if the quality
   // is set to 10. Coerce it down to 9.5 which is the maximum supported value.
   // https://github.com/dropbox/rust-brotli/issues/216
-  if (quality == 10) {
+  if (quality === 10) {
     quality = 9.5;
   }
 
@@ -160,7 +160,7 @@ function oneOffCompressOptions(options) {
 }
 
 function brotliMaxCompressedSize(input) {
-  if (input == 0) return 2;
+  if (input === 0) return 2;
 
   // [window bits / empty metadata] + N * [uncompressed] + [last empty]
   const numLargeBlocks = input >> 24;
