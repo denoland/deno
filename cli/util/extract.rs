@@ -610,7 +610,7 @@ struct Transform<'a> {
   wrap_kind: WrapKind,
 }
 
-impl<'a> VisitMut for Transform<'a> {
+impl VisitMut for Transform<'_> {
   fn visit_mut_program(&mut self, node: &mut ast::Program) {
     let new_module_items = match node {
       ast::Program::Module(module) => {

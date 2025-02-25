@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
+#![expect(unexpected_cfgs)]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -789,7 +790,7 @@ pub fn handle_log(record: &log::Record) {
 
   struct Visitor<'s>(&'s mut LogRecord);
 
-  impl<'s, 'kvs> log::kv::VisitSource<'kvs> for Visitor<'s> {
+  impl<'kvs> log::kv::VisitSource<'kvs> for Visitor<'_> {
     fn visit_pair(
       &mut self,
       key: log::kv::Key<'kvs>,

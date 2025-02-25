@@ -450,7 +450,7 @@ async fn absolute_redirect(
 async fn main_server(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  return match (req.method(), req.uri().path()) {
+  match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
@@ -1098,30 +1098,30 @@ console.log("imported", import.meta.url);
     }
     (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/upgrade/sleep/canary-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/release-latest.txt") => {
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           // use a deno version that will never happen
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (
       &Method::GET,
@@ -1133,14 +1133,12 @@ console.log("imported", import.meta.url);
       | "/canary-x86_64-unknown-linux-musl-latest.txt"
       | "/canary-aarch64-unknown-linux-musl-latest.txt"
       | "/canary-x86_64-pc-windows-msvc-latest.txt",
-    ) => {
-      return Ok(
-        Response::builder()
-          .status(StatusCode::OK)
-          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
-          .unwrap(),
-      );
-    }
+    ) => Ok(
+      Response::builder()
+        .status(StatusCode::OK)
+        .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+        .unwrap(),
+    ),
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1171,7 +1169,7 @@ console.log("imported", import.meta.url);
         .body(empty_body())
         .map_err(|e| e.into())
     }
-  };
+  }
 }
 
 async fn wrap_redirect_server(port: u16) {
