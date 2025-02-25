@@ -229,19 +229,8 @@ pub async fn compile_eszip(
   );
   validate_output_path(&output_path)?;
 
-  let mut temp_filename = output_path.file_name().unwrap().to_owned();
-  temp_filename.push(format!(
-    ".tmp-{}",
-    faster_hex::hex_encode(
-      &rand::thread_rng().gen::<[u8; 8]>(),
-      &mut [0u8; 16]
-    )
-    .unwrap()
-  ));
-  let temp_path = output_path.with_file_name(temp_filename);
-
-  let file = std::fs::File::create(&temp_path).with_context(|| {
-    format!("Opening temporary file '{}'", temp_path.display())
+  let file = std::fs::File::create(&output_path).with_context(|| {
+    format!("Opening ESZip file '{}'", output_path.display())
   })?;
 
   let write_result = {
@@ -250,33 +239,9 @@ pub async fn compile_eszip(
     r
   };
 
-  // set it as executable
-  #[cfg(unix)]
-  let write_result = write_result.and_then(|_| {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o755);
-    std::fs::set_permissions(&temp_path, perms).with_context(|| {
-      format!(
-        "Setting permissions on temporary file '{}'",
-        temp_path.display()
-      )
-    })
-  });
-
-  let write_result = write_result.and_then(|_| {
-    std::fs::rename(&temp_path, &output_path).with_context(|| {
-      format!(
-        "Renaming temporary file '{}' to '{}'",
-        temp_path.display(),
-        output_path.display()
-      )
-    })
-  });
-
   if let Err(err) = write_result {
-    // errored, so attempt to remove the temporary file
-    let _ = std::fs::remove_file(temp_path);
-    return Err(err);
+    let _ = std::fs::remove_file(output_path);
+    return Err(err.into());
   }
 
   Ok(())
