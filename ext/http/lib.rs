@@ -382,11 +382,11 @@ impl OtelInfoAttributes {
 
 impl OtelInfo {
   fn new(
+    otel: &deno_telemetry::OtelGlobals,
     instant: std::time::Instant,
     request_size: u64,
     attributes: OtelInfoAttributes,
   ) -> Self {
-    let otel = OTEL_GLOBALS.get().unwrap();
     let collectors = OTEL_COLLECTORS.get_or_init(|| {
       let meter = otel
         .meter_provider
@@ -596,7 +596,10 @@ impl HttpConnResource {
       let (request_tx, request_rx) = oneshot::channel();
       let (response_tx, response_rx) = oneshot::channel();
 
-      let otel_instant = OTEL_GLOBALS.get().map(|_| std::time::Instant::now());
+      let otel_instant = OTEL_GLOBALS
+        .get()
+        .filter(|o| o.has_metrics())
+        .map(|_| std::time::Instant::now());
 
       let acceptor = HttpAcceptor::new(request_tx, response_rx);
       self.acceptors_tx.unbounded_send(acceptor).ok()?;
@@ -615,26 +618,28 @@ impl HttpConnResource {
           .unwrap_or(Encoding::Identity)
       };
 
-      let otel_info = OTEL_GLOBALS.get().map(|_| {
-        let size_hint = request.size_hint();
-        Rc::new(RefCell::new(Some(OtelInfo::new(
-          otel_instant.unwrap(),
-          size_hint.upper().unwrap_or(size_hint.lower()),
-          OtelInfoAttributes {
-            http_request_method: OtelInfoAttributes::method_v02(
-              request.method(),
-            ),
-            url_scheme: Cow::Borrowed(self.scheme),
-            network_protocol_version: OtelInfoAttributes::version_v02(
-              request.version(),
-            ),
-            server_address: request.uri().host().map(|host| host.to_string()),
-            server_port: request.uri().port_u16().map(|port| port as i64),
-            error_type: Default::default(),
-            http_response_status_code: Default::default(),
-          },
-        ))))
-      });
+      let otel_info =
+        OTEL_GLOBALS.get().filter(|o| o.has_metrics()).map(|otel| {
+          let size_hint = request.size_hint();
+          Rc::new(RefCell::new(Some(OtelInfo::new(
+            otel,
+            otel_instant.unwrap(),
+            size_hint.upper().unwrap_or(size_hint.lower()),
+            OtelInfoAttributes {
+              http_request_method: OtelInfoAttributes::method_v02(
+                request.method(),
+              ),
+              url_scheme: Cow::Borrowed(self.scheme),
+              network_protocol_version: OtelInfoAttributes::version_v02(
+                request.version(),
+              ),
+              server_address: request.uri().host().map(|host| host.to_string()),
+              server_port: request.uri().port_u16().map(|port| port as i64),
+              error_type: Default::default(),
+              http_response_status_code: Default::default(),
+            },
+          ))))
+        });
 
       let method = request.method().to_string();
       let url = req_url(&request, self.scheme, &self.addr);
