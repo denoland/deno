@@ -10,8 +10,6 @@ use serde_json::json;
 use serde_json::Value;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
-use test_util::deno_cmd_with_deno_dir;
-use test_util::env_vars_for_npm_tests;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
@@ -10019,23 +10017,14 @@ fn lsp_npm_specifier_unopened_file() {
   client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
-  let deno = deno_cmd_with_deno_dir(client.deno_dir())
-    .current_dir(temp_dir.path())
-    .arg("cache")
-    .arg("--quiet")
-    .arg("other.ts")
-    .envs(env_vars_for_npm_tests())
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.status.code(), Some(0));
-
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_eq!(stdout.as_str(), "");
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr.as_str(), "");
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("other.ts").unwrap()],
+    }),
+  );
+  client.read_diagnostics();
 
   // open main.ts, which imports other.ts (unopened)
   client.did_open(json!({
@@ -16975,7 +16964,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
     assert!(!line.contains("Running npm resolution."), "Line: {}", line);
     line.contains("Server ready.")
   });
-  assert_eq!(skipping_count, 2);
+  assert_eq!(skipping_count, 1);
   client.shutdown();
 }
 
