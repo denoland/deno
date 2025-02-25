@@ -1570,9 +1570,9 @@ dependencies = [
 
 [[package]]
 name = "deno-tower-lsp-macros"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61083feefc9c29a3f45670be6b60001ec209286c861b6830cd30ba4af9a6e9d8"
+checksum = "f9221b99f1cc7c395686b9f2d5652c5855666a9282c8d5a68fabd4b1d4994fa9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2692,9 +2692,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c29dce82d67177bbc36468f64cddd8c25242fc31b99369ef0126fa7fad64c5ec"
+checksum = "67da3258ce785368c691b206d00d4109f8eead24da0603abc70e04b04871a3df"
 dependencies = [
  "async-trait",
  "auto_impl",
