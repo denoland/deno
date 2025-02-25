@@ -391,6 +391,14 @@ impl StatementSync {
   }
 }
 
+struct ResetGuard<'a>(&'a StatementSync);
+
+impl<'a> Drop for ResetGuard<'a> {
+  fn drop(&mut self) {
+    let _ = self.0.reset();
+  }
+}
+
 // Represents a single prepared statement. Cannot be initialized directly via constructor.
 // Instances are created using `DatabaseSync#prepare`.
 //
@@ -416,6 +424,8 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
+    let _reset = ResetGuard(self);
+
     let entry = self.read_row(scope)?;
     let result = entry
       .map(|r| r.into())
@@ -438,9 +448,10 @@ impl StatementSync {
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     self.bind_params(scope, params)?;
-    self.step()?;
 
-    self.reset()?;
+    let _reset = ResetGuard(self);
+
+    self.step()?;
 
     Ok(RunStatementResult {
       last_insert_rowid: db.last_insert_rowid(),
@@ -460,11 +471,11 @@ impl StatementSync {
     let mut arr = vec![];
 
     self.bind_params(scope, params)?;
+
+    let _reset = ResetGuard(self);
     while let Some(result) = self.read_row(scope)? {
       arr.push(result.into());
     }
-
-    self.reset()?;
 
     let arr = v8::Array::new_with_elements(scope, &arr);
     Ok(arr)
