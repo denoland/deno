@@ -393,12 +393,14 @@ impl LspResolver {
         .get(&scope.cloned())
         .cloned()
         .unwrap_or_default();
+      let npm_reqs_changed = false;
       {
         let mut resolver_dep_info = resolver.dep_info.lock();
-        if dep_info == *resolver_dep_info {
-          continue;
-        }
+        let npm_reqs_changed = dep_info.npm_reqs != resolver_dep_info.npm_reqs;
         *resolver_dep_info = dep_info.clone();
+      }
+      if !npm_reqs_changed {
+        continue;
       }
       if let Some(npm_installer) = resolver.npm_installer.as_ref() {
         let reqs = dep_info.npm_reqs.iter().cloned().collect::<Vec<_>>();
@@ -635,7 +637,7 @@ impl LspResolver {
   }
 }
 
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Clone)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
   pub npm_reqs: BTreeSet<PackageReq>,
