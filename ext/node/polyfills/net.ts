@@ -913,6 +913,7 @@ function _lookupAndConnect(
     family: options.family,
     hints: options.hints || 0,
     all: false,
+    port,
   };
 
   if (
@@ -962,7 +963,9 @@ function _lookupAndConnect(
         err: ErrnoException | null,
         ip: string,
         addressType: number,
+        netPermToken,
       ) {
+        self._handle?.setNetPermToken(netPermToken);
         self.emit("lookup", err, ip, addressType, host);
 
         // It's possible we were destroyed while looking this up.
@@ -1026,7 +1029,8 @@ function _lookupAndConnectMultiple(
   timeout: number | undefined,
 ) {
   defaultTriggerAsyncIdScope(self[asyncIdSymbol], function emitLookup() {
-    lookup(host, dnsopts, function emitLookup(err, addresses) {
+    lookup(host, dnsopts, function emitLookup(err, addresses, _, netPermToken) {
+      self._handle?.setNetPermToken(netPermToken);
       // It's possible we were destroyed while looking this up.
       // XXX it would be great if we could cancel the promise returned by
       // the look up.
@@ -2179,7 +2183,7 @@ function _lookupAndListen(
   exclusive: boolean,
   flags: number,
 ) {
-  dnsLookup(address, function doListen(err, ip, addressType) {
+  dnsLookup(address, { port }, function doListen(err, ip, addressType) {
     if (err) {
       server.emit("error", err);
     } else {
