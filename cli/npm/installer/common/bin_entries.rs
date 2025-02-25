@@ -421,7 +421,7 @@ pub enum EntrySetupOutcome<'a> {
   Success,
 }
 
-impl<'a> EntrySetupOutcome<'a> {
+impl EntrySetupOutcome<'_> {
   pub fn warn_if_failed(&self) {
     match self {
       EntrySetupOutcome::MissingEntrypoint {

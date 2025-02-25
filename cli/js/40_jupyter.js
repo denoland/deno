@@ -299,6 +299,19 @@ async function format(obj) {
       "text/html": obj.outerHTML,
     };
   }
+  if (obj instanceof GPUTexture) {
+    return { "image/png": core.ops.op_jupyter_create_png_from_texture(obj) };
+  }
+  if (obj instanceof GPUBuffer) {
+    return {
+      "text/plain": Deno[Deno.internal].inspectArgs([
+        "%o",
+        core.ops.op_jupyter_get_buffer(obj),
+      ], {
+        colors: !Deno.noColor,
+      }),
+    };
+  }
   return {
     "text/plain": Deno[Deno.internal].inspectArgs(["%o", obj], {
       colors: !Deno.noColor,
@@ -387,8 +400,14 @@ function image(obj) {
     return makeDisplayable({ "image/png": core.ops.op_base64_encode(obj) });
   }
 
+  if (obj instanceof GPUTexture) {
+    return makeDisplayable({
+      "image/png": core.ops.op_jupyter_create_png_from_texture(obj),
+    });
+  }
+
   throw new TypeError(
-    "Object is not a valid image or a path to an image. `Deno.jupyter.image` supports displaying JPG or PNG images.",
+    "Object is not a valid image or a path to an image. `Deno.jupyter.image` supports displaying JPG or PNG images, or GPUTextures.",
   );
 }
 
@@ -451,6 +470,12 @@ function enableJupyter() {
           ename: err.name,
           evalue: err.message,
           traceback: stack.split("\n"),
+        });
+      } else if (err instanceof GPUError) {
+        await broadcast("error", {
+          ename: err.constructor.name,
+          evalue: err.message,
+          traceback: [],
         });
       } else if (typeof err == "string") {
         await broadcast("error", {

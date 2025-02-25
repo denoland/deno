@@ -11,6 +11,18 @@ const ops = core.ops;
 let logDebug = false;
 let logSource = "JS";
 
+function spanned(name, f) {
+  if (!ops.op_make_span) {
+    return f();
+  }
+  const span = ops.op_make_span(name, false);
+  try {
+    return f();
+  } finally {
+    ops.op_exit_span(span);
+  }
+}
+
 // The map from the normalized specifier to the original.
 // TypeScript normalizes the specifier in its internal processing,
 // but the original specifier is needed when looking up the source from the runtime.
@@ -384,7 +396,7 @@ export function clearScriptNamesCache() {
  * specific "bindings" to the Deno environment that tsc needs to work.
  *
  * @type {ts.CompilerHost & ts.LanguageServiceHost} */
-export const host = {
+const hostImpl = {
   fileExists(specifier) {
     if (logDebug) {
       debug(`host.fileExists("${specifier}")`);
@@ -416,13 +428,6 @@ export const host = {
     PROJECT_VERSION_CACHE.set(projectVersion);
     debug(`getProjectVersion cache miss : ${projectVersion}`);
     return projectVersion;
-  },
-  // @ts-ignore Undocumented method.
-  getCachedExportInfoMap() {
-    return exportMapCache;
-  },
-  getGlobalTypingsCacheLocation() {
-    return undefined;
   },
   // @ts-ignore Undocumented method.
   toPath(fileName) {
@@ -720,10 +725,41 @@ export const host = {
     }
     return scriptSnapshot;
   },
+  getNearestAncestorDirectoryWithPackageJson() {
+    // always return `undefined` in order to short-circuit
+    // a codepath in the TypeScript compiler that always
+    // ends up returning `undefined` in Deno anyway
+    return undefined;
+  },
 };
 
-// @ts-ignore Undocumented function.
-const exportMapCache = ts.createCacheableExportInfoMap(host);
+// these host methods are super noisy (often thousands of calls per TSC request)
+const excluded = new Set([
+  "getScriptVersion",
+  "fileExists",
+  "getScriptSnapshot",
+  "getCompilationSettings",
+  "getCurrentDirectory",
+  "useCaseSensitiveFileNames",
+  "getModuleSpecifierCache",
+  "getGlobalTypingsCacheLocation",
+  "getSourceFile",
+]);
+/** @type {typeof hostImpl} */
+export const host = {
+  log(msg) {
+    ops.op_log_event(msg);
+  },
+};
+for (const [key, value] of Object.entries(hostImpl)) {
+  if (typeof value === "function" && !excluded.has(key)) {
+    host[key] = (...args) => {
+      return spanned(key, () => value.bind(host)(...args));
+    };
+  } else {
+    host[key] = value;
+  }
+}
 
 // override the npm install @types package diagnostics to be deno specific
 ts.setLocalizedDiagnosticMessages((() => {

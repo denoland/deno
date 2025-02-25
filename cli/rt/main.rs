@@ -74,7 +74,7 @@ fn main() {
       Ok(Some(data)) => {
         deno_runtime::deno_telemetry::init(
           otel_runtime_config(),
-          &data.metadata.otel_config,
+          data.metadata.otel_config.clone(),
         )?;
         init_logging(
           data.metadata.log_level,

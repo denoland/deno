@@ -201,6 +201,40 @@ declare var localStorage: Storage;
  */
 declare var sessionStorage: Storage;
 /** @category Cache */
+/**
+ * Provides access to the Cache API. Returns a CacheStorage object, which enables storing, retrieving, and managing request/response pairs in a cache.
+ *
+ * @example
+ * ```ts
+ * // Open (or create) a cache
+ * const cache = await caches.open('v1');
+ *
+ * // Store a response
+ * await cache.put('/api/data', new Response('Hello World'));
+ *
+ * // Retrieve from cache with fallback
+ * const response = await caches.match('/api/data') || await fetch('/api/data');
+ *
+ * // Delete specific cache
+ * await caches.delete('v1');
+ *
+ * // List all cache names
+ * const cacheNames = await caches.keys();
+ *
+ * // Cache-first strategy
+ * async function fetchWithCache(request) {
+ *   const cached = await caches.match(request);
+ *   if (cached) return cached;
+ *
+ *   const response = await fetch(request);
+ *   const cache = await caches.open('v1');
+ *   await cache.put(request, response.clone());
+ *   return response;
+ * }
+ * ```
+ *
+ * @see  https://developer.mozilla.org/en-US/docs/Web/API/Window/caches
+ */
 declare var caches: CacheStorage;
 
 /** @category Platform */

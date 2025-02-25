@@ -23,6 +23,13 @@
       "args": "run -A main.ts metric.ts",
       "output": "metric.out"
     },
+    "http_metric": {
+      "envs": {
+        "OTEL_METRIC_EXPORT_INTERVAL": "1000"
+      },
+      "args": "run -A main.ts http_metric.ts",
+      "output": "http_metric.out"
+    },
     "links": {
       "args": "run -A main.ts links.ts",
       "output": "links.out"

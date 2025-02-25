@@ -96,10 +96,6 @@ fn check_unstable(state: &OpState, api_name: &str) {
     .check_or_exit(UNSTABLE_FEATURE_NAME, api_name);
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.d.ts")
-}
-
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,

@@ -1006,7 +1006,7 @@ impl Flags {
             || module_specifier.scheme() == "npm"
           {
             if let Ok(p) = url_to_file_path(&module_specifier) {
-              Some(vec![p.parent().unwrap().to_path_buf()])
+              p.parent().map(|parent| vec![parent.to_path_buf()])
             } else {
               Some(vec![current_dir.to_path_buf()])
             }
@@ -1257,7 +1257,9 @@ pub fn flags_from_vec(args: Vec<OsString>) -> clap::error::Result<Flags> {
       app
     };
 
-    if help_expansion == "unstable"
+    if help_expansion == "full" {
+      subcommand = enable_full(subcommand);
+    } else if help_expansion == "unstable"
       && subcommand
         .get_arguments()
         .any(|arg| arg.get_id().as_str() == "unstable")
@@ -1423,6 +1425,17 @@ fn enable_unstable(command: Command) -> Command {
     })
 }
 
+fn enable_full(command: Command) -> Command {
+  command.mut_args(|arg| {
+    let long_help = arg.get_long_help();
+    if long_help.is_none_or(|s| s.to_string() != "false") {
+      arg.hide(false)
+    } else {
+      arg
+    }
+  })
+}
+
 macro_rules! heading {
     ($($name:ident = $title:expr),+; $total:literal) => {
       $(const $name: &str = $title;)+
@@ -1547,11 +1560,11 @@ pub fn clap_root() -> Command {
       Arg::new("help")
         .short('h')
         .long("help")
-        .hide(true)
         .action(ArgAction::Append)
         .num_args(0..=1)
         .require_equals(true)
-        .value_parser(["unstable"])
+        .value_name("CONTEXT")
+        .value_parser(["unstable", "full"])
         .global(true),
     )
     .arg(
@@ -1772,7 +1785,7 @@ If you specify a directory instead of a file, the path is expanded to all contai
 }
 
 fn bundle_subcommand() -> Command {
-  command("bundle",  "⚠️ `deno bundle` was removed in Deno 2.
+  command("bundle",  "`deno bundle` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", UnstableArgsConfig::ResolutionOnly)
     .hide(true)
@@ -1828,6 +1841,7 @@ Unless --reload is specified, this command will not re-download already cached d
     )
     .defer(|cmd| {
       compile_args_without_check_args(cmd)
+        .arg(no_code_cache_arg())
         .arg(
           Arg::new("all")
             .long("all")
@@ -2280,7 +2294,7 @@ Ignore formatting a file by adding an ignore comment at the top of the file:
           .value_parser([
             "ts", "tsx", "js", "jsx", "md", "json", "jsonc", "css", "scss",
             "sass", "less", "html", "svelte", "vue", "astro", "yml", "yaml",
-            "ipynb", "sql"
+            "ipynb", "sql", "vto", "njk"
           ])
           .help_heading(FMT_HEADING).requires("files"),
       )
@@ -3025,6 +3039,7 @@ Evaluate a task from string
       .allow_external_subcommands(true)
       .subcommand_value_name("TASK")
       .arg(config_arg())
+      .arg(frozen_lockfile_arg())
       .arg(
         Arg::new("cwd")
           .long("cwd")
@@ -3320,7 +3335,7 @@ different location, use the <c>--output</> flag:
 
 fn vendor_subcommand() -> Command {
   command("vendor",
-      "⚠️ `deno vendor` was removed in Deno 2.
+      "`deno vendor` was removed in Deno 2.
 
 See the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations",
       UnstableArgsConfig::ResolutionOnly
@@ -3462,7 +3477,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("Allow file system read access. Optionally specify allowed paths")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3479,7 +3494,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("Deny file system read access. Optionally specify denied paths")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3497,7 +3512,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("Allow file system write access. Optionally specify allowed paths")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3514,7 +3529,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("Deny file system write access. Optionally specify denied paths")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3532,7 +3547,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("IP_OR_HOSTNAME")
-          .help("Allow network access. Optionally specify allowed IP addresses and host names, with ports as necessary")
+          .long_help("false")
           .value_parser(flags_net::validator)
           .hide(true);
         if let Some(requires) = requires {
@@ -3549,10 +3564,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("IP_OR_HOSTNAME")
-          .help("Deny network access. Optionally specify denied IP addresses and host names, with ports as necessary")
+          .long_help("false")
           .value_parser(flags_net::validator)
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3568,7 +3582,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("VARIABLE_NAME")
-          .help("Allow access to system environment information. Optionally specify accessible environment variables")
+          .long_help("false")
           .value_parser(|key: &str| {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
               return Err(format!("invalid key \"{key}\""));
@@ -3580,8 +3594,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
               key.to_string()
             })
           })
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3596,7 +3609,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("VARIABLE_NAME")
-          .help("Deny access to system environment information. Optionally specify accessible environment variables")
+          .long_help("false")
           .value_parser(|key: &str| {
             if key.is_empty() || key.contains(&['=', '\0'] as &[char]) {
               return Err(format!("invalid key \"{key}\""));
@@ -3608,8 +3621,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
               key.to_string()
             })
           })
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3625,10 +3637,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("API_NAME")
-          .help("Allow access to OS information. Optionally allow specific APIs by function name")
+          .long_help("false")
           .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3643,10 +3654,9 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("API_NAME")
-          .help("Deny access to OS information. Optionally deny specific APIs by function name")
+          .long_help("false")
           .value_parser(|key: &str| SysDescriptor::parse(key.to_string()).map(|s| s.into_string()))
-          .hide(true)
-          ;
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3661,9 +3671,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("PROGRAM_NAME")
-          .help("Allow running subprocesses. Optionally specify allowed runnable program names")
-          .hide(true)
-          ;
+          .long_help("false")
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3678,9 +3687,8 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .use_value_delimiter(true)
           .require_equals(true)
           .value_name("PROGRAM_NAME")
-          .help("Deny running subprocesses. Optionally specify denied runnable program names")
-          .hide(true)
-          ;
+          .long_help("false")
+          .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -3696,7 +3704,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("(Unstable) Allow loading dynamic libraries. Optionally specify allowed directories or files")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3713,7 +3721,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .action(ArgAction::Append)
           .require_equals(true)
           .value_name("PATH")
-          .help("(Unstable) Deny loading dynamic libraries. Optionally specify denied directories or files")
+          .long_help("false")
           .value_hint(ValueHint::AnyPath)
           .hide(true);
         if let Some(requires) = requires {
@@ -3727,7 +3735,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         let mut arg = Arg::new("allow-hrtime")
           .long("allow-hrtime")
           .action(ArgAction::SetTrue)
-          .help("REMOVED in Deno 2.0")
+          .long_help("false")
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3740,7 +3748,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
         let mut arg = Arg::new("deny-hrtime")
           .long("deny-hrtime")
           .action(ArgAction::SetTrue)
-          .help("REMOVED in Deno 2.0")
+          .long_help("false")
           .hide(true);
         if let Some(requires) = requires {
           arg = arg.requires(requires)
@@ -3754,7 +3762,7 @@ fn permission_args(app: Command, requires: Option<&'static str>) -> Command {
           .long("no-prompt")
           .action(ArgAction::SetTrue)
           .hide(true)
-          .help("Always throw if required permission wasn't passed");
+          .long_help("false");
         if let Some(requires) = requires {
           arg = arg.requires(requires)
         }
@@ -4572,6 +4580,7 @@ fn check_parse(
     doc: matches.get_flag("doc"),
     doc_only: matches.get_flag("doc-only"),
   });
+  flags.code_cache_enabled = !matches.get_flag("no-code-cache");
   allow_import_parse(flags, matches);
   Ok(())
 }
@@ -4620,11 +4629,11 @@ fn completions_parse(
   matches: &mut ArgMatches,
   mut app: Command,
 ) {
-  use clap_complete::generate;
-  use clap_complete::shells::Bash;
-  use clap_complete::shells::Fish;
-  use clap_complete::shells::PowerShell;
-  use clap_complete::shells::Zsh;
+  use clap_complete::aot::generate;
+  use clap_complete::aot::Bash;
+  use clap_complete::aot::Fish;
+  use clap_complete::aot::PowerShell;
+  use clap_complete::aot::Zsh;
   use clap_complete_fig::Fig;
 
   let mut buf: Vec<u8> = vec![];
@@ -5256,6 +5265,7 @@ fn task_parse(
 
   unstable_args_parse(flags, matches, UnstableArgsConfig::ResolutionAndRuntime);
   node_modules_arg_parse(flags, matches);
+  frozen_lockfile_arg_parse(flags, matches);
 
   let mut recursive = matches.get_flag("recursive");
   let filter = if let Some(filter) = matches.remove_one::<String>("filter") {
@@ -7412,6 +7422,7 @@ mod tests {
           doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7426,6 +7437,7 @@ mod tests {
           doc_only: false,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7440,6 +7452,7 @@ mod tests {
           doc_only: true,
         }),
         type_check_mode: TypeCheckMode::Local,
+        code_cache_enabled: true,
         ..Flags::default()
       }
     );
@@ -7468,6 +7481,7 @@ mod tests {
             doc_only: false,
           }),
           type_check_mode: TypeCheckMode::All,
+          code_cache_enabled: true,
           ..Flags::default()
         }
       );

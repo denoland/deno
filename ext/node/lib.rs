@@ -830,7 +830,15 @@ pub trait ExtNodeSys:
 {
 }
 
-impl ExtNodeSys for sys_traits::impls::RealSys {}
+impl<
+    T: sys_traits::BaseFsCanonicalize
+      + sys_traits::BaseFsMetadata
+      + sys_traits::BaseFsRead
+      + sys_traits::EnvCurrentDir
+      + Clone,
+  > ExtNodeSys for T
+{
+}
 
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<
@@ -844,8 +852,8 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
-#[allow(clippy::disallowed_types)]
 
+#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Data> {

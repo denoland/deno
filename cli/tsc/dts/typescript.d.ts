@@ -15,6 +15,9 @@ and limitations under the License.
 
 declare namespace ts {
     namespace deno {
+        function setEnterSpan(f: EnterSpan): void;
+        function setExitSpan(f: ExitSpan): void;
+        function spanned<T>(name: string, f: () => T): T;
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
         function setNodeOnlyGlobalNames(names: Set<string>): void;
         function setTypesNodeIgnorableNames(names: Set<string>): void;
@@ -26,6 +29,10 @@ declare namespace ts {
         function tryParseNpmPackageReference(text: string): NpmPackageReference | undefined;
         function parseNpmPackageReference(text: string): NpmPackageReference;
         type IsNodeSourceFileCallback = (sourceFile: ts.SourceFile) => boolean;
+        type EnterSpan = (name: string) => object;
+        type ExitSpan = (span: object) => void;
+        let enterSpan: EnterSpan;
+        let exitSpan: ExitSpan;
         interface DenoForkContext {
             hasNodeSourceFile: (node: ts.Node | undefined) => boolean;
             getGlobalsForName: (id: ts.__String) => ts.SymbolTable;
@@ -7745,6 +7752,40 @@ declare namespace ts {
         host: LanguageServiceHost;
         span: TextSpan;
         preferences: UserPreferences;
+    }
+    function createCacheableExportInfoMap(host: CacheableExportInfoMapHost): ExportInfoMap;
+    enum ExportKind {
+        Named = 0,
+        Default = 1,
+        ExportEquals = 2,
+        UMD = 3,
+        Module = 4,
+    }
+    interface SymbolExportInfo {
+        readonly symbol: Symbol;
+        readonly moduleSymbol: Symbol;
+        /** Set if `moduleSymbol` is an external module, not an ambient module */
+        moduleFileName: string | undefined;
+        exportKind: ExportKind;
+        targetFlags: SymbolFlags;
+        /** True if export was only found via the package.json AutoImportProvider (for telemetry). */
+        isFromPackageJson: boolean;
+    }
+    interface ExportInfoMap {
+        isUsableByFile(importingFile: Path): boolean;
+        clear(): void;
+        add(importingFile: Path, symbol: Symbol, key: __String, moduleSymbol: Symbol, moduleFile: SourceFile | undefined, exportKind: ExportKind, isFromPackageJson: boolean, checker: TypeChecker): void;
+        get(importingFile: Path, key: ExportMapInfoKey): readonly SymbolExportInfo[] | undefined;
+        search<T>(importingFile: Path, preferCapitalized: boolean, matches: (name: string, targetFlags: SymbolFlags) => boolean, action: (info: readonly SymbolExportInfo[], symbolName: string, isFromAmbientModule: boolean, key: ExportMapInfoKey) => T | undefined): T | undefined;
+        releaseSymbols(): void;
+        isEmpty(): boolean;
+        /** @returns Whether the change resulted in the cache being cleared */
+        onFileChanged(oldSourceFile: SourceFile, newSourceFile: SourceFile, typeAcquisitionEnabled: boolean): boolean;
+    }
+    interface CacheableExportInfoMapHost {
+        getCurrentProgram(): Program | undefined;
+        getPackageJsonAutoImportProvider(): Program | undefined;
+        getGlobalTypingsCacheLocation(): string | undefined;
     }
     type ExportMapInfoKey = string & {
         __exportInfoKey: void;

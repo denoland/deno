@@ -12,7 +12,6 @@ use std::cmp::min;
 use std::convert::From;
 use std::future;
 use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -47,7 +46,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_path_util::url_from_file_path;
+use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
@@ -227,6 +226,20 @@ pub enum FetchError {
   #[class(generic)]
   #[error(transparent)]
   Dns(hickory_resolver::ResolveError),
+  #[class("NotCapable")]
+  #[error("requires {0} access")]
+  NotCapable(&'static str),
+}
+
+impl From<deno_fs::FsError> for FetchError {
+  fn from(value: deno_fs::FsError) -> Self {
+    match value {
+      deno_fs::FsError::Io(_)
+      | deno_fs::FsError::FileBusy
+      | deno_fs::FsError::NotSupported => FetchError::NetworkError,
+      deno_fs::FsError::NotCapable(err) => FetchError::NotCapable(err),
+    }
+  }
 }
 
 pub type CancelableResponseFuture =
@@ -260,9 +273,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
-}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {
@@ -390,9 +400,10 @@ pub trait FetchPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
+    resolved: bool,
     p: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError>;
+  ) -> Result<Cow<'a, Path>, FsError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -408,14 +419,23 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read<'a>(
     &mut self,
+    resolved: bool,
     path: &'a Path,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, PermissionCheckError> {
+  ) -> Result<Cow<'a, Path>, FsError> {
+    if resolved {
+      self
+        .check_special_file(path, api_name)
+        .map_err(FsError::NotCapable)?;
+      return Ok(Cow::Borrowed(path));
+    }
+
     deno_permissions::PermissionsContainer::check_read_path(
       self,
       path,
       Some(api_name),
     )
+    .map_err(|_| FsError::NotCapable("read"))
   }
 }
 
@@ -449,18 +469,9 @@ where
   let scheme = url.scheme();
   let (request_rid, cancel_handle_rid) = match scheme {
     "file" => {
-      let path = url.to_file_path().map_err(|_| FetchError::NetworkError)?;
-      let permissions = state.borrow_mut::<FP>();
-      let path = permissions.check_read(&path, "fetch()")?;
-      let url = match path {
-        Cow::Owned(path) => url_from_file_path(&path)?,
-        Cow::Borrowed(_) => url,
-      };
-
       if method != Method::GET {
         return Err(FetchError::FsNotGet(method));
       }
-
       let Options {
         file_fetch_handler, ..
       } = state.borrow_mut::<Options>();

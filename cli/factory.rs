@@ -100,11 +100,11 @@ use crate::resolver::CliResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
 use crate::standalone::binary::DenoCompileBinaryWriter;
 use crate::sys::CliSys;
-use crate::tools::check::TypeChecker;
 use crate::tools::coverage::CoverageCollector;
 use crate::tools::lint::LintRuleProvider;
 use crate::tools::run::hmr::HmrRunner;
 use crate::tsc::TypeCheckingCjsTracker;
+use crate::type_checker::TypeChecker;
 use crate::util::file_watcher::WatcherCommunicator;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -873,6 +873,11 @@ impl CliFactory {
           self.npm_resolver().await?.clone(),
           self.sys(),
           self.tsconfig_resolver()?.clone(),
+          if cli_options.code_cache_enabled() {
+            Some(self.code_cache()?.clone())
+          } else {
+            None
+          },
         )))
       })
       .await

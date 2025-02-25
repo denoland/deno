@@ -13,7 +13,6 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
@@ -21,6 +20,7 @@ use deno_config::deno_json::TsConfig;
 use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
@@ -619,6 +619,9 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub typescript: LanguageWorkspaceSettings,
+
+  #[serde(default)]
+  pub tracing: Option<super::trace::TracingConfigOrEnabled>,
 }
 
 impl Default for WorkspaceSettings {
@@ -645,6 +648,7 @@ impl Default for WorkspaceSettings {
       unstable: Default::default(),
       javascript: Default::default(),
       typescript: Default::default(),
+      tracing: Default::default(),
     }
   }
 }
@@ -1534,17 +1538,11 @@ impl ConfigData {
           import_map_url.clone(),
           ConfigWatchedFileType::ImportMap,
         );
-        // spawn due to the lsp's `Send` requirement
-        let fetch_result =
-          deno_core::unsync::spawn({
-            let file_fetcher = file_fetcher.cloned().unwrap();
-            let import_map_url = import_map_url.clone();
-            async move {
-              file_fetcher.fetch_bypass_permissions(&import_map_url).await
-            }
-          })
-          .await
-          .unwrap();
+        let fetch_result = file_fetcher
+          .as_ref()
+          .unwrap()
+          .fetch_bypass_permissions(import_map_url)
+          .await;
 
         let value_result = fetch_result.and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
@@ -2315,8 +2313,9 @@ mod tests {
           suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
-          }
+          },
         },
+        tracing: Default::default()
       }
     );
   }

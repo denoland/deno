@@ -27,6 +27,7 @@ fn lsp_startup_shutdown() {
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.shutdown();
+  assert!(client.wait_exit().unwrap().success());
 }
 
 #[test]
@@ -5845,7 +5846,7 @@ fn lsp_jsr_auto_import_completion() {
       "label": "add",
       "labelDetails": { "description": "jsr:@denotest/add@1" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"jsr:@denotest/add@1\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_1",
       "additionalTextEdits": [
@@ -5923,7 +5924,7 @@ fn lsp_jsr_auto_import_completion_import_map() {
       "label": "add",
       "labelDetails": { "description": "add" },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"add\"\n\nfunction add(a: number, b: number): number",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -5998,7 +5999,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
       "label": "normalize",
       "labelDetails": { "description": "@std/path/posix/normalize" },
       "kind": 3,
-      "detail": "function normalize(path: string): string",
+      "detail": "Add import from \"@std/path/posix/normalize\"\n\nfunction normalize(path: string): string",
       "documentation": { "kind": "markdown", "value": "Normalize the `path`, resolving `'..'` and `'.'` segments.\nNote that resolving these segments does not necessarily mean that all will be eliminated.\nA `'..'` at the top-level will be preserved, and an empty path is canonically `'.'`.\n\n*@param* - path to be normalized" },
       "sortText": "\u{ffff}16_0",
       "additionalTextEdits": [
@@ -6489,136 +6490,6 @@ fn lsp_code_actions_deno_cache_all() {
         }
       },
     ])
-  );
-  client.shutdown();
-}
-
-#[test]
-#[timeout(300_000)]
-fn lsp_code_actions_deno_types_for_npm() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .add_npm_env_vars()
-    .build();
-  let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", json!({}).to_string());
-  temp_dir.write(
-    "package.json",
-    json!({
-      "dependencies": {
-        "react": "^18.2.0",
-        "@types/react": "^18.3.10",
-      },
-    })
-    .to_string(),
-  );
-  temp_dir.write(
-    "managed_node_modules/deno.json",
-    json!({
-      "nodeModulesDir": false,
-    })
-    .to_string(),
-  );
-  context.run_npm("install");
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import \"react\";\n",
-    }
-  }));
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("file.ts").unwrap(),
-      },
-      "range": {
-        "start": { "line": 0, "character": 7 },
-        "end": { "line": 0, "character": 7 },
-      },
-      "context": { "diagnostics": [], "only": ["quickfix"] },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "title": "Add @ts-types directive for \"@types/react\"",
-        "kind": "quickfix",
-        "edit": {
-          "changes": {
-            temp_dir.url().join("file.ts").unwrap(): [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 0, "character": 0 },
-                },
-                "newText": "// @ts-types=\"@types/react\"\n",
-              },
-            ],
-          },
-        },
-      },
-    ]),
-  );
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": "import \"npm:react\";\n",
-    }
-  }));
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [
-        [],
-        temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      ],
-    }),
-  );
-  client.read_diagnostics();
-  let res = client.write_request(
-    "textDocument/codeAction",
-    json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("managed_node_modules/file.ts").unwrap(),
-      },
-      "range": {
-        "start": { "line": 0, "character": 7 },
-        "end": { "line": 0, "character": 7 },
-      },
-      "context": { "diagnostics": [], "only": ["quickfix"] },
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([
-      {
-        "title": "Add @ts-types directive for \"npm:@types/react@^18.3.10\"",
-        "kind": "quickfix",
-        "edit": {
-          "changes": {
-            temp_dir.url().join("managed_node_modules/file.ts").unwrap(): [
-              {
-                "range": {
-                  "start": { "line": 0, "character": 0 },
-                  "end": { "line": 0, "character": 0 },
-                },
-                "newText": "// @ts-types=\"npm:@types/react@^18.3.10\"\n",
-              },
-            ],
-          },
-        },
-      },
-    ]),
   );
   client.shutdown();
 }
@@ -8155,7 +8026,7 @@ fn lsp_completions_auto_import() {
         "description": "./🦕.ts",
       },
       "kind": 3,
-      "detail": "function add(a: number, b: number): number",
+      "detail": "Add import from \"./🦕.ts\"\n\nfunction add(a: number, b: number): number",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@example*  \n```ts\nconst result = add(1, 2);\nconsole.log(result); // 3\n```  \n\n*@param* - a - The first number  \n\n*@param* - b - The second number"
@@ -8224,7 +8095,7 @@ fn lsp_completions_auto_import_node_builtin() {
         "description": "node:url",
       },
       "kind": 3,
-      "detail": "function pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
+      "detail": "Add import from \"node:url\"\n\nfunction pathToFileURL(path: string, options?: PathToFileUrlOptions): URL",
       "documentation": {
         "kind": "markdown",
         "value": "This function ensures that `path` is resolved absolutely, and that the URL\ncontrol characters are correctly encoded when converting into a File URL.\n\n```js\nimport { pathToFileURL } from 'node:url';\n\nnew URL('/foo#1', 'file:');           // Incorrect: file:///foo#1\npathToFileURL('/foo#1');              // Correct:   file:///foo#1 (POSIX)\n\nnew URL('/some/path%.c', 'file:');    // Incorrect: file:///some/path%.c\npathToFileURL('/some/path%.c');       // Correct:   file:///some/path%.c (POSIX)\n```\n\n*@since* - v10.12.0  \n\n*@param* - path The path to convert to a File URL.  \n\n*@return* - The file URL object.",
@@ -8305,7 +8176,7 @@ fn lsp_npm_completions_auto_import_and_quick_fix_no_import_map() {
         "description": "npm:@denotest/types-exports-subpaths@1/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"npm:@denotest/types-exports-subpaths@1/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -8553,7 +8424,7 @@ fn lsp_npm_auto_import_and_quick_fix_byonm() {
         "description": "cowsay",
       },
       "kind": 3,
-      "detail": "function think(options: IOptions): string",
+      "detail": "Add import from \"cowsay\"\n\nfunction think(options: IOptions): string",
       "documentation": {
         "kind": "markdown",
         "value": "\n\n*@param*  \noptions ## Face :\nEither choose a mode (set the value as true) **_or_**\nset your own defined eyes and tongue to `e` and `T`.\n- ### `e` : eyes\n- ### `T` : tongue\n\n## Cow :\nEither specify a cow name (e.g. \"fox\") **_or_**\nset the value of `r` to true which selects a random cow.\n- ### `r` : random selection\n- ### `f` : cow name - from `cows` folder\n\n## Modes :\nModes are just ready-to-use faces, here's their list:\n- #### `b` : borg\n- #### `d` : dead      \n- #### `g` : greedy\n- #### `p` : paranoia\n- #### `s` : stoned\n- #### `t` : tired\n- #### `w` : youthful\n- #### `y` : wired  \n\n*@example*  \n```\n// custom cow and face\ncowsay.think({\n    text: 'Hello world!',\n    e: '^^', // eyes\n    T: 'U ', // tongue\n    f: 'USA' // name of the cow from `cows` folder\n})\n\n// using a random cow\ncowsay.think({\n    text: 'Hello world!',\n    e: 'xx', // eyes\n    r: true, // random mode - use a random cow.\n})\n\n// using a mode\ncowsay.think({\n    text: 'Hello world!',\n    y: true, // using y mode - youthful mode\n})\n```",
@@ -8716,7 +8587,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "lz-string",
       },
       "kind": 2,
-      "detail": "(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
+      "detail": "Add import from \"lz-string\"\n\n(method) LZString.LZStringStatic.compressToBase64(uncompressed: string): string",
       "documentation": {
         "kind": "markdown",
         "value": "Compresses input string producing an instance of a ASCII UTF-16 string,\nwhich represents the original string encoded in Base64.\nThe result can be safely transported outside the browser with a\nguarantee that none of the characters produced need to be URL-encoded.\n\n*@param* - uncompressed A string which should be compressed.",
@@ -8752,7 +8623,7 @@ fn lsp_npm_auto_import_with_deno_types() {
         "description": "react",
       },
       "kind": 3,
-      "detail": "function React.createRef<T>(): React.RefObject<T>",
+      "detail": "Add import from \"react\"\n\nfunction React.createRef<T>(): React.RefObject<T>",
       "documentation": { "kind": "markdown", "value": "" },
       "sortText": "￿16_0",
       "additionalTextEdits": [
@@ -9263,7 +9134,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "types-exports-subpaths/client",
       },
       "kind": 3,
-      "detail": "function getClient(): 5",
+      "detail": "Add import from \"types-exports-subpaths/client\"\n\nfunction getClient(): 5",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -9603,7 +9474,7 @@ fn lsp_completions_auto_import_and_quick_fix_with_import_map() {
         "description": "nested/entry-b",
       },
       "kind": 3,
-      "detail": "function entryB(): \"b\"",
+      "detail": "Add import from \"nested/entry-b\"\n\nfunction entryB(): \"b\"",
       "documentation": {
         "kind": "markdown",
         "value": ""
@@ -10111,7 +9982,7 @@ fn lsp_auto_imports_remote_dts() {
         "description": "http://localhost:4545/subdir/imports_declaration/interface.d.ts",
       },
       "kind": 8,
-      "detail": "interface SomeInterface",
+      "detail": "Add import from \"http://localhost:4545/subdir/imports_declaration/interface.d.ts\"\n\ninterface SomeInterface",
       "documentation": {
         "kind": "markdown",
         "value": "",
@@ -14268,7 +14139,8 @@ fn lsp_node_modules_dir() {
       "unstable": [],
     } }))
   };
-  let diagnostics = refresh_config(&mut client);
+  refresh_config(&mut client);
+  let diagnostics = client.read_diagnostics();
   assert_eq!(diagnostics.all().len(), 2, "{:#?}", diagnostics); // not cached
 
   cache(&mut client);
@@ -14361,7 +14233,7 @@ fn lsp_vendor_dir() {
     temp_dir.path().join("deno.json"),
     "{ \"vendor\": true, \"lock\": false }\n",
   );
-  let diagnostics = client.change_configuration(json!({ "deno": {
+  client.change_configuration(json!({ "deno": {
     "enable": true,
     "config": "./deno.json",
     "codeLens": {
@@ -14379,6 +14251,7 @@ fn lsp_vendor_dir() {
     },
     "unstable": [],
   } }));
+  let diagnostics = client.read_diagnostics();
 
   // won't be cached until a manual cache occurs
   assert_eq!(
@@ -17710,4 +17583,152 @@ fn ambient_module_errors_suppressed() {
       }
     ])
   );
+}
+
+#[test]
+#[timeout(300_000)]
+fn definitely_typed_fallback() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  let temp = context.temp_dir();
+  let temp_dir = temp.path();
+  let source = source_file(
+    temp_dir.join("index.ts"),
+    r#"
+      import { foo } from "@denotest/index-export-no-types";
+
+      const _res: boolean = foo(1, 2);
+      console.log(_res);
+    "#,
+  );
+
+  let deno_json = json!({
+    "imports": {
+      "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+      "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+    }
+  });
+
+  temp.write("deno.json", deno_json.to_string());
+
+  client.initialize_default();
+
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+    client.read_diagnostics();
+
+    let diagnostics = client.did_open_file(&source);
+    eprintln!("{:#?}", diagnostics.all());
+    assert_eq!(diagnostics.all().len(), 1);
+    assert_eq!(
+      json!(diagnostics.all()),
+      json!([
+        {
+          "range": source.range_of("_res"),
+          "severity": 1,
+          "code": 2322,
+          "source": "deno-ts",
+          "message": "Type 'number' is not assignable to type 'boolean'."
+        }
+      ])
+    );
+    client.did_close_file(&source);
+  }
+}
+
+#[test]
+#[timeout(300_000)]
+fn do_not_auto_import_from_definitely_typed() {
+  for node_modules_dir in ["none", "auto", "manual"] {
+    let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+    let mut client = context.new_lsp_command().build();
+    let temp = context.temp_dir();
+    let temp_dir = temp.path();
+    let source = source_file(
+      temp_dir.join("index.ts"),
+      r#"
+      import {} from "@denotest/index-export-no-types";
+
+      foo
+    "#,
+    );
+
+    let deno_json = json!({
+      "imports": {
+        "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+        "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+      },
+      "nodeModulesDir": node_modules_dir
+    });
+    if node_modules_dir == "manual" {
+      // TODO: there's a (pre-existing) bug that prevents auto-imports
+      // from working with nodeModuleDir "manual" w/o a package.json
+      temp.write(
+        "package.json",
+        json!({
+          "dependencies": {
+            "@denotest/index-export-no-types": "1.0.0",
+          },
+          "devDependencies": {
+            "@types/denotest__index-export-no-types": "1.0.0",
+          }
+        })
+        .to_string(),
+      );
+    }
+    temp.write("deno.json", deno_json.to_string());
+    context.run_deno("install");
+
+    client.initialize_default();
+
+    let mut deno_json = deno_json.clone();
+    deno_json["nodeModulesDir"] = json!(node_modules_dir);
+    temp.write("deno.json", deno_json.to_string());
+    client.did_change_watched_files(json!({
+      "changes": [{
+        "uri": temp.url().join("deno.json").unwrap(),
+        "type": 2,
+      }],
+    }));
+
+    client.did_open_file(&source);
+    let pos = source.range_of("foo").end;
+    let completions = client.get_completion_list(
+      source.uri().as_str(),
+      (pos.line as usize, pos.character as usize),
+      json!({
+        "triggerKind": 2,
+      }),
+    );
+    let item = completions
+      .items
+      .iter()
+      .find(|it| it.label == "foo")
+      .unwrap();
+    eprintln!("item: {item:#?}");
+    let res = client.write_request("completionItem/resolve", json!(item));
+    eprintln!("resolved: {res}");
+    assert_json_subset(
+      res,
+      json!({
+        "label": "foo",
+        "detail": "Update import from \"@denotest/index-export-no-types\"\n\nfunction foo(a: number, b: number): number",
+        "additionalTextEdits": [json!({
+          "range": source.range_of("{}"),
+          "newText": "{ foo }"
+        })]
+      }),
+    );
+
+    client.did_close_file(&source);
+  }
 }

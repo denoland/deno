@@ -13,6 +13,7 @@ import {
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
+  op_http_metric_handle_otel_error,
   op_http_read_request_body,
   op_http_request_on_cancel,
   op_http_serve,
@@ -89,6 +90,7 @@ import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
   enterSpan,
+  METRICS_ENABLED,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -573,6 +575,9 @@ function mapToCallback(context, callback, onError) {
           );
         }
       } catch (error) {
+        if (METRICS_ENABLED) {
+          op_http_metric_handle_otel_error(req);
+        }
         // deno-lint-ignore no-console
         console.error("Exception in onError while handling exception", error);
         response = internalServerError();

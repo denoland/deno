@@ -731,7 +731,7 @@ impl Drop for LspClient {
         self.child.kill().unwrap();
         let _ = self.child.wait();
       }
-      Ok(Some(status)) => panic!("deno lsp exited unexpectedly {status}"),
+      Ok(Some(_)) => {}
       Err(e) => panic!("pebble error: {e}"),
     }
   }
@@ -919,10 +919,7 @@ impl LspClient {
     self.write_notification("textDocument/didOpen", params);
   }
 
-  pub fn change_configuration(
-    &mut self,
-    config: Value,
-  ) -> CollectedDiagnostics {
+  pub fn change_configuration(&mut self, config: Value) {
     self.config = config;
     if self.supports_workspace_configuration {
       self.write_notification(
@@ -936,7 +933,6 @@ impl LspClient {
         json!({ "settings": &self.config }),
       );
     }
-    self.read_diagnostics()
   }
 
   pub fn handle_configuration_request(&mut self) {
@@ -1004,6 +1000,10 @@ impl LspClient {
   pub fn shutdown(&mut self) {
     self.write_request("shutdown", json!(null));
     self.write_notification("exit", json!(null));
+  }
+
+  pub fn wait_exit(&mut self) -> std::io::Result<std::process::ExitStatus> {
+    self.child.wait()
   }
 
   // it's flaky to assert for a notification because a notification
@@ -1094,11 +1094,8 @@ impl LspClient {
 
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
-    let msg = format!(
-      "Content-Length: {}\r\n\r\n{}",
-      value_str.as_bytes().len(),
-      value_str
-    );
+    let msg =
+      format!("Content-Length: {}\r\n\r\n{}", value_str.len(), value_str);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }
