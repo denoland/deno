@@ -841,10 +841,10 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_package_json::PackageJson::load_from_value(path, json);
-        Arc::new(pkg_json)
+          deno_package_json::PackageJson::load_from_value(path, json)?;
+        Ok(Arc::new(pkg_json))
       })
-      .collect();
+      .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
       import_map,
