@@ -69,7 +69,7 @@ fn run_npm_server<F, S>(
   port: u16,
   error_msg: &'static str,
   handler: F,
-) -> Vec<LocalBoxFuture<()>>
+) -> Vec<LocalBoxFuture<'static, ()>>
 where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,

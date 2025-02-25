@@ -83,7 +83,7 @@ impl TaskQueue {
 /// A permit that when dropped will allow another task to proceed.
 pub struct TaskQueuePermit<'a>(&'a TaskQueue);
 
-impl<'a> Drop for TaskQueuePermit<'a> {
+impl Drop for TaskQueuePermit<'_> {
   fn drop(&mut self) {
     self.0.raise_next();
   }
@@ -116,7 +116,7 @@ impl<'a> TaskQueuePermitAcquireFuture<'a> {
   }
 }
 
-impl<'a> Drop for TaskQueuePermitAcquireFuture<'a> {
+impl Drop for TaskQueuePermitAcquireFuture<'_> {
   fn drop(&mut self) {
     if let Some(task_queue) = self.task_queue.take() {
       if self.item.is_ready.is_raised() {

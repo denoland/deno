@@ -174,7 +174,7 @@ struct SloppyImportCaptureResolver<'a> {
   >,
 }
 
-impl<'a> deno_graph::source::Resolver for SloppyImportCaptureResolver<'a> {
+impl deno_graph::source::Resolver for SloppyImportCaptureResolver<'_> {
   fn resolve(
     &self,
     specifier_text: &str,

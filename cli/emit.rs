@@ -332,7 +332,7 @@ pub enum EmitParsedSourceHelperError {
 /// Helper to share code between async and sync emit_parsed_source methods.
 struct EmitParsedSourceHelper<'a>(&'a Emitter);
 
-impl<'a> EmitParsedSourceHelper<'a> {
+impl EmitParsedSourceHelper<'_> {
   pub fn pre_emit_parsed_source(
     &self,
     specifier: &ModuleSpecifier,

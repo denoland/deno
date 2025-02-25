@@ -515,7 +515,7 @@ impl HttpRecord {
   fn response_ready(&self) -> impl Future<Output = ()> + '_ {
     struct HttpRecordReady<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordReady<'a> {
+    impl Future for HttpRecordReady<'_> {
       type Output = ();
 
       fn poll(
@@ -540,7 +540,7 @@ impl HttpRecord {
   pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordFinished<'a> {
+    impl Future for HttpRecordFinished<'_> {
       type Output = bool;
 
       fn poll(

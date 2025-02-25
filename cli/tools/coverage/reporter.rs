@@ -51,7 +51,7 @@ pub trait CoverageReporter {
   fn collect_summary<'a>(
     &'a self,
     file_reports: &'a [(CoverageReport, String)],
-  ) -> CoverageSummary {
+  ) -> CoverageSummary<'a> {
     let urls = file_reports.iter().map(|rep| &rep.0.url).collect();
     let root = match util::find_root(urls)
       .and_then(|root_path| root_path.to_file_path().ok())

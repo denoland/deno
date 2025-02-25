@@ -593,7 +593,7 @@ trait PackageInfoProvider {
   /// The help to return if a package is found by this provider
   const HELP: NotFoundHelp;
   async fn req_to_nv(&self, req: &PackageReq) -> Option<PackageNv>;
-  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version>;
+  async fn latest_version(&self, req: &PackageReq) -> Option<Version>;
 }
 
 impl PackageInfoProvider for Arc<JsrFetchResolver> {
@@ -603,7 +603,7 @@ impl PackageInfoProvider for Arc<JsrFetchResolver> {
     (**self).req_to_nv(req).await
   }
 
-  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
+  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
     let info = self.package_info(&req.name).await?;
     best_version(
       info
@@ -623,7 +623,7 @@ impl PackageInfoProvider for Arc<NpmFetchResolver> {
     (**self).req_to_nv(req).await
   }
 
-  async fn latest_version<'a>(&self, req: &PackageReq) -> Option<Version> {
+  async fn latest_version(&self, req: &PackageReq) -> Option<Version> {
     let info = self.package_info(&req.name).await?;
     best_version(info.versions.keys()).cloned()
   }

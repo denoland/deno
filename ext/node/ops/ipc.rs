@@ -33,7 +33,7 @@ mod impl_ {
     v8::Local<'a, v8::Value>,
   );
 
-  impl<'a, 'b> Serialize for SerializeWrapper<'a, 'b> {
+  impl Serialize for SerializeWrapper<'_, '_> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
       S: Serializer,

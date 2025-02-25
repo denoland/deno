@@ -79,7 +79,7 @@ pub enum StandaloneRelativeFileBaseUrl<'a> {
   Path(&'a Url),
 }
 
-impl<'a> StandaloneRelativeFileBaseUrl<'a> {
+impl StandaloneRelativeFileBaseUrl<'_> {
   /// Gets the module map key of the provided specifier.
   ///
   /// * Descendant file specifiers will be made relative to the base.

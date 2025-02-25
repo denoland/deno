@@ -238,7 +238,7 @@ mod tests {
     size: usize,
     expected: Result<ExpectedResponseAndHead, WebSocketUpgradeError>,
   ) {
-    let chunk_info = Some((s.as_bytes().len(), size));
+    let chunk_info = Some((s.len(), size));
     let mut upgrade = WebSocketUpgrade::default();
     let mut result = Ok(None);
     for chunk in s.as_bytes().chunks(size) {

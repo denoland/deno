@@ -1094,11 +1094,8 @@ impl LspClient {
 
   fn write(&mut self, value: Value) {
     let value_str = value.to_string();
-    let msg = format!(
-      "Content-Length: {}\r\n\r\n{}",
-      value_str.as_bytes().len(),
-      value_str
-    );
+    let msg =
+      format!("Content-Length: {}\r\n\r\n{}", value_str.len(), value_str);
     self.writer.write_all(msg.as_bytes()).unwrap();
     self.writer.flush().unwrap();
   }

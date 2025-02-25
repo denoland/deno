@@ -157,7 +157,9 @@ struct StartEvent<'a> {
   trees: Vec<(usize, &'a mut RangeTree<'a>)>,
 }
 
-fn into_start_events<'a>(trees: Vec<&'a mut RangeTree<'a>>) -> Vec<StartEvent> {
+fn into_start_events<'a>(
+  trees: Vec<&'a mut RangeTree<'a>>,
+) -> Vec<StartEvent<'a>> {
   let mut result: BTreeMap<usize, Vec<(usize, &'a mut RangeTree<'a>)>> =
     BTreeMap::new();
   for (parent_index, tree) in trees.into_iter().enumerate() {

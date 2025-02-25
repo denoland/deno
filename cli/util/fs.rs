@@ -348,11 +348,10 @@ struct LaxSingleProcessFsFlagInner {
 
 impl Drop for LaxSingleProcessFsFlagInner {
   fn drop(&mut self) {
-    use fs3::FileExt;
     // kill the poll thread
     self.finished_token.cancel();
     // release the file lock
-    if let Err(err) = self.fs_file.unlock() {
+    if let Err(err) = fs3::FileExt::unlock(&self.fs_file) {
       log::debug!(
         "Failed releasing lock for {}. {:#}",
         self.file_path.display(),

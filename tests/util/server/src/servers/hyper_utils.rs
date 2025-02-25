@@ -69,7 +69,7 @@ where
   }
 }
 
-pub async fn run_server_with_acceptor<'a, A, F, S>(
+pub async fn run_server_with_acceptor<A, F, S>(
   mut acceptor: Pin<Box<A>>,
   handler: F,
   error_msg: &'static str,

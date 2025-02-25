@@ -1168,7 +1168,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
     .stdout(Stdio::null())
     .status()
     .await
-    .map_or(false, |status| status.success());
+    .is_ok_and(|status| status.success());
 
   if !git_exists {
     return None; // Git is not installed

@@ -46,7 +46,7 @@ pub struct Guard<'a, T> {
   guard: MutexGuard<'a, T>,
 }
 
-impl<'a, T> std::ops::Deref for Guard<'a, T> {
+impl<T> std::ops::Deref for Guard<'_, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
@@ -54,7 +54,7 @@ impl<'a, T> std::ops::Deref for Guard<'a, T> {
   }
 }
 
-impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
+impl<T> std::ops::DerefMut for Guard<'_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.guard
   }

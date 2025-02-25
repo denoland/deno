@@ -368,7 +368,7 @@ pub struct DiagnosticsByFolderIterator<'a>(
   DiagnosticsByFolderIteratorInner<'a>,
 );
 
-impl<'a> DiagnosticsByFolderIterator<'a> {
+impl DiagnosticsByFolderIterator<'_> {
   pub fn into_graph(self) -> Arc<ModuleGraph> {
     match self.0 {
       DiagnosticsByFolderIteratorInner::Empty(module_graph) => module_graph,
@@ -377,7 +377,7 @@ impl<'a> DiagnosticsByFolderIterator<'a> {
   }
 }
 
-impl<'a> Iterator for DiagnosticsByFolderIterator<'a> {
+impl Iterator for DiagnosticsByFolderIterator<'_> {
   type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -409,7 +409,7 @@ struct DiagnosticsByFolderRealIterator<'a> {
   code_cache: Option<Arc<crate::cache::CodeCache>>,
 }
 
-impl<'a> Iterator for DiagnosticsByFolderRealIterator<'a> {
+impl Iterator for DiagnosticsByFolderRealIterator<'_> {
   type Item = Result<Diagnostics, CheckError>;
 
   fn next(&mut self) -> Option<Self::Item> {

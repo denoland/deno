@@ -141,7 +141,7 @@ pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
-impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
+impl ModuleInfoCacheModuleAnalyzer<'_> {
   fn load_cached_module_info(
     &self,
     specifier: &ModuleSpecifier,
@@ -220,7 +220,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
 }
 
 #[async_trait::async_trait(?Send)]
-impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
+impl deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'_> {
   async fn analyze(
     &self,
     specifier: &ModuleSpecifier,

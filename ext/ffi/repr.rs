@@ -243,6 +243,7 @@ where
   let cstr =
   // SAFETY: Pointer and offset are user provided.
     unsafe { CStr::from_ptr(ptr.offset(offset) as *const c_char) }.to_bytes();
+  #[allow(clippy::unnecessary_lazy_evaluations)]
   let value = v8::String::new_from_utf8(scope, cstr, v8::NewStringType::Normal)
     .ok_or_else(|| ReprError::CStringTooLong)?;
   Ok(value)

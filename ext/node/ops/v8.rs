@@ -48,7 +48,7 @@ pub struct SerializerDelegate {
   obj: v8::Global<v8::Object>,
 }
 
-impl<'a> v8::cppgc::GarbageCollected for Serializer<'a> {
+impl v8::cppgc::GarbageCollected for Serializer<'_> {
   fn trace(&self, _visitor: &v8::cppgc::Visitor) {}
 }
 
@@ -226,7 +226,7 @@ pub struct Deserializer<'a> {
   inner: v8::ValueDeserializer<'a>,
 }
 
-impl<'a> deno_core::GarbageCollected for Deserializer<'a> {}
+impl deno_core::GarbageCollected for Deserializer<'_> {}
 
 pub struct DeserializerDelegate {
   obj: v8::Global<v8::Object>,

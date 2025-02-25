@@ -226,6 +226,7 @@ impl<
     Ok(Cow::Owned(translated_source))
   }
 
+  #[allow(clippy::needless_lifetimes)]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,

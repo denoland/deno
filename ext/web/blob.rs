@@ -136,7 +136,7 @@ impl Blob {
 #[async_trait]
 pub trait BlobPart: Debug {
   // TODO(lucacsonato): this should be a stream!
-  async fn read(&self) -> &[u8];
+  async fn read<'a>(&'a self) -> &'a [u8];
   fn size(&self) -> usize;
 }
 
@@ -151,7 +151,7 @@ impl From<Vec<u8>> for InMemoryBlobPart {
 
 #[async_trait]
 impl BlobPart for InMemoryBlobPart {
-  async fn read(&self) -> &[u8] {
+  async fn read<'a>(&'a self) -> &'a [u8] {
     &self.0
   }
 
@@ -169,7 +169,7 @@ pub struct SlicedBlobPart {
 
 #[async_trait]
 impl BlobPart for SlicedBlobPart {
-  async fn read(&self) -> &[u8] {
+  async fn read<'a>(&'a self) -> &'a [u8] {
     let original = self.part.read().await;
     &original[self.start..self.start + self.len]
   }

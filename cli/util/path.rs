@@ -45,10 +45,10 @@ pub fn is_importable_ext(path: &Path) -> bool {
 
 /// Get the extension of a file in lowercase.
 pub fn get_extension(file_path: &Path) -> Option<String> {
-  return file_path
+  file_path
     .extension()
     .and_then(|e| e.to_str())
-    .map(|e| e.to_lowercase());
+    .map(|e| e.to_lowercase())
 }
 
 /// TypeScript figures out the type of file based on the extension, but we take

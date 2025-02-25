@@ -101,7 +101,7 @@ pub fn os_release() -> String {
     }
 
     // without the NUL terminator
-    return String::from_utf8_lossy(&s[..len - 1]).to_string();
+    String::from_utf8_lossy(&s[..len - 1]).to_string()
   }
   #[cfg(target_family = "windows")]
   {

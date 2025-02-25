@@ -137,10 +137,10 @@ impl NpmInstaller {
       .dependencies_result
   }
 
-  pub async fn add_package_reqs_raw<'a>(
+  pub async fn add_package_reqs_raw(
     &self,
     packages: &[PackageReq],
-    caching: Option<PackageCaching<'a>>,
+    caching: Option<PackageCaching<'_>>,
   ) -> AddPkgReqsResult {
     if packages.is_empty() {
       return AddPkgReqsResult {

@@ -1457,6 +1457,7 @@ impl Inner {
         .options
         .clone();
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
       if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
         fmt_options.use_tabs = Some(!params.options.insert_spaces);
         fmt_options.indent_width = Some(params.options.tab_size as u8);

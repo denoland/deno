@@ -159,7 +159,7 @@ pub struct MainModuleGraphUpdatePermit<'a> {
   graph: ModuleGraph,
 }
 
-impl<'a> ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'a> {
+impl ModuleGraphUpdatePermit for MainModuleGraphUpdatePermit<'_> {
   fn graph_mut(&mut self) -> &mut ModuleGraph {
     &mut self.graph
   }

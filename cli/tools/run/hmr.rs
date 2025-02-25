@@ -112,7 +112,7 @@ impl crate::worker::HmrRunner for HmrRunner {
             continue;
           };
 
-          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().map_or(false, |ext| {
+          let filtered_paths: Vec<PathBuf> = changed_paths.into_iter().filter(|p| p.extension().is_some_and(|ext| {
             let ext_str = ext.to_str().unwrap();
             matches!(ext_str, "js" | "ts" | "jsx" | "tsx")
           })).collect();
