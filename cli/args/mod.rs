@@ -854,7 +854,7 @@ impl CliOptions {
         .coverage_dir
         .as_ref()
         .map(ToOwned::to_owned)
-        .or_else(|| env::var("DENO_UNSTABLE_COVERAGE_DIR").ok()),
+        .or_else(|| env::var("DENO_COVERAGE_DIR").ok()),
       _ => None,
     }
   }
