@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -113,6 +114,142 @@ pub async fn compile(
         temp_path.display()
       )
     });
+
+  // set it as executable
+  #[cfg(unix)]
+  let write_result = write_result.and_then(|_| {
+    use std::os::unix::fs::PermissionsExt;
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(&temp_path, perms).with_context(|| {
+      format!(
+        "Setting permissions on temporary file '{}'",
+        temp_path.display()
+      )
+    })
+  });
+
+  let write_result = write_result.and_then(|_| {
+    std::fs::rename(&temp_path, &output_path).with_context(|| {
+      format!(
+        "Renaming temporary file '{}' to '{}'",
+        temp_path.display(),
+        output_path.display()
+      )
+    })
+  });
+
+  if let Err(err) = write_result {
+    // errored, so attempt to remove the temporary file
+    let _ = std::fs::remove_file(temp_path);
+    return Err(err);
+  }
+
+  Ok(())
+}
+
+pub async fn compile_eszip(
+  flags: Arc<Flags>,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let parsed_source_cache = factory.parsed_source_cache();
+  let binary_writer = factory.create_compile_binary_writer().await?;
+  let http_client = factory.http_client_provider();
+  let entrypoint = cli_options.resolve_main_module()?;
+  let output_path = resolve_compile_executable_output_path(
+    http_client,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )
+  .await?;
+  let (module_roots, include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
+
+  let graph = Arc::try_unwrap(
+    module_graph_creator
+      .create_graph_and_maybe_check(module_roots.clone())
+      .await?,
+  )
+  .unwrap();
+  let graph = if cli_options.type_check_mode().is_true() {
+    // In this case, the previous graph creation did type checking, which will
+    // create a module graph with types information in it. We don't want to
+    // store that in the binary so create a code only module graph from scratch.
+    module_graph_creator
+      .create_graph(
+        GraphKind::CodeOnly,
+        module_roots,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
+      .await?
+  } else {
+    graph
+  };
+
+  let ts_config_for_emit = cli_options
+    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
+  check_warn_tsconfig(&ts_config_for_emit);
+  let (transpile_options, emit_options) =
+    crate::args::ts_config_to_transpile_and_emit_options(
+      ts_config_for_emit.ts_config,
+    )?;
+  let parser = parsed_source_cache.as_capturing_parser();
+  let root_dir_url = resolve_root_dir_from_specifiers(
+    cli_options.workspace().root_dir(),
+    graph.specifiers().map(|(s, _)| s).chain(
+      cli_options
+        .node_modules_dir_path()
+        .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
+        .iter(),
+    ),
+  );
+  log::debug!("Binary root dir: {}", root_dir_url);
+  let root_dir_url = eszip::EszipRelativeFileBaseUrl::new(&root_dir_url);
+  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
+    graph,
+    parser,
+    transpile_options,
+    emit_options,
+    // make all the modules relative to the root folder
+    relative_file_base: Some(root_dir_url),
+    npm_packages: None,
+    module_kind_resolver: Default::default(),
+  })?;
+
+  log::info!(
+    "{} {} to {}",
+    colors::green("Compile"),
+    entrypoint,
+    output_path.display(),
+  );
+  validate_output_path(&output_path)?;
+
+  let mut temp_filename = output_path.file_name().unwrap().to_owned();
+  temp_filename.push(format!(
+    ".tmp-{}",
+    faster_hex::hex_encode(
+      &rand::thread_rng().gen::<[u8; 8]>(),
+      &mut [0u8; 16]
+    )
+    .unwrap()
+  ));
+  let temp_path = output_path.with_file_name(temp_filename);
+
+  let file = std::fs::File::create(&temp_path).with_context(|| {
+    format!("Opening temporary file '{}'", temp_path.display())
+  })?;
+
+  let write_result = {
+    let r = file.write_all(&eszip.into_bytes());
+    drop(file);
+    r
+  };
 
   // set it as executable
   #[cfg(unix)]

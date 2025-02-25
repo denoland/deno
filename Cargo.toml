@@ -71,6 +71,8 @@ denokv_remote = "0.9.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, version = "0.9.0" }
 
+eszip = "0.81.0"
+
 # exts
 deno_broadcast_channel = { version = "0.186.0", path = "./ext/broadcast_channel" }
 deno_cache = { version = "0.124.0", path = "./ext/cache" }
@@ -129,7 +131,7 @@ dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
 deno_cache_dir = "=0.18.0"
-deno_error = "=0.5.5"
+deno_error = "=0.5.6"
 deno_package_json = { version = "=0.5.0", default-features = false }
 deno_unsync = "0.4.2"
 dlopen2 = "0.6.1"
@@ -356,3 +358,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+eszip = { git = "https://github.com/bartlomieju/eszip.git", branch = "upgrade_deno_graph" }
