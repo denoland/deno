@@ -393,7 +393,7 @@ impl LspResolver {
         .get(&scope.cloned())
         .cloned()
         .unwrap_or_default();
-      let mut npm_reqs_changed = false;
+      let npm_reqs_changed;
       {
         let mut resolver_dep_info = resolver.dep_info.lock();
         npm_reqs_changed = dep_info.npm_reqs != resolver_dep_info.npm_reqs;
