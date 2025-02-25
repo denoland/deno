@@ -1660,7 +1660,6 @@ fn add_dev_arg() -> Arg {
   Arg::new("dev")
     .long("dev")
     .short('D')
-    .help("Add as a dev dependency")
     .long_help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
     .action(ArgAction::SetTrue)
 }
