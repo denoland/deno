@@ -14,7 +14,7 @@ description = "OffscreenCanvas implementation for Deno"
 path = "lib.rs"
 
 [dependencies]
-bytemuck = { workspace = true }
+bytemuck.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 image = { workspace = true, features = ["png", "jpeg", "bmp", "ico"] }
@@ -24,5 +24,5 @@ image = { workspace = true, features = ["png", "jpeg", "bmp", "ico"] }
 # It seems to be failed to build for aarch64-unknown-linux-gnu with pkg-config.
 # https://github.com/kornelski/rust-lcms2-sys/blob/b8e9c3efcf266b88600318fb519c073b9ebb61b7/README.md#L26
 lcms2 = { workspace = true, features = ["static"] }
-num-traits = { workspace = true }
+num-traits.workspace = true
 thiserror.workspace = true

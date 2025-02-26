@@ -18,7 +18,7 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-hickory-proto = { workspace = true }
+hickory-proto.workspace = true
 hickory-resolver.workspace = true
 pin-project.workspace = true
 quinn = { workspace = true, features = ["runtime-tokio", "rustls", "ring"] }
@@ -29,4 +29,4 @@ socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
-web-transport-proto = { workspace = true }
+web-transport-proto.workspace = true

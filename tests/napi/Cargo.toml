@@ -13,11 +13,11 @@ repository.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-libuv-sys-lite = { workspace = true }
+libuv-sys-lite.workspace = true
 napi-sys = { workspace = true, features = ["napi7"] }
 
 [dev-dependencies]
 test_util.workspace = true
 
 [build-dependencies]
-napi-build = { workspace = true }
+napi-build.workspace = true

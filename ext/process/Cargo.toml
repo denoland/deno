@@ -23,11 +23,11 @@ deno_path_util.workspace = true
 deno_permissions.workspace = true
 libc.workspace = true
 log.workspace = true
-memchr = { workspace = true }
-pin-project-lite = { workspace = true }
+memchr.workspace = true
+pin-project-lite.workspace = true
 rand.workspace = true
 serde.workspace = true
-simd-json = { workspace = true }
+simd-json.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
 tokio.workspace = true

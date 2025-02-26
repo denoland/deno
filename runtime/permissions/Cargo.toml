@@ -19,7 +19,7 @@ deno_core.workspace = true
 deno_error.workspace = true
 deno_path_util.workspace = true
 deno_terminal.workspace = true
-fqdn = { workspace = true }
+fqdn.workspace = true
 libc.workspace = true
 log.workspace = true
 once_cell.workspace = true

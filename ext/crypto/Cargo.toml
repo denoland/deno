@@ -15,23 +15,23 @@ path = "lib.rs"
 
 [dependencies]
 aes.workspace = true
-aes-gcm = { workspace = true }
+aes-gcm.workspace = true
 aes-kw = { workspace = true, features = ["alloc"] }
 base64.workspace = true
 cbc.workspace = true
-const-oid = { workspace = true }
+const-oid.workspace = true
 ctr.workspace = true
-curve25519-dalek = { workspace = true }
+curve25519-dalek.workspace = true
 deno_core.workspace = true
 deno_error.workspace = true
 deno_web.workspace = true
 ed448-goldilocks = { workspace = true, features = ["zeroize"] }
 elliptic-curve = { workspace = true, features = ["std", "pem"] }
-num-traits = { workspace = true }
+num-traits.workspace = true
 once_cell.workspace = true
 p256 = { workspace = true, features = ["ecdh"] }
-p384 = { workspace = true }
-p521 = { workspace = true }
+p384.workspace = true
+p521.workspace = true
 rand.workspace = true
 ring = { workspace = true, features = ["std"] }
 rsa.workspace = true
@@ -43,4 +43,4 @@ spki.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
-x25519-dalek = { workspace = true }
+x25519-dalek.workspace = true

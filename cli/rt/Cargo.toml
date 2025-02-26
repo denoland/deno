@@ -40,11 +40,11 @@ deno_runtime = { workspace = true, features = ["include_js_files_for_snapshottin
 deno_semver.workspace = true
 deno_snapshots.workspace = true
 deno_terminal.workspace = true
-libsui = { workspace = true }
+libsui.workspace = true
 node_resolver.workspace = true
 
 async-trait.workspace = true
-bincode = { workspace = true }
+bincode.workspace = true
 import_map = { version = "=0.21.0", features = ["ext"] }
 indexmap.workspace = true
 log = { workspace = true, features = ["serde"] }

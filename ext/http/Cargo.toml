@@ -39,9 +39,9 @@ httparse.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 hyper_v014 = { workspace = true, features = ["server", "stream", "http1", "http2", "runtime"] }
-itertools = { workspace = true }
+itertools.workspace = true
 memmem.workspace = true
-mime = { workspace = true }
+mime.workspace = true
 once_cell.workspace = true
 percent-encoding.workspace = true
 phf.workspace = true
