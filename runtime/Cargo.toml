@@ -89,7 +89,7 @@ log.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 rustyline = { workspace = true, features = ["custom-bindings"] }
-same-file = "1.0.6"
+same-file.workspace = true
 serde.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
