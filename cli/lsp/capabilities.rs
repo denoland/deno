@@ -127,12 +127,39 @@ pub fn server_capabilities(
     }),
     call_hierarchy_provider: Some(CallHierarchyServerCapability::Simple(true)),
     semantic_tokens_provider: Some(
-      SemanticTokensServerCapabilities::SemanticTokensOptions(
-        SemanticTokensOptions {
-          legend: get_legend(),
-          range: Some(true),
-          full: Some(SemanticTokensFullOptions::Bool(true)),
-          ..Default::default()
+      SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(
+        SemanticTokensRegistrationOptions {
+          text_document_registration_options: TextDocumentRegistrationOptions {
+            document_selector: Some(vec![
+              DocumentFilter {
+                language: Some("javascript".to_string()),
+                scheme: None,
+                pattern: None,
+              },
+              DocumentFilter {
+                language: Some("javascriptreact".to_string()),
+                scheme: None,
+                pattern: None,
+              },
+              DocumentFilter {
+                language: Some("typescript".to_string()),
+                scheme: None,
+                pattern: None,
+              },
+              DocumentFilter {
+                language: Some("typescriptreact".to_string()),
+                scheme: None,
+                pattern: None,
+              },
+            ]),
+          },
+          semantic_tokens_options: SemanticTokensOptions {
+            legend: get_legend(),
+            range: Some(true),
+            full: Some(SemanticTokensFullOptions::Bool(true)),
+            ..Default::default()
+          },
+          static_registration_options: Default::default(),
         },
       ),
     ),
