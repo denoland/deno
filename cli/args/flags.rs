@@ -1430,7 +1430,7 @@ fn enable_unstable(command: Command) -> Command {
 fn enable_full(command: Command) -> Command {
   command.mut_args(|arg| {
     let long_help = arg.get_long_help();
-    if !long_help.is_some_and(|s| s.to_string() == "false") {
+    if long_help.is_none_or(|s| s.to_string() != "false") {
       arg.hide(false)
     } else {
       arg
