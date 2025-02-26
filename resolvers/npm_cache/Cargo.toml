@@ -39,4 +39,4 @@ thiserror.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-tempfile = "3.4.0"
+tempfile.workspace = true
