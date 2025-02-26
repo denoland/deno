@@ -1,7 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use deno_canvas::image;
+use deno_canvas::image::EncodableLayout;
 use deno_canvas::image::GenericImageView;
 use deno_canvas::webidl::PredefinedColorSpace;
+use deno_canvas::CanvasError;
+use deno_canvas::ImageBitmap;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
 use deno_core::GarbageCollected;
@@ -148,59 +152,86 @@ impl GPUQueue {
     #[webidl] destination: GPUCopyExternalImageDestInfo,
     #[webidl] copy_size: GPUExtent3D,
   ) -> Result<(), JsErrorBox> {
-    if source.source.detached.get().is_some() {
-      // TODO: error
-    }
-    let mut data = source.source.data.borrow().clone();
-    if source.flip_y {
-      data.apply_orientation(
-        deno_canvas::image::metadata::Orientation::FlipVertical,
-      );
-    }
+    let data = source.source.data.borrow().clone();
+    let (copy_size_width, copy_size_height, copy_size_depth_or_array_layers) =
+      copy_size.dimensions();
 
     // Content timeline steps:
     // 6.
-    if let Some(origin) = source.origin {
-      let (origin_x, origin_y) = origin.dimensions();
-      let (copy_size_width, copy_size_height, copy_size_height_depth) =
-        copy_size.dimensions();
-      let (source_image_width, source_image_height) = data.dimensions();
-      if !(origin_x + copy_size_width <= source_image_width) {
-        return Err(JsErrorBox::new(
+    let (src_origin_x, src_origin_y) = source.origin.dimensions();
+    let (src_image_width, src_image_height) = data.dimensions();
+    if src_origin_x + copy_size_width > src_image_width {
+      return Err(JsErrorBox::new(
           "DOMExceptionOperationError",
           "source.origin.x + copySize.width must be less than the width of source.source",
         ));
-      }
-      if !(origin_y + copy_size_height <= source_image_height) {
-        return Err(JsErrorBox::new(
+    }
+    if src_origin_y + copy_size_height > src_image_height {
+      return Err(JsErrorBox::new(
           "DOMExceptionOperationError",
           "source.origin.y + copySize.height must be less than the height of source.source",
         ));
-      }
-      if !(copy_size_height_depth <= 1) {
-        return Err(JsErrorBox::new(
-          "DOMExceptionOperationError",
-          "copySize.depthOrArrayLayers must be less than 1",
-        ));
-      }
+    }
+    if copy_size_depth_or_array_layers > 1 {
+      return Err(JsErrorBox::new(
+        "DOMExceptionOperationError",
+        "copySize.depthOrArrayLayers must be less than 1",
+      ));
+    }
+    // 7.
+    if source.source.detached.get().is_some() {
+      return Err(JsErrorBox::from_err(CanvasError::ImageSourceAleadyDetached));
     }
 
+    // NOTE: The Device timeline steps are not implemented yet on wgpu side.
+
     // Queue timeline steps:
+    // 1.
+    let dst_texture_format: wgpu_types::TextureFormat =
+      destination.texture.format.clone().into();
+    let dst_texture_block_dimensions = dst_texture_format.block_dimensions();
+    if dst_texture_block_dimensions.0 != 1
+      || dst_texture_block_dimensions.1 != 1
+      || copy_size_depth_or_array_layers != 1
+    {
+      return Err(JsErrorBox::new(
+        "DOMExceptionOperationError",
+        format!(
+          "The destination texture format {:#?} is not supported",
+          dst_texture_format
+        ),
+      ));
+    }
+    // 5.
+    // 5.1
+    // crop the rectangle first
+    let mut data = deno_canvas::crop(
+      data,
+      src_origin_x,
+      src_origin_y,
+      copy_size_width,
+      copy_size_height,
+    );
+    if source.flip_y {
+      data.apply_orientation(image::metadata::Orientation::FlipVertical);
+    }
     // 5.2.1
-    // This step is depending on the source.source type, conversion may or may not be required.
+    // These steps are depending on the source.source type, conversion may or may not be required.
     // https://gpuweb.github.io/gpuweb/#color-space-conversion-elision
 
-    // NOTE: According to the spec, there is no way to check that if source.source is ImageBitmap that was aleady premultiplied or not.
-    // We check whether the source.source is premultiplied or not by the is_premultiplied_alpha method inside,
-    // however it's not any implementation coverd by the spec.
+    // NOTE: According to the spec, there is no way to check when source.source is ImageBitmap that was aleady premultiplied or not.
+    // We acutually check whether the source.source is premultiplied or not by the is_premultiplied_alpha method inside,
+    // however it's not any implementation covered by the spec.
+    // https://github.com/whatwg/html/issues/11029
     let data = if destination.premultiplied_alpha {
       deno_canvas::premultiply_alpha(data).map_err(JsErrorBox::from_err)?
     } else {
       data
     };
 
-    // It's same issue as the above, there is no way to check that
-    // if the color space of source.source is ImageBitmap that was aleady transformed or not.
+    // It's same issue as the above, there is no way to check
+    // when the color space of source.source is ImageBitmap that was aleady transformed or not.
+    // We need to not immediately convert ImageBitmap but on-the-fly.
     let data = deno_canvas::transform_rgb_color_space(
       data,
       match destination.color_space {
@@ -209,6 +240,7 @@ impl GPUQueue {
       },
       destination.color_space,
     )
+    // convert to GPUError::GPUValidationError could be better?
     .map_err(JsErrorBox::from_err)?;
 
     let destination = wgpu_core::command::TexelCopyTextureInfo {
@@ -220,13 +252,18 @@ impl GPUQueue {
 
     let data_layout = wgpu_types::TexelCopyBufferLayout {
       offset: 0,
-      // The source.source is always a shape of 2D that is one of GPUCopyExternalImageSource,
-      // it can simply be calculated by multiplying the width of the image by the number of bytes per pixel.
       bytes_per_row: Some(
-        (data.color().bytes_per_pixel() as u32 * data.width()).into(),
+        dst_texture_format.components() as u32 * copy_size_width,
       ),
-      // nothing to set due to copySize.depthOrArrayLayers is always 1 for 2D images
-      rows_per_image: None,
+      rows_per_image: Some(copy_size_height),
+    };
+
+    let data = match data.color() {
+      // RGB does not support, so we convert it to RGBA
+      // https://github.com/gpuweb/gpuweb/issues/66
+      image::ColorType::Rgb8 => data.to_rgba8().to_vec(),
+      image::ColorType::Rgb16 => data.to_rgba16().as_bytes().to_vec(),
+      _ => data.into_bytes(),
     };
 
     let err = self
@@ -234,7 +271,7 @@ impl GPUQueue {
       .queue_write_texture(
         self.id,
         &destination,
-        data.as_bytes(),
+        &data,
         &data_layout,
         &copy_size.into(),
       )
@@ -274,8 +311,8 @@ struct GPUTexelCopyBufferLayout {
 #[derive(WebIDL)]
 #[webidl(dictionary)]
 struct GPUCopyExternalImageSourceInfo {
-  source: Ptr<deno_canvas::ImageBitmap>, // TODO: union with ImageData
-  origin: Option<GPUOrigin2D>,
+  source: Ptr<ImageBitmap>, // TODO: union with ImageData
+  origin: GPUOrigin2D,
   #[webidl(default = false)]
   flip_y: bool,
 }

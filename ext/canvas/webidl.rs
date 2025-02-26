@@ -10,3 +10,5 @@ pub enum PredefinedColorSpace {
   #[webidl(rename = "display-p3")]
   DisplayP3,
 }
+
+// TODO: add CanvasImageSource
