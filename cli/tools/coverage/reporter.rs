@@ -219,9 +219,12 @@ impl CoverageReporter for LcovCoverageReporter {
     });
     if let Some((report, _)) = file_reports.first() {
       if let Some(ref output) = report.output {
-        let path = output.canonicalize().unwrap().to_string_lossy().to_string();
-        let url = Url::from_file_path(path).unwrap();
-        log::info!("Lcov coverage report has been generated at {}", url);
+        if let Ok(path) = output.canonicalize() {
+          let url = Url::from_file_path(path).unwrap();
+          log::info!("Lcov coverage report has been generated at {}", url);
+        } else {
+          log::error!("Failed to resolve the output path of Lcov report: {}", output.display());
+        }
       }
     }
   }
