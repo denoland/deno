@@ -286,7 +286,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Test(test_flags) => {
       spawn_subcommand(async {
         if let Some(ref coverage_dir) = test_flags.coverage_dir {
-          if test_flags.clean {
+          if !test_flags.coverage_raw_data_only || test_flags.clean {
+            // Keeps coverage_dir contents only when --coverage-raw-data-only is set and --clean is not set
             let _ = std::fs::remove_dir_all(coverage_dir);
           }
           std::fs::create_dir_all(coverage_dir)
