@@ -1570,9 +1570,9 @@ dependencies = [
 
 [[package]]
 name = "deno-tower-lsp-macros"
-version = "0.11.2"
+version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "61083feefc9c29a3f45670be6b60001ec209286c861b6830cd30ba4af9a6e9d8"
+checksum = "f9221b99f1cc7c395686b9f2d5652c5855666a9282c8d5a68fabd4b1d4994fa9"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1751,9 +1751,9 @@ dependencies = [
 
 [[package]]
 name = "deno_core"
-version = "0.338.0"
+version = "0.340.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "113f3f08bd5daf99f1a7876c0f99cd8c3c609439fa0b808311ec856a253e95f0"
+checksum = "fe2827cc1215963b5073cca7db7c0ed8d8717a40e5ebad20832ae70e6df2d9d1"
 dependencies = [
  "anyhow",
  "az",
@@ -2374,9 +2374,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ops"
-version = "0.214.0"
+version = "0.216.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ad885bf882be535f7714c713042129acba6f31a8efb5e6b2298f6e40cab9b16"
+checksum = "07cc2bc8f1754c7f66b701a05fb12ca39dc582edf8b4f04a422ae487f0223fa9"
 dependencies = [
  "indexmap 2.3.0",
  "proc-macro-rules",
@@ -2690,9 +2690,9 @@ dependencies = [
 
 [[package]]
 name = "deno_tower_lsp"
-version = "0.4.2"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c29dce82d67177bbc36468f64cddd8c25242fc31b99369ef0126fa7fad64c5ec"
+checksum = "67da3258ce785368c691b206d00d4109f8eead24da0603abc70e04b04871a3df"
 dependencies = [
  "async-trait",
  "auto_impl",
@@ -7278,9 +7278,9 @@ dependencies = [
 
 [[package]]
 name = "serde_v8"
-version = "0.247.0"
+version = "0.249.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bbfafb7b707cbed49d1eaf48f4aa41b5ff57f813d1a80f77244e6e2fa4507e"
+checksum = "41bd50e0136873d94207fcbd1a78bd8da0b7bfa4537e1383377c7cf2c1d811b1"
 dependencies = [
  "deno_error",
  "num-bigint",
@@ -9025,9 +9025,9 @@ dependencies = [
 
 [[package]]
 name = "v8"
-version = "134.4.0"
+version = "134.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "224c6c3d1fd3c0356224b2ad355b61c242cdafa9d14cc31b7f161ea177b3b4e9"
+checksum = "21c7a224a7eaf3f98c1bad772fbaee56394dce185ef7b19a2e0ca5e3d274165d"
 dependencies = [
  "bindgen 0.70.1",
  "bitflags 2.8.0",
