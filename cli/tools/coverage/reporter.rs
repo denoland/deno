@@ -223,7 +223,10 @@ impl CoverageReporter for LcovCoverageReporter {
           let url = Url::from_file_path(path).unwrap();
           log::info!("Lcov coverage report has been generated at {}", url);
         } else {
-          log::error!("Failed to resolve the output path of Lcov report: {}", output.display());
+          log::error!(
+            "Failed to resolve the output path of Lcov report: {}",
+            output.display()
+          );
         }
       }
     }
