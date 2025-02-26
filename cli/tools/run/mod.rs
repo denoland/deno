@@ -219,3 +219,136 @@ pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
   }
   Ok(())
 }
+
+pub async fn run_eszip(
+  flags: Arc<Flags>,
+  run_flags: RunFlags,
+) -> Result<i32, AnyError> {
+  // TODO(bartlomieju): actually I think it will also fail if there's an import
+  // map specified and bare specifier is used on the command line
+  let factory = CliFactory::from_flags(flags.clone());
+  let cli_options = factory.cli_options()?;
+
+  // entrypoint#path1,path2,...
+  let (entrypoint, files) = run_flags
+    .script
+    .split_once("#")
+    .with_context(|| "eszip: invalid script string")?;
+
+  println!("running eszip: entrypoint={} files={}", entrypoint, files);
+
+  // TODO: handle paths that contain ','
+  let files = files.split(",").collect::<Vec<_>>();
+  let mut headers = FuturesOrdered::new();
+  for path in files {
+    let file = tokio::fs::File::open(path).await?;
+    let eszip = BufReader::new(file.compat());
+    let path = path.to_string();
+
+    headers.push_back(async move {
+      let (eszip, loader) = match EszipV2::parse(eszip).await {
+        Ok(x) => x,
+        Err(e) => {
+          log::error!("Error parsing eszip header at {}: {}", path, e);
+          std::process::exit(1);
+        }
+      };
+      spawn(async move {
+        if let Err(e) = loader.await {
+          log::error!("Error loading eszip at {}: {}", path, e);
+          std::process::exit(1);
+        }
+      });
+      eszip
+    });
+  }
+  let headers = headers.collect::<Vec<_>>().await;
+
+  let ca_data = match cli_options.ca_data() {
+    Some(CaData::File(ca_file)) => Some(
+      std::fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?,
+    ),
+    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
+    None => None,
+  };
+
+  let import_map_specifier =
+    cli_options.resolve_specified_import_map_specifier()?;
+  let import_map = if let Some(import_map_specifier) = import_map_specifier {
+    let import_map =
+      load_import_map(&headers, import_map_specifier.as_str()).await?;
+    Some(import_map)
+  } else {
+    None
+  };
+
+  crate::standalone::run(
+    headers,
+    Metadata {
+      argv: flags.argv.clone(),
+      seed: flags.seed,
+      permissions: flags.permissions.clone(),
+      location: flags.location.clone(),
+      v8_flags: flags.v8_flags.clone(),
+      log_level: flags.log_level,
+      ca_stores: flags.ca_stores.clone(),
+      ca_data,
+      unsafely_ignore_certificate_errors: flags
+        .unsafely_ignore_certificate_errors
+        .clone(),
+      entrypoint_key: entrypoint.to_string(),
+      node_modules: None,
+      unstable_config: flags.unstable_config.clone(),
+      env_vars_from_env_file: Default::default(),
+      workspace_resolver: SerializedWorkspaceResolver {
+        import_map,
+        jsr_pkgs: Default::default(),
+        package_jsons: Default::default(),
+        pkg_json_resolution: PackageJsonDepResolution::Disabled,
+      },
+      otel_config: flags.otel_config(),
+      enable_window_global: flags.enable_window_global,
+      disable_process_global: flags.disable_process_global,
+      x_deno_fetch_token: flags.x_deno_fetch_token.clone(),
+      cdn_loop_value: flags.cdn_loop_value.clone(),
+    },
+    run_flags.script.as_bytes(),
+    "run-eszip",
+  )
+  .await
+}
+
+async fn load_import_map(
+  eszips: &[EszipV2],
+  specifier: &str,
+) -> Result<SerializedWorkspaceResolverImportMap, AnyError> {
+  let maybe_module = eszips
+    .iter()
+    .rev()
+    .find_map(|eszip| eszip.get_import_map(specifier));
+  let Some(module) = maybe_module else {
+    return Err(AnyError::msg(format!("import map not found '{specifier}'")));
+  };
+  let base_url = deno_core::url::Url::parse(specifier).map_err(|err| {
+    AnyError::msg(format!(
+      "import map specifier '{specifier}' is not a valid url: {err}"
+    ))
+  })?;
+  let bytes = module
+    .source()
+    .await
+    .ok_or_else(|| AnyError::msg("import map not found '{specifier}'"))?;
+  let text = String::from_utf8_lossy(&bytes);
+  let json_value =
+    jsonc_parser::parse_to_serde_value(&text, &ParseOptions::default())
+      .map_err(|err| {
+        AnyError::msg(format!("import map failed to parse: {err}"))
+      })?
+      .ok_or_else(|| AnyError::msg("import map is not valid JSON"))?;
+  let import_map = import_map::parse_from_value(base_url, json_value)?;
+
+  Ok(SerializedWorkspaceResolverImportMap {
+    specifier: specifier.to_string(),
+    json: import_map.import_map.to_json(),
+  })
+}
