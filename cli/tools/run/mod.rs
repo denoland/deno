@@ -5,11 +5,25 @@ use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
+use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::io::BufReader;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::futures::StreamExt;
+use deno_lib::args::CaData;
+use deno_lib::standalone::binary::Metadata;
+use deno_lib::standalone::binary::SerializedWorkspaceResolver;
+use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
+use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_runtime::WorkerExecutionMode;
+use eszip::EszipV2;
+use jsonc_parser::ParseOptions;
+use tokio::spawn;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
+use crate::args::RunFlags;
 use crate::args::WatchFlagsWithPaths;
 use crate::factory::CliFactory;
 use crate::npm::installer::PackageCaching;
@@ -307,10 +321,8 @@ pub async fn run_eszip(
         pkg_json_resolution: PackageJsonDepResolution::Disabled,
       },
       otel_config: flags.otel_config(),
-      enable_window_global: flags.enable_window_global,
-      disable_process_global: flags.disable_process_global,
-      x_deno_fetch_token: flags.x_deno_fetch_token.clone(),
-      cdn_loop_value: flags.cdn_loop_value.clone(),
+      code_cache_key: None,
+      vfs_case_sensitivity: deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity::Insensitive,
     },
     run_flags.script.as_bytes(),
     "run-eszip",
