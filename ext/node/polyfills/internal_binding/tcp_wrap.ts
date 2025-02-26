@@ -29,6 +29,8 @@
 
 import { op_net_connect_tcp } from "ext:core/ops";
 import { TcpConn } from "ext:deno_net/01_net.js";
+import { core } from "ext:core/mod.js";
+const { internalFdSymbol } = core;
 import { notImplemented } from "ext:deno_node/_utils.ts";
 import { unreachable } from "ext:deno_node/_util/asserts.ts";
 import { ConnectionWrap } from "ext:deno_node/internal_binding/connection_wrap.ts";
@@ -145,6 +147,10 @@ export class TCP extends ConnectionWrap {
     }
   }
 
+  get fd() {
+    return this[kStreamBaseField]?.[internalFdSymbol];
+  }
+
   /**
    * Opens a file descriptor.
    * @param fd The file descriptor to open.
@@ -225,7 +231,6 @@ export class TCP extends ConnectionWrap {
     const address = listener.addr as Deno.NetAddr;
     this.#address = address.hostname;
     this.#port = address.port;
-
     this.#listener = listener;
 
     // TODO(kt3k): Delays the accept() call 2 ticks. Deno.Listener can't be closed
@@ -458,7 +463,6 @@ export class TCP extends ConnectionWrap {
 
     // Reset the backoff delay upon successful accept.
     this.#acceptBackoffDelay = undefined;
-
     const connectionHandle = new TCP(socketType.SOCKET, connection);
     this.#connections++;
 
