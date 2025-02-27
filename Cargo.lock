@@ -3490,9 +3490,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.82.0"
+version = "0.83.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e4836b6abc01616dbaaac8f6ccf7e08567ada28547eb188ae5bca5a99f40a6d"
+checksum = "39f4ac1d111015e1740ec02306e01801156d8a7832785ef0b73ea217ddc65769"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3504,7 +3504,7 @@ dependencies = [
  "deno_semver",
  "futures",
  "hashlink 0.8.4",
- "indexmap 2.3.0",
+ "indexmap 2.7.1",
  "serde",
  "serde_json",
  "sha2",

@@ -74,7 +74,7 @@ denokv_remote = "0.9.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, version = "0.9.0" }
 
-eszip = "0.82.0"
+eszip = "0.83.0"
 
 # exts
 deno_broadcast_channel = { version = "0.187.0", path = "./ext/broadcast_channel" }
