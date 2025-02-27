@@ -237,11 +237,31 @@ impl ModuleLoader for EmbeddedModuleLoader {
         dep_result,
         sub_path,
         alias,
+        pkg_json,
         ..
       }) => match dep_result
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
+        PackageJsonDepValue::File(specifier) => {
+          let pkg_folder = pkg_json.dir_path().join(specifier);
+          Ok(
+            self
+              .shared
+              .node_resolver
+              .resolve_package_subpath_from_deno_module(
+                &pkg_folder,
+                sub_path.as_deref(),
+                Some(&referrer),
+                referrer_kind,
+                NodeResolutionKind::Execution,
+              )
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
+          )
+        }
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared

@@ -176,9 +176,7 @@ async fn sync_resolution_with_fs(
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
 ) -> Result<(), SyncResolutionWithFsError> {
-  if snapshot.is_empty()
-    && npm_install_deps_provider.workspace_pkgs().is_empty()
-  {
+  if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
   }
 
@@ -629,14 +627,14 @@ async fn sync_resolution_with_fs(
     // todo(dsherret): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
-    for workspace in npm_install_deps_provider.workspace_pkgs() {
-      let Some(workspace_alias) = &workspace.alias else {
+    for pkg in npm_install_deps_provider.local_pkgs() {
+      let Some(pkg_alias) = &pkg.alias else {
         continue;
       };
-      symlink_package_dir(
-        &workspace.target_dir,
-        &root_node_modules_dir_path.join(workspace_alias),
-      )?;
+      let from = root_node_modules_dir_path.join(pkg_alias);
+      let from = crate::util::path::relative_path(&from, &pkg.target_dir)
+        .unwrap_or(from);
+      symlink_package_dir(&pkg.target_dir, &from)?;
     }
   }
 

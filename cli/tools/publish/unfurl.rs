@@ -97,9 +97,11 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         package_name, reason
       )
       .into(),
-      Self::UnsupportedPkgJsonFileSpecifier { .. } => {
-        "unsupported package.json file specifier".into()
-      }
+      Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
+        "unsupported package.json file specifier for '{}'",
+        package_name
+      )
+      .into(),
     }
   }
 
@@ -353,7 +355,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           ..
         } => match dep_result {
           Ok(dep) => match dep {
-            PackageJsonDepValue::File(specifier) => {
+            PackageJsonDepValue::File(_) => {
               return Err(
                 UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
                   package_name: alias.to_string(),
