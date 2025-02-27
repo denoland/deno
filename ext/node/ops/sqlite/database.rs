@@ -9,6 +9,8 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::rc::Rc;
 
+use rusqlite::ffi as libsqlite3_sys;
+
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
@@ -61,13 +63,38 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
+fn set_db_config(conn: &rusqlite::Connection, config: i32, value: bool) -> bool {
+  unsafe {
+    let mut set = 0;
+    let r = libsqlite3_sys::sqlite3_db_config(
+      conn.handle(),
+      config,
+      value as i32,
+      &mut set,
+    );
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      panic!("Failed to set db config");
+    }
+
+    set == value as i32
+  }
+}
+
+const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
+const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
+
 fn open_db(
   state: &mut OpState,
   readonly: bool,
   location: &str,
 ) -> Result<rusqlite::Connection, SqliteError> {
   if location == ":memory:" {
-    return Ok(rusqlite::Connection::open_in_memory()?);
+    let conn = rusqlite::Connection::open_in_memory()?;
+    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, false));
+    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+
+    return Ok(conn);
   }
 
   state
@@ -75,17 +102,24 @@ fn open_db(
     .check_read_with_api_name(location, Some("node:sqlite"))?;
 
   if readonly {
-    return Ok(rusqlite::Connection::open_with_flags(
+    let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
+    )?;
+    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, false));
+    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+
+    return Ok(conn);
   }
 
   state
     .borrow::<PermissionsContainer>()
     .check_write_with_api_name(location, Some("node:sqlite"))?;
 
-  Ok(rusqlite::Connection::open(location)?)
+  let conn = rusqlite::Connection::open(location)?;
+  assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+
+  Ok(conn)
 }
 
 // Represents a single connection to a SQLite database.

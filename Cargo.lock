@@ -2280,7 +2280,6 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
- "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
