@@ -133,7 +133,7 @@ pub struct Options {
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 }
 
-#[cfg(feature = "generic_property_extractor")]
+#[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -182,7 +182,7 @@ deno_core::extension!(
   }
 );
 
-#[cfg(not(feature = "generic_property_extractor"))]
+#[cfg(feature = "default_property_extractor")]
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],

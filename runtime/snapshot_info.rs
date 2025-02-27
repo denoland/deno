@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::Extension;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::fs::FsError;
 use deno_permissions::PermissionCheckError;
 use deno_resolver::npm::DenoInNpmPackageChecker;

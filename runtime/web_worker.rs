@@ -39,7 +39,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;

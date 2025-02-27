@@ -8,7 +8,6 @@ use std::sync::Arc;
 use deno_core::snapshot::*;
 use deno_core::v8;
 use deno_core::Extension;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmResolver;
 
