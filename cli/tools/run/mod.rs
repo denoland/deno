@@ -1,24 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::collections::HashMap;
 use std::io::Read;
-use std::path::Path;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::io::BufReader;
-use deno_core::futures::stream::FuturesOrdered;
-use deno_core::futures::StreamExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_runtime::WorkerExecutionMode;
-use eszip::v2::Url;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
-use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::EvalFlags;
 use crate::args::Flags;
@@ -262,61 +255,6 @@ pub async fn run_eszip(
 
   let exit_code = worker.run().await?;
   Ok(exit_code)
-}
-
-pub async fn create_eszip_loader(
-  script: &str,
-  cwd: &Path,
-) -> Result<EszipModuleLoader, AnyError> {
-  // entrypoint#path1,path2,...
-  let (_entrypoint, files) = script
-    .split_once("#")
-    .with_context(|| "eszip: invalid script string")?;
-
-  // TODO: handle paths that contain ','
-  let files = files.split(",").collect::<Vec<_>>();
-  let mut loaded_eszips = FuturesOrdered::new();
-  for path in files {
-    let file = tokio::fs::File::open(path).await?;
-    let eszip = BufReader::new(file.compat());
-    let path = path.to_string();
-
-    loaded_eszips.push_back(async move {
-      let (eszip, loader) = EszipV2::parse(eszip)
-        .await
-        .with_context(|| format!("Error parsing eszip header at {}", path))?;
-      loader
-        .await
-        .with_context(|| format!("Error loading eszip at {}", path))?;
-      Ok(eszip)
-    });
-  }
-  // At this point all eszips are fully loaded
-  let loaded_eszips: Vec<Result<EszipV2, AnyError>> =
-    loaded_eszips.collect::<Vec<_>>().await;
-
-  let mut loader = EszipModuleLoader::default();
-
-  for loaded_eszip_result in loaded_eszips {
-    let loaded_eszip = loaded_eszip_result?;
-    let specifiers = loaded_eszip.specifiers();
-    loader.files.reserve(specifiers.len());
-
-    for specifier in specifiers {
-      let module = loaded_eszip.get_module(&specifier).unwrap();
-      let source = module.take_source().await.unwrap();
-      let resolved_specifier = resolve_url_or_path(&specifier, cwd)?;
-      let prev = loader.files.insert(resolved_specifier, source);
-      assert!(prev.is_none());
-    }
-  }
-
-  Ok(loader)
-}
-
-#[derive(Debug, Default)]
-pub struct EszipModuleLoader {
-  pub files: HashMap<Url, Arc<[u8]>>,
 }
 
 #[allow(unused)]

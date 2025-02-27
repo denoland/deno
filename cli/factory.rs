@@ -78,6 +78,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::EszipModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliNodeCodeTranslator;
@@ -1107,7 +1108,7 @@ impl CliFactory {
 
     if cli_options.eszip() {
       if let DenoSubcommand::Run(run_flags) = cli_options.sub_command() {
-        let eszip_loader = crate::tools::run::create_eszip_loader(
+        let eszip_loader = EszipModuleLoader::create(
           &run_flags.script,
           cli_options.initial_cwd(),
         )

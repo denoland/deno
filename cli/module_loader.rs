@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -13,12 +14,17 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
+use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::FutureExt;
+use deno_core::futures::io::BufReader;
+use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::Future;
+use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
+use deno_core::resolve_url_or_path;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -51,12 +57,14 @@ use deno_runtime::deno_node::ops::require::UnableToGetCwdError;
 use deno_runtime::deno_node::NodeRequireLoader;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_semver::npm::NpmPackageReqReference;
+use eszip::EszipV2;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use sys_traits::FsRead;
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
 use crate::args::jsr_url;
 use crate::args::CliLockfile;
@@ -81,7 +89,6 @@ use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
-use crate::tools::run::EszipModuleLoader;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
@@ -1043,23 +1050,7 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     let inner = self.0.clone();
 
     if let Some(eszip_loader) = &inner.shared.maybe_eszip_loader {
-      let response = match eszip_loader.files.get(specifier) {
-        Some(source) => {
-          let module_source = ModuleSource::new(
-            ModuleType::JavaScript,
-            ModuleSourceCode::Bytes(deno_core::ModuleCodeBytes::Arc(
-              source.clone(),
-            )),
-            specifier,
-            None,
-          );
-          deno_core::ModuleLoadResponse::Sync(Ok(module_source))
-        }
-        None => {
-          deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
-        }
-      };
-      return response;
+      return eszip_loader.load(specifier);
     }
 
     let specifier = specifier.clone();
@@ -1344,6 +1335,79 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
   ) -> Result<bool, ClosestPkgJsonError> {
     let media_type = MediaType::from_specifier(specifier);
     self.cjs_tracker.is_maybe_cjs(specifier, media_type)
+  }
+}
+
+#[derive(Debug, Default)]
+pub struct EszipModuleLoader {
+  pub files: HashMap<ModuleSpecifier, Arc<[u8]>>,
+}
+
+impl EszipModuleLoader {
+  pub async fn create(script: &str, cwd: &Path) -> Result<Self, AnyError> {
+    // entrypoint#path1,path2,...
+    let (_entrypoint, files) = script
+      .split_once("#")
+      .with_context(|| "eszip: invalid script string")?;
+
+    // TODO: handle paths that contain ','
+    let files = files.split(",").collect::<Vec<_>>();
+    let mut loaded_eszips = FuturesOrdered::new();
+    for path in files {
+      let file = tokio::fs::File::open(path).await?;
+      let eszip = BufReader::new(file.compat());
+      let path = path.to_string();
+
+      loaded_eszips.push_back(async move {
+        let (eszip, loader) = EszipV2::parse(eszip)
+          .await
+          .with_context(|| format!("Error parsing eszip header at {}", path))?;
+        loader
+          .await
+          .with_context(|| format!("Error loading eszip at {}", path))?;
+        Ok(eszip)
+      });
+    }
+    // At this point all eszips are fully loaded
+    let loaded_eszips: Vec<Result<EszipV2, AnyError>> =
+      loaded_eszips.collect::<Vec<_>>().await;
+
+    let mut loader = Self::default();
+
+    for loaded_eszip_result in loaded_eszips {
+      let loaded_eszip = loaded_eszip_result?;
+      let specifiers = loaded_eszip.specifiers();
+      loader.files.reserve(specifiers.len());
+
+      for specifier in specifiers {
+        let module = loaded_eszip.get_module(&specifier).unwrap();
+        let source = module.take_source().await.unwrap();
+        let resolved_specifier = resolve_url_or_path(&specifier, cwd)?;
+        let prev = loader.files.insert(resolved_specifier, source);
+        assert!(prev.is_none());
+      }
+    }
+
+    Ok(loader)
+  }
+
+  fn load(&self, specifier: &ModuleSpecifier) -> deno_core::ModuleLoadResponse {
+    match self.files.get(specifier) {
+      Some(source) => {
+        let module_source = ModuleSource::new(
+          ModuleType::JavaScript,
+          ModuleSourceCode::Bytes(deno_core::ModuleCodeBytes::Arc(
+            source.clone(),
+          )),
+          specifier,
+          None,
+        );
+        deno_core::ModuleLoadResponse::Sync(Ok(module_source))
+      }
+      None => {
+        deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
+      }
+    }
   }
 }
 
