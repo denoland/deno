@@ -15368,7 +15368,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
           "edits": [
             {
               "range": file2.range_of("foo"),
-              "newText": "bar",
+              "newText": "bar as foo",
             },
           ],
         },
