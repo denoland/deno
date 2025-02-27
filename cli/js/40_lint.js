@@ -792,13 +792,44 @@ class MatchCtx {
   }
 
   /**
+   * @param {number} idx
+   * @param {number} propId
+   * @returns {number}
+   */
+  getField(idx, propId) {
+    if (idx === AST_IDX_INVALID) return -1;
+
+    // Bail out on fields that can never point to another node
+    switch (propId) {
+      case AST_PROP_TYPE:
+      case AST_PROP_PARENT:
+      case AST_PROP_RANGE:
+        return -1;
+    }
+
+    const { buf } = this.ctx;
+    let offset = readPropOffset(this.ctx, idx);
+    offset = findPropOffset(buf, offset, propId);
+
+    if (offset === -1) return -1;
+    const _prop = buf[offset++];
+    const kind = buf[offset++];
+
+    if (kind === PropFlags.Ref) {
+      return readU32(buf, offset);
+    }
+
+    return -1;
+  }
+
+  /**
    * @param {number} idx - Node idx
    * @param {number[]} propIds
    * @param {number} propIdx
    * @returns {unknown}
    */
   getAttrPathValue(idx, propIds, propIdx) {
-    if (idx === 0) throw -1;
+    if (idx === AST_IDX_INVALID) throw -1;
 
     const { buf, strTable, strByType } = this.ctx;
 

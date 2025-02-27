@@ -9,6 +9,7 @@
 /** @typedef {import("./40_lint_types.d.ts").AttrBin} AttrBin */
 /** @typedef {import("./40_lint_types.d.ts").AttrSelector} AttrSelector */
 /** @typedef {import("./40_lint_types.d.ts").ElemSelector} ElemSelector */
+/** @typedef {import("./40_lint_types.d.ts").FieldSelector} FieldSelector */
 /** @typedef {import("./40_lint_types.d.ts").PseudoNthChild} PseudoNthChild */
 /** @typedef {import("./40_lint_types.d.ts").PseudoHas} PseudoHas */
 /** @typedef {import("./40_lint_types.d.ts").PseudoNot} PseudoNot */
@@ -376,6 +377,7 @@ export const PSEUDO_HAS = 6;
 export const PSEUDO_NOT = 7;
 export const PSEUDO_FIRST_CHILD = 8;
 export const PSEUDO_LAST_CHILD = 9;
+export const FIELD_NODE = 10;
 
 /**
  * Parse out all unique selectors of a selector list.
@@ -491,6 +493,26 @@ export function parseSelector(input, toElem, toAttr) {
 
       lex.expect(Token.BracketClose);
       lex.next();
+      continue;
+    } else if (lex.token === Token.Dot) {
+      lex.next();
+      lex.expect(Token.Word);
+
+      const props = [toAttr(lex.value)];
+      lex.next();
+
+      while (lex.token === Token.Dot) {
+        lex.next();
+        lex.expect(Token.Word);
+
+        props.push(toAttr(lex.value));
+        lex.next();
+      }
+
+      current.push({
+        type: FIELD_NODE,
+        props,
+      });
       continue;
     } else if (lex.token === Token.Colon) {
       lex.next();
@@ -709,6 +731,9 @@ export function compileSelector(selector) {
     switch (node.type) {
       case ELEM_NODE:
         fn = matchElem(node, fn);
+        break;
+      case FIELD_NODE:
+        fn = matchField(node, fn);
         break;
       case RELATION_NODE:
         switch (node.op) {
@@ -957,6 +982,37 @@ function matchElem(part, next) {
     }
 
     return false;
+  };
+}
+
+/**
+ * @param {FieldSelector} part
+ * @param {MatcherFn} next
+ * @returns {MatcherFn}
+ */
+function matchField(part, next) {
+  return (ctx, id) => {
+    let child = id;
+    let parent = ctx.getParent(id);
+    if (parent === 0) return false;
+
+    // Fields are stored left-ro-right but we need to match
+    // them right-to-left.
+    for (let i = part.props.length - 1; i >= 0; i--) {
+      const prop = part.props[i];
+      const value = ctx.getField(parent, prop);
+
+      if (value === -1) return false;
+      if (value !== child) return false;
+
+      if (i > 0) {
+        child = parent;
+        parent = ctx.getParent(parent);
+        if (parent === 0) return false;
+      }
+    }
+
+    return next(ctx, parent);
   };
 }
 
