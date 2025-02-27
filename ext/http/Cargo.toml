@@ -12,6 +12,7 @@ description = "HTTP server implementation for Deno"
 
 [features]
 "__http_tracing" = []
+generic_property_extractor = []
 
 [lib]
 path = "lib.rs"
