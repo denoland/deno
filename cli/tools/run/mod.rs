@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::io::Read;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -10,12 +12,14 @@ use deno_core::error::AnyError;
 use deno_core::futures::io::BufReader;
 use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::StreamExt;
+use deno_core::ModuleLoader;
 use deno_lib::args::CaData;
 use deno_lib::standalone::binary::Metadata;
 use deno_lib::standalone::binary::SerializedWorkspaceResolver;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_resolver::workspace::PackageJsonDepResolution;
 use deno_runtime::WorkerExecutionMode;
+use eszip::v2::Url;
 use eszip::EszipV2;
 use jsonc_parser::ParseOptions;
 use tokio::spawn;
@@ -242,6 +246,8 @@ pub async fn run_eszip(
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
+  let import_map_specifier =
+    cli_options.resolve_specified_import_map_specifier()?;
 
   // entrypoint#path1,path2,...
   let (entrypoint, files) = run_flags
@@ -251,6 +257,41 @@ pub async fn run_eszip(
 
   println!("running eszip: entrypoint={} files={}", entrypoint, files);
 
+  let module_loader =
+    create_eszip_module_loader(files, import_map_specifier).await?;
+  todo!()
+}
+
+struct EszipModuleLoader {
+  files: HashMap<String, Arc<[u8]>>,
+}
+
+impl ModuleLoader for EszipModuleLoader {
+  fn resolve(
+    &self,
+    specifier: &str,
+    referrer: &str,
+    kind: deno_core::ResolutionKind,
+  ) -> Result<deno_core::ModuleSpecifier, deno_core::error::ModuleLoaderError>
+  {
+    todo!()
+  }
+
+  fn load(
+    &self,
+    module_specifier: &deno_core::ModuleSpecifier,
+    maybe_referrer: Option<&deno_core::ModuleSpecifier>,
+    is_dyn_import: bool,
+    requested_module_type: deno_core::RequestedModuleType,
+  ) -> deno_core::ModuleLoadResponse {
+    todo!()
+  }
+}
+
+async fn create_eszip_module_loader(
+  files: &str,
+  import_map_specifier: Option<Url>,
+) -> Result<Rc<dyn ModuleLoader>, AnyError> {
   // TODO: handle paths that contain ','
   let files = files.split(",").collect::<Vec<_>>();
   let mut loaded_eszips = FuturesOrdered::new();
@@ -277,8 +318,6 @@ pub async fn run_eszip(
   // At this point all eszips are fully loaded
   let loaded_eszips = loaded_eszips.collect::<Vec<_>>().await;
 
-  let import_map_specifier =
-    cli_options.resolve_specified_import_map_specifier()?;
   let import_map = if let Some(import_map_specifier) = import_map_specifier {
     let import_map =
       load_import_map(&loaded_eszips, import_map_specifier.as_str()).await?;
@@ -287,19 +326,21 @@ pub async fn run_eszip(
     None
   };
 
-  // TODO: create EsZipModuleLoader and somehow make `CliMainWorkerFactory` use it instead of the default
-  // cli worker.
-
+  let mut loader = EszipModuleLoader {
+    files: Default::default(),
+  };
   for loaded_eszip in loaded_eszips {
     let specifiers = loaded_eszip.specifiers();
-    for specifier in &specifiers {
-      let module = loaded_eszip.get_module(specifier).unwrap();
-      let source = module.source().await.unwrap();
-      let source_code = String::from_utf8(source.to_vec()).unwrap();
-      eprintln!("ESZip module: {}\n\n{}", specifier, source_code);
+    loader.files.reserve(specifiers.len());
+
+    for specifier in specifiers {
+      let module = loaded_eszip.get_module(&specifier).unwrap();
+      let source = module.take_source().await.unwrap();
+      let prev = loader.files.insert(specifier, source);
     }
   }
-  todo!()
+
+  Ok(Rc::new(loader))
 }
 
 async fn load_import_map(

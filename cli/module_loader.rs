@@ -378,6 +378,10 @@ impl CliModuleLoaderFactory {
     }
   }
 
+  fn create_from_eszip(&self) -> CreateModuleLoaderResult {
+    todo!()
+  }
+
   fn create_with_lib<TGraphContainer: ModuleGraphContainer>(
     &self,
     graph_container: TGraphContainer,
