@@ -290,6 +290,15 @@ pub async fn run_eszip(
   // TODO: create EsZipModuleLoader and somehow make `CliMainWorkerFactory` use it instead of the default
   // cli worker.
 
+  for loaded_eszip in loaded_eszips {
+    let specifiers = loaded_eszip.specifiers();
+    for specifier in &specifiers {
+      let module = loaded_eszip.get_module(specifier).unwrap();
+      let source = module.source().await.unwrap();
+      let source_code = String::from_utf8(source.to_vec()).unwrap();
+      eprintln!("ESZip module: {}\n\n{}", specifier, source_code);
+    }
+  }
   todo!()
 }
 
