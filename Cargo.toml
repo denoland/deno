@@ -438,6 +438,16 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.futures-util]
 opt-level = 3
+[profile.release.package.futures-io]
+opt-level = 3
+[profile.release.package.futures-channel]
+opt-level = 3
+[profile.release.package.futures-sink]
+opt-level = 3
+[profile.release.package.futures-task]
+opt-level = 3
+[profile.release.package.futures-core]
+opt-level = 3
 [profile.release.package.hyper]
 opt-level = 3
 [profile.release.package.miniz_oxide]
@@ -463,6 +473,22 @@ opt-level = 3
 [profile.release.package.zstd]
 opt-level = 3
 [profile.release.package.zstd-sys]
+opt-level = 3
+[profile.release.package.http]
+opt-level = 3
+[profile.release.package.http-body]
+opt-level = 3
+[profile.release.package.httparse]
+opt-level = 3
+[profile.release.package.mio]
+opt-level = 3
+[profile.release.package.fnv]
+opt-level = 3
+[profile.release.package.hyper-util]
+opt-level = 3
+[profile.release.package.httpdate]
+opt-level = 3
+[profile.release.package.deno_unsync]
 opt-level = 3
 
 [patch.crates-io]
