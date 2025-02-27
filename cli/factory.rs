@@ -1103,6 +1103,19 @@ impl CliFactory {
       Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
     };
 
+    let mut maybe_eszip_loader = None;
+
+    if cli_options.eszip() {
+      if let DenoSubcommand::Run(run_flags) = cli_options.sub_command() {
+        let eszip_loader = crate::tools::run::create_eszip_loader(
+          &run_flags.script,
+          cli_options.initial_cwd(),
+        )
+        .await?;
+        maybe_eszip_loader = Some(eszip_loader);
+      }
+    }
+
     let module_loader_factory = CliModuleLoaderFactory::new(
       cli_options,
       cjs_tracker,
@@ -1128,6 +1141,7 @@ impl CliFactory {
       self.parsed_source_cache().clone(),
       self.resolver().await?.clone(),
       self.sys(),
+      maybe_eszip_loader,
     );
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(

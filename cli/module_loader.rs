@@ -81,6 +81,7 @@ use crate::resolver::CliCjsTracker;
 use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::sys::CliSys;
+use crate::tools::run::EszipModuleLoader;
 use crate::type_checker::CheckError;
 use crate::type_checker::CheckOptions;
 use crate::type_checker::TypeChecker;
@@ -280,6 +281,7 @@ struct SharedCliModuleLoaderState {
   resolver: Arc<CliResolver>,
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
+  maybe_eszip_loader: Option<EszipModuleLoader>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -342,6 +344,7 @@ impl CliModuleLoaderFactory {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
+    maybe_eszip_loader: Option<EszipModuleLoader>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -374,12 +377,9 @@ impl CliModuleLoaderFactory {
           cleanup_task_timeout: 10_000,
           cleanup_task_handle: Arc::new(Mutex::new(None)),
         },
+        maybe_eszip_loader,
       }),
     }
-  }
-
-  fn create_from_eszip(&self) -> CreateModuleLoaderResult {
-    todo!()
   }
 
   fn create_with_lib<TGraphContainer: ModuleGraphContainer>(
@@ -1041,6 +1041,27 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
     requested_module_type: RequestedModuleType,
   ) -> deno_core::ModuleLoadResponse {
     let inner = self.0.clone();
+
+    if let Some(eszip_loader) = &inner.shared.maybe_eszip_loader {
+      let response = match eszip_loader.files.get(specifier) {
+        Some(source) => {
+          let module_source = ModuleSource::new(
+            ModuleType::JavaScript,
+            ModuleSourceCode::Bytes(deno_core::ModuleCodeBytes::Arc(
+              source.clone(),
+            )),
+            specifier,
+            None,
+          );
+          deno_core::ModuleLoadResponse::Sync(Ok(module_source))
+        }
+        None => {
+          deno_core::ModuleLoadResponse::Sync(Err(ModuleLoaderError::NotFound))
+        }
+      };
+      return response;
+    }
+
     let specifier = specifier.clone();
     let maybe_referrer = maybe_referrer.cloned();
     deno_core::ModuleLoadResponse::Async(
@@ -1065,6 +1086,10 @@ impl<TGraphContainer: ModuleGraphContainer> ModuleLoader
   ) -> Pin<Box<dyn Future<Output = Result<(), ModuleLoaderError>>>> {
     self.0.shared.in_flight_loads_tracker.increase();
     if self.0.shared.in_npm_pkg_checker.in_npm_package(specifier) {
+      return Box::pin(deno_core::futures::future::ready(Ok(())));
+    }
+
+    if self.0.shared.maybe_eszip_loader.is_some() {
       return Box::pin(deno_core::futures::future::ready(Ok(())));
     }
 
