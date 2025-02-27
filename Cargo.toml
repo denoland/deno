@@ -187,6 +187,7 @@ regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled", "session"] }
+rustc-hash = "2.1.1"
 rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
@@ -463,3 +464,10 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.zstd-sys]
 opt-level = 3
+
+[patch.crates-io]
+deno_ast = { git = "https://github.com/dsherret/deno_ast", rev = "69305a5ea48d15096f863c9b5da22d8498146e66" }
+deno_graph = { git = "https://github.com/dsherret/deno_graph", rev = "480ca8f873099a7f8b675d5759d0b5ab0b3fd8b7" }
+deno_doc = { git = "https://github.com/dsherret/deno_doc", rev = "5e814733cf9144744214aa12298bfd925423409e" }
+deno_lint = { git = "https://github.com/dsherret/deno_lint", rev = "3e6b78aaf94f9558540740547391a7b25a1fcd4c" }
+dprint-plugin-typescript = { git = "https://github.com/dprint/dprint-plugin-typescript", rev = "866c92ed33de8a7f3cb0e65eca29cd90a22b626e" }
