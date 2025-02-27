@@ -253,13 +253,13 @@ pub async fn run_eszip(
 
   // TODO: handle paths that contain ','
   let files = files.split(",").collect::<Vec<_>>();
-  let mut headers = FuturesOrdered::new();
+  let mut loaded_eszips = FuturesOrdered::new();
   for path in files {
     let file = tokio::fs::File::open(path).await?;
     let eszip = BufReader::new(file.compat());
     let path = path.to_string();
 
-    headers.push_back(async move {
+    loaded_eszips.push_back(async move {
       let (eszip, loader) = match EszipV2::parse(eszip).await {
         Ok(x) => x,
         Err(e) => {
@@ -267,67 +267,30 @@ pub async fn run_eszip(
           std::process::exit(1);
         }
       };
-      spawn(async move {
-        if let Err(e) = loader.await {
-          log::error!("Error loading eszip at {}: {}", path, e);
-          std::process::exit(1);
-        }
-      });
+      if let Err(e) = loader.await {
+        log::error!("Error loading eszip at {}: {}", path, e);
+        std::process::exit(1);
+      }
       eszip
     });
   }
-  let headers = headers.collect::<Vec<_>>().await;
-
-  let ca_data = match cli_options.ca_data() {
-    Some(CaData::File(ca_file)) => Some(
-      std::fs::read(ca_file).with_context(|| format!("Reading: {ca_file}"))?,
-    ),
-    Some(CaData::Bytes(bytes)) => Some(bytes.clone()),
-    None => None,
-  };
+  // At this point all eszips are fully loaded
+  let loaded_eszips = loaded_eszips.collect::<Vec<_>>().await;
 
   let import_map_specifier =
     cli_options.resolve_specified_import_map_specifier()?;
   let import_map = if let Some(import_map_specifier) = import_map_specifier {
     let import_map =
-      load_import_map(&headers, import_map_specifier.as_str()).await?;
+      load_import_map(&loaded_eszips, import_map_specifier.as_str()).await?;
     Some(import_map)
   } else {
     None
   };
 
-  crate::standalone::run(
-    headers,
-    Metadata {
-      argv: flags.argv.clone(),
-      seed: flags.seed,
-      permissions: flags.permissions.clone(),
-      location: flags.location.clone(),
-      v8_flags: flags.v8_flags.clone(),
-      log_level: flags.log_level,
-      ca_stores: flags.ca_stores.clone(),
-      ca_data,
-      unsafely_ignore_certificate_errors: flags
-        .unsafely_ignore_certificate_errors
-        .clone(),
-      entrypoint_key: entrypoint.to_string(),
-      node_modules: None,
-      unstable_config: flags.unstable_config.clone(),
-      env_vars_from_env_file: Default::default(),
-      workspace_resolver: SerializedWorkspaceResolver {
-        import_map,
-        jsr_pkgs: Default::default(),
-        package_jsons: Default::default(),
-        pkg_json_resolution: PackageJsonDepResolution::Disabled,
-      },
-      otel_config: flags.otel_config(),
-      code_cache_key: None,
-      vfs_case_sensitivity: deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity::Insensitive,
-    },
-    run_flags.script.as_bytes(),
-    "run-eszip",
-  )
-  .await
+  // TODO: create EsZipModuleLoader and somehow make `CliMainWorkerFactory` use it instead of the default
+  // cli worker.
+
+  todo!()
 }
 
 async fn load_import_map(
