@@ -133,6 +133,7 @@ pub struct Options {
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
 }
 
+#[cfg(not(feature = "default_property_extractor"))]
 deno_core::extension!(
   deno_http,
   deps = [deno_web, deno_net, deno_fetch, deno_websocket],
@@ -155,6 +156,54 @@ deno_core::extension!(
     http_next::op_http_read_request_body,
     http_next::op_http_serve_on<HTTP>,
     http_next::op_http_serve<HTTP>,
+    http_next::op_http_set_promise_complete,
+    http_next::op_http_set_response_body_bytes,
+    http_next::op_http_set_response_body_resource,
+    http_next::op_http_set_response_body_text,
+    http_next::op_http_set_response_header,
+    http_next::op_http_set_response_headers,
+    http_next::op_http_set_response_trailers,
+    http_next::op_http_upgrade_websocket_next,
+    http_next::op_http_upgrade_raw,
+    http_next::op_raw_write_vectored,
+    http_next::op_can_write_vectored,
+    http_next::op_http_try_wait,
+    http_next::op_http_wait,
+    http_next::op_http_close,
+    http_next::op_http_cancel,
+    http_next::op_http_metric_handle_otel_error,
+  ],
+  esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
+  options = {
+    options: Options,
+  },
+  state = |state, options| {
+    state.put::<Options>(options.options);
+  }
+);
+
+#[cfg(feature = "default_property_extractor")]
+deno_core::extension!(
+  deno_http,
+  deps = [deno_web, deno_net, deno_fetch, deno_websocket],
+  ops = [
+    op_http_accept,
+    op_http_headers,
+    op_http_shutdown,
+    op_http_upgrade_websocket,
+    op_http_websocket_accept_header,
+    op_http_write_headers,
+    op_http_write_resource,
+    op_http_write,
+    http_next::op_http_close_after_finish,
+    http_next::op_http_get_request_header,
+    http_next::op_http_get_request_headers,
+    http_next::op_http_request_on_cancel,
+    http_next::op_http_get_request_method_and_url<DefaultHttpPropertyExtractor>,
+    http_next::op_http_get_request_cancelled,
+    http_next::op_http_read_request_body,
+    http_next::op_http_serve_on<DefaultHttpPropertyExtractor>,
+    http_next::op_http_serve<DefaultHttpPropertyExtractor>,
     http_next::op_http_set_promise_complete,
     http_next::op_http_set_response_body_bytes,
     http_next::op_http_set_response_body_resource,

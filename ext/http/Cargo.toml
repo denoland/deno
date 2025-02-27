@@ -11,7 +11,9 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
+default = ["default_property_extractor"]
 "__http_tracing" = []
+default_property_extractor = []
 
 [lib]
 path = "lib.rs"
