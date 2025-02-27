@@ -3175,21 +3175,6 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dprint-core"
-version = "0.66.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3ab0dd2bedc109d25f0d21afb09b7d329f6c6fa83b095daf31d2d967e091548"
-dependencies = [
- "anyhow",
- "bumpalo",
- "hashbrown 0.14.5",
- "indexmap 2.7.1",
- "rustc-hash 1.1.0",
- "serde",
- "unicode-width 0.1.13",
-]
-
-[[package]]
-name = "dprint-core"
 version = "0.67.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c1d827947704a9495f705d6aeed270fa21a67f825f22902c28f38dc3af7a9ae"
@@ -3215,12 +3200,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-json"
-version = "0.19.4"
+version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57f91e594559b450b7c5d6a0ba9f3f9fe951c1ea371168f7c95973da3fdbd85a"
+checksum = "cb59d5e75ae9fb879a8793fdfc72e25ed9f0c91e62f5dc53e4f8ebb72103f100"
 dependencies = [
  "anyhow",
- "dprint-core 0.66.2",
+ "dprint-core",
  "dprint-core-macros",
  "jsonc-parser",
  "serde",
@@ -3229,12 +3214,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-jupyter"
-version = "0.1.5"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0d20684e37b3824e2bc917cfcb14e2cdf88398eef507335d839cbd78172bfee"
+checksum = "74f227ccb72afc2ce9089184013c6b7a5b21e29f85f2bf3823de662bc94afccc"
 dependencies = [
  "anyhow",
- "dprint-core 0.66.2",
+ "dprint-core",
  "jsonc-parser",
  "serde",
  "serde_json",
@@ -3242,12 +3227,12 @@ dependencies = [
 
 [[package]]
 name = "dprint-plugin-markdown"
-version = "0.17.8"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "934a8e33f6f373b2fb66c288a468e3dae9a56a6c66bfecd5504fe566131afd3f"
+checksum = "845fdbe59bf4088f7def60adc1b3383884d432d78d86ea8b30860d4e65f2bc43"
 dependencies = [
  "anyhow",
- "dprint-core 0.66.2",
+ "dprint-core",
  "dprint-core-macros",
  "pulldown-cmark",
  "regex",
@@ -3263,7 +3248,7 @@ checksum = "ee224fa90b73185453c9d4609bf1921907fdf3ff4fd620092dff7ef098489442"
 dependencies = [
  "anyhow",
  "deno_ast",
- "dprint-core 0.67.4",
+ "dprint-core",
  "dprint-core-macros",
  "percent-encoding",
  "rustc-hash 2.1.1",
