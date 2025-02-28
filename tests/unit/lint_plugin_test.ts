@@ -177,6 +177,29 @@ Deno.test("Plugin - visitor subsequent sibling", () => {
   assertEquals(result.map((r) => r.node.name), ["bar", "baz"]);
 });
 
+Deno.test("Plugin - visitor field", () => {
+  let result = testVisit(
+    "if (foo()) {}",
+    "IfStatement.test.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo()) {}",
+    "IfStatement .test .callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo(bar())) {}",
+    "IfStatement.test CallExpression.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
 Deno.test("Plugin - visitor attr", () => {
   let result = testVisit(
     "for (const a of b) {}",
