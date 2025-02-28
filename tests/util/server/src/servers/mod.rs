@@ -37,6 +37,7 @@ use prost::Message;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
+mod deno_upgrade;
 mod grpc;
 mod hyper_utils;
 mod jsr_registry;
@@ -94,6 +95,7 @@ pub(crate) const PUBLIC_NPM_REGISTRY_PORT: u16 = 4260;
 pub(crate) const PRIVATE_NPM_REGISTRY_1_PORT: u16 = 4261;
 pub(crate) const PRIVATE_NPM_REGISTRY_2_PORT: u16 = 4262;
 pub(crate) const PRIVATE_NPM_REGISTRY_3_PORT: u16 = 4263;
+const DENO_UPGRADE_TEST_SERVER_PORT: u16 = 4264;
 
 // Use the single-threaded scheduler. The hyper server is used as a point of
 // comparison for the (single-threaded!) benchmarks in cli/bench. We're not
@@ -153,6 +155,9 @@ pub async fn run_all_servers() {
   let node_js_mirror_server_fut =
     nodejs_org_mirror::nodejs_org_mirror(NODEJS_ORG_MIRROR_SERVER_PORT);
 
+  let deno_upgrade_test_server_fut =
+    deno_upgrade::deno_upgrade_test_server(DENO_UPGRADE_TEST_SERVER_PORT);
+
   let mut futures = vec![
     redirect_server_fut.boxed_local(),
     ws_server_fut.boxed_local(),
@@ -179,6 +184,7 @@ pub async fn run_all_servers() {
     registry_server_fut.boxed_local(),
     provenance_mock_server_fut.boxed_local(),
     node_js_mirror_server_fut.boxed_local(),
+    deno_upgrade_test_server_fut.boxed_local(),
   ];
   futures.extend(npm_registry_server_futs);
   futures.extend(private_npm_registry_1_server_futs);

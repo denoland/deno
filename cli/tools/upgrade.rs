@@ -41,21 +41,21 @@ pub static USE_TESTING_SERVER: Lazy<bool> =
 
 pub static RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    ""
+    "http://localhost:4364/release"
   } else {
     "https://github.com/denoland/deno/releases"
   }
 });
 pub static CANARY_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    ""
+    "http://localhost:4364/canary"
   } else {
     "https://dl.deno.land/canary"
   }
 });
 pub static DL_RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    ""
+    "http://localhost:4364/rc_or_lts"
   } else {
     "https://dl.deno.land/release"
   }
