@@ -16,7 +16,9 @@ const {
   op_is_cancelled,
 } = core.ops;
 
+/** @type {(id: string, message: string, hint: string | undefined, start: number, end: number, fix: Deno.lint.Fix[]) => void} */
 let doReport = op_lint_report;
+/** @type {() => string} */
 let doGetSource = op_lint_get_source;
 
 // Keep these in sync with Rust
@@ -315,7 +317,7 @@ export class Context {
     const start = range[0];
     const end = range[1];
 
-    /** @type {Deno.lint.FixData[]} */
+    /** @type {Deno.lint.Fix[]} */
     const fixes = [];
 
     if (typeof data.fix === "function") {
@@ -1349,13 +1351,14 @@ internals.runPluginsForFile = runPluginsForFile;
 internals.resetState = resetState;
 
 /**
- * @param {LintPlugin} plugin
+ * @param {Deno.lint.Plugin} plugin
  * @param {string} fileName
  * @param {string} sourceText
  */
 function runLintPlugin(plugin, fileName, sourceText) {
   installPlugin(plugin);
 
+  /** @type {Deno.lint.Diagnostic[]} */
   const diagnostics = [];
   doReport = (id, message, hint, start, end, fix) => {
     diagnostics.push({
