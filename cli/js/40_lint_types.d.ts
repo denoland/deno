@@ -25,7 +25,7 @@ export interface LintState {
 export type VisitorFn = (node: unknown) => void;
 
 export interface CompiledVisitor {
-  matcher: (ctx: MatchContext, offset: number) => boolean;
+  matcher: MatcherFn;
   info: { enter: VisitorFn; exit: VisitorFn };
 }
 
@@ -103,6 +103,8 @@ export interface SelectorParseCtx {
 }
 
 export interface MatchContext {
+  /** Used for `:has()` and `:not()` */
+  subSelect(selectors: MatcherFn[], idx: number): boolean;
   getFirstChild(id: number): number;
   getLastChild(id: number): number;
   getSiblings(id: number): number[];
@@ -112,7 +114,6 @@ export interface MatchContext {
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 
-export type NextFn = (ctx: MatchContext, id: number) => boolean;
 export type MatcherFn = (ctx: MatchContext, id: number) => boolean;
 export type TransformFn = (value: string) => number;
 

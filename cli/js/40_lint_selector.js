@@ -16,7 +16,6 @@
 /** @typedef {import("./40_lint_types.d.ts").Relation} SRelation */
 /** @typedef {import("./40_lint_types.d.ts").Selector} Selector */
 /** @typedef {import("./40_lint_types.d.ts").SelectorParseCtx} SelectorParseCtx */
-/** @typedef {import("./40_lint_types.d.ts").NextFn} NextFn */
 /** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} Transformer */
 
@@ -769,8 +768,8 @@ export function compileSelector(selector) {
         fn = matchNthChild(node, fn);
         break;
       case PSEUDO_HAS:
-        // TODO(@marvinhagemeister)
-        throw new Error("TODO: :has");
+        fn = matchHas(node.selectors, fn);
+        break;
       case PSEUDO_NOT:
         fn = matchNot(node.selectors, fn);
         break;
@@ -786,7 +785,7 @@ export function compileSelector(selector) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchFirstChild(next) {
@@ -797,7 +796,7 @@ function matchFirstChild(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchLastChild(next) {
@@ -829,7 +828,7 @@ function getNthAnB(node, i) {
 
 /**
  * @param {PseudoNthChild} node
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchNthChild(node, next) {
@@ -868,7 +867,40 @@ function matchNthChild(node, next) {
 
 /**
  * @param {Selector[]} selectors
- * @param {NextFn} next
+ * @param {MatcherFn} next
+ * @returns {MatcherFn}
+ */
+function matchHas(selectors, next) {
+  /** @type {MatcherFn[]} */
+  const compiled = [];
+
+  for (let i = 0; i < selectors.length; i++) {
+    const sel = selectors[i];
+    compiled.push(compileSelector(sel));
+  }
+
+  /** @type {Map<number, boolean>} */
+  const cache = new Map();
+
+  return (ctx, id) => {
+    if (next(ctx, id)) {
+      const cached = cache.get(id);
+      if (cached !== undefined) return cached;
+
+      const match = ctx.subSelect(compiled, id);
+      cache.set(id, match);
+      if (match) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+}
+
+/**
+ * @param {Selector[]} selectors
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchNot(selectors, next) {
@@ -880,20 +912,27 @@ function matchNot(selectors, next) {
     compiled.push(compileSelector(sel));
   }
 
+  /** @type {Map<number, boolean>} */
+  const cache = new Map();
+
   return (ctx, id) => {
-    for (let i = 0; i < compiled.length; i++) {
-      const fn = compiled[i];
-      if (fn(ctx, id)) {
-        return false;
+    if (next(ctx, id)) {
+      const cached = cache.get(id);
+      if (cached !== undefined) return cached;
+
+      const match = ctx.subSelect(compiled, id);
+      cache.set(id, !match);
+      if (!match) {
+        return true;
       }
     }
 
-    return next(ctx, id);
+    return false;
   };
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchDescendant(next) {
@@ -913,7 +952,7 @@ function matchDescendant(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchChild(next) {
@@ -926,7 +965,7 @@ function matchChild(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchAdjacent(next) {
@@ -942,7 +981,7 @@ function matchAdjacent(next) {
 }
 
 /**
- * @param {NextFn} next
+ * @param {MatcherFn} next
  * @returns {MatcherFn}
  */
 function matchFollowing(next) {
