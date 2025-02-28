@@ -1638,8 +1638,8 @@ impl<
       ResolutionMode::Import => deno_package_json::NodeModuleKind::Esm,
     };
     let maybe_main = if resolution_kind.is_types() {
-      match package_json.types.as_ref() {
-        Some(types) => Some(types.as_str()),
+      match package_json.types.as_deref() {
+        Some(types) => Some(types),
         None => {
           // fallback to checking the main entrypoint for
           // a corresponding declaration file
