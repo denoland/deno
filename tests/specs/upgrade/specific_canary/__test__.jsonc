@@ -1,5 +1,8 @@
 {
   "tempDir": true,
+  "envs": {
+    "DENO_DONT_USE_INTERNAL_UPGRADE_TEST": "1"
+  },
   "steps": [
     {
       "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
