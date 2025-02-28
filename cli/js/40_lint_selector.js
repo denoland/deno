@@ -997,7 +997,9 @@ function matchField(part, next) {
     if (parent === 0) return false;
 
     // Fields are stored left-ro-right but we need to match
-    // them right-to-left.
+    // them right-to-left because we're matching selectors
+    // in that direction. Matching right to left is done for
+    // performance and reduces the number of potential mismatches.
     for (let i = part.props.length - 1; i >= 0; i--) {
       const prop = part.props[i];
       const value = ctx.getField(parent, prop);
