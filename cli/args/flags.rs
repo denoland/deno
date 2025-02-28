@@ -438,6 +438,11 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub entrypoints: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
@@ -445,7 +450,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1825,6 +1830,21 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("entrypoints")
+          .required_if_eq("entrypoint", "true")
+          .num_args(1..)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("entrypoint")
+          .long("entrypoint")
+          .short('e')
+          .action(ArgAction::SetTrue),
+      )
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4584,8 +4604,18 @@ fn check_parse(
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let mut clean_flags = CleanFlags {
+    entrypoints: Vec::new(),
+  };
+  if matches.get_flag("entrypoint") {
+    clean_flags.entrypoints = matches
+      .remove_many::<String>("entrypoints")
+      .unwrap()
+      .collect::<Vec<_>>();
+    flags.cached_only = true;
+  }
+  flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
 
 fn compile_parse(
