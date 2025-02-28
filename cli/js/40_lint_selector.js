@@ -1008,9 +1008,13 @@ function matchAttrBin(attr, next) {
 function matchAttrValue(attr, value) {
   switch (attr.op) {
     case BinOp.Equal:
-      return value === attr.value;
+      return attr.value instanceof RegExp
+        ? attr.value.test(value)
+        : value === attr.value;
     case BinOp.NotEqual:
-      return value !== attr.value;
+      return attr.value instanceof RegExp
+        ? !attr.value.test(value)
+        : value !== attr.value;
     case BinOp.Greater:
       return typeof value === "number" && typeof attr.value === "number" &&
         value > attr.value;
