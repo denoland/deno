@@ -191,68 +191,64 @@ impl deno_graph::source::NpmResolver for CliNpmGraphResolver {
     &self,
     package_reqs: &[PackageReq],
   ) -> NpmResolvePkgReqsResult {
-    match &self.npm_installer {
-      Some(npm_installer) => {
-        let top_level_result = if self.found_package_json_dep_flag.0.is_raised()
-        {
-          npm_installer
-            .ensure_top_level_package_json_install()
-            .await
-            .map(|_| ())
-        } else {
-          Ok(())
-        };
+    if let Some(npm_installer) = &self.npm_installer {
+      let top_level_result = if self.found_package_json_dep_flag.0.is_raised() {
+        npm_installer
+          .ensure_top_level_package_json_install()
+          .await
+          .map(|_| ())
+      } else {
+        Ok(())
+      };
 
-        let result = npm_installer
-          .add_package_reqs_raw(
-            package_reqs,
-            match self.npm_caching {
-              NpmCachingStrategy::Eager => Some(PackageCaching::All),
-              NpmCachingStrategy::Lazy => {
-                Some(PackageCaching::Only(package_reqs.into()))
-              }
-              NpmCachingStrategy::Manual => None,
-            },
-          )
-          .await;
-
-        NpmResolvePkgReqsResult {
-          results: result
-            .results
-            .into_iter()
-            .map(|r| {
-              r.map_err(|err| match err {
-                NpmResolutionError::Registry(e) => {
-                  NpmLoadError::RegistryInfo(Arc::new(e))
-                }
-                NpmResolutionError::Resolution(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e))
-                }
-                NpmResolutionError::DependencyEntry(e) => {
-                  NpmLoadError::PackageReqResolution(Arc::new(e))
-                }
-              })
-            })
-            .collect(),
-          dep_graph_result: match top_level_result {
-            Ok(()) => result
-              .dependencies_result
-              .map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
-            Err(err) => Err(Arc::new(err)),
+      let result = npm_installer
+        .add_package_reqs_raw(
+          package_reqs,
+          match self.npm_caching {
+            NpmCachingStrategy::Eager => Some(PackageCaching::All),
+            NpmCachingStrategy::Lazy => {
+              Some(PackageCaching::Only(package_reqs.into()))
+            }
+            NpmCachingStrategy::Manual => None,
           },
-        }
+        )
+        .await;
+
+      NpmResolvePkgReqsResult {
+        results: result
+          .results
+          .into_iter()
+          .map(|r| {
+            r.map_err(|err| match err {
+              NpmResolutionError::Registry(e) => {
+                NpmLoadError::RegistryInfo(Arc::new(e))
+              }
+              NpmResolutionError::Resolution(e) => {
+                NpmLoadError::PackageReqResolution(Arc::new(e))
+              }
+              NpmResolutionError::DependencyEntry(e) => {
+                NpmLoadError::PackageReqResolution(Arc::new(e))
+              }
+            })
+          })
+          .collect(),
+        dep_graph_result: match top_level_result {
+          Ok(()) => result
+            .dependencies_result
+            .map_err(|e| Arc::new(e) as Arc<dyn deno_error::JsErrorClass>),
+          Err(err) => Err(Arc::new(err)),
+        },
       }
-      None => {
-        let err = Arc::new(JsErrorBox::generic(
-          "npm specifiers were requested; but --no-npm is specified",
-        ));
-        NpmResolvePkgReqsResult {
-          results: package_reqs
-            .iter()
-            .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
-            .collect(),
-          dep_graph_result: Err(err),
-        }
+    } else {
+      let err = Arc::new(JsErrorBox::generic(
+        "npm specifiers were requested; but --no-npm is specified",
+      ));
+      NpmResolvePkgReqsResult {
+        results: package_reqs
+          .iter()
+          .map(|_| Err(NpmLoadError::RegistryInfo(err.clone())))
+          .collect(),
+        dep_graph_result: Err(err),
       }
     }
   }

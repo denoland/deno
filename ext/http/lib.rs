@@ -1187,12 +1187,11 @@ async fn op_http_write_headers(
     _ => return Err(HttpError::ResponseHeadersAlreadySent),
   };
 
-  match response_tx.send(body) {
-    Ok(_) => Ok(()),
-    Err(_) => {
-      stream.conn.closed().await?;
-      Err(HttpError::ConnectionClosedWhileSendingResponse)
-    }
+  if response_tx.send(body).is_ok() {
+    Ok(())
+  } else {
+    stream.conn.closed().await?;
+    Err(HttpError::ConnectionClosedWhileSendingResponse)
   }
 }
 

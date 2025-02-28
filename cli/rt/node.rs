@@ -89,38 +89,35 @@ impl CjsCodeAnalyzer {
         .modules
         .read(specifier)?
         .and_then(|d| d.cjs_export_analysis);
-      match data {
-        Some(data) => {
-          let data: CjsExportAnalysisEntry = bincode::deserialize(&data)
-            .map_err(|err| JsErrorBox::generic(err.to_string()))?;
-          match data {
-            CjsExportAnalysisEntry::Esm => {
-              cjs_tracker.set_is_known_script(specifier, false);
-              CjsAnalysis::Esm(source)
-            }
-            CjsExportAnalysisEntry::Cjs(analysis) => {
-              cjs_tracker.set_is_known_script(specifier, true);
-              CjsAnalysis::Cjs(analysis)
-            }
+      if let Some(data) = data {
+        let data: CjsExportAnalysisEntry = bincode::deserialize(&data)
+          .map_err(|err| JsErrorBox::generic(err.to_string()))?;
+        match data {
+          CjsExportAnalysisEntry::Esm => {
+            cjs_tracker.set_is_known_script(specifier, false);
+            CjsAnalysis::Esm(source)
+          }
+          CjsExportAnalysisEntry::Cjs(analysis) => {
+            cjs_tracker.set_is_known_script(specifier, true);
+            CjsAnalysis::Cjs(analysis)
           }
         }
-        None => {
-          if log::log_enabled!(log::Level::Debug) {
-            if self.sys.is_specifier_in_vfs(specifier) {
-              log::debug!(
-                "No CJS export analysis was stored for '{}'. Assuming ESM. This might indicate a bug in Deno.",
-                specifier
-              );
-            } else {
-              log::debug!(
-                "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({}). Assuming ESM.",
-                specifier
-              );
-            }
+      } else {
+        if log::log_enabled!(log::Level::Debug) {
+          if self.sys.is_specifier_in_vfs(specifier) {
+            log::debug!(
+              "No CJS export analysis was stored for '{}'. Assuming ESM. This might indicate a bug in Deno.",
+              specifier
+            );
+          } else {
+            log::debug!(
+              "Analyzing potentially CommonJS files is not supported at runtime in a compiled executable ({}). Assuming ESM.",
+              specifier
+            );
           }
-          // assume ESM as we don't have access to swc here
-          CjsAnalysis::Esm(source)
         }
+        // assume ESM as we don't have access to swc here
+        CjsAnalysis::Esm(source)
       }
     } else {
       CjsAnalysis::Esm(source)

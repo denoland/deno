@@ -251,17 +251,16 @@ impl v8::ValueDeserializerImpl for DeserializerDelegate {
     if let Some(v) = obj.get(scope, key) {
       if let Ok(v) = v.try_cast::<v8::Function>() {
         let result = v.call(scope, obj.into(), &[])?;
-        match result.try_cast() {
-          Ok(res) => return Some(res),
-          Err(_) => {
-            let msg =
-              FastString::from_static("readHostObject must return an object")
-                .v8_string(scope)
-                .unwrap();
-            let error = v8::Exception::type_error(scope, msg);
-            scope.throw_exception(error);
-            return None;
-          }
+        if let Ok(res) = result.try_cast() {
+          return Some(res);
+        } else {
+          let msg =
+            FastString::from_static("readHostObject must return an object")
+              .v8_string(scope)
+              .unwrap();
+          let error = v8::Exception::type_error(scope, msg);
+          scope.throw_exception(error);
+          return None;
         }
       }
     }

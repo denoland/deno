@@ -875,74 +875,70 @@ impl<
     if !target.starts_with("./") {
       if internal && !target.starts_with("../") && !target.starts_with('/') {
         let target_url = Url::parse(target);
-        match target_url {
-          Ok(url) => {
-            if get_module_name_from_builtin_node_module_specifier(&url)
-              .is_some()
-            {
-              return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(url)));
-            }
+        if let Ok(url) = target_url {
+          if get_module_name_from_builtin_node_module_specifier(&url).is_some()
+          {
+            return Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(url)));
           }
-          Err(_) => {
-            let export_target = if pattern {
-              pattern_re
-                .replace(target, |_caps: &regex::Captures| subpath)
-                .to_string()
-            } else {
-              format!("{target}{subpath}")
-            };
-            let result = match self.package_resolve(
-              &export_target,
-              &UrlOrPathRef::from_path(package_json_path),
-              resolution_mode,
-              conditions,
-              resolution_kind,
-            ) {
-              Ok((url, _)) => Ok(url),
-              Err(err) => match err.code() {
-                NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
-                | NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
-                | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
-                | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
-                | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
-                | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
-                | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
-                | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
-                | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
-                | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
-                  Err(PackageTargetResolveErrorKind::PackageResolve(err).into())
-                }
-                NodeJsErrorCode::ERR_MODULE_NOT_FOUND => Err(
-                  PackageTargetResolveErrorKind::NotFound(
-                    PackageTargetNotFoundError {
-                      pkg_json_path: package_json_path.to_path_buf(),
-                      target: export_target.to_string(),
-                      maybe_referrer: maybe_referrer.map(|r| r.display()),
-                      resolution_mode,
-                      resolution_kind,
-                    },
-                  )
-                  .into(),
-                ),
-              },
-            };
-
-            return match result {
-              Ok(url) => Ok(url),
-              Err(err) => {
-                if self
-                  .is_built_in_node_module_checker
-                  .is_builtin_node_module(target)
-                {
-                  Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(
-                    Url::parse(&format!("node:{}", target)).unwrap(),
-                  )))
-                } else {
-                  Err(err)
-                }
+        } else {
+          let export_target = if pattern {
+            pattern_re
+              .replace(target, |_caps: &regex::Captures| subpath)
+              .to_string()
+          } else {
+            format!("{target}{subpath}")
+          };
+          let result = match self.package_resolve(
+            &export_target,
+            &UrlOrPathRef::from_path(package_json_path),
+            resolution_mode,
+            conditions,
+            resolution_kind,
+          ) {
+            Ok((url, _)) => Ok(url),
+            Err(err) => match err.code() {
+              NodeJsErrorCode::ERR_INVALID_FILE_URL_PATH
+              | NodeJsErrorCode::ERR_INVALID_MODULE_SPECIFIER
+              | NodeJsErrorCode::ERR_INVALID_PACKAGE_CONFIG
+              | NodeJsErrorCode::ERR_INVALID_PACKAGE_TARGET
+              | NodeJsErrorCode::ERR_PACKAGE_IMPORT_NOT_DEFINED
+              | NodeJsErrorCode::ERR_PACKAGE_PATH_NOT_EXPORTED
+              | NodeJsErrorCode::ERR_UNKNOWN_FILE_EXTENSION
+              | NodeJsErrorCode::ERR_UNSUPPORTED_DIR_IMPORT
+              | NodeJsErrorCode::ERR_UNSUPPORTED_ESM_URL_SCHEME
+              | NodeJsErrorCode::ERR_TYPES_NOT_FOUND => {
+                Err(PackageTargetResolveErrorKind::PackageResolve(err).into())
               }
-            };
-          }
+              NodeJsErrorCode::ERR_MODULE_NOT_FOUND => Err(
+                PackageTargetResolveErrorKind::NotFound(
+                  PackageTargetNotFoundError {
+                    pkg_json_path: package_json_path.to_path_buf(),
+                    target: export_target.to_string(),
+                    maybe_referrer: maybe_referrer.map(|r| r.display()),
+                    resolution_mode,
+                    resolution_kind,
+                  },
+                )
+                .into(),
+              ),
+            },
+          };
+
+          return match result {
+            Ok(url) => Ok(url),
+            Err(err) => {
+              if self
+                .is_built_in_node_module_checker
+                .is_builtin_node_module(target)
+              {
+                Ok(MaybeTypesResolvedUrl(LocalUrlOrPath::Url(
+                  Url::parse(&format!("node:{}", target)).unwrap(),
+                )))
+              } else {
+                Err(err)
+              }
+            }
+          };
         }
       }
       return Err(
@@ -1638,29 +1634,28 @@ impl<
       ResolutionMode::Import => deno_package_json::NodeModuleKind::Esm,
     };
     let maybe_main = if resolution_kind.is_types() {
-      match package_json.types.as_deref() {
-        Some(types) => Some(types),
-        None => {
-          // fallback to checking the main entrypoint for
-          // a corresponding declaration file
-          if let Some(main) = package_json.main(pkg_json_kind) {
-            let main = package_json.path.parent().unwrap().join(main).clean();
-            let decl_path_result = self.path_to_declaration_path(
-              LocalPath {
-                path: main,
-                known_exists: false,
-              },
-              maybe_referrer,
-              resolution_mode,
-              conditions,
-            );
-            // don't surface errors, fallback to checking the index now
-            if let Ok(url_or_path) = decl_path_result {
-              return Ok(url_or_path);
-            }
+      if let Some(types) = package_json.types.as_deref() {
+        Some(types)
+      } else {
+        // fallback to checking the main entrypoint for
+        // a corresponding declaration file
+        if let Some(main) = package_json.main(pkg_json_kind) {
+          let main = package_json.path.parent().unwrap().join(main).clean();
+          let decl_path_result = self.path_to_declaration_path(
+            LocalPath {
+              path: main,
+              known_exists: false,
+            },
+            maybe_referrer,
+            resolution_mode,
+            conditions,
+          );
+          // don't surface errors, fallback to checking the index now
+          if let Ok(url_or_path) = decl_path_result {
+            return Ok(url_or_path);
           }
-          None
         }
+        None
       }
     } else {
       package_json.main(pkg_json_kind)
@@ -1797,12 +1792,11 @@ fn resolve_bin_entry_value<'a>(
   package_json: &'a PackageJson,
   bin_name: Option<&str>,
 ) -> Result<&'a str, AnyError> {
-  let bin = match &package_json.bin {
-    Some(bin) => bin,
-    None => bail!(
+  let Some(bin) = &package_json.bin else {
+    bail!(
       "'{}' did not have a bin property",
       package_json.path.display(),
-    ),
+    )
   };
   let bin_entry = match bin {
     Value::String(_) => {
@@ -1834,44 +1828,43 @@ fn resolve_bin_entry_value<'a>(
       package_json.path.display()
     ),
   };
-  let bin_entry = match bin_entry {
-    Some(e) => e,
-    None => {
-      let prefix = package_json
-        .name
-        .as_ref()
-        .map(|n| {
-          let mut prefix = format!("npm:{}", n);
-          if let Some(version) = &package_json.version {
-            prefix.push('@');
-            prefix.push_str(version);
-          }
-          prefix.push('/');
-          prefix
-        })
-        .unwrap_or_default();
-      let keys = bin
-        .as_object()
-        .map(|o| {
-          o.keys()
-            .map(|k| format!(" * {prefix}{k}"))
-            .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-      bail!(
-        "'{}' did not have a bin entry{}{}",
-        package_json.path.display(),
-        bin_name
-          .or(package_json.name.as_deref())
-          .map(|name| format!(" for '{}'", name))
-          .unwrap_or_default(),
-        if keys.is_empty() {
-          "".to_string()
-        } else {
-          format!("\n\nPossibilities:\n{}", keys.join("\n"))
+  let bin_entry = if let Some(e) = bin_entry {
+    e
+  } else {
+    let prefix = package_json
+      .name
+      .as_ref()
+      .map(|n| {
+        let mut prefix = format!("npm:{}", n);
+        if let Some(version) = &package_json.version {
+          prefix.push('@');
+          prefix.push_str(version);
         }
-      )
-    }
+        prefix.push('/');
+        prefix
+      })
+      .unwrap_or_default();
+    let keys = bin
+      .as_object()
+      .map(|o| {
+        o.keys()
+          .map(|k| format!(" * {prefix}{k}"))
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default();
+    bail!(
+      "'{}' did not have a bin entry{}{}",
+      package_json.path.display(),
+      bin_name
+        .or(package_json.name.as_deref())
+        .map(|name| format!(" for '{}'", name))
+        .unwrap_or_default(),
+      if keys.is_empty() {
+        "".to_string()
+      } else {
+        format!("\n\nPossibilities:\n{}", keys.join("\n"))
+      }
+    )
   };
   match bin_entry {
     Value::String(s) => Ok(s),

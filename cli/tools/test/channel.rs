@@ -166,23 +166,20 @@ impl TestStream {
       };
       ready!(Pin::new(&mut *stream).poll_read(cx, &mut buf))
     };
-    match res {
-      Ok(_) => {
-        let buf = buf.filled().to_vec();
-        if buf.is_empty() {
-          // The buffer may return empty in EOF conditions and never return an error,
-          // so we need to treat this as EOF
-          self.read_opt.take();
-        } else {
-          // Attempt to send the buffer, marking as not alive if the channel is closed
-          _ = self.send(buf);
-        }
-      }
-      Err(_) => {
-        // Stream errored, so just return and mark this stream as not alive.
-        _ = self.send(buf.filled().to_vec());
+    if res.is_ok() {
+      let buf = buf.filled().to_vec();
+      if buf.is_empty() {
+        // The buffer may return empty in EOF conditions and never return an error,
+        // so we need to treat this as EOF
         self.read_opt.take();
+      } else {
+        // Attempt to send the buffer, marking as not alive if the channel is closed
+        _ = self.send(buf);
       }
+    } else {
+      // Stream errored, so just return and mark this stream as not alive.
+      _ = self.send(buf.filled().to_vec());
+      self.read_opt.take();
     }
     Poll::Ready(())
   }

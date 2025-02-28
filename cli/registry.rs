@@ -94,20 +94,17 @@ pub async fn parse_response<T: DeserializeOwned>(
   let text = http_util::body_to_string(response).await.unwrap();
 
   if !status.is_success() {
-    match serde_json::from_str::<ApiError>(&text) {
-      Ok(mut err) => {
-        err.x_deno_ray = x_deno_ray;
-        return Err(err);
-      }
-      Err(_) => {
-        let err = ApiError {
-          code: "unknown".to_string(),
-          message: format!("{}: {}", status, text),
-          x_deno_ray,
-          data: serde_json::json!({}),
-        };
-        return Err(err);
-      }
+    if let Ok(mut err) = serde_json::from_str::<ApiError>(&text) {
+      err.x_deno_ray = x_deno_ray;
+      return Err(err);
+    } else {
+      let err = ApiError {
+        code: "unknown".to_string(),
+        message: format!("{}: {}", status, text),
+        x_deno_ray,
+        data: serde_json::json!({}),
+      };
+      return Err(err);
     }
   }
 

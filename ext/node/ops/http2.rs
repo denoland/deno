@@ -296,13 +296,12 @@ pub async fn op_http2_poll_client_connection(
   let cancel_handle = RcRef::map(resource.clone(), |this| &this.cancel_handle);
   let mut conn = RcRef::map(resource, |this| &this.conn).borrow_mut().await;
 
-  match (&mut *conn).or_cancel(cancel_handle).await {
-    Ok(result) => result?,
-    Err(_) => {
-      // TODO(bartlomieju): probably need a better mechanism for closing the connection
+  if let Ok(result) = (&mut *conn).or_cancel(cancel_handle).await {
+    result?
+  } else {
+    // TODO(bartlomieju): probably need a better mechanism for closing the connection
 
-      // cancelled
-    }
+    // cancelled
   }
 
   Ok(())

@@ -53,13 +53,16 @@ impl TestModule {
     id_components.push(name.as_bytes());
     let mut current_parent_id = &parent_id;
     while let Some(parent_id) = current_parent_id {
-      let parent = match self.defs.get(parent_id) {
-        Some(d) => d,
-        None => {
-          lsp_warn!("Internal Error: parent_id \"{}\" of test \"{}\" was not registered.", parent_id, &name);
-          id_components.push("<unknown>".as_bytes());
-          break;
-        }
+      let parent = if let Some(d) = self.defs.get(parent_id) {
+        d
+      } else {
+        lsp_warn!(
+          "Internal Error: parent_id \"{}\" of test \"{}\" was not registered.",
+          parent_id,
+          &name
+        );
+        id_components.push("<unknown>".as_bytes());
+        break;
       };
       id_components.push(parent.name.as_bytes());
       current_parent_id = &parent.parent_id;

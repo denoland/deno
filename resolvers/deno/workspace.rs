@@ -894,81 +894,80 @@ impl<TSys: FsMetadata + FsRead> WorkspaceResolver<TSys> {
       let root_deno_json = workspace.root_deno_json();
       let deno_jsons = workspace.resolver_deno_jsons().collect::<Vec<_>>();
 
-      let (import_map_url, import_map) = match specified_import_map {
-        Some(SpecifiedImportMap {
-          base_url,
-          value: import_map,
-        }) => (base_url, import_map),
-        None => {
-          if !deno_jsons.iter().any(|p| p.is_package())
-            && !deno_jsons.iter().any(|c| {
-              c.json.import_map.is_some()
-                || c.json.scopes.is_some()
-                || c.json.imports.is_some()
-                || c
-                  .json
-                  .compiler_options
-                  .as_ref()
-                  .and_then(|v| v.as_object()?.get("rootDirs")?.as_array())
-                  .is_some_and(|a| a.len() > 1)
-            })
-          {
-            // no configs have an import map and none are a package, so exit
-            return Ok(None);
-          }
-
-          let config_specified_import_map = match root_deno_json.as_ref() {
-            Some(deno_json) => deno_json
-              .to_import_map_value(sys)
-              .map_err(|source| WorkspaceResolverCreateError::ImportMapFetch {
-                referrer: deno_json.specifier.clone(),
-                source: Box::new(source),
-              })?
-              .unwrap_or_else(|| {
-                (
-                  Cow::Borrowed(&deno_json.specifier),
-                  serde_json::Value::Object(Default::default()),
-                )
-              }),
-            None => (
-              Cow::Owned(workspace.root_dir().join("deno.json").unwrap()),
-              serde_json::Value::Object(Default::default()),
-            ),
-          };
-          let base_import_map_config = import_map::ext::ImportMapConfig {
-            base_url: config_specified_import_map.0.into_owned(),
-            import_map_value: config_specified_import_map.1,
-          };
-          let child_import_map_configs = deno_jsons
-            .iter()
-            .filter(|f| {
-              Some(&f.specifier)
-                != root_deno_json.as_ref().map(|c| &c.specifier)
-            })
-            .map(|config| import_map::ext::ImportMapConfig {
-              base_url: config.specifier.clone(),
-              import_map_value: {
-                // don't include scopes here
-                let mut value = serde_json::Map::with_capacity(1);
-                if let Some(imports) = &config.json.imports {
-                  value.insert("imports".to_string(), imports.clone());
-                }
-                value.into()
-              },
-            })
-            .collect::<Vec<_>>();
-          let (import_map_url, import_map) =
-            ::import_map::ext::create_synthetic_import_map(
-              base_import_map_config,
-              child_import_map_configs,
-            );
-          let import_map = import_map::ext::expand_import_map_value(import_map);
-          log::debug!(
-            "Workspace config generated this import map {}",
-            serde_json::to_string_pretty(&import_map).unwrap()
-          );
-          (import_map_url, import_map)
+      let (import_map_url, import_map) = if let Some(SpecifiedImportMap {
+        base_url,
+        value: import_map,
+      }) = specified_import_map
+      {
+        (base_url, import_map)
+      } else {
+        if !deno_jsons.iter().any(|p| p.is_package())
+          && !deno_jsons.iter().any(|c| {
+            c.json.import_map.is_some()
+              || c.json.scopes.is_some()
+              || c.json.imports.is_some()
+              || c
+                .json
+                .compiler_options
+                .as_ref()
+                .and_then(|v| v.as_object()?.get("rootDirs")?.as_array())
+                .is_some_and(|a| a.len() > 1)
+          })
+        {
+          // no configs have an import map and none are a package, so exit
+          return Ok(None);
         }
+
+        let config_specified_import_map = match root_deno_json.as_ref() {
+          Some(deno_json) => deno_json
+            .to_import_map_value(sys)
+            .map_err(|source| WorkspaceResolverCreateError::ImportMapFetch {
+              referrer: deno_json.specifier.clone(),
+              source: Box::new(source),
+            })?
+            .unwrap_or_else(|| {
+              (
+                Cow::Borrowed(&deno_json.specifier),
+                serde_json::Value::Object(Default::default()),
+              )
+            }),
+          None => (
+            Cow::Owned(workspace.root_dir().join("deno.json").unwrap()),
+            serde_json::Value::Object(Default::default()),
+          ),
+        };
+        let base_import_map_config = import_map::ext::ImportMapConfig {
+          base_url: config_specified_import_map.0.into_owned(),
+          import_map_value: config_specified_import_map.1,
+        };
+        let child_import_map_configs = deno_jsons
+          .iter()
+          .filter(|f| {
+            Some(&f.specifier) != root_deno_json.as_ref().map(|c| &c.specifier)
+          })
+          .map(|config| import_map::ext::ImportMapConfig {
+            base_url: config.specifier.clone(),
+            import_map_value: {
+              // don't include scopes here
+              let mut value = serde_json::Map::with_capacity(1);
+              if let Some(imports) = &config.json.imports {
+                value.insert("imports".to_string(), imports.clone());
+              }
+              value.into()
+            },
+          })
+          .collect::<Vec<_>>();
+        let (import_map_url, import_map) =
+          ::import_map::ext::create_synthetic_import_map(
+            base_import_map_config,
+            child_import_map_configs,
+          );
+        let import_map = import_map::ext::expand_import_map_value(import_map);
+        log::debug!(
+          "Workspace config generated this import map {}",
+          serde_json::to_string_pretty(&import_map).unwrap()
+        );
+        (import_map_url, import_map)
       };
       Ok(Some(import_map::parse_from_value(
         import_map_url,

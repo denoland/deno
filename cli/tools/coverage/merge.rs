@@ -281,44 +281,41 @@ fn merge_range_tree_children<'a>(
       None
     };
 
-    match open_range {
-      Some(open_range) => {
-        for (parent_index, tree) in event.trees {
-          let child = if tree.end > open_range.end {
-            let (left, right) = RangeTree::split(rta, tree, open_range.end);
-            start_event_queue.push_pending_tree((parent_index, right));
-            left
-          } else {
-            tree
-          };
-          parent_to_nested
-            .entry(parent_index)
-            .or_default()
-            .push(child);
-        }
+    if let Some(open_range) = open_range {
+      for (parent_index, tree) in event.trees {
+        let child = if tree.end > open_range.end {
+          let (left, right) = RangeTree::split(rta, tree, open_range.end);
+          start_event_queue.push_pending_tree((parent_index, right));
+          left
+        } else {
+          tree
+        };
+        parent_to_nested
+          .entry(parent_index)
+          .or_default()
+          .push(child);
       }
-      None => {
-        let mut open_range_end: usize = event.offset + 1;
-        for (_, ref tree) in &event.trees {
-          open_range_end = if tree.end > open_range_end {
-            tree.end
-          } else {
-            open_range_end
-          };
-        }
-        for (parent_index, tree) in event.trees {
-          if tree.end == open_range_end {
-            flat_children[parent_index].push(tree);
-            continue;
-          }
-          parent_to_nested.entry(parent_index).or_default().push(tree);
-        }
-        start_event_queue.set_pending_offset(open_range_end);
-        open_range = Some(CharRange {
-          start: event.offset,
-          end: open_range_end,
-        });
+    } else {
+      let mut open_range_end: usize = event.offset + 1;
+      for (_, ref tree) in &event.trees {
+        open_range_end = if tree.end > open_range_end {
+          tree.end
+        } else {
+          open_range_end
+        };
       }
+      for (parent_index, tree) in event.trees {
+        if tree.end == open_range_end {
+          flat_children[parent_index].push(tree);
+          continue;
+        }
+        parent_to_nested.entry(parent_index).or_default().push(tree);
+      }
+      start_event_queue.set_pending_offset(open_range_end);
+      open_range = Some(CharRange {
+        start: event.offset,
+        end: open_range_end,
+      });
     }
   }
   if let Some(open_range) = open_range {

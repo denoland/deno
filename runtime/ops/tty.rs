@@ -275,15 +275,14 @@ fn op_set_raw(
     let raw_fd = unsafe { std::os::fd::BorrowedFd::borrow_raw(handle_or_fd) };
 
     if is_raw {
-      let mut raw = match previous_mode {
-        Some(mode) => mode,
-        None => {
-          // Save original mode.
-          let original_mode = termios::tcgetattr(raw_fd)
-            .map_err(|e| TtyError::Nix(JsNixError(e)))?;
-          tty_mode_store.set(rid, original_mode.clone());
-          original_mode
-        }
+      let mut raw = if let Some(mode) = previous_mode {
+        mode
+      } else {
+        // Save original mode.
+        let original_mode = termios::tcgetattr(raw_fd)
+          .map_err(|e| TtyError::Nix(JsNixError(e)))?;
+        tty_mode_store.set(rid, original_mode.clone());
+        original_mode
       };
 
       raw.input_flags &= !(termios::InputFlags::BRKINT

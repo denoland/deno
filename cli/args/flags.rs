@@ -5810,12 +5810,13 @@ fn seed_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("no-check") {
-    match cache_type.as_str() {
-      "remote" => flags.type_check_mode = TypeCheckMode::Local,
-      _ => debug!(
+    if cache_type.as_str() == "remote" {
+      flags.type_check_mode = TypeCheckMode::Local
+    } else {
+      debug!(
         "invalid value for 'no-check' of '{}' using default",
         cache_type
-      ),
+      )
     }
   } else if matches.contains_id("no-check") {
     flags.type_check_mode = TypeCheckMode::None;
@@ -5824,12 +5825,13 @@ fn no_check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
 
 fn check_arg_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   if let Some(cache_type) = matches.get_one::<String>("check") {
-    match cache_type.as_str() {
-      "all" => flags.type_check_mode = TypeCheckMode::All,
-      _ => debug!(
+    if cache_type.as_str() == "all" {
+      flags.type_check_mode = TypeCheckMode::All
+    } else {
+      debug!(
         "invalid value for 'check' of '{}' using default",
         cache_type
-      ),
+      )
     }
   } else if matches.contains_id("check") {
     flags.type_check_mode = TypeCheckMode::Local;

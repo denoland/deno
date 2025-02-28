@@ -65,47 +65,49 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
     let source_parser =
       LazyGraphSourceParser::new(&self.parsed_source_cache, graph);
     let media_type = MediaType::from_specifier(specifier);
-    let parsed_source = match source_parser.get_or_parse_source(specifier)? {
-      Some(parsed_source) => parsed_source,
-      None => {
-        let data = self.sys.fs_read(path).with_context(|| {
-          format!("Unable to read file '{}'", path.display())
-        })?;
+    let parsed_source = if let Some(parsed_source) =
+      source_parser.get_or_parse_source(specifier)?
+    {
+      parsed_source
+    } else {
+      let data = self
+        .sys
+        .fs_read(path)
+        .with_context(|| format!("Unable to read file '{}'", path.display()))?;
 
-        match media_type {
-          MediaType::JavaScript
-          | MediaType::Jsx
-          | MediaType::Mjs
-          | MediaType::Cjs
-          | MediaType::TypeScript
-          | MediaType::Mts
-          | MediaType::Cts
-          | MediaType::Dts
-          | MediaType::Dmts
-          | MediaType::Dcts
-          | MediaType::Tsx => {
-            // continue
-          }
-          MediaType::SourceMap
-          | MediaType::Unknown
-          | MediaType::Json
-          | MediaType::Wasm
-          | MediaType::Css => {
-            // not unfurlable data
-            return Ok(data.into_owned());
-          }
+      match media_type {
+        MediaType::JavaScript
+        | MediaType::Jsx
+        | MediaType::Mjs
+        | MediaType::Cjs
+        | MediaType::TypeScript
+        | MediaType::Mts
+        | MediaType::Cts
+        | MediaType::Dts
+        | MediaType::Dmts
+        | MediaType::Dcts
+        | MediaType::Tsx => {
+          // continue
         }
-
-        let text = String::from_utf8_lossy(&data);
-        deno_ast::parse_module(deno_ast::ParseParams {
-          specifier: specifier.clone(),
-          text: text.into(),
-          media_type,
-          capture_tokens: false,
-          maybe_syntax: None,
-          scope_analysis: false,
-        })?
+        MediaType::SourceMap
+        | MediaType::Unknown
+        | MediaType::Json
+        | MediaType::Wasm
+        | MediaType::Css => {
+          // not unfurlable data
+          return Ok(data.into_owned());
+        }
       }
+
+      let text = String::from_utf8_lossy(&data);
+      deno_ast::parse_module(deno_ast::ParseParams {
+        specifier: specifier.clone(),
+        text: text.into(),
+        media_type,
+        capture_tokens: false,
+        maybe_syntax: None,
+        scope_analysis: false,
+      })?
     };
 
     log::debug!("Unfurling {}", specifier);

@@ -863,16 +863,15 @@ pub async fn op_ws_next_event(
     };
 
     break match val.opcode {
-      OpCode::Text => match String::from_utf8(val.payload.to_vec()) {
-        Ok(s) => {
+      OpCode::Text => {
+        if let Ok(s) = String::from_utf8(val.payload.to_vec()) {
           resource.string.set(Some(s));
           MessageKind::Text as u16
-        }
-        Err(_) => {
+        } else {
           resource.set_error(Some("Invalid string data".into()));
           MessageKind::Error as u16
         }
-      },
+      }
       OpCode::Binary => {
         resource.buffer.set(Some(val.payload.to_vec()));
         MessageKind::Binary as u16

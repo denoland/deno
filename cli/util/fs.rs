@@ -393,88 +393,84 @@ impl LaxSingleProcessFsFlag {
         while error_count < 10 {
           let lock_result = fs_file.try_lock_exclusive();
           let poll_file_update_ms = 100;
-          match lock_result {
-            Ok(_) => {
-              log::debug!("Acquired file lock at {}", file_path.display());
-              let _ignore = std::fs::write(&last_updated_path, "");
-              let token = Arc::new(tokio_util::sync::CancellationToken::new());
+          if lock_result.is_ok() {
+            log::debug!("Acquired file lock at {}", file_path.display());
+            let _ignore = std::fs::write(&last_updated_path, "");
+            let token = Arc::new(tokio_util::sync::CancellationToken::new());
 
-              // Spawn a blocking task that will continually update a file
-              // signalling the lock is alive. This is a fail safe for when
-              // a file lock is never released. For example, on some operating
-              // systems, if a process does not release the lock (say it's
-              // killed), then the OS may release it at an indeterminate time
-              //
-              // This uses a blocking task because we use a single threaded
-              // runtime and this is time sensitive so we don't want it to update
-              // at the whims of whatever is occurring on the runtime thread.
-              spawn_blocking({
-                let token = token.clone();
-                let last_updated_path = last_updated_path.clone();
-                move || {
-                  let mut i = 0;
-                  while !token.is_cancelled() {
-                    i += 1;
-                    let _ignore =
-                      std::fs::write(&last_updated_path, i.to_string());
-                    std::thread::sleep(Duration::from_millis(
-                      poll_file_update_ms,
-                    ));
-                  }
+            // Spawn a blocking task that will continually update a file
+            // signalling the lock is alive. This is a fail safe for when
+            // a file lock is never released. For example, on some operating
+            // systems, if a process does not release the lock (say it's
+            // killed), then the OS may release it at an indeterminate time
+            //
+            // This uses a blocking task because we use a single threaded
+            // runtime and this is time sensitive so we don't want it to update
+            // at the whims of whatever is occurring on the runtime thread.
+            spawn_blocking({
+              let token = token.clone();
+              let last_updated_path = last_updated_path.clone();
+              move || {
+                let mut i = 0;
+                while !token.is_cancelled() {
+                  i += 1;
+                  let _ignore =
+                    std::fs::write(&last_updated_path, i.to_string());
+                  std::thread::sleep(Duration::from_millis(
+                    poll_file_update_ms,
+                  ));
                 }
-              });
-
-              return Self(Some(LaxSingleProcessFsFlagInner {
-                file_path,
-                fs_file,
-                finished_token: token,
-              }));
-            }
-            Err(_) => {
-              // show a message if it's been a while
-              if pb_update_guard.is_none()
-                && start_instant.elapsed().as_millis() > 1_000
-              {
-                let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
-                let guard = pb.update_with_prompt(
-                  ProgressMessagePrompt::Blocking,
-                  long_wait_message,
-                );
-                pb_update_guard = Some((guard, pb));
               }
+            });
 
-              // sleep for a little bit
-              tokio::time::sleep(Duration::from_millis(20)).await;
+            return Self(Some(LaxSingleProcessFsFlagInner {
+              file_path,
+              fs_file,
+              finished_token: token,
+            }));
+          } else {
+            // show a message if it's been a while
+            if pb_update_guard.is_none()
+              && start_instant.elapsed().as_millis() > 1_000
+            {
+              let pb = ProgressBar::new(ProgressBarStyle::TextOnly);
+              let guard = pb.update_with_prompt(
+                ProgressMessagePrompt::Blocking,
+                long_wait_message,
+              );
+              pb_update_guard = Some((guard, pb));
+            }
 
-              // Poll the last updated path to check if it's stopped updating,
-              // which is an indication that the file lock is claimed, but
-              // was never properly released.
-              match std::fs::metadata(&last_updated_path)
-                .and_then(|p| p.modified())
-              {
-                Ok(last_updated_time) => {
-                  let current_time = std::time::SystemTime::now();
-                  match current_time.duration_since(last_updated_time) {
-                    Ok(duration) => {
-                      if duration.as_millis()
-                        > (poll_file_update_ms * 2) as u128
-                      {
-                        // the other process hasn't updated this file in a long time
-                        // so maybe it was killed and the operating system hasn't
-                        // released the file lock yet
-                        return Self(None);
-                      } else {
-                        error_count = 0; // reset
-                      }
-                    }
-                    Err(_) => {
-                      error_count += 1;
+            // sleep for a little bit
+            tokio::time::sleep(Duration::from_millis(20)).await;
+
+            // Poll the last updated path to check if it's stopped updating,
+            // which is an indication that the file lock is claimed, but
+            // was never properly released.
+            match std::fs::metadata(&last_updated_path)
+              .and_then(|p| p.modified())
+            {
+              Ok(last_updated_time) => {
+                let current_time = std::time::SystemTime::now();
+                match current_time.duration_since(last_updated_time) {
+                  Ok(duration) => {
+                    if duration.as_millis() > (poll_file_update_ms * 2) as u128
+                    {
+                      // the other process hasn't updated this file in a long time
+                      // so maybe it was killed and the operating system hasn't
+                      // released the file lock yet
+                      return Self(None);
+                    } else {
+                      error_count = 0; // reset
                     }
                   }
+                  Err(_) => {
+                    error_count += 1;
+                  }
                 }
-                Err(_) => {
-                  error_count += 1;
-                }
+              }
+              Err(_) => {
+                error_count += 1;
               }
             }
           }

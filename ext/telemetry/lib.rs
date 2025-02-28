@@ -1156,32 +1156,29 @@ impl OtelTracer {
     let OtelGlobals { id_generator, .. } = OTEL_GLOBALS.get().unwrap();
     let span_context;
     let parent_span_id;
-    match parent {
-      Some(parent) => {
-        let parent = parent.0.borrow();
-        let parent_span_context = match &**parent {
-          OtelSpanState::Recording(span) => &span.span_context,
-          OtelSpanState::Done(span_context) => span_context,
-        };
-        span_context = SpanContext::new(
-          parent_span_context.trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          parent_span_context.trace_state().clone(),
-        );
-        parent_span_id = parent_span_context.span_id();
-      }
-      None => {
-        span_context = SpanContext::new(
-          id_generator.new_trace_id(),
-          id_generator.new_span_id(),
-          TraceFlags::SAMPLED,
-          false,
-          TraceState::NONE,
-        );
-        parent_span_id = SpanId::INVALID;
-      }
+    if let Some(parent) = parent {
+      let parent = parent.0.borrow();
+      let parent_span_context = match &**parent {
+        OtelSpanState::Recording(span) => &span.span_context,
+        OtelSpanState::Done(span_context) => span_context,
+      };
+      span_context = SpanContext::new(
+        parent_span_context.trace_id(),
+        id_generator.new_span_id(),
+        TraceFlags::SAMPLED,
+        false,
+        parent_span_context.trace_state().clone(),
+      );
+      parent_span_id = parent_span_context.span_id();
+    } else {
+      span_context = SpanContext::new(
+        id_generator.new_trace_id(),
+        id_generator.new_span_id(),
+        TraceFlags::SAMPLED,
+        false,
+        TraceState::NONE,
+      );
+      parent_span_id = SpanId::INVALID;
     }
     let name = owned_string(
       scope,

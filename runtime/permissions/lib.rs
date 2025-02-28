@@ -529,17 +529,14 @@ impl<TQuery: QueryDescriptor> UnaryPermission<TQuery> {
   }
 
   fn revoke_desc(&mut self, desc: Option<&TQuery>) -> PermissionState {
-    match desc {
-      Some(desc) => {
-        self.granted_list.retain(|v| !desc.revokes(v));
-      }
-      None => {
-        self.granted_global = false;
-        // Revoke global is a special case where the entire granted list is
-        // cleared. It's inconsistent with the granular case where only
-        // descriptors stronger than the revoked one are purged.
-        self.granted_list.clear();
-      }
+    if let Some(desc) = desc {
+      self.granted_list.retain(|v| !desc.revokes(v));
+    } else {
+      self.granted_global = false;
+      // Revoke global is a special case where the entire granted list is
+      // cleared. It's inconsistent with the granular case where only
+      // descriptors stronger than the revoked one are purged.
+      self.granted_list.clear();
     }
     self.query_desc(desc, AllowPartial::TreatAsPartialGranted)
   }

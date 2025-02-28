@@ -46,18 +46,17 @@ impl FetchHandler for FsFetchHandler {
       "fetch()",
     );
     let cancel_handle = CancelHandle::new_rc();
-    let path = match url.to_file_path() {
-      Ok(path) => path,
-      Err(_) => {
-        let fut = async move { Err::<_, _>(()) };
-        return (
-          fut
-            .map_err(move |_| super::FetchError::NetworkError)
-            .or_cancel(&cancel_handle)
-            .boxed_local(),
-          Some(cancel_handle),
-        );
-      }
+    let path = if let Ok(path) = url.to_file_path() {
+      path
+    } else {
+      let fut = async move { Err::<_, _>(()) };
+      return (
+        fut
+          .map_err(move |_| super::FetchError::NetworkError)
+          .or_cancel(&cancel_handle)
+          .boxed_local(),
+        Some(cancel_handle),
+      );
     };
     let path_and_opts_result = open_options_with_access_check(
       OpenOptions {

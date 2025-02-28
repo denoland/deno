@@ -466,31 +466,28 @@ impl RemoteModulesStore {
       if count > 10 {
         return Err(TooManyRedirectsError(original_specifier.clone()));
       }
-      match self.redirects.get(specifier) {
-        Some(to) => {
-          specifier = *to;
-          count += 1;
-        }
-        None => {
-          let Some(entry) = self.remote_modules.get(specifier) else {
-            return Ok(None);
-          };
-          return Ok(Some(DenoCompileModuleData {
-            specifier: if count == 0 {
-              original_specifier
-            } else {
-              self.specifiers.get_specifier(specifier).unwrap()
-            },
-            media_type: entry.media_type,
-            data: handle_cow_ref(&entry.data),
-            transpiled: entry.maybe_transpiled.as_ref().map(handle_cow_ref),
-            source_map: entry.maybe_source_map.as_ref().map(handle_cow_ref),
-            cjs_export_analysis: entry
-              .maybe_cjs_export_analysis
-              .as_ref()
-              .map(handle_cow_ref),
-          }));
-        }
+      if let Some(to) = self.redirects.get(specifier) {
+        specifier = *to;
+        count += 1;
+      } else {
+        let Some(entry) = self.remote_modules.get(specifier) else {
+          return Ok(None);
+        };
+        return Ok(Some(DenoCompileModuleData {
+          specifier: if count == 0 {
+            original_specifier
+          } else {
+            self.specifiers.get_specifier(specifier).unwrap()
+          },
+          media_type: entry.media_type,
+          data: handle_cow_ref(&entry.data),
+          transpiled: entry.maybe_transpiled.as_ref().map(handle_cow_ref),
+          source_map: entry.maybe_source_map.as_ref().map(handle_cow_ref),
+          cjs_export_analysis: entry
+            .maybe_cjs_export_analysis
+            .as_ref()
+            .map(handle_cow_ref),
+        }));
       }
     }
   }

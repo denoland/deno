@@ -158,27 +158,24 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
     // now attempt to resolve if it's found in any package.json
     let maybe_pkg_json_and_alias =
       self.resolve_pkg_json_and_alias_for_req(req, referrer)?;
-    match maybe_pkg_json_and_alias {
-      Some((pkg_json, alias)) => {
-        // now try node resolution
-        if let Some(resolved) =
-          node_resolve_dir(&self.sys, &alias, pkg_json.dir_path())?
-        {
-          return Ok(resolved);
-        }
-
-        Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias))
+    if let Some((pkg_json, alias)) = maybe_pkg_json_and_alias {
+      // now try node resolution
+      if let Some(resolved) =
+        node_resolve_dir(&self.sys, &alias, pkg_json.dir_path())?
+      {
+        return Ok(resolved);
       }
-      None => {
-        // now check if node_modules/.deno/ matches this constraint
-        if let Some(folder) = self.resolve_folder_in_root_node_modules(req) {
-          return Ok(folder);
-        }
 
-        Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
-          req.clone(),
-        ))
+      Err(ByonmResolvePkgFolderFromDenoReqError::MissingAlias(alias))
+    } else {
+      // now check if node_modules/.deno/ matches this constraint
+      if let Some(folder) = self.resolve_folder_in_root_node_modules(req) {
+        return Ok(folder);
       }
+
+      Err(ByonmResolvePkgFolderFromDenoReqError::UnmatchedReq(
+        req.clone(),
+      ))
     }
   }
 

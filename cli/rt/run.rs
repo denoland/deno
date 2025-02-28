@@ -873,18 +873,17 @@ pub async fn run(
       sys.clone(),
     )
   };
-  let code_cache = match metadata.code_cache_key {
-    Some(code_cache_key) => Some(Arc::new(DenoCompileCodeCache::new(
+  let code_cache = if let Some(code_cache_key) = metadata.code_cache_key {
+    Some(Arc::new(DenoCompileCodeCache::new(
       root_path.with_file_name(format!(
         "{}.cache",
         root_path.file_name().unwrap().to_string_lossy()
       )),
       code_cache_key,
-    ))),
-    None => {
-      log::debug!("Code cache disabled.");
-      None
-    }
+    )))
+  } else {
+    log::debug!("Code cache disabled.");
+    None
   };
   let module_loader_factory = StandaloneModuleLoaderFactory {
     shared: Arc::new(SharedModuleLoaderState {

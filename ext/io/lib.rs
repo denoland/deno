@@ -526,12 +526,11 @@ impl StdFileResourceInner {
       let mut did_take = false;
       let mut cell_value = {
         let mut cell = self.cell.borrow_mut();
-        match cell.as_mut().unwrap().try_clone().ok() {
-          Some(value) => value,
-          None => {
-            did_take = true;
-            cell.take().unwrap()
-          }
+        if let Ok(value) = cell.as_mut().unwrap().try_clone() {
+          value
+        } else {
+          did_take = true;
+          cell.take().unwrap()
         }
       };
       let (cell_value, result) = spawn_blocking(move || {
@@ -578,9 +577,8 @@ impl StdFileResourceInner {
       let fut = self.with_inner_blocking_task(move |file| {
         /* Start reading, and set the reading flag to true */
         state.lock().reading = true;
-        let nread = match file.read(&mut buf) {
-          Ok(nread) => nread,
-          Err(e) => return Err((e.into(), buf)),
+        let Ok(nread) = file.read(&mut buf) else {
+          return Err((e.into(), buf));
         };
 
         let mut state = state.lock();

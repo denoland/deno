@@ -1151,15 +1151,14 @@ where
   P: FsPermissions + 'static,
 {
   let fs = state.borrow::<FileSystemRc>().clone();
-  let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
-    None => {
-      let dir = fs.tmp_dir().context("tmpdir")?;
-      state
-        .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)?;
-      dir
-    }
+  let dir = if let Some(dir) = dir {
+    state.borrow_mut::<P>().check_write(dir, api_name)?
+  } else {
+    let dir = fs.tmp_dir().context("tmpdir")?;
+    state
+      .borrow_mut::<P>()
+      .check_write_blind(&dir, "TMP", api_name)?;
+    dir
   };
   Ok((dir, fs))
 }
@@ -1174,15 +1173,14 @@ where
 {
   let mut state = state.borrow_mut();
   let fs = state.borrow::<FileSystemRc>().clone();
-  let dir = match dir {
-    Some(dir) => state.borrow_mut::<P>().check_write(dir, api_name)?,
-    None => {
-      let dir = fs.tmp_dir().context("tmpdir")?;
-      state
-        .borrow_mut::<P>()
-        .check_write_blind(&dir, "TMP", api_name)?;
-      dir
-    }
+  let dir = if let Some(dir) = dir {
+    state.borrow_mut::<P>().check_write(dir, api_name)?
+  } else {
+    let dir = fs.tmp_dir().context("tmpdir")?;
+    state
+      .borrow_mut::<P>()
+      .check_write_blind(&dir, "TMP", api_name)?;
+    dir
   };
   Ok((dir, fs))
 }
