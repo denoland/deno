@@ -786,8 +786,8 @@ export function filterMapDiagnostic(diagnostic) {
   if (IGNORED_DIAGNOSTICS.includes(diagnostic.code)) {
     return false;
   }
-  // surface not found diagnostics inside npm packages because we don't
-  // analyze it with the module graph
+  // surface not found diagnostics inside npm packages
+  // because we don't analyze it with deno_graph
   if (
     // TS6053: File '{0}' not found.
     diagnostic.code === 6053 &&
