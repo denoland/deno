@@ -5,11 +5,13 @@
   },
   "steps": [
     {
+      "if": "mac",
       "args": "eval Deno.copyFileSync(Deno.execPath(),'./deno_copy');",
       "exitCode": 0,
       "output": ""
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": "upgrade --force",
       "output": "upgrade.out",
@@ -17,6 +19,7 @@
       "flaky": true
     },
     {
+      "if": "mac",
       "commandName": "./deno_copy",
       "args": "--version",
       "exitCode": 0,

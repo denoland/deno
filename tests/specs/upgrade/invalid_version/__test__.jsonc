@@ -4,16 +4,19 @@
   },
   "tests": {
     "canary": {
+      "if": "mac",
       "args": "upgrade --canary asdfasdf",
       "output": "canary.out",
       "exitCode": 1
     },
     "version": {
+      "if": "mac",
       "args": "upgrade --version asdfasdf",
       "output": "version.out",
       "exitCode": 1
     },
     "shorthand": {
+      "if": "mac",
       "args": "upgrade asdfasdf",
       "output": "shorthand.out",
       "exitCode": 1

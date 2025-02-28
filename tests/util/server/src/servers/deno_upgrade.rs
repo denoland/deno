@@ -12,7 +12,7 @@ use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Full;
 use zip::ZipWriter;
 
-use crate::deno_exe_path;
+use crate::root_path;
 use crate::servers::hyper_utils::run_server;
 use crate::servers::hyper_utils::ServerKind;
 use crate::servers::hyper_utils::ServerOptions;
@@ -66,8 +66,9 @@ pub async fn deno_upgrade_test_server(port: u16) {
       };
 
       eprintln!("version {} file {}", version, file);
-
-      let obj = std::fs::read(deno_exe_path()).unwrap();
+      let binary_path = root_path().join("target/debug/deno");
+      eprintln!("binary path: {:?}", binary_path);
+      let obj = std::fs::read(binary_path).unwrap();
 
       let mut zip_writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
 

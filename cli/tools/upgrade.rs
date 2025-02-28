@@ -39,23 +39,24 @@ use crate::util::progress_bar::ProgressBarStyle;
 pub static USE_TESTING_SERVER: Lazy<bool> =
   Lazy::new(|| env::var("DENO_DONT_USE_INTERNAL_UPGRADE_TEST").is_ok());
 
+// NB: test server is in tests/util/server/src/servers/deno_upgrade.rs
 pub static RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    "http://localhost:4364/stable"
+    "http://localhost:4264/stable"
   } else {
     "https://github.com/denoland/deno/releases"
   }
 });
 pub static CANARY_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    "http://localhost:4364/canary"
+    "http://localhost:4264/canary"
   } else {
     "https://dl.deno.land/canary"
   }
 });
 pub static DL_RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    "http://localhost:4364/rc"
+    "http://localhost:4264/rc"
   } else {
     "https://dl.deno.land/release"
   }
