@@ -53,9 +53,7 @@ impl TestModule {
     id_components.push(name.as_bytes());
     let mut current_parent_id = &parent_id;
     while let Some(parent_id) = current_parent_id {
-      let parent = if let Some(d) = self.defs.get(parent_id) {
-        d
-      } else {
+      let Some(parent) = self.defs.get(parent_id) else {
         lsp_warn!(
           "Internal Error: parent_id \"{}\" of test \"{}\" was not registered.",
           parent_id,
