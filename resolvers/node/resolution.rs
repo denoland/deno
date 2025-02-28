@@ -1828,9 +1828,7 @@ fn resolve_bin_entry_value<'a>(
       package_json.path.display()
     ),
   };
-  let bin_entry = if let Some(e) = bin_entry {
-    e
-  } else {
+  let Some(bin_entry) = bin_entry else {
     let prefix = package_json
       .name
       .as_ref()

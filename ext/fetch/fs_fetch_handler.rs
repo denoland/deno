@@ -46,9 +46,7 @@ impl FetchHandler for FsFetchHandler {
       "fetch()",
     );
     let cancel_handle = CancelHandle::new_rc();
-    let path = if let Ok(path) = url.to_file_path() {
-      path
-    } else {
+    let Ok(path) = url.to_file_path() else {
       let fut = async move { Err::<_, _>(()) };
       return (
         fut
