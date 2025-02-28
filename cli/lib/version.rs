@@ -36,12 +36,16 @@ pub static DENO_VERSION_INFO: std::sync::LazyLock<DenoVersionInfo> =
         }
       });
 
-    DenoVersionInfo {
-      deno: if release_channel == ReleaseChannel::Canary {
+    let deno = libsui::find_section("denoversion")
+      .and_then(|buf| std::str::from_utf8(buf).ok())
+      .unwrap_or(if release_channel == ReleaseChannel::Canary {
         concat!(env!("DENO_VERSION"), "+", env!("GIT_COMMIT_HASH_SHORT"))
       } else {
         env!("DENO_VERSION")
-      },
+      });
+
+    DenoVersionInfo {
+      deno,
 
       release_channel,
 

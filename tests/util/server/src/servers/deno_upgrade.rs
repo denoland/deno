@@ -1,30 +1,22 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-//! Server for NodeJS header tarballs, used by `node-gyp` in tests to download headers
-//!
-//! Loads from `testdata/assets`, if we update our node version in `process.versions` we'll need to
-//! update the header tarball there.
-
 #![allow(clippy::print_stderr)]
 
-use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::LazyLock;
 
 use bytes::Bytes;
 use http::Response;
 use http::StatusCode;
 use http_body_util::combinators::UnsyncBoxBody;
 use http_body_util::Full;
-use parking_lot::Mutex;
+use zip::ZipWriter;
 
+use crate::deno_exe_path;
 use crate::servers::hyper_utils::run_server;
 use crate::servers::hyper_utils::ServerKind;
 use crate::servers::hyper_utils::ServerOptions;
 use crate::servers::string_body;
-use crate::testdata_path;
-use crate::PathRef;
 
 pub async fn deno_upgrade_test_server(port: u16) {
   let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -39,19 +31,16 @@ pub async fn deno_upgrade_test_server(port: u16) {
       let path = req.uri().path();
 
       let mut parts = path.split('/');
-      let part1: Vec<_> = parts.clone().collect();
-      eprintln!("parts {:#?}", part1);
+      let _: Vec<_> = parts.clone().collect();
       let _ = parts.next(); // empty
       let Some(channel) = parts.next() else {
         return not_found(format!("unexpected request path: {path}"));
       };
 
-      let mut version = None;
-      let mut file = None;
-      let mut is_canary = false;
-
+      let version;
+      let file;
       match channel {
-        "release" => {
+        "stable" => {
           let _ = parts.next(); // "download" string
           version = parts.next();
           file = parts.next();
@@ -59,9 +48,8 @@ pub async fn deno_upgrade_test_server(port: u16) {
         "canary" => {
           version = parts.next();
           file = parts.next();
-          is_canary = true;
         }
-        "rc_or_lts" => {
+        "rc" => {
           version = parts.next();
           file = parts.next();
         }
@@ -77,8 +65,30 @@ pub async fn deno_upgrade_test_server(port: u16) {
         return not_found(format!("missing version in path: {path}"));
       };
 
-      eprintln!("version {} canary? {} file {}", version, is_canary, file);
-      not_found(format!("unexpected request path: {path}"))
+      eprintln!("version {} file {}", version, file);
+
+      let obj = std::fs::read(deno_exe_path()).unwrap();
+
+      let mut out = Vec::new();
+      let mut zip_writer = ZipWriter::new(std::io::Cursor::new(&mut out));
+
+      let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Stored)
+        .unix_permissions(0o755);
+      zip_writer.start_file("deno", options).unwrap();
+
+      libsui::Macho::from(obj)
+        .unwrap()
+        .write_section("denover", channel.to_owned().into_bytes())
+        .unwrap()
+        .write_section("denoversion", version.to_owned().into_bytes())
+        .unwrap()
+        .build_and_sign(&mut zip_writer)
+        .unwrap();
+
+      zip_writer.finish().unwrap().into_inner();
+
+      return Ok(Response::new(UnsyncBoxBody::new(Full::new(out.into()))));
     },
   )
   .await

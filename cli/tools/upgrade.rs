@@ -41,7 +41,7 @@ pub static USE_TESTING_SERVER: Lazy<bool> =
 
 pub static RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    "http://localhost:4364/release"
+    "http://localhost:4364/stable"
   } else {
     "https://github.com/denoland/deno/releases"
   }
@@ -55,7 +55,7 @@ pub static CANARY_URL: Lazy<&'static str> = Lazy::new(|| {
 });
 pub static DL_RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
   if *USE_TESTING_SERVER {
-    "http://localhost:4364/rc_or_lts"
+    "http://localhost:4364/rc"
   } else {
     "https://dl.deno.land/release"
   }
