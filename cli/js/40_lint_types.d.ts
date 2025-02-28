@@ -50,6 +50,11 @@ export interface ElemSelector {
   elem: number;
 }
 
+export interface FieldSelector {
+  type: 10;
+  props: number[];
+}
+
 export interface PseudoNthChild {
   type: 5;
   op: string | null;
@@ -81,6 +86,7 @@ export interface Relation {
 
 export type Selector = Array<
   | ElemSelector
+  | FieldSelector
   | Relation
   | AttrExists
   | AttrBin
@@ -101,6 +107,7 @@ export interface MatchContext {
   getLastChild(id: number): number;
   getSiblings(id: number): number[];
   getParent(id: number): number;
+  getField(id: number, prop: number): number;
   getType(id: number): number;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
