@@ -1428,7 +1428,7 @@ fn enable_unstable(command: Command) -> Command {
 fn enable_full(command: Command) -> Command {
   command.mut_args(|arg| {
     let long_help = arg.get_long_help();
-    if !long_help.is_some_and(|s| s.to_string() == "false") {
+    if long_help.is_none_or(|s| s.to_string() != "false") {
       arg.hide(false)
     } else {
       arg
@@ -1660,8 +1660,7 @@ fn add_dev_arg() -> Arg {
   Arg::new("dev")
     .long("dev")
     .short('D')
-    .help("Add as a dev dependency")
-    .long_help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
+    .help("Add the package as a dev dependency. Note: This only applies when adding to a `package.json` file.")
     .action(ArgAction::SetTrue)
 }
 

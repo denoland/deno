@@ -20,7 +20,7 @@ harness = false
 
 [dependencies]
 anyhow.workspace = true
-async-stream = "0.3.3"
+async-stream.workspace = true
 base64.workspace = true
 bytes.workspace = true
 console_static_text.workspace = true
@@ -52,7 +52,7 @@ regex.workspace = true
 reqwest.workspace = true
 rustls-pemfile.workspace = true
 rustls-tokio-stream.workspace = true
-semver = "=1.0.14"
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -61,7 +61,7 @@ tempfile.workspace = true
 termcolor.workspace = true
 tokio.workspace = true
 url.workspace = true
-win32job = "2"
+win32job.workspace = true
 zip = { version = "2.1.6", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(windows)'.dependencies]

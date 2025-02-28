@@ -10,8 +10,6 @@ use serde_json::json;
 use serde_json::Value;
 use test_util::assert_starts_with;
 use test_util::assertions::assert_json_subset;
-use test_util::deno_cmd_with_deno_dir;
-use test_util::env_vars_for_npm_tests;
 use test_util::lsp::range_of;
 use test_util::lsp::source_file;
 use test_util::lsp::LspClient;
@@ -3107,7 +3105,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
                 "start": { "line": 1, "character": 17 },
                 "end": { "line": 1, "character": 26 },
               },
-              "newText": "PATH_SEPARATOR",
+              "newText": "SEPARATOR as PATH_SEPARATOR",
             },
             {
               "range": {
@@ -3881,50 +3879,65 @@ fn lsp_rename() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const variable = "a";
+        console.log(variable);
+        ({ variable });
+
         // this should not rename in comments and strings
-        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
-      }
-    }),
-  );
+        // variable
+        "variable";
+      "#,
+    },
+  }));
   let res = client.write_request(
     "textDocument/rename",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 4 },
-      "newName": "variable_modified"
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 1, "character": 14 },
+      "newName": "variable_modified",
     }),
   );
   assert_eq!(
     res,
     json!({
-      "documentChanges": [{
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 1
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1,
+          },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 14 },
+                "end": { "line": 1, "character": 22 },
+              },
+              "newText": "variable_modified",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 20 },
+                "end": { "line": 2, "character": 28 },
+              },
+              "newText": "variable_modified",
+            },
+            {
+              "range": {
+                "start": { "line": 3, "character": 11 },
+                "end": { "line": 3, "character": 19 },
+              },
+              "newText": "variable: variable_modified",
+            },
+          ],
         },
-        "edits": [{
-          "range": {
-            "start": { "line": 0, "character": 4 },
-            "end": { "line": 0, "character": 12 }
-          },
-          "newText": "variable_modified"
-        }, {
-          "range": {
-            "start": { "line": 1, "character": 12 },
-            "end": { "line": 1, "character": 20 }
-          },
-          "newText": "variable_modified"
-        }]
-      }]
-    })
+      ],
+    }),
   );
   client.shutdown();
 }
@@ -10019,23 +10032,14 @@ fn lsp_npm_specifier_unopened_file() {
   client.initialize_default();
 
   // cache the other.ts file to the DENO_DIR
-  let deno = deno_cmd_with_deno_dir(client.deno_dir())
-    .current_dir(temp_dir.path())
-    .arg("cache")
-    .arg("--quiet")
-    .arg("other.ts")
-    .envs(env_vars_for_npm_tests())
-    .piped_output()
-    .spawn()
-    .unwrap();
-  let output = deno.wait_with_output().unwrap();
-  assert!(output.status.success());
-  assert_eq!(output.status.code(), Some(0));
-
-  let stdout = String::from_utf8(output.stdout).unwrap();
-  assert_eq!(stdout.as_str(), "");
-  let stderr = String::from_utf8(output.stderr).unwrap();
-  assert_eq!(stderr.as_str(), "");
+  client.write_request(
+    "workspace/executeCommand",
+    json!({
+      "command": "deno.cache",
+      "arguments": [[], temp_dir.url().join("other.ts").unwrap()],
+    }),
+  );
+  client.read_diagnostics();
 
   // open main.ts, which imports other.ts (unopened)
   client.did_open(json!({
@@ -15364,7 +15368,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
           "edits": [
             {
               "range": file2.range_of("foo"),
-              "newText": "bar",
+              "newText": "bar as foo",
             },
           ],
         },
@@ -16975,7 +16979,7 @@ fn lsp_uses_lockfile_for_npm_initialization() {
     assert!(!line.contains("Running npm resolution."), "Line: {}", line);
     line.contains("Server ready.")
   });
-  assert_eq!(skipping_count, 2);
+  assert_eq!(skipping_count, 1);
   client.shutdown();
 }
 

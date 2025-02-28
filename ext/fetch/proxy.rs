@@ -468,7 +468,7 @@ where
           let connecting = connector.call(proxy_dst);
           let tls = TlsConnector::from(self.tls.clone());
           Box::pin(async move {
-            let mut io = connecting.await.map_err(Into::<BoxError>::into)?;
+            let mut io = connecting.await?;
 
             if is_https {
               tunnel(&mut io, &orig_dst, user_agent, auth).await?;

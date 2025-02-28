@@ -1174,6 +1174,7 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    user_preferences: UserPreferences,
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
@@ -1181,7 +1182,7 @@ impl TsServer {
       position,
       false,
       false,
-      false,
+      user_preferences,
     ));
     let mut results = FuturesOrdered::new();
     for scope in snapshot
@@ -1205,7 +1206,10 @@ impl TsServer {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         } else {
-          lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+          let err = err.to_string();
+          if !err.contains("Could not find source file") {
+            lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+          }
         }
       }
       let locations = locations.unwrap_or_default();
@@ -2420,9 +2424,8 @@ impl ImplementationLocation {
 pub struct RenameLocation {
   #[serde(flatten)]
   document_span: DocumentSpan,
-  // RenameLocation props
-  // prefix_text: Option<String>,
-  // suffix_text: Option<String>,
+  prefix_text: Option<String>,
+  suffix_text: Option<String>,
 }
 
 impl RenameLocation {
@@ -2481,12 +2484,21 @@ impl RenameLocations {
 
       // push TextEdit for ensured `TextDocumentEdit.edits`.
       let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
+      let new_text = [
+        location.prefix_text.as_deref(),
+        Some(new_name),
+        location.suffix_text.as_deref(),
+      ]
+      .into_iter()
+      .flatten()
+      .collect::<Vec<_>>()
+      .join("");
       document_edit.edits.push(lsp::OneOf::Left(lsp::TextEdit {
         range: location
           .document_span
           .text_span
           .to_range(asset_or_doc.line_index()),
-        new_text: new_name.to_string(),
+        new_text,
       }));
     }
 
@@ -4365,10 +4377,7 @@ impl TscSpecifierMap {
     let specifier_str = original
       .replace(".d.ts.d.ts", ".d.ts")
       .replace("$node_modules", "node_modules");
-    let specifier = match ModuleSpecifier::parse(&specifier_str) {
-      Ok(s) => s,
-      Err(err) => return Err(err),
-    };
+    let specifier = ModuleSpecifier::parse(&specifier_str)?;
     if specifier.as_str() != original {
       self
         .denormalized_specifiers
@@ -5551,8 +5560,8 @@ pub enum TscRequest {
   ProvideCallHierarchyOutgoingCalls((String, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6236
   PrepareCallHierarchy((String, u32)),
-  // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6221
-  FindRenameLocations((String, u32, bool, bool, bool)),
+  // https://github.com/denoland/deno/blob/v2.2.2/cli/tsc/dts/typescript.d.ts#L6674
+  FindRenameLocations((String, u32, bool, bool, UserPreferences)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6224
   GetSmartSelectionRange((String, u32)),
   // https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6183

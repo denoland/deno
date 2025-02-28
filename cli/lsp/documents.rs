@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
@@ -1699,7 +1699,7 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
 }
 
-impl<'a> OpenDocumentsGraphLoader<'a> {
+impl OpenDocumentsGraphLoader<'_> {
   fn load_from_docs(
     &self,
     specifier: &ModuleSpecifier,
@@ -1720,7 +1720,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
   }
 }
 
-impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
   fn load(
     &self,
     specifier: &ModuleSpecifier,

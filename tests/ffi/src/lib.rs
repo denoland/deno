@@ -3,8 +3,10 @@
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 #![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(non_upper_case_globals)]
 
 use std::os::raw::c_void;
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -194,12 +196,13 @@ pub extern "C" fn call_fn_ptr_return_buffer(
   println!("buf: {buf:?}");
 }
 
-static mut STORED_FUNCTION: Option<extern "C" fn()> = None;
-static mut STORED_FUNCTION_2: Option<extern "C" fn(u8) -> u8> = None;
+static STORED_FUNCTION: Mutex<Option<extern "C" fn()>> = Mutex::new(None);
+static STORED_FUNCTION_2: Mutex<Option<extern "C" fn(u8) -> u8>> =
+  Mutex::new(None);
 
 #[no_mangle]
 pub extern "C" fn store_function(func: Option<extern "C" fn()>) {
-  unsafe { STORED_FUNCTION = func };
+  *STORED_FUNCTION.lock().unwrap() = func;
   if func.is_none() {
     println!("STORED_FUNCTION cleared");
   }
@@ -207,7 +210,7 @@ pub extern "C" fn store_function(func: Option<extern "C" fn()>) {
 
 #[no_mangle]
 pub extern "C" fn store_function_2(func: Option<extern "C" fn(u8) -> u8>) {
-  unsafe { STORED_FUNCTION_2 = func };
+  *STORED_FUNCTION_2.lock().unwrap() = func;
   if func.is_none() {
     println!("STORED_FUNCTION_2 cleared");
   }
@@ -215,21 +218,17 @@ pub extern "C" fn store_function_2(func: Option<extern "C" fn(u8) -> u8>) {
 
 #[no_mangle]
 pub extern "C" fn call_stored_function() {
-  unsafe {
-    if STORED_FUNCTION.is_none() {
-      return;
-    }
-    STORED_FUNCTION.unwrap()();
+  let f = *STORED_FUNCTION.lock().unwrap();
+  if let Some(f) = f {
+    f();
   }
 }
 
 #[no_mangle]
 pub extern "C" fn call_stored_function_2(arg: u8) {
-  unsafe {
-    if STORED_FUNCTION_2.is_none() {
-      return;
-    }
-    println!("{}", STORED_FUNCTION_2.unwrap()(arg));
+  let f = *STORED_FUNCTION_2.lock().unwrap();
+  if let Some(f) = f {
+    println!("{}", f(arg));
   }
 }
 
@@ -237,11 +236,9 @@ pub extern "C" fn call_stored_function_2(arg: u8) {
 pub extern "C" fn call_stored_function_thread_safe() {
   std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1500));
-    unsafe {
-      if STORED_FUNCTION.is_none() {
-        return;
-      }
-      STORED_FUNCTION.unwrap()();
+    let f = *STORED_FUNCTION.lock().unwrap();
+    if let Some(f) = f {
+      f();
     }
   });
 }
@@ -250,11 +247,9 @@ pub extern "C" fn call_stored_function_thread_safe() {
 pub extern "C" fn call_stored_function_thread_safe_and_log() {
   std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1500));
-    unsafe {
-      if STORED_FUNCTION.is_none() {
-        return;
-      }
-      STORED_FUNCTION.unwrap()();
+    let f = *STORED_FUNCTION.lock().unwrap();
+    if let Some(f) = f {
+      f();
       println!("STORED_FUNCTION called");
     }
   });
@@ -264,12 +259,10 @@ pub extern "C" fn call_stored_function_thread_safe_and_log() {
 pub extern "C" fn call_stored_function_2_thread_safe(arg: u8) {
   std::thread::spawn(move || {
     std::thread::sleep(std::time::Duration::from_millis(1500));
-    unsafe {
-      if STORED_FUNCTION_2.is_none() {
-        return;
-      }
+    let f = *STORED_FUNCTION_2.lock().unwrap();
+    if let Some(f) = f {
       println!("Calling");
-      STORED_FUNCTION_2.unwrap()(arg);
+      f(arg);
     }
   });
 }

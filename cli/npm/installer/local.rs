@@ -697,7 +697,7 @@ struct LocalLifecycleScripts<'a> {
   deno_local_registry_dir: &'a Path,
 }
 
-impl<'a> LocalLifecycleScripts<'a> {
+impl LocalLifecycleScripts<'_> {
   /// `node_modules/.deno/<package>/.scripts-run`
   fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
     local_node_modules_package_folder(self.deno_local_registry_dir, package)
@@ -711,8 +711,8 @@ impl<'a> LocalLifecycleScripts<'a> {
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for LocalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for LocalLifecycleScripts<'_>
 {
   fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
     local_node_modules_package_contents_path(
@@ -784,7 +784,7 @@ struct SetupCacheDep<'a> {
   current: &'a mut BTreeMap<String, String>,
 }
 
-impl<'a> SetupCacheDep<'a> {
+impl SetupCacheDep<'_> {
   pub fn insert(&mut self, name: &str, target_folder_name: &str) -> bool {
     self
       .current

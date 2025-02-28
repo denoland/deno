@@ -1457,6 +1457,7 @@ impl Inner {
         .options
         .clone();
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
       if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
         fmt_options.use_tabs = Some(!params.options.insert_spaces);
         fmt_options.indent_width = Some(params.options.tab_size as u8);
@@ -3016,12 +3017,15 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
+    let user_preferences =
+      tsc::UserPreferences::from_config_for_specifier(&self.config, &specifier);
     let maybe_locations = self
       .ts_server
       .find_rename_locations(
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
+        user_preferences,
         token,
       )
       .await
