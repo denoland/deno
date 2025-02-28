@@ -271,6 +271,22 @@ Deno.test("Plugin - visitor attr length special case", () => {
   assertEquals(result[1].node.arguments.length, 2);
 });
 
+Deno.test("Plugin - visitor attr regex", () => {
+  let result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "get");
+
+  result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind!=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "method");
+});
+
 Deno.test("Plugin - visitor :first-child", () => {
   const result = testVisit(
     "{ foo; bar }",
