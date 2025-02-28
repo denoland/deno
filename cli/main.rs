@@ -116,7 +116,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).boxed_local().await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
@@ -139,7 +139,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
-        tools::compile::compile_eszip(flags, compile_flags).await
+        tools::compile::compile_eszip(flags, compile_flags).boxed_local().await
       } else {
         tools::compile::compile(flags, compile_flags).await
       }
