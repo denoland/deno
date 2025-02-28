@@ -69,8 +69,7 @@ pub async fn deno_upgrade_test_server(port: u16) {
 
       let obj = std::fs::read(deno_exe_path()).unwrap();
 
-      let mut out = Vec::new();
-      let mut zip_writer = ZipWriter::new(std::io::Cursor::new(&mut out));
+      let mut zip_writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
 
       let options = zip::write::SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Stored)
@@ -86,9 +85,9 @@ pub async fn deno_upgrade_test_server(port: u16) {
         .build_and_sign(&mut zip_writer)
         .unwrap();
 
-      zip_writer.finish().unwrap().into_inner();
+      let out = zip_writer.finish().unwrap().into_inner();
 
-      return Ok(Response::new(UnsyncBoxBody::new(Full::new(out.into()))));
+      Ok(Response::new(UnsyncBoxBody::new(Full::new(out.into()))))
     },
   )
   .await
