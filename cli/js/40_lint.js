@@ -962,7 +962,6 @@ class MatchCtx {
 
   /**
    * Used for `:has/:is/:where` and `:not`
-   * TODO: Optimize this
    * @param {MatcherFn[]} selectors
    * @param {number} idx
    * @returns {boolean}
