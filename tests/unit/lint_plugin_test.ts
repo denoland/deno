@@ -177,6 +177,29 @@ Deno.test("Plugin - visitor subsequent sibling", () => {
   assertEquals(result.map((r) => r.node.name), ["bar", "baz"]);
 });
 
+Deno.test("Plugin - visitor field", () => {
+  let result = testVisit(
+    "if (foo()) {}",
+    "IfStatement.test.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo()) {}",
+    "IfStatement .test .callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "foo");
+
+  result = testVisit(
+    "if (foo(bar())) {}",
+    "IfStatement.test CallExpression.callee",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
 Deno.test("Plugin - visitor attr", () => {
   let result = testVisit(
     "for (const a of b) {}",
@@ -269,6 +292,22 @@ Deno.test("Plugin - visitor attr length special case", () => {
   );
   assertEquals(result[0].node.arguments.length, 1);
   assertEquals(result[1].node.arguments.length, 2);
+});
+
+Deno.test("Plugin - visitor attr regex", () => {
+  let result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "get");
+
+  result = testVisit(
+    "class Foo { get foo() { return 1 } bar() {} }",
+    "MethodDefinition[kind!=/(g|s)et/]",
+  );
+  assertEquals(result[0].node.type, "MethodDefinition");
+  assertEquals(result[0].node.kind, "method");
 });
 
 Deno.test("Plugin - visitor :first-child", () => {
