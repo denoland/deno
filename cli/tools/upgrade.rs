@@ -36,9 +36,30 @@ use crate::util::archive;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
-const CANARY_URL: &str = "https://dl.deno.land/canary";
-const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+pub static USE_TESTING_SERVER: Lazy<bool> =
+  Lazy::new(|| env::var("DENO_DONT_USE_INTERNAL_UPGRADE_TEST").is_ok());
+
+pub static RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
+  if *USE_TESTING_SERVER {
+    ""
+  } else {
+    "https://github.com/denoland/deno/releases"
+  }
+});
+pub static CANARY_URL: Lazy<&'static str> = Lazy::new(|| {
+  if *USE_TESTING_SERVER {
+    ""
+  } else {
+    "https://dl.deno.land/canary"
+  }
+});
+pub static DL_RELEASE_URL: Lazy<&'static str> = Lazy::new(|| {
+  if *USE_TESTING_SERVER {
+    ""
+  } else {
+    "https://dl.deno.land/release"
+  }
+});
 
 pub static ARCHIVE_NAME: Lazy<String> =
   Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
@@ -906,9 +927,9 @@ async fn download_package(
   };
 
   let base_url = match release_channel {
-    ReleaseChannel::Stable => RELEASE_URL,
-    ReleaseChannel::Rc | ReleaseChannel::Lts => DL_RELEASE_URL,
-    ReleaseChannel::Canary => CANARY_URL,
+    ReleaseChannel::Stable => *RELEASE_URL,
+    ReleaseChannel::Rc | ReleaseChannel::Lts => *DL_RELEASE_URL,
+    ReleaseChannel::Canary => *CANARY_URL,
   };
 
   let url = format!("{}/{}", base_url, binary_path_suffix);
