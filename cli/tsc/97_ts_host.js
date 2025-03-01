@@ -792,7 +792,7 @@ export function filterMapDiagnostic(diagnostic) {
   if (
     // TS6053: File '{0}' not found.
     diagnostic.code === 6053 &&
-    (diagnostic.file == null || !isNodeSourceFile(diagnostic.file))
+    (diagnostic.file === undefined || !isNodeSourceFile(diagnostic.file))
   ) {
     return false;
   }
