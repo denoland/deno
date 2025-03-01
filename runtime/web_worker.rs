@@ -503,10 +503,16 @@ impl WebWorker {
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_canvas::deno_canvas::init_ops_and_esm(
-        std::collections::HashMap::from([(
-          String::from(deno_canvas::bitmaprenderer::CONTEXT_ID),
-          deno_canvas::bitmaprenderer::create as _,
-        )]),
+        std::collections::HashMap::from([
+          (
+            String::from(deno_canvas::bitmaprenderer::CONTEXT_ID),
+            deno_canvas::bitmaprenderer::create as _,
+          ),
+          (
+            String::from(deno_webgpu::canvas::CONTEXT_ID),
+            deno_webgpu::canvas::create as _,
+          )
+        ]),
       ),
       deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
         deno_fetch::Options {

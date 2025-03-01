@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use deno_canvas::canvas::CanvasContext;
-use deno_canvas::image::{DynamicImage, RgbImage};
+use deno_canvas::image::DynamicImage;
 use deno_canvas::image::GenericImageView;
 use deno_core::cppgc::Ptr;
 use deno_core::op2;
@@ -12,12 +12,21 @@ use deno_core::WebIDL;
 use deno_error::JsErrorBox;
 use wgpu_core::resource::TextureDescriptor;
 use wgpu_types::Extent3d;
-
 use crate::device::GPUDevice;
 use crate::error::GPUError;
 use crate::texture::GPUTexture;
 use crate::texture::GPUTextureFormat;
 use crate::Instance;
+
+struct BackingTexture {
+  texture: v8::Global<v8::Object>,
+  underlying_texture: GPUTexture,
+}
+
+struct BackingBuffer {
+  buffer: wgpu_core::id::BufferId,
+  padding: PaddedSize,
+}
 
 struct GPUCanvasContext {
   canvas: v8::Global<v8::Object>,
@@ -26,8 +35,8 @@ struct GPUCanvasContext {
   texture_descriptor: RefCell<Option<TextureDescriptor<'static>>>,
   configuration: RefCell<Option<GPUCanvasConfiguration>>,
 
-  current_texture:
-    RefCell<Option<(wgpu_core::id::BufferId, v8::Global<v8::Object>)>>,
+  current_texture: RefCell<Option<BackingTexture>>,
+  backing_buffer: RefCell<Option<BackingBuffer>>,
 }
 
 impl GarbageCollected for GPUCanvasContext {}
@@ -90,8 +99,8 @@ impl GPUCanvasContext {
 
     let mut current_texture = self.current_texture.borrow_mut();
 
-    if let Some((_, current_texture)) = current_texture.as_ref() {
-      Ok(current_texture.clone())
+    if let Some(BackingTexture { texture, .. }) = current_texture.as_ref() {
+      Ok(texture.clone())
     } else {
       let (id, err) = device.instance.device_create_texture(
         device.id,
@@ -99,6 +108,14 @@ impl GPUCanvasContext {
         None,
       );
       device.error_handler.push_error(err);
+
+      let (buffer, padding) = create_buffer_for_texture_to_vec(
+        &device.instance,
+        device.id,
+        &texture_descriptor.size,
+      )?;
+
+      self.backing_buffer.replace(Some(BackingBuffer { buffer, padding }));
 
       let texture = GPUTexture {
         instance: device.instance.clone(),
@@ -115,12 +132,16 @@ impl GPUCanvasContext {
         usage: configuration.usage,
       };
 
-      let texture = deno_core::cppgc::make_cppgc_object(scope, texture);
-      let texture = v8::Global::new(scope, texture);
+      let texture_obj =
+        deno_core::cppgc::make_cppgc_object(scope, texture.clone());
+      let texture_obj = v8::Global::new(scope, texture_obj);
 
-      *current_texture = Some(texture.clone());
+      *current_texture = Some(BackingTexture {
+        texture: texture_obj.clone(),
+        underlying_texture: texture,
+      });
 
-      Ok(texture)
+      Ok(texture_obj)
     }
   }
 }
@@ -157,42 +178,92 @@ impl GPUCanvasContext {
     })
   }
 
-  pub fn copy_texture_to_bitmap(&self, scope: &mut v8::HandleScope) {
-    let texture = self.current_texture.borrow();
+  pub fn copy_image_contents_to_canvas_data(&self) {
     let configuration = self.configuration.borrow();
+    let Some(GPUCanvasConfiguration { device, .. }) = configuration.as_ref() else {
+      self.bitmap.replace_with(|image| {
+        let (width, height) = image.dimensions();
+        let image = deno_canvas::image::RgbaImage::new(width, height);
+        DynamicImage::from(image)
+      });
+
+      return;
+    };
+
     let texture_descriptor = self.texture_descriptor.borrow();
 
-    if let Some((buffer, texture)) = texture.as_ref() {
-      let val = v8::Local::new(scope, texture);
-      let texture =
-        deno_core::cppgc::try_unwrap_cppgc_object::<'_, GPUTexture>(
-          scope,
-          val.cast(),
-        )
-        .unwrap();
-
-      let GPUCanvasConfiguration { device, .. } =
-        configuration.as_ref().unwrap();
+    if let Some(BackingTexture {
+      underlying_texture, ..
+    }) = self.current_texture.borrow().as_ref()
+    {
+      let backing_buffer = self.backing_buffer.borrow();
+      let BackingBuffer { buffer, padding } = backing_buffer.as_ref().unwrap();
       let TextureDescriptor { size, .. } = texture_descriptor.as_ref().unwrap();
 
-      let (command_encoder, err) = device.instance.device_create_command_encoder(
-        device.id,
-        &wgpu_types::CommandEncoderDescriptor {
-          label: Some("GPUCanvasContext".into()),
-        },
-        None,
-      );
+      let (command_encoder, err) =
+        device.instance.device_create_command_encoder(
+          device.id,
+          &wgpu_types::CommandEncoderDescriptor {
+            label: Some("GPUCanvasContext".into()),
+          },
+          None,
+        );
 
-      let data = copy_texture_to_vec(&device.instance, device.id, device.queue, command_encoder, texture.id, size, *buffer).unwrap();
+      let data = copy_texture_to_vec(
+        &device.instance,
+        device.id,
+        device.queue,
+        command_encoder,
+        underlying_texture.id,
+        size,
+        *buffer,
+        padding,
+      )
+      .unwrap();
 
       self.bitmap.replace_with(|image| {
         let (width, height) = image.dimensions();
-
-        let image = deno_canvas::image::RgbaImage::from_raw(width, height, data).unwrap();
-
+        let image =
+          deno_canvas::image::RgbaImage::from_raw(width, height, data).unwrap();
         DynamicImage::from(image)
       });
     }
+  }
+
+  fn expire_current_texture(&self) {
+    if let Some(BackingTexture {
+      underlying_texture, ..
+    }) = self.current_texture.borrow().as_ref()
+    {
+      let _ = underlying_texture
+        .instance
+        .texture_destroy(underlying_texture.id);
+    }
+  }
+
+  fn replace_drawing_buffer(&self) -> Result<(), JsErrorBox> {
+    self.expire_current_texture();
+    let configuration = self.configuration.borrow();
+    let data = self.bitmap.borrow();
+    let (width, height) = data.dimensions();
+
+    // TODO: somehow handle creating the backing buffer if configuration is not set
+    if let Some(configuration) = configuration.as_ref() {
+      let (buffer, padding) = create_buffer_for_texture_to_vec(
+        &configuration.device.instance,
+        configuration.device.id,
+        &Extent3d {
+          width,
+          height,
+          depth_or_array_layers: 1,
+        },
+      )?;
+      self
+        .backing_buffer
+        .replace(Some(BackingBuffer { buffer, padding }));
+    }
+
+    Ok(())
   }
 }
 
@@ -202,6 +273,7 @@ impl CanvasContext for GPUCanvasContext {
   }
 
   fn resize(&self) {
+    let _ = self.replace_drawing_buffer();
     if let Some(configuration) = self.configuration.borrow().as_ref() {
       self.texture_descriptor.replace(Some(
         self
@@ -212,7 +284,11 @@ impl CanvasContext for GPUCanvasContext {
   }
 
   fn bitmap_read_hook(&self) {
-    todo!()
+    self.copy_image_contents_to_canvas_data();
+  }
+
+  fn post_transfer_to_image_bitmap_hook(&self) {
+    let _ = self.replace_drawing_buffer();
   }
 }
 
@@ -260,7 +336,6 @@ pub fn create_buffer_for_texture_to_vec(
   let padded_bytes_per_row =
     unpadded_bytes_per_row + padded_bytes_per_row_padding;
 
-
   let (buffer, maybe_err) = instance.device_create_buffer(
     device,
     &wgpu_types::BufferDescriptor {
@@ -276,10 +351,13 @@ pub fn create_buffer_for_texture_to_vec(
   if let Some(maybe_err) = maybe_err {
     Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()))
   } else {
-    Ok((buffer, PaddedSize {
-      padded_bytes_per_row,
-      unpadded_bytes_per_row,
-    }))
+    Ok((
+      buffer,
+      PaddedSize {
+        padded_bytes_per_row,
+        unpadded_bytes_per_row,
+      },
+    ))
   }
 }
 
@@ -354,8 +432,9 @@ pub fn copy_texture_to_vec(
       std::slice::from_raw_parts(slice_pointer.as_ptr(), range_size as usize)
     };
 
-    let mut unpadded =
-      Vec::with_capacity((padded_size.unpadded_bytes_per_row * size.height) as _);
+    let mut unpadded = Vec::with_capacity(
+      (padded_size.unpadded_bytes_per_row * size.height) as _,
+    );
 
     for i in 0..size.height {
       unpadded.extend_from_slice(
@@ -369,4 +448,25 @@ pub fn copy_texture_to_vec(
   };
 
   Ok(data)
+}
+
+
+pub const CONTEXT_ID: &str = "webgpu";
+
+pub fn create<'s>(
+  canvas: v8::Global<v8::Object>,
+  data: Rc<RefCell<DynamicImage>>,
+  _scope: &mut v8::HandleScope<'s>,
+  _options: v8::Local<'s, v8::Value>,
+  _prefix: &'static str,
+  _context: &'static str,
+) -> Box<dyn CanvasContext> {
+  Box::new(GPUCanvasContext {
+    canvas,
+    bitmap: data,
+    texture_descriptor: RefCell::new(None),
+    configuration: RefCell::new(None),
+    current_texture: RefCell::new(None),
+    backing_buffer: RefCell::new(None),
+  })
 }

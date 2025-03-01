@@ -2,7 +2,7 @@ use std::cell::OnceCell;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
+use deno_core::cppgc::SameObject;
 use deno_core::op2;
 use deno_core::v8;
 use deno_core::webidl::UnrestrictedDouble;
@@ -15,6 +15,8 @@ use image::DynamicImage;
 use image::GenericImageView;
 
 use crate::op_create_image_bitmap::ImageBitmap;
+
+struct BlobHandle(v8::Global<v8::Function>);
 
 pub type CreateCanvasContext = for<'s> fn(
   canvas: v8::Global<v8::Object>,
@@ -44,8 +46,9 @@ impl OffscreenCanvas {
   #[setter]
   fn width(&self, #[webidl(options(enforce_range = true))] value: u64) {
     {
-      let data = self.data.borrow_mut();
-      // TODO
+      self
+        .data
+        .replace_with(|data| data.crop_imm(0, 0, value as _, data.height()));
     }
     if let Some((_, active_context)) = self.active_context.get() {
       active_context.resize();
@@ -59,8 +62,9 @@ impl OffscreenCanvas {
   #[setter]
   fn height(&self, #[webidl(options(enforce_range = true))] value: u64) {
     {
-      let data = self.data.borrow_mut();
-      // TODO
+      self
+        .data
+        .replace_with(|data| data.crop_imm(0, 0, data.width(), value as _));
     }
     if let Some((_, active_context)) = self.active_context.get() {
       active_context.resize();
@@ -108,6 +112,7 @@ impl OffscreenCanvas {
 
       let _ = self.active_context.set((
         name.clone(),
+        
         create_context(
           this,
           self.data.clone(),
@@ -137,18 +142,16 @@ impl OffscreenCanvas {
       ));
     }
 
-    self
-      .active_context
-      .get()
-      .as_ref()
-      .unwrap()
-      .1
-      .bitmap_read_hook();
+    let active_context = &self.active_context.get().as_ref().unwrap().1;
+
+    active_context.bitmap_read_hook();
 
     let data = self.data.replace_with(|image| {
       let (width, height) = image.dimensions();
       DynamicImage::new(width, height, ColorType::Rgba8)
     });
+
+    active_context.post_transfer_to_image_bitmap_hook();
 
     Ok(ImageBitmap {
       detached: Default::default(),
@@ -156,11 +159,12 @@ impl OffscreenCanvas {
     })
   }
 
-  #[buffer]
-  fn convert_to_blob(
+  fn convert_to_blob<'s>(
     &self,
+    state: &mut OpState,
+    scope: &mut v8::HandleScope<'s>,
     #[webidl] options: ImageEncodeOptions,
-  ) -> Result<Vec<u8>, JsErrorBox> {
+  ) -> Result<v8::Local<'s, v8::Object>, JsErrorBox> {
     self
       .active_context
       .get()
@@ -193,9 +197,33 @@ impl OffscreenCanvas {
       _ => todo!(),
     }
 
-    // TODO: create Blob with data
+    let blob_constructor = state.borrow::<BlobHandle>();
+    let blob_constructor = v8::Local::new(scope, blob_constructor.0.clone());
 
-    Ok(out)
+    let len = out.len();
+    let bs = v8::ArrayBuffer::new_backing_store_from_vec(out);
+    let shared_bs = bs.make_shared();
+    let ab = v8::ArrayBuffer::with_backing_store(scope, &shared_bs);
+    let data = v8::Uint8Array::new(scope, ab, 0, len).unwrap();
+    let data = v8::Array::new_with_elements(scope, &[data.into()]);
+
+    let key = v8::String::new(scope, "type").unwrap();
+    let value = v8::String::new(scope, options.r#type.as_str()).unwrap();
+
+    let null = v8::null(scope);
+
+    let options = v8::Object::with_prototype_and_properties(
+      scope,
+      null.into(),
+      &[key.into()],
+      &[value.into()],
+    );
+
+    Ok(
+      blob_constructor
+        .new_instance(scope, &[data.into(), options.into()])
+        .unwrap(),
+    )
   }
 }
 
@@ -205,6 +233,8 @@ pub trait CanvasContext: GarbageCollected {
   fn resize(&self);
 
   fn bitmap_read_hook(&self);
+
+  fn post_transfer_to_image_bitmap_hook(&self);
 }
 
 #[derive(WebIDL)]

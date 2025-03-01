@@ -195,9 +195,13 @@ pub fn op_jupyter_create_png_from_texture(
   use deno_runtime::deno_webgpu::error::GPUError;
   use deno_runtime::deno_webgpu::*;
   use texture::GPUTextureFormat;
-  
-  let (buffer, padded_size) = canvas::create_buffer_for_texture_to_vec(&texture.instance, *texture.id, &texture.size)?;
-  
+
+  let (buffer, padded_size) = canvas::create_buffer_for_texture_to_vec(
+    &texture.instance,
+    texture.device_id,
+    &texture.size,
+  )?;
+
   let (command_encoder, maybe_err) =
     texture.instance.device_create_command_encoder(
       texture.device_id,
@@ -207,8 +211,17 @@ pub fn op_jupyter_create_png_from_texture(
   if let Some(maybe_err) = maybe_err {
     return Err(JsErrorBox::from_err::<GPUError>(maybe_err.into()));
   }
-  
-  let data = canvas::copy_texture_to_vec(&texture.instance, texture.device_id, texture.queue_id, command_encoder, texture.id, &texture.size, buffer, &padded_size)?;
+
+  let data = canvas::copy_texture_to_vec(
+    &texture.instance,
+    texture.device_id,
+    texture.queue_id,
+    command_encoder,
+    texture.id,
+    &texture.size,
+    buffer,
+    &padded_size,
+  )?;
 
   let color_type = match texture.format {
     GPUTextureFormat::Rgba8unorm => ExtendedColorType::Rgba8,

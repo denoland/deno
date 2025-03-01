@@ -37,6 +37,7 @@ pub(crate) struct GPUTextureDescriptor {
   pub view_formats: Vec<GPUTextureFormat>,
 }
 
+#[derive(Clone)]
 pub struct GPUTexture {
   pub instance: Instance,
   pub error_handler: super::error::ErrorHandler,

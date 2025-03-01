@@ -77,7 +77,11 @@ impl CanvasContext for ImageBitmapRenderingContext {
     todo!()
   }
 
+  fn resize(&self) {}
+
   fn bitmap_read_hook(&self) {}
+
+  fn post_transfer_to_image_bitmap_hook(&self) {}
 }
 
 pub const CONTEXT_ID: &str = "bitmaprenderer";
