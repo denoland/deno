@@ -213,8 +213,12 @@ fn serialize_module_decl(
         ctx.write_export_all_decl(
           &node.span,
           node.type_only,
-          exported,
-          source,
+          // Namespaced export must always have a source, so this
+          // scenario where it's optional can't happen. I think
+          // it's just the way SWC stores things internally, since they
+          // don't have a dedicated node for namespace exports.
+          source.unwrap_or(NodeRef(0)),
+          Some(exported),
           attrs,
         )
       } else {
