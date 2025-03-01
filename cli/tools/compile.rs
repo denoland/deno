@@ -158,12 +158,16 @@ pub async fn compile_eszip(
   let tsconfig_resolver = factory.tsconfig_resolver()?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
-  let output_path = resolve_compile_executable_output_path(
+  let mut output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,
     cli_options.initial_cwd(),
   )
   .await?;
+  output_path.set_extension("eszip");
+
+  let maybe_import_map_specifier =
+    cli_options.resolve_specified_import_map_specifier()?;
   let (module_roots, _include_files) = get_module_roots_and_include_files(
     entrypoint,
     &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
@@ -198,30 +202,40 @@ pub async fn compile_eszip(
   let emit_options = transpile_and_emit_options.emit.clone();
 
   let parser = parsed_source_cache.as_capturing_parser();
-  // TODO(bartlomieju): fix it
-  // let root_dir_url = resolve_root_dir_from_specifiers(
-  //   cli_options.workspace().root_dir(),
-  //   graph.specifiers().map(|(s, _)| s).chain(
-  //     cli_options
-  //       .node_modules_dir_path()
-  //       .and_then(|p| ModuleSpecifier::from_directory_path(p).ok())
-  //       .iter(),
-  //   ),
-  // );
-  // log::debug!("Binary root dir: {}", root_dir_url);
-  // let root_dir_url = eszip::EszipRelativeFileBaseUrl::new(&root_dir_url);
-  let eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
+  let root_dir_url = cli_options.workspace().root_dir();
+  log::debug!("Binary root dir: {}", root_dir_url);
+  let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(&root_dir_url);
+  let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
     graph,
     parser,
     transpile_options,
     emit_options,
-    // TODO(bartlomieju): fix it
-    // make all the modules relative to the root folder
-    // relative_file_base: Some(root_dir_url),
-    relative_file_base: None,
+    relative_file_base: Some(relative_file_base),
     npm_packages: None,
     module_kind_resolver: Default::default(),
   })?;
+
+  if let Some(import_map_specifier) = maybe_import_map_specifier {
+    let import_map_path = import_map_specifier.to_file_path().unwrap();
+    let import_map_content = std::fs::read_to_string(&import_map_path)
+      .with_context(|| {
+        format!("Failed to read import map: {:?}", import_map_path)
+      })?;
+
+    let import_map_specifier_str = if let Some(relative_import_map_specifier) =
+      root_dir_url.make_relative(&import_map_specifier)
+    {
+      relative_import_map_specifier
+    } else {
+      import_map_specifier.to_string()
+    };
+
+    eszip.add_import_map(
+      eszip::ModuleKind::Json,
+      import_map_specifier_str,
+      import_map_content.as_bytes().to_vec().into(),
+    );
+  }
 
   log::info!(
     "{} {} to {}",
