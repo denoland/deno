@@ -1896,14 +1896,18 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
           ObjectPatProp::Assign(assign_pat_prop) => {
             let ident = serialize_binding_ident(ctx, &assign_pat_prop.key);
 
-            let value = assign_pat_prop
-              .value
-              .as_ref()
-              .map_or(NodeRef(0), |value| serialize_expr(ctx, value));
+            let shorthand = assign_pat_prop.value.is_none();
+            let value = assign_pat_prop.value.as_ref().map_or(
+              // SWC has value as optional with shorthand properties,
+              // but TSESTree expects the value to be a duplicate of
+              // the binding ident.
+              serialize_binding_ident(ctx, &assign_pat_prop.key),
+              |value| serialize_expr(ctx, value),
+            );
 
             ctx.write_property(
               &assign_pat_prop.span,
-              false,
+              shorthand,
               false,
               false,
               PropertyKind::Init,
