@@ -34,6 +34,12 @@ use serde::Serialize;
 use sha2::Digest;
 use tokio::process::Command;
 
+use self::diagnostics::PublishDiagnostic;
+use self::diagnostics::PublishDiagnosticsCollector;
+use self::graph::GraphDiagnosticsCollector;
+use self::module_content::ModuleContentProvider;
+use self::paths::CollectedPublishPath;
+use self::tar::PublishableTarball;
 use crate::args::jsr_api_url;
 use crate::args::jsr_url;
 use crate::args::CliOptions;
@@ -42,20 +48,18 @@ use crate::args::PublishFlags;
 use crate::factory::CliFactory;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClient;
-use crate::tools::check::CheckOptions;
+use crate::registry;
 use crate::tools::lint::collect_no_slow_type_diagnostics;
-use crate::tools::registry::diagnostics::PublishDiagnostic;
-use crate::tools::registry::diagnostics::PublishDiagnosticsCollector;
+use crate::type_checker::CheckOptions;
+use crate::type_checker::TypeChecker;
 use crate::util::display::human_size;
 
-mod api;
 mod auth;
 
 mod diagnostics;
 mod graph;
 mod module_content;
 mod paths;
-mod pm;
 mod provenance;
 mod publish_order;
 mod tar;
@@ -63,20 +67,8 @@ mod unfurl;
 
 use auth::get_auth_method;
 use auth::AuthMethod;
-pub use pm::add;
-pub use pm::cache_top_level_deps;
-pub use pm::outdated;
-pub use pm::remove;
-pub use pm::AddCommandName;
-pub use pm::AddRmPackageReq;
 use publish_order::PublishOrderGraph;
 use unfurl::SpecifierUnfurler;
-
-use self::graph::GraphDiagnosticsCollector;
-use self::module_content::ModuleContentProvider;
-use self::paths::CollectedPublishPath;
-use self::tar::PublishableTarball;
-use super::check::TypeChecker;
 
 pub async fn publish(
   flags: Arc<Flags>,
@@ -559,10 +551,11 @@ async fn get_auth_headers(
         .send()
         .await
         .context("Failed to create interactive authorization")?;
-      let auth =
-        api::parse_response::<api::CreateAuthorizationResponse>(response)
-          .await
-          .context("Failed to create interactive authorization")?;
+      let auth = registry::parse_response::<
+        registry::CreateAuthorizationResponse,
+      >(response)
+      .await
+      .context("Failed to create interactive authorization")?;
 
       let auth_url = format!("{}?code={}", auth.verification_url, auth.code);
       let pkgs_text = if packages.len() > 1 {
@@ -595,9 +588,10 @@ async fn get_auth_headers(
           .send()
           .await
           .context("Failed to exchange authorization")?;
-        let res =
-          api::parse_response::<api::ExchangeAuthorizationResponse>(response)
-            .await;
+        let res = registry::parse_response::<
+          registry::ExchangeAuthorizationResponse,
+        >(response)
+        .await;
         match res {
           Ok(res) => {
             log::info!(
@@ -669,7 +663,7 @@ async fn get_auth_headers(
             text
           );
         }
-        let api::OidcTokenResponse { value } = serde_json::from_str(&text)
+        let registry::OidcTokenResponse { value } = serde_json::from_str(&text)
           .with_context(|| {
             format!(
               "Failed to parse OIDC token: '{}' (status {})",
@@ -703,13 +697,13 @@ async fn check_if_scope_and_package_exist(
   let mut needs_scope = false;
   let mut needs_package = false;
 
-  let response = api::get_scope(client, registry_api_url, scope).await?;
+  let response = registry::get_scope(client, registry_api_url, scope).await?;
   if response.status() == 404 {
     needs_scope = true;
   }
 
   let response =
-    api::get_package(client, registry_api_url, scope, package).await?;
+    registry::get_package(client, registry_api_url, scope, package).await?;
   if response.status() == 404 {
     needs_package = true;
   }
@@ -781,7 +775,7 @@ async fn ensure_scopes_and_packages_exist(
     log::warn!("{}", colors::gray("Waiting..."));
     let _ = open::that_detached(&create_package_url);
 
-    let package_api_url = api::get_package_api_url(
+    let package_api_url = registry::get_package_api_url(
       registry_api_url,
       &package.scope,
       &package.package,
@@ -927,11 +921,12 @@ async fn publish_package(
     .send()
     .await?;
 
-  let res = api::parse_response::<api::PublishingTask>(response).await;
+  let res =
+    registry::parse_response::<registry::PublishingTask>(response).await;
   let mut task = match res {
     Ok(task) => task,
     Err(mut err) if err.code == "duplicateVersionPublish" => {
-      let task = serde_json::from_value::<api::PublishingTask>(
+      let task = serde_json::from_value::<registry::PublishingTask>(
         err.data.get_mut("task").unwrap().take(),
       )
       .unwrap();
@@ -977,7 +972,7 @@ async fn publish_package(
           package.scope, package.package, package.version
         )
       })?;
-    task = api::parse_response::<api::PublishingTask>(resp)
+    task = registry::parse_response::<registry::PublishingTask>(resp)
       .await
       .with_context(|| {
         format!(
@@ -1173,7 +1168,7 @@ async fn check_if_git_repo_dirty(cwd: &Path) -> Option<String> {
     .stdout(Stdio::null())
     .status()
     .await
-    .map_or(false, |status| status.success());
+    .is_ok_and(|status| status.success());
 
   if !git_exists {
     return None; // Git is not installed
@@ -1286,10 +1281,10 @@ mod tests {
 
   use deno_ast::ModuleSpecifier;
 
+  use super::has_license_file;
   use super::tar::PublishableTarball;
   use super::tar::PublishableTarballFile;
   use super::verify_version_manifest;
-  use crate::tools::registry::has_license_file;
 
   #[test]
   fn test_verify_version_manifest() {

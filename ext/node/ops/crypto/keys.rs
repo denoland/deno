@@ -340,7 +340,7 @@ impl<'a> TryFrom<rsa::pkcs8::der::asn1::AnyRef<'a>> for RsaPssParameters<'a> {
 
   fn try_from(
     any: rsa::pkcs8::der::asn1::AnyRef<'a>,
-  ) -> rsa::pkcs8::der::Result<RsaPssParameters> {
+  ) -> rsa::pkcs8::der::Result<RsaPssParameters<'a>> {
     any.sequence(|decoder| {
       let hash_algorithm = decoder
         .context_specific::<rsa::pkcs8::AlgorithmIdentifierRef>(

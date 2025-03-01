@@ -258,3 +258,31 @@ Deno.test("[node/sqlite] StatementSync for large integers", () => {
   assertEquals(result, { "2147483648": 2147483648, __proto__: null });
   db.close();
 });
+
+Deno.test("[node/sqlite] error message", () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec("CREATE TABLE foo (a text, b text NOT NULL, c text)");
+
+  assertThrows(
+    () => {
+      db.prepare("INSERT INTO foo(a, b, c) VALUES (NULL, NULL, NULL)")
+        .run();
+    },
+    Error,
+    "NOT NULL constraint failed: foo.b",
+  );
+});
+
+// https://github.com/denoland/deno/issues/28295
+Deno.test("[node/sqlite] StatementSync reset guards don't lock db", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a integer, b text)");
+  db.exec("CREATE TABLE bar(a integer, b text)");
+
+  const stmt = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ");
+
+  assertEquals(stmt.get(), { name: "foo", __proto__: null });
+
+  db.exec("DROP TABLE IF EXISTS foo");
+});

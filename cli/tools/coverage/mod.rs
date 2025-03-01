@@ -575,15 +575,16 @@ pub fn cover_files(
     )
   };
 
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
+
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
       &script_coverage.url,
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file_result = file_fetcher
-      .get_cached_source_or_local(&module_specifier)
-      .map_err(AnyError::from);
+    let maybe_file_result =
+      file_fetcher.get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
@@ -638,11 +639,11 @@ pub fn cover_files(
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, &original_source)?;
+      file_reports.push((coverage_report, original_source.to_string()));
     }
   }
 
-  reporter.done(&coverage_root);
+  reporter.done(&coverage_root, &file_reports);
 
   Ok(())
 }

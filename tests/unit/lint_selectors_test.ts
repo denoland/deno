@@ -6,6 +6,7 @@ import {
   ATTR_EXISTS_NODE,
   BinOp,
   ELEM_NODE,
+  FIELD_NODE,
   Lexer,
   parseSelector,
   PSEUDO_FIRST_CHILD,
@@ -255,6 +256,19 @@ Deno.test("Lexer - Pseudo", () => {
   ]);
 });
 
+Deno.test("Lexer - field", () => {
+  assertEquals(testLexer(".bar"), [
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "bar" },
+  ]);
+  assertEquals(testLexer(".bar.baz"), [
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "bar" },
+    { token: Token.Dot, value: "" },
+    { token: Token.Word, value: "baz" },
+  ]);
+});
+
 Deno.test("Parser - Elem", () => {
   assertEquals(testParse("Foo"), [[
     {
@@ -334,6 +348,33 @@ Deno.test("Parser - Relation", () => {
       elem: 2,
       wildcard: false,
     },
+  ]]);
+});
+
+Deno.test("Parser - Field", () => {
+  assertEquals(testParse("Foo.bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [2] },
+  ]]);
+  assertEquals(testParse("Foo .bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [2] },
+  ]]);
+  assertEquals(testParse("Foo .foo.bar"), [[
+    {
+      type: ELEM_NODE,
+      elem: 1,
+      wildcard: false,
+    },
+    { type: FIELD_NODE, props: [1, 2] },
   ]]);
 });
 

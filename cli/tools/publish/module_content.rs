@@ -16,6 +16,7 @@ use lazy_regex::Lazy;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 
+use super::diagnostics::PublishDiagnostic;
 use super::diagnostics::PublishDiagnosticsCollector;
 use super::unfurl::SpecifierUnfurler;
 use super::unfurl::SpecifierUnfurlerDiagnostic;
@@ -23,7 +24,6 @@ use crate::args::deno_json::TsConfigResolver;
 use crate::cache::LazyGraphSourceParser;
 use crate::cache::ParsedSourceCache;
 use crate::sys::CliSys;
-use crate::tools::registry::diagnostics::PublishDiagnostic;
 
 struct JsxFolderOptions<'a> {
   jsx_factory: &'a str,
@@ -317,11 +317,22 @@ mod test {
     }"#,
         None,
       ),
-      ("/package-b/deno.json", "{}", None),
+      ("/package-b/deno.json", r#"{
+        "compilerOptions": { "jsx": "react-jsx" },
+        "imports": {
+          "react": "npm:react"
+          "@types/react": "npm:@types/react"
+        }
+      }"#, None),
       (
         "/package-a/main.tsx",
         "export const component = <div></div>;",
         Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:@types/react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const component = <div></div>;"),
+      ),
+      (
+        "/package-b/main.tsx",
+        "export const componentB = <div></div>;",
+        Some("/** @jsxRuntime automatic *//** @jsxImportSource npm:react *//** @jsxImportSourceTypes npm:react *//** @jsxFactory React.createElement *//** @jsxFragmentFactory React.Fragment */export const componentB = <div></div>;"),
       ),
       (
         "/package-a/other.tsx",

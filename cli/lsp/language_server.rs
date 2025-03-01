@@ -137,7 +137,6 @@ pub struct LanguageServer {
   /// https://github.com/Microsoft/language-server-protocol/issues/567#issuecomment-2085131917
   init_flag: AsyncFlag,
   performance: Arc<Performance>,
-  shutdown_flag: AsyncFlag,
 }
 
 /// Snapshot of the state used by TSC.
@@ -227,7 +226,7 @@ pub struct Inner {
 }
 
 impl LanguageServer {
-  pub fn new(client: Client, shutdown_flag: AsyncFlag) -> Self {
+  pub fn new(client: Client) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
       client: client.clone(),
@@ -237,7 +236,6 @@ impl LanguageServer {
       ))),
       init_flag: Default::default(),
       performance,
-      shutdown_flag,
     }
   }
 
@@ -282,6 +280,7 @@ impl LanguageServer {
           kind: GraphKind::All,
           check_js: CheckJsOption::False,
           exit_integrity_errors: false,
+          allow_unknown_media_types: true,
         },
       )?;
 
@@ -1458,6 +1457,7 @@ impl Inner {
         .options
         .clone();
       let config_data = self.config.tree.data_for_specifier(&specifier);
+      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
       if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
         fmt_options.use_tabs = Some(!params.options.insert_spaces);
         fmt_options.indent_width = Some(params.options.tab_size as u8);
@@ -3017,12 +3017,15 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
+    let user_preferences =
+      tsc::UserPreferences::from_config_for_specifier(&self.config, &specifier);
     let maybe_locations = self
       .ts_server
       .find_rename_locations(
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
+        user_preferences,
         token,
       )
       .await
@@ -3566,7 +3569,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn shutdown(&self) -> LspResult<()> {
-    self.shutdown_flag.raise();
     Ok(())
   }
 
