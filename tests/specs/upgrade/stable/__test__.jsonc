@@ -3,6 +3,7 @@
   "envs": {
     "DENO_DONT_USE_INTERNAL_UPGRADE_TEST": "1"
   },
+  "profile": "release",
   "steps": [
     {
       "if": "mac",
