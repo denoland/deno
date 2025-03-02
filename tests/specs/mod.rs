@@ -56,6 +56,8 @@ struct MultiTestMetaData {
   pub tests: BTreeMap<String, JsonMap>,
   #[serde(default)]
   pub ignore: bool,
+  #[serde(default)]
+  pub profile: Option<String>,
 }
 
 impl MultiTestMetaData {
@@ -90,6 +92,13 @@ impl MultiTestMetaData {
           }
         }
       }
+
+      if let Some(profile) = &multi_test_meta_data.profile {
+        if cfg!(debug_assertions) && profile == "release" {
+          value.insert("ignore".to_string(), true.into());
+        }
+      }
+
       if multi_test_meta_data.ignore && !value.contains_key("ignore") {
         value.insert("ignore".to_string(), true.into());
       }
@@ -160,6 +169,8 @@ struct SingleTestMetaData {
   pub step: StepMetaData,
   #[serde(default)]
   pub ignore: bool,
+  #[serde(default)]
+  pub profile: Option<String>,
 }
 
 impl SingleTestMetaData {
@@ -174,7 +185,7 @@ impl SingleTestMetaData {
       envs: Default::default(),
       steps: vec![self.step],
       ignore: self.ignore,
-      profile: None,
+      profile: self.profile,
     }
   }
 }
@@ -263,7 +274,7 @@ fn run_test(test: &CollectedTest<serde_json::Value>) -> TestResult {
   let diagnostic_logger = Rc::new(RefCell::new(Vec::<u8>::new()));
   let result = TestResult::from_maybe_panic_or_result(AssertUnwindSafe(|| {
     let metadata = deserialize_value(metadata_value);
-    if let Some(profile) = &metadata.profile {
+    if let Some(profile) = metadata.profile.as_deref() {
       if cfg!(debug_assertions) && profile == "release" {
         return TestResult::Ignored;
       }
