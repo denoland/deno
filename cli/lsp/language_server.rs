@@ -845,7 +845,7 @@ impl Inner {
       return (Default::default(), false);
     }
     let mut workspace_files = IndexSet::default();
-    let entry_limit = 1000;
+    let entry_limit = config.workspace_settings().document_preload_limit;
     let mut pending = VecDeque::new();
     let mut entry_count = 0;
     let mut roots = config
