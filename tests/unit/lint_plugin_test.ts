@@ -359,6 +359,27 @@ Deno.test("Plugin - Program", async (t) => {
   await testSnapshot(t, "", "Program");
 });
 
+Deno.test("Plugin - FunctionDeclaration", async (t) => {
+  await testSnapshot(t, "function foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "function foo(a, ...b) {}", "FunctionDeclaration");
+  await testSnapshot(
+    t,
+    "function foo(a = 1, { a = 2, b, ...c }, [d,...e], ...f) {}",
+    "FunctionDeclaration",
+  );
+
+  await testSnapshot(t, "async function foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "async function* foo() {}", "FunctionDeclaration");
+  await testSnapshot(t, "function* foo() {}", "FunctionDeclaration");
+
+  // TypeScript
+  await testSnapshot(
+    t,
+    "function foo<T>(a?: 2, ...b: any[]): any {}",
+    "FunctionDeclaration",
+  );
+});
+
 Deno.test("Plugin - ImportDeclaration", async (t) => {
   await testSnapshot(t, 'import "foo";', "ImportDeclaration");
   await testSnapshot(t, 'import foo from "foo";', "ImportDeclaration");
@@ -737,6 +758,20 @@ Deno.test("Plugin - UpdateExpression", async (t) => {
 
 Deno.test("Plugin - YieldExpression", async (t) => {
   await testSnapshot(t, "function* foo() { yield bar; }", "YieldExpression");
+});
+
+Deno.test("Plugin - ObjectPattern", async (t) => {
+  await testSnapshot(t, "const { prop } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop: A } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { 'a.b': A } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop = 2 } = {}", "ObjectPattern");
+  await testSnapshot(t, "const { prop = 2, ...c } = {}", "ObjectPattern");
+});
+
+Deno.test("Plugin - ArrayPattern", async (t) => {
+  await testSnapshot(t, "const [a, b] = []", "ArrayPattern");
+  await testSnapshot(t, "const [a = 2] = []", "ArrayPattern");
+  await testSnapshot(t, "const [a, ...b] = []", "ArrayPattern");
 });
 
 Deno.test("Plugin - Literal", async (t) => {
