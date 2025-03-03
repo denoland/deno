@@ -1946,7 +1946,12 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      key:
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | PrivateIdentifier;
       value: Expression | null;
       typeAnnotation: TSTypeAnnotation | undefined;
     }
