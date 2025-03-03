@@ -1231,19 +1231,6 @@ snapshot[`Plugin - ExportAllDeclaration 2`] = `
   attributes: [],
   exportKind: "value",
   exported: {
-    range: [
-      21,
-      26,
-    ],
-    raw: '"foo"',
-    type: "Literal",
-    value: "foo",
-  },
-  range: [
-    0,
-    27,
-  ],
-  source: {
     name: "foo",
     optional: false,
     range: [
@@ -1252,6 +1239,19 @@ snapshot[`Plugin - ExportAllDeclaration 2`] = `
     ],
     type: "Identifier",
     typeAnnotation: undefined,
+  },
+  range: [
+    0,
+    27,
+  ],
+  source: {
+    range: [
+      21,
+      26,
+    ],
+    raw: '"foo"',
+    type: "Literal",
+    value: "foo",
   },
   type: "ExportAllDeclaration",
 }
