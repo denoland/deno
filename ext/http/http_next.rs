@@ -741,7 +741,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
 }
 
 #[op2(async)]
-pub async fn op_http_request_on_cancel(external: *const c_void) {
+pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_request_on_cancel") };
@@ -750,7 +750,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) {
   http.on_cancel(tx);
   drop(http);
 
-  rx.await.ok();
+  rx.await.is_ok()
 }
 
 /// Returned promise resolves when body streaming finishes.
