@@ -28,7 +28,6 @@ const {
   addTrailers,
   serveHttpOnListener,
   serveHttpOnConnection,
-  getCachedAbortSignal,
   // @ts-expect-error TypeScript (as of 3.7) does not support indexing namespaces by symbol
 } = Deno[Deno.internal];
 
