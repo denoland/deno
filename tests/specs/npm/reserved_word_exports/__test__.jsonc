@@ -1,4 +1,4 @@
 {
-  "args": "run reserved_word_exports/main.ts",
-  "output": "reserved_word_exports/main.out"
+  "args": "run main.ts",
+  "output": "main.out"
 }
