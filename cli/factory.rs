@@ -80,6 +80,7 @@ use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
+use crate::node::CliCjsModuleExportAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
@@ -261,6 +262,7 @@ impl<T> Deferred<T> {
 struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
+  cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
   cjs_tracker: Deferred<Arc<CliCjsTracker>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
@@ -804,6 +806,28 @@ impl CliFactory {
     Ok(())
   }
 
+  pub async fn cjs_module_export_analyzer(
+    &self,
+  ) -> Result<&Arc<CliCjsModuleExportAnalyzer>, AnyError> {
+    self
+      .services
+      .cjs_module_export_analyzer
+      .get_or_try_init_async(async {
+        let node_resolver = self.node_resolver().await?.clone();
+        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
+
+        Ok(Arc::new(CliCjsModuleExportAnalyzer::new(
+          cjs_code_analyzer,
+          self.in_npm_pkg_checker()?.clone(),
+          node_resolver,
+          self.npm_resolver().await?.clone(),
+          self.pkg_json_resolver()?.clone(),
+          self.sys(),
+        )))
+      })
+      .await
+  }
+
   pub async fn node_code_translator(
     &self,
   ) -> Result<&Arc<CliNodeCodeTranslator>, AnyError> {
@@ -811,16 +835,9 @@ impl CliFactory {
       .services
       .node_code_translator
       .get_or_try_init_async(async {
-        let node_resolver = self.node_resolver().await?.clone();
-        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
-
+        let module_export_analyzer = self.cjs_module_export_analyzer().await?;
         Ok(Arc::new(NodeCodeTranslator::new(
-          cjs_code_analyzer,
-          self.in_npm_pkg_checker()?.clone(),
-          node_resolver,
-          self.npm_resolver().await?.clone(),
-          self.pkg_json_resolver()?.clone(),
-          self.sys(),
+          module_export_analyzer.clone(),
         )))
       })
       .await
@@ -1025,7 +1042,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
-      self.create_cjs_code_analyzer()?,
+      self.cjs_module_export_analyzer().await?,
       self.cjs_tracker()?,
       self.cli_options()?,
       self.deno_dir()?,

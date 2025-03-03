@@ -490,3 +490,6 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_unsync]
 opt-level = 3
+
+[patch.crates-io]
+deno_ast = { path = "../deno_ast" }
