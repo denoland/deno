@@ -782,7 +782,14 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    return readParent(this.ctx.buf, idx);
+    const parent = readParent(this.ctx.buf, idx);
+
+    const parentType = readType(this.ctx.buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      return readParent(this.ctx.buf, parent);
+    }
+
+    return parent;
   }
 
   /**

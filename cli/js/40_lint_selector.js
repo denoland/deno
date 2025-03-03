@@ -919,7 +919,7 @@ function matchDescendant(next) {
 function matchChild(next) {
   return (ctx, id) => {
     const parent = ctx.getParent(id);
-    if (parent < 0) return false;
+    if (parent === 0) return false;
 
     return next(ctx, parent);
   };

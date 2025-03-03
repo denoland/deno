@@ -155,6 +155,12 @@ Deno.test("Plugin - visitor child combinator", () => {
   assertEquals(result[0].node.name, "foo");
 
   result = testVisit(
+    "class Foo { foo = 2 }",
+    "ClassBody > PropertyDefinition",
+  );
+  assertEquals(result[0].node.type, "PropertyDefinition");
+
+  result = testVisit(
     "if (false) foo; foo()",
     "IfStatement IfStatement",
   );
