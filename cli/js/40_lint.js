@@ -961,7 +961,7 @@ class MatchCtx {
   }
 
   /**
-   * Used for `:has/:is/:where` and `:not`
+   * Used for `:has()` and `:not()`
    * @param {MatcherFn[]} selectors
    * @param {number} idx
    * @returns {boolean}

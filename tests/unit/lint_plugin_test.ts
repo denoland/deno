@@ -361,22 +361,10 @@ Deno.test("Plugin - visitor :nth-child", () => {
   assertEquals(result[1].node.name, "foobar");
 });
 
-Deno.test("Plugin - visitor :has/:is/:where", () => {
+Deno.test("Plugin - visitor :has()", () => {
   let result = testVisit(
     "{ foo, bar }",
     "BlockStatement:has(Identifier[name='bar'])",
-  );
-  assertEquals(result[0].node.type, "BlockStatement");
-
-  result = testVisit(
-    "{ foo, bar }",
-    "BlockStatement:is(Identifier[name='bar'])",
-  );
-  assertEquals(result[0].node.type, "BlockStatement");
-
-  result = testVisit(
-    "{ foo, bar }",
-    "BlockStatement:where(Identifier[name='bar'])",
   );
   assertEquals(result[0].node.type, "BlockStatement");
 
@@ -398,6 +386,29 @@ Deno.test("Plugin - visitor :has/:is/:where", () => {
   result = testVisit(
     "{ foo, bar }",
     "Identifier:has([name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+});
+
+Deno.test("Plugin - visitor :is()/:where()/:matches()", () => {
+  let result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :is(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :where(Identifier[name='bar'])",
+  );
+  assertEquals(result[0].node.type, "Identifier");
+  assertEquals(result[0].node.name, "bar");
+
+  result = testVisit(
+    "{ foo, bar }",
+    "BlockStatement :matches(Identifier[name='bar'])",
   );
   assertEquals(result[0].node.type, "Identifier");
   assertEquals(result[0].node.name, "bar");

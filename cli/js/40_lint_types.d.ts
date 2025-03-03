@@ -68,6 +68,10 @@ export interface PseudoHas {
   type: 6;
   selectors: Selector[];
 }
+export interface PseudoIs {
+  type: 11;
+  selectors: Selector[];
+}
 export interface PseudoNot {
   type: 7;
   selectors: Selector[];
@@ -93,6 +97,7 @@ export type Selector = Array<
   | PseudoNthChild
   | PseudoNot
   | PseudoHas
+  | PseudoIs
   | PseudoFirstChild
   | PseudoLastChild
 >;
