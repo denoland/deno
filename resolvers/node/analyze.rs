@@ -210,7 +210,7 @@ impl<
     ));
 
     for export in &all_exports {
-      if export.as_str() != "default" {
+      if !matches!(export.as_str(), "default" | "module.exports") {
         add_export(
           &mut source,
           export,
@@ -221,6 +221,7 @@ impl<
     }
 
     source.push("export default mod;".to_string());
+    add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
 
     let translated_source = source.join("\n");
     Ok(Cow::Owned(translated_source))
