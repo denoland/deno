@@ -61,13 +61,11 @@ pub async fn deno_upgrade_test_server(port: u16) {
       let Some(version) = version else {
         return not_found(format!("missing version in path: {path}"));
       };
-      let Some(file) = file else {
+      let Some(_file) = file else {
         return not_found(format!("missing version in path: {path}"));
       };
 
-      eprintln!("version {} file {}", version, file);
-      let binary_path = root_path().join("target/debug/deno");
-      eprintln!("binary path: {:?}", binary_path);
+      let binary_path = root_path().join("target/release/deno");
       let obj = std::fs::read(binary_path).unwrap();
 
       let mut zip_writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -77,9 +75,15 @@ pub async fn deno_upgrade_test_server(port: u16) {
         .unix_permissions(0o755);
       zip_writer.start_file("deno", options).unwrap();
 
+      let mut stage0 = Vec::new();
       libsui::Macho::from(obj)
         .unwrap()
         .write_section("denover", channel.to_owned().into_bytes())
+        .unwrap()
+        .build_and_sign(&mut stage0)
+        .unwrap();
+
+      libsui::Macho::from(stage0)
         .unwrap()
         .write_section("denoversion", version.to_owned().into_bytes())
         .unwrap()
