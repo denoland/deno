@@ -57,6 +57,7 @@ use super::analysis::CodeActionData;
 use super::analysis::TsResponseImportMapper;
 use super::cache::LspCache;
 use super::capabilities;
+use super::capabilities::semantic_tokens_registration_options;
 use super::client::Client;
 use super::code_lens;
 use super::completions;
@@ -209,6 +210,7 @@ pub struct Inner {
   project_version: usize,
   /// A collection of measurements which instrument that performance of the LSP.
   performance: Arc<Performance>,
+  registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
   /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
@@ -512,6 +514,7 @@ impl Inner {
       module_registry,
       npm_search_api,
       performance,
+      registered_semantic_tokens_capabilities: false,
       resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
@@ -721,6 +724,55 @@ impl Inner {
     let internal_debug = self.config.workspace_settings().internal_debug;
     super::logging::set_lsp_debug_flag(internal_debug)
   }
+
+  pub fn check_semantic_tokens_capabilities(&mut self) {
+    if self.registered_semantic_tokens_capabilities {
+      return;
+    }
+    if !self
+      .config
+      .client_capabilities
+      .text_document
+      .as_ref()
+      .and_then(|t| t.semantic_tokens.as_ref())
+      .and_then(|s| s.dynamic_registration)
+      .unwrap_or_default()
+    {
+      return;
+    }
+    let exists_enabled_document = self
+      .documents
+      .documents(DocumentsFilter::OpenDiagnosable)
+      .into_iter()
+      .any(|doc| {
+        doc.maybe_language_id().is_some_and(|l| {
+          matches!(
+            l,
+            LanguageId::JavaScript
+              | LanguageId::Jsx
+              | LanguageId::TypeScript
+              | LanguageId::Tsx
+          )
+        }) && self.config.specifier_enabled(doc.specifier())
+      });
+    if !exists_enabled_document {
+      return;
+    }
+    self.task_queue.queue_task(Box::new(|ls| {
+      spawn(async move {
+        let register_options =
+          serde_json::to_value(semantic_tokens_registration_options()).unwrap();
+        ls.client.when_outside_lsp_lock().register_capability(vec![Registration {
+          id: "textDocument/semanticTokens".to_string(),
+          method: "textDocument/semanticTokens".to_string(),
+          register_options: Some(register_options.clone()),
+        }]).await.inspect_err(|err| {
+          lsp_warn!("Couldn't register capability for \"textDocument/semanticTokens\": {err}");
+        }).ok();
+      });
+    }));
+    self.registered_semantic_tokens_capabilities = true;
+  }
 }
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
@@ -828,6 +880,10 @@ impl Inner {
         .get_supported_code_fixes(self.snapshot())
         .await?;
       self.ts_fixable_diagnostics = fixable_diagnostics;
+    }
+
+    if capabilities.semantic_tokens_provider.is_some() {
+      self.registered_semantic_tokens_capabilities = true;
     }
 
     self.performance.measure(mark);
@@ -1123,6 +1179,7 @@ impl Inner {
       file_referrer,
     );
     if document.is_diagnosable() {
+      self.check_semantic_tokens_capabilities();
       self.project_changed([(document.specifier(), ChangeKind::Opened)], false);
       self.refresh_dep_info().await;
       self.diagnostics_server.invalidate(&[specifier]);
@@ -1256,6 +1313,7 @@ impl Inner {
     };
     // TODO(nathanwhit): allow updating after startup, needs work to set thread local collector on tsc thread
     // self.update_tracing();
+    self.check_semantic_tokens_capabilities();
     self.update_debug_flag();
     self.update_global_cache().await;
     self.refresh_workspace_files();
@@ -4438,7 +4496,7 @@ impl Inner {
 "#,
         serde_json::to_string_pretty(&workspace_settings)
           .inspect_err(|e| {
-            dbg!(e);
+            lsp_warn!("{e}");
           })
           .unwrap(),
         documents_specifiers.len(),
