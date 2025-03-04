@@ -1,5 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+/// Ignore SIGPIPE signal.
+pub fn ignore_sigpipe() {
+  #[cfg(unix)]
+  unsafe {
+    libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+  }
+}
+
 /// Raise soft file descriptor limit to hard file descriptor limit.
 /// This is the difference between `ulimit -n` and `ulimit -n -H`.
 pub fn raise_fd_limit() {
