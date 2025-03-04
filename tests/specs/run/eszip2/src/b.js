@@ -1,6 +1,6 @@
-import d from "d";
+import { d } from "d";
 
 export function b() {
   d();
-  console.log("hello from b");
+  console.log("Hello from b");
 }

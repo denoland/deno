@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use deno_ast::MediaType;
 use deno_ast::ModuleKind;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context as _;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
@@ -25,6 +26,7 @@ use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
 use deno_core::resolve_url_or_path;
+use deno_core::serde_json;
 use deno_core::ModuleCodeString;
 use deno_core::ModuleLoader;
 use deno_core::ModuleSource;
@@ -288,7 +290,7 @@ struct SharedCliModuleLoaderState {
   resolver: Arc<CliResolver>,
   sys: CliSys,
   in_flight_loads_tracker: InFlightModuleLoadsTracker,
-  maybe_eszip_loader: Option<EszipModuleLoader>,
+  maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
 }
 
 struct InFlightModuleLoadsTracker {
@@ -351,7 +353,7 @@ impl CliModuleLoaderFactory {
     parsed_source_cache: Arc<ParsedSourceCache>,
     resolver: Arc<CliResolver>,
     sys: CliSys,
-    maybe_eszip_loader: Option<EszipModuleLoader>,
+    maybe_eszip_loader: Option<Arc<EszipModuleLoader>>,
   ) -> Self {
     Self {
       shared: Arc::new(SharedCliModuleLoaderState {
@@ -1340,7 +1342,7 @@ impl<TGraphContainer: ModuleGraphContainer> NodeRequireLoader
 
 #[derive(Debug, Default)]
 pub struct EszipModuleLoader {
-  pub files: HashMap<ModuleSpecifier, Arc<[u8]>>,
+  files: HashMap<ModuleSpecifier, Arc<[u8]>>,
 }
 
 impl EszipModuleLoader {
@@ -1389,6 +1391,16 @@ impl EszipModuleLoader {
     }
 
     Ok(loader)
+  }
+
+  pub fn load_import_map_value(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> Result<serde_json::Value, AnyError> {
+    match self.files.get(specifier) {
+      Some(bytes) => Ok(serde_json::from_slice(bytes.as_ref())?),
+      None => bail!("Import map not found in eszip: {}", specifier),
+    }
   }
 
   fn load(&self, specifier: &ModuleSpecifier) -> deno_core::ModuleLoadResponse {

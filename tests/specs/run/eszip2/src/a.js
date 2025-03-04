@@ -1,7 +1,7 @@
-import b from "b";
+import { b } from "b";
 
 console.log("Hello from a");
-console.log(b);
+b();
 
-const c = await import("c");
-console.lob(c);
+const { c } = await import("c");
+c();
