@@ -116,7 +116,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).boxed_local().await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
@@ -138,7 +138,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      tools::compile::compile(flags, compile_flags).await
+      if compile_flags.eszip {
+        tools::compile::compile_eszip(flags, compile_flags).boxed_local().await
+      } else {
+        tools::compile::compile(flags, compile_flags).await
+      }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
       tools::coverage::cover_files(flags, coverage_flags)
@@ -202,7 +206,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags.clone()).await
+        // these futures are boxed to prevent stack overflows on Windows
+        tools::run::run_from_stdin(flags.clone()).boxed_local().await
+      } else if flags.eszip {
+        tools::run::run_eszip(flags, run_flags).boxed_local().await
       } else {
         let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
         match result {
