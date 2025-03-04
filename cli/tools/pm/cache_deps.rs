@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
@@ -54,7 +55,12 @@ pub async fn cache_top_level_deps(
 
     let mut info_futures = FuturesUnordered::new();
 
-    let mut seen_reqs = std::collections::HashSet::new();
+    let mut seen_reqs = HashSet::new();
+
+    let workspace_npm_package_names = resolver
+      .package_jsons()
+      .filter_map(|pkg_json| pkg_json.name.as_deref())
+      .collect::<HashSet<_>>();
 
     for entry in import_map.imports().entries().chain(
       import_map
@@ -94,7 +100,16 @@ pub async fn cache_top_level_deps(
             });
           }
         }
-        "npm" => roots.push(specifier.clone()),
+        "npm" => {
+          if workspace_npm_package_names.contains(
+            specifier.as_str()[4..]
+              .trim_start_matches('/')
+              .trim_end_matches('/'),
+          ) {
+            continue;
+          }
+          roots.push(specifier.clone())
+        }
         _ => {
           if entry.key.ends_with('/') && specifier.as_str().ends_with('/') {
             continue;
