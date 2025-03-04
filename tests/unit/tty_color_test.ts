@@ -1,5 +1,5 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
-import { assertEquals } from "./test_util.ts";
+import { assert, assertEquals } from "./test_util.ts";
 
 // Note tests for Deno.stdin.setRaw is in integration tests.
 
@@ -51,5 +51,30 @@ Deno.test(
     }).output();
     const output = new TextDecoder().decode(stdout);
     assertEquals(output, "true\n");
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoColorDepth() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.colorDepth)"],
+    }).output();
+    const output = new TextDecoder().decode(stdout).trim();
+    assert([1, 4, 8, 24].includes(+output));
+  },
+);
+
+Deno.test(
+  { permissions: { run: true, read: true } },
+  async function denoColorDepthDisabled() {
+    const { stdout } = await new Deno.Command(Deno.execPath(), {
+      args: ["eval", "console.log(Deno.colorDepth)"],
+      env: {
+        NO_COLOR: "1",
+      },
+    }).output();
+    const output = new TextDecoder().decode(stdout).trim();
+    assert([1, 4, 8, 24].includes(+output));
   },
 );
