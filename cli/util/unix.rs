@@ -4,7 +4,7 @@
 pub fn ignore_sigpipe() {
   #[cfg(unix)]
   unsafe {
-    libc::signal(libc::SIGPIPE, libc::SIG_IGN);
+    libc::signal(libc::SIGPIPE, libc::SIG_DFL);
   }
 }
 
