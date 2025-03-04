@@ -2,6 +2,7 @@
 import { assert, assertEquals, assertThrows } from "./test_util.ts";
 
 Deno.test({ permissions: { read: true } }, function dirCwdNotNull() {
+  // deno-lint-ignore eqeqeq
   assert(Deno.cwd() != null);
 });
 

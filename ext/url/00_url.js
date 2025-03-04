@@ -128,7 +128,7 @@ class URLSearchParams {
       // Overload: USVString
       // If init is a string and starts with U+003F (?),
       // remove the first code point from init.
-      if (init[0] == "?") {
+      if (init[0] === "?") {
         init = StringPrototypeSlice(init, 1);
       }
       this[_list] = op_url_parse_search_params(init);
@@ -841,7 +841,7 @@ class URL {
 
   /** @return {URLSearchParams} */
   get searchParams() {
-    if (this.#queryObject == null) {
+    if (this.#queryObject === null) {
       this.#queryObject = new URLSearchParams(this.search);
       this.#queryObject[_urlObject] = this;
     }

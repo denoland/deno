@@ -68,7 +68,7 @@ function getCliVersion() {
     .join("../../cli/Cargo.toml")
     .readTextSync();
   const result = cargoTomlText.match(/^version\s*=\s*"([^"]+)"$/m);
-  if (result == null || result.length !== 2) {
+  if (result === null || result.length !== 2) {
     $.log("Cargo.toml");
     $.log("==========");
     $.log(cargoTomlText);

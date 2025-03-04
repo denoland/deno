@@ -431,7 +431,7 @@ class WebSocket extends EventTarget {
       const kind = await op_ws_next_event(rid);
       /* close the connection if read was cancelled, and we didn't get a close frame */
       if (
-        (this[_readyState] == CLOSING) &&
+        (this[_readyState] === CLOSING) &&
         kind <= 3 && this[_role] !== CLIENT
       ) {
         this[_readyState] = CLOSED;
@@ -462,7 +462,7 @@ class WebSocket extends EventTarget {
         case 1: {
           /* binary */
           const d = op_ws_get_buffer(rid);
-          if (d == undefined) {
+          if (d === undefined || d === null) {
             break;
           }
 
@@ -509,7 +509,7 @@ class WebSocket extends EventTarget {
         default: {
           /* close */
           const code = kind;
-          const reason = code == 1005 ? "" : op_ws_get_error(rid);
+          const reason = code === 1005 ? "" : op_ws_get_error(rid);
           const prevState = this[_readyState];
           this[_readyState] = CLOSED;
           clearTimeout(this[_idleTimeoutTimeout]);

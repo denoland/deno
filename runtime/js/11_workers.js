@@ -108,7 +108,7 @@ class Worker extends EventTarget {
       StringPrototypeStartsWith(specifier, "/") || workerType === "classic"
     ) {
       const baseUrl = getLocationHref();
-      if (baseUrl != null) {
+      if (baseUrl !== undefined) {
         specifier = new URL(specifier, baseUrl).href;
       }
     }
@@ -144,14 +144,14 @@ class Worker extends EventTarget {
       this.#refCount--;
     }
 
-    if (!ref && this.#refCount == 0) {
+    if (!ref && this.#refCount === 0) {
       if (this.#controlPromise) {
         core.unrefOpPromise(this.#controlPromise);
       }
       if (this.#messagePromise) {
         core.unrefOpPromise(this.#messagePromise);
       }
-    } else if (ref && this.#refCount == 1) {
+    } else if (ref && this.#refCount === 1) {
       if (this.#controlPromise) {
         core.refOpPromise(this.#controlPromise);
       }

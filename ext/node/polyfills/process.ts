@@ -299,7 +299,8 @@ export function dlopen(module, filename, _flags) {
   return module;
 }
 
-export function kill(pid: number, sig: string | number = "SIGTERM") {
+export function kill(pid: string | number, sig: string | number = "SIGTERM") {
+  // deno-lint-ignore eqeqeq
   if (pid != (pid | 0)) {
     throw new ERR_INVALID_ARG_TYPE("pid", "number", pid);
   }
@@ -612,7 +613,7 @@ Object.defineProperty(process, "exitCode", {
   },
   set(code: number | string | null | undefined) {
     let parsedCode: number;
-    if (code == null) {
+    if (code === undefined || code === null) {
       parsedCode = 0;
     } else if (typeof code === "number") {
       parsedCode = code;

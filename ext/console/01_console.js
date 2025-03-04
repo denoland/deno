@@ -2203,7 +2203,7 @@ export function stripVTControlCharacters(str) {
 }
 
 function hasOwnProperty(obj, v) {
-  if (obj == null) {
+  if (obj === undefined || obj === null) {
     return false;
   }
   return ObjectHasOwn(obj, v);
@@ -2659,7 +2659,7 @@ function parseCssColor(colorString) {
   }
   // deno-fmt-ignore
   const hashMatch = StringPrototypeMatch(colorString, HASH_PATTERN);
-  if (hashMatch != null) {
+  if (hashMatch !== null) {
     return [
       NumberParseInt(hashMatch[1], 16),
       NumberParseInt(hashMatch[2], 16),
@@ -2668,7 +2668,7 @@ function parseCssColor(colorString) {
   }
   // deno-fmt-ignore
   const smallHashMatch = StringPrototypeMatch(colorString, SMALL_HASH_PATTERN);
-  if (smallHashMatch != null) {
+  if (smallHashMatch !== null) {
     return [
       NumberParseInt(`${smallHashMatch[1]}${smallHashMatch[1]}`, 16),
       NumberParseInt(`${smallHashMatch[2]}${smallHashMatch[2]}`, 16),
@@ -2677,7 +2677,7 @@ function parseCssColor(colorString) {
   }
   // deno-fmt-ignore
   const rgbMatch = StringPrototypeMatch(colorString, RGB_PATTERN);
-  if (rgbMatch != null) {
+  if (rgbMatch !== null) {
     return [
       MathRound(MathMax(0, MathMin(255, rgbMatch[1]))),
       MathRound(MathMax(0, MathMin(255, rgbMatch[2]))),
@@ -2686,7 +2686,7 @@ function parseCssColor(colorString) {
   }
   // deno-fmt-ignore
   const hslMatch = StringPrototypeMatch(colorString, HSL_PATTERN);
-  if (hslMatch != null) {
+  if (hslMatch !== null) {
     // https://www.rapidtables.com/convert/color/hsl-to-rgb.html
     let h = Number(hslMatch[1]) % 360;
     if (h < 0) {
@@ -2745,16 +2745,16 @@ function parseCss(cssString) {
   let currentPart = "";
   for (let i = 0; i < cssString.length; i++) {
     const c = cssString[i];
-    if (c == "(") {
+    if (c === "(") {
       parenthesesDepth++;
     } else if (parenthesesDepth > 0) {
-      if (c == ")") {
+      if (c === ")") {
         parenthesesDepth--;
       }
     } else if (inValue) {
-      if (c == ";") {
+      if (c === ";") {
         const value = StringPrototypeTrim(currentPart);
-        if (value != "") {
+        if (value !== "") {
           ArrayPrototypePush(rawEntries, [currentKey, value]);
         }
         currentKey = null;
@@ -2762,7 +2762,7 @@ function parseCss(cssString) {
         inValue = false;
         continue;
       }
-    } else if (c == ":") {
+    } else if (c === ":") {
       currentKey = StringPrototypeTrim(currentPart);
       currentPart = "";
       inValue = true;
@@ -2770,9 +2770,9 @@ function parseCss(cssString) {
     }
     currentPart += c;
   }
-  if (inValue && parenthesesDepth == 0) {
+  if (inValue && parenthesesDepth === 0) {
     const value = StringPrototypeTrim(currentPart);
-    if (value != "") {
+    if (value !== "") {
       ArrayPrototypePush(rawEntries, [currentKey, value]);
     }
     currentKey = null;
@@ -2781,25 +2781,25 @@ function parseCss(cssString) {
 
   for (let i = 0; i < rawEntries.length; ++i) {
     const { 0: key, 1: value } = rawEntries[i];
-    if (key == "background-color") {
-      if (value != null) {
+    if (key === "background-color") {
+      if (value !== undefined && value !== null) {
         css.backgroundColor = value;
       }
-    } else if (key == "color") {
-      if (value != null) {
+    } else if (key === "color") {
+      if (value !== undefined && value !== null) {
         css.color = value;
       }
-    } else if (key == "font-weight") {
-      if (value == "bold") {
+    } else if (key === "font-weight") {
+      if (value === "bold") {
         css.fontWeight = value;
       }
-    } else if (key == "font-style") {
+    } else if (key === "font-style") {
       if (
         ArrayPrototypeIncludes(["italic", "oblique", "oblique 14deg"], value)
       ) {
         css.fontStyle = "italic";
       }
-    } else if (key == "text-decoration-line") {
+    } else if (key === "text-decoration-line") {
       css.textDecorationLine = [];
       const lineTypes = StringPrototypeSplit(value, SPACE_PATTERN);
       for (let i = 0; i < lineTypes.length; ++i) {
@@ -2813,19 +2813,19 @@ function parseCss(cssString) {
           ArrayPrototypePush(css.textDecorationLine, lineType);
         }
       }
-    } else if (key == "text-decoration-color") {
+    } else if (key === "text-decoration-color") {
       const color = parseCssColor(value);
-      if (color != null) {
+      if (color !== undefined && color !== null) {
         css.textDecorationColor = color;
       }
-    } else if (key == "text-decoration") {
+    } else if (key === "text-decoration") {
       css.textDecorationColor = null;
       css.textDecorationLine = [];
       const args = StringPrototypeSplit(value, SPACE_PATTERN);
       for (let i = 0; i < args.length; ++i) {
         const arg = args[i];
         const maybeColor = parseCssColor(arg);
-        if (maybeColor != null) {
+        if (maybeColor !== undefined && maybeColor !== null) {
           css.textDecorationColor = maybeColor;
         } else if (
           ArrayPrototypeIncludes(
@@ -2843,31 +2843,31 @@ function parseCss(cssString) {
 }
 
 function colorEquals(color1, color2) {
-  return color1?.[0] == color2?.[0] && color1?.[1] == color2?.[1] &&
-    color1?.[2] == color2?.[2];
+  return color1?.[0] === color2?.[0] && color1?.[1] === color2?.[1] &&
+    color1?.[2] === color2?.[2];
 }
 
 function cssToAnsi(css, prevCss = null) {
   prevCss = prevCss ?? getDefaultCss();
   let ansi = "";
   if (!colorEquals(css.backgroundColor, prevCss.backgroundColor)) {
-    if (css.backgroundColor == null) {
+    if (css.backgroundColor === undefined || css.backgroundColor === null) {
       ansi += "\x1b[49m";
-    } else if (css.backgroundColor == "black") {
+    } else if (css.backgroundColor === "black") {
       ansi += `\x1b[40m`;
-    } else if (css.backgroundColor == "red") {
+    } else if (css.backgroundColor === "red") {
       ansi += `\x1b[41m`;
-    } else if (css.backgroundColor == "green") {
+    } else if (css.backgroundColor === "green") {
       ansi += `\x1b[42m`;
-    } else if (css.backgroundColor == "yellow") {
+    } else if (css.backgroundColor === "yellow") {
       ansi += `\x1b[43m`;
-    } else if (css.backgroundColor == "blue") {
+    } else if (css.backgroundColor === "blue") {
       ansi += `\x1b[44m`;
-    } else if (css.backgroundColor == "magenta") {
+    } else if (css.backgroundColor === "magenta") {
       ansi += `\x1b[45m`;
-    } else if (css.backgroundColor == "cyan") {
+    } else if (css.backgroundColor === "cyan") {
       ansi += `\x1b[46m`;
-    } else if (css.backgroundColor == "white") {
+    } else if (css.backgroundColor === "white") {
       ansi += `\x1b[47m`;
     } else {
       if (ArrayIsArray(css.backgroundColor)) {
@@ -2885,23 +2885,23 @@ function cssToAnsi(css, prevCss = null) {
     }
   }
   if (!colorEquals(css.color, prevCss.color)) {
-    if (css.color == null) {
+    if (css.color === undefined || css.color === null) {
       ansi += "\x1b[39m";
-    } else if (css.color == "black") {
+    } else if (css.color === "black") {
       ansi += `\x1b[30m`;
-    } else if (css.color == "red") {
+    } else if (css.color === "red") {
       ansi += `\x1b[31m`;
-    } else if (css.color == "green") {
+    } else if (css.color === "green") {
       ansi += `\x1b[32m`;
-    } else if (css.color == "yellow") {
+    } else if (css.color === "yellow") {
       ansi += `\x1b[33m`;
-    } else if (css.color == "blue") {
+    } else if (css.color === "blue") {
       ansi += `\x1b[34m`;
-    } else if (css.color == "magenta") {
+    } else if (css.color === "magenta") {
       ansi += `\x1b[35m`;
-    } else if (css.color == "cyan") {
+    } else if (css.color === "cyan") {
       ansi += `\x1b[36m`;
-    } else if (css.color == "white") {
+    } else if (css.color === "white") {
       ansi += `\x1b[37m`;
     } else {
       if (ArrayIsArray(css.color)) {
@@ -2918,22 +2918,24 @@ function cssToAnsi(css, prevCss = null) {
       }
     }
   }
-  if (css.fontWeight != prevCss.fontWeight) {
-    if (css.fontWeight == "bold") {
+  if (css.fontWeight !== prevCss.fontWeight) {
+    if (css.fontWeight === "bold") {
       ansi += `\x1b[1m`;
     } else {
       ansi += "\x1b[22m";
     }
   }
-  if (css.fontStyle != prevCss.fontStyle) {
-    if (css.fontStyle == "italic") {
+  if (css.fontStyle !== prevCss.fontStyle) {
+    if (css.fontStyle === "italic") {
       ansi += `\x1b[3m`;
     } else {
       ansi += "\x1b[23m";
     }
   }
   if (!colorEquals(css.textDecorationColor, prevCss.textDecorationColor)) {
-    if (css.textDecorationColor != null) {
+    if (
+      css.textDecorationColor !== undefined && css.textDecorationColor !== null
+    ) {
       const { 0: r, 1: g, 2: b } = css.textDecorationColor;
       ansi += `\x1b[58;2;${r};${g};${b}m`;
     } else {
@@ -2941,7 +2943,7 @@ function cssToAnsi(css, prevCss = null) {
     }
   }
   if (
-    ArrayPrototypeIncludes(css.textDecorationLine, "line-through") !=
+    ArrayPrototypeIncludes(css.textDecorationLine, "line-through") !==
       ArrayPrototypeIncludes(prevCss.textDecorationLine, "line-through")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "line-through")) {
@@ -2951,7 +2953,7 @@ function cssToAnsi(css, prevCss = null) {
     }
   }
   if (
-    ArrayPrototypeIncludes(css.textDecorationLine, "overline") !=
+    ArrayPrototypeIncludes(css.textDecorationLine, "overline") !==
       ArrayPrototypeIncludes(prevCss.textDecorationLine, "overline")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "overline")) {
@@ -2961,7 +2963,7 @@ function cssToAnsi(css, prevCss = null) {
     }
   }
   if (
-    ArrayPrototypeIncludes(css.textDecorationLine, "underline") !=
+    ArrayPrototypeIncludes(css.textDecorationLine, "underline") !==
       ArrayPrototypeIncludes(prevCss.textDecorationLine, "underline")
   ) {
     if (ArrayPrototypeIncludes(css.textDecorationLine, "underline")) {
@@ -2994,7 +2996,7 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
   let a = 0;
   let string = "";
 
-  if (typeof first == "string" && args.length > 1) {
+  if (typeof first === "string" && args.length > 1) {
     a++;
     // Index of the first not-yet-appended character. Use this so we only
     // have to append to `string` when a substitution occurs / at the end.
@@ -3002,11 +3004,11 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
     let usedStyle = false;
     let prevCss = null;
     for (let i = 0; i < first.length - 1; i++) {
-      if (first[i] == "%") {
+      if (first[i] === "%") {
         const char = first[++i];
         if (a < args.length) {
           let formattedArg = null;
-          if (char == "s") {
+          if (char === "s") {
             // Format as a string.
             formattedArg = String(args[a++]);
           } else if (ArrayPrototypeIncludes(["d", "i"], char)) {
@@ -3017,7 +3019,7 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             } else {
               formattedArg = `${NumberParseInt(value)}`;
             }
-          } else if (char == "f") {
+          } else if (char === "f") {
             // Format as a floating point value.
             const value = args[a++];
             if (typeof value === "symbol") {
@@ -3028,12 +3030,12 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
           } else if (ArrayPrototypeIncludes(["O", "o"], char)) {
             // Format as an object.
             formattedArg = formatValue(ctx, args[a++], 0);
-          } else if (char == "c") {
+          } else if (char === "c") {
             const value = args[a++];
             if (!noColor) {
               const css = parseCss(value);
               formattedArg = cssToAnsi(css, prevCss);
-              if (formattedArg != "") {
+              if (formattedArg !== "") {
                 usedStyle = true;
                 prevCss = css;
               }
@@ -3042,13 +3044,13 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
             }
           }
 
-          if (formattedArg != null) {
+          if (formattedArg !== undefined && formattedArg !== null) {
             string += StringPrototypeSlice(first, appendedChars, i - 1) +
               formattedArg;
             appendedChars = i + 1;
           }
         }
-        if (char == "%") {
+        if (char === "%") {
           string += StringPrototypeSlice(first, appendedChars, i - 1) + "%";
           appendedChars = i + 1;
         }
@@ -3064,7 +3066,7 @@ function inspectArgs(args, inspectOptions = { __proto__: null }) {
     if (a > 0) {
       string += " ";
     }
-    if (typeof args[a] == "string") {
+    if (typeof args[a] === "string") {
       string += args[a];
     } else {
       // Use default maximum depth for null or undefined arguments.

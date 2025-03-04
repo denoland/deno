@@ -285,7 +285,7 @@ function handleMatrixItems(items: {
     // use a free "ubuntu" runner on jobs that are skipped
 
     // skip_pr is shorthand for skip = github.event_name == 'pull_request'.
-    if (item.skip_pr != null) {
+    if (item.skip_pr !== undefined) {
       if (item.skip_pr === true) {
         item.skip = "${{ github.event_name == 'pull_request' }}";
       } else if (typeof item.skip_pr === "string") {

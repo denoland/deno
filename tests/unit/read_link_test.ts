@@ -11,9 +11,9 @@ Deno.test(
   function readLinkSyncSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
-      (Deno.build.os == "windows" ? "\\target" : "/target");
+      (Deno.build.os === "windows" ? "\\target" : "/target");
     const symlink = testDir +
-      (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
+      (Deno.build.os === "windows" ? "\\symlink" : "/symlink");
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readLinkSync(symlink);
@@ -26,9 +26,9 @@ Deno.test(
   function readLinkSyncUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
-      (Deno.build.os == "windows" ? "\\target" : "/target");
+      (Deno.build.os === "windows" ? "\\target" : "/target");
     const symlink = testDir +
-      (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
+      (Deno.build.os === "windows" ? "\\symlink" : "/symlink");
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = Deno.readLinkSync(pathToAbsoluteFileUrl(symlink));
@@ -57,9 +57,9 @@ Deno.test(
   async function readLinkSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
-      (Deno.build.os == "windows" ? "\\target" : "/target");
+      (Deno.build.os === "windows" ? "\\target" : "/target");
     const symlink = testDir +
-      (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
+      (Deno.build.os === "windows" ? "\\symlink" : "/symlink");
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readLink(symlink);
@@ -72,9 +72,9 @@ Deno.test(
   async function readLinkUrlSuccess() {
     const testDir = Deno.makeTempDirSync();
     const target = testDir +
-      (Deno.build.os == "windows" ? "\\target" : "/target");
+      (Deno.build.os === "windows" ? "\\target" : "/target");
     const symlink = testDir +
-      (Deno.build.os == "windows" ? "\\symlink" : "/symlink");
+      (Deno.build.os === "windows" ? "\\symlink" : "/symlink");
     Deno.mkdirSync(target);
     Deno.symlinkSync(target, symlink);
     const targetPath = await Deno.readLink(pathToAbsoluteFileUrl(symlink));

@@ -17,7 +17,7 @@ function assertStatFs(
   assertEquals(typeof statFs.bavail, expectedType);
   assertEquals(typeof statFs.files, expectedType);
   assertEquals(typeof statFs.ffree, expectedType);
-  if (Deno.build.os == "windows") {
+  if (Deno.build.os === "windows") {
     assertEquals(statFs.type, bigint ? 0n : 0);
     assertEquals(statFs.files, bigint ? 0n : 0);
     assertEquals(statFs.ffree, bigint ? 0n : 0);

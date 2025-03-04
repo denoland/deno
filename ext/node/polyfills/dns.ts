@@ -210,22 +210,26 @@ export function lookup(
   } else {
     validateFunction(callback, "callback");
 
+    // deno-lint-ignore eqeqeq
     if (options?.hints != null) {
       validateNumber(options.hints, "options.hints");
       hints = options.hints >>> 0;
       validateHints(hints);
     }
 
+    // deno-lint-ignore eqeqeq
     if (options?.family != null) {
       validateOneOf(options.family, "options.family", validFamilies);
       family = options.family;
     }
 
+    // deno-lint-ignore eqeqeq
     if (options?.all != null) {
       validateBoolean(options.all, "options.all");
       all = options.all;
     }
 
+    // deno-lint-ignore eqeqeq
     if (options?.verbatim != null) {
       validateBoolean(options.verbatim, "options.verbatim");
       verbatim = options.verbatim;
