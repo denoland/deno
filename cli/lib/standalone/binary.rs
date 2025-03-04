@@ -9,7 +9,6 @@ use deno_runtime::deno_permissions::PermissionsOptions;
 use deno_runtime::deno_telemetry::OtelConfig;
 use deno_semver::Version;
 use indexmap::IndexMap;
-use node_resolver::analyze::CjsAnalysisExports;
 use serde::Deserialize;
 use serde::Serialize;
 use url::Url;
@@ -130,7 +129,8 @@ impl<'a> DenoRtDeserializable<'a> for SpecifierId {
 #[derive(Deserialize, Serialize)]
 pub enum CjsExportAnalysisEntry {
   Esm,
-  Cjs(CjsAnalysisExports),
+  Cjs(Vec<String>),
+  Error(String),
 }
 
 const HAS_TRANSPILED_FLAG: u8 = 1 << 0;
