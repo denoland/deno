@@ -3,6 +3,7 @@
   "exports": "./mod.ts",
   "version": "0.1.0",
   "imports": {
-    "@test/a": "npm:@test/a"
+    "@test/a": "npm:@test/a",
+    "foo": "npm:@test/a/foo"
   }
 }

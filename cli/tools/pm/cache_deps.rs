@@ -101,11 +101,12 @@ pub async fn cache_top_level_deps(
           }
         }
         "npm" => {
-          if workspace_npm_package_names.contains(
-            specifier.as_str()[4..]
-              .trim_start_matches('/')
-              .trim_end_matches('/'),
-          ) {
+          let Ok(req_ref) =
+            NpmPackageReqReference::from_str(specifier.as_str())
+          else {
+            continue;
+          };
+          if workspace_npm_package_names.contains(&*req_ref.req().name) {
             continue;
           }
           roots.push(specifier.clone())
