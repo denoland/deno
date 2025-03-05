@@ -1,9 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -20,6 +23,7 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
+use crate::graph_util::CliJsrUrlProvider;
 use crate::graph_util::CreateGraphOptions;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
@@ -46,7 +50,12 @@ pub async fn clean(
   clean_flags: CleanFlags,
 ) -> Result<(), AnyError> {
   if !clean_flags.entrypoints.is_empty() {
-    return clean_entrypoint(flags, &clean_flags.entrypoints).await;
+    return clean_entrypoint(
+      flags,
+      &clean_flags.entrypoints,
+      clean_flags.dry_run,
+    )
+    .await;
   }
 
   let factory = CliFactory::from_flags(flags);
@@ -87,33 +96,49 @@ pub async fn clean(
   Ok(())
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Node {
-  value: char,
+  id: usize,
+  value: OsString,
   children: Vec<usize>,
 }
+#[derive(Default, Debug)]
 struct Trie {
   nodes: Vec<Node>,
   roots: Vec<usize>,
 }
 
 impl Trie {
-  fn insert(&mut self, s: &str) {
-    let mut chars = s.chars().peekable();
-    let mut node = Node {
-      value: '\0',
-      children: vec![],
-    };
+  fn new() -> Self {
+    Self::default()
+  }
+  fn insert(&mut self, s: &Path) {
+    let mut components =
+      s.components().into_iter().map(|c| c.as_os_str()).peekable();
+    let mut node = None;
     for &root_idx in &self.roots {
       let root = &self.nodes[root_idx];
-      if chars.next_if_eq(&root.value).is_some() {
-        node = root.clone();
+      if components.next_if_eq(&root.value).is_some() {
+        node = Some(root.clone());
       }
     }
 
-    'outer: while let Some(ch) = chars.next() {
-      let children = std::mem::take(&mut node.children);
-      for child in children {
+    if node.is_none() {
+      let id = self.nodes.len();
+      self.nodes.push(Node {
+        id,
+        value: components.next().unwrap().to_os_string(),
+        children: vec![],
+      });
+      self.roots.push(id);
+      node = Some(self.nodes[id].clone());
+    }
+
+    let mut node = node.unwrap();
+
+    'outer: while let Some(ch) = components.next() {
+      let mut children = std::mem::take(&mut node.children);
+      for &child in &children {
         let child = &self.nodes[child];
         if child.value == ch {
           node = child.clone();
@@ -121,26 +146,70 @@ impl Trie {
         }
       }
 
-      while let Some(next) = chars.next() {
-          chars.rev()
+      let mut rest = components.rev();
+      let mut child = None;
+      while let Some(next) = rest.next() {
+        let id = self.nodes.len();
+        self.nodes.push(Node {
+          id,
+          value: next.to_os_string(),
+          children: child.map(|id| vec![id]).unwrap_or_default(),
+        });
+        child = Some(id);
       }
-      children.push(Node {
-        value: ch,
-        children: vec![],
-      })
+      let id = self.nodes.len();
+      self.nodes.push(Node {
+        id,
+        value: ch.to_os_string(),
+        children: child.map(|id| vec![id]).unwrap_or_default(),
+      });
+
+      // eprintln!("hi: {node:?}");
+
+      children.push(id);
+
+      node.children = children;
+      // eprintln!("hi: {node:?}");
+
+      let node_id = node.id;
+      self.nodes[node_id] = node;
+
+      break;
     }
+  }
+
+  fn is_prefix(&self, s: &Path) -> (bool, bool) {
+    let chars = s.components();
+
+    let mut search = &self.roots;
+
+    'outer: for c in chars {
+      for &id in search {
+        let node = &self.nodes[id];
+        if node.value == c.as_os_str() {
+          search = &node.children;
+          continue 'outer;
+        }
+      }
+      return (false, false);
+    }
+
+    (true, search.is_empty())
   }
 }
 
 async fn clean_entrypoint(
   flags: Arc<Flags>,
   entrypoints: &[String],
+  dry_run: bool,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
   let roots = main_graph_container.collect_specifiers(entrypoints)?;
   let http_cache = factory.global_http_cache()?;
+  let deno_dir = factory.deno_dir()?;
+
   let mut permit = main_graph_container.acquire_update_permit().await;
   let graph = permit.graph_mut();
   graph.packages = PackageSpecifiers::default();
@@ -164,7 +233,10 @@ async fn clean_entrypoint(
 
   let mut keep = HashSet::new();
   let mut keep_paths = HashSet::new();
-  let mut keep_dirs = HashSet::new();
+  // let mut keep_dirs = HashSet::new();
+  let mut npm_reqs = Vec::new();
+
+  let mut keep_paths_trie = Trie::new();
 
   for (specifier, entry) in graph.walk(
     roots.iter(),
@@ -178,10 +250,7 @@ async fn clean_entrypoint(
     match entry {
       deno_graph::ModuleEntryRef::Module(module) => match module {
         deno_graph::Module::Js(js_module) => {
-          keep_dirs.insert(&js_module.specifier);
-          for (_, m) in js_module.dependencies.iter() {
-            if let Some(code) = m.get_code() {}
-          }
+          keep.insert(&js_module.specifier);
         }
         deno_graph::Module::Json(json_module) => {
           keep.insert(&json_module.specifier);
@@ -191,12 +260,15 @@ async fn clean_entrypoint(
         }
         deno_graph::Module::Npm(npm_module) => {
           if let Some(managed) = npm_resolver.as_managed() {
-            if let Some(package_folder) = managed
-              .resolve_pkg_folder_from_deno_module(npm_module.nv_reference.nv())
-              .ok()
-            {
-              keep_paths.insert(package_folder);
-            }
+            let id = managed
+              .resolution()
+              .resolve_pkg_id_from_deno_module(npm_module.nv_reference.nv())
+              .unwrap();
+            npm_reqs
+              .extend(managed.resolution().resolve_pkg_reqs_from_pkg_id(&id));
+            // graph.segment(roots)
+            // managed.resolution().
+            // npm_module.
           }
 
           eprintln!(
@@ -204,19 +276,20 @@ async fn clean_entrypoint(
             npm_module.nv_reference, npm_module.specifier
           );
         }
-        deno_graph::Module::Node(built_in_node_module) => {}
-        deno_graph::Module::External(external_module) => {}
+        deno_graph::Module::Node(_) => {}
+        deno_graph::Module::External(_) => {}
       },
       deno_graph::ModuleEntryRef::Err(module_error) => {
         eprintln!("error: {module_error}");
       }
-      deno_graph::ModuleEntryRef::Redirect(url) => {}
+      deno_graph::ModuleEntryRef::Redirect(_) => {}
     }
   }
 
   for url in keep {
     if url.scheme() == "http" || url.scheme() == "https" {
       if let Ok(path) = http_cache.local_path_for_url(url) {
+        keep_paths_trie.insert(&path);
         keep_paths.insert(path);
       } else {
         eprintln!("very bad not good: {url}");
@@ -224,14 +297,192 @@ async fn clean_entrypoint(
     } else {
       eprintln!("bad bad not good: {url}");
     }
+    if let Some(path) = deno_dir
+      .gen_cache
+      .get_cache_filename_with_extension(url, "js")
+    {
+      let path = deno_dir.gen_cache.location.join(path);
+      eprintln!("pafff: {}", path.display());
+      keep_paths_trie.insert(&path);
+    }
   }
-  dbg!(keep_paths);
-  let deno_dir = factory.deno_dir()?;
-  eprintln!("deno_dir: {}", deno_dir.root.display());
+  dbg!(&keep_paths);
+
+  let npm_cache = factory.npm_cache()?;
+  let snap = npm_resolver.as_managed().unwrap().resolution().snapshot();
+  for package in snap.all_system_packages(&options.npm_system_info()) {
+    keep_paths_trie.insert(
+      &npm_cache
+        .package_name_folder(&package.id.nv.name)
+        .join("registry.json"),
+    );
+  }
+  let snap = snap.subset(&npm_reqs);
   let node_modules_path = npm_resolver.root_node_modules_path();
-  for entry in walkdir::WalkDir::new(&deno_dir.root).contents_first(false) {
+  let mut node_modules_keep = HashSet::new();
+  let npmrc = factory.npmrc()?;
+  for package in snap.all_system_packages(&options.npm_system_info()) {
+    if node_modules_path.is_some() {
+      eprintln!("{}: {}", package.id, package.get_package_cache_folder_id());
+      node_modules_keep.insert(package.get_package_cache_folder_id());
+    }
+    eprintln!("keepy keepy: {}", package.id);
+    keep_paths_trie.insert(&npm_cache.package_folder_for_id(
+      &deno_npm::NpmPackageCacheFolderId {
+        nv: package.id.nv.clone(),
+        copy_index: package.copy_index,
+      },
+    ));
+
+    // npm_packages_keep.insert(package.)
+  }
+  keep_paths.insert(deno_dir.root.clone());
+  eprintln!("deno_dir: {}", deno_dir.root.display());
+  eprintln!("trrr: {:?}", keep_paths_trie);
+  // deno_dir.
+
+  let jsr_url = crate::args::jsr_url();
+
+  for package in graph.packages.mappings().values() {
+    let Ok(base_url) =
+      (if let Some((scope, name)) = package.name.split_once('/') {
+        jsr_url
+          .join(&format!("{}/", scope))
+          .and_then(|u| u.join(&format!("{}/", name)))
+      } else {
+        jsr_url.join(&format!("{}/", &package.name))
+      })
+    else {
+      eprintln!("hmmm: {package}");
+      continue;
+    };
+    let keep =
+      http_cache.local_path_for_url(&base_url.join("meta.json").unwrap())?;
+    keep_paths_trie.insert(&keep);
+    eprintln!(
+      "keepy {} => {}",
+      base_url.join("meta.json").unwrap(),
+      keep.display()
+    );
+    let keep = http_cache.local_path_for_url(
+      &base_url
+        .join(&format!("{}_meta.json", package.version))
+        .unwrap(),
+    )?;
+    eprintln!(
+      "keepy {} => {}",
+      base_url
+        .join(&format!("{}_meta.json", package.version))
+        .unwrap(),
+      keep.display()
+    );
+    keep_paths_trie.insert(&keep);
+  }
+  let mut walker = walkdir::WalkDir::new(&deno_dir.root)
+    .contents_first(false)
+    .min_depth(2)
+    .into_iter();
+  while let Some(entry) = walker.next() {
     let entry = entry?;
-    if entry.file_type().is_dir() {}
+    // eprintln!("rm -rf {}", entry.path().display());
+    let (is_prefix, is_match) = keep_paths_trie.is_prefix(entry.path());
+    if is_prefix {
+      if entry.file_type().is_dir() && is_match {
+        walker.skip_current_dir();
+        continue;
+      }
+      continue;
+    }
+    if !entry.path().starts_with(&deno_dir.root) {
+      panic!("VERY BAD");
+      continue;
+    }
+    if entry.file_type().is_dir() {
+      if dry_run {
+        eprintln!("removey dir: {}", entry.path().display());
+      } else {
+        eprintln!("removey dir: {}", entry.path().display());
+        std::fs::remove_dir_all(entry.path())?;
+      }
+      walker.skip_current_dir();
+    } else {
+      if dry_run {
+        eprintln!("removey file: {}", entry.path().display());
+      } else {
+        eprintln!("removey file: {}", entry.path().display());
+        std::fs::remove_file(entry.path())?;
+      }
+    }
+  }
+
+  if let Some(dir) = node_modules_path {
+    clean_node_modules(&node_modules_keep, dir, dry_run)?;
+  }
+
+  Ok(())
+}
+
+fn clean_node_modules(
+  keep_pkgs: &HashSet<deno_npm::NpmPackageCacheFolderId>,
+  dir: &Path,
+  dry_run: bool,
+) -> Result<(), AnyError> {
+  if !dir.ends_with("node_modules") || !dir.is_dir() {
+    bail!("not a node_modules directory");
+  }
+  if !dir.join(".deno").exists() {
+    return Ok(());
+  }
+
+  let base = dir.join(".deno");
+  let entries = std::fs::read_dir(base)?;
+
+  let keep_names = keep_pkgs
+    .iter()
+    .map(|id| deno_resolver::npm::get_package_folder_id_folder_name(id))
+    .collect::<HashSet<_>>();
+
+  eprintln!("keep_names: {keep_names:?}");
+  for entry in entries {
+    let entry = entry?;
+    if !entry.file_type()?.is_dir() {
+      continue;
+    }
+    if keep_names.contains(entry.file_name().to_string_lossy().as_ref()) {
+      continue;
+    } else {
+      if dry_run {
+        eprintln!("removing from node modules: {}", entry.path().display());
+      } else {
+        std::fs::remove_dir_all(entry.path())?;
+      }
+    }
+  }
+
+  let top_level = std::fs::read_dir(dir)?;
+  for entry in top_level {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+
+    if ty.is_symlink() {
+      let target = std::fs::read_link(entry.path());
+      let remove = if let Ok(target) = target {
+        let path = dir.join(target);
+        !path.exists()
+      } else {
+        true
+      };
+      if remove {
+        if dry_run {
+          eprintln!(
+            "removing top level symlink from node modules: {}",
+            entry.path().display()
+          );
+        } else {
+          std::fs::remove_file(entry.path())?;
+        }
+      }
+    }
   }
 
   Ok(())

@@ -440,6 +440,7 @@ pub struct HelpFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanFlags {
   pub entrypoints: Vec<String>,
+  pub dry_run: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1844,6 +1845,13 @@ fn clean_subcommand() -> Command {
           .short('e')
           .action(ArgAction::SetTrue),
       )
+      .arg(
+        Arg::new("dry_run")
+          .long("dry-run")
+          .action(ArgAction::SetTrue)
+          .requires("entrypoint"),
+      )
+      .arg(node_modules_dir_arg().requires("entrypoint"))
   })
 }
 
@@ -4607,6 +4615,7 @@ fn check_parse(
 fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
   let mut clean_flags = CleanFlags {
     entrypoints: Vec::new(),
+    dry_run: false,
   };
   if matches.get_flag("entrypoint") {
     clean_flags.entrypoints = matches
@@ -4614,6 +4623,8 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .unwrap()
       .collect::<Vec<_>>();
     flags.cached_only = true;
+    clean_flags.dry_run = matches.get_flag("dry_run");
+    node_modules_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
