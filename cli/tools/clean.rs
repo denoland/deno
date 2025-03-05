@@ -228,17 +228,14 @@ async fn clean_entrypoint(
     )
     .await?;
 
-  let node_resolver = factory.node_resolver().await?;
   let npm_resolver = factory.npm_resolver().await?;
 
   let mut keep = HashSet::new();
-  let mut keep_paths = HashSet::new();
-  // let mut keep_dirs = HashSet::new();
   let mut npm_reqs = Vec::new();
 
   let mut keep_paths_trie = Trie::new();
 
-  for (specifier, entry) in graph.walk(
+  for (_, entry) in graph.walk(
     roots.iter(),
     deno_graph::WalkOptions {
       check_js: deno_graph::CheckJsOption::False,
@@ -266,22 +263,12 @@ async fn clean_entrypoint(
               .unwrap();
             npm_reqs
               .extend(managed.resolution().resolve_pkg_reqs_from_pkg_id(&id));
-            // graph.segment(roots)
-            // managed.resolution().
-            // npm_module.
           }
-
-          eprintln!(
-            "npm specifier: {} {}",
-            npm_module.nv_reference, npm_module.specifier
-          );
         }
         deno_graph::Module::Node(_) => {}
         deno_graph::Module::External(_) => {}
       },
-      deno_graph::ModuleEntryRef::Err(module_error) => {
-        eprintln!("error: {module_error}");
-      }
+      deno_graph::ModuleEntryRef::Err(_) => {}
       deno_graph::ModuleEntryRef::Redirect(_) => {}
     }
   }
@@ -290,23 +277,16 @@ async fn clean_entrypoint(
     if url.scheme() == "http" || url.scheme() == "https" {
       if let Ok(path) = http_cache.local_path_for_url(url) {
         keep_paths_trie.insert(&path);
-        keep_paths.insert(path);
-      } else {
-        eprintln!("very bad not good: {url}");
       }
-    } else {
-      eprintln!("bad bad not good: {url}");
     }
     if let Some(path) = deno_dir
       .gen_cache
       .get_cache_filename_with_extension(url, "js")
     {
       let path = deno_dir.gen_cache.location.join(path);
-      eprintln!("pafff: {}", path.display());
       keep_paths_trie.insert(&path);
     }
   }
-  dbg!(&keep_paths);
 
   let npm_cache = factory.npm_cache()?;
   let snap = npm_resolver.as_managed().unwrap().resolution().snapshot();
@@ -320,26 +300,17 @@ async fn clean_entrypoint(
   let snap = snap.subset(&npm_reqs);
   let node_modules_path = npm_resolver.root_node_modules_path();
   let mut node_modules_keep = HashSet::new();
-  let npmrc = factory.npmrc()?;
   for package in snap.all_system_packages(&options.npm_system_info()) {
     if node_modules_path.is_some() {
-      eprintln!("{}: {}", package.id, package.get_package_cache_folder_id());
       node_modules_keep.insert(package.get_package_cache_folder_id());
     }
-    eprintln!("keepy keepy: {}", package.id);
     keep_paths_trie.insert(&npm_cache.package_folder_for_id(
       &deno_npm::NpmPackageCacheFolderId {
         nv: package.id.nv.clone(),
         copy_index: package.copy_index,
       },
     ));
-
-    // npm_packages_keep.insert(package.)
   }
-  keep_paths.insert(deno_dir.root.clone());
-  eprintln!("deno_dir: {}", deno_dir.root.display());
-  eprintln!("trrr: {:?}", keep_paths_trie);
-  // deno_dir.
 
   let jsr_url = crate::args::jsr_url();
 
@@ -353,29 +324,16 @@ async fn clean_entrypoint(
         jsr_url.join(&format!("{}/", &package.name))
       })
     else {
-      eprintln!("hmmm: {package}");
       continue;
     };
     let keep =
       http_cache.local_path_for_url(&base_url.join("meta.json").unwrap())?;
     keep_paths_trie.insert(&keep);
-    eprintln!(
-      "keepy {} => {}",
-      base_url.join("meta.json").unwrap(),
-      keep.display()
-    );
     let keep = http_cache.local_path_for_url(
       &base_url
         .join(&format!("{}_meta.json", package.version))
         .unwrap(),
     )?;
-    eprintln!(
-      "keepy {} => {}",
-      base_url
-        .join(&format!("{}_meta.json", package.version))
-        .unwrap(),
-      keep.display()
-    );
     keep_paths_trie.insert(&keep);
   }
   let mut walker = walkdir::WalkDir::new(&deno_dir.root)
@@ -384,7 +342,6 @@ async fn clean_entrypoint(
     .into_iter();
   while let Some(entry) = walker.next() {
     let entry = entry?;
-    // eprintln!("rm -rf {}", entry.path().display());
     let (is_prefix, is_match) = keep_paths_trie.is_prefix(entry.path());
     if is_prefix {
       if entry.file_type().is_dir() && is_match {
@@ -395,21 +352,18 @@ async fn clean_entrypoint(
     }
     if !entry.path().starts_with(&deno_dir.root) {
       panic!("VERY BAD");
-      continue;
     }
     if entry.file_type().is_dir() {
       if dry_run {
-        eprintln!("removey dir: {}", entry.path().display());
+        eprintln!("would remove dir: {}", entry.path().display());
       } else {
-        eprintln!("removey dir: {}", entry.path().display());
         std::fs::remove_dir_all(entry.path())?;
       }
       walker.skip_current_dir();
     } else {
       if dry_run {
-        eprintln!("removey file: {}", entry.path().display());
+        eprintln!("would remove file: {}", entry.path().display());
       } else {
-        eprintln!("removey file: {}", entry.path().display());
         std::fs::remove_file(entry.path())?;
       }
     }
@@ -486,21 +440,6 @@ fn clean_node_modules(
   }
 
   Ok(())
-}
-
-struct NoLoader;
-
-impl Loader for NoLoader {
-  fn load(
-    &self,
-    _specifier: &deno_ast::ModuleSpecifier,
-    _options: deno_graph::source::LoadOptions,
-  ) -> deno_graph::source::LoadFuture {
-    std::future::ready(Err(LoadError::Other(Arc::new(
-      JsErrorBox::not_supported(),
-    ))))
-    .boxed_local()
-  }
 }
 
 fn rm_rf(state: &mut CleanState, path: &Path) -> Result<(), AnyError> {
