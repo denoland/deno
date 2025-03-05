@@ -243,15 +243,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::File(_) => {
-          return Err(
-            JsErrorBox::from_err(
-              DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
-                .into_box(),
-            )
-            .into(),
-          );
-        }
+        PackageJsonDepValue::File(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+              .into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared

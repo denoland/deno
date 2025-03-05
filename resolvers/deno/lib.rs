@@ -313,10 +313,10 @@ impl<
                 // much work to get this to work with a lockfile properly and for
                 // multiple managed node_modules directories to work. If someone wants
                 // to do this, then they need to use the default (manual)
-                return Err(
+                Err(
                   DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
                     .into_box(),
-                );
+                )
               }
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
