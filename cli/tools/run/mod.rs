@@ -244,8 +244,6 @@ pub async fn run_eszip(
     .split_once("#")
     .with_context(|| "eszip: invalid script string")?;
 
-  // println!("running eszip: entrypoint={} files={}", entrypoint, files);
-
   let mode = WorkerExecutionMode::Run;
   let main_module = resolve_url_or_path(entrypoint, cli_options.initial_cwd())?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
