@@ -173,12 +173,12 @@ class InnerRequest {
       if (success) {
         this.#completed.resolve(undefined);
       } else {
+        abortRequest(this.request);
         this.#completed.reject(
           new Interrupted("HTTP response was not sent successfully"),
         );
       }
     }
-    abortRequest(this.request);
     this.#external = null;
   }
 
@@ -408,11 +408,13 @@ class InnerRequest {
 
   onCancel(callback) {
     if (this.#external === null) {
-      callback();
       return;
     }
 
-    PromisePrototypeThen(op_http_request_on_cancel(this.#external), callback);
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      (r) => r && callback(),
+    );
   }
 }
 
