@@ -1081,7 +1081,11 @@ pub fn open_options_with_access_check(
   if let Some(access_check) = access_check {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
-      && path_bytes.starts_with(br"\\.\")
+      && (path_bytes.starts_with(br"\\.\")
+        || path_bytes.starts_with(b"//./")
+        || path_bytes.starts_with(b"//?/")
+        || path_bytes.starts_with(br"\\?\")
+        || path_bytes.ends_with(b"$"))
       && !path_bytes.contains(&b':');
     let path = if is_windows_device_path {
       // On Windows, normalize_path doesn't work with device-prefix-style
