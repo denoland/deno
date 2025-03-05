@@ -60,6 +60,7 @@ use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_resolver::DenoResolveErrorKind;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -237,30 +238,19 @@ impl ModuleLoader for EmbeddedModuleLoader {
         dep_result,
         sub_path,
         alias,
-        pkg_json,
         ..
       }) => match dep_result
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::File(specifier) => {
-          let pkg_folder = pkg_json.dir_path().join(specifier);
-          Ok(
-            self
-              .shared
-              .node_resolver
-              .resolve_package_subpath_from_deno_module(
-                &pkg_folder,
-                sub_path.as_deref(),
-                Some(&referrer),
-                referrer_kind,
-                NodeResolutionKind::Execution,
-              )
-              .map_err(JsErrorBox::from_err)
-              .and_then(|url_or_path| {
-                url_or_path.into_url().map_err(JsErrorBox::from_err)
-              })?,
-          )
+        PackageJsonDepValue::File(_) => {
+          return Err(
+            JsErrorBox::from_err(
+              DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                .into_box(),
+            )
+            .into(),
+          );
         }
         PackageJsonDepValue::Req(req) => Ok(
           self

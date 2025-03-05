@@ -631,10 +631,10 @@ async fn sync_resolution_with_fs(
       let Some(pkg_alias) = &pkg.alias else {
         continue;
       };
-      let from = root_node_modules_dir_path.join(pkg_alias);
-      let from = crate::util::path::relative_path(&from, &pkg.target_dir)
-        .unwrap_or(from);
-      symlink_package_dir(&pkg.target_dir, &from)?;
+      symlink_package_dir(
+        &pkg.target_dir,
+        &root_node_modules_dir_path.join(pkg_alias),
+      )?;
     }
   }
 

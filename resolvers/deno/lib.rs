@@ -68,6 +68,9 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
+  #[class(type)]
+  #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
+  UnsupportedPackageJsonFileSpecifier,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -292,7 +295,6 @@ impl<
           dep_result,
           alias,
           sub_path,
-          pkg_json,
           ..
         } => {
           // found a specifier in the package.json, so mark that
@@ -306,22 +308,15 @@ impl<
                 .into_box()
             })
             .and_then(|dep| match dep {
-              PackageJsonDepValue::File(specifier) => {
-                let package_dir = pkg_json.dir_path().join(specifier);
-                self
-                  .node_and_npm_resolver
-                  .as_ref()
-                  .unwrap()
-                  .node_resolver
-                  .resolve_package_subpath_from_deno_module(
-                    &package_dir,
-                    sub_path.as_deref(),
-                    Some(referrer),
-                    resolution_mode,
-                    resolution_kind,
-                  )
-                  .map_err(DenoResolveError::from)
-                  .and_then(|r| Ok(r.into_url()?))
+              PackageJsonDepValue::File(_) => {
+                // We don't support --node-modules-dir=auto/none because it's too
+                // much work to get this to work with a lockfile properly and for
+                // multiple managed node_modules directories to work. If someone wants
+                // to do this, then they need to use the default (manual)
+                return Err(
+                  DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                    .into_box(),
+                );
               }
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.

@@ -23,6 +23,7 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
+use deno_resolver::DenoResolveErrorKind;
 use deno_semver::npm::NpmPackageNvReference;
 use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageNv;
@@ -89,22 +90,14 @@ pub async fn info(
           alias,
           sub_path,
           dep_result,
-          pkg_json,
           ..
         } => match dep_result.as_ref().map_err(|e| e.clone())? {
-          deno_package_json::PackageJsonDepValue::File(specifier) => {
-            let package_dir = pkg_json.dir_path().join(specifier);
-            Some(
-              node_resolver
-                .resolve_package_subpath_from_deno_module(
-                  &package_dir,
-                  sub_path.as_deref(),
-                  Some(&cwd_url),
-                  node_resolver::ResolutionMode::Import,
-                  node_resolver::NodeResolutionKind::Execution,
-                )?
-                .into_url()?,
-            )
+          deno_package_json::PackageJsonDepValue::File(_) => {
+            return Err(
+              DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                .into_box()
+                .into(),
+            );
           }
           deno_package_json::PackageJsonDepValue::Workspace(version_req) => {
             let pkg_folder = resolver
