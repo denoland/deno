@@ -3017,12 +3017,15 @@ impl Inner {
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
 
+    let user_preferences =
+      tsc::UserPreferences::from_config_for_specifier(&self.config, &specifier);
     let maybe_locations = self
       .ts_server
       .find_rename_locations(
         self.snapshot(),
         specifier,
         line_index.offset_tsc(params.text_document_position.position)?,
+        user_preferences,
         token,
       )
       .await

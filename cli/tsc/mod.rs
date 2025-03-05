@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -656,22 +657,28 @@ fn op_load_inner(
     npm_state: Option<&RequestNpmState>,
     media_type: &mut MediaType,
     is_cjs: &mut bool,
-  ) -> Result<FastString, LoadError> {
+  ) -> Result<Option<FastString>, LoadError> {
     *media_type = MediaType::from_specifier(specifier);
     let file_path = specifier.to_file_path().unwrap();
-    let code = std::fs::read_to_string(&file_path).map_err(|err| {
-      LoadError::LoadFromNodeModule {
-        path: file_path.display().to_string(),
-        error: err,
+    let code = match std::fs::read_to_string(&file_path) {
+      Ok(code) => code,
+      Err(err) if err.kind() == ErrorKind::NotFound => {
+        return Ok(None);
       }
-    })?;
+      Err(err) => {
+        return Err(LoadError::LoadFromNodeModule {
+          path: file_path.display().to_string(),
+          error: err,
+        })
+      }
+    };
     let code: Arc<str> = code.into();
     *is_cjs = npm_state
       .map(|npm_state| {
         npm_state.cjs_tracker.is_cjs(specifier, *media_type, &code)
       })
       .unwrap_or(false);
-    Ok(code.into())
+    Ok(Some(code.into()))
   }
 
   let state = state.borrow_mut::<State>();
@@ -755,12 +762,12 @@ fn op_load_inner(
               &CliSys::default(),
               &module.specifier,
             );
-            Some(load_from_node_modules(
+            load_from_node_modules(
               &specifier,
               state.maybe_npm.as_ref(),
               &mut media_type,
               &mut is_cjs,
-            )?)
+            )?
           }
         }
       }
@@ -769,12 +776,12 @@ fn op_load_inner(
       .as_ref()
       .filter(|npm| npm.node_resolver.in_npm_package(specifier))
     {
-      Some(load_from_node_modules(
+      load_from_node_modules(
         specifier,
         Some(npm),
         &mut media_type,
         &mut is_cjs,
-      )?)
+      )?
     } else {
       None
     };
