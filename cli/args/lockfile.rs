@@ -136,6 +136,10 @@ impl CliLockfile {
         .chain(deps.dev_dependencies.values())
         .filter_map(|dep| dep.as_ref().ok())
         .filter_map(|dep| match dep {
+          PackageJsonDepValue::File(_) => {
+            // ignored because this will have its own separate lockfile
+            None
+          }
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }

@@ -49,6 +49,12 @@ pub enum SpecifierUnfurlerDiagnostic {
     range: SourceRange,
     reason: String,
   },
+  UnsupportedPkgJsonFileSpecifier {
+    specifier: ModuleSpecifier,
+    text_info: SourceTextInfo,
+    range: SourceRange,
+    package_name: String,
+  },
 }
 
 impl Diagnostic for SpecifierUnfurlerDiagnostic {
@@ -60,6 +66,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         DiagnosticLevel::Error
       }
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        ..
+      } => DiagnosticLevel::Error,
     }
   }
 
@@ -67,6 +76,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
     match self {
       Self::UnanalyzableDynamicImport { .. } => "unanalyzable-dynamic-import",
       Self::ResolvingNpmWorkspacePackage { .. } => "npm-workspace-package",
+      Self::UnsupportedPkgJsonFileSpecifier { .. } => {
+        "unsupported-file-specifier"
+      }
     }
     .into()
   }
@@ -85,6 +97,11 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         package_name, reason
       )
       .into(),
+      Self::UnsupportedPkgJsonFileSpecifier { package_name, .. } => format!(
+        "unsupported package.json file specifier for '{}'",
+        package_name
+      )
+      .into(),
     }
   }
 
@@ -100,6 +117,16 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
         source_pos: DiagnosticSourcePos::SourcePos(range.start),
       },
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
+        specifier,
+        text_info,
+        range,
+        ..
+      } => DiagnosticLocation::ModulePosition {
+        specifier: Cow::Borrowed(specifier),
+        text_info: Cow::Borrowed(text_info),
+        source_pos: DiagnosticSourcePos::SourcePos(range.start),
+      },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
         specifier,
         text_info,
         range,
@@ -144,6 +171,21 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
           description: Some("the unresolved import".into()),
         }],
       }),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+        text_info,
+        range,
+        ..
+      } => Some(DiagnosticSnippet {
+        source: Cow::Borrowed(text_info),
+        highlights: vec![DiagnosticSnippetHighlight {
+          style: DiagnosticSnippetHighlightStyle::Warning,
+          range: DiagnosticSourceRange {
+            start: DiagnosticSourcePos::SourcePos(range.start),
+            end: DiagnosticSourcePos::SourcePos(range.end),
+          },
+          description: Some("the import".into()),
+        }],
+      }),
     }
   }
 
@@ -154,6 +196,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       }
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => Some(
         "make sure the npm workspace package is resolvable and has a version field in its package.json".into()
+      ),
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => Some(
+        "change the package dependency to point to something on npm instead".into()
       ),
     }
   }
@@ -174,6 +219,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
       SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage { .. } => {
         Cow::Borrowed(&[])
       },
+      SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier { .. } => {
+        Cow::Borrowed(&[])
+      },
     }
   }
 
@@ -183,6 +231,9 @@ impl Diagnostic for SpecifierUnfurlerDiagnostic {
 }
 
 enum UnfurlSpecifierError {
+  UnsupportedPkgJsonFileSpecifier {
+    package_name: String,
+  },
   Workspace {
     package_name: String,
     reason: String,
@@ -220,27 +271,43 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   ) -> Option<String> {
     match self.unfurl_specifier(referrer, specifier, resolution_kind) {
       Ok(maybe_unfurled) => maybe_unfurled,
-      Err(diagnostic) => match diagnostic {
-        UnfurlSpecifierError::Workspace {
-          package_name,
-          reason,
-        } => {
-          let range = to_range(text_info, range);
-          diagnostic_reporter(
-            SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
-              specifier: referrer.clone(),
-              package_name,
-              text_info: text_info.clone(),
-              range: SourceRange::new(
-                text_info.start_pos() + range.start,
-                text_info.start_pos() + range.end,
-              ),
-              reason,
-            },
-          );
-          None
+      Err(diagnostic) => {
+        let range = to_range(text_info, range);
+        let range = SourceRange::new(
+          text_info.start_pos() + range.start,
+          text_info.start_pos() + range.end,
+        );
+        match diagnostic {
+          UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+            package_name,
+          } => {
+            diagnostic_reporter(
+              SpecifierUnfurlerDiagnostic::UnsupportedPkgJsonFileSpecifier {
+                specifier: referrer.clone(),
+                package_name,
+                text_info: text_info.clone(),
+                range,
+              },
+            );
+            None
+          }
+          UnfurlSpecifierError::Workspace {
+            package_name,
+            reason,
+          } => {
+            diagnostic_reporter(
+              SpecifierUnfurlerDiagnostic::ResolvingNpmWorkspacePackage {
+                specifier: referrer.clone(),
+                package_name,
+                text_info: text_info.clone(),
+                range,
+                reason,
+              },
+            );
+            None
+          }
         }
-      },
+      }
     }
   }
 
@@ -288,6 +355,13 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
           ..
         } => match dep_result {
           Ok(dep) => match dep {
+            PackageJsonDepValue::File(_) => {
+              return Err(
+                UnfurlSpecifierError::UnsupportedPkgJsonFileSpecifier {
+                  package_name: alias.to_string(),
+                },
+              );
+            }
             PackageJsonDepValue::Req(pkg_req) => {
               // todo(#24612): consider warning or error when this is an npm workspace
               // member that's also a jsr package?

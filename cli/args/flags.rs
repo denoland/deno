@@ -932,7 +932,10 @@ impl Flags {
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.to_lowercase() == "true" => Some(true),
       Ok(s) if s.to_lowercase() == "false" => Some(false),
-      _ => None,
+      _ => {
+        log::warn!("'{name}' env var value not recognized, only 'true' and 'false' are accepted");
+        None
+      }
     };
 
     let disabled =
@@ -949,7 +952,10 @@ impl Flags {
         Ok("ignore") => OtelConsoleConfig::Ignore,
         Ok("capture") => OtelConsoleConfig::Capture,
         Ok("replace") => OtelConsoleConfig::Replace,
-        _ => {
+        res => {
+          if res.is_ok() {
+            log::warn!("'OTEL_DENO_CONSOLE' env var value not recognized, only 'ignore', 'capture', or 'replace' are accepted");
+          }
           if default {
             OtelConsoleConfig::Capture
           } else {
