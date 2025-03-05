@@ -6,6 +6,39 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.3 / 2025.03.05
+
+- feat(unstable): lint plugins support field selectors (#28324)
+- fix(add): better help text for --dev arg (#28304)
+- fix(check/npm): move not found errors inside npm packages to tsc diagnostics
+  (#28337)
+- fix(ext/node): SQLite reset guards to prevent database locks (#28298)
+- fix(ext/node): node compatibility issue missing fd in createServer callback
+  socket object (#27789)
+- fix(fmt/md): handle callout followed by non-text (#28333)
+- fix(lint): run with --no-prompt (#28305)
+- fix(lsp): include prefix and suffix for rename edits (#28327)
+- fix(lsp): limit languages in semantic tokens provider (#28310)
+- fix(node): require esm should prefer `module.exports` export (#28376)
+- fix(otel): don't throw when calling setActiveSpan at root (#28323)
+- fix(unstable): Missing `PrivateIdentifier` type for `PropertyDefinition` key
+  (#28358)
+- fix(unstable): lint plugin `ObjectPattern` inconsistencies (#28359)
+- fix(unstable): lint plugin child combinator not working with groups (#28360)
+- fix(unstable): lint plugin fix `:has()`, `:is/where/matches` and `:not()`
+  selectors (#28348)
+- fix(unstable): lint plugin regex attribute selector not working (#28340)
+- fix(unstable): lint plugin swapped exported and source for
+  ExportAllDeclaration (#28357)
+- fix(unstable/lint): remove duplicated `Fix` vs `FixData` interface (#28344)
+- fix: add "module.exports" export to ESM CJS wrapper module (#28373)
+- fix: deno_ast 0.46 (#28331)
+- fix: respect lockfile for multiple available jsr versions (#28375)
+- perf(http): instantiate generic functions in `deno_http`, increase opt-level
+  for some more hyper deps (#28317)
+- perf(lsp): don't set resolver npm reqs if unchanged (#28302)
+- perf(lsp): register semantic tokens provider upon opening enabled doc (#28384)
+
 ### 2.2.2 / 2025.02.25
 
 - fix(check): regression - implicit jsxImportSource was not resolving (#28228)
