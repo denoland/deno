@@ -304,18 +304,18 @@ fn format_js_error_inner(
 }
 
 fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
-  if let Some(frame) = e.frames.first() {
-    if let Some(file_name) = &frame.file_name {
-      if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
-        return vec![];
-      }
-    }
-  }
   if let Some(msg) = &e.message {
     if msg.contains("module is not defined")
       || msg.contains("exports is not defined")
       || msg.contains("require is not defined")
     {
+      if let Some(file_name) =
+        e.frames.first().and_then(|f| f.file_name.as_ref())
+      {
+        if file_name.ends_with(".mjs") || file_name.ends_with(".mts") {
+          return vec![];
+        }
+      }
       return vec![
         FixSuggestion::info_multiline(&[
           cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
