@@ -1,0 +1,5 @@
+{
+  "args": "check --allow-import --quiet check_all_local.ts",
+  "output": "",
+  "exitCode": 0
+}

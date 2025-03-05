@@ -1,14 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::npm;
+use std::convert::Infallible;
+use std::net::Ipv6Addr;
+use std::net::SocketAddr;
+use std::net::SocketAddrV6;
+use std::path::PathBuf;
 
-use super::custom_headers;
-use super::empty_body;
-use super::hyper_utils::HandlerOutput;
-use super::run_server;
-use super::string_body;
-use super::ServerKind;
-use super::ServerOptions;
 use bytes::Bytes;
 use futures::future::LocalBoxFuture;
 use futures::Future;
@@ -18,11 +15,15 @@ use hyper::body::Incoming;
 use hyper::Request;
 use hyper::Response;
 use hyper::StatusCode;
-use std::convert::Infallible;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV6;
-use std::path::PathBuf;
+
+use super::custom_headers;
+use super::empty_body;
+use super::hyper_utils::HandlerOutput;
+use super::run_server;
+use super::string_body;
+use super::ServerKind;
+use super::ServerOptions;
+use crate::npm;
 
 pub fn public_npm_registry(port: u16) -> Vec<LocalBoxFuture<'static, ()>> {
   run_npm_server(port, "npm registry server error", {
@@ -68,7 +69,7 @@ fn run_npm_server<F, S>(
   port: u16,
   error_msg: &'static str,
   handler: F,
-) -> Vec<LocalBoxFuture<()>>
+) -> Vec<LocalBoxFuture<'static, ()>>
 where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
@@ -300,9 +301,12 @@ fn replace_default_npm_registry_url_with_test_npm_registry_url(
   npm_registry: &npm::TestNpmRegistry,
   package_name: &str,
 ) -> String {
+  let package_name = percent_encoding::percent_decode_str(package_name)
+    .decode_utf8()
+    .unwrap();
   text.replace(
     &format!("https://registry.npmjs.org/{}/-/", package_name),
-    &npm_registry.package_url(package_name),
+    &npm_registry.package_url(&package_name),
   )
 }
 

@@ -63,6 +63,5 @@
   "bugs": {
     "url": "https://github.com/floatdrop/require-from-string/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

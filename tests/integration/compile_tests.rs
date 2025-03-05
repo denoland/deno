@@ -1,8 +1,6 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json;
 use test_util as util;
-use util::assert_contains;
 use util::assert_not_contains;
 use util::testdata_path;
 use util::TestContext;
@@ -88,78 +86,6 @@ fn standalone_args() {
     .run()
     .assert_matches_text("a\nb\nfoo\n--bar\n--unstable\n")
     .assert_exit_code(0);
-}
-
-#[test]
-fn standalone_error() {
-  let context = TestContextBuilder::new().build();
-  let dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    dir.path().join("error.exe")
-  } else {
-    dir.path().join("error")
-  };
-  context
-    .new_command()
-    .args_vec([
-      "compile",
-      "--output",
-      &exe.to_string_lossy(),
-      "./compile/standalone_error.ts",
-    ])
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
-
-  let output = context.new_command().name(&exe).split_output().run();
-  output.assert_exit_code(1);
-  output.assert_stdout_matches_text("");
-  let stderr = output.stderr();
-  // On Windows, we cannot assert the file path (because '\').
-  // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "\n    at boom (file://");
-  assert_contains!(stderr, "standalone_error.ts:2:9");
-  assert_contains!(stderr, "at foo (file://");
-  assert_contains!(stderr, "standalone_error.ts:5:3");
-  assert_contains!(stderr, "standalone_error.ts:7:1");
-}
-
-#[test]
-fn standalone_error_module_with_imports() {
-  let context = TestContextBuilder::new().build();
-  let dir = context.temp_dir();
-  let exe = if cfg!(windows) {
-    dir.path().join("error.exe")
-  } else {
-    dir.path().join("error")
-  };
-  context
-    .new_command()
-    .args_vec([
-      "compile",
-      "--output",
-      &exe.to_string_lossy(),
-      "./compile/standalone_error_module_with_imports_1.ts",
-    ])
-    .run()
-    .skip_output_check()
-    .assert_exit_code(0);
-
-  let output = context
-    .new_command()
-    .name(&exe)
-    .env("NO_COLOR", "1")
-    .split_output()
-    .run();
-  output.assert_stdout_matches_text("hello\n");
-  let stderr = output.stderr();
-  // On Windows, we cannot assert the file path (because '\').
-  // Instead we just check for relevant output.
-  assert_contains!(stderr, "error: Uncaught (in promise) Error: boom!");
-  assert_contains!(stderr, "\n    at file://");
-  assert_contains!(stderr, "standalone_error_module_with_imports_2.ts:2:7");
-  output.assert_exit_code(1);
 }
 
 #[test]
@@ -569,7 +495,7 @@ fn check_local_by_default2() {
     ])
     .run()
     .assert_matches_text(
-      r#"[WILDCARD]error: TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
+      r#"[WILDCARD]TS2322 [ERROR]: Type '12' is not assignable to type '"b"'.[WILDCARD]"#,
     )
     .assert_exit_code(1);
 }
@@ -847,21 +773,6 @@ testing[WILDCARD]this
 }
 
 #[test]
-fn compile_npm_file_system() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/npm_fs/main.ts",
-    copy_temp_dir: Some("compile/npm_fs"),
-    compile_args: vec!["-A"],
-    run_args: vec![],
-    output_file: "compile/npm_fs/main.out",
-    node_modules_local: true,
-    input_name: Some("binary"),
-    expected_name: "binary",
-    exit_code: 0,
-  });
-}
-
-#[test]
 fn compile_npm_bin_esm() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
     input_specifier: "npm:@denotest/bin/cli-esm",
@@ -907,31 +818,16 @@ fn compile_npm_cowsay_main() {
 }
 
 #[test]
-fn compile_npm_vfs_implicit_read_permissions() {
-  run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "compile/vfs_implicit_read_permission/main.ts",
-    copy_temp_dir: Some("compile/vfs_implicit_read_permission"),
-    compile_args: vec![],
-    run_args: vec![],
-    output_file: "compile/vfs_implicit_read_permission/main.out",
-    node_modules_local: false,
-    input_name: Some("binary"),
-    expected_name: "binary",
-    exit_code: 0,
-  });
-}
-
-#[test]
 fn compile_npm_no_permissions() {
   run_npm_bin_compile_test(RunNpmBinCompileOptions {
-    input_specifier: "npm:cowsay@1.5.0",
+    input_specifier: "npm:@denotest/cli-with-permissions@1.0.0",
     copy_temp_dir: None,
-    compile_args: vec![],
+    compile_args: vec!["-o", "denotest"],
     run_args: vec!["Hello"],
-    output_file: "npm/deno_run_cowsay_no_permissions.out",
+    output_file: "npm/compile_npm_no_permissions.out",
     node_modules_local: false,
     input_name: None,
-    expected_name: "cowsay",
+    expected_name: "denotest",
     exit_code: 1,
   });
 }
@@ -1045,6 +941,7 @@ fn compile_node_modules_symlink_outside() {
   let symlink_target_dir = temp_dir.path().join("some_folder");
   project_dir.join("node_modules").create_dir_all();
   symlink_target_dir.create_dir_all();
+  symlink_target_dir.join("file.txt").write("5");
   let symlink_target_file = temp_dir.path().join("target.txt");
   symlink_target_file.write("5");
   let symlink_dir = project_dir.join("node_modules").join("symlink_dir");
@@ -1119,6 +1016,11 @@ Compile file:///[WILDCARD]/main.ts to [WILDCARD]
 Warning Failed resolving symlink. Ignoring.
     Path: [WILDCARD]
     Message: [WILDCARD])
+
+Embedded Files
+
+[WILDCARD]
+
 "#,
   );
 

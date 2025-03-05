@@ -3,10 +3,10 @@ const process = require("process");
                 ^
     at [WILDCARD]require_error.js:1:17
 
-    info: Deno supports CommonJS modules in .cjs files, or when there's a package.json
-          with "type": "commonjs" option and --unstable-detect-cjs flag is used.
+    info: Deno supports CommonJS modules in .cjs files, or when the closest
+          package.json has a "type": "commonjs" option.
     hint: Rewrite this module to ESM,
           or change the file extension to .cjs,
-          or add package.json next to the file with "type": "commonjs" option
-          and pass --unstable-detect-cjs flag.
+          or add package.json next to the file with "type": "commonjs" option,
+          or pass --unstable-detect-cjs flag to detect CommonJS when loading.
     docs: https://docs.deno.com/go/commonjs

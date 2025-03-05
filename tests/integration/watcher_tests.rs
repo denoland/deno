@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use flaky_test::flaky_test;
 use test_util as util;
@@ -6,9 +6,8 @@ use test_util::assert_contains;
 use test_util::env_vars_for_npm_tests;
 use test_util::TempDir;
 use tokio::io::AsyncBufReadExt;
-use util::DenoChild;
-
 use util::assert_not_contains;
+use util::DenoChild;
 
 /// Logs to stderr every time next_line() is called
 struct LoggingLines<R>
@@ -55,7 +54,7 @@ where
   let mut str = String::new();
   while let Some(t) = next_line(stderr_lines).await {
     let t = util::strip_ansi_codes(&t);
-    if t.starts_with("Watcher File change detected") {
+    if t.starts_with("Watcher Restarting! File change detected") {
       continue;
     }
     if t.starts_with("Watcher") {
@@ -1149,7 +1148,7 @@ async fn test_watch_doc() {
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
+    "TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),

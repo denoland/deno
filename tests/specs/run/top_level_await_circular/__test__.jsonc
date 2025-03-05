@@ -1,5 +1,0 @@
-{
-  "args": "run --allow-read top_level_await/circular.js",
-  "output": "top_level_await/circular.out",
-  "exitCode": 1
-}

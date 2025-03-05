@@ -1,4 +1,0 @@
-{
-  "args": "run --allow-import --reload --check --import-map jsx/import-map.json --no-lock --config jsx/deno-jsx-precompile-skip.jsonc jsx_precompile/skip.tsx",
-  "output": "jsx_precompile/skip.out"
-}

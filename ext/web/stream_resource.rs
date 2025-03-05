@@ -1,4 +1,17 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::borrow::Cow;
+use std::cell::RefCell;
+use std::cell::RefMut;
+use std::ffi::c_void;
+use std::future::Future;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::pin::Pin;
+use std::rc::Rc;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Waker;
+
 use bytes::BytesMut;
 use deno_core::external;
 use deno_core::op2;
@@ -17,23 +30,13 @@ use deno_core::Resource;
 use deno_core::ResourceId;
 use futures::future::poll_fn;
 use futures::TryFutureExt;
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::cell::RefMut;
-use std::ffi::c_void;
-use std::future::Future;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::pin::Pin;
-use std::rc::Rc;
-use std::task::Context;
-use std::task::Poll;
-use std::task::Waker;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum StreamResourceError {
+  #[class(inherit)]
   #[error(transparent)]
   Canceled(#[from] deno_core::Canceled),
+  #[class(type)]
   #[error("{0}")]
   Js(String),
 }
@@ -403,7 +406,10 @@ impl Resource for ReadableStreamResource {
   }
 
   fn read(self: Rc<Self>, limit: usize) -> AsyncResult<BufView> {
-    Box::pin(ReadableStreamResource::read(self, limit).map_err(|e| e.into()))
+    Box::pin(
+      ReadableStreamResource::read(self, limit)
+        .map_err(deno_error::JsErrorBox::from_err),
+    )
   }
 
   fn close(self: Rc<Self>) {
@@ -607,12 +613,14 @@ impl Drop for ReadableStreamResourceData {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use deno_core::v8;
   use std::cell::OnceCell;
   use std::sync::atomic::AtomicUsize;
   use std::sync::OnceLock;
   use std::time::Duration;
+
+  use deno_core::v8;
+
+  use super::*;
 
   static V8_GLOBAL: OnceLock<()> = OnceLock::new();
 

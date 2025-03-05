@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "i",
+      "output": "[WILDCARD]"
+    },
+    {
+      "args": "outdated",
+      "output": "outdated.out"
+    },
+    {
+      "args": "outdated --compatible",
+      "output": "outdated.out"
+    },
+    {
+      "args": "outdated --update --latest",
+      "output": "update.out"
+    }
+  ]
+}

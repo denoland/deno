@@ -1,0 +1,4 @@
+Task dev echo 'bar'
+bar
+Task dev echo 'foo'
+foo

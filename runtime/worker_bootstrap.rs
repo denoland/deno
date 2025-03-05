@@ -1,12 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
+use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
@@ -118,6 +119,8 @@ pub struct BootstrapOptions {
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
+  pub otel_config: OtelConfig,
+  pub close_on_idle: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -126,6 +129,8 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
+    // this version is not correct as its the version of deno_runtime
+    // and the implementor should supply a user agent that makes sense
     let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
@@ -152,6 +157,8 @@ impl Default for BootstrapOptions {
       mode: WorkerExecutionMode::None,
       serve_port: Default::default(),
       serve_host: Default::default(),
+      otel_config: Default::default(),
+      close_on_idle: false,
     }
   }
 }
@@ -193,6 +200,10 @@ struct BootstrapV8<'a>(
   Option<bool>,
   // serve worker count
   Option<usize>,
+  // OTEL config
+  Box<[u8]>,
+  // close on idle
+  bool,
 );
 
 impl BootstrapOptions {
@@ -219,6 +230,8 @@ impl BootstrapOptions {
       self.serve_host.as_deref(),
       serve_is_main,
       serve_worker_count,
+      self.otel_config.as_v8(),
+      self.close_on_idle,
     );
 
     bootstrap.serialize(ser).unwrap()

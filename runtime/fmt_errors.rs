@@ -1,11 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 //! This mod provides DenoError to unify errors across Deno.
+use std::fmt::Write as _;
+
 use color_print::cformat;
 use color_print::cstr;
 use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors;
-use std::fmt::Write as _;
 
 #[derive(Debug, Clone)]
 struct ErrorReference<'a> {
@@ -317,14 +318,14 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
     {
       return vec![
         FixSuggestion::info_multiline(&[
-          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when there's a <u>package.json</>"),
-          cstr!("with <i>\"type\": \"commonjs\"</> option and <i>--unstable-detect-cjs</> flag is used.")
+          cstr!("Deno supports CommonJS modules in <u>.cjs</> files, or when the closest"),
+          cstr!("<u>package.json</> has a <i>\"type\": \"commonjs\"</> option.")
         ]),
         FixSuggestion::hint_multiline(&[
           "Rewrite this module to ESM,",
           cstr!("or change the file extension to <u>.cjs</u>,"),
-          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option"),
-          cstr!("and pass <i>--unstable-detect-cjs</> flag."),
+          cstr!("or add <u>package.json</> next to the file with <i>\"type\": \"commonjs\"</> option,"),
+          cstr!("or pass <i>--unstable-detect-cjs</> flag to detect CommonJS when loading."),
         ]),
         FixSuggestion::docs("https://docs.deno.com/go/commonjs"),
       ];
@@ -347,28 +348,40 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info(cstr!(
           "<u>Buffer</> is not available in the global scope in Deno."
         )),
-        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { Buffer } from \"node:buffer\";</>.")),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Import it explicitly with <u>import { Buffer } from \"node:buffer\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
       ];
     } else if msg.contains("clearImmediate is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
           "<u>clearImmediate</> is not available in the global scope in Deno."
         )),
-        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>.")),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Import it explicitly with <u>import { clearImmediate } from \"node:timers\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
       ];
     } else if msg.contains("setImmediate is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
           "<u>setImmediate</> is not available in the global scope in Deno."
         )),
-        FixSuggestion::hint(cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>.")),
+        FixSuggestion::hint_multiline(
+          &[cstr!("Import it explicitly with <u>import { setImmediate } from \"node:timers\";</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
       ];
     } else if msg.contains("global is not defined") {
       return vec![
         FixSuggestion::info(cstr!(
           "<u>global</> is not available in the global scope in Deno."
         )),
-        FixSuggestion::hint(cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>.")),
+        FixSuggestion::hint_multiline(&[
+          cstr!("Use <u>globalThis</> instead, or assign <u>globalThis.global = globalThis</>,"),
+          cstr!("or run again with <u>--unstable-node-globals</> flag to add this global."),
+        ]),
       ];
     } else if msg.contains("openKv is not a function") {
       return vec![
@@ -415,6 +428,26 @@ fn get_suggestions_for_terminal_errors(e: &JsError) -> Vec<FixSuggestion> {
         FixSuggestion::info("Deno.UnsafeWindowSurface is an unstable API."),
         FixSuggestion::hint(
           "Run again with `--unstable-webgpu` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("QuicEndpoint is not a constructor") {
+      return vec![
+        FixSuggestion::info("listenQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("connectQuic is not a function") {
+      return vec![
+        FixSuggestion::info("connectQuic is an unstable API."),
+        FixSuggestion::hint(
+          "Run again with `--unstable-net` flag to enable this API.",
+        ),
+      ];
+    } else if msg.contains("client error (Connect): invalid peer certificate") {
+      return vec![
+        FixSuggestion::hint(
+          "Run again with the `--unsafely-ignore-certificate-errors` flag to bypass certificate errors.",
         ),
       ];
     // Try to capture errors like:
@@ -471,8 +504,9 @@ pub fn format_js_error(js_error: &JsError) -> String {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
   use test_util::strip_ansi_codes;
+
+  use super::*;
 
   #[test]
   fn test_format_none_source_line() {

@@ -1,5 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-import { assertEquals, assertRejects, fail } from "./test_util.ts";
+// Copyright 2018-2025 the Deno authors. MIT license.
+import {
+  assertEquals,
+  assertRejects,
+  assertThrows,
+  fail,
+} from "./test_util.ts";
 
 const {
   core,
@@ -532,4 +537,117 @@ Deno.test(async function decompressionStreamInvalidGzipStillReported() {
     TypeError,
     "corrupt gzip stream does not have a matching checksum",
   );
+});
+
+Deno.test(function readableStreamFromWithStringThrows() {
+  assertThrows(
+    // @ts-expect-error: primitives are not acceptable
+    () => ReadableStream.from("string"),
+    TypeError,
+    "Failed to execute 'ReadableStream.from': Argument 1 can not be converted to async iterable.",
+  );
+});
+
+Deno.test(async function readableStreamFromWithStringThrows() {
+  const serverPort = 4592;
+  const upstreamServerPort = 4593;
+
+  const stopSignal = new AbortController();
+  const promise = Promise.withResolvers();
+  // Response transforming server that crashes with an uncaught AbortError.
+  function startServer() {
+    Deno.serve({ port: serverPort, signal: stopSignal.signal }, async (req) => {
+      const upstreamResponse = await fetch(
+        `http://localhost:${upstreamServerPort}`,
+        req,
+      );
+
+      // Use a TransformStream to convert the response body to uppercase.
+      const transformStream = new TransformStream({
+        transform(chunk, controller) {
+          const decoder = new TextDecoder();
+          const encoder = new TextEncoder();
+          const chunk2 = encoder.encode(decoder.decode(chunk).toUpperCase());
+          controller.enqueue(chunk2);
+        },
+      });
+
+      upstreamResponse.body?.pipeTo(transformStream.writable).catch(() => {});
+
+      return new Response(transformStream.readable);
+    });
+  }
+
+  // ==== THE ISSUE IS NOT IN THE CODE BELOW ====
+
+  // Upstream server that sends a response with a body that never ends.
+  // This is not where the error happens (it handlers the cancellation correctly).
+  function startUpstreamServer() {
+    Deno.serve({ port: upstreamServerPort, signal: stopSignal.signal }, (_) => {
+      // Create an infinite readable stream that emits 'a'
+      let pushTimeout: number | null = null;
+      const readableStream = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder();
+          const chunk = encoder.encode("a");
+
+          function push() {
+            controller.enqueue(chunk);
+            pushTimeout = setTimeout(push, 100);
+          }
+
+          push();
+        },
+
+        cancel(reason) {
+          assertEquals(reason, "resource closed");
+          promise.resolve(undefined);
+          clearTimeout(pushTimeout!);
+        },
+      });
+
+      return new Response(readableStream, {
+        headers: { "Content-Type": "text/plain" },
+      });
+    });
+  }
+
+  // The client is just there to simulate a client that cancels a request.
+  async function startClient() {
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+      const response = await fetch(`http://localhost:${serverPort}`, {
+        signal,
+      });
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("client: failed to get reader from response");
+      }
+
+      let received = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        received += value.length;
+
+        if (received >= 5) {
+          controller.abort();
+          break;
+        }
+      }
+    } catch (_) {
+      //
+    }
+  }
+
+  startUpstreamServer();
+  startServer();
+  const p = startClient();
+
+  await promise.promise;
+  stopSignal.abort();
+  await p;
 });

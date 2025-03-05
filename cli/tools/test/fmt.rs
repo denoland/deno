@@ -1,16 +1,16 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::borrow::Cow;
+use std::ops::AddAssign;
 
 use deno_core::stats::RuntimeActivity;
 use deno_core::stats::RuntimeActivityDiff;
 use deno_core::stats::RuntimeActivityTrace;
 use deno_core::stats::RuntimeActivityType;
 use phf::phf_map;
-use std::borrow::Cow;
-use std::ops::AddAssign;
-
-use crate::util::path::to_percent_decoded_str;
 
 use super::*;
+use crate::util::path::to_percent_decoded_str;
 
 pub fn to_relative_path_or_remote_url(cwd: &Url, path_or_url: &str) -> String {
   let Ok(url) = Url::parse(path_or_url) else {

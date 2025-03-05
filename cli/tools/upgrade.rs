@@ -1,29 +1,7 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 //! This module provides feature to upgrade deno executable
 
-use crate::args::Flags;
-use crate::args::UpgradeFlags;
-use crate::args::UPGRADE_USAGE;
-use crate::colors;
-use crate::download_deno_binary::archive_name;
-use crate::download_deno_binary::download_deno_binary;
-use crate::download_deno_binary::BinaryKind;
-use crate::factory::CliFactory;
-use crate::http_util::HttpClient;
-use crate::http_util::HttpClientProvider;
-use crate::shared::ReleaseChannel;
-use crate::util::archive;
-use crate::version;
-
-use async_trait::async_trait;
-use deno_core::anyhow::bail;
-use deno_core::anyhow::Context;
-use deno_core::error::AnyError;
-use deno_core::unsync::spawn;
-use deno_core::url::Url;
-use deno_semver::Version;
-use once_cell::sync::Lazy;
 use std::borrow::Cow;
 use std::env;
 use std::fs;
@@ -35,8 +13,35 @@ use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
-static ARCHIVE_NAME: Lazy<String> =
-  Lazy::new(|| archive_name(BinaryKind::Deno, env!("TARGET")));
+use async_trait::async_trait;
+use deno_core::anyhow::bail;
+use deno_core::anyhow::Context;
+use deno_core::error::AnyError;
+use deno_core::unsync::spawn;
+use deno_core::url::Url;
+use deno_lib::shared::ReleaseChannel;
+use deno_lib::version;
+use deno_semver::SmallStackString;
+use deno_semver::Version;
+use once_cell::sync::Lazy;
+
+use crate::args::Flags;
+use crate::args::UpgradeFlags;
+use crate::args::UPGRADE_USAGE;
+use crate::colors;
+use crate::factory::CliFactory;
+use crate::http_util::HttpClient;
+use crate::http_util::HttpClientProvider;
+use crate::util::archive;
+use crate::util::progress_bar::ProgressBar;
+use crate::util::progress_bar::ProgressBarStyle;
+
+const RELEASE_URL: &str = "https://github.com/denoland/deno/releases";
+const CANARY_URL: &str = "https://dl.deno.land/canary";
+const DL_RELEASE_URL: &str = "https://dl.deno.land/release";
+
+pub static ARCHIVE_NAME: Lazy<String> =
+  Lazy::new(|| format!("deno-{}.zip", env!("TARGET")));
 
 // How often query server for new version. In hours.
 const UPGRADE_CHECK_INTERVAL: i64 = 24;
@@ -252,7 +257,7 @@ async fn print_release_notes(
   let is_deno_2_rc = new_semver.major == 2
     && new_semver.minor == 0
     && new_semver.patch == 0
-    && new_semver.pre.first() == Some(&"rc".to_string());
+    && new_semver.pre.first().map(|s| s.as_str()) == Some("rc");
 
   if is_deno_2_rc || is_switching_from_deno1_to_deno2 {
     log::info!(
@@ -529,19 +534,15 @@ pub async fn upgrade(
     return Ok(());
   };
 
-  let binary_path = download_deno_binary(
-    http_client_provider,
-    factory.deno_dir()?,
-    BinaryKind::Deno,
-    env!("TARGET"),
+  let download_url = get_download_url(
     &selected_version_to_upgrade.version_or_hash,
     requested_version.release_channel(),
-  )
-  .await?;
-
-  let Ok(archive_data) = tokio::fs::read(&binary_path).await else {
+  )?;
+  log::info!("{}", colors::gray(format!("Downloading {}", &download_url)));
+  let Some(archive_data) = download_package(&client, download_url).await?
+  else {
     log::error!("Download could not be found, aborting");
-    std::process::exit(1)
+    deno_runtime::exit(1)
   };
 
   log::info!(
@@ -675,7 +676,7 @@ impl RequestedVersion {
         );
       };
 
-      if semver.pre.contains(&"rc".to_string()) {
+      if semver.pre.contains(&SmallStackString::from_static("rc")) {
         (ReleaseChannel::Rc, passed_version)
       } else {
         (ReleaseChannel::Stable, passed_version)
@@ -880,6 +881,48 @@ fn base_upgrade_url() -> Cow<'static, str> {
   } else {
     Cow::Borrowed("https://dl.deno.land")
   }
+}
+
+fn get_download_url(
+  version: &str,
+  release_channel: ReleaseChannel,
+) -> Result<Url, AnyError> {
+  let download_url = match release_channel {
+    ReleaseChannel::Stable => {
+      format!("{}/download/v{}/{}", RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Rc => {
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Canary => {
+      format!("{}/{}/{}", CANARY_URL, version, *ARCHIVE_NAME)
+    }
+    ReleaseChannel::Lts => {
+      format!("{}/v{}/{}", DL_RELEASE_URL, version, *ARCHIVE_NAME)
+    }
+  };
+
+  Url::parse(&download_url).with_context(|| {
+    format!(
+      "Failed to parse URL to download new release: {}",
+      download_url
+    )
+  })
+}
+
+async fn download_package(
+  client: &HttpClient,
+  download_url: Url,
+) -> Result<Option<Vec<u8>>, AnyError> {
+  let progress_bar = ProgressBar::new(ProgressBarStyle::DownloadBars);
+  // provide an empty string here in order to prefer the downloading
+  // text above which will stay alive after the progress bars are complete
+  let progress = progress_bar.update("");
+  let maybe_bytes = client
+    .download_with_progress_and_retries(download_url.clone(), None, &progress)
+    .await
+    .with_context(|| format!("Failed downloading {download_url}. The version you requested may not have been built for the current architecture."))?;
+  Ok(maybe_bytes)
 }
 
 fn replace_exe(from: &Path, to: &Path) -> Result<(), std::io::Error> {

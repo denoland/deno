@@ -1,11 +1,14 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use deno_core::GarbageCollected;
 use digest::Digest;
 use digest::DynDigest;
 use digest::ExtendableOutput;
 use digest::Update;
-use std::cell::RefCell;
-use std::rc::Rc;
+
+mod ring_sha2;
 
 pub struct Hasher {
   pub hash: Rc<RefCell<Option<Hash>>>,
@@ -182,7 +185,8 @@ pub enum Hash {
 
 use Hash::*;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
 pub enum HashError {
   #[error("Output length mismatch for non-extendable algorithm")]
   OutputLengthMismatch,
@@ -198,6 +202,24 @@ impl Hash {
     match algorithm_name {
       "shake128" => return Ok(Shake128(Default::default(), output_length)),
       "shake256" => return Ok(Shake256(Default::default(), output_length)),
+      "sha256" => {
+        let digest = ring_sha2::RingSha256::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
+      "sha512" => {
+        let digest = ring_sha2::RingSha512::new();
+        if let Some(length) = output_length {
+          if length != digest.output_size() {
+            return Err(HashError::OutputLengthMismatch);
+          }
+        }
+        return Ok(Hash::FixedSize(Box::new(digest)));
+      }
       _ => {}
     }
 

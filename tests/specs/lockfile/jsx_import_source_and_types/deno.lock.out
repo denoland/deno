@@ -1,0 +1,30 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:react@*": "18.2.0"
+  },
+  "npm": {
+    "js-tokens@4.0.0": {
+      "integrity": "[WILDLINE]"
+    },
+    "loose-envify@1.4.0": {
+      "integrity": "[WILDLINE]",
+      "dependencies": [
+        "js-tokens"
+      ]
+    },
+    "react@18.2.0": {
+      "integrity": "[WILDLINE]",
+      "dependencies": [
+        "loose-envify"
+      ]
+    }
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:@types/node@*",
+      "npm:@types/react@*",
+      "npm:react@*"
+    ]
+  }
+}

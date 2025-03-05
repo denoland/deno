@@ -36,6 +36,12 @@
         "flaky": {
           "type": "boolean"
         },
+        "canonicalizedTempDir": {
+          "type": "boolean"
+        },
+        "symlinkedTempDir": {
+          "type": "boolean"
+        },
         "if": {
           "type": "string",
           "examples": [
@@ -61,6 +67,12 @@
         "required": ["steps"],
         "properties": {
           "tempDir": {
+            "type": "boolean"
+          },
+          "canonicalizedTempDir": {
+            "type": "boolean"
+          },
+          "symlinkedTempDir": {
             "type": "boolean"
           },
           "base": {
@@ -89,6 +101,12 @@
         "allOf": [{
           "properties": {
             "tempDir": {
+              "type": "boolean"
+            },
+            "canonicalizedTempDir": {
+              "type": "boolean"
+            },
+            "symlinkedTempDir": {
               "type": "boolean"
             },
             "base": {

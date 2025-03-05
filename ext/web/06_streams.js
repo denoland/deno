@@ -1,9 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -70,7 +70,6 @@ const {
   String,
   Symbol,
   SymbolAsyncIterator,
-  SymbolIterator,
   SymbolFor,
   TypeError,
   TypedArrayPrototypeGetBuffer,
@@ -524,10 +523,14 @@ function dequeueValue(container) {
 function enqueueValueWithSize(container, value, size) {
   assert(container[_queue] && typeof container[_queueTotalSize] === "number");
   if (isNonNegativeNumber(size) === false) {
-    throw new RangeError("chunk size isn't a positive number");
+    throw new RangeError(
+      "Cannot enqueue value with size: chunk size must be a positive number",
+    );
   }
   if (size === Infinity) {
-    throw new RangeError("chunk size is invalid");
+    throw new RangeError(
+      "Cannot enqueue value with size: chunk size is invalid",
+    );
   }
   container[_queue].enqueue({ value, size });
   container[_queueTotalSize] += size;
@@ -776,37 +779,35 @@ class ResourceStreamResourceSink {
  * @param {any} sink
  * @param {Uint8Array} chunk
  */
-function readableStreamWriteChunkFn(reader, sink, chunk) {
+async function readableStreamWriteChunkFn(reader, sink, chunk) {
   // Empty chunk. Re-read.
   if (chunk.length == 0) {
-    readableStreamReadFn(reader, sink);
+    await readableStreamReadFn(reader, sink);
     return;
   }
 
   const res = op_readable_stream_resource_write_sync(sink.external, chunk);
   if (res == 0) {
     // Closed
-    reader.cancel("resource closed");
+    await reader.cancel("resource closed");
     sink.close();
   } else if (res == 1) {
     // Successfully written (synchronous). Re-read.
-    readableStreamReadFn(reader, sink);
+    await readableStreamReadFn(reader, sink);
   } else if (res == 2) {
     // Full. If the channel is full, we perform an async await until we can write, and then return
     // to a synchronous loop.
-    (async () => {
-      if (
-        await op_readable_stream_resource_write_buf(
-          sink.external,
-          chunk,
-        )
-      ) {
-        readableStreamReadFn(reader, sink);
-      } else {
-        reader.cancel("resource closed");
-        sink.close();
-      }
-    })();
+    if (
+      await op_readable_stream_resource_write_buf(
+        sink.external,
+        chunk,
+      )
+    ) {
+      await readableStreamReadFn(reader, sink);
+    } else {
+      await reader.cancel("resource closed");
+      sink.close();
+    }
   }
 }
 
@@ -819,17 +820,23 @@ function readableStreamReadFn(reader, sink) {
   // real resource.
   let reentrant = true;
   let gotChunk = undefined;
+  const promise = new Deferred();
   readableStreamDefaultReaderRead(reader, {
     chunkSteps(chunk) {
       // If the chunk has non-zero length, write it
       if (reentrant) {
         gotChunk = chunk;
       } else {
-        readableStreamWriteChunkFn(reader, sink, chunk);
+        PromisePrototypeThen(
+          readableStreamWriteChunkFn(reader, sink, chunk),
+          () => promise.resolve(),
+          (e) => promise.reject(e),
+        );
       }
     },
     closeSteps() {
       sink.close();
+      promise.resolve();
     },
     errorSteps(error) {
       const success = op_readable_stream_resource_write_error(
@@ -839,15 +846,29 @@ function readableStreamReadFn(reader, sink) {
       // We don't cancel the reader if there was an error reading. We'll let the downstream
       // consumer close the resource after it receives the error.
       if (!success) {
-        reader.cancel("resource closed");
+        PromisePrototypeThen(
+          reader.cancel("resource closed"),
+          () => {
+            sink.close();
+            promise.resolve();
+          },
+          (e) => promise.reject(e),
+        );
+      } else {
+        sink.close();
+        promise.resolve();
       }
-      sink.close();
     },
   });
   reentrant = false;
   if (gotChunk) {
-    readableStreamWriteChunkFn(reader, sink, gotChunk);
+    PromisePrototypeThen(
+      readableStreamWriteChunkFn(reader, sink, gotChunk),
+      () => promise.resolve(),
+      (e) => promise.reject(e),
+    );
   }
+  return promise.promise;
 }
 
 /**
@@ -870,7 +891,9 @@ function resourceForReadableStream(stream, length) {
   PromisePrototypeCatch(
     PromisePrototypeThen(
       op_readable_stream_resource_await_close(rid),
-      () => reader.cancel("resource closed"),
+      () => {
+        PromisePrototypeCatch(reader.cancel("resource closed"), () => {});
+      },
     ),
     () => {},
   );
@@ -881,7 +904,9 @@ function resourceForReadableStream(stream, length) {
   );
 
   // Trigger the first read
-  readableStreamReadFn(reader, sink);
+  PromisePrototypeCatch(readableStreamReadFn(reader, sink), (err) => {
+    PromisePrototypeCatch(reader.cancel(err), () => {});
+  });
 
   return rid;
 }
@@ -905,8 +930,8 @@ const _original = Symbol("[[original]]");
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function readableStreamForRid(rid, autoClose = true) {
-  const stream = new ReadableStream(_brand);
+function readableStreamForRid(rid, autoClose = true, cfn, onError) {
+  const stream = cfn ? cfn(_brand) : new ReadableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -944,7 +969,11 @@ function readableStreamForRid(rid, autoClose = true) {
           controller.byobRequest.respond(bytesRead);
         }
       } catch (e) {
-        controller.error(e);
+        if (onError) {
+          onError(controller, e);
+        } else {
+          controller.error(e);
+        }
         tryClose();
       }
     },
@@ -1098,7 +1127,7 @@ async function readableStreamCollectIntoUint8Array(stream) {
 
     if (TypedArrayPrototypeGetSymbolToStringTag(chunk) !== "Uint8Array") {
       throw new TypeError(
-        "Can't convert value to Uint8Array while consuming the stream",
+        "Cannot convert value to Uint8Array while consuming the stream",
       );
     }
 
@@ -1127,8 +1156,8 @@ async function readableStreamCollectIntoUint8Array(stream) {
  * @param {boolean=} autoClose If the resource should be auto-closed when the stream closes. Defaults to true.
  * @returns {ReadableStream<Uint8Array>}
  */
-function writableStreamForRid(rid, autoClose = true) {
-  const stream = new WritableStream(_brand);
+function writableStreamForRid(rid, autoClose = true, cfn) {
+  const stream = cfn ? cfn(_brand) : new WritableStream(_brand);
   stream[_resourceBacking] = { rid, autoClose };
 
   const tryClose = () => {
@@ -1348,7 +1377,7 @@ function readableByteStreamControllerEnqueue(controller, chunk) {
 
   if (isDetachedBuffer(buffer)) {
     throw new TypeError(
-      "chunk's buffer is detached and so cannot be enqueued",
+      "Chunk's buffer is detached and so cannot be enqueued",
     );
   }
   const transferredBuffer = ArrayBufferPrototypeTransferToFixedLength(buffer);
@@ -2096,14 +2125,14 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
   if (state === "closed") {
     if (bytesWritten !== 0) {
       throw new TypeError(
-        "bytesWritten must be 0 when calling respond() on a closed stream",
+        `"bytesWritten" must be 0 when calling respond() on a closed stream: received ${bytesWritten}`,
       );
     }
   } else {
     assert(state === "readable");
     if (bytesWritten === 0) {
       throw new TypeError(
-        "bytesWritten must be greater than 0 when calling respond() on a readable stream",
+        '"bytesWritten" must be greater than 0 when calling respond() on a readable stream',
       );
     }
     if (
@@ -2111,7 +2140,7 @@ function readableByteStreamControllerRespond(controller, bytesWritten) {
         // deno-lint-ignore prefer-primordials
         firstDescriptor.byteLength
     ) {
-      throw new RangeError("bytesWritten out of range");
+      throw new RangeError('"bytesWritten" out of range');
     }
   }
   firstDescriptor.buffer = ArrayBufferPrototypeTransferToFixedLength(
@@ -2306,7 +2335,7 @@ function readableByteStreamControllerRespondWithNewView(controller, view) {
   if (state === "closed") {
     if (byteLength !== 0) {
       throw new TypeError(
-        "The view's length must be 0 when calling respondWithNewView() on a closed stream",
+        `The view's length must be 0 when calling respondWithNewView() on a closed stream: received ${byteLength}`,
       );
     }
   } else {
@@ -2923,7 +2952,7 @@ function readableStreamPipeTo(
 }
 
 /**
- * @param {ReadableStreamGenericReader<any> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  * @param {any} reason
  * @returns {Promise<void>}
  */
@@ -2956,7 +2985,7 @@ function readableStreamReaderGenericInitialize(reader, stream) {
 
 /**
  * @template R
- * @param {ReadableStreamGenericReader<R> | ReadableStreamBYOBReader} reader
+ * @param {ReadableStreamGenericReader | ReadableStreamBYOBReader} reader
  */
 function readableStreamReaderGenericRelease(reader) {
   const stream = reader[_stream];
@@ -3578,7 +3607,7 @@ function setUpReadableByteStreamControllerFromUnderlyingSource(
   }
   const autoAllocateChunkSize = underlyingSourceDict["autoAllocateChunkSize"];
   if (autoAllocateChunkSize === 0) {
-    throw new TypeError("autoAllocateChunkSize must be greater than 0");
+    throw new TypeError('"autoAllocateChunkSize" must be greater than 0');
   }
   setUpReadableByteStreamController(
     stream,
@@ -3707,7 +3736,7 @@ function setUpReadableStreamDefaultControllerFromUnderlyingSource(
  */
 function setUpReadableStreamBYOBReader(reader, stream) {
   if (isReadableStreamLocked(stream)) {
-    throw new TypeError("ReadableStream is locked.");
+    throw new TypeError("ReadableStream is locked");
   }
   if (
     !(ObjectPrototypeIsPrototypeOf(
@@ -3728,7 +3757,7 @@ function setUpReadableStreamBYOBReader(reader, stream) {
  */
 function setUpReadableStreamDefaultReader(reader, stream) {
   if (isReadableStreamLocked(stream)) {
-    throw new TypeError("ReadableStream is locked.");
+    throw new TypeError("ReadableStream is locked");
   }
   readableStreamReaderGenericInitialize(reader, stream);
   reader[_readRequests] = new Queue();
@@ -3962,7 +3991,7 @@ function setUpWritableStreamDefaultControllerFromUnderlyingSink(
  */
 function setUpWritableStreamDefaultWriter(writer, stream) {
   if (isWritableStreamLocked(stream) === true) {
-    throw new TypeError("The stream is already locked.");
+    throw new TypeError("The stream is already locked");
   }
   writer[_stream] = stream;
   stream[_writer] = writer;
@@ -4020,7 +4049,7 @@ function transformStreamDefaultControllerEnqueue(controller, chunk) {
       /** @type {ReadableStreamDefaultController<O>} */ readableController,
     ) === false
   ) {
-    throw new TypeError("Readable stream is unavailable.");
+    throw new TypeError("Readable stream is unavailable");
   }
   try {
     readableStreamDefaultControllerEnqueue(
@@ -5084,34 +5113,6 @@ function initializeCountSizeFunction(globalObject) {
   WeakMapPrototypeSet(countSizeFunctionWeakMap, globalObject, size);
 }
 
-// Ref: https://tc39.es/ecma262/#sec-getiterator
-function getAsyncOrSyncIterator(obj) {
-  let iterator;
-  if (obj[SymbolAsyncIterator] != null) {
-    iterator = obj[SymbolAsyncIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError(
-        "[Symbol.asyncIterator] returned a non-object value",
-      );
-    }
-  } else if (obj[SymbolIterator] != null) {
-    iterator = obj[SymbolIterator]();
-    if (!isObject(iterator)) {
-      throw new TypeError("[Symbol.iterator] returned a non-object value");
-    }
-  } else {
-    throw new TypeError("No iterator found");
-  }
-  if (typeof iterator.next !== "function") {
-    throw new TypeError("iterator.next is not a function");
-  }
-  return iterator;
-}
-
-function isObject(x) {
-  return (typeof x === "object" && x != null) || typeof x === "function";
-}
-
 const _resourceBacking = Symbol("[[resourceBacking]]");
 // This distinction exists to prevent unrefable streams being used in
 // regular fast streams that are unaware of refability
@@ -5172,7 +5173,7 @@ class ReadableStream {
     if (underlyingSourceDict.type === "bytes") {
       if (strategy.size !== undefined) {
         throw new RangeError(
-          `${prefix}: When underlying source is "bytes", strategy.size must be undefined.`,
+          `${prefix}: When underlying source is "bytes", strategy.size must be 'undefined'`,
         );
       }
       const highWaterMark = extractHighWaterMark(strategy, 0);
@@ -5197,21 +5198,22 @@ class ReadableStream {
   }
 
   static from(asyncIterable) {
+    const prefix = "Failed to execute 'ReadableStream.from'";
     webidl.requiredArguments(
       arguments.length,
       1,
-      "Failed to execute 'ReadableStream.from'",
+      prefix,
     );
-    asyncIterable = webidl.converters.any(asyncIterable);
-
-    const iterator = getAsyncOrSyncIterator(asyncIterable);
+    asyncIterable = webidl.converters["async iterable<any>"](
+      asyncIterable,
+      prefix,
+      "Argument 1",
+    );
+    const iter = asyncIterable.open();
 
     const stream = createReadableStream(noop, async () => {
       // deno-lint-ignore prefer-primordials
-      const res = await iterator.next();
-      if (!isObject(res)) {
-        throw new TypeError("iterator.next value is not an object");
-      }
+      const res = await iter.next();
       if (res.done) {
         readableStreamDefaultControllerClose(stream[_controller]);
       } else {
@@ -5221,17 +5223,8 @@ class ReadableStream {
         );
       }
     }, async (reason) => {
-      if (iterator.return == null) {
-        return undefined;
-      } else {
-        // deno-lint-ignore prefer-primordials
-        const res = await iterator.return(reason);
-        if (!isObject(res)) {
-          throw new TypeError("iterator.return value is not an object");
-        } else {
-          return undefined;
-        }
-      }
+      // deno-lint-ignore prefer-primordials
+      await iter.return(reason);
     }, 0);
     return stream;
   }
@@ -5310,10 +5303,10 @@ class ReadableStream {
     const { readable, writable } = transform;
     const { preventClose, preventAbort, preventCancel, signal } = options;
     if (isReadableStreamLocked(this)) {
-      throw new TypeError("ReadableStream is already locked.");
+      throw new TypeError("ReadableStream is already locked");
     }
     if (isWritableStreamLocked(writable)) {
-      throw new TypeError("Target WritableStream is already locked.");
+      throw new TypeError("Target WritableStream is already locked");
     }
     const promise = readableStreamPipeTo(
       this,
@@ -5851,7 +5844,7 @@ class ReadableByteStreamController {
     }
     if (this[_stream][_state] !== "readable") {
       throw new TypeError(
-        "ReadableByteStreamController's stream is not in a readable state.",
+        "ReadableByteStreamController's stream is not in a readable state",
       );
     }
     readableByteStreamControllerClose(this);
@@ -5883,7 +5876,7 @@ class ReadableByteStreamController {
     if (byteLength === 0) {
       throw webidl.makeException(
         TypeError,
-        "length must be non-zero",
+        "Length must be non-zero",
         prefix,
         arg1,
       );
@@ -5891,19 +5884,19 @@ class ReadableByteStreamController {
     if (getArrayBufferByteLength(buffer) === 0) {
       throw webidl.makeException(
         TypeError,
-        "buffer length must be non-zero",
+        "Buffer length must be non-zero",
         prefix,
         arg1,
       );
     }
     if (this[_closeRequested] === true) {
       throw new TypeError(
-        "Cannot enqueue chunk after a close has been requested.",
+        "Cannot enqueue chunk after a close has been requested",
       );
     }
     if (this[_stream][_state] !== "readable") {
       throw new TypeError(
-        "Cannot enqueue chunk when underlying stream is not readable.",
+        "Cannot enqueue chunk when underlying stream is not readable",
       );
     }
     return readableByteStreamControllerEnqueue(this, chunk);
@@ -6043,7 +6036,7 @@ class ReadableStreamDefaultController {
   close() {
     webidl.assertBranded(this, ReadableStreamDefaultControllerPrototype);
     if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
-      throw new TypeError("The stream controller cannot close or enqueue.");
+      throw new TypeError("The stream controller cannot close or enqueue");
     }
     readableStreamDefaultControllerClose(this);
   }
@@ -6058,7 +6051,7 @@ class ReadableStreamDefaultController {
       chunk = webidl.converters.any(chunk);
     }
     if (readableStreamDefaultControllerCanCloseOrEnqueue(this) === false) {
-      throw new TypeError("The stream controller cannot close or enqueue.");
+      throw new TypeError("The stream controller cannot close or enqueue");
     }
     readableStreamDefaultControllerEnqueue(this, chunk);
   }
@@ -6183,12 +6176,12 @@ class TransformStream {
     );
     if (transformerDict.readableType !== undefined) {
       throw new RangeError(
-        `${prefix}: readableType transformers not supported.`,
+        `${prefix}: readableType transformers not supported`,
       );
     }
     if (transformerDict.writableType !== undefined) {
       throw new RangeError(
-        `${prefix}: writableType transformers not supported.`,
+        `${prefix}: writableType transformers not supported`,
       );
     }
     const readableHighWaterMark = extractHighWaterMark(readableStrategy, 0);
@@ -6393,7 +6386,7 @@ class WritableStream {
     );
     if (underlyingSinkDict.type != null) {
       throw new RangeError(
-        `${prefix}: WritableStream does not support 'type' in the underlying sink.`,
+        `${prefix}: WritableStream does not support 'type' in the underlying sink`,
       );
     }
     initializeWritableStream(this);
@@ -6520,7 +6513,7 @@ class WritableStreamDefaultWriter {
     webidl.assertBranded(this, WritableStreamDefaultWriterPrototype);
     if (this[_stream] === undefined) {
       throw new TypeError(
-        "A writable stream is not associated with the writer.",
+        "A writable stream is not associated with the writer",
       );
     }
     return writableStreamDefaultWriterGetDesiredSize(this);
@@ -6891,6 +6884,10 @@ webidl.converters.StreamPipeOptions = webidl
     },
     { key: "signal", converter: webidl.converters.AbortSignal },
   ]);
+
+webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
+  webidl.converters.any,
+);
 
 internals.resourceForReadableStream = resourceForReadableStream;
 

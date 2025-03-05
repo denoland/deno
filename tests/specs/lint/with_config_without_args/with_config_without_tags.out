@@ -5,7 +5,7 @@ error[ban-untagged-todo]: TODO should be tagged with (@username) or (#issue)
   | ^^^^^^^^^^^^
   = hint: Add a user tag or issue reference to the TODO comment, e.g. TODO(@djones), TODO(djones), TODO(#123)
 
-  docs: https://lint.deno.land/rules/ban-untagged-todo
+  docs: https://docs.deno.com/lint/rules/ban-untagged-todo
 
 
 error[no-unused-vars]: `add` is never used
@@ -15,7 +15,7 @@ error[no-unused-vars]: `add` is never used
   |          ^^^
   = hint: If this is intentional, prefix it with an underscore like `_add`
 
-  docs: https://lint.deno.land/rules/no-unused-vars
+  docs: https://docs.deno.com/lint/rules/no-unused-vars
 
 
 Found 2 problems
