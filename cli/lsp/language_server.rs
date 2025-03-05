@@ -2070,7 +2070,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let mut refactor_edit_info = self
+      let refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -2083,8 +2083,8 @@ impl Inner {
             .into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
-          action_data.refactor_name,
-          action_data.action_name,
+          action_data.refactor_name.clone(),
+          action_data.action_name.clone(),
           Some(tsc::UserPreferences::from_config_for_specifier(
             &self.config,
             &action_data.specifier,
@@ -2103,22 +2103,34 @@ impl Inner {
             );
             LspError::invalid_request()
           }
-        })?;
-      if kind_suffix == ".rewrite.function.returnType"
-        || kind_suffix == ".move.newFile"
-      {
-        refactor_edit_info.edits =
-          fix_ts_import_changes(&refactor_edit_info.edits, self, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!("Unable to fix import changes: {:#}", err);
-                LspError::internal_error()
-              }
-            })?
+        });
+      match refactor_edit_info {
+        Ok(mut refactor_edit_info) => {
+          if kind_suffix == ".rewrite.function.returnType"
+            || kind_suffix == ".move.newFile"
+          {
+            refactor_edit_info.edits =
+              fix_ts_import_changes(&refactor_edit_info.edits, self, token)
+                .map_err(|err| {
+                  if token.is_cancelled() {
+                    LspError::request_cancelled()
+                  } else {
+                    error!("Unable to fix import changes: {:#}", err);
+                    LspError::internal_error()
+                  }
+                })?
+          }
+          code_action.edit =
+            refactor_edit_info.to_workspace_edit(self, token)?;
+        }
+        Err(err) => {
+          if token.is_cancelled() {
+            return Err(LspError::request_cancelled());
+          } else {
+            lsp_warn!("Unable to get refactor edit info from TypeScript: {:#}\nCode action data: {:#}", err, json!(&action_data));
+          }
+        }
       }
-      code_action.edit = refactor_edit_info.to_workspace_edit(self, token)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
