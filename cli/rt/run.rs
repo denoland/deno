@@ -74,6 +74,7 @@ use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
@@ -154,18 +155,9 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     raw_specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      if kind != ResolutionKind::MainModule {
-        return Err(
-          JsErrorBox::generic(format!(
-            "Expected to resolve main module, got {:?} instead.",
-            kind
-          ))
-          .into(),
-        );
-      }
       let current_dir = std::env::current_dir().unwrap();
       deno_core::resolve_path(".", &current_dir)
         .map_err(JsErrorBox::from_err)?
@@ -815,7 +807,7 @@ pub async fn run(
   }));
   let cjs_esm_code_analyzer =
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
-  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+  let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
     in_npm_pkg_checker,
     node_resolver.clone(),
@@ -823,6 +815,8 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
+  let node_code_translator =
+    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
