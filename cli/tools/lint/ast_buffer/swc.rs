@@ -1904,7 +1904,7 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
             let shorthand = assign_pat_prop.value.is_none();
 
             if let Some(assign) = &assign_pat_prop.value {
-              let expr = serialize_expr(ctx, &assign);
+              let expr = serialize_expr(ctx, assign);
               value = ctx.write_assign_pat(&assign_pat_prop.span, value, expr);
             }
 
