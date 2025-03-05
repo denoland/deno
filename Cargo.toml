@@ -151,7 +151,7 @@ data-url = "=0.3.1"
 deno_cache_dir = "=0.18.0"
 deno_error = "=0.5.5"
 deno_native_certs = "0.3.0"
-deno_package_json = { version = "=0.5.0", default-features = false }
+deno_package_json = { version = "=0.5.1", default-features = false }
 deno_task_shell = "=0.20.2"
 deno_unsync = "0.4.2"
 deno_whoami = "0.1.0"
@@ -490,6 +490,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_unsync]
 opt-level = 3
-
-[patch.crates-io]
-deno_package_json = { path = "../deno_package_json" }
