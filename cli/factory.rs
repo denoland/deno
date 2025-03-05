@@ -78,6 +78,7 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::EszipModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
 use crate::node::CliCjsModuleExportAnalyzer;
@@ -150,9 +151,35 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
 }
 
 #[derive(Debug)]
+struct EszipModuleLoaderProvider {
+  cli_options: Arc<CliOptions>,
+  deferred: once_cell::sync::OnceCell<Arc<EszipModuleLoader>>,
+}
+
+impl EszipModuleLoaderProvider {
+  pub async fn get(&self) -> Result<Option<&Arc<EszipModuleLoader>>, AnyError> {
+    if self.cli_options.eszip() {
+      if let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command() {
+        if self.deferred.get().is_none() {
+          let eszip_loader = EszipModuleLoader::create(
+            &run_flags.script,
+            self.cli_options.initial_cwd(),
+          )
+          .await?;
+          _ = self.deferred.set(Arc::new(eszip_loader));
+        }
+        return Ok(Some(self.deferred.get().unwrap()));
+      }
+    }
+    Ok(None)
+  }
+}
+
+#[derive(Debug)]
 struct CliSpecifiedImportMapProvider {
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
+  eszip_module_loader_provider: Arc<EszipModuleLoaderProvider>,
   workspace_external_import_map_loader: Arc<WorkspaceExternalImportMapLoader>,
 }
 
@@ -182,14 +209,17 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
       self.cli_options.resolve_specified_import_map_specifier()?;
     match maybe_import_map_specifier {
       Some(specifier) => {
-        let value = resolve_import_map_value_from_specifier(
-          &specifier,
-          &self.file_fetcher,
-        )
-        .await
-        .with_context(|| {
-          format!("Unable to load '{}' import map", specifier)
-        })?;
+        let value = match self.eszip_module_loader_provider.get().await? {
+          Some(eszip) => eszip.load_import_map_value(&specifier)?,
+          None => resolve_import_map_value_from_specifier(
+            &specifier,
+            &self.file_fetcher,
+          )
+          .await
+          .with_context(|| {
+            format!("Unable to load '{}' import map", specifier)
+          })?,
+        };
         Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
           base_url: specifier,
           value,
@@ -223,6 +253,12 @@ pub struct Deferred<T>(once_cell::unsync::OnceCell<T>);
 impl<T> Default for Deferred<T> {
   fn default() -> Self {
     Self(once_cell::unsync::OnceCell::default())
+  }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for Deferred<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_tuple("Deferred").field(&self.0).finish()
   }
 }
 
@@ -270,6 +306,7 @@ struct CliFactoryServices {
   deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
+  eszip_module_loader_provider: Deferred<Arc<EszipModuleLoaderProvider>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
   found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
@@ -453,6 +490,20 @@ impl CliFactory {
         self.flags.unsafely_ignore_certificate_errors.clone(),
       ))
     })
+  }
+
+  fn eszip_module_loader_provider(
+    &self,
+  ) -> Result<&Arc<EszipModuleLoaderProvider>, AnyError> {
+    self
+      .services
+      .eszip_module_loader_provider
+      .get_or_try_init(|| {
+        Ok(Arc::new(EszipModuleLoaderProvider {
+          cli_options: self.cli_options()?.clone(),
+          deferred: Default::default(),
+        }))
+      })
   }
 
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
@@ -651,6 +702,9 @@ impl CliFactory {
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
             cli_options: self.cli_options()?.clone(),
+            eszip_module_loader_provider: self
+              .eszip_module_loader_provider()?
+              .clone(),
             file_fetcher: self.file_fetcher()?.clone(),
             workspace_external_import_map_loader: self
               .workspace_external_import_map_loader()?
@@ -1120,6 +1174,8 @@ impl CliFactory {
       Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
     };
 
+    let maybe_eszip_loader =
+      self.eszip_module_loader_provider()?.get().await?.cloned();
     let module_loader_factory = CliModuleLoaderFactory::new(
       cli_options,
       cjs_tracker,
@@ -1145,6 +1201,7 @@ impl CliFactory {
       self.parsed_source_cache().clone(),
       self.resolver().await?.clone(),
       self.sys(),
+      maybe_eszip_loader,
     );
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
