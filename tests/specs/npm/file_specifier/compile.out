@@ -2,9 +2,7 @@ Compile [WILDLINE]/index.mjs to [WILDLINE]
 
 Embedded Files
 
-[WILDLINE]
-├── package-a/* ([WILDLINE])
-└── package-b/* ([WILDLINE])
+[WILDCARD]
 
 Files: [WILDLINE]
 Metadata: [WILDLINE]
