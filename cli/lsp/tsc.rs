@@ -19,7 +19,6 @@ use std::thread;
 use dashmap::DashMap;
 use deno_ast::MediaType;
 use deno_core::anyhow::anyhow;
-use deno_core::anyhow::Context as _;
 use deno_core::convert::Smi;
 use deno_core::convert::ToV8;
 use deno_core::error::AnyError;
@@ -245,9 +244,11 @@ pub struct TsServer {
   sender: mpsc::UnboundedSender<Request>,
   receiver: Mutex<Option<mpsc::UnboundedReceiver<Request>>>,
   pub specifier_map: Arc<TscSpecifierMap>,
+  inspector_server_addr: Mutex<Option<String>>,
   inspector_server: Mutex<Option<Arc<InspectorServer>>>,
   pending_change: Mutex<Option<PendingChange>>,
   enable_tracing: Arc<AtomicBool>,
+  start_once: std::sync::Once,
 }
 
 impl std::fmt::Debug for TsServer {
@@ -257,7 +258,9 @@ impl std::fmt::Debug for TsServer {
       .field("sender", &self.sender)
       .field("receiver", &self.receiver)
       .field("specifier_map", &self.specifier_map)
+      .field("inspector_server_addr", &self.inspector_server_addr.lock())
       .field("inspector_server", &self.inspector_server.lock().is_some())
+      .field("start_once", &self.start_once)
       .finish()
   }
 }
@@ -404,9 +407,11 @@ impl TsServer {
       sender: tx,
       receiver: Mutex::new(Some(request_rx)),
       specifier_map: Arc::new(TscSpecifierMap::new()),
+      inspector_server_addr: Mutex::new(None),
       inspector_server: Mutex::new(None),
       pending_change: Mutex::new(None),
       enable_tracing: Default::default(),
+      start_once: std::sync::Once::new(),
     }
   }
 
@@ -416,40 +421,53 @@ impl TsServer {
       .store(enabled, std::sync::atomic::Ordering::Relaxed);
   }
 
-  pub fn start(
-    &self,
-    inspector_server_addr: Option<String>,
-  ) -> Result<(), AnyError> {
-    let maybe_inspector_server = match inspector_server_addr {
-      Some(addr) => {
-        let addr: SocketAddr = addr.parse().with_context(|| {
-          format!("Invalid inspector server address \"{}\"", &addr)
-        })?;
-        let server = InspectorServer::new(addr, "deno-lsp-tsc")?;
-        Some(Arc::new(server))
-      }
-      None => None,
-    };
-    self
-      .inspector_server
-      .lock()
-      .clone_from(&maybe_inspector_server);
-    // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
-    // on the `TsServer` struct.
-    let receiver = self.receiver.lock().take().unwrap();
-    let performance = self.performance.clone();
-    let specifier_map = self.specifier_map.clone();
-    let enable_tracing = self.enable_tracing.clone();
-    let _join_handle = thread::spawn(move || {
-      run_tsc_thread(
-        receiver,
-        performance,
-        specifier_map,
-        maybe_inspector_server,
-        enable_tracing,
-      )
+  /// This should be called before `self.ensure_started()`.
+  pub fn set_inspector_server_addr(&self, addr: Option<String>) {
+    *self.inspector_server_addr.lock() = addr;
+  }
+
+  pub fn ensure_started(&self) {
+    self.start_once.call_once(|| {
+      let maybe_inspector_server = self
+        .inspector_server_addr
+        .lock()
+        .as_ref()
+        .and_then(|addr| {
+          addr
+            .parse::<SocketAddr>()
+            .inspect_err(|err| {
+              lsp_warn!("Invalid inspector server address: {:#}", err);
+            })
+            .ok()
+        })
+        .map(|addr| {
+          Arc::new(InspectorServer::new(addr, "deno-lsp-tsc").unwrap())
+        });
+      self
+        .inspector_server
+        .lock()
+        .clone_from(&maybe_inspector_server);
+      // TODO(bartlomieju): why is the join_handle ignored here? Should we store it
+      // on the `TsServer` struct.
+      let receiver = self.receiver.lock().take().unwrap();
+      let performance = self.performance.clone();
+      let specifier_map = self.specifier_map.clone();
+      let enable_tracing = self.enable_tracing.clone();
+      let _join_handle = thread::spawn(move || {
+        run_tsc_thread(
+          receiver,
+          performance,
+          specifier_map,
+          maybe_inspector_server,
+          enable_tracing,
+        )
+      });
+      lsp_log!("TS server started.");
     });
-    Ok(())
+  }
+
+  pub fn is_started(&self) -> bool {
+    self.start_once.is_completed()
   }
 
   pub fn project_changed<'a>(
@@ -549,6 +567,9 @@ impl TsServer {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn cleanup_semantic_cache(&self, snapshot: Arc<StateSnapshot>) {
+    if !self.is_started() {
+      return;
+    }
     for scope in snapshot
       .config
       .tree
@@ -1365,6 +1386,7 @@ impl TsServer {
     R: de::DeserializeOwned,
   {
     use super::trace::SpanExt;
+    self.ensure_started();
     let context = super::trace::Span::current().context();
     let mark = self
       .performance
@@ -5772,7 +5794,6 @@ mod tests {
     });
     let performance = Arc::new(Performance::default());
     let ts_server = TsServer::new(performance);
-    ts_server.start(None).unwrap();
     ts_server.project_changed(
       snapshot.clone(),
       [],
