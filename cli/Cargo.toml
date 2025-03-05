@@ -89,6 +89,7 @@ deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+eszip.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
 
