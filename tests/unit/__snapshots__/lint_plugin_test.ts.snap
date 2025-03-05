@@ -2630,7 +2630,7 @@ snapshot[`Plugin - BinaryExpression 8`] = `
     type: "Identifier",
     typeAnnotation: undefined,
   },
-  operator: "!=",
+  operator: "!==",
   range: [
     0,
     7,
