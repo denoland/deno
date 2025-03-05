@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -8,6 +9,8 @@ use deno_core::error::AnyError;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::Version;
 
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
@@ -57,10 +60,15 @@ pub async fn cache_top_level_deps(
 
     let mut seen_reqs = HashSet::new();
 
-    let workspace_npm_package_names = resolver
+    let workspace_npm_packages = resolver
       .package_jsons()
-      .filter_map(|pkg_json| pkg_json.name.as_deref())
-      .collect::<HashSet<_>>();
+      .filter_map(|pkg_json| {
+        pkg_json
+          .name
+          .as_deref()
+          .and_then(|name| Some((name, pkg_json.version.as_deref()?)))
+      })
+      .collect::<HashMap<_, _>>();
 
     for entry in import_map.imports().entries().chain(
       import_map
@@ -106,9 +114,19 @@ pub async fn cache_top_level_deps(
           else {
             continue;
           };
-          if workspace_npm_package_names.contains(&*req_ref.req().name) {
-            continue;
+          let version = workspace_npm_packages.get(&*req_ref.req().name);
+          if let Some(version) = version {
+            let Ok(version) = Version::parse_from_npm(version) else {
+              continue;
+            };
+            let version_req = &req_ref.req().version_req;
+            if version_req.tag().is_none() && version_req.matches(&version) {
+              // if version req matches the workspace package's version, use that
+              // (so it doesn't need to be installed)
+              continue;
+            }
           }
+
           roots.push(specifier.clone())
         }
         _ => {
