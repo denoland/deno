@@ -121,6 +121,7 @@ const denoNs = {
   serveHttp: http.serveHttp,
   serve: serve.serve,
   resolveDns: net.resolveDns,
+  resolveDnsRecursive: net.resolveDnsRecursive,
   upgradeWebSocket: websocket.upgradeWebSocket,
   utime: fs.utime,
   utimeSync: fs.utimeSync,

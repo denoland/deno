@@ -7,6 +7,7 @@ use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::rc::Rc;
 use std::str::FromStr;
+use std::time::Instant;
 
 use deno_core::op2;
 use deno_core::AsyncRefCell;
@@ -19,17 +20,23 @@ use deno_core::OpState;
 use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
+use deno_tls::create_client_config;
+use deno_tls::SocketUse;
+use deno_tls::TlsKeys;
+use hickory_proto::op::Query;
+use hickory_proto::rr::domain::Name;
 use hickory_proto::rr::rdata::caa::Value;
 use hickory_proto::rr::record_data::RData;
 use hickory_proto::rr::record_type::RecordType;
 use hickory_proto::ProtoError;
 use hickory_proto::ProtoErrorKind;
-use hickory_resolver::config::NameServerConfigGroup;
+use hickory_resolver::config::NameServerConfig;
 use hickory_resolver::config::ResolverConfig;
 use hickory_resolver::config::ResolverOpts;
 use hickory_resolver::system_conf;
 use hickory_resolver::ResolveError;
 use hickory_resolver::ResolveErrorKind;
+use hickory_recursor::Recursor;
 use serde::Deserialize;
 use serde::Serialize;
 use socket2::Domain;
@@ -120,6 +127,12 @@ pub enum NetError {
   #[class(generic)]
   #[error("{0}")]
   Dns(#[from] ResolveError),
+  #[class(generic)]
+  #[error("{0}")]
+  DnsRecursive(#[from] hickory_recursor::Error),
+  #[class(generic)]
+  #[error("{0}")]
+  DnsProto(#[from] hickory_proto::ProtoError),
   #[class("NotSupported")]
   #[error("Provided record type is not supported")]
   UnsupportedRecordType,
@@ -609,25 +622,40 @@ pub struct ResolveAddrArgs {
   cancel_rid: Option<ResourceId>,
   query: String,
   record_type: RecordType,
-  options: Option<ResolveDnsOption>,
+  name_servers: Option<Vec<NameServer>>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ResolveDnsOption {
-  name_server: Option<NameServer>,
+pub struct RecurseAddrArgs {
+  cancel_rid: Option<ResourceId>,
+  query: String,
+  record_type: RecordType,
+  options: RecurseDnsOptions,
 }
 
-fn default_port() -> u16 {
-  53
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecurseDnsOptions {
+  name_servers: Vec<NameServer>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NameServer {
-  ip_addr: String,
-  #[serde(default = "default_port")]
-  port: u16,
+  hostname: String,
+  port: Option<u16>,
+  protocol: Option<NameServerProtocol>,
+  tls_dns_name: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NameServerProtocol {
+  Udp,
+  Tcp,
+  Tls,
+  Https,
 }
 
 #[op2(async, stack_trace)]
@@ -642,22 +670,55 @@ where
   let ResolveAddrArgs {
     query,
     record_type,
-    options,
     cancel_rid,
+    name_servers,
   } = args;
 
-  let (config, opts) = if let Some(name_server) =
-    options.as_ref().and_then(|o| o.name_server.as_ref())
-  {
-    let group = NameServerConfigGroup::from_ips_clear(
-      &[name_server.ip_addr.parse()?],
-      name_server.port,
-      true,
-    );
-    (
-      ResolverConfig::from_parts(None, vec![], group),
-      ResolverOpts::default(),
-    )
+  let (config, opts) = if let Some(name_servers) = name_servers {
+    let mut config = ResolverConfig::new();
+    for ns in name_servers {
+      let (protocol, default_port) = match ns.protocol {
+        Some(NameServerProtocol::Udp) | None => {
+          (hickory_proto::xfer::Protocol::Udp, 53)
+        }
+        Some(NameServerProtocol::Tcp) => {
+          (hickory_proto::xfer::Protocol::Tcp, 53)
+        }
+        Some(NameServerProtocol::Tls) => {
+          (hickory_proto::xfer::Protocol::Tls, 853)
+        }
+        Some(NameServerProtocol::Https) => {
+          (hickory_proto::xfer::Protocol::Https, 443)
+        }
+      };
+
+      let socket_addr =
+        resolve_addr(&ns.hostname, ns.port.unwrap_or(default_port))
+          .await?
+          .next()
+          .ok_or(NetError::NoResolvedAddress)?;
+
+      config.add_name_server(NameServerConfig {
+        socket_addr,
+        protocol,
+        http_endpoint: None,
+        tls_dns_name: Some(ns.tls_dns_name.unwrap_or(ns.hostname)),
+        trust_negative_responses: true,
+        bind_addr: None,
+      });
+    }
+
+    let mut opts = ResolverOpts::default();
+
+    opts.tls_config = create_client_config(
+      None,
+      vec![],
+      None,
+      TlsKeys::Null,
+      SocketUse::GeneralSsl,
+    )?;
+
+    (config, opts)
   } else {
     system_conf::read_system_conf()?
   };
@@ -720,6 +781,103 @@ where
       }
       _ => NetError::Dns(e),
     })?
+    .iter()
+    .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
+    .collect::<Result<Vec<DnsReturnRecord>, NetError>>()
+}
+
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_dns_resolve_recursive<NP>(
+  state: Rc<RefCell<OpState>>,
+  #[serde] args: RecurseAddrArgs,
+) -> Result<Vec<DnsReturnRecord>, NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let RecurseAddrArgs {
+    query,
+    record_type,
+    options,
+    cancel_rid,
+  } = args;
+
+  let mut roots: Vec<NameServerConfig> = vec![];
+
+  for ns in options.name_servers {
+    let (protocol, default_port) = match ns.protocol {
+      Some(NameServerProtocol::Udp) | None => {
+        (hickory_proto::xfer::Protocol::Udp, 53)
+      }
+      Some(NameServerProtocol::Tcp) => {
+        (hickory_proto::xfer::Protocol::Tcp, 53)
+      }
+      Some(NameServerProtocol::Tls) => {
+        (hickory_proto::xfer::Protocol::Tls, 853)
+      }
+      Some(NameServerProtocol::Https) => {
+        (hickory_proto::xfer::Protocol::Https, 443)
+      }
+    };
+
+    let socket_addr =
+      resolve_addr(&ns.hostname, ns.port.unwrap_or(default_port))
+        .await?
+        .next()
+        .ok_or(NetError::NoResolvedAddress)?;
+
+    roots.push(NameServerConfig {
+      socket_addr,
+      protocol,
+      http_endpoint: None,
+      tls_dns_name: None,
+      trust_negative_responses: true,
+      bind_addr: None,
+    });
+  }
+
+
+  {
+    let mut s = state.borrow_mut();
+    let perm = s.borrow_mut::<NP>();
+
+    // Checks permission against the name servers which will be actually queried.
+    for ns in &roots {
+      let socker_addr = &ns.socket_addr;
+      let ip = socker_addr.ip().to_string();
+      let port = socker_addr.port();
+      perm.check_net(&(ip, Some(port)), "Deno.resolveDns()")?;
+    }
+  }
+
+  let recursor = Recursor::builder().build(roots)?;
+
+  let query = Query::query(Name::from_str(&query)?, record_type);
+  let lookup_fut = recursor.resolve(query, Instant::now(), false);
+
+  let cancel_handle = cancel_rid.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let lookup = if let Some(cancel_handle) = cancel_handle {
+    let lookup_rv = lookup_fut.or_cancel(cancel_handle).await;
+
+    if let Some(cancel_rid) = cancel_rid {
+      if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+        res.close();
+      }
+    };
+
+    lookup_rv?
+  } else {
+    lookup_fut.await
+  };
+
+  lookup?
     .iter()
     .filter_map(|rdata| rdata_to_return_record(record_type)(rdata).transpose())
     .collect::<Result<Vec<DnsReturnRecord>, NetError>>()

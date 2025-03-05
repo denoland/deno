@@ -145,7 +145,8 @@ fs3 = "0.5.0"
 futures = "0.3.21"
 glob = "0.3.1"
 h2 = "0.4.6"
-hickory-resolver = { version = "0.25.0-alpha.4", features = ["tokio-runtime", "serde"] }
+hickory-resolver = { version = "0.25.0-alpha.5", features = ["tokio-runtime", "serde", "dns-over-https-rustls"] }
+hickory-recursor = { version = "0.25.0-alpha.5", features = ["serde", "dns-over-https-rustls"] }
 http = "1.0"
 http-body = "1.0"
 http-body-util = "0.1.2"
@@ -187,7 +188,7 @@ regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.0"
 rusqlite = { version = "0.32.0", features = ["unlock_notify", "bundled", "session"] }
-rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
+rustls = { version = "0.23.14", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"

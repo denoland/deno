@@ -136,6 +136,7 @@ deno_core::extension!(deno_net,
     ops::op_net_set_multi_loopback_udp,
     ops::op_net_set_multi_ttl_udp,
     ops::op_dns_resolve<P>,
+    ops::op_dns_resolve_recursive<P>,
     ops::op_set_nodelay,
     ops::op_set_keepalive,
 

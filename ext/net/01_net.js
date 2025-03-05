@@ -9,6 +9,7 @@ const {
 } = core;
 import {
   op_dns_resolve,
+  op_dns_resolve_recursive,
   op_net_accept_tcp,
   op_net_accept_unix,
   op_net_connect_tcp,
@@ -73,12 +74,49 @@ async function resolveDns(query, recordType, options) {
     options.signal[abortSignal.add](abortHandler);
   }
 
+  let nameServers;
+  if (options?.nameServer) {
+    nameServers = [{
+      hostname: options.nameServer.ipAddr,
+      port: options.nameServer.port,
+    }];
+  } else if (options?.nameServers) {
+    nameServers = options.nameServers;
+  }
+
   try {
     return await op_dns_resolve({
       cancelRid,
       query,
       recordType,
-      options,
+      nameServers,
+    });
+  } finally {
+    if (options?.signal) {
+      options.signal[abortSignal.remove](abortHandler);
+
+      // always throw the abort error when aborted
+      options.signal.throwIfAborted();
+    }
+  }
+}
+
+async function resolveDnsRecursive(query, recordType, options) {
+  let cancelRid;
+  let abortHandler;
+  if (options?.signal) {
+    options.signal.throwIfAborted();
+    cancelRid = createCancelHandle();
+    abortHandler = () => core.tryClose(cancelRid);
+    options.signal[abortSignal.add](abortHandler);
+  }
+
+  try {
+    return await op_dns_resolve({
+      cancelRid,
+      query,
+      recordType,
+      options: { nameServers: options.nameServers },
     });
   } finally {
     if (options?.signal) {
@@ -613,6 +651,7 @@ export {
   Listener,
   listenOptionApiName,
   resolveDns,
+  resolveDnsRecursive,
   TcpConn,
   UnixConn,
   UpgradedConn,

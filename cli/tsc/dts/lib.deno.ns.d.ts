@@ -4663,7 +4663,10 @@ declare namespace Deno {
     /** The name server to be used for lookups.
      *
      * If not specified, defaults to the system configuration. For example
-     * `/etc/resolv.conf` on Unix-like systems. */
+     * `/etc/resolv.conf` on Unix-like systems.
+     *
+     * @deprecated
+     */
     nameServer?: {
       /** The IP address of the name server. */
       ipAddr: string;
@@ -4672,12 +4675,46 @@ declare namespace Deno {
        * @default {53} */
       port?: number;
     };
+
+    /**
+     * Name servers to be used for lookups.
+     *
+     * If not specified, defaults to the system configuration. For example
+     * `/etc/resolv.conf` on Unix-like systems.
+     */
+    nameServers?: Array<NameServerConfig>;
+
     /**
      * An abort signal to allow cancellation of the DNS resolution operation.
      * If the signal becomes aborted the resolveDns operation will be stopped
      * and the promise returned will be rejected with an AbortError.
      */
     signal?: AbortSignal;
+  }
+
+  /**
+   * Name server configuration for {@linkcode Deno.resolveDns}.
+   *
+   * @category Network */
+  export interface NameServerConfig {
+    /** The host address of the name server. */
+    hostname: string;
+
+    /** The port number the query will be sent to.
+     *
+     * @default {53} */
+    port?: number;
+
+    /**
+     * @default {"udp"}
+     */
+    protocol?: "udp" | "tcp" | "tls" | "https";
+
+    /**
+     * Name to be used for PKI if using TLS.
+     * Defaults to `hostname`.
+     */
+    tlsDnsName?: string;
   }
 
   /** If {@linkcode Deno.resolveDns} is called with `"CAA"` record type
