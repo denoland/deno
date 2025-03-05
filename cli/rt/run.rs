@@ -60,6 +60,7 @@ use deno_resolver::npm::NpmResolverCreateOptions;
 use deno_resolver::workspace::MappedResolution;
 use deno_resolver::workspace::SloppyImportsOptions;
 use deno_resolver::workspace::WorkspaceResolver;
+use deno_resolver::DenoResolveErrorKind;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
@@ -242,6 +243,13 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
+        PackageJsonDepValue::File(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+              .into_box(),
+          )
+          .into(),
+        ),
         PackageJsonDepValue::Req(req) => Ok(
           self
             .shared

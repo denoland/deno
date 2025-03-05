@@ -68,6 +68,9 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
+  #[class(type)]
+  #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
+  UnsupportedPackageJsonFileSpecifier,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -305,6 +308,16 @@ impl<
                 .into_box()
             })
             .and_then(|dep| match dep {
+              PackageJsonDepValue::File(_) => {
+                // We don't support --node-modules-dir=auto/none because it's too
+                // much work to get this to work with a lockfile properly and for
+                // multiple managed node_modules directories to work. If someone wants
+                // to do this, then they need to use the default (manual)
+                Err(
+                  DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                    .into_box(),
+                )
+              }
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(
