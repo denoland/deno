@@ -716,7 +716,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         BinaryOp::EqEq => (AstNode::BinaryExpression, "=="),
         BinaryOp::NotEq => (AstNode::BinaryExpression, "!="),
         BinaryOp::EqEqEq => (AstNode::BinaryExpression, "==="),
-        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!="),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!=="),
         BinaryOp::Lt => (AstNode::BinaryExpression, "<"),
         BinaryOp::LtEq => (AstNode::BinaryExpression, "<="),
         BinaryOp::Gt => (AstNode::BinaryExpression, ">"),
