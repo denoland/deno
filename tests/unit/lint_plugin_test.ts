@@ -855,6 +855,7 @@ Deno.test("Plugin - ObjectPattern", async (t) => {
   await testSnapshot(t, "const { 'a.b': A } = {}", "ObjectPattern");
   await testSnapshot(t, "const { prop = 2 } = {}", "ObjectPattern");
   await testSnapshot(t, "const { prop = 2, ...c } = {}", "ObjectPattern");
+  await testSnapshot(t, "({ a = b } = {})", "ObjectPattern");
 });
 
 Deno.test("Plugin - ArrayPattern", async (t) => {
