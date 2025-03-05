@@ -234,9 +234,6 @@ pub async fn run_eszip(
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
-  // TODO: handle import map from eszip
-  let _import_map_specifier =
-    cli_options.resolve_specified_import_map_specifier()?;
 
   // entrypoint#path1,path2,...
   let (entrypoint, _files) = run_flags
