@@ -23,10 +23,10 @@
     "exitCode": 1,
     "output": "node_modules_dir.out"
   }, {
-    "args": "compile --allow-read --output package-a package-a/index.mjs",
+    "args": "compile --allow-read --output exec package-a/index.mjs",
     "output": "compile.out"
   }, {
-    "commandName": "./package-a",
+    "commandName": "./exec",
     "args": [],
     "output": "output.out"
   }]

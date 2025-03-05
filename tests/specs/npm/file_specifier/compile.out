@@ -1,12 +1,12 @@
-Compile [WILDLINE]/index.mjs to package-a[WILDLINE]
+Compile [WILDLINE]/index.mjs to [WILDLINE]
 
 Embedded Files
 
-package-a.exe
+[WILDLINE]
 ├── package-a/* ([WILDLINE])
 └── package-b/* ([WILDLINE])
 
-Files: 851.97KB
-Metadata: 1.42KB
-Remote modules: 12B
+Files: [WILDLINE]
+Metadata: [WILDLINE]
+Remote modules: [WILDLINE]
 
