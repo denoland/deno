@@ -15,7 +15,7 @@ use crate::sync::MaybeDashMap;
 /// Modules that are `.js`, `.ts`, `.jsx`, and `tsx` are only known to
 /// be CJS or ESM after they're loaded based on their contents. So these
 /// files will be "maybe CJS" until they're loaded.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CjsTracker<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead> {
   is_cjs_resolver: IsCjsResolver<TInNpmPackageChecker, TSys>,
   known: MaybeDashMap<Url, ResolutionMode>,
@@ -135,7 +135,8 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum IsCjsResolutionMode {
   /// Requires an explicit `"type": "commonjs"` in the package.json.
   ExplicitTypeCommonJs,
@@ -146,7 +147,7 @@ pub enum IsCjsResolutionMode {
 }
 
 /// Resolves whether a module is CJS or ESM.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct IsCjsResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TSys: FsRead,

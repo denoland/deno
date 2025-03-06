@@ -47,6 +47,7 @@ pub struct HttpClientProvider {
   clients_by_thread_id: Mutex<HashMap<ThreadId, deno_fetch::Client>>,
 }
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for HttpClientProvider {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("HttpClient")
@@ -141,7 +142,7 @@ pub enum DownloadErrorKind {
   Other(JsErrorBox),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct HttpClient {
   client: deno_fetch::Client,
   // don't allow sending this across threads because then

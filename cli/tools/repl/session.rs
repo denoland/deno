@@ -170,7 +170,7 @@ pub fn result_to_evaluation_output(
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TsEvaluateResponse {
   pub ts_code: String,
   pub value: cdp::EvaluateResponse,
@@ -864,7 +864,8 @@ static JSX_RE: Lazy<Regex> =
 static JSX_FRAG_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(?i)^[\s*]*@jsxFrag\s+(\S+)").unwrap());
 
-#[derive(Default, Debug)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct AnalyzedJsxPragmas {
   /// Information about `@jsxImportSource` pragma.
   jsx_import_source: Option<SpecifierWithRange>,

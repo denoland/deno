@@ -141,7 +141,7 @@ fn create_print_after_restart_fn(clear_screen: bool) -> impl Fn() {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WatcherCommunicatorOptions {
   /// Send a list of paths that should be watched for changes.
   pub paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
@@ -155,7 +155,7 @@ pub struct WatcherCommunicatorOptions {
 }
 
 /// An interface to interact with Deno's CLI file watcher.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WatcherCommunicator {
   /// Send a list of paths that should be watched for changes.
   paths_to_watch_tx: tokio::sync::mpsc::UnboundedSender<Vec<PathBuf>>,
@@ -268,7 +268,8 @@ where
   fut.await
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum WatcherRestartMode {
   /// When a file path changes the process is restarted.
   Automatic,

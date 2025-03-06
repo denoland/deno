@@ -37,7 +37,7 @@ pub struct AddPkgReqsResult {
 }
 
 /// Updates the npm resolution with the provided package requirements.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmResolutionInstaller {
   registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   resolution: Arc<NpmResolutionCell>,

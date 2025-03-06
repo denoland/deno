@@ -34,14 +34,16 @@ use crate::NpmCacheSetting;
 type LoadResult = Result<FutureResult, Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum FutureResult {
   PackageNotExists,
   SavedFsCache(Arc<NpmPackageInfo>),
   ErroredFsCache(Arc<NpmPackageInfo>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum MemoryCacheItem {
   /// The cache item hasn't loaded yet.
   Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
@@ -54,7 +56,8 @@ enum MemoryCacheItem {
   MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsErrorBox>>),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct MemoryCache {
   clear_id: usize,
   items: HashMap<String, MemoryCacheItem>,
@@ -134,7 +137,7 @@ pub enum LoadPackageInfoInnerError {
 /// Downloads packuments from the npm registry.
 ///
 /// This is shared amongst all the workers.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RegistryInfoProvider<
   THttpClient: NpmCacheHttpClient,
   TSys: FsCreateDirAll

@@ -11,7 +11,8 @@ use crate::util::text_encoding::Utf16Map;
 /// Each property has this flag to mark what kind of value it holds-
 /// Plain objects and arrays are not supported yet, but could be easily
 /// added if needed.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PropFlags {
   Ref,
   RefArr,
@@ -79,7 +80,7 @@ fn append_usize(result: &mut Vec<u8>, value: usize) {
   append_u32(result, raw);
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct StringTable {
   id: usize,
   table: IndexMap<String, usize>,
@@ -119,9 +120,11 @@ impl StringTable {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NodeRef(pub Index);
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PendingRef(pub Index);
 
 pub trait AstBufSerializer {
@@ -133,7 +136,7 @@ pub trait AstBufSerializer {
 /// <child idx u32>
 /// <next idx u32>
 /// <parent idx u32>
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct Node {
   kind: u8,
   prop_offset: u32,
@@ -142,7 +145,7 @@ struct Node {
   parent: u32,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SerializeCtx {
   root_idx: Index,
 

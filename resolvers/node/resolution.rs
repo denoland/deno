@@ -116,7 +116,7 @@ impl NodeResolutionKind {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NodeResolution {
   Module(UrlOrPath),
   BuiltIn(String),
@@ -183,7 +183,7 @@ pub type NodeResolverRc<
   >,
 >;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NodeResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,

@@ -122,7 +122,8 @@ fn as_test_messages<S: AsRef<str>>(
   }]
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LspTestFilter {
   include: Option<HashMap<String, TestDefinition>>,
   exclude: HashMap<String, TestDefinition>,
@@ -147,7 +148,8 @@ impl LspTestFilter {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestRun {
   id: u32,
   kind: lsp_custom::TestRunKind,
@@ -497,7 +499,8 @@ impl TestRun {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum LspTestDescription {
   /// `(desc, static_id)`
   TestDescription(test::TestDescription, String),

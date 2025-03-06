@@ -23,7 +23,7 @@ use tokio::net::unix;
 
 /// A full duplex resource has a read and write ends that are completely
 /// independent, like TCP/Unix sockets and TLS streams.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FullDuplexResource<R, W> {
   rd: AsyncRefCell<R>,
   wr: AsyncRefCell<W>,

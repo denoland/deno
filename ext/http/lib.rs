@@ -114,7 +114,8 @@ struct OtelCollectors {
 
 static OTEL_COLLECTORS: OnceCell<OtelCollectors> = OnceCell::new();
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Options {
   /// By passing a hook function, the caller can customize various configuration
   /// options for the HTTP/2 server.

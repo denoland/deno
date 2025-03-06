@@ -76,7 +76,7 @@ fn base_url(url: &Url) -> String {
   url.origin().ascii_serialization()
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum CompletionType {
   Literal(String),
   Key {
@@ -347,7 +347,8 @@ fn validate_config(config: &RegistryConfigurationJson) -> Result<(), AnyError> {
   Ok(())
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RegistryConfigurationVariable {
   /// The name of the variable.
   key: String,
@@ -359,7 +360,8 @@ pub struct RegistryConfigurationVariable {
   url: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RegistryConfiguration {
   /// A Express-like path which describes how URLs are composed for a registry.
   schema: String,
@@ -391,13 +393,15 @@ impl RegistryConfiguration {
 
 /// A structure that represents the configuration of an origin and its module
 /// registries.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct RegistryConfigurationJson {
   version: u32,
   registries: Vec<RegistryConfiguration>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct VariableItemsList {
   pub items: Vec<String>,
@@ -406,7 +410,8 @@ struct VariableItemsList {
   pub preselect: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(untagged)]
 enum VariableItems {
   Simple(Vec<String>),
@@ -416,7 +421,8 @@ enum VariableItems {
 /// A structure which holds the information about currently configured module
 /// registries and can provide completion information for URLs that match
 /// one of the enabled registries.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ModuleRegistry {
   origins: HashMap<String, Vec<RegistryConfiguration>>,
   pub location: PathBuf,

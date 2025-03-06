@@ -40,7 +40,8 @@ mod outdated;
 pub use cache_deps::cache_top_level_deps;
 pub use outdated::outdated;
 
-#[derive(Debug, Copy, Clone, Hash)]
+#[derive(Copy, Clone, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ConfigKind {
   DenoJson,
   PackageJson,
@@ -699,13 +700,15 @@ async fn find_package_and_select_version_for_req(
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum AddRmPackageReqValue {
   Jsr(PackageReq),
   Npm(PackageReq),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct AddRmPackageReq {
   alias: StackString,
   value: AddRmPackageReqValue,

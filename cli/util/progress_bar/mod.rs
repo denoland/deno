@@ -21,7 +21,8 @@ mod renderer;
 // Inspired by Indicatif, but this custom implementation allows
 // for more control over what's going on under the hood.
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ProgressMessagePrompt {
   Download,
   Blocking,
@@ -42,7 +43,7 @@ impl ProgressMessagePrompt {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UpdateGuard {
   maybe_entry: Option<Arc<ProgressBarEntry>>,
 }
@@ -69,7 +70,8 @@ impl UpdateGuard {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ProgressBarStyle {
   /// Shows a progress bar with human readable download size
   DownloadBars,
@@ -81,7 +83,7 @@ pub enum ProgressBarStyle {
   TextOnly,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct ProgressBarEntry {
   id: usize,
   prompt: ProgressMessagePrompt,
@@ -125,7 +127,7 @@ impl ProgressBarEntry {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct InternalState {
   /// If this guard exists, then it means the progress
   /// bar is displaying in the draw thread.
@@ -136,10 +138,22 @@ struct InternalState {
   entries: Vec<Arc<ProgressBarEntry>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 struct ProgressBarInner {
   state: Arc<Mutex<InternalState>>,
   renderer: Arc<dyn ProgressBarRenderer>,
+}
+
+impl std::fmt::Debug for ProgressBarInner {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("ProgressBarInner");
+
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("state", &self.state);
+    }
+    f.field("renderer", &self.renderer).finish()
+  }
 }
 
 impl ProgressBarInner {
@@ -261,7 +275,8 @@ impl DrawThreadRenderer for ProgressBarInner {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ProgressBar {
   inner: ProgressBarInner,
 }

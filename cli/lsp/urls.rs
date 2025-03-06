@@ -121,7 +121,8 @@ fn from_deno_url(url: &Url) -> Option<Url> {
   Url::parse(&string).ok()
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LspUrlMapInner {
   specifier_to_uri: HashMap<ModuleSpecifier, Uri>,
   uri_to_specifier: HashMap<Uri, ModuleSpecifier>,
@@ -177,7 +178,8 @@ pub fn uri_to_url(uri: &Uri) -> Url {
   Url::parse(uri.as_str()).unwrap()
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum LspUrlKind {
   File,
   Folder,
@@ -186,7 +188,8 @@ pub enum LspUrlKind {
 /// A bi-directional map of URLs sent to the LSP client and internal module
 /// specifiers. We need to map internal specifiers into `deno:` schema URLs
 /// to allow the Deno language server to manage these as virtual documents.
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LspUrlMap {
   cache: LspCache,
   inner: Arc<Mutex<LspUrlMapInner>>,

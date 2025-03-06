@@ -15,7 +15,8 @@ use serde::Serialize;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
 
-#[derive(Deserialize, Default, Debug, Clone, Copy)]
+#[derive(Deserialize, Default, Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct OpenOptions {
@@ -70,7 +71,8 @@ pub enum FsFileType {
 }
 
 /// WARNING: This is part of the public JS Deno API.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct FsDirEntry {
   pub name: String,

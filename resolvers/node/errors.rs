@@ -14,7 +14,8 @@ use crate::path::UrlOrPath;
 use crate::NodeResolutionKind;
 use crate::ResolutionMode;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[allow(non_camel_case_types)]
 pub enum NodeJsErrorCode {
   ERR_INVALID_MODULE_SPECIFIER,

@@ -48,13 +48,15 @@ use crate::NetPermissions;
 
 pub type Fd = u32;
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
   pub alpn_protocol: Option<ByteString>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct IpAddr {
   pub hostname: String,
   pub port: u16,
@@ -574,7 +576,8 @@ where
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
 }
 
-#[derive(Serialize, Eq, PartialEq, Debug)]
+#[derive(Serialize, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(untagged)]
 pub enum DnsReturnRecord {
   A(String),

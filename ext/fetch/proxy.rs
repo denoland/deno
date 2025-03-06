@@ -29,7 +29,8 @@ use tokio_rustls::TlsConnector;
 use tokio_socks::tcp::Socks5Stream;
 use tower_service::Service;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub(crate) struct ProxyConnector<C> {
   pub(crate) http: C,
   pub(crate) proxies: Arc<Proxies>,
@@ -41,7 +42,7 @@ pub(crate) struct ProxyConnector<C> {
   pub(crate) user_agent: Option<HeaderValue>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub(crate) struct Proxies {
   no: Option<NoProxy>,
   intercepts: Vec<Intercept>,
@@ -231,14 +232,15 @@ impl Target {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct NoProxy {
   domains: DomainMatcher,
   ips: IpMatcher,
 }
 
 /// Represents a possible matching entry for an IP address
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum Ip {
   Address(IpAddr),
   Network(IpNet),
@@ -246,12 +248,14 @@ enum Ip {
 
 /// A wrapper around a list of IP cidr blocks or addresses with a [IpMatcher::contains] method for
 /// checking if an IP address is contained within the matcher
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct IpMatcher(Vec<Ip>);
 
 /// A wrapper around a list of domains with a [DomainMatcher::contains] method for checking if a
 /// domain is contained within the matcher
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DomainMatcher(Vec<String>);
 
 impl NoProxy {

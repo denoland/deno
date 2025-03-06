@@ -22,7 +22,7 @@ pub trait DrawThreadRenderer: Send + Sync + std::fmt::Debug {
 /// that you wish the entry to be drawn for. Once it is
 /// dropped, then the entry will be removed from the draw
 /// thread.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DrawThreadGuard(u16);
 
 impl Drop for DrawThreadGuard {
@@ -31,13 +31,14 @@ impl Drop for DrawThreadGuard {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct InternalEntry {
   id: u16,
   renderer: Arc<dyn DrawThreadRenderer>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct InternalState {
   // this ensures only one actual draw thread is running
   drawer_id: usize,
@@ -81,7 +82,8 @@ static IS_TTY_WITH_CONSOLE_SIZE: Lazy<bool> = Lazy::new(|| {
 /// The draw thread is responsible for rendering multiple active
 /// `DrawThreadRenderer`s to stderr. It is global because the
 /// concept of stderr in the process is also a global concept.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DrawThread;
 
 impl DrawThread {

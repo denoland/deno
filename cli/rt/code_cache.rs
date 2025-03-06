@@ -24,7 +24,8 @@ enum CodeCacheStrategy {
   SubsequentRun(SubsequentRunCodeCacheStrategy),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoCompileCodeCacheEntry {
   pub source_hash: u64,
   pub data: Vec<u8>,

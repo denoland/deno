@@ -23,7 +23,7 @@ pub struct RunStatementResult {
   changes: u64,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,

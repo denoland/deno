@@ -68,7 +68,8 @@ fn calculate_fs_version_in_cache(
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LspCache {
   deno_dir: DenoDir,
   global: Arc<GlobalHttpCache>,

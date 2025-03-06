@@ -23,7 +23,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::tools::pm::deps::DepId;
 use crate::tools::pm::deps::DepKind;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PackageInfo {
   pub id: DepId,
   pub current_version: Option<Version>,
@@ -32,7 +32,7 @@ pub struct PackageInfo {
   pub kind: DepKind,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FormattedPackageInfo {
   dep_ids: Vec<DepId>,
   current_version_string: Option<String>,
@@ -42,7 +42,7 @@ struct FormattedPackageInfo {
   name: String,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct State {
   packages: Vec<FormattedPackageInfo>,
   currently_selected: usize,

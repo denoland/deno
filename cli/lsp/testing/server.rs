@@ -44,7 +44,7 @@ pub type TestServerTests =
 
 /// The main structure which handles requests and sends notifications related
 /// to the Testing API.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestServer {
   client: Client,
   performance: Arc<Performance>,

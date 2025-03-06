@@ -48,7 +48,8 @@ use serde::Serialize;
 use super::flags_net;
 use crate::util::fs::canonicalize_path;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ConfigFlag {
   #[default]
   Discover,
@@ -56,7 +57,8 @@ pub enum ConfigFlag {
   Disabled,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FileFlags {
   pub ignore: Vec<String>,
   pub include: Vec<String>,
@@ -85,18 +87,21 @@ impl FileFlags {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct AddFlags {
   pub packages: Vec<String>,
   pub dev: bool,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RemoveFlags {
   pub packages: Vec<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BenchFlags {
   pub files: FileFlags,
   pub filter: Option<String>,
@@ -106,19 +111,22 @@ pub struct BenchFlags {
   pub watch: Option<WatchFlags>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CacheFlags {
   pub files: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CheckFlags {
   pub files: Vec<String>,
   pub doc: bool,
   pub doc_only: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CompileFlags {
   pub source_file: String,
   pub output: Option<String>,
@@ -138,12 +146,14 @@ impl CompileFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CompletionsFlags {
   pub buf: Box<[u8]>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CoverageType {
   #[default]
   Summary,
@@ -152,7 +162,8 @@ pub enum CoverageType {
   Html,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CoverageFlags {
   pub files: FileFlags,
   pub output: Option<String>,
@@ -161,7 +172,8 @@ pub struct CoverageFlags {
   pub r#type: CoverageType,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DocSourceFileFlag {
   Builtin,
   Paths(Vec<String>),
@@ -173,7 +185,8 @@ impl Default for DocSourceFileFlag {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DocHtmlFlag {
   pub name: Option<String>,
   pub category_docs_path: Option<String>,
@@ -183,7 +196,8 @@ pub struct DocHtmlFlag {
   pub output: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DocFlags {
   pub private: bool,
   pub json: bool,
@@ -193,13 +207,15 @@ pub struct DocFlags {
   pub filter: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct EvalFlags {
   pub print: bool,
   pub code: String,
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FmtFlags {
   pub check: bool,
   pub files: FileFlags,
@@ -221,7 +237,8 @@ impl FmtFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InitFlags {
   pub package: Option<String>,
   pub package_args: Vec<String>,
@@ -230,13 +247,15 @@ pub struct InitFlags {
   pub serve: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InfoFlags {
   pub json: bool,
   pub file: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InstallFlagsGlobal {
   pub module_url: String,
   pub args: Vec<String>,
@@ -245,49 +264,57 @@ pub struct InstallFlagsGlobal {
   pub force: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum InstallFlags {
   Local(InstallFlagsLocal),
   Global(InstallFlagsGlobal),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum InstallFlagsLocal {
   Add(AddFlags),
   TopLevel,
   Entrypoints(Vec<String>),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct JSONReferenceFlags {
   pub json: deno_core::serde_json::Value,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct JupyterFlags {
   pub install: bool,
   pub kernel: bool,
   pub conn_file: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UninstallFlagsGlobal {
   pub name: String,
   pub root: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum UninstallKind {
   Local(RemoveFlags),
   Global(UninstallFlagsGlobal),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UninstallFlags {
   pub kind: UninstallKind,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LintFlags {
   pub files: FileFlags,
   pub rules: bool,
@@ -307,14 +334,16 @@ impl LintFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ReplFlags {
   pub eval_files: Option<Vec<String>>,
   pub eval: Option<String>,
   pub is_default_command: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RunFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -336,7 +365,8 @@ impl RunFlags {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ServeFlags {
   pub script: String,
   pub watch: Option<WatchFlagsWithPaths>,
@@ -358,14 +388,16 @@ impl ServeFlags {
   }
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WatchFlags {
   pub hmr: bool,
   pub no_clear_screen: bool,
   pub exclude: Vec<String>,
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WatchFlagsWithPaths {
   pub hmr: bool,
   pub paths: Vec<String>,
@@ -373,7 +405,8 @@ pub struct WatchFlagsWithPaths {
   pub exclude: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TaskFlags {
   pub cwd: Option<String>,
   pub task: Option<String>,
@@ -383,7 +416,8 @@ pub struct TaskFlags {
   pub eval: bool,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TestReporterConfig {
   #[default]
   Pretty,
@@ -392,7 +426,8 @@ pub enum TestReporterConfig {
   Tap,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
@@ -411,7 +446,8 @@ pub struct TestFlags {
   pub hide_stacktraces: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UpgradeFlags {
   pub dry_run: bool,
   pub force: bool,
@@ -422,7 +458,8 @@ pub struct UpgradeFlags {
   pub version_or_hash_or_channel: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PublishFlags {
   pub token: Option<String>,
   pub dry_run: bool,
@@ -432,12 +469,14 @@ pub struct PublishFlags {
   pub set_version: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct HelpFlags {
   pub help: clap::builder::StyledStr,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
@@ -473,13 +512,15 @@ pub enum DenoSubcommand {
   Help(HelpFlags),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum OutdatedKind {
   Update { latest: bool, interactive: bool },
   PrintOutdated { compatible: bool },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct OutdatedFlags {
   pub filters: Vec<String>,
   pub recursive: bool,
@@ -561,7 +602,8 @@ impl Default for DenoSubcommand {
   }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TypeCheckMode {
   /// Type-check all modules.
   All,
@@ -599,7 +641,8 @@ impl Default for TypeCheckMode {
 }
 
 // Info needed to run NPM lifecycle scripts
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LifecycleScriptsConfig {
   pub allowed: PackagesAllowedScripts,
   pub initial_cwd: PathBuf,
@@ -608,7 +651,8 @@ pub struct LifecycleScriptsConfig {
   pub explicit_install: bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 /// The set of npm packages that are allowed to run lifecycle scripts.
 pub enum PackagesAllowedScripts {
   All,
@@ -625,7 +669,8 @@ fn parse_packages_allowed_scripts(s: &str) -> Result<String, AnyError> {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InternalFlags {
   /// Used when the language server is configured with an
   /// explicit cache option.
@@ -634,7 +679,8 @@ pub struct InternalFlags {
   pub lockfile_skip_write: bool,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default)]
+#[derive(Clone, Eq, PartialEq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Flags {
   /// Vector of CLI arguments - these are user script arguments, all Deno
   /// specific flags are removed.
@@ -678,7 +724,8 @@ pub struct Flags {
   pub allow_scripts: PackagesAllowedScripts,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PermissionFlags {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,

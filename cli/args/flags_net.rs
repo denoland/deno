@@ -6,10 +6,12 @@ use std::str::FromStr;
 use deno_core::url::Url;
 use deno_runtime::deno_permissions::NetDescriptor;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ParsePortError(String);
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BarePort(u16);
 
 impl FromStr for BarePort {

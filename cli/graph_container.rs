@@ -49,7 +49,8 @@ pub struct MainModuleGraphContainer {
   root_permissions: PermissionsContainer,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CheckSpecifiersOptions<'a> {
   pub ext_overwrite: Option<&'a String>,
   pub allow_unknown_media_types: bool,

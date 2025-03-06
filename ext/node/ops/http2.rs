@@ -46,7 +46,7 @@ impl Resource for Http2Client {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Http2ClientConn {
   pub conn: AsyncRefCell<h2::client::Connection<NetworkStream, BufView>>,
   cancel_handle: CancelHandle,
@@ -62,7 +62,7 @@ impl Resource for Http2ClientConn {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Http2ClientStream {
   pub response: AsyncRefCell<h2::client::ResponseFuture>,
   pub stream: AsyncRefCell<h2::SendStream<BufView>>,
@@ -74,7 +74,7 @@ impl Resource for Http2ClientStream {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Http2ClientResponseBody {
   pub body: AsyncRefCell<h2::RecvStream>,
   pub trailers_rx:
@@ -89,7 +89,7 @@ impl Resource for Http2ClientResponseBody {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Http2ServerConnection {
   pub conn: AsyncRefCell<h2::server::Connection<NetworkStream, BufView>>,
 }

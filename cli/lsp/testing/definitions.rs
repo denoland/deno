@@ -17,7 +17,8 @@ use crate::lsp::urls::url_to_uri;
 use crate::tools::test::TestDescription;
 use crate::tools::test::TestStepDescription;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestDefinition {
   pub id: String,
   pub name: String,
@@ -27,7 +28,8 @@ pub struct TestDefinition {
   pub step_ids: HashSet<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestModule {
   pub specifier: ModuleSpecifier,
   pub defs: HashMap<String, TestDefinition>,

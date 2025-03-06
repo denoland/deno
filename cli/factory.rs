@@ -148,11 +148,26 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
   }
 }
 
-#[derive(Debug)]
 struct CliSpecifiedImportMapProvider {
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
   workspace_external_import_map_loader: Arc<WorkspaceExternalImportMapLoader>,
+}
+
+impl std::fmt::Debug for CliSpecifiedImportMapProvider {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("CliSpecifiedImportMapProvider");
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("cli_options", &self.cli_options)
+        .field("file_fetcher", &self.file_fetcher)
+        .field(
+          "workspace_external_import_map_loader",
+          &self.workspace_external_import_map_loader,
+        );
+    }
+    f.finish()
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -304,7 +319,8 @@ struct CliFactoryServices {
     Deferred<Arc<WorkspaceExternalImportMapLoader>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CliFactoryOverrides {
   initial_cwd: Option<PathBuf>,
   workspace_directory: Option<Arc<WorkspaceDirectory>>,

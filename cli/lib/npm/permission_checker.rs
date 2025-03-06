@@ -12,14 +12,14 @@ use parking_lot::Mutex;
 
 use crate::sys::DenoLibSys;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NpmRegistryReadPermissionCheckerMode {
   Byonm,
   Global(PathBuf),
   Local(PathBuf),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmRegistryReadPermissionChecker<TSys: DenoLibSys> {
   sys: TSys,
   cache: Mutex<HashMap<PathBuf, PathBuf>>,

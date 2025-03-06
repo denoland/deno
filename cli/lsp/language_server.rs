@@ -125,7 +125,8 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LanguageServer {
   client: Client,
   pub inner: Rc<tokio::sync::RwLock<Inner>>,
@@ -140,7 +141,8 @@ pub struct LanguageServer {
 }
 
 /// Snapshot of the state used by TSC.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
@@ -153,7 +155,7 @@ type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 /// Used to queue tasks from inside of the language server lock that must be
 /// commenced from outside of it. For example, queue a request to cache a module
 /// after having loaded a config file which references it.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LanguageServerTaskQueue {
   task_tx: UnboundedSender<LanguageServerTaskFn>,
   /// This is moved out to its own task after initializing.
@@ -186,7 +188,7 @@ impl LanguageServerTaskQueue {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Inner {
   cache: LspCache,
   /// The LSP client that this LSP server is connected to.
@@ -641,7 +643,7 @@ impl Inner {
       if !conf.enabled() {
         return None;
       }
-      lsp_log!("Initializing tracing subscriber: {:#?}", conf);
+      // lsp_log!("Initializing tracing subscriber: {:#?}", conf);
       let config = conf.into();
       super::trace::init_tracing_subscriber(&config)
         .inspect_err(|e| {

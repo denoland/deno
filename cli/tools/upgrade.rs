@@ -86,7 +86,8 @@ impl UpdateCheckerEnvironment for RealUpdateCheckerEnvironment {
   }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum UpgradeCheckKind {
   Execution,
   Lsp,
@@ -400,7 +401,8 @@ pub fn check_for_upgrades(
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LspVersionUpgradeInfo {
   pub latest_version: String,
   pub is_canary: bool,
@@ -614,7 +616,8 @@ pub async fn upgrade(
   Ok(())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum RequestedVersion {
   Latest(ReleaseChannel),
   SpecificVersion(ReleaseChannel, String),
@@ -806,7 +809,8 @@ async fn find_latest_version_to_upgrade(
   Ok(maybe_newer_latest_version)
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct AvailableVersion {
   version_or_hash: String,
   release_channel: ReleaseChannel,
@@ -1043,7 +1047,7 @@ fn check_exe(exe_path: &Path) -> Result<(), AnyError> {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CheckVersionFile {
   pub last_prompt: chrono::DateTime<chrono::Utc>,
   pub last_checked: chrono::DateTime<chrono::Utc>,

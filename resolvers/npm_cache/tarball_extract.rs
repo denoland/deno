@@ -16,7 +16,8 @@ use flate2::read::GzDecoder;
 use tar::Archive;
 use tar::EntryType;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TarballExtractionMode {
   /// Overwrites the destination directory without deleting any files.
   Overwrite,

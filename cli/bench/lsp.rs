@@ -20,7 +20,8 @@ static FIXTURE_DB_MESSAGES: &[u8] = include_bytes!("testdata/db_messages.json");
 static FIXTURE_DECO_APPS: &[u8] =
   include_bytes!("testdata/deco_apps_requests.json");
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum FixtureType {
   #[serde(rename = "action")]
   Action,
@@ -34,7 +35,8 @@ enum FixtureType {
   Hover,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FixtureMessage {
   #[serde(rename = "type")]
   fixture_type: FixtureType,

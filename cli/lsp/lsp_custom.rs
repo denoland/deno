@@ -10,7 +10,8 @@ pub const VIRTUAL_TEXT_DOCUMENT: &str = "deno/virtualTextDocument";
 pub const LATEST_DIAGNOSTIC_BATCH_INDEX: &str =
   "deno/internalLatestDiagnosticBatchIndex";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskDefinition {
   pub name: String,
@@ -18,7 +19,8 @@ pub struct TaskDefinition {
   pub source_uri: lsp::Uri,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RegistryStateNotificationParams {
   pub origin: String,
   pub suggestions: bool,
@@ -32,19 +34,22 @@ impl lsp::notification::Notification for RegistryStateNotification {
   const METHOD: &'static str = "deno/registryState";
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct VirtualTextDocumentParams {
   pub text_document: lsp::TextDocumentIdentifier,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DiagnosticBatchNotificationParams {
   pub batch_index: usize,
   pub messages_len: usize,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DenoConfigurationData {
   pub scope_uri: lsp::Uri,
@@ -53,7 +58,8 @@ pub struct DenoConfigurationData {
   pub package_json: Option<lsp::TextDocumentIdentifier>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DidRefreshDenoConfigurationTreeNotificationParams {
   pub data: Vec<DenoConfigurationData>,
@@ -68,7 +74,8 @@ impl lsp::notification::Notification
   const METHOD: &'static str = "deno/didRefreshDenoConfigurationTree";
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum DenoConfigurationChangeType {
   Added,
@@ -87,14 +94,16 @@ impl DenoConfigurationChangeType {
   }
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[derive(Eq, Hash, PartialEq, Copy, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum DenoConfigurationType {
   DenoJson,
   PackageJson,
 }
 
-#[derive(Debug, Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
+#[derive(Eq, Hash, PartialEq, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DenoConfigurationChangeEvent {
   pub scope_uri: lsp::Uri,
@@ -104,7 +113,8 @@ pub struct DenoConfigurationChangeEvent {
   pub configuration_type: DenoConfigurationType,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DidChangeDenoConfigurationNotificationParams {
   pub changes: Vec<DenoConfigurationChangeEvent>,
@@ -129,14 +139,16 @@ impl lsp::notification::Notification for DidUpgradeCheckNotification {
   const METHOD: &'static str = "deno/didUpgradeCheck";
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct UpgradeAvailable {
   pub latest_version: String,
   pub is_canary: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DidUpgradeCheckNotificationParams {
   pub upgrade_available: Option<UpgradeAvailable>,

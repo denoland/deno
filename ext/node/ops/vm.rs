@@ -489,7 +489,8 @@ pub fn create_v8_context<'a>(
   scope.escape(context)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
 pub fn init_global_template<'a>(

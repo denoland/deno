@@ -47,7 +47,8 @@ use crate::npm::CliNpmResolver;
 use crate::npm::NpmFetchResolver;
 use crate::util::sync::AtomicFlag;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ImportMapKind {
   Inline,
   Outline(PathBuf),
@@ -83,8 +84,10 @@ impl DepLocation {
   }
 }
 
+#[cfg(any(test, debug_assertions))]
 struct DebugAdapter<T>(T);
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for DebugAdapter<&ConfigFileRc> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("ConfigFile")
@@ -92,6 +95,7 @@ impl std::fmt::Debug for DebugAdapter<&ConfigFileRc> {
       .finish()
   }
 }
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for DebugAdapter<&PackageJsonRc> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("PackageJson")
@@ -100,6 +104,7 @@ impl std::fmt::Debug for DebugAdapter<&PackageJsonRc> {
   }
 }
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for DepLocation {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
@@ -119,7 +124,8 @@ impl std::fmt::Debug for DepLocation {
   }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DepKind {
   Jsr,
   Npm,
@@ -183,7 +189,8 @@ impl KeyPath {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Dep {
   pub req: PackageReq,
   pub kind: DepKind,
@@ -275,7 +282,8 @@ fn deno_json_import_map(
     .map(|import_map| Some((import_map, kind)))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum PackageJsonDepKind {
   Normal,
   Dev,
@@ -408,10 +416,12 @@ fn deps_from_workspace(
   Ok(deps)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DepId(usize);
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Change {
   Update(DepId, VersionReq),
 }
@@ -439,7 +449,8 @@ where
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PackageLatestVersion {
   pub semver_compatible: Option<PackageNv>,
   pub latest: Option<PackageNv>,

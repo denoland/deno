@@ -75,7 +75,8 @@ unsafe extern "C" fn uv_mutex_destroy(_lock: *mut uv_mutex_t) {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[allow(dead_code)]
 enum uv_handle_type {
   UV_UNKNOWN_HANDLE = 0,

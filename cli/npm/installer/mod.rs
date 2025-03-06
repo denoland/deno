@@ -34,13 +34,14 @@ mod global;
 mod local;
 mod resolution;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PackageCaching<'a> {
   Only(Cow<'a, [PackageReq]>),
   All,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmInstaller {
   fs_installer: Arc<dyn NpmPackageFsInstaller>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,

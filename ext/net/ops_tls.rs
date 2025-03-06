@@ -89,7 +89,7 @@ impl TlsListener {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TlsStreamResource {
   rd: AsyncRefCell<TlsStreamRead>,
   wr: AsyncRefCell<TlsStreamWrite>,

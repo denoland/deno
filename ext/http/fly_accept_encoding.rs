@@ -24,7 +24,8 @@ pub enum EncodingError {
 }
 
 /// Encodings to use.
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Encoding {
   /// The Gzip encoding.
   Gzip,

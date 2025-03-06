@@ -211,7 +211,8 @@ impl From<AstNode> for u8 {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum AstProp {
   // Base, these must be in sync with JS in the same order.
   Invalid,
@@ -2869,7 +2870,7 @@ impl TsEsTreeBuilder {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TsKeywordKind {
   Any,
   Unknown,
@@ -2886,21 +2887,21 @@ pub enum TsKeywordKind {
   Intrinsic,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TsModuleKind {
   Global,
   Namespace,
   Module,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PropertyKind {
   Get,
   Init,
   Set,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum MethodKind {
   Constructor,
   Get,
@@ -2908,7 +2909,7 @@ pub enum MethodKind {
   Set,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SourceKind {
   Module,
   Script,

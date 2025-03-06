@@ -14,7 +14,7 @@ use crate::file_fetcher::CliFileFetcher;
 
 /// This is similar to a subset of `JsrCacheResolver` which fetches rather than
 /// just reads the cache. Keep in sync!
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct JsrFetchResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   /// The `module_graph` field of the version infos should be forcibly absent.

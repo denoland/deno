@@ -73,7 +73,8 @@ use crate::util::progress_bar::ProgressBarStyle;
 ///
 /// After creation, this URL may be used to get the key for a
 /// module in the binary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum StandaloneRelativeFileBaseUrl<'a> {
   WindowsSystemRoot,
   Path(&'a Url),

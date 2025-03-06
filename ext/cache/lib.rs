@@ -118,7 +118,8 @@ deno_core::extension!(deno_cache,
   },
 );
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CachePutRequest {
   pub cache_id: i64,
@@ -130,7 +131,8 @@ pub struct CachePutRequest {
   pub response_rid: Option<ResourceId>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchRequest {
   pub cache_id: i64,
@@ -138,11 +140,13 @@ pub struct CacheMatchRequest {
   pub request_headers: Vec<(ByteString, ByteString)>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchResponse(CacheMatchResponseMeta, Option<ResourceId>);
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CacheMatchResponseMeta {
   pub response_status: u16,
@@ -151,7 +155,8 @@ pub struct CacheMatchResponseMeta {
   pub response_headers: Vec<(ByteString, ByteString)>,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CacheDeleteRequest {
   pub cache_id: i64,

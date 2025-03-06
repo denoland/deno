@@ -10,7 +10,8 @@ use deno_core::v8;
 /// An FFI-opaque, nullable wrapper around v8::Local<v8::Value>.
 /// rusty_v8 Local handle cannot be empty but napi_value can be.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NapiValue<'s>(
   Option<NonNull<v8::Value>>,
   std::marker::PhantomData<&'s ()>,

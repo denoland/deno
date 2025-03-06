@@ -251,7 +251,8 @@ impl TestReporter for JunitTestReporter {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TestNameTree(IndexMap<usize, TestNameTreeNode>);
 
 impl TestNameTree {
@@ -298,7 +299,7 @@ impl TestNameTree {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TestNameTreeNode {
   id: usize,
   parent_id: Option<usize>,

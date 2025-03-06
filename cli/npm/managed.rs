@@ -20,20 +20,21 @@ use crate::sys::CliSys;
 pub type CliManagedNpmResolverCreateOptions =
   ManagedNpmResolverCreateOptions<CliSys>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CliNpmResolverManagedSnapshotOption {
   ResolveFromLockfile(Arc<CliLockfile>),
   Specified(Option<ValidSerializedNpmResolutionSnapshot>),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum SyncState {
   Pending(Option<CliNpmResolverManagedSnapshotOption>),
   Err(ResolveSnapshotError),
   Success,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmResolutionInitializer {
   npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_resolution: Arc<NpmResolutionCell>,

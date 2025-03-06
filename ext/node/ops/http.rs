@@ -71,7 +71,8 @@ pub struct NodeHttpResponse {
 type CancelableResponseResult =
   Result<Result<http::Response<Incoming>, hyper::Error>, Canceled>;
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct InformationalResponse {
   status: u16,

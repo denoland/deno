@@ -83,7 +83,8 @@ impl DynamicLibraryResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignFunction {
   name: Option<String>,
@@ -103,7 +104,8 @@ fn default_optional() -> bool {
 // ForeignStatic's name and type fields are read and used by
 // serde_v8 to determine which variant a ForeignSymbol is.
 // They are not used beyond that and are thus marked with underscores.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct ForeignStatic {
   #[serde(rename(deserialize = "name"))]
   _name: Option<String>,
@@ -111,7 +113,7 @@ struct ForeignStatic {
   _type: String,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ForeignSymbol {
   ForeignFunction(ForeignFunction),
   ForeignStatic(#[allow(dead_code)] ForeignStatic),
@@ -136,7 +138,8 @@ impl<'de> Deserialize<'de> for ForeignSymbol {
   }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FfiLoadArgs {
   path: String,
   symbols: HashMap<String, ForeignSymbol>,

@@ -565,13 +565,12 @@ impl JupyterServer {
       tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     } else if let Some(exception_details) = exception_details {
       // Determine the exception value and name
-      let (name, message, stack) = if let Some(exception) =
-        exception_details.exception
-      {
-        let result = self
-          .repl_session_proxy
-          .call_function_on_args(
-            r#"
+      let (name, message, stack) =
+        if let Some(exception) = exception_details.exception {
+          let result = self
+            .repl_session_proxy
+            .call_function_on_args(
+              r#"
           function(object) {
             if (object instanceof Error) {
               const name = "name" in object ? String(object.name) : "";
@@ -584,32 +583,32 @@ impl JupyterServer {
             }
           }
         "#
-            .into(),
-            vec![exception],
-          )
-          .await?;
+              .into(),
+              vec![exception],
+            )
+            .await?;
 
-        match result.result.value {
-          Some(serde_json::Value::String(str)) => {
-            if let Ok(object) =
-              serde_json::from_str::<HashMap<String, String>>(&str)
-            {
-              let get = |k| object.get(k).cloned().unwrap_or_default();
-              (get("name"), get("message"), get("stack"))
-            } else {
-              log::error!("Unexpected result while parsing JSON {str}");
+          match result.result.value {
+            Some(serde_json::Value::String(str)) => {
+              if let Ok(object) =
+                serde_json::from_str::<HashMap<String, String>>(&str)
+              {
+                let get = |k| object.get(k).cloned().unwrap_or_default();
+                (get("name"), get("message"), get("stack"))
+              } else {
+                log::error!("Unexpected result while parsing JSON {str}");
+                ("".into(), "".into(), "".into())
+              }
+            }
+            _ => {
+              // log::error!("Unexpected result while parsing exception {result:?}");
               ("".into(), "".into(), "".into())
             }
           }
-          _ => {
-            log::error!("Unexpected result while parsing exception {result:?}");
-            ("".into(), "".into(), "".into())
-          }
-        }
-      } else {
-        log::error!("Unexpectedly missing exception {exception_details:?}");
-        ("".into(), "".into(), "".into())
-      };
+        } else {
+          // log::error!("Unexpectedly missing exception {exception_details:?}");
+          ("".into(), "".into(), "".into())
+        };
 
       let stack = if stack.is_empty() {
         format!(

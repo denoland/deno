@@ -15,7 +15,8 @@ use deno_core::serde_json::json;
 
 use super::logging::lsp_debug;
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct PerformanceAverage {
   pub name: String,
@@ -36,7 +37,7 @@ impl Ord for PerformanceAverage {
 }
 
 /// A structure which serves as a start of a measurement span.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PerformanceMark {
   name: String,
   count: u32,
@@ -44,7 +45,8 @@ pub struct PerformanceMark {
 }
 
 /// A structure which holds the information about the measured span.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PerformanceMeasure {
   pub name: String,
   pub count: u32,
@@ -72,7 +74,7 @@ impl From<PerformanceMark> for PerformanceMeasure {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PerformanceScopeMark {
   performance: Arc<Performance>,
   inner: Option<PerformanceMark>,
@@ -88,7 +90,7 @@ impl Drop for PerformanceScopeMark {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct PerformanceInner {
   counts: HashMap<String, u32>,
   measurements_by_type: HashMap<String, (/* count */ u32, /* duration */ f64)>,
@@ -139,7 +141,8 @@ impl Default for PerformanceInner {
 ///
 /// The structure will limit the size of measurements to the most recent 1000,
 /// and will roll off when that limit is reached.
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Performance(Mutex<PerformanceInner>);
 
 impl Performance {

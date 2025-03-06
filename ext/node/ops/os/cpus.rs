@@ -2,7 +2,8 @@
 
 use deno_core::serde::Serialize;
 
-#[derive(Debug, Default, Serialize, Clone)]
+#[derive(Default, Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CpuTimes {
   pub user: u64,
   pub nice: u64,
@@ -11,7 +12,8 @@ pub struct CpuTimes {
   pub irq: u64,
 }
 
-#[derive(Debug, Default, Serialize, Clone)]
+#[derive(Default, Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CpuInfo {
   pub model: String,
   /* in MHz */

@@ -756,7 +756,7 @@ impl Default for FetchResponseReader {
     Self::BodyReader(stream.peekable())
   }
 }
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FetchResponseResource {
   pub response_reader: AsyncRefCell<FetchResponseReader>,
   pub cancel: CancelHandle,
@@ -868,7 +868,8 @@ impl HttpClientResource {
   }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CreateHttpClientArgs {
   ca_certs: Vec<String>,
@@ -952,7 +953,8 @@ where
   Ok(rid)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CreateHttpClientOptions {
   pub root_cert_store: Option<RootCertStore>,
   pub ca_certs: Vec<Vec<u8>>,
@@ -1102,7 +1104,8 @@ pub fn op_utf8_to_byte_string(#[string] input: String) -> ByteString {
   input.into()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Client {
   inner: Decompression<
     retry::Retry<
@@ -1303,11 +1306,13 @@ fn op_fetch_promise_is_settled(promise: v8::Local<v8::Promise>) -> bool {
 }
 
 /// Deno.fetch's retry policy.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FetchRetry;
 
 /// Marker extension that a request has been retried once.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct Retried;
 
 impl<ResBody, E>

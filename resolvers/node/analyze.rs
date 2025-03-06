@@ -32,7 +32,8 @@ use crate::ResolutionMode;
 use crate::UrlOrPath;
 use crate::UrlOrPathRef;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CjsAnalysis<'a> {
   /// File was found to be an ES module and the translator should
   /// load the code as ESM.
@@ -40,7 +41,8 @@ pub enum CjsAnalysis<'a> {
   Cjs(CjsAnalysisExports),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,

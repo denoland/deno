@@ -7,7 +7,8 @@ use thiserror::Error;
 #[error("Unrecognized release channel: {0}")]
 pub struct UnrecognizedReleaseChannelError(pub String);
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ReleaseChannel {
   /// Stable version, eg. 1.45.4, 2.0.0, 2.1.0
   #[allow(unused)]

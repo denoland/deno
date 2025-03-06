@@ -18,7 +18,7 @@ use super::lsp_custom;
 use super::testing::lsp_custom as testing_lsp_custom;
 use crate::lsp::repl::get_repl_workspace_settings;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TestingNotification {
   Module(testing_lsp_custom::TestModuleNotificationParams),
   DeleteModule(testing_lsp_custom::TestModuleDeleteNotificationParams),

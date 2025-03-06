@@ -177,7 +177,8 @@ impl CoverageCollector {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct BranchCoverageItem {
   line_index: usize,
   block_number: usize,
@@ -186,14 +187,16 @@ struct BranchCoverageItem {
   is_hit: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FunctionCoverageItem {
   name: String,
   line_index: usize,
   execution_count: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CoverageReport {
   url: ModuleSpecifier,
   named_functions: Vec<FunctionCoverageItem>,

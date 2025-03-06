@@ -46,12 +46,13 @@ pub type CliNpmReqResolver = deno_resolver::npm::NpmReqResolver<
   CliSys,
 >;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FoundPackageJsonDepFlag(AtomicFlag);
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliResolver {
   deno_resolver: Arc<CliDenoResolver>,
   found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
@@ -123,12 +124,31 @@ impl CliResolver {
   }
 }
 
-#[derive(Debug)]
 pub struct CliNpmGraphResolver {
   npm_installer: Option<Arc<NpmInstaller>>,
   found_package_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
   bare_node_builtins_enabled: bool,
   npm_caching: NpmCachingStrategy,
+}
+
+impl std::fmt::Debug for CliNpmGraphResolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("CliNpmGraphResolver");
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("npm_installer", &self.npm_installer)
+        .field(
+          "found_package_json_dep_flag",
+          &self.found_package_json_dep_flag,
+        )
+        .field(
+          "bare_node_builtins_enabled",
+          &self.bare_node_builtins_enabled,
+        )
+        .field("npm_caching", &self.npm_caching);
+    }
+    f.finish()
+  }
 }
 
 impl CliNpmGraphResolver {

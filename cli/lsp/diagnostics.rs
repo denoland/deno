@@ -69,19 +69,20 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
 use crate::util::path::to_percent_decoded_str;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
   pub url_map: LspUrlMap,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DiagnosticRecord {
   pub specifier: ModuleSpecifier,
   pub versioned: VersionedDiagnostics,
 }
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct VersionedDiagnostics {
   pub version: Option<i32>,
   pub diagnostics: Vec<lsp::Diagnostic>,
@@ -89,7 +90,8 @@ struct VersionedDiagnostics {
 
 type DiagnosticVec = Vec<DiagnosticRecord>;
 
-#[derive(Debug, Hash, PartialEq, Eq, Copy, Clone)]
+#[derive(Hash, PartialEq, Eq, Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DiagnosticSource {
   Deno,
   Lint,
@@ -110,7 +112,7 @@ impl DiagnosticSource {
 
 type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DiagnosticsPublisher {
   client: Client,
   state: Arc<DiagnosticsState>,
@@ -227,7 +229,8 @@ impl DiagnosticsPublisher {
 
 type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
 
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
 
 impl TsDiagnosticsStore {
@@ -272,7 +275,8 @@ pub fn should_send_diagnostic_batch_index_notifications() -> bool {
   )
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DiagnosticBatchCounter(Option<Arc<AtomicUsize>>);
 
 impl Default for DiagnosticBatchCounter {
@@ -301,25 +305,26 @@ impl DiagnosticBatchCounter {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ChannelMessage {
   Update(ChannelUpdateMessage),
   Clear,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct ChannelUpdateMessage {
   message: DiagnosticServerUpdateMessage,
   batch_index: Option<usize>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct SpecifierState {
   version: Option<i32>,
   no_cache_diagnostics: Vec<lsp::Diagnostic>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DiagnosticsState {
   specifiers: RwLock<HashMap<ModuleSpecifier, SpecifierState>>,
 }
@@ -384,13 +389,15 @@ impl DiagnosticsState {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct AmbientModules {
   regex: Option<regex::Regex>,
   dirty: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DeferredDiagnostics {
   diagnostics: Option<Vec<DeferredDiagnosticRecord>>,
   ambient_modules_by_scope: HashMap<Option<Url>, AmbientModules>,
@@ -506,6 +513,7 @@ pub struct DiagnosticsServer {
   deferred_diagnostics: Arc<deno_core::parking_lot::Mutex<DeferredDiagnostics>>,
 }
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for DiagnosticsServer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("DiagnosticsServer")
@@ -1145,32 +1153,37 @@ async fn generate_ts_diagnostics(
   Ok((diagnostics_vec, ambient_modules_by_scope))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticDataSpecifier {
   pub specifier: ModuleSpecifier,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataStrSpecifier {
   pub specifier: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataRedirect {
   pub redirect: ModuleSpecifier,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataNoLocal {
   pub to: ModuleSpecifier,
   pub message: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct DiagnosticDataImportMapRemap {
   pub from: String,
@@ -1861,7 +1874,7 @@ fn diagnose_dependency(
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct DeferredDiagnosticRecord {
   document_specifier: Url,
   version: Option<i32>,

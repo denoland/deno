@@ -98,7 +98,8 @@ impl hkdf::KeyType for HkdfOutput<usize> {
   }
 }
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum KeyUsage {
   Encrypt,

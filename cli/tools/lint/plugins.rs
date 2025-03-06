@@ -37,7 +37,7 @@ use crate::ops::lint::LintPluginContainer;
 use crate::tools::lint::serialize_ast_to_buffer;
 use crate::util::text_encoding::Utf16Map;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PluginHostRequest {
   LoadPlugins {
     specifiers: Vec<ModuleSpecifier>,
@@ -69,7 +69,8 @@ impl std::fmt::Debug for PluginHostResponse {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PluginLogger {
   print: fn(&str, bool),
 }
@@ -102,7 +103,7 @@ v8_static_strings! {
   RUN_PLUGINS_FOR_FILE = "runPluginsForFile",
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PluginHostProxy {
   tx: mpsc::Sender<PluginHostRequest>,
   pub(crate) plugin_info: Arc<Mutex<Vec<PluginInfo>>>,
@@ -209,7 +210,8 @@ async fn create_plugin_runner_inner(
   })
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(serde::Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct PluginInfo {
   pub name: String,

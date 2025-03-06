@@ -2,7 +2,8 @@
 
 use tokio_util::sync::CancellationToken;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct AsyncFlag(CancellationToken);
 
 impl AsyncFlag {

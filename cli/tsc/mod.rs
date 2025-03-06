@@ -299,7 +299,8 @@ pub static LAZILY_LOADED_STATIC_ASSETS: Lazy<
 });
 
 /// A structure representing stats from a type check operation for a graph.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Stats(pub Vec<(String, u32)>);
 
 impl<'de> Deserialize<'de> for Stats {
@@ -363,7 +364,8 @@ fn hash_url(specifier: &ModuleSpecifier, media_type: MediaType) -> String {
   )
 }
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct EmittedFile {
   pub data: String,
   pub maybe_specifiers: Option<Vec<ModuleSpecifier>>,
@@ -386,7 +388,7 @@ pub fn into_specifier_and_media_type(
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TypeCheckingCjsTracker {
   cjs_tracker: Arc<CliCjsTracker>,
   module_info_cache: Arc<ModuleInfoCache>,
@@ -442,7 +444,7 @@ impl TypeCheckingCjsTracker {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RequestNpmState {
   pub cjs_tracker: Arc<TypeCheckingCjsTracker>,
   pub node_resolver: Arc<CliNodeResolver>,
@@ -450,7 +452,7 @@ pub struct RequestNpmState {
 }
 
 /// A structure representing a request to be sent to the tsc runtime.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Request {
   /// The TypeScript compiler options which will be serialized and sent to
   /// tsc.
@@ -467,7 +469,8 @@ pub struct Request {
   pub check_mode: TypeCheckMode,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Response {
   /// Any diagnostics that have been returned from the checker.
   pub diagnostics: Diagnostics,
@@ -479,7 +482,7 @@ pub struct Response {
 
 // TODO(bartlomieju): we have similar struct in `tsc.rs` - maybe at least change
 // the name of the struct to avoid confusion?
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct State {
   hash_data: u64,
   graph: Arc<ModuleGraph>,
@@ -553,7 +556,8 @@ fn op_create_hash_inner(s: &mut OpState, text: &str) -> String {
   get_hash(text, state.hash_data)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct EmitArgs {
   /// The text data/contents of the file.
@@ -629,7 +633,8 @@ pub enum LoadError {
   ClosestPkgJson(#[from] node_resolver::errors::ClosestPkgJsonError),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
   data: FastString,
@@ -816,7 +821,8 @@ pub enum ResolveError {
   ResolveNonGraphSpecifierTypes(#[from] ResolveNonGraphSpecifierTypesError),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ResolveArgs {
   /// The base specifier that the supplied specifier strings should be resolved
@@ -1197,7 +1203,8 @@ fn op_is_node_file(state: &mut OpState, #[string] path: &str) -> bool {
     .unwrap_or(false)
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct RespondArgs {
   pub diagnostics: Diagnostics,
   pub stats: Stats,
@@ -1472,7 +1479,8 @@ mod tests {
   use super::*;
   use crate::args::TsConfig;
 
-  #[derive(Debug, Default)]
+  #[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct MockLoader {
     pub fixtures: PathRef,
   }

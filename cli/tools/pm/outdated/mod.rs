@@ -28,7 +28,8 @@ use crate::file_fetcher::CliFileFetcher;
 use crate::jsr::JsrFetchResolver;
 use crate::npm::NpmFetchResolver;
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct OutdatedPackage {
   kind: DepKind,
   latest: String,

@@ -67,7 +67,8 @@ impl WorkerExecutionMode {
 /// Note: This is disconnected with the log crate's log level and the Rust code
 /// in this crate will respect that value instead. To specify that, use
 /// `log::set_max_level`.
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum WorkerLogLevel {
   // WARNING: Ensure this is kept in sync with
   // the JS values (search for LogLevel).

@@ -19,7 +19,7 @@ use crate::file_fetcher::TextDecodedFile;
 use crate::npm::NpmFetchResolver;
 use crate::sys::CliSys;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliNpmSearchApi {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: NpmFetchResolver,
@@ -97,15 +97,18 @@ impl PackageSearchApi for CliNpmSearchApi {
 }
 
 fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
-  #[derive(Debug, Deserialize)]
+  #[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   struct Package {
     name: String,
   }
-  #[derive(Debug, Deserialize)]
+  #[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   struct Object {
     package: Package,
   }
-  #[derive(Debug, Deserialize)]
+  #[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   struct Response {
     objects: Vec<Object>,
   }

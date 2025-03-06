@@ -147,7 +147,8 @@ pub static ALL_KNOWN_REFACTOR_ACTION_KINDS: Lazy<
   ]
 });
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorCodeActionData {
   pub specifier: ModuleSpecifier,

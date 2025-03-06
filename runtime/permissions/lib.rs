@@ -77,9 +77,8 @@ static DEBUG_LOG_ENABLED: Lazy<bool> =
   Lazy::new(|| log::log_enabled!(log::Level::Debug));
 
 /// Quadri-state value for storing permission state
-#[derive(
-  Eq, PartialEq, Default, Debug, Clone, Copy, Deserialize, PartialOrd,
-)]
+#[derive(Eq, PartialEq, Default, Clone, Copy, Deserialize, PartialOrd)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PermissionState {
   Granted = 0,
   GrantedPartial = 1,
@@ -95,7 +94,8 @@ pub enum PermissionState {
 /// `TreatAsGranted` is used in place of `TreatAsPartialGranted` when we don't
 /// want to wastefully check for partial denials when, say, checking read
 /// access for a file.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[allow(clippy::enum_variant_names)]
 enum AllowPartial {
   TreatAsGranted,
@@ -223,7 +223,8 @@ impl fmt::Display for PermissionState {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UnitPermission {
   pub name: &'static str,
   pub description: &'static str,
@@ -361,7 +362,8 @@ fn format_display_name(display_name: Cow<str>) -> Cow<str> {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UnaryPermission<TQuery: QueryDescriptor + ?Sized> {
   granted_global: bool,
   granted_list: HashSet<TQuery::AllowDesc>,
@@ -2036,7 +2038,8 @@ impl UnaryPermission<FfiQueryDescriptor> {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Permissions {
   pub read: UnaryPermission<ReadQueryDescriptor>,
   pub write: UnaryPermission<WriteQueryDescriptor>,
@@ -2049,7 +2052,8 @@ pub struct Permissions {
   pub all: UnitPermission,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PermissionsOptions {
   pub allow_all: bool,
   pub allow_env: Option<Vec<String>>,
@@ -2305,7 +2309,8 @@ impl Permissions {
   }
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CheckSpecifierKind {
   Static,
   Dynamic,
@@ -2364,7 +2369,8 @@ pub enum PermissionCheckError {
 /// passed to a future that will prompt the user for permission (and in such
 /// case might need to be mutated). Also for the Web Worker API we need a way
 /// to send permissions to a new thread.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PermissionsContainer {
   descriptor_parser: Arc<dyn PermissionDescriptorParser>,
   inner: Arc<Mutex<Permissions>>,
@@ -3375,7 +3381,8 @@ fn global_from_option<T>(flag: Option<&HashSet<T>>) -> bool {
   matches!(flag, Some(v) if v.is_empty())
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ChildUnitPermissionArg {
   Inherit,
   Granted,
@@ -3427,7 +3434,8 @@ impl<'de> Deserialize<'de> for ChildUnitPermissionArg {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ChildUnaryPermissionArg {
   Inherit,
   Granted,
@@ -3495,7 +3503,8 @@ impl<'de> Deserialize<'de> for ChildUnaryPermissionArg {
 }
 
 /// Directly deserializable from JS worker and test permission options.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ChildPermissionsArg {
   env: ChildUnaryPermissionArg,
   net: ChildUnaryPermissionArg,
@@ -3729,7 +3738,8 @@ mod tests {
       ($($x:expr),*) => (vec![$($x.to_string()),*]);
   }
 
-  #[derive(Debug, Clone)]
+  #[derive(Clone)]
+  #[cfg_attr(any(test, debug_assertions), derive(Debug))]
   struct TestPermissionDescriptorParser;
 
   impl TestPermissionDescriptorParser {

@@ -29,7 +29,7 @@ mod inner {
   impl<T> MaybeSend for T where T: ?Sized {}
 
   // Wrapper struct that exposes a subset of `DashMap` API.
-  #[derive(Debug)]
+  #[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct MaybeDashMap<K, V, S = RandomState>(RefCell<HashMap<K, V, S>>);
 
   impl<K, V, S> Default for MaybeDashMap<K, V, S>

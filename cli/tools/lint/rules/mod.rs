@@ -53,14 +53,14 @@ pub enum FileOrPackageLintRule {
   Package(Box<dyn PackageLintRule>),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum CliLintRuleKind {
   DenoLint(Box<dyn LintRule>),
   Extended(Box<dyn ExtendedLintRule>),
   Package(Box<dyn PackageLintRule>),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliLintRule(CliLintRuleKind);
 
 impl PartialEq for CliLintRule {
@@ -119,7 +119,7 @@ impl CliLintRule {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ConfiguredRules {
   pub all_rule_codes: HashSet<Cow<'static, str>>,
   pub rules: Vec<CliLintRule>,

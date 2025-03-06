@@ -11,7 +11,8 @@ use tower_lsp::lsp_types::TextEdit;
 
 use crate::util::text_encoding::Utf16Map;
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LineIndex {
   inner: Utf16Map,
 }

@@ -91,14 +91,16 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
   ".d.mts", ".d.cts",
 ];
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DataQuickFixChange {
   pub range: Range,
   pub new_text: String,
 }
 
 /// A quick fix that's stored in the diagnostic's data field.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DataQuickFix {
   pub description: String,
   pub changes: Vec<DataQuickFixChange>,
@@ -106,7 +108,8 @@ pub struct DataQuickFix {
 
 /// Category of self-generated diagnostic messages (those not coming from)
 /// TypeScript.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Category {
   /// A lint diagnostic, where the first element is the message.
   Lint {
@@ -118,7 +121,8 @@ pub enum Category {
 }
 
 /// A structure to hold a reference to a diagnostic message.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Reference {
   category: Category,
   range: Range,
@@ -838,26 +842,30 @@ pub fn ts_changes_to_edit(
   }))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionData {
   pub specifier: ModuleSpecifier,
   pub fix_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum CodeActionKind {
   Deno(lsp::CodeAction),
   DenoLint(lsp::CodeAction),
   Tsc(lsp::CodeAction, tsc::CodeFixAction),
 }
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum FixAllKind {
   Tsc(String),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CodeActionCollection {
   actions: Vec<CodeActionKind>,
   fix_all_actions: HashMap<FixAllKind, CodeActionKind>,

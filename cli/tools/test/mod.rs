@@ -144,7 +144,8 @@ fn get_sanitizer_item_ref(
 }
 
 /// The test mode is used to determine how a specifier is to be tested.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TestMode {
   /// Test as documentation, type-checking fenced code blocks.
   Documentation,
@@ -169,7 +170,8 @@ impl TestMode {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestFilter {
   pub substring: Option<String>,
   pub regex: Option<Regex>,
@@ -220,7 +222,8 @@ impl TestFilter {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[derive(Clone, PartialEq, Deserialize, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestLocation {
   pub file_name: String,
@@ -249,7 +252,8 @@ impl TestContainer {
   }
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestDescriptions {
   tests: IndexMap<usize, TestDescription>,
 }
@@ -273,7 +277,8 @@ impl<'a> IntoIterator for &'a TestDescriptions {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[derive(Clone, PartialEq, Deserialize, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestDescription {
   pub id: usize,
@@ -287,7 +292,8 @@ pub struct TestDescription {
 }
 
 /// May represent a failure of a test or test step.
-#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[derive(Clone, PartialEq, Deserialize, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestFailureDescription {
   pub id: usize,
@@ -307,13 +313,15 @@ impl From<&TestDescription> for TestFailureDescription {
   }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestFailureFormatOptions {
   pub hide_stacktraces: bool,
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum TestFailure {
   JsError(Box<JsError>),
@@ -425,7 +433,8 @@ impl TestFailure {
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum TestResult {
   Ok,
@@ -434,7 +443,8 @@ pub enum TestResult {
   Cancelled,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestStepDescription {
   pub id: usize,
@@ -448,7 +458,8 @@ pub struct TestStepDescription {
 }
 
 #[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum TestStepResult {
   Ok,
@@ -456,7 +467,8 @@ pub enum TestStepResult {
   Failed(TestFailure),
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestPlan {
   pub origin: String,
@@ -465,13 +477,14 @@ pub struct TestPlan {
   pub used_only: bool,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Copy, Clone, Eq, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TestStdioStream {
   Stdout,
   Stderr,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TestEvent {
   Register(Arc<TestDescriptions>),
   Plan(TestPlan),
@@ -510,7 +523,8 @@ impl TestEvent {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestSummary {
   pub total: usize,
   pub passed: usize,
@@ -525,7 +539,8 @@ pub struct TestSummary {
   pub uncaught_errors: Vec<(String, Box<JsError>)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TestSpecifiersOptions {
   cwd: Url,
   concurrent_jobs: NonZeroUsize,
@@ -538,7 +553,8 @@ struct TestSpecifiersOptions {
   hide_stacktraces: bool,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestSpecifierOptions {
   pub shuffle: Option<u64>,
   pub filter: TestFilter,

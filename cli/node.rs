@@ -38,7 +38,8 @@ pub type CliNodeResolver = deno_runtime::deno_node::NodeResolver<
 >;
 pub type CliPackageJsonResolver = node_resolver::PackageJsonResolver<CliSys>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CliCjsAnalysis {
   /// The module was found to be an ES module.
   Esm,

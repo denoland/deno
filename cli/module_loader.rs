@@ -1242,7 +1242,7 @@ impl ModuleGraphUpdatePermit for WorkerModuleGraphUpdatePermit {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CliNodeRequireLoader<TGraphContainer: ModuleGraphContainer> {
   cjs_tracker: Arc<CliCjsTracker>,
   emitter: Arc<Emitter>,

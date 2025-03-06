@@ -75,7 +75,8 @@ pub trait NpmCacheHttpClient: Send + Sync + 'static {
 }
 
 /// Indicates how cached source files should be handled.
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NpmCacheSetting {
   /// Only the cached files should be used. Any files not in the cache will
   /// error. This is the equivalent of `--cached-only` in the CLI.
@@ -125,7 +126,7 @@ impl NpmCacheSetting {
 }
 
 /// Stores a single copy of npm packages in a cache.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmCache<
   TSys: FsCreateDirAll
     + FsHardLink

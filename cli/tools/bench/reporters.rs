@@ -19,7 +19,8 @@ pub trait BenchReporter {
 
 const JSON_SCHEMA_VERSION: u8 = 1;
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct JsonReporterOutput {
   version: u8,
   runtime: String,
@@ -38,7 +39,8 @@ impl Default for JsonReporterOutput {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct JsonReporterBench {
   origin: String,
   group: Option<String>,
@@ -47,7 +49,8 @@ struct JsonReporterBench {
   results: Vec<BenchResult>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct JsonReporter(JsonReporterOutput);
 
 impl JsonReporter {

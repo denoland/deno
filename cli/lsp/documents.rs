@@ -55,7 +55,8 @@ use crate::graph_util::CliJsrUrlProvider;
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum LanguageId {
   JavaScript,
   Jsx,
@@ -166,7 +167,8 @@ impl FromStr for LanguageId {
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum IndexValid {
   All,
   UpTo(u32),
@@ -183,7 +185,7 @@ impl IndexValid {
 
 /// An lsp representation of an asset in memory, that has either been retrieved
 /// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct AssetDocument {
   specifier: ModuleSpecifier,
   text: &'static str,
@@ -226,7 +228,7 @@ impl AssetDocument {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct AssetDocuments {
   inner: HashMap<ModuleSpecifier, Arc<AssetDocument>>,
 }
@@ -254,7 +256,8 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
       .collect(),
   });
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum AssetOrDocument {
   Document(Arc<Document>),
   Asset(Arc<AssetDocument>),
@@ -418,14 +421,15 @@ fn get_maybe_test_module_fut(
   Some(handle)
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DocumentOpenData {
   lsp_version: i32,
   maybe_parsed_source: Option<ParsedSourceResult>,
   maybe_semantic_tokens: Arc<Mutex<Option<lsp::SemanticTokens>>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Document {
   /// Contains the last-known-good set of dependencies from parsing the module.
   config: Arc<Config>,
@@ -957,7 +961,8 @@ pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp::Range {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FileSystemDocuments {
   docs: DashMap<ModuleSpecifier, Arc<Document>>,
   dirty: AtomicBool,
@@ -1096,7 +1101,8 @@ impl FileSystemDocuments {
 }
 
 /// Specify the documents to include on a `documents.documents(...)` call.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DocumentsFilter {
   /// Includes all the documents (diagnosable & non-diagnosable, open & file system).
   All,
@@ -1106,7 +1112,8 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: Arc<LspCache>,

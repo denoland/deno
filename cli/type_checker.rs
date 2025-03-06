@@ -353,7 +353,8 @@ fn resolve_graph_imports_for_workspace_dir(
 }
 
 /// Key to use to group roots together by config.
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Hash, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CheckGroupKey<'a> {
   ts_config: &'a Arc<TsConfig>,
   imports: Rc<Vec<Url>>,

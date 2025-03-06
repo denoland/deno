@@ -40,7 +40,8 @@ use crate::http_util::HttpClientProvider;
 use crate::sys::CliSys;
 use crate::util::progress_bar::ProgressBar;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TextDecodedFile {
   pub media_type: MediaType,
   /// The _final_ specifier for the file.  The requested specifier and the final
@@ -92,11 +93,19 @@ impl deno_cache_dir::file_fetcher::BlobStore for BlobStoreAdapter {
   }
 }
 
-#[derive(Debug)]
 struct HttpClientAdapter {
   http_client_provider: Arc<HttpClientProvider>,
   download_log_level: log::Level,
   progress_bar: Option<ProgressBar>,
+}
+
+impl std::fmt::Debug for HttpClientAdapter {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("HttpClientAdapter")
+      // .field("http_client_provider", &self.http_client_provider)
+      .field("download_log_level", &self.download_log_level)
+      .finish()
+  }
 }
 
 #[async_trait::async_trait(?Send)]
@@ -212,8 +221,16 @@ impl deno_cache_dir::file_fetcher::HttpClient for HttpClientAdapter {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct MemoryFiles(Mutex<HashMap<ModuleSpecifier, File>>);
+
+impl std::fmt::Debug for MemoryFiles {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_tuple("MemoryFiles")
+      // .field(&self.0)
+      .finish()
+  }
+}
 
 impl MemoryFiles {
   pub fn insert(&self, specifier: ModuleSpecifier, file: File) -> Option<File> {
@@ -244,13 +261,15 @@ pub enum CliFetchNoFollowErrorKind {
   PermissionCheck(#[from] PermissionCheckError),
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum FetchPermissionsOptionRef<'a> {
   AllowAll,
   Restricted(&'a PermissionsContainer, CheckSpecifierKind),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FetchOptions<'a> {
   pub maybe_auth: Option<(header::HeaderName, header::HeaderValue)>,
   pub maybe_accept: Option<&'a str>,
@@ -271,10 +290,18 @@ type DenoCacheDirFileFetcher = deno_cache_dir::file_fetcher::FileFetcher<
 >;
 
 /// A structure for resolving, fetching and caching source files.
-#[derive(Debug)]
 pub struct CliFileFetcher {
   file_fetcher: DenoCacheDirFileFetcher,
   memory_files: Arc<MemoryFiles>,
+}
+
+impl std::fmt::Debug for CliFileFetcher {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("CliFileFetcher")
+      // .field("file_fetcher", &self.file_fetcher)
+      // .field("memory_files", &self.memory_files)
+      .finish()
+  }
 }
 
 impl CliFileFetcher {

@@ -28,13 +28,13 @@ pub enum CompressionError {
   Io(std::io::Error),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CompressionResource(RefCell<Option<Inner>>);
 
 impl deno_core::GarbageCollected for CompressionResource {}
 
 /// https://wicg.github.io/compression/#supported-formats
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum Inner {
   DeflateDecoder(ZlibDecoder<Vec<u8>>),
   DeflateEncoder(ZlibEncoder<Vec<u8>>),

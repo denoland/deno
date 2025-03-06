@@ -126,7 +126,8 @@ struct CloseInfo {
   reason: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct Addr {
   hostname: String,
   port: u16,

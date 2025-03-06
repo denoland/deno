@@ -259,7 +259,8 @@ fn key_part_to_v8(value: KeyPart) -> AnyValue {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 enum FromV8Value {
   V8(JsBuffer),
@@ -267,7 +268,8 @@ enum FromV8Value {
   U64(BigInt),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 enum ToV8Value {
   V8(ToJsBuffer),

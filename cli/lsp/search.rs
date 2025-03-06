@@ -22,7 +22,8 @@ pub mod tests {
 
   use super::*;
 
-  #[derive(Debug, Default)]
+  #[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct TestPackageSearchApi {
     /// [(name -> [(version -> [export])])]
     package_versions: BTreeMap<String, BTreeMap<Version, Vec<String>>>,

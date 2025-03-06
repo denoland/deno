@@ -49,7 +49,7 @@ use crate::sync::MaybeDashMap;
 #[allow(clippy::disallowed_types)]
 type UrlRc = crate::sync::MaybeArc<Url>;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct PkgJsonResolverFolderConfig {
   deps: PackageJsonDepsRc,
   pkg_json: PackageJsonRc,
@@ -76,9 +76,8 @@ pub enum WorkspaceResolverCreateError {
 
 /// Whether to resolve dependencies by reading the dependencies list
 /// from a package.json
-#[derive(
-  Debug, Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq,
-)]
+#[derive(Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PackageJsonDepResolution {
   /// Resolves based on the dep entries in the package.json.
   #[default]
@@ -88,9 +87,8 @@ pub enum PackageJsonDepResolution {
   Disabled,
 }
 
-#[derive(
-  Debug, Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq,
-)]
+#[derive(Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SloppyImportsOptions {
   Enabled,
   #[default]
@@ -99,16 +97,16 @@ pub enum SloppyImportsOptions {
 
 /// Toggle FS metadata caching when probing files for sloppy imports and
 /// `compilerOptions.rootDirs` resolution.
-#[derive(
-  Debug, Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq,
-)]
+#[derive(Default, Serialize, Deserialize, Copy, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum FsCacheOptions {
   #[default]
   Enabled,
   Disabled,
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CreateResolverOptions {
   pub pkg_json_dep_resolution: PackageJsonDepResolution,
   pub specified_import_map: Option<SpecifiedImportMap>,
@@ -116,13 +114,15 @@ pub struct CreateResolverOptions {
   pub fs_cache_options: FsCacheOptions,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SpecifiedImportMap {
   pub base_url: Url,
   pub value: serde_json::Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum MappedResolutionDiagnostic {
   ConstraintNotMatchedLocalVersion {
     /// If it was for a patch (true) or workspace (false) member.
@@ -157,7 +157,8 @@ impl std::fmt::Display for MappedResolutionDiagnostic {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum MappedResolution<'a> {
   Normal {
     specifier: Url,
@@ -266,13 +267,14 @@ pub enum WorkspaceResolvePkgJsonFolderErrorKind {
   VersionNotSatisfied(VersionReq, Version),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum CachedMetadataFsEntry {
   File,
   Dir,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CachedMetadataFs<TSys: FsMetadata> {
   sys: TSys,
   cache: Option<MaybeDashMap<PathBuf, Option<CachedMetadataFsEntry>>>,
@@ -315,7 +317,8 @@ impl<TSys: FsMetadata> CachedMetadataFs<TSys> {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SloppyImportsResolutionReason {
   /// Ex. `./file.js` to `./file.ts`
   JsToTs,
@@ -362,7 +365,7 @@ impl SloppyImportsResolutionReason {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct SloppyImportsResolver<TSys: FsMetadata> {
   fs: CachedMetadataFs<TSys>,
   enabled: bool,
@@ -635,7 +638,8 @@ pub fn sloppy_imports_resolve<TSys: FsMetadata>(
 type SloppyImportsResolverRc<T> =
   crate::sync::MaybeArc<SloppyImportsResolver<T>>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CompilerOptionsRootDirsDiagnostic {
   InvalidType(Url),
   InvalidEntryType(Url, usize),
@@ -654,7 +658,7 @@ impl fmt::Display for CompilerOptionsRootDirsDiagnostic {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CompilerOptionsRootDirsResolver<TSys: FsMetadata> {
   root_dirs_from_root: Vec<Url>,
   root_dirs_by_member: BTreeMap<Url, Option<Vec<Url>>>,
@@ -828,7 +832,8 @@ impl<TSys: FsMetadata> CompilerOptionsRootDirsResolver<TSys> {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ResolutionKind {
   /// Resolving for code that will be executed.
   Execution,
@@ -851,7 +856,8 @@ impl From<NodeResolutionKind> for ResolutionKind {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum WorkspaceResolverDiagnostic<'a> {
   ImportMap(&'a ImportMapDiagnostic),
   CompilerOptionsRootDirs(&'a CompilerOptionsRootDirsDiagnostic),
@@ -866,7 +872,7 @@ impl fmt::Display for WorkspaceResolverDiagnostic<'_> {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WorkspaceResolver<TSys: FsMetadata + FsRead> {
   workspace_root: UrlRc,
   jsr_pkgs: Vec<ResolverWorkspaceJsrPackage>,
@@ -1586,7 +1592,8 @@ pub struct SerializedWorkspaceResolverImportMap<'a> {
   pub json: Cow<'a, str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SerializedResolverWorkspaceJsrPackage<'a> {
   #[serde(borrow)]
   pub relative_base: Cow<'a, str>,
@@ -1610,7 +1617,8 @@ pub struct SerializableWorkspaceResolver<'a> {
   pub root_dirs_by_member: BTreeMap<Cow<'a, str>, Option<Vec<Cow<'a, str>>>>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct BaseUrl<'a>(&'a Url);
 
 impl BaseUrl<'_> {

@@ -428,12 +428,14 @@ impl Drop for ReadableStreamResource {
 }
 
 // TODO(mmastrac): Move this to deno_core
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CompletionHandle {
   inner: Rc<RefCell<CompletionHandleInner>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CompletionHandleInner {
   complete: bool,
   success: bool,

@@ -4,7 +4,8 @@ use deno_error::JsErrorBox;
 
 /// Defines the accepted types that can be used as
 /// parameters and return values in FFI.
-#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq)]
+#[derive(Clone, serde::Deserialize, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "lowercase")]
 pub enum NativeType {
   Void,

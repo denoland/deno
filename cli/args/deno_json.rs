@@ -145,7 +145,7 @@ fn check_warn_tsconfig(
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TranspileAndEmitOptions {
   pub transpile: deno_ast::TranspileOptions,
   pub emit: deno_ast::EmitOptions,
@@ -153,13 +153,15 @@ pub struct TranspileAndEmitOptions {
   pub pre_computed_hash: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LoggedWarnings {
   experimental_decorators: AtomicFlag,
   folders: dashmap::DashSet<Url>,
 }
 
-#[derive(Default, Debug)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct MemoizedValues {
   deno_window_check_tsconfig: OnceCell<Arc<TsConfig>>,
   deno_worker_check_tsconfig: OnceCell<Arc<TsConfig>>,
@@ -167,7 +169,7 @@ struct MemoizedValues {
   transpile_options: OnceCell<Arc<TranspileAndEmitOptions>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TsConfigFolderInfo {
   pub dir: WorkspaceDirectory,
   logged_warnings: Arc<LoggedWarnings>,
@@ -228,9 +230,19 @@ impl TsConfigFolderInfo {
   }
 }
 
-#[derive(Debug)]
 pub struct TsConfigResolver {
   map: FolderScopedMap<TsConfigFolderInfo>,
+}
+
+impl std::fmt::Debug for TsConfigResolver {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("TsConfigResolver");
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("map", &self.map);
+    }
+    f.finish()
+  }
 }
 
 impl TsConfigResolver {

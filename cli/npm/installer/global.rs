@@ -23,13 +23,24 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug)]
 pub struct GlobalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
+}
+
+impl std::fmt::Debug for GlobalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("GlobalNpmPackageInstaller")
+      // .field("cache", &self.cache)
+      // .field("tarball_cache", &self.tarball_cache)
+      // .field("resolution", &self.resolution)
+      // .field("lifecycle_scripts", &self.lifecycle_scripts)
+      // .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl GlobalNpmPackageInstaller {

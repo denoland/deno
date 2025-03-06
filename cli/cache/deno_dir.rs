@@ -40,7 +40,8 @@ impl DenoDirProvider {
 
 /// `DenoDir` serves as coordinator for multiple `DiskCache`s containing them
 /// in single directory that can be controlled with `$DENO_DIR` env variable.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoDir {
   /// Example: /Users/rld/.deno/
   pub root: PathBuf,

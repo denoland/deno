@@ -7,7 +7,8 @@ use serde::Deserializer;
 use serde::Serialize;
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-awaitPromise>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct AwaitPromiseArgs {
   pub promise_object_id: RemoteObjectId,
@@ -18,7 +19,8 @@ pub struct AwaitPromiseArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-callFunctionOn>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnArgs {
   pub function_declaration: String,
@@ -45,7 +47,8 @@ pub struct CallFunctionOnArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-callFunctionOn>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallFunctionOnResponse {
   pub result: RemoteObject,
@@ -53,7 +56,8 @@ pub struct CallFunctionOnResponse {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-compileScript>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompileScriptArgs {
   pub expression: String,
@@ -64,7 +68,8 @@ pub struct CompileScriptArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateArgs {
   pub expression: String,
@@ -103,7 +108,8 @@ pub struct EvaluateArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-evaluate>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct EvaluateResponse {
   pub result: RemoteObject,
@@ -111,7 +117,8 @@ pub struct EvaluateResponse {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-getProperties>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesArgs {
   pub object_id: RemoteObjectId,
@@ -126,14 +133,16 @@ pub struct GetPropertiesArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-getProperties>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GetPropertiesResponse {
   pub result: Vec<PropertyDescriptor>,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-globalLexicalScopeNames>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalLexicalScopeNamesArgs {
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -141,14 +150,16 @@ pub struct GlobalLexicalScopeNamesArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-globalLexicalScopeNames>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GlobalLexicalScopeNamesResponse {
   pub names: Vec<String>,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-queryObjects>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct QueryObjectsArgs {
   pub prototype_object_id: RemoteObjectId,
@@ -157,21 +168,24 @@ pub struct QueryObjectsArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObject>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseObjectArgs {
   pub object_id: RemoteObjectId,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-releaseObjectGroup>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReleaseObjectGroupArgs {
   pub object_group: String,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-runScript>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RunScriptArgs {
   pub script_id: ScriptId,
@@ -195,7 +209,8 @@ pub struct RunScriptArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#method-setAsyncCallStackDepth>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SetAsyncCallStackDepthArgs {
   pub max_depth: u64,
@@ -204,7 +219,8 @@ pub struct SetAsyncCallStackDepthArgs {
 // types
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-RemoteObject>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteObject {
   #[serde(rename = "type")]
@@ -227,7 +243,8 @@ where
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExceptionDetails>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ExceptionDetails {
   pub text: String,
@@ -246,7 +263,8 @@ impl ExceptionDetails {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-CallArgument>
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallArgument {
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -268,7 +286,8 @@ impl From<&RemoteObject> for CallArgument {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-PropertyDescriptor>
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct PropertyDescriptor {
   pub name: String,
@@ -290,12 +309,14 @@ pub type TimeDelta = u64;
 pub type UnserializableValue = String;
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#method-setScriptSource>
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SetScriptSourceResponse {
   pub status: Status,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Status {
   Ok,
   CompileError,
@@ -305,7 +326,8 @@ pub enum Status {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Debugger/#event-scriptParsed>
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptParsed {
   pub script_id: String,
@@ -313,7 +335,8 @@ pub struct ScriptParsed {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-CoverageRange>
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CoverageRange {
   /// Start character index.
@@ -326,7 +349,8 @@ pub struct CoverageRange {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-FunctionCoverage>
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct FunctionCoverage {
   pub function_name: String,
@@ -335,7 +359,8 @@ pub struct FunctionCoverage {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#type-ScriptCoverage>
-#[derive(Debug, Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Eq, PartialEq, Serialize, Deserialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptCoverage {
   pub script_id: String,
@@ -344,7 +369,8 @@ pub struct ScriptCoverage {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct StartPreciseCoverageArgs {
   pub call_count: bool,
@@ -353,41 +379,47 @@ pub struct StartPreciseCoverageArgs {
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-startPreciseCoverage>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct StartPreciseCoverageResponse {
   pub timestamp: f64,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Profiler/#method-takePreciseCoverage>
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TakePreciseCoverageResponse {
   pub result: Vec<ScriptCoverage>,
   pub timestamp: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Notification {
   pub method: String,
   pub params: Value,
 }
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-exceptionThrown>
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ExceptionThrown {
   pub exception_details: ExceptionDetails,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#event-executionContextCreated>
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContextCreated {
   pub context: ExecutionContextDescription,
 }
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription>
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContextDescription {
   pub id: ExecutionContextId,

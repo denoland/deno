@@ -44,7 +44,7 @@ use crate::task_runner;
 use crate::task_runner::run_future_forwarding_signals;
 use crate::util::fs::canonicalize_path;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct PackageTaskInfo {
   matched_tasks: Vec<String>,
   tasks_config: WorkspaceTasksConfig,
@@ -547,7 +547,7 @@ impl<'a> TaskRunner<'a> {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum TaskError {
   NotFound(String),
   TaskDepCycle { path: Vec<String> },
@@ -957,7 +957,7 @@ fn arg_to_task_name_filter(input: &str) -> Result<TaskNameFilter, AnyError> {
   Ok(TaskNameFilter::Regex(re))
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum TaskNameFilter<'s> {
   Exact(&'s str),
   Regex(regex::Regex),

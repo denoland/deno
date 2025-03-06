@@ -58,14 +58,16 @@ use reporters::BenchReporter;
 use reporters::ConsoleReporter;
 use reporters::JsonReporter;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct BenchSpecifierOptions {
   filter: TestFilter,
   json: bool,
   log_level: Option<log::Level>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct BenchPlan {
   pub total: usize,
@@ -74,7 +76,8 @@ pub struct BenchPlan {
   pub names: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum BenchEvent {
   Plan(BenchPlan),
@@ -85,14 +88,16 @@ pub enum BenchEvent {
   UncaughtError(String, Box<JsError>),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum BenchResult {
   Ok(BenchStats),
   Failed(Box<JsError>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BenchReport {
   pub total: usize,
   pub failed: usize,
@@ -100,7 +105,8 @@ pub struct BenchReport {
   pub measurements: Vec<(BenchDescription, BenchStats)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize, Eq, Hash)]
+#[derive(Clone, PartialEq, Deserialize, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BenchDescription {
   pub id: usize,
   pub name: String,
@@ -112,7 +118,8 @@ pub struct BenchDescription {
   pub warmup: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct BenchStats {
   pub n: u64,

@@ -23,7 +23,8 @@ use serde::Deserializer;
 use serde::Serialize;
 use serde::Serializer;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum WindowsSystemRootablePath {
   /// The root of the system above any drive letters.
   WindowSystemRoot,
@@ -62,14 +63,16 @@ impl WindowsSystemRootablePath {
   }
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum FileSystemCaseSensitivity {
   #[serde(rename = "s")]
   Sensitive,
   #[serde(rename = "i")]
   Insensitive,
 }
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VirtualDirectoryEntries(Vec<VfsEntry>);
 
 impl VirtualDirectoryEntries {
@@ -190,7 +193,8 @@ impl VirtualDirectoryEntries {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VirtualDirectory {
   #[serde(rename = "n")]
   pub name: String,
@@ -199,7 +203,8 @@ pub struct VirtualDirectory {
   pub entries: VirtualDirectoryEntries,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct OffsetWithLength {
   pub offset: u64,
   pub len: u64,
@@ -248,7 +253,8 @@ impl<'de> Deserialize<'de> for OffsetWithLength {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VirtualFile {
   #[serde(rename = "n")]
   pub name: String,
@@ -262,7 +268,8 @@ pub struct VirtualFile {
   pub source_map_offset: Option<OffsetWithLength>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VirtualSymlinkParts(Vec<String>);
 
 impl VirtualSymlinkParts {
@@ -293,7 +300,8 @@ impl VirtualSymlinkParts {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VirtualSymlink {
   #[serde(rename = "n")]
   pub name: String,
@@ -311,7 +319,8 @@ impl VirtualSymlink {
   }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum VfsEntryRef<'a> {
   Dir(&'a VirtualDirectory),
   File(&'a VirtualFile),
@@ -329,11 +338,37 @@ impl VfsEntryRef<'_> {
 }
 
 // todo(dsherret): we should store this more efficiently in the binary
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum VfsEntry {
   Dir(VirtualDirectory),
   File(VirtualFile),
   Symlink(VirtualSymlink),
+}
+
+impl std::fmt::Debug for VfsEntry {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    macro_rules! if_debug {
+      ($f: expr, $field: expr) => {{
+        #[cfg(any(test, debug_assertions))]
+        {
+          $f.field($field)
+        }
+        #[cfg(not(any(test, debug_assertions)))]
+        {
+          let _ = $field;
+          $f
+        }
+      }};
+    }
+
+    match self {
+      Self::Dir(field) => if_debug!(f.debug_tuple("Dir"), field).finish(),
+      Self::File(field) => if_debug!(f.debug_tuple("File"), field).finish(),
+      Self::Symlink(field) => {
+        if_debug!(f.debug_tuple("Symlink"), field).finish()
+      }
+    }
+  }
 }
 
 impl VfsEntry {
@@ -357,7 +392,7 @@ impl VfsEntry {
 pub static DENO_COMPILE_GLOBAL_NODE_MODULES_DIR_NAME: &str =
   ".deno_compile_node_modules";
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BuiltVfs {
   pub root_path: WindowsSystemRootablePath,
   pub case_sensitivity: FileSystemCaseSensitivity,
@@ -365,7 +400,8 @@ pub struct BuiltVfs {
   pub files: Vec<Vec<u8>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FilesData {
   files: Vec<Vec<u8>>,
   current_offset: u64,
@@ -437,7 +473,7 @@ pub struct AddFileDataOptions {
   pub maybe_cjs_export_analysis: Option<Vec<u8>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VfsBuilder {
   executable_root: VirtualDirectory,
   files: FilesData,
@@ -983,7 +1019,7 @@ impl<'a> Iterator for FileIterator<'a> {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SymlinkTarget {
   File(PathBuf),
   Dir(PathBuf),

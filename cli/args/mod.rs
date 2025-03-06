@@ -173,7 +173,8 @@ impl WorkspaceBenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct BenchOptions {
   pub files: FilePatterns,
 }
@@ -187,13 +188,15 @@ impl BenchOptions {
   }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UnstableFmtOptions {
   pub component: bool,
   pub sql: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FmtOptions {
   pub options: FmtOptionsConfig,
   pub unstable: UnstableFmtOptions,
@@ -268,7 +271,8 @@ fn resolve_fmt_options(
   options
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WorkspaceTestOptions {
   pub doc: bool,
   pub no_run: bool,
@@ -303,7 +307,8 @@ impl WorkspaceTestOptions {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TestOptions {
   pub files: FilePatterns,
 }
@@ -317,7 +322,8 @@ impl TestOptions {
   }
 }
 
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum LintReporterKind {
   #[default]
   Pretty,
@@ -325,7 +331,8 @@ pub enum LintReporterKind {
   Compact,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WorkspaceLintOptions {
   pub reporter_kind: LintReporterKind,
 }
@@ -361,7 +368,8 @@ impl WorkspaceLintOptions {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
@@ -447,7 +455,7 @@ fn resolve_lint_rules_options(
 
 /// Holds the resolved options of many sources used by subcommands
 /// and provides some helper function for creating common objects.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliOptions {
   // the source of the options is a detail the rest of the
   // application need not concern itself with, so keep these private
@@ -1355,7 +1363,8 @@ fn allow_import_host_from_url(url: &Url) -> Option<String> {
   }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NpmCachingStrategy {
   Eager,
   Lazy,

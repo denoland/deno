@@ -40,7 +40,8 @@ pub fn has_flag_env_var(name: &str) -> bool {
   }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CaData {
   /// The string is a file path
   File(String),
@@ -152,13 +153,15 @@ pub fn get_root_cert_store(
 }
 
 /// State provided to the process via an environment variable.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmProcessState {
   pub kind: NpmProcessStateKind,
   pub local_node_modules_path: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NpmProcessStateKind {
   Snapshot(deno_npm::resolution::SerializedNpmResolutionSnapshot),
   Byonm,
@@ -208,7 +211,8 @@ pub fn resolve_npm_resolution_snapshot(
   }
 }
 
-#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct UnstableConfig {
   // TODO(bartlomieju): remove in Deno 2.5
   pub legacy_flag_enabled: bool, // --unstable

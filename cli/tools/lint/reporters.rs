@@ -146,7 +146,8 @@ impl LintReporter for CompactLintReporter {
 }
 
 // WARNING: Ensure doesn't change because it's used in the JSON output
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct JsonDiagnosticLintPosition {
   /// The 1-indexed line number.
@@ -167,7 +168,8 @@ impl JsonDiagnosticLintPosition {
 }
 
 // WARNING: Ensure doesn't change because it's used in the JSON output
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct JsonLintDiagnosticRange {
   pub start: JsonDiagnosticLintPosition,
   pub end: JsonDiagnosticLintPosition,

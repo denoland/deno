@@ -36,7 +36,8 @@ static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
 static EXPORT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\bexport\b");
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CodeLensSource {
   #[serde(rename = "implementations")]
   Implementations,
@@ -44,7 +45,8 @@ pub enum CodeLensSource {
   References,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensData {
   pub source: CodeLensSource,

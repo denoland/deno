@@ -27,7 +27,8 @@ impl<'a> RangeTreeArena<'a> {
   }
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct RangeTree<'a> {
   pub start: usize,
   pub end: usize,

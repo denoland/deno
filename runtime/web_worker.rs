@@ -75,7 +75,8 @@ pub struct WorkerMetadata {
 
 static WORKER_ID_COUNTER: AtomicU32 = AtomicU32::new(1);
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WorkerId(u32);
 impl WorkerId {
   pub fn new() -> WorkerId {

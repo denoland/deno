@@ -54,7 +54,8 @@ pub struct SerializedWorkspaceResolverImportMap {
   pub json: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SerializedResolverWorkspaceJsrPackage {
   pub relative_base: String,
   pub name: String,
@@ -93,7 +94,8 @@ pub struct Metadata {
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SpecifierId(u32);
 
 impl SpecifierId {

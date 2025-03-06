@@ -697,7 +697,7 @@ fn compute_run_cmd_and_check_permissions(
   Ok((cmd, run_env))
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct EnvVarKey {
   inner: OsString,
   // Windows treats env vars as case insensitive, so use

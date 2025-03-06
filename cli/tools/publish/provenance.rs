@@ -254,19 +254,22 @@ const GITHUB_BUILDER_ID_PREFIX: &str = "https://github.com/actions/runner";
 const GITHUB_BUILD_TYPE: &str =
   "https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1";
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct X509Certificate {
   pub raw_bytes: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct X509CertificateChain {
   pub certificates: [X509Certificate; 1],
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct VerificationMaterialContent {
   #[serde(rename = "$case")]
@@ -274,13 +277,15 @@ pub struct VerificationMaterialContent {
   pub x509_certificate_chain: X509CertificateChain,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TlogEntry {
   pub log_index: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct VerificationMaterial {
   pub content: VerificationMaterialContent,
@@ -579,7 +584,8 @@ static DEFAULT_REKOR_URL: Lazy<String> = Lazy::new(|| {
     .unwrap_or_else(|_| "https://rekor.sigstore.dev".to_string())
 });
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
   #[allow(dead_code)]
@@ -590,7 +596,8 @@ pub struct LogEntry {
 
 type RekorEntry = HashMap<String, LogEntry>;
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct RekorSignature {
   sig: String,
@@ -599,7 +606,8 @@ struct RekorSignature {
   public_key: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct DsseEnvelope {
   payload: String,
@@ -607,7 +615,8 @@ struct DsseEnvelope {
   signatures: [RekorSignature; 1],
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct ProposedIntotoEntry {
   api_version: &'static str,
@@ -615,13 +624,15 @@ struct ProposedIntotoEntry {
   spec: ProposedIntotoEntrySpec,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct ProposedIntotoEntrySpec {
   content: ProposedIntotoEntryContent,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct ProposedIntotoEntryContent {
   envelope: DsseEnvelope,
@@ -629,7 +640,8 @@ struct ProposedIntotoEntryContent {
   payload_hash: ProposedIntotoEntryHash,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct ProposedIntotoEntryHash {
   algorithm: &'static str,

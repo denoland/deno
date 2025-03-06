@@ -24,7 +24,8 @@ use crate::function::create_function_template;
 use crate::function::CallbackInfo;
 use crate::*;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ReferenceOwnership {
   Runtime,
   Userland,

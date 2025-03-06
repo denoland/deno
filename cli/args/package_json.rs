@@ -15,14 +15,14 @@ use deno_semver::StackString;
 use deno_semver::VersionReq;
 use thiserror::Error;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InstallNpmRemotePkg {
   pub alias: Option<StackString>,
   pub base_dir: PathBuf,
   pub req: PackageReq,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InstallNpmWorkspacePkg {
   pub alias: Option<StackString>,
   pub target_dir: PathBuf,
@@ -37,7 +37,8 @@ pub struct PackageJsonDepValueParseWithLocationError {
   pub source: PackageJsonDepValueParseError,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
   workspace_pkgs: Vec<InstallNpmWorkspacePkg>,

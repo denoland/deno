@@ -47,7 +47,8 @@ const PARENT_PATH: &str = "..";
 const LOCAL_PATHS: &[&str] = &[CURRENT_PATH, PARENT_PATH];
 pub(crate) const IMPORT_COMMIT_CHARS: &[&str] = &["\"", "'"];
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   #[serde(skip_serializing_if = "Option::is_none")]

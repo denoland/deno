@@ -53,7 +53,8 @@ pub type WorkspaceResolverRc<TSys> =
 #[allow(clippy::disallowed_types)]
 pub(crate) type NpmCacheDirRc = crate::sync::MaybeArc<NpmCacheDir>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoResolution {
   pub url: Url,
   pub maybe_diagnostic: Option<Box<MappedResolutionDiagnostic>>,
@@ -100,7 +101,7 @@ pub enum DenoResolveErrorKind {
   WorkspaceResolvePkgJsonFolder(#[from] WorkspaceResolvePkgJsonFolderError),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NodeAndNpmReqResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
@@ -171,7 +172,7 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
 
 /// A resolver that takes care of resolution, taking into account loaded
 /// import map, JSX settings.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,

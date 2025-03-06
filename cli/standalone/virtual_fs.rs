@@ -39,7 +39,8 @@ fn vfs_as_display_tree(
 ) -> DisplayTreeNode {
   /// The VFS only stores duplicate files once, so track that and display
   /// it to the user so that it's not confusing.
-  #[derive(Debug, Default, Copy, Clone)]
+  #[derive(Default, Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   struct Size {
     unique: u64,
     total: u64,

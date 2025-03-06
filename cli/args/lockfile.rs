@@ -25,7 +25,7 @@ use crate::cache;
 use crate::sys::CliSys;
 use crate::Flags;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliLockfileReadFromPathOptions {
   pub file_path: PathBuf,
   pub frozen: bool,
@@ -33,7 +33,7 @@ pub struct CliLockfileReadFromPathOptions {
   pub skip_write: bool,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliLockfile {
   sys: CliSys,
   lockfile: Mutex<Lockfile>,

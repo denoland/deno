@@ -90,7 +90,8 @@ fn find_source_map_range(code: &[u8]) -> Option<Range<usize>> {
   }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Utf16Char {
   pub start: TextSize,
   pub end: TextSize,
@@ -110,7 +111,8 @@ impl Utf16Char {
   }
 }
 
-#[derive(Debug, Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Utf16Map {
   utf8_offsets: Vec<TextSize>,
   utf16_lines: HashMap<u32, Vec<Utf16Char>>,

@@ -116,7 +116,8 @@ pub enum NpmRcCreateErrorKind {
   NpmRcDiscover(#[from] NpmRcDiscoverError),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ConfigDiscoveryOption {
   #[default]
   DiscoverCwd,
@@ -136,7 +137,8 @@ pub trait SpecifiedImportMapProvider:
   ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoDirPathProviderOptions {
   pub maybe_custom_root: Option<PathBuf>,
 }
@@ -147,7 +149,7 @@ pub type DenoDirPathProviderRc<TSys> =
 
 /// Lazily creates the deno dir which might be useful in scenarios
 /// where functionality wants to continue if the DENO_DIR can't be created.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DenoDirPathProvider<
   TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir,
 > {
@@ -177,13 +179,14 @@ impl<TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir>
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmProcessStateOptions {
   pub node_modules_dir: Option<Cow<'static, str>>,
   pub is_byonm: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WorkspaceFactoryOptions<
   TSys: EnvCacheDir + EnvHomeDir + EnvVar + EnvCurrentDir + FsCanonicalize,
 > {
@@ -557,7 +560,8 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ResolverFactoryOptions {
   pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
   pub npm_system_info: NpmSystemInfo,

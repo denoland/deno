@@ -45,7 +45,7 @@ use super::config::WorkspaceSettings;
 use super::urls::uri_parse_unencoded;
 use super::urls::url_to_uri;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ReplCompletionItem {
   pub new_text: String,
   pub range: std::ops::Range<usize>,

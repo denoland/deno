@@ -58,7 +58,8 @@ impl Resource for FsEventsResource {
 ///
 /// Feel free to expand this struct as long as you can add tests to demonstrate
 /// the complexity.
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct FsEvent {
   kind: &'static str,
   paths: Vec<PathBuf>,

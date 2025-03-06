@@ -10,7 +10,7 @@ pub const PRIVATE_SYMBOL_NAME: v8::OneByteConst =
   v8::String::create_external_onebyte_const(b"node:contextify:context");
 
 /// An unbounded script that can be run in a context.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ContextifyScript {
   script: v8::Global<v8::UnboundScript>,
 }
@@ -249,7 +249,8 @@ pub fn create_v8_context<'a>(
   scope.escape(context)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct SlotContextifyGlobalTemplate(v8::Global<v8::ObjectTemplate>);
 
 pub fn init_global_template<'a>(

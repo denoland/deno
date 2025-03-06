@@ -7,14 +7,16 @@ use tower_lsp::lsp_types as lsp;
 pub const TEST_RUN_CANCEL_REQUEST: &str = "deno/testRunCancel";
 pub const TEST_RUN_REQUEST: &str = "deno/testRun";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct EnqueuedTestModule {
   pub text_document: lsp::TextDocumentIdentifier,
   pub ids: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestData {
   /// The unique ID of the test
@@ -29,7 +31,8 @@ pub struct TestData {
   pub range: Option<lsp::Range>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum TestModuleNotificationKind {
   /// The test module notification represents an insertion of tests, not
@@ -40,7 +43,8 @@ pub enum TestModuleNotificationKind {
   Replace,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestModuleNotificationParams {
   /// The text document that the notification relates to.
@@ -61,7 +65,8 @@ impl lsp::notification::Notification for TestModuleNotification {
   const METHOD: &'static str = "deno/testModule";
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestModuleDeleteNotificationParams {
   /// The text document that the notification relates to.
@@ -76,7 +81,8 @@ impl lsp::notification::Notification for TestModuleDeleteNotification {
   const METHOD: &'static str = "deno/testModuleDelete";
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum TestRunKind {
   // The run profile is just to execute the tests
@@ -88,7 +94,8 @@ pub enum TestRunKind {
   Coverage,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestRunRequestParams {
   pub id: u32,
@@ -100,20 +107,23 @@ pub struct TestRunRequestParams {
   pub include: Option<Vec<TestIdentifier>>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestRunCancelParams {
   pub id: u32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestRunProgressParams {
   pub id: u32,
   pub message: TestRunProgressMessage,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestIdentifier {
   /// The module identifier which contains the test.
@@ -128,7 +138,8 @@ pub struct TestIdentifier {
   pub step_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum TestRunProgressMessage {
   Enqueued {
@@ -167,7 +178,8 @@ pub enum TestRunProgressMessage {
   End,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestMessage {
   pub message: lsp::MarkupContent,

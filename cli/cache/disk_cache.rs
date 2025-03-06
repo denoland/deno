@@ -16,7 +16,8 @@ use sys_traits::FsRead;
 
 use crate::sys::CliSys;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct DiskCache {
   sys: CliSys,
   pub location: PathBuf,

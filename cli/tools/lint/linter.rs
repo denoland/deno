@@ -42,7 +42,7 @@ pub struct CliLinterOptions {
   pub maybe_plugin_runner: Option<Arc<PluginHostProxy>>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliLinter {
   fix: bool,
   package_rules: Vec<Box<dyn PackageLintRule>>,

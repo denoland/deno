@@ -39,7 +39,8 @@ pub const PERMISSION_EMOJI: &str = "⚠️";
 // 10kB of permission prompting should be enough for anyone
 const MAX_PERMISSION_PROMPT_LENGTH: usize = 10 * 1024;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum PromptResponse {
   Allow,
   Deny,

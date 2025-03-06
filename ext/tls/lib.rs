@@ -158,7 +158,8 @@ impl ServerCertVerifier for NoCertificateVerification {
   }
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Deserialize, Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct Proxy {
@@ -166,7 +167,8 @@ pub struct Proxy {
   pub basic_auth: Option<BasicAuth>,
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Deserialize, Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(default)]
 pub struct BasicAuth {
   pub username: String,

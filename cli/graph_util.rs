@@ -303,7 +303,8 @@ pub fn resolution_error_for_tsc_diagnostic(
   }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum EnhanceGraphErrorMode {
   ShowRange,
   HideRange,
@@ -1243,10 +1244,22 @@ pub fn has_graph_root_local_dependent_changed(
   false
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FileWatcherReporter {
   watcher_communicator: Arc<WatcherCommunicator>,
   file_paths: Arc<Mutex<Vec<PathBuf>>>,
+}
+
+impl std::fmt::Debug for FileWatcherReporter {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("FileWatcherReporter");
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("watcher_communicator", &self.watcher_communicator)
+        .field("file_paths", &self.file_paths);
+    }
+    f.finish()
+  }
 }
 
 impl FileWatcherReporter {
@@ -1296,7 +1309,8 @@ pub fn format_range_with_colors(referrer: &deno_graph::Range) -> String {
   )
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Default, Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliJsrUrlProvider;
 
 impl deno_graph::source::JsrUrlProvider for CliJsrUrlProvider {
@@ -1348,13 +1362,29 @@ fn format_deno_graph_error(err: &dyn Error) -> String {
   message
 }
 
-#[derive(Debug)]
 struct CliGraphResolver<'a> {
   cjs_tracker: &'a CliCjsTracker,
   resolver: &'a CliResolver,
   jsx_import_source_config_unscoped: Option<JsxImportSourceConfig>,
   jsx_import_source_config_by_scope:
     BTreeMap<Arc<ModuleSpecifier>, Option<JsxImportSourceConfig>>,
+}
+
+impl<'a> std::fmt::Debug for CliGraphResolver<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("CliGraphResolver")
+      // .field("cjs_tracker", &self.cjs_tracker)
+      // .field("resolver", &self.resolver)
+      // .field(
+      //   "jsx_import_source_config_unscoped",
+      //   &self.jsx_import_source_config_unscoped,
+      // )
+      // .field(
+      //   "jsx_import_source_config_by_scope",
+      //   &self.jsx_import_source_config_by_scope,
+      // )
+      .finish()
+  }
 }
 
 impl CliGraphResolver<'_> {

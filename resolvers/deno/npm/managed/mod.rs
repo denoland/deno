@@ -258,7 +258,8 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ManagedInNpmPackageChecker {
   root_dir: Url,
 }
@@ -269,7 +270,7 @@ impl InNpmPackageChecker for ManagedInNpmPackageChecker {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
   pub root_cache_dir_url: &'a Url,
   pub maybe_node_modules_path: Option<&'a Path>,

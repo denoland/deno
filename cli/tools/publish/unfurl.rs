@@ -35,7 +35,8 @@ use sys_traits::FsRead;
 
 use crate::sys::CliSys;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SpecifierUnfurlerDiagnostic {
   UnanalyzableDynamicImport {
     specifier: ModuleSpecifier,
@@ -199,6 +200,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
     workspace_resolver: Arc<WorkspaceResolver<TSys>>,
     bare_node_builtins: bool,
   ) -> Self {
+    #[cfg(any(test, debug_assertions))]
     debug_assert_eq!(
       workspace_resolver.pkg_json_dep_resolution(),
       PackageJsonDepResolution::Enabled

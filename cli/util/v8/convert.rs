@@ -4,7 +4,8 @@ use deno_core::v8;
 use deno_core::FromV8;
 use deno_core::ToV8;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 /// A wrapper type for `Option<T>` that (de)serializes `None` as `null`
 #[repr(transparent)]
 pub struct OptionNull<T>(pub Option<T>);

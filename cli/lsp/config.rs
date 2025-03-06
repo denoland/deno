@@ -80,7 +80,8 @@ fn is_true() -> bool {
 
 /// Wrapper that defaults if it fails to deserialize. Good for individual
 /// settings.
-#[derive(Debug, Default, Clone, Eq, PartialEq)]
+#[derive(Default, Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct SafeValue<T> {
   inner: T,
 }
@@ -126,7 +127,8 @@ impl<T> SafeValue<T> {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensSettings {
   /// Flag for providing implementation code lenses.
@@ -156,14 +158,16 @@ impl Default for CodeLensSettings {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DenoCompletionSettings {
   #[serde(default)]
   pub imports: ImportCompletionSettings,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ClassMemberSnippets {
   #[serde(default = "is_true")]
@@ -176,7 +180,8 @@ impl Default for ClassMemberSnippets {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectLiteralMethodSnippets {
   #[serde(default = "is_true")]
@@ -189,7 +194,8 @@ impl Default for ObjectLiteralMethodSnippets {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionSettings {
   #[serde(default)]
@@ -228,7 +234,8 @@ impl Default for CompletionSettings {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsSettings {
   #[serde(default)]
@@ -245,7 +252,8 @@ pub struct InlayHintsSettings {
   pub enum_member_values: InlayHintsEnumMemberValuesOptions,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsParamNamesOptions {
   #[serde(default)]
@@ -263,7 +271,8 @@ impl Default for InlayHintsParamNamesOptions {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum InlayHintsParamNamesEnabled {
   None,
@@ -277,14 +286,16 @@ impl Default for InlayHintsParamNamesEnabled {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsParamTypesOptions {
   #[serde(default)]
   pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsVarTypesOptions {
   #[serde(default)]
@@ -302,28 +313,32 @@ impl Default for InlayHintsVarTypesOptions {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsPropDeclTypesOptions {
   #[serde(default)]
   pub enabled: bool,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsFuncLikeReturnTypesOptions {
   #[serde(default)]
   pub enabled: bool,
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintsEnumMemberValuesOptions {
   #[serde(default)]
   pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportCompletionSettings {
   /// A flag that indicates if non-explicitly set origins should be checked for
@@ -345,7 +360,8 @@ impl Default for ImportCompletionSettings {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TestingSettings {
   /// A vector of arguments which should be used when running the tests for
@@ -377,7 +393,8 @@ fn empty_string_none<'de, D: serde::Deserializer<'de>>(
   Ok(o.filter(|s| !s.is_empty()))
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 pub enum ImportModuleSpecifier {
   NonRelative,
@@ -392,7 +409,8 @@ impl Default for ImportModuleSpecifier {
   }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 pub enum JsxAttributeCompletionStyle {
   Auto,
@@ -406,7 +424,8 @@ impl Default for JsxAttributeCompletionStyle {
   }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 pub enum QuoteStyle {
   Auto,
@@ -429,7 +448,8 @@ impl From<&FmtOptionsConfig> for QuoteStyle {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct LanguagePreferences {
   #[serde(default)]
@@ -459,7 +479,8 @@ impl Default for LanguagePreferences {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SuggestionActionsSettings {
   #[serde(default = "is_true")]
@@ -472,14 +493,16 @@ impl Default for SuggestionActionsSettings {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateImportsOnFileMoveOptions {
   #[serde(default)]
   pub enabled: UpdateImportsOnFileMoveEnabled,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 pub enum UpdateImportsOnFileMoveEnabled {
   Always,
@@ -493,7 +516,8 @@ impl Default for UpdateImportsOnFileMoveEnabled {
   }
 }
 
-#[derive(Debug, Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Default, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageWorkspaceSettings {
   #[serde(default)]
@@ -508,7 +532,8 @@ pub struct LanguageWorkspaceSettings {
   pub update_imports_on_file_move: UpdateImportsOnFileMoveOptions,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 #[serde(untagged)]
 pub enum InspectSetting {
@@ -533,7 +558,8 @@ impl InspectSetting {
 }
 
 /// Deno language server specific settings that are applied to a workspace.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceSettings {
   /// A flag that indicates if Deno is enabled for the workspace.
@@ -818,7 +844,8 @@ impl WorkspaceSettings {
   }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Settings {
   pub unscoped: Arc<WorkspaceSettings>,
   pub by_workspace_folder:
@@ -913,7 +940,8 @@ impl Settings {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Config {
   pub client_capabilities: Arc<ClientCapabilities>,
   pub settings: Arc<Settings>,
@@ -1141,7 +1169,8 @@ impl Config {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LspTsConfig {
   #[serde(flatten)]
   inner: TsConfig,
@@ -1183,7 +1212,8 @@ impl LspTsConfig {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ConfigWatchedFileType {
   DenoJson,
   Lockfile,
@@ -1193,7 +1223,8 @@ pub enum ConfigWatchedFileType {
 }
 
 /// Contains the config file and dependent information.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ConfigData {
   pub scope: Arc<ModuleSpecifier>,
   pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
@@ -1719,7 +1750,8 @@ impl ConfigData {
   }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ConfigTree {
   scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
 }
@@ -2079,7 +2111,8 @@ impl deno_config::deno_json::DenoJsonCache for DenoJsonMemCache {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct PackageJsonMemCache(Mutex<HashMap<PathBuf, Arc<PackageJson>>>);
 
 impl deno_package_json::PackageJsonCache for PackageJsonMemCache {

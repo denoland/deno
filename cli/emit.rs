@@ -28,7 +28,7 @@ use crate::cache::EmitCache;
 use crate::cache::ParsedSourceCache;
 use crate::resolver::CliCjsTracker;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Emitter {
   cjs_tracker: Arc<CliCjsTracker>,
   emit_cache: Arc<EmitCache>,

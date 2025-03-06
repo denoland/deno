@@ -431,7 +431,8 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {

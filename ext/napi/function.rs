@@ -2,7 +2,7 @@
 use crate::*;
 
 #[repr(C)]
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CallbackInfo {
   pub env: *mut Env,
   pub cb: napi_callback,

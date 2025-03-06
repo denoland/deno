@@ -25,33 +25,38 @@ use crate::image_ops::to_srgb_from_icc_profile;
 use crate::image_ops::unpremultiply_alpha;
 use crate::CanvasError;
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ImageBitmapSource {
   Blob,
   ImageData,
   ImageBitmap,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ImageOrientation {
   FlipY,
   FromImage,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum PremultiplyAlpha {
   Default,
   Premultiply,
   None,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ColorSpaceConversion {
   Default,
   None,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ResizeQuality {
   Pixelated,
   Low,
@@ -59,7 +64,8 @@ enum ResizeQuality {
   High,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum MimeType {
   NoMatch,
   Png,
@@ -266,7 +272,8 @@ fn apply_premultiply_alpha(
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct ParsedArgs {
   resize_width: Option<u32>,
   resize_height: Option<u32>,

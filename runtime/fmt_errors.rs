@@ -8,32 +8,34 @@ use deno_core::error::format_frame;
 use deno_core::error::JsError;
 use deno_terminal::colors;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct ErrorReference<'a> {
   from: &'a JsError,
   to: &'a JsError,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct IndexedErrorReference<'a> {
   reference: ErrorReference<'a>,
   index: usize,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum FixSuggestionKind {
   Info,
   Hint,
   Docs,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum FixSuggestionMessage<'a> {
   Single(&'a str),
   Multiline(&'a [&'a str]),
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FixSuggestion<'a> {
   kind: FixSuggestionKind,
   message: FixSuggestionMessage<'a>,

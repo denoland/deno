@@ -13,7 +13,8 @@ use hyper_util::client::legacy::connect::dns::Name;
 use tokio::task::JoinHandle;
 use tower::Service;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Resolver {
   /// A resolver using blocking `getaddrinfo` calls in a threadpool.
   Gai(GaiResolver),

@@ -44,7 +44,7 @@ pub static MODULE_INFO_CACHE_DB: CacheDBConfiguration = CacheDBConfiguration {
 /// A cache of `deno_graph::ModuleInfo` objects. Using this leads to a considerable
 /// performance improvement because when it exists we can skip parsing a module for
 /// deno_graph.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ModuleInfoCache {
   conn: CacheDB,
   parsed_source_cache: Arc<ParsedSourceCache>,

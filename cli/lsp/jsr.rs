@@ -29,7 +29,7 @@ use crate::jsr::partial_jsr_package_version_info_from_slice;
 use crate::jsr::JsrFetchResolver;
 
 /// Keep in sync with `JsrFetchResolver`!
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct JsrCacheResolver {
   nv_by_req: DashMap<PackageReq, Option<PackageNv>>,
   /// The `module_graph` fields of the version infos should be forcibly absent.
@@ -274,7 +274,7 @@ fn read_cached_url(
     .map(|f| f.content.into_owned())
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CliJsrSearchApi {
   file_fetcher: Arc<CliFileFetcher>,
   resolver: JsrFetchResolver,
@@ -368,14 +368,16 @@ impl PackageSearchApi for CliJsrSearchApi {
 }
 
 fn parse_jsr_search_response(source: &str) -> Result<Vec<String>, AnyError> {
-  #[derive(Debug, Deserialize)]
+  #[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   #[serde(rename_all = "camelCase")]
   struct Item {
     scope: String,
     name: String,
     version_count: usize,
   }
-  #[derive(Debug, Deserialize)]
+  #[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   #[serde(rename_all = "camelCase")]
   struct Response {
     items: Vec<Item>,

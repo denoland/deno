@@ -37,10 +37,22 @@ use crate::Location;
 
 pub type PartMap = HashMap<Uuid, Arc<dyn BlobPart + Send + Sync>>;
 
-#[derive(Default, Debug)]
+#[derive(Default)]
 pub struct BlobStore {
   parts: Mutex<PartMap>,
   object_urls: Mutex<HashMap<Url, Arc<Blob>>>,
+}
+
+impl Debug for BlobStore {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let mut f = f.debug_struct("BlobStore");
+    #[cfg(any(test, debug_assertions))]
+    {
+      f.field("parts", &self.parts)
+        .field("object_urls", &self.object_urls);
+    }
+    f.finish()
+  }
 }
 
 impl BlobStore {
@@ -101,7 +113,7 @@ impl BlobStore {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Blob {
   pub media_type: String,
 

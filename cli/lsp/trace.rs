@@ -131,7 +131,8 @@ mod stub_tracing {
 
     fn context(&self) -> Context;
   }
-  #[derive(Debug, Clone)]
+  #[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct Span {}
 
   impl SpanExt for Span {
@@ -153,10 +154,11 @@ mod stub_tracing {
     }
   }
 
-  #[derive(Debug)]
+  #[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct EnteredSpan {}
 
-  #[derive(Clone, Debug)]
+  #[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
   pub struct Context {}
 
   pub(crate) fn init_tracing_subscriber(
@@ -169,9 +171,8 @@ mod stub_tracing {
   }
 }
 
-#[derive(
-  Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Copy, Default,
-)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Copy, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum TracingCollector {
   #[default]
@@ -179,7 +180,8 @@ pub(crate) enum TracingCollector {
   Logging,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(default, rename_all = "camelCase")]
 pub(crate) struct TracingConfig {
   /// Enable tracing.
@@ -196,7 +198,8 @@ pub(crate) struct TracingConfig {
   pub(crate) collector_endpoint: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(untagged)]
 pub(crate) enum TracingConfigOrEnabled {
   Config(TracingConfig),

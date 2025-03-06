@@ -25,10 +25,17 @@ use super::ExtendedLintRule;
 use crate::graph_util::CliJsrUrlProvider;
 use crate::sys::CliSys;
 
-#[derive(Debug)]
 pub struct NoSloppyImportsRule {
   // None for making printing out the lint rules easy
   workspace_resolver: Option<Arc<WorkspaceResolver<CliSys>>>,
+}
+
+impl std::fmt::Debug for NoSloppyImportsRule {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("NoSloppyImportsRule")
+      // .field("workspace_resolver", &self.workspace_resolver)
+      .finish()
+  }
 }
 
 impl NoSloppyImportsRule {
@@ -166,12 +173,20 @@ impl LintRule for NoSloppyImportsRule {
   }
 }
 
-#[derive(Debug)]
 struct SloppyImportCaptureResolver<'a> {
   workspace_resolver: &'a WorkspaceResolver<CliSys>,
   captures: RefCell<
     HashMap<Range, (deno_ast::ModuleSpecifier, SloppyImportsResolutionReason)>,
   >,
+}
+
+impl<'a> std::fmt::Debug for SloppyImportCaptureResolver<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("SloppyImportCaptureResolver")
+      // .field("workspace_resolver", &self.workspace_resolver)
+      // .field("captures", &self.captures)
+      .finish()
+  }
 }
 
 impl deno_graph::source::Resolver for SloppyImportCaptureResolver<'_> {

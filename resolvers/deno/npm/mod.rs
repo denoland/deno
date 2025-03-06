@@ -55,13 +55,14 @@ mod byonm;
 mod local;
 pub mod managed;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CreateInNpmPkgCheckerOptions<'a> {
   Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
   Byonm,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DenoInNpmPackageChecker {
   Managed(ManagedInNpmPackageChecker),
   Byonm(ByonmInNpmPackageChecker),
@@ -172,7 +173,8 @@ pub enum NpmResolverCreateOptions<
   Byonm(ByonmNpmResolverCreateOptions<TSys>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum NpmResolver<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir> {
   /// The resolver when "bring your own node_modules" is enabled where Deno
   /// does not setup the node_modules directories automatically, but instead
@@ -295,7 +297,7 @@ pub type NpmReqResolverRc<
   >,
 >;
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct NpmReqResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,

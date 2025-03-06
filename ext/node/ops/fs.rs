@@ -118,7 +118,8 @@ where
   Ok(())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct StatFs {
   #[serde(rename = "type")]
   pub typ: u64,

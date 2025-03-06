@@ -50,7 +50,6 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
-#[derive(Debug)]
 pub struct LocalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -61,6 +60,22 @@ pub struct LocalNpmPackageInstaller {
   lifecycle_scripts: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
+}
+
+impl std::fmt::Debug for LocalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("LocalNpmPackageInstaller")
+      // .field("cache", &self.cache)
+      // .field("npm_install_deps_provider", &self.npm_install_deps_provider)
+      // .field("progress_bar", &self.progress_bar)
+      // .field("resolution", &self.resolution)
+      // .field("sys", &self.sys)
+      // .field("tarball_cache", &self.tarball_cache)
+      // .field("lifecycle_scripts", &self.lifecycle_scripts)
+      // .field("root_node_modules_path", &self.root_node_modules_path)
+      // .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl LocalNpmPackageInstaller {
@@ -800,7 +815,8 @@ impl SetupCacheDep<'_> {
 // Uses BTreeMap to preserve the ordering of the elements in memory, to ensure
 // the file generated from this datastructure is deterministic.
 // See: https://github.com/denoland/deno/issues/24479
-#[derive(Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct SetupCacheData {
   root_symlinks: BTreeMap<String, String>,
   deno_symlinks: BTreeMap<String, String>,

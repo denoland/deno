@@ -11,7 +11,7 @@ use deno_lib::version::DENO_VERSION_INFO;
 use super::DiskCache;
 
 /// The cache that stores previously emitted files.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct EmitCache {
   disk_cache: DiskCache,
   emit_failed_flag: AtomicFlag,
@@ -93,7 +93,7 @@ impl EmitCache {
 
 const LAST_LINE_PREFIX: &str = "\n// denoCacheMetadata=";
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct EmitFileSerializer {
   cli_version: &'static str,
 }

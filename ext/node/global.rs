@@ -99,7 +99,8 @@ const MANAGED_GLOBALS_INFO: (usize, usize) = {
 const SHORTEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.0;
 const LONGEST_MANAGED_GLOBAL: usize = MANAGED_GLOBALS_INFO.1;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum Mode {
   Deno,
   Node,

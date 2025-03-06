@@ -52,7 +52,7 @@ enum TokenType {
   End,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LexToken {
   token_type: TokenType,
   index: usize,
@@ -227,7 +227,8 @@ impl fmt::Display for StringOrNumber {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum StringOrVec {
   String(String),
   Vec(Vec<String>),
@@ -300,7 +301,8 @@ impl From<Vec<String>> for StringOrVec {
 }
 
 /// Meta data about a key.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Key {
   pub name: StringOrNumber,
   pub prefix: Option<String>,
@@ -310,19 +312,21 @@ pub struct Key {
 }
 
 /// A token is a string (nothing special) or key metadata (capture group).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum Token {
   String(String),
   Key(Key),
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ParseOptions {
   delimiter: Option<String>,
   prefixes: Option<String>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TokensToCompilerOptions {
   sensitive: bool,
   validate: bool,
@@ -337,7 +341,7 @@ impl Default for TokensToCompilerOptions {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TokensToRegexOptions {
   sensitive: bool,
   strict: bool,
@@ -360,7 +364,8 @@ impl Default for TokensToRegexOptions {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PathToRegexOptions {
   parse_options: Option<ParseOptions>,
   token_to_regex_options: Option<TokensToRegexOptions>,
@@ -794,7 +799,7 @@ impl Compiler {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct MatchResult {
   pub params: HashMap<StringOrNumber, StringOrVec>,
 }
@@ -805,7 +810,7 @@ impl MatchResult {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct Matcher {
   maybe_keys: Option<Vec<Key>>,
   re: FancyRegex,

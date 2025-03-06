@@ -130,7 +130,8 @@ type Request = (
   Option<super::trace::Context>,
 );
 
-#[derive(Debug, Clone, Copy, Serialize_repr)]
+#[derive(Clone, Copy, Serialize_repr)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[repr(u8)]
 pub enum IndentStyle {
   #[allow(dead_code)]
@@ -141,7 +142,8 @@ pub enum IndentStyle {
 }
 
 /// Relevant subset of https://github.com/denoland/deno/blob/v1.37.1/cli/tsc/dts/typescript.d.ts#L6658.
-#[derive(Clone, Debug, Default, Serialize)]
+#[derive(Clone, Default, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct FormatCodeSettings {
   base_indent_size: Option<u8>,
@@ -218,7 +220,8 @@ impl From<&FmtOptionsConfig> for FormatCodeSettings {
   }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub enum SemicolonPreference {
   Insert,
@@ -250,6 +253,7 @@ pub struct TsServer {
   enable_tracing: Arc<AtomicBool>,
 }
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for TsServer {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("TsServer")
@@ -262,7 +266,8 @@ impl std::fmt::Debug for TsServer {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[repr(u8)]
 pub enum ChangeKind {
   Opened = 0,
@@ -289,7 +294,7 @@ impl Serialize for ChangeKind {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[cfg_attr(test, derive(Serialize))]
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
@@ -1510,7 +1515,8 @@ fn parse_kind_modifier(kind_modifiers: &str) -> HashSet<&str> {
   PART_KIND_MODIFIER_RE.split(kind_modifiers).collect()
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(untagged)]
 pub enum OneOrMany<T> {
   One(T),
@@ -1518,7 +1524,8 @@ pub enum OneOrMany<T> {
 }
 
 /// Aligns with ts.ScriptElementKind
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum ScriptElementKind {
   #[serde(rename = "")]
   Unknown,
@@ -1708,7 +1715,8 @@ impl From<ScriptElementKind> for lsp::SymbolKind {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TextSpan {
   pub start: u32,
@@ -1733,7 +1741,8 @@ impl TextSpan {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SymbolDisplayPart {
   text: String,
@@ -1745,7 +1754,8 @@ pub struct SymbolDisplayPart {
   target: Option<DocumentSpan>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct JsDocTagInfo {
   name: String,
@@ -1756,7 +1766,8 @@ pub struct JsDocTagInfo {
 // not currently used.  They are commented out in the structures so it is clear
 // that they exist.
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct QuickInfo {
   // kind: ScriptElementKind,
@@ -1929,7 +1940,8 @@ impl QuickInfo {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSpan {
   text_span: TextSpan,
@@ -2023,7 +2035,8 @@ impl DocumentSpan {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum MatchKind {
   #[serde(rename = "exact")]
   Exact,
@@ -2035,7 +2048,8 @@ pub enum MatchKind {
   CamelCase,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct NavigateToItem {
   name: String,
@@ -2097,7 +2111,8 @@ impl NavigateToItem {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHintDisplayPart {
   pub text: String,
@@ -2141,7 +2156,8 @@ impl InlayHintDisplayPart {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum InlayHintKind {
   Type,
   Parameter,
@@ -2158,7 +2174,8 @@ impl InlayHintKind {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct InlayHint {
   pub text: String,
@@ -2197,7 +2214,8 @@ impl InlayHint {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct NavigationTree {
   pub text: String,
@@ -2373,7 +2391,8 @@ impl NavigationTree {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ImplementationLocation {
   #[serde(flatten)]
@@ -2419,7 +2438,8 @@ impl ImplementationLocation {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RenameLocation {
   #[serde(flatten)]
@@ -2516,7 +2536,8 @@ impl RenameLocations {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum HighlightSpanKind {
   #[serde(rename = "none")]
   None,
@@ -2528,7 +2549,8 @@ pub enum HighlightSpanKind {
   WrittenReference,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct HighlightSpan {
   // file_name: Option<String>,
@@ -2538,7 +2560,8 @@ pub struct HighlightSpan {
   kind: HighlightSpanKind,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfo {
   // kind: ScriptElementKind,
@@ -2559,7 +2582,8 @@ impl DefinitionInfo {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DefinitionInfoAndBoundSpan {
   pub definitions: Option<Vec<DefinitionInfo>>,
@@ -2603,7 +2627,8 @@ impl DefinitionInfoAndBoundSpan {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentHighlights {
   // file_name: String,
@@ -2635,7 +2660,8 @@ impl DocumentHighlights {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct TextChange {
   pub span: TextSpan,
@@ -2661,7 +2687,8 @@ impl TextChange {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct FileTextChanges {
   pub file_name: String,
@@ -2746,7 +2773,8 @@ impl FileTextChanges {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct Classifications {
   spans: Vec<u32>,
@@ -2813,7 +2841,8 @@ impl Classifications {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorActionInfo {
   name: String,
@@ -2873,7 +2902,8 @@ impl RefactorActionInfo {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ApplicableRefactorInfo {
   name: String,
@@ -2960,7 +2990,8 @@ pub fn file_text_changes_to_workspace_edit(
   }))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorEditInfo {
   pub edits: Vec<FileTextChanges>,
@@ -2988,7 +3019,8 @@ impl RefactorEditInfo {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeAction {
   description: String,
@@ -3009,7 +3041,8 @@ impl CodeAction {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CodeFixAction {
   pub description: String,
@@ -3046,7 +3079,8 @@ impl CodeFixAction {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CombinedCodeActions {
   pub changes: Vec<FileTextChanges>,
@@ -3065,7 +3099,8 @@ impl CombinedCodeActions {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbol {
   pub definition: ReferencedSymbolDefinitionInfo,
@@ -3085,7 +3120,8 @@ impl ReferencedSymbol {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbolDefinitionInfo {
   #[serde(flatten)]
@@ -3102,7 +3138,8 @@ impl ReferencedSymbolDefinitionInfo {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReferencedSymbolEntry {
   #[serde(default)]
@@ -3121,7 +3158,8 @@ impl ReferencedSymbolEntry {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct ReferenceEntry {
   // is_write_access: bool,
@@ -3160,7 +3198,8 @@ impl ReferenceEntry {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallHierarchyItem {
   name: String,
@@ -3278,7 +3317,8 @@ impl CallHierarchyItem {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallHierarchyIncomingCall {
   from: CallHierarchyItem,
@@ -3318,7 +3358,8 @@ impl CallHierarchyIncomingCall {
   }
 }
 
-#[derive(Debug, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Eq, PartialEq, Hash, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CallHierarchyOutgoingCall {
   to: CallHierarchyItem,
@@ -3493,7 +3534,8 @@ fn get_parameters_from_parts(parts: &[SymbolDisplayPart]) -> Vec<String> {
   parameters
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntryDetails {
   display_parts: Vec<SymbolDisplayPart>,
@@ -3653,7 +3695,8 @@ impl CompletionEntryDetails {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionInfo {
   entries: Vec<CompletionEntry>,
@@ -3732,14 +3775,16 @@ impl CompletionInfo {
   }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CompletionSpecifierRewrite {
   old_specifier: String,
   new_specifier: String,
   new_deno_types_specifier: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   pub specifier: ModuleSpecifier,
@@ -3757,20 +3802,22 @@ pub struct CompletionItemData {
   pub use_code_snippet: bool,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct CompletionEntryDataAutoImport {
   module_specifier: String,
   file_name: Option<String>,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CompletionNormalizedAutoImportData {
   raw: CompletionEntryDataAutoImport,
   normalized: ModuleSpecifier,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntry {
   name: String,
@@ -4092,7 +4139,8 @@ impl CompletionEntry {
   }
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct CompletionEntryLabelDetails {
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -4101,7 +4149,8 @@ struct CompletionEntryLabelDetails {
   description: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum OutliningSpanKind {
   #[serde(rename = "comment")]
   Comment,
@@ -4113,7 +4162,8 @@ pub enum OutliningSpanKind {
   Imports,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct OutliningSpan {
   text_span: TextSpan,
@@ -4187,7 +4237,8 @@ impl OutliningSpan {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItems {
   items: Vec<SignatureHelpItem>,
@@ -4221,7 +4272,8 @@ impl SignatureHelpItems {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItem {
   // is_variadic: bool,
@@ -4272,7 +4324,8 @@ impl SignatureHelpItem {
   }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpParameter {
   // name: String,
@@ -4303,7 +4356,8 @@ impl SignatureHelpParameter {
   }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Clone, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SelectionRange {
   text_span: TextSpan,
@@ -4325,7 +4379,8 @@ impl SelectionRange {
   }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TscSpecifierMap {
   normalized_specifiers: DashMap<String, ModuleSpecifier>,
   denormalized_specifiers: DashMap<ModuleSpecifier, String>,
@@ -4509,7 +4564,8 @@ enum LoadError {
   SerdeV8(#[from] serde_v8::Error),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
   data: deno_core::FastString,
@@ -4780,7 +4836,8 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
   }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
   unscoped: IndexSet<String>,
@@ -5091,7 +5148,8 @@ deno_core::extension!(deno_tsc,
   }
 );
 
-#[derive(Debug, Clone, Deserialize_repr, Serialize_repr)]
+#[derive(Clone, Deserialize_repr, Serialize_repr)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[repr(u32)]
 pub enum CompletionTriggerKind {
   Invoked = 1,
@@ -5116,7 +5174,8 @@ pub type QuotePreference = config::QuoteStyle;
 
 pub type ImportModuleSpecifierPreference = config::ImportModuleSpecifier;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub enum ImportModuleSpecifierEnding {
@@ -5126,7 +5185,8 @@ pub enum ImportModuleSpecifierEnding {
   Js,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub enum IncludeInlayParameterNameHints {
@@ -5147,7 +5207,8 @@ impl From<&config::InlayHintsParamNamesEnabled>
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "kebab-case")]
 #[allow(dead_code)]
 pub enum IncludePackageJsonAutoImports {
@@ -5158,7 +5219,8 @@ pub enum IncludePackageJsonAutoImports {
 
 pub type JsxAttributeCompletionStyle = config::JsxAttributeCompletionStyle;
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Default, Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GetCompletionsAtPositionOptions {
   #[serde(flatten)]
@@ -5169,7 +5231,8 @@ pub struct GetCompletionsAtPositionOptions {
   pub trigger_kind: Option<CompletionTriggerKind>,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Default, Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct UserPreferences {
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -5365,14 +5428,16 @@ impl UserPreferences {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpItemsOptions {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub trigger_reason: Option<SignatureHelpTriggerReason>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum SignatureHelpTriggerKind {
   #[serde(rename = "characterTyped")]
   CharacterTyped,
@@ -5395,7 +5460,8 @@ impl From<lsp::SignatureHelpTriggerKind> for SignatureHelpTriggerKind {
   }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureHelpTriggerReason {
   pub kind: SignatureHelpTriggerKind,
@@ -5403,7 +5469,8 @@ pub struct SignatureHelpTriggerReason {
   pub trigger_character: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct GetCompletionDetailsArgs {
   pub specifier: ModuleSpecifier,
@@ -5433,14 +5500,15 @@ impl From<&CompletionItemData> for GetCompletionDetailsArgs {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct GetNavigateToItemsArgs {
   pub search: String,
   pub max_result_count: Option<u32>,
   pub file: Option<String>,
 }
 
-#[derive(Debug, Serialize, Clone, Copy)]
+#[derive(Serialize, Clone, Copy)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TscTextRange {
   pos: u32,
   end: u32,
@@ -5455,7 +5523,8 @@ impl From<Range<u32>> for TscTextRange {
   }
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Serialize, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct CombinedCodeFixScope {
   r#type: &'static str,
@@ -5465,7 +5534,8 @@ pub struct CombinedCodeFixScope {
 #[derive(Serialize, Clone, Copy)]
 pub struct JsNull;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum TscRequest {
   GetDiagnostics((Vec<String>, usize)),
 

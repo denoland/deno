@@ -84,7 +84,8 @@ use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct LspScopeResolver {
   resolver: Arc<CliResolver>,
   in_npm_pkg_checker: DenoInNpmPackageChecker,
@@ -327,7 +328,8 @@ impl LspScopeResolver {
   }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct LspResolver {
   unscoped: Arc<LspScopeResolver>,
   by_scope: BTreeMap<ModuleSpecifier, Arc<LspScopeResolver>>,
@@ -647,7 +649,8 @@ impl LspResolver {
   }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
   pub npm_reqs: BTreeSet<PackageReq>,
@@ -954,7 +957,8 @@ impl<'a> ResolverFactory<'a> {
   }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct RedirectEntry {
   headers: Arc<HashMap<String, String>>,
   target: Url,
@@ -969,6 +973,7 @@ struct RedirectResolver {
   entries: DashMap<Url, Option<Arc<RedirectEntry>>>,
 }
 
+#[cfg(any(test, debug_assertions))]
 impl std::fmt::Debug for RedirectResolver {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("RedirectResolver")
@@ -978,12 +983,22 @@ impl std::fmt::Debug for RedirectResolver {
   }
 }
 
-#[derive(Debug)]
 pub struct SingleReferrerGraphResolver<'a> {
   pub valid_referrer: &'a ModuleSpecifier,
   pub module_resolution_mode: ResolutionMode,
   pub cli_resolver: &'a CliResolver,
   pub jsx_import_source_config: Option<&'a JsxImportSourceConfig>,
+}
+
+impl<'a> std::fmt::Debug for SingleReferrerGraphResolver<'a> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("SingleReferrerGraphResolver")
+      // .field("valid_referrer", &self.valid_referrer)
+      // .field("module_resolution_mode", &self.module_resolution_mode)
+      // .field("cli_resolver", &self.cli_resolver)
+      // .field("jsx_import_source_config", &self.jsx_import_source_config)
+      .finish()
+  }
 }
 
 impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {

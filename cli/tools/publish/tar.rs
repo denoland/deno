@@ -15,7 +15,8 @@ use super::diagnostics::PublishDiagnosticsCollector;
 use super::module_content::ModuleContentProvider;
 use super::paths::CollectedPublishPath;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PublishableTarballFile {
   pub path_str: String,
   pub specifier: Url,
@@ -23,7 +24,8 @@ pub struct PublishableTarballFile {
   pub size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct PublishableTarball {
   pub files: Vec<PublishableTarballFile>,
   pub hash: String,

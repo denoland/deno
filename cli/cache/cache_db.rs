@@ -16,7 +16,8 @@ use deno_runtime::deno_webstorage::rusqlite::OptionalExtension;
 use deno_runtime::deno_webstorage::rusqlite::Params;
 use once_cell::sync::OnceCell;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CacheDBHash(u64);
 
 impl CacheDBHash {
@@ -57,7 +58,8 @@ impl rusqlite::types::FromSql for CacheDBHash {
 }
 
 /// What should the cache should do on failure?
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum CacheFailure {
   /// Return errors if failure mode otherwise unspecified.
   #[default]
@@ -69,7 +71,7 @@ pub enum CacheFailure {
 }
 
 /// Configuration SQL and other parameters for a [`CacheDB`].
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CacheDBConfiguration {
   /// SQL to run for a new database.
   pub table_initializer: &'static str,
@@ -99,7 +101,7 @@ impl CacheDBConfiguration {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum ConnectionState {
   Connected(Connection),
   Blackhole,
@@ -108,7 +110,8 @@ enum ConnectionState {
 
 /// A cache database that eagerly initializes itself off-thread, preventing initialization operations
 /// from blocking the main thread.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct CacheDB {
   // TODO(mmastrac): We can probably simplify our thread-safe implementation here
   conn: Arc<Mutex<OnceCell<ConnectionState>>>,

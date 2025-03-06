@@ -33,7 +33,8 @@ use crate::NpmCacheSetting;
 type LoadResult = Result<(), Arc<JsErrorBox>>;
 type LoadFuture = LocalBoxFuture<'static, LoadResult>;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 enum MemoryCacheItem {
   /// The cache item hasn't finished yet.
   Pending(Arc<MultiRuntimeAsyncValueCreator<LoadResult>>),
@@ -47,7 +48,7 @@ enum MemoryCacheItem {
 /// the npm registry.
 ///
 /// This is shared amongst all the workers.
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TarballCache<
   THttpClient: NpmCacheHttpClient,
   TSys: FsCreateDirAll

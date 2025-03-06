@@ -262,7 +262,8 @@ pub const napi_default_jsproperty: napi_property_attributes =
   napi_enumerable | napi_configurable | napi_writable;
 
 #[repr(C)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct napi_property_descriptor<'a> {
   pub utf8name: *const c_char,
   pub name: napi_value<'a>,
@@ -275,7 +276,7 @@ pub struct napi_property_descriptor<'a> {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct napi_extended_error_info {
   pub error_message: *const c_char,
   pub engine_reserved: *mut c_void,
@@ -284,7 +285,7 @@ pub struct napi_extended_error_info {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct napi_node_version {
   pub major: u32,
   pub minor: u32,
@@ -335,7 +336,7 @@ impl Drop for NapiState {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct InstanceData {
   pub data: *mut c_void,
   pub finalize_cb: Option<napi_finalize>,
@@ -343,7 +344,7 @@ pub struct InstanceData {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 /// Env that is shared between all contexts in same native module.
 pub struct EnvShared {
   pub instance_data: Option<InstanceData>,

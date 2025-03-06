@@ -40,8 +40,14 @@ use sys_traits::boxed::FsReadDirBoxed;
 use sys_traits::FsCopy;
 use url::Url;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DenoRtSys(Arc<FileBackedVfs>);
+
+impl std::fmt::Debug for DenoRtSys {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_tuple("DenoRtSys").finish()
+  }
+}
 
 impl DenoRtSys {
   pub fn new(vfs: Arc<FileBackedVfs>) -> Self {
@@ -900,7 +906,7 @@ impl sys_traits::BaseEnvVar for DenoRtSys {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct VfsRoot {
   pub dir: VirtualDirectory,
   pub root_path: PathBuf,
@@ -1276,7 +1282,7 @@ impl FileBackedVfsMetadata {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct FileBackedVfs {
   vfs_data: Cow<'static, [u8]>,
   fs_root: VfsRoot,

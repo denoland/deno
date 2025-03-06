@@ -14,7 +14,8 @@ use deno_terminal::colors;
 
 const MAX_SOURCE_LINE_LENGTH: usize = 150;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub enum DiagnosticCategory {
   Warning,
   Error,
@@ -74,7 +75,8 @@ impl From<i64> for DiagnosticCategory {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticMessageChain {
   message_text: String,
@@ -101,7 +103,8 @@ impl DiagnosticMessageChain {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct Position {
   /// 0-indexed line number
@@ -119,7 +122,8 @@ impl Position {
   }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[serde(rename_all = "camelCase")]
 pub struct Diagnostic {
   pub category: DiagnosticCategory,
@@ -320,8 +324,9 @@ impl fmt::Display for Diagnostic {
   }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, deno_error::JsError)]
-#[class(generic)]
+#[derive(Clone, Default, Eq, PartialEq)]
+#[cfg_attr(any(test, debug_assertions), derive(deno_error::JsError, Debug))]
+#[cfg_attr(any(test, debug_assertions), class(generic))]
 pub struct Diagnostics(Vec<Diagnostic>);
 
 impl Diagnostics {
@@ -452,6 +457,7 @@ fn display_diagnostics(
   Ok(())
 }
 
+#[cfg(any(test, debug_assertions))]
 impl Error for Diagnostics {}
 
 #[cfg(test)]

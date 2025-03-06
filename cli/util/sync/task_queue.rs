@@ -9,14 +9,16 @@ use deno_core::parking_lot::Mutex;
 
 use super::AtomicFlag;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TaskQueueTaskItem {
   is_ready: AtomicFlag,
   is_future_dropped: AtomicFlag,
   waker: AtomicWaker,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct TaskQueueTasks {
   is_running: bool,
   items: LinkedList<Arc<TaskQueueTaskItem>>,
@@ -27,7 +29,8 @@ struct TaskQueueTasks {
 ///
 /// Note that this differs from tokio's semaphore in that the order
 /// is acquired synchronously.
-#[derive(Debug, Default)]
+#[derive(Default)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct TaskQueue {
   tasks: Mutex<TaskQueueTasks>,
 }

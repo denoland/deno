@@ -12,7 +12,8 @@ use super::range_tree::RangeTree;
 use super::range_tree::RangeTreeArena;
 use crate::cdp;
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ProcessCoverage {
   pub result: Vec<cdp::ScriptCoverage>,
 }
@@ -86,7 +87,8 @@ pub fn merge_scripts(
   })
 }
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct CharRange {
   start: usize,
   end: usize,

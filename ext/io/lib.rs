@@ -325,7 +325,7 @@ pub struct Stdio {
   pub stderr: StdioPipe,
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct WriteOnlyResource<S> {
   stream: AsyncRefCell<S>,
 }
@@ -363,7 +363,7 @@ where
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct ReadOnlyResource<S> {
   stream: AsyncRefCell<S>,
   cancel_handle: CancelHandle,

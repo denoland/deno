@@ -116,13 +116,15 @@ deno_core::extension!(
   esm = ["telemetry.ts", "util.ts"],
 );
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct OtelRuntimeConfig {
   pub runtime_name: Cow<'static, str>,
   pub runtime_version: Cow<'static, str>,
 }
 
-#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Clone, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct OtelConfig {
   pub tracing_enabled: bool,
   pub metrics_enabled: bool,
@@ -141,7 +143,8 @@ impl OtelConfig {
   }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[repr(u8)]
 pub enum OtelConsoleConfig {
   Ignore = 0,
@@ -589,7 +592,7 @@ mod hyper_client {
   }
 }
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 pub struct OtelGlobals {
   pub span_processor: BatchSpanProcessor<OtelSharedRuntime>,
   pub log_processor: BatchLogProcessor<OtelSharedRuntime>,
@@ -1310,10 +1313,10 @@ struct OtelSpanCannotBeConstructedError;
 struct InvalidSpanStatusCodeError;
 
 // boxed because of https://github.com/denoland/rusty_v8/issues/1676
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 struct OtelSpan(RefCell<Box<OtelSpanState>>);
 
-#[derive(Debug)]
+#[cfg_attr(any(test, debug_assertions), derive(Debug))]
 #[allow(clippy::large_enum_variant)]
 enum OtelSpanState {
   Recording(SpanData),
