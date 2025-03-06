@@ -199,6 +199,7 @@ impl LspScopeResolver {
           else {
             return vec![];
           };
+          let mut dep_package_json = None;
           for kind in [NodeResolutionKind::Types, NodeResolutionKind::Execution]
           {
             let Some(req) = npm_pkg_req_resolver
@@ -218,7 +219,53 @@ impl LspScopeResolver {
               continue;
             };
             let specifier = into_specifier_and_media_type(Some(url)).0;
-            deps.push((specifier, name.clone()))
+            if dep_package_json.is_none() {
+              dep_package_json = (|| {
+                let path = url_to_file_path(&specifier).ok()?;
+                pkg_json_resolver.get_closest_package_json(&path).ok()?
+              })();
+            }
+            deps.push((specifier, name.clone()));
+          }
+          let export_keys = dep_package_json
+            .as_ref()
+            .and_then(|p| p.exports.as_ref())
+            .into_iter()
+            .flat_map(|e| e.keys());
+          for export_key in export_keys {
+            let Some(export_suffix) = export_key.strip_prefix("./") else {
+              continue;
+            };
+            let name_and_export = format!("{name}/{export_suffix}");
+            let Some(req_ref) = NpmPackageReqReference::from_str(&format!(
+              "npm:{}",
+              &name_and_export
+            ))
+            .ok() else {
+              continue;
+            };
+            for kind in
+              [NodeResolutionKind::Types, NodeResolutionKind::Execution]
+            {
+              let Some(req) = npm_pkg_req_resolver
+                .resolve_req_reference(
+                  &req_ref,
+                  &referrer,
+                  // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+                  ResolutionMode::Import,
+                  kind,
+                )
+                .ok()
+              else {
+                continue;
+              };
+
+              let Some(url) = req.into_url().ok() else {
+                continue;
+              };
+              let specifier = into_specifier_and_media_type(Some(url)).0;
+              deps.push((specifier, name_and_export.clone()));
+            }
           }
           deps
         })
