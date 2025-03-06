@@ -1,7 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::BTreeMap;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::Path;
@@ -99,6 +98,12 @@ struct Trie {
   nodes: Vec<Node>,
 }
 
+#[derive(Clone, Copy)]
+enum Found {
+  Match,
+  Prefix,
+}
+
 impl Trie {
   fn new() -> Self {
     Self {
@@ -128,7 +133,7 @@ impl Trie {
     }
   }
 
-  fn is_prefix(&self, s: &Path) -> (bool, bool) {
+  fn find(&self, s: &Path) -> Option<Found> {
     let mut components = s.components().into_iter().map(|c| c.as_os_str());
     let mut node = self.root;
 
@@ -136,11 +141,15 @@ impl Trie {
       if let Some(nd) = self.nodes[node].children.get(component).copied() {
         node = nd;
       } else {
-        return (false, false);
+        return None;
       }
     }
 
-    (true, self.nodes[node].children.is_empty())
+    Some(if self.nodes[node].children.is_empty() {
+      Found::Match
+    } else {
+      Found::Prefix
+    })
   }
 }
 
@@ -283,9 +292,8 @@ async fn clean_entrypoint(
     .into_iter();
   while let Some(entry) = walker.next() {
     let entry = entry?;
-    let (is_prefix, is_match) = keep_paths_trie.is_prefix(entry.path());
-    if is_prefix {
-      if entry.file_type().is_dir() && is_match {
+    if let Some(found) = keep_paths_trie.find(entry.path()) {
+      if entry.file_type().is_dir() && matches!(found, Found::Match) {
         walker.skip_current_dir();
         continue;
       }
@@ -321,27 +329,32 @@ async fn clean_entrypoint(
     )?;
   }
 
-  log::info!(
-    "{} {}",
-    colors::green("Removed"),
-    colors::gray(&format!(
-      "{} files, {} from {}",
-      state.files_removed + state.dirs_removed,
-      display::human_size(state.bytes_removed as f64),
-      deno_dir.root.display()
-    ))
-  );
-  if let Some(dir) = node_modules_path {
-    log::info!(
-      "{} {}",
-      colors::green("Removed"),
-      colors::gray(&format!(
-        "{} files, {} from {}",
-        node_modules_cleaned.files_removed + node_modules_cleaned.dirs_removed,
-        display::human_size(node_modules_cleaned.bytes_removed as f64),
-        dir.display()
-      ))
-    );
+  if !dry_run {
+    if state.files_removed + state.dirs_removed + state.bytes_removed > 0 {
+      log::info!(
+        "{} {}",
+        colors::green("Removed"),
+        colors::gray(&format!(
+          "{} files, {} from {}",
+          state.files_removed + state.dirs_removed,
+          display::human_size(state.bytes_removed as f64),
+          deno_dir.root.display()
+        ))
+      );
+    }
+    if let Some(dir) = node_modules_path {
+      log::info!(
+        "{} {}",
+        colors::green("Removed"),
+        colors::gray(&format!(
+          "{} files, {} from {}",
+          node_modules_cleaned.files_removed
+            + node_modules_cleaned.dirs_removed,
+          display::human_size(node_modules_cleaned.bytes_removed as f64),
+          dir.display()
+        ))
+      );
+    }
   }
 
   Ok(())
