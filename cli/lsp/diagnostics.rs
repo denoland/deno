@@ -2022,7 +2022,6 @@ let c: number = "a";
     .await;
     let snapshot = Arc::new(snapshot);
     let ts_server = TsServer::new(Default::default());
-    ts_server.start(None).unwrap();
 
     // test enabled
     {

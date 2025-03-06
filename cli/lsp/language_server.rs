@@ -213,9 +213,7 @@ pub struct Inner {
   registered_semantic_tokens_capabilities: bool,
   pub resolver: Arc<LspResolver>,
   task_queue: LanguageServerTaskQueue,
-  /// A memoized version of fixable diagnostic codes retrieved from TypeScript.
-  ts_fixable_diagnostics: Vec<String>,
-  /// An abstraction that handles interactions with TypeScript.
+  ts_fixable_diagnostics: tokio::sync::OnceCell<Vec<String>>,
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
@@ -621,6 +619,19 @@ impl Inner {
     })
   }
 
+  pub async fn ts_fixable_diagnostics(&self) -> &Vec<String> {
+    self
+      .ts_fixable_diagnostics
+      .get_or_init(|| async {
+        self
+          .ts_server
+          .get_supported_code_fixes(self.snapshot())
+          .await
+          .unwrap()
+      })
+      .await
+  }
+
   pub fn update_tracing(&mut self) {
     let tracing =
       self
@@ -777,7 +788,7 @@ impl Inner {
 
 // lspower::LanguageServer methods. This file's LanguageServer delegates to us.
 impl Inner {
-  async fn initialize(
+  fn initialize(
     &mut self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
@@ -862,25 +873,12 @@ impl Inner {
     }
 
     self.diagnostics_server.start();
-    if let Err(e) = self
+    self
       .ts_server
-      .start(self.config.internal_inspect().to_address())
-    {
-      lsp_warn!("{}", e);
-      self.client.show_message(MessageType::ERROR, e);
-      return Err(tower_lsp::jsonrpc::Error::internal_error());
-    };
+      .set_inspector_server_addr(self.config.internal_inspect().to_address());
 
     self.update_tracing();
     self.update_debug_flag();
-
-    if capabilities.code_action_provider.is_some() {
-      let fixable_diagnostics = self
-        .ts_server
-        .get_supported_code_fixes(self.snapshot())
-        .await?;
-      self.ts_fixable_diagnostics = fixable_diagnostics;
-    }
 
     if capabilities.semantic_tokens_provider.is_some() {
       self.registered_semantic_tokens_capabilities = true;
@@ -1746,6 +1744,7 @@ impl Inner {
     let line_index = asset_or_doc.line_index();
 
     // QuickFix
+    let ts_fixable_diagnosics = self.ts_fixable_diagnostics().await;
     let fixable_diagnostics: Vec<&Diagnostic> = params
       .context
       .diagnostics
@@ -1754,10 +1753,10 @@ impl Inner {
         Some(source) => match source.as_str() {
           "deno-ts" => match &d.code {
             Some(NumberOrString::String(code)) => {
-              self.ts_fixable_diagnostics.contains(code)
+              ts_fixable_diagnosics.contains(code)
             }
             Some(NumberOrString::Number(code)) => {
-              self.ts_fixable_diagnostics.contains(&code.to_string())
+              ts_fixable_diagnosics.contains(&code.to_string())
             }
             _ => false,
           },
@@ -2070,7 +2069,7 @@ impl Inner {
         })?;
       let asset_or_doc = self.get_asset_or_document(&action_data.specifier)?;
       let line_index = asset_or_doc.line_index();
-      let mut refactor_edit_info = self
+      let refactor_edit_info = self
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
@@ -2083,8 +2082,8 @@ impl Inner {
             .into(),
           line_index.offset_tsc(action_data.range.start)?
             ..line_index.offset_tsc(action_data.range.end)?,
-          action_data.refactor_name,
-          action_data.action_name,
+          action_data.refactor_name.clone(),
+          action_data.action_name.clone(),
           Some(tsc::UserPreferences::from_config_for_specifier(
             &self.config,
             &action_data.specifier,
@@ -2103,22 +2102,34 @@ impl Inner {
             );
             LspError::invalid_request()
           }
-        })?;
-      if kind_suffix == ".rewrite.function.returnType"
-        || kind_suffix == ".move.newFile"
-      {
-        refactor_edit_info.edits =
-          fix_ts_import_changes(&refactor_edit_info.edits, self, token)
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                error!("Unable to fix import changes: {:#}", err);
-                LspError::internal_error()
-              }
-            })?
+        });
+      match refactor_edit_info {
+        Ok(mut refactor_edit_info) => {
+          if kind_suffix == ".rewrite.function.returnType"
+            || kind_suffix == ".move.newFile"
+          {
+            refactor_edit_info.edits =
+              fix_ts_import_changes(&refactor_edit_info.edits, self, token)
+                .map_err(|err| {
+                  if token.is_cancelled() {
+                    LspError::request_cancelled()
+                  } else {
+                    error!("Unable to fix import changes: {:#}", err);
+                    LspError::internal_error()
+                  }
+                })?
+          }
+          code_action.edit =
+            refactor_edit_info.to_workspace_edit(self, token)?;
+        }
+        Err(err) => {
+          if token.is_cancelled() {
+            return Err(LspError::request_cancelled());
+          } else {
+            lsp_warn!("Unable to get refactor edit info from TypeScript: {:#}\nCode action data: {:#}", err, json!(&action_data));
+          }
+        }
       }
-      code_action.edit = refactor_edit_info.to_workspace_edit(self, token)?;
       code_action
     } else {
       // The code action doesn't need to be resolved
@@ -3387,6 +3398,9 @@ impl Inner {
     params: RenameFilesParams,
     token: &CancellationToken,
   ) -> LspResult<Option<WorkspaceEdit>> {
+    if !self.ts_server.is_started() {
+      return Ok(None);
+    }
     let mut changes = vec![];
     for rename in params.files {
       let old_specifier = self.url_map.uri_to_specifier(
@@ -3449,6 +3463,10 @@ impl Inner {
     params: WorkspaceSymbolParams,
     token: &CancellationToken,
   ) -> LspResult<Option<Vec<SymbolInformation>>> {
+    if !self.ts_server.is_started() {
+      return Ok(None);
+    }
+
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
 
     let navigate_to_items = self
@@ -3576,7 +3594,7 @@ impl tower_lsp::LanguageServer for LanguageServer {
     &self,
     params: InitializeParams,
   ) -> LspResult<InitializeResult> {
-    self.inner.write().await.initialize(params).await
+    self.inner.write().await.initialize(params)
   }
 
   async fn initialized(&self, _: InitializedParams) {

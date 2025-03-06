@@ -11561,13 +11561,11 @@ fn lsp_performance() {
       "lsp.update_diagnostics_ts",
       "lsp.update_global_cache",
       "tsc.host.$getDiagnostics",
-      "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
       "tsc.request.$getDiagnostics",
-      "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
@@ -15208,6 +15206,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res = client.write_request(
     "workspace/willRenameFiles",
     json!({
@@ -15468,6 +15467,7 @@ fn lsp_deno_json_scopes_search_symbol() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res =
     client.write_request("workspace/symbol", json!({ "query": "someSymbol" }));
   assert_eq!(
