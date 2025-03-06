@@ -3030,13 +3030,13 @@ fn task_subcommand() -> Command {
   command(
     "task",
     cstr!(
-      "Run a task defined in the configuration file.
+      "Run a task defined in the configuration file:
   <p(245)>deno task build</>
 
-List all available tasks:
+List all available tasks (from `deno.json(c)` files in the current and parent directories):
   <p(245)>deno task</>
 
-Evaluate a task from string
+Evaluate a task from string:
   <p(245)>deno task --eval \"echo $(pwd)\"</>"
     ),
     UnstableArgsConfig::ResolutionAndRuntime,
@@ -4217,7 +4217,7 @@ fn config_arg() -> Arg {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting
+    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting.
   <p(245)>Typically the configuration file will be called `deno.json` or `deno.jsonc` and
   automatically detected; in that case this flag is not necessary.
   Docs: https://docs.deno.com/go/config</>"))
