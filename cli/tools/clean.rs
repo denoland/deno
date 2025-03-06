@@ -88,27 +88,27 @@ pub async fn clean(
   Ok(())
 }
 
-#[derive(Clone, Debug)]
-struct Node {
+#[derive(Clone, Debug, Default)]
+struct PathNode {
   children: BTreeMap<OsString, usize>,
 }
 #[derive(Debug)]
-struct Trie {
+struct PathTrie {
   root: usize,
-  nodes: Vec<Node>,
+  nodes: Vec<PathNode>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Found {
   Match,
   Prefix,
 }
 
-impl Trie {
+impl PathTrie {
   fn new() -> Self {
     Self {
       root: 0,
-      nodes: vec![Node {
+      nodes: vec![PathNode {
         children: Default::default(),
       }],
     }
@@ -122,9 +122,7 @@ impl Trie {
         node = nd;
       } else {
         let id = self.nodes.len();
-        self.nodes.push(Node {
-          children: BTreeMap::default(),
-        });
+        self.nodes.push(PathNode::default());
         self.nodes[node]
           .children
           .insert(component.to_os_string(), id);
@@ -190,7 +188,7 @@ async fn clean_entrypoint(
   let mut keep = HashSet::new();
   let mut npm_reqs = Vec::new();
 
-  let mut keep_paths_trie = Trie::new();
+  let mut keep_paths_trie = PathTrie::new();
 
   for (_, entry) in graph.walk(
     roots.iter(),
@@ -499,4 +497,35 @@ fn remove_file(
   std::fs::remove_file(path)
     .with_context(|| format!("Failed to remove file: {}", path.display()))?;
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::Found::*;
+  use std::path::PathBuf;
+
+  #[cfg(unix)]
+  #[test]
+  fn path_trie() {
+    use std::path::Path;
+
+    let mut trie = super::PathTrie::new();
+    let p = Path::new;
+
+    #[cfg(unix)]
+    {
+      for pth in [
+        p("/foo/bar/deno"),
+        p("/foo/bar/deno/1"),
+        p("/foo/bar/deno/2"),
+        p("/foo/baz"),
+      ] {
+        trie.insert(&pth);
+      }
+
+      for (input, expect) in [(p("/"), Some(Prefix))] {
+        assert_eq!(trie.find(&input), expect);
+      }
+    }
+  }
 }
