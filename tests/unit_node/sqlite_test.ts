@@ -174,7 +174,6 @@ Deno.test("[node/sqlite] applyChangeset across databases", () => {
   const changeset = session.changeset();
   targetDb.applyChangeset(changeset, {
     filter: (e) => e === "data",
-    // @ts-ignore: types are not up to date
     onConflict: () => sqlite.constants.SQLITE_CHANGESET_ABORT,
   });
 
@@ -234,7 +233,6 @@ Deno.test("[node/sqlite] query should handle mixed positional and named paramete
 Deno.test("[node/sqlite] StatementSync#iterate", () => {
   const db = new DatabaseSync(":memory:");
   const stmt = db.prepare("SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3");
-  // @ts-ignore: types are not up to date
   const iter = stmt.iterate();
 
   const result = [];
