@@ -1,20 +1,16 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
-use deno_error::JsErrorBox;
 use deno_graph::packages::PackageSpecifiers;
-use deno_graph::source::LoadError;
-use deno_graph::source::Loader;
-use node_resolver::UrlOrPathRef;
 
 use crate::args::CleanFlags;
 use crate::args::Flags;
@@ -23,25 +19,25 @@ use crate::display;
 use crate::factory::CliFactory;
 use crate::graph_container::ModuleGraphContainer;
 use crate::graph_container::ModuleGraphUpdatePermit;
-use crate::graph_util::CliJsrUrlProvider;
 use crate::graph_util::CreateGraphOptions;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;
 use crate::util::progress_bar::ProgressMessagePrompt;
 use crate::util::progress_bar::UpdateGuard;
 
+#[derive(Default)]
 struct CleanState {
   files_removed: u64,
   dirs_removed: u64,
   bytes_removed: u64,
-  progress_guard: UpdateGuard,
+  progress_guard: Option<UpdateGuard>,
 }
 
 impl CleanState {
   fn update_progress(&self) {
-    self
-      .progress_guard
-      .set_position(self.files_removed + self.dirs_removed);
+    if let Some(pg) = &self.progress_guard {
+      pg.set_position(self.files_removed + self.dirs_removed);
+    }
   }
 }
 
@@ -65,16 +61,13 @@ pub async fn clean(
     let progress_bar = ProgressBar::new(ProgressBarStyle::ProgressBars);
     let progress_guard =
       progress_bar.update_with_prompt(ProgressMessagePrompt::Cleaning, "");
-
+    progress_guard.set_total_size(no_of_files.try_into().unwrap());
     let mut state = CleanState {
       files_removed: 0,
       dirs_removed: 0,
       bytes_removed: 0,
-      progress_guard,
+      progress_guard: Some(progress_guard),
     };
-    state
-      .progress_guard
-      .set_total_size(no_of_files.try_into().unwrap());
 
     rm_rf(&mut state, &deno_dir.root)?;
 
@@ -98,103 +91,56 @@ pub async fn clean(
 
 #[derive(Clone, Debug)]
 struct Node {
-  id: usize,
-  value: OsString,
-  children: Vec<usize>,
+  children: BTreeMap<OsString, usize>,
 }
-#[derive(Default, Debug)]
+#[derive(Debug)]
 struct Trie {
+  root: usize,
   nodes: Vec<Node>,
-  roots: Vec<usize>,
 }
 
 impl Trie {
   fn new() -> Self {
-    Self::default()
+    Self {
+      root: 0,
+      nodes: vec![Node {
+        children: Default::default(),
+      }],
+    }
   }
   fn insert(&mut self, s: &Path) {
-    let mut components =
-      s.components().into_iter().map(|c| c.as_os_str()).peekable();
-    let mut node = None;
-    for &root_idx in &self.roots {
-      let root = &self.nodes[root_idx];
-      if components.next_if_eq(&root.value).is_some() {
-        node = Some(root.clone());
-      }
-    }
+    let mut components = s.components().into_iter().map(|c| c.as_os_str());
+    let mut node = self.root;
 
-    if node.is_none() {
-      let id = self.nodes.len();
-      self.nodes.push(Node {
-        id,
-        value: components.next().unwrap().to_os_string(),
-        children: vec![],
-      });
-      self.roots.push(id);
-      node = Some(self.nodes[id].clone());
-    }
-
-    let mut node = node.unwrap();
-
-    'outer: while let Some(ch) = components.next() {
-      let mut children = std::mem::take(&mut node.children);
-      for &child in &children {
-        let child = &self.nodes[child];
-        if child.value == ch {
-          node = child.clone();
-          continue 'outer;
-        }
-      }
-
-      let mut rest = components.rev();
-      let mut child = None;
-      while let Some(next) = rest.next() {
+    while let Some(component) = components.next() {
+      if let Some(nd) = self.nodes[node].children.get(component).copied() {
+        node = nd;
+      } else {
         let id = self.nodes.len();
         self.nodes.push(Node {
-          id,
-          value: next.to_os_string(),
-          children: child.map(|id| vec![id]).unwrap_or_default(),
+          children: BTreeMap::default(),
         });
-        child = Some(id);
+        self.nodes[node]
+          .children
+          .insert(component.to_os_string(), id);
+        node = id;
       }
-      let id = self.nodes.len();
-      self.nodes.push(Node {
-        id,
-        value: ch.to_os_string(),
-        children: child.map(|id| vec![id]).unwrap_or_default(),
-      });
-
-      // eprintln!("hi: {node:?}");
-
-      children.push(id);
-
-      node.children = children;
-      // eprintln!("hi: {node:?}");
-
-      let node_id = node.id;
-      self.nodes[node_id] = node;
-
-      break;
     }
   }
 
   fn is_prefix(&self, s: &Path) -> (bool, bool) {
-    let chars = s.components();
+    let mut components = s.components().into_iter().map(|c| c.as_os_str());
+    let mut node = self.root;
 
-    let mut search = &self.roots;
-
-    'outer: for c in chars {
-      for &id in search {
-        let node = &self.nodes[id];
-        if node.value == c.as_os_str() {
-          search = &node.children;
-          continue 'outer;
-        }
+    while let Some(component) = components.next() {
+      if let Some(nd) = self.nodes[node].children.get(component).copied() {
+        node = nd;
+      } else {
+        return (false, false);
       }
-      return (false, false);
     }
 
-    (true, search.is_empty())
+    (true, self.nodes[node].children.is_empty())
   }
 }
 
@@ -203,6 +149,8 @@ async fn clean_entrypoint(
   entrypoints: &[String],
   dry_run: bool,
 ) -> Result<(), AnyError> {
+  let mut state = CleanState::default();
+
   let factory = CliFactory::from_flags(flags.clone());
   let options = factory.cli_options()?;
   let main_graph_container = factory.main_module_graph_container().await?;
@@ -290,6 +238,7 @@ async fn clean_entrypoint(
 
   let npm_cache = factory.npm_cache()?;
   let snap = npm_resolver.as_managed().unwrap().resolution().snapshot();
+  // TODO(nathanwhit): remove once we don't need packuments for creating the snapshot from lockfile
   for package in snap.all_system_packages(&options.npm_system_info()) {
     keep_paths_trie.insert(
       &npm_cache
@@ -315,15 +264,7 @@ async fn clean_entrypoint(
   let jsr_url = crate::args::jsr_url();
 
   for package in graph.packages.mappings().values() {
-    let Ok(base_url) =
-      (if let Some((scope, name)) = package.name.split_once('/') {
-        jsr_url
-          .join(&format!("{}/", scope))
-          .and_then(|u| u.join(&format!("{}/", name)))
-      } else {
-        jsr_url.join(&format!("{}/", &package.name))
-      })
-    else {
+    let Ok(base_url) = jsr_url.join(&format!("{}/", &package.name)) else {
       continue;
     };
     let keep =
@@ -357,26 +298,57 @@ async fn clean_entrypoint(
       if dry_run {
         eprintln!("would remove dir: {}", entry.path().display());
       } else {
-        std::fs::remove_dir_all(entry.path())?;
+        rm_rf(&mut state, entry.path())?;
       }
       walker.skip_current_dir();
     } else {
       if dry_run {
         eprintln!("would remove file: {}", entry.path().display());
       } else {
-        std::fs::remove_file(entry.path())?;
+        remove_file(&mut state, entry.path(), Some(entry.metadata()?))?;
       }
     }
   }
 
+  let mut node_modules_cleaned = CleanState::default();
+
   if let Some(dir) = node_modules_path {
-    clean_node_modules(&node_modules_keep, dir, dry_run)?;
+    clean_node_modules(
+      &mut node_modules_cleaned,
+      &node_modules_keep,
+      dir,
+      dry_run,
+    )?;
+  }
+
+  log::info!(
+    "{} {}",
+    colors::green("Removed"),
+    colors::gray(&format!(
+      "{} files, {} from {}",
+      state.files_removed + state.dirs_removed,
+      display::human_size(state.bytes_removed as f64),
+      deno_dir.root.display()
+    ))
+  );
+  if let Some(dir) = node_modules_path {
+    log::info!(
+      "{} {}",
+      colors::green("Removed"),
+      colors::gray(&format!(
+        "{} files, {} from {}",
+        node_modules_cleaned.files_removed + node_modules_cleaned.dirs_removed,
+        display::human_size(node_modules_cleaned.bytes_removed as f64),
+        dir.display()
+      ))
+    );
   }
 
   Ok(())
 }
 
 fn clean_node_modules(
+  state: &mut CleanState,
   keep_pkgs: &HashSet<deno_npm::NpmPackageCacheFolderId>,
   dir: &Path,
   dry_run: bool,
@@ -388,31 +360,39 @@ fn clean_node_modules(
     return Ok(());
   }
 
-  let base = dir.join(".deno");
-  let entries = std::fs::read_dir(base)?;
-
   let keep_names = keep_pkgs
     .iter()
     .map(|id| deno_resolver::npm::get_package_folder_id_folder_name(id))
     .collect::<HashSet<_>>();
 
-  eprintln!("keep_names: {keep_names:?}");
+  let base = dir.join(".deno");
+  let entries = std::fs::read_dir(&base)?;
   for entry in entries {
     let entry = entry?;
     if !entry.file_type()?.is_dir() {
       continue;
     }
-    if keep_names.contains(entry.file_name().to_string_lossy().as_ref()) {
+    let file_name = entry.file_name();
+    let file_name = file_name.to_string_lossy();
+    if keep_names.contains(file_name.as_ref()) || file_name == "node_modules" {
       continue;
     } else {
       if dry_run {
         eprintln!("removing from node modules: {}", entry.path().display());
       } else {
-        std::fs::remove_dir_all(entry.path())?;
+        rm_rf(state, &entry.path())?;
       }
     }
   }
 
+  clean_node_modules_symlinks(state, &keep_names, dir, dry_run)?;
+
+  clean_node_modules_symlinks(
+    state,
+    &keep_names,
+    &base.join("node_modules"),
+    dry_run,
+  )?;
   let top_level = std::fs::read_dir(dir)?;
   for entry in top_level {
     let entry = entry?;
@@ -433,12 +413,47 @@ fn clean_node_modules(
             entry.path().display()
           );
         } else {
-          std::fs::remove_file(entry.path())?;
+          remove_file(state, &entry.path(), None)?;
         }
       }
     }
   }
 
+  Ok(())
+}
+
+fn clean_node_modules_symlinks(
+  state: &mut CleanState,
+  keep_names: &HashSet<String>,
+  dir: &Path,
+  dry_run: bool,
+) -> Result<(), AnyError> {
+  for entry in std::fs::read_dir(dir)? {
+    let entry = entry?;
+    let ty = entry.file_type()?;
+    if ty.is_symlink() {
+      let target = std::fs::read_link(entry.path())?;
+      if !keep_names.contains(
+        &*target
+          .parent()
+          .unwrap()
+          .parent()
+          .unwrap()
+          .file_name()
+          .unwrap()
+          .to_string_lossy(),
+      ) {
+        if dry_run {
+          eprintln!(
+            "removing top level symlink from node modules: {}",
+            entry.path().display()
+          );
+        } else {
+          remove_file(state, &entry.path(), None)?;
+        }
+      }
+    }
+  }
   Ok(())
 }
 
