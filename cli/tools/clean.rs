@@ -4,12 +4,16 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::url::Url;
 use deno_graph::packages::PackageSpecifiers;
+use deno_graph::ModuleGraph;
+use walkdir::WalkDir;
 
 use crate::args::CleanFlags;
 use crate::args::Flags;
@@ -232,7 +236,7 @@ async fn clean_entrypoint(
     }
   }
 
-  for url in keep {
+  for url in &keep {
     if url.scheme() == "http" || url.scheme() == "https" {
       if let Ok(path) = http_cache.local_path_for_url(url) {
         keep_paths_trie.insert(&path);
@@ -273,53 +277,18 @@ async fn clean_entrypoint(
   }
 
   let jsr_url = crate::args::jsr_url();
-
-  for package in graph.packages.mappings().values() {
-    let Ok(base_url) = jsr_url.join(&format!("{}/", &package.name)) else {
-      continue;
-    };
-    let keep =
-      http_cache.local_path_for_url(&base_url.join("meta.json").unwrap())?;
-    keep_paths_trie.insert(&keep);
-    let keep = http_cache.local_path_for_url(
-      &base_url
-        .join(&format!("{}_meta.json", package.version))
-        .unwrap(),
-    )?;
-    keep_paths_trie.insert(&keep);
-  }
-  let mut walker = walkdir::WalkDir::new(&deno_dir.root)
-    .contents_first(false)
-    .min_depth(2)
-    .into_iter();
-  while let Some(entry) = walker.next() {
-    let entry = entry?;
-    if let Some(found) = keep_paths_trie.find(entry.path()) {
-      if entry.file_type().is_dir() && matches!(found, Found::Match) {
-        walker.skip_current_dir();
-        continue;
-      }
-      continue;
-    }
-    if !entry.path().starts_with(&deno_dir.root) {
-      panic!("VERY BAD");
-    }
-    if entry.file_type().is_dir() {
-      if dry_run {
-        eprintln!("would remove dir: {}", entry.path().display());
-      } else {
-        rm_rf(&mut state, entry.path())?;
-      }
-      walker.skip_current_dir();
-    } else {
-      if dry_run {
-        eprintln!("would remove file: {}", entry.path().display());
-      } else {
-        remove_file(&mut state, entry.path(), Some(entry.metadata()?))?;
-      }
-    }
-  }
-
+  add_jsr_meta_paths(&graph, &mut keep_paths_trie, jsr_url, &|url| {
+    http_cache.local_path_for_url(url).map_err(Into::into)
+  })?;
+  walk_removing(
+    &mut state,
+    walkdir::WalkDir::new(&deno_dir.root)
+      .contents_first(false)
+      .min_depth(2),
+    &keep_paths_trie,
+    &deno_dir.root,
+    dry_run,
+  )?;
   let mut node_modules_cleaned = CleanState::default();
 
   if let Some(dir) = node_modules_path {
@@ -331,31 +300,116 @@ async fn clean_entrypoint(
     )?;
   }
 
-  if !dry_run {
-    if state.files_removed + state.dirs_removed + state.bytes_removed > 0 {
-      log::info!(
-        "{} {}",
-        colors::green("Removed"),
-        colors::gray(&format!(
-          "{} files, {} from {}",
-          state.files_removed + state.dirs_removed,
-          display::human_size(state.bytes_removed as f64),
-          deno_dir.root.display()
-        ))
-      );
+  let mut vendor_cleaned = CleanState::default();
+  if let Some(vendor_dir) = options.vendor_dir_path() {
+    let mut trie = PathTrie::new();
+    // let base_global_path = http_cache.dir_path();
+    add_jsr_meta_paths(&graph, &mut trie, jsr_url, &|_url| {
+      todo!("needs API change in deno_cache_dir")
+    })?;
+    for url in keep {
+      if url.scheme() == "http" || url.scheme() == "https" {
+        todo!("needs API change in deno_cache_dir")
+      }
     }
+
+    walk_removing(
+      &mut vendor_cleaned,
+      WalkDir::new(vendor_dir).contents_first(false),
+      &trie,
+      &vendor_dir,
+      dry_run,
+    )?;
+  }
+
+  if !dry_run {
+    log_stats(&state, &deno_dir.root);
+
     if let Some(dir) = node_modules_path {
-      log::info!(
-        "{} {}",
-        colors::green("Removed"),
-        colors::gray(&format!(
-          "{} files, {} from {}",
-          node_modules_cleaned.files_removed
-            + node_modules_cleaned.dirs_removed,
-          display::human_size(node_modules_cleaned.bytes_removed as f64),
-          dir.display()
-        ))
-      );
+      log_stats(&node_modules_cleaned, dir);
+    }
+    if let Some(dir) = options.vendor_dir_path() {
+      log_stats(&vendor_cleaned, dir);
+    }
+  }
+
+  Ok(())
+}
+
+fn log_stats(state: &CleanState, dir: &Path) {
+  if state.bytes_removed == 0
+    && state.dirs_removed == 0
+    && state.files_removed == 0
+  {
+    return;
+  }
+  log::info!(
+    "{} {}",
+    colors::green("Removed"),
+    colors::gray(&format!(
+      "{} files, {} from {}",
+      state.files_removed + state.dirs_removed,
+      display::human_size(state.bytes_removed as f64),
+      dir.display()
+    ))
+  );
+}
+
+fn add_jsr_meta_paths(
+  graph: &ModuleGraph,
+  path_trie: &mut PathTrie,
+  jsr_url: &Url,
+  url_to_path: &dyn Fn(&Url) -> Result<PathBuf, AnyError>,
+) -> Result<(), AnyError> {
+  for package in graph.packages.mappings().values() {
+    let Ok(base_url) = jsr_url.join(&format!("{}/", &package.name)) else {
+      continue;
+    };
+    let keep = url_to_path(&base_url.join("meta.json").unwrap())?;
+    path_trie.insert(&keep);
+    let keep = url_to_path(
+      &base_url
+        .join(&format!("{}_meta.json", package.version))
+        .unwrap(),
+    )?;
+    path_trie.insert(&keep);
+  }
+  Ok(())
+}
+
+fn walk_removing(
+  state: &mut CleanState,
+  walker: WalkDir,
+  trie: &PathTrie,
+  base: &Path,
+  dry_run: bool,
+) -> Result<(), AnyError> {
+  let mut walker = walker.into_iter();
+  while let Some(entry) = walker.next() {
+    let entry = entry?;
+    if let Some(found) = trie.find(entry.path()) {
+      if entry.file_type().is_dir() && matches!(found, Found::Match) {
+        walker.skip_current_dir();
+        continue;
+      }
+      continue;
+    }
+    if !entry.path().starts_with(base) {
+      panic!("VERY BAD");
+    }
+    if entry.file_type().is_dir() {
+      if dry_run {
+        eprintln!("would remove dir: {}", entry.path().display());
+      } else {
+        rm_rf(state, entry.path())?;
+      }
+      walker.skip_current_dir();
+    } else {
+      if dry_run {
+        eprintln!("would remove file: {}", entry.path().display());
+      } else {
+        remove_file(state, entry.path(), Some(entry.metadata()?))?;
+      }
     }
   }
 
@@ -506,7 +560,6 @@ fn remove_file(
 #[cfg(test)]
 mod tests {
   use super::Found::*;
-  use std::path::PathBuf;
 
   #[cfg(unix)]
   #[test]
