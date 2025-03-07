@@ -191,7 +191,7 @@ impl LspScopeResolver {
       let package_json = config_data?.maybe_pkg_json()?;
       Some(Arc::new(PackageJsonDepResolutions::new(
         package_json,
-        &npm_pkg_req_resolver,
+        npm_pkg_req_resolver,
         &pkg_json_resolver,
       )))
     })()
