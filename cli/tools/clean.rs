@@ -90,6 +90,7 @@ pub async fn clean(
 
 #[derive(Clone, Debug, Default)]
 struct PathNode {
+  exact: bool,
   children: BTreeMap<OsString, usize>,
 }
 #[derive(Debug)]
@@ -109,6 +110,7 @@ impl PathTrie {
     Self {
       root: 0,
       nodes: vec![PathNode {
+        exact: false,
         children: Default::default(),
       }],
     }
@@ -129,6 +131,8 @@ impl PathTrie {
         node = id;
       }
     }
+
+    self.nodes[node].exact = true;
   }
 
   fn find(&self, s: &Path) -> Option<Found> {
@@ -143,7 +147,7 @@ impl PathTrie {
       }
     }
 
-    Some(if self.nodes[node].children.is_empty() {
+    Some(if self.nodes[node].exact {
       Found::Match
     } else {
       Found::Prefix
@@ -510,22 +514,72 @@ mod tests {
     use std::path::Path;
 
     let mut trie = super::PathTrie::new();
-    let p = Path::new;
 
-    #[cfg(unix)]
-    {
-      for pth in [
-        p("/foo/bar/deno"),
-        p("/foo/bar/deno/1"),
-        p("/foo/bar/deno/2"),
-        p("/foo/baz"),
-      ] {
-        trie.insert(&pth);
+    let paths = {
+      #[cfg(unix)]
+      {
+        [
+          "/foo/bar/deno",
+          "/foo/bar/deno/1",
+          "/foo/bar/deno/2",
+          "/foo/baz",
+        ]
       }
+      #[cfg(windows)]
+      {
+        [
+          r"C:\foo\bar\deno",
+          r"C:\foo\bar\deno\1",
+          r"C:\foo\bar\deno\2",
+          r"C:\foo\baz",
+          r"D:\thing",
+        ]
+      }
+    };
 
-      for (input, expect) in [(p("/"), Some(Prefix))] {
-        assert_eq!(trie.find(&input), expect);
+    let cases = {
+      #[cfg(unix)]
+      {
+        [
+          ("/", Some(Prefix)),
+          ("/foo", Some(Prefix)),
+          ("/foo/", Some(Prefix)),
+          ("/foo/bar", Some(Prefix)),
+          ("/foo/bar/deno", Some(Match)),
+          ("/foo/bar/deno/1", Some(Match)),
+          ("/foo/bar/deno/2", Some(Match)),
+          ("/foo/baz", Some(Match)),
+          ("/fo", None),
+          ("/foo/baz/deno", None),
+        ]
       }
+      #[cfg(windows)]
+      {
+        [
+          (r"C:\", Some(Prefix)),
+          (r"C:\foo", Some(Prefix)),
+          (r"C:\foo\", Some(Prefix)),
+          (r"C:\foo\", Some(Prefix)),
+          (r"C:\foo\bar", Some(Match)),
+          (r"C:\foo\bar\deno\1", Some(Match)),
+          (r"C:\foo\bar\deno\2", Some(Match)),
+          (r"C:\foo\baz", Some(Match)),
+          (r"C:\fo", None),
+          (r"C:\foo\baz\deno", None),
+          (r"D:\", Some(Prefix)),
+          (r"E:\", None),
+        ]
+      }
+    };
+
+    for pth in paths {
+      let path = Path::new(pth);
+      trie.insert(path);
+    }
+
+    for (input, expect) in cases {
+      let path = Path::new(input);
+      assert_eq!(trie.find(path), expect, "on input: {input}");
     }
   }
 }

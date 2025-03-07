@@ -1852,6 +1852,7 @@ fn clean_subcommand() -> Command {
           .requires("entrypoint"),
       )
       .arg(node_modules_dir_arg().requires("entrypoint"))
+      .arg(vendor_arg().requires("entrypoint"))
   })
 }
 
@@ -4624,7 +4625,7 @@ fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
       .collect::<Vec<_>>();
     flags.cached_only = true;
     clean_flags.dry_run = matches.get_flag("dry_run");
-    node_modules_arg_parse(flags, matches);
+    node_modules_and_vendor_dir_arg_parse(flags, matches);
   }
   flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
