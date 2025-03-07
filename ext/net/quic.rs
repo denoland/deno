@@ -1,5 +1,3 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
-
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::future::Future;
@@ -666,17 +664,35 @@ pub(crate) fn op_quic_connection_close(
 pub(crate) async fn op_quic_connection_closed(
   #[cppgc] connection: &ConnectionResource,
 ) -> Result<CloseInfo, QuicError> {
-  let e = connection.0.closed().await;
-  match e {
-    quinn::ConnectionError::LocallyClosed => Ok(CloseInfo {
+  op_quic_connection_closed_with_timeout(connection, None).await
+}
+
+#[op2(async)]
+#[serde]
+pub(crate) async fn op_quic_connection_closed_with_timeout(
+  #[cppgc] connection: &ConnectionResource,
+  timeout: Option<u64>,
+) -> Result<CloseInfo, QuicError> {
+  let close_future = connection.0.closed();
+  let close_result = if let Some(timeout) = timeout {
+    tokio::time::timeout(Duration::from_millis(timeout), close_future).await
+  } else {
+    Ok(close_future.await)
+  };
+
+  match close_result {
+    Ok(quinn::ConnectionError::LocallyClosed) => Ok(CloseInfo {
       close_code: 0,
       reason: "".into(),
     }),
-    quinn::ConnectionError::ApplicationClosed(i) => Ok(CloseInfo {
+    Ok(quinn::ConnectionError::ApplicationClosed(i)) => Ok(CloseInfo {
       close_code: i.error_code.into(),
       reason: String::from_utf8_lossy(&i.reason).into_owned(),
     }),
-    e => Err(e.into()),
+    Ok(e) => Err(e.into()),
+    Err(_) => Err(QuicError::ConnectionError(
+      quinn::ConnectionError::TimedOut,
+    )),
   }
 }
 

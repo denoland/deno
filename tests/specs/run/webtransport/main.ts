@@ -1,5 +1,3 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
-
 import { decodeBase64 } from "@std/encoding/base64";
 import { assertEquals } from "@std/assert";
 
@@ -41,6 +39,10 @@ Deno.test("WebTransport", async () => {
         })();
 
         wt.datagrams.readable.pipeTo(wt.datagrams.writable);
+      });
+
+      wt.closed.then(() => {
+        console.log("Server: WebTransport connection closed");
       });
     }
   })();
@@ -100,6 +102,12 @@ Deno.test("WebTransport", async () => {
     });
 
     client.close();
+  });
+
+  client.closed.then(() => {
+    console.log("Client: WebTransport connection closed");
     server.close();
   });
+
+  setTimeout(() => client.close(), 10000);
 });
