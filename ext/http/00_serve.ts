@@ -420,7 +420,7 @@ class InnerRequest {
     PromisePrototypeThen(
       op_http_request_on_cancel(this.#external),
       (r) => {
-        return this.#context.legacyAbort ? r && callback() : callback();
+        return !this.#context.legacyAbort ? r && callback() : callback();
       },
     );
   }
