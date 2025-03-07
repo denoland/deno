@@ -13,7 +13,8 @@ export const kKeyType = Symbol("kKeyType");
 
 export function isKeyObject(obj: unknown): obj is KeyObject {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyType] !== undefined
+    obj !== undefined && obj !== null &&
+    (obj as Record<symbol, unknown>)[kKeyType] !== undefined
   );
 }
 
@@ -21,6 +22,7 @@ export function isCryptoKey(
   obj: unknown,
 ): obj is CryptoKey {
   return (
-    obj != null && (obj as Record<symbol, unknown>)[kKeyObject] !== undefined
+    obj !== undefined && obj !== null &&
+    (obj as Record<symbol, unknown>)[kKeyObject] !== undefined
   );
 }

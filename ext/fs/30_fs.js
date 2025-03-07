@@ -306,7 +306,7 @@ function createByteStruct(types) {
     const optional = StringPrototypeStartsWith(type, "?");
     if (optional) type = StringPrototypeSlice(type, 1);
 
-    if (type == "u64") {
+    if (type === "u64") {
       if (!optional) {
         str += `${name}: view[${offset}] + view[${offset + 1}] * 2**32,`;
       } else {
@@ -316,7 +316,7 @@ function createByteStruct(types) {
           offset + 1
         }] * 2**32) || null),`;
       }
-    } else if (type == "date") {
+    } else if (type === "date") {
       str += `${name}: view[${offset}] === 0 ? null : new Date(view[${
         offset + 2
       }] + view[${offset + 3}] * 2**32),`;
@@ -417,7 +417,7 @@ function statSync(path) {
 }
 
 function coerceLen(len) {
-  if (len == null || len < 0) {
+  if (len === undefined || len === null || len < 0) {
     return 0;
   }
   return len;

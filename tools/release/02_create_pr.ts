@@ -43,7 +43,7 @@ function getPrBody() {
     "```\n";
 
   const actor = Deno.env.get("GH_WORKFLOW_ACTOR");
-  if (actor != null) {
+  if (actor !== undefined) {
     text += `\ncc @${actor}`;
   }
 

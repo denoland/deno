@@ -48,7 +48,7 @@ ObjectDefineProperty(setTimeout, promisify.custom, {
   enumerable: true,
 });
 export function clearTimeout(timeout?: Timeout | number) {
-  if (timeout == null) {
+  if (timeout === undefined || timeout === null) {
     return;
   }
   const id = +timeout;
@@ -68,7 +68,7 @@ export function setInterval(
   return new Timeout(callback, timeout, args, true, true);
 }
 export function clearInterval(timeout?: Timeout | number | string) {
-  if (timeout == null) {
+  if (timeout === undefined || timeout === null) {
     return;
   }
   const id = +timeout;
@@ -86,7 +86,7 @@ export function setImmediate(
   return new Immediate(cb, ...new SafeArrayIterator(args));
 }
 export function clearImmediate(immediate: Immediate) {
-  if (immediate == null) {
+  if (immediate === undefined || immediate === null) {
     return;
   }
 

@@ -142,19 +142,19 @@ async function sanityCheckPrebuiltFile(toolPath) {
   }
 
   // Mac: OK
-  if (buffer[0] == 0xcf && buffer[1] == 0xfa) {
+  if (buffer[0] === 0xcf && buffer[1] === 0xfa) {
     return;
   }
 
   // Windows OK
-  if (buffer[0] == "M".charCodeAt(0) && buffer[1] == "Z".charCodeAt(0)) {
+  if (buffer[0] === "M".charCodeAt(0) && buffer[1] === "Z".charCodeAt(0)) {
     return;
   }
 
   // Linux OK
   if (
-    buffer[0] == 0x7f && buffer[1] == "E".charCodeAt(0) &&
-    buffer[2] == "L".charCodeAt(0) && buffer[3] == "F".charCodeAt(0)
+    buffer[0] === 0x7f && buffer[1] === "E".charCodeAt(0) &&
+    buffer[2] === "L".charCodeAt(0) && buffer[3] === "F".charCodeAt(0)
   ) {
     return;
   }
@@ -269,7 +269,7 @@ export async function verifyVersion(toolName, toolPath) {
     });
     const output = await cmd.output();
     const version = new TextDecoder().decode(output.stdout).trim();
-    return version == requiredVersion;
+    return version === requiredVersion;
   } catch (e) {
     console.error(e);
     return false;

@@ -412,7 +412,7 @@ webidl.converters.URLPatternInit = webidl
 
 webidl.converters["URLPatternInput"] = (V, prefix, context, opts) => {
   // Union for (URLPatternInit or USVString)
-  if (typeof V == "object") {
+  if (typeof V === "object") {
     return webidl.converters.URLPatternInit(V, prefix, context, opts);
   }
   return webidl.converters.USVString(V, prefix, context, opts);

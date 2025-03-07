@@ -62,7 +62,7 @@ const unstableMsgSuggestion =
  * @returns {value is ts.CreateSourceFileOptions}
  */
 function isCreateSourceFileOptions(value) {
-  return value != null && typeof value === "object" &&
+  return value !== null && typeof value === "object" &&
     "languageVersion" in value;
 }
 
@@ -178,7 +178,7 @@ export const LAST_REQUEST_SCOPE = {
 function isNodeSourceFile(sourceFile) {
   const fileName = sourceFile.fileName;
   let isNodeSourceFile = IS_NODE_SOURCE_FILE_CACHE.get(fileName);
-  if (isNodeSourceFile == null) {
+  if (isNodeSourceFile === undefined) {
     const result = ops.op_is_node_file(fileName);
     isNodeSourceFile = /** @type {boolean} */ (result);
     IS_NODE_SOURCE_FILE_CACHE.set(fileName, isNodeSourceFile);
@@ -476,7 +476,7 @@ const hostImpl = {
     }
     const { data, scriptKind, version, isCjs } = fileInfo;
     assert(
-      data != null,
+      data !== undefined && data !== null,
       `"data" is unexpectedly null for "${specifier}".`,
     );
 
@@ -553,7 +553,8 @@ const hostImpl = {
         }
         : arg;
       return [
-        fileReference.resolutionMode == null
+        (fileReference.resolutionMode === undefined ||
+            fileReference.resolutionMode === null)
           ? isCjs
           : fileReference.resolutionMode === ts.ModuleKind.CommonJS,
         fileReference.fileName,
@@ -713,7 +714,7 @@ const hostImpl = {
       }
     }
     let scriptSnapshot = SCRIPT_SNAPSHOT_CACHE.get(specifier);
-    if (scriptSnapshot == undefined) {
+    if (scriptSnapshot === undefined) {
       /** @type {{ data: string, version: string, isCjs: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
@@ -791,7 +792,7 @@ export function filterMapDiagnostic(diagnostic) {
   if (
     // TS6053: File '{0}' not found.
     diagnostic.code === 6053 &&
-    (diagnostic.file == null || !isNodeSourceFile(diagnostic.file))
+    (diagnostic.file === undefined || !isNodeSourceFile(diagnostic.file))
   ) {
     return false;
   }

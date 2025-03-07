@@ -186,22 +186,22 @@ export class Cipheriv extends Transform implements Cipher {
     this.#cache = new BlockModeCache(false);
     this.#context = op_node_create_cipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
-    if (this.#context == 0) {
+      !(cipher === "aes-128-gcm" || cipher === "aes-256-gcm" ||
+        cipher === "aes-128-ctr" || cipher === "aes-192-ctr" ||
+        cipher === "aes-256-ctr");
+    if (this.#context === 0) {
       throw new TypeError("Unknown cipher");
     }
   }
 
   final(encoding: string = getDefaultEncoding()): Buffer | string {
     const buf = new Buffer(16);
-    if (this.#cache.cache.byteLength == 0) {
+    if (this.#cache.cache.byteLength === 0) {
       const maybeTag = op_node_cipheriv_take(this.#context);
       if (maybeTag) this.#authTag = Buffer.from(maybeTag);
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
-    if (!this.#autoPadding && this.#cache.cache.byteLength != 16) {
+    if (!this.#autoPadding && this.#cache.cache.byteLength !== 16) {
       throw new Error("Invalid final block size");
     }
     const maybeTag = op_node_cipheriv_final(
@@ -346,10 +346,10 @@ export class Decipheriv extends Transform implements Cipher {
     this.#cache = new BlockModeCache(this.#autoPadding);
     this.#context = op_node_create_decipheriv(cipher, toU8(key), toU8(iv));
     this.#needsBlockCache =
-      !(cipher == "aes-128-gcm" || cipher == "aes-256-gcm" ||
-        cipher == "aes-128-ctr" || cipher == "aes-192-ctr" ||
-        cipher == "aes-256-ctr");
-    if (this.#context == 0) {
+      !(cipher === "aes-128-gcm" || cipher === "aes-256-gcm" ||
+        cipher === "aes-128-ctr" || cipher === "aes-192-ctr" ||
+        cipher === "aes-256-ctr");
+    if (this.#context === 0) {
       throw new TypeError("Unknown cipher");
     }
   }
@@ -367,7 +367,7 @@ export class Decipheriv extends Transform implements Cipher {
     if (!this.#needsBlockCache || this.#cache.cache.byteLength === 0) {
       return encoding === "buffer" ? Buffer.from([]) : "";
     }
-    if (this.#cache.cache.byteLength != 16) {
+    if (this.#cache.cache.byteLength !== 16) {
       throw new Error("Invalid final block size");
     }
 
@@ -469,7 +469,7 @@ export function prepareKey(key) {
   // - web CryptoKey
   if (isStringOrBuffer(key)) {
     return { data: getArrayBufferOrView(key, "key") };
-  } else if (typeof key == "object") {
+  } else if (typeof key === "object") {
     const { key: data, encoding } = key;
     if (!isStringOrBuffer(data)) {
       throw new TypeError("Invalid key type");

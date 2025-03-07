@@ -237,7 +237,7 @@ const aesJwkAlg = {
 // See https://www.w3.org/TR/WebCryptoAPI/#dfn-normalize-an-algorithm
 // 18.4.4
 function normalizeAlgorithm(algorithm, op) {
-  if (typeof algorithm == "string") {
+  if (typeof algorithm === "string") {
     return normalizeAlgorithm({ name: algorithm }, op);
   }
 
@@ -998,7 +998,7 @@ class SubtleCrypto {
     // 9.
     if (
       ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
-      keyUsages.length == 0
+      keyUsages.length === 0
     ) {
       throw new SyntaxError("Invalid key usage");
     }
@@ -1208,7 +1208,7 @@ class SubtleCrypto {
     // 16.
     if (
       ArrayPrototypeIncludes(["private", "secret"], result[_type]) &&
-      keyUsages.length == 0
+      keyUsages.length === 0
     ) {
       throw new SyntaxError("Invalid key usage");
     }
@@ -1626,8 +1626,8 @@ class SubtleCrypto {
     );
     // 16.
     if (
-      (result[_type] == "secret" || result[_type] == "private") &&
-      keyUsages.length == 0
+      (result[_type] === "secret" || result[_type] === "private") &&
+      keyUsages.length === 0
     ) {
       throw new SyntaxError("Invalid key type");
     }
@@ -3336,7 +3336,7 @@ function importKeyEC(
     }
     case "spki": {
       // 1.
-      if (normalizedAlgorithm.name == "ECDSA") {
+      if (normalizedAlgorithm.name === "ECDSA") {
         if (
           ArrayPrototypeFind(
             keyUsages,
@@ -3349,7 +3349,7 @@ function importKeyEC(
         ) {
           throw new DOMException("Invalid key usage", "SyntaxError");
         }
-      } else if (keyUsages.length != 0) {
+      } else if (keyUsages.length !== 0) {
         throw new DOMException("Key usage must be empty", "SyntaxError");
       }
 
@@ -3449,7 +3449,7 @@ function importKeyEC(
       }
 
       // 9.
-      if (jwk.alg !== undefined && normalizedAlgorithm.name == "ECDSA") {
+      if (jwk.alg !== undefined && normalizedAlgorithm.name === "ECDSA") {
         let algNamedCurve;
 
         switch (jwk.alg) {
@@ -4175,7 +4175,7 @@ function importKeyPBKDF2(
 
 function exportKeyHMAC(format, key, innerKey) {
   // 1.
-  if (innerKey == null) {
+  if (innerKey === undefined) {
     throw new DOMException("Key is not available", "OperationError");
   }
 
@@ -4609,7 +4609,7 @@ function exportKeyEC(format, key, innerKey) {
       return TypedArrayPrototypeGetBuffer(data);
     }
     case "jwk": {
-      if (key[_algorithm].name == "ECDSA") {
+      if (key[_algorithm].name === "ECDSA") {
         // 1-2.
         const jwk = {
           kty: "EC",
@@ -4737,11 +4737,11 @@ async function deriveBits(normalizedAlgorithm, baseKey, length) {
   switch (normalizedAlgorithm.name) {
     case "PBKDF2": {
       // 1.
-      if (length == null || length == 0 || length % 8 !== 0) {
+      if (length === null || length === 0 || length % 8 !== 0) {
         throw new DOMException("Invalid length", "OperationError");
       }
 
-      if (normalizedAlgorithm.iterations == 0) {
+      if (normalizedAlgorithm.iterations === 0) {
         throw new DOMException(
           "iterations must not be zero",
           "OperationError",
@@ -5022,7 +5022,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
 
       // 2.
       if (
-        normalizedAlgorithm.length == 0 || normalizedAlgorithm.length > 128
+        normalizedAlgorithm.length === 0 || normalizedAlgorithm.length > 128
       ) {
         throw new DOMException(
           "Counter length must not be 0 or greater than 128",
@@ -5079,7 +5079,7 @@ async function encrypt(normalizedAlgorithm, key, data) {
       // }
 
       // 4.
-      if (normalizedAlgorithm.tagLength == undefined) {
+      if (normalizedAlgorithm.tagLength === undefined) {
         normalizedAlgorithm.tagLength = 128;
       } else if (
         !ArrayPrototypeIncludes(
@@ -5193,7 +5193,7 @@ const crypto = webidl.createBranded(Crypto);
 
 webidl.converters.AlgorithmIdentifier = (V, prefix, context, opts) => {
   // Union for (object or DOMString)
-  if (webidl.type(V) == "Object") {
+  if (webidl.type(V) === "Object") {
     return webidl.converters.object(V, prefix, context, opts);
   }
   return webidl.converters.DOMString(V, prefix, context, opts);
