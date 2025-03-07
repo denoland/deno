@@ -439,6 +439,12 @@ pub struct HelpFlags {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CleanFlags {
+  pub entrypoints: Vec<String>,
+  pub dry_run: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DenoSubcommand {
   Add(AddFlags),
   Remove(RemoveFlags),
@@ -446,7 +452,7 @@ pub enum DenoSubcommand {
   Bundle,
   Cache(CacheFlags),
   Check(CheckFlags),
-  Clean,
+  Clean(CleanFlags),
   Compile(CompileFlags),
   Completions(CompletionsFlags),
   Coverage(CoverageFlags),
@@ -1833,6 +1839,29 @@ fn clean_subcommand() -> Command {
     cstr!("Remove the cache directory (<c>$DENO_DIR</>)"),
     UnstableArgsConfig::None,
   )
+  .defer(|cmd| {
+    cmd
+      .arg(
+        Arg::new("entrypoints")
+          .required_if_eq("entrypoint", "true")
+          .num_args(1..)
+          .value_hint(ValueHint::FilePath),
+      )
+      .arg(
+        Arg::new("entrypoint")
+          .long("entrypoint")
+          .short('e')
+          .action(ArgAction::SetTrue),
+      )
+      .arg(
+        Arg::new("dry_run")
+          .long("dry-run")
+          .action(ArgAction::SetTrue)
+          .requires("entrypoint"),
+      )
+      .arg(node_modules_dir_arg().requires("entrypoint"))
+      .arg(vendor_arg().requires("entrypoint"))
+  })
 }
 
 fn check_subcommand() -> Command {
@@ -4600,8 +4629,21 @@ fn check_parse(
   Ok(())
 }
 
-fn clean_parse(flags: &mut Flags, _matches: &mut ArgMatches) {
-  flags.subcommand = DenoSubcommand::Clean;
+fn clean_parse(flags: &mut Flags, matches: &mut ArgMatches) {
+  let mut clean_flags = CleanFlags {
+    entrypoints: Vec::new(),
+    dry_run: false,
+  };
+  if matches.get_flag("entrypoint") {
+    clean_flags.entrypoints = matches
+      .remove_many::<String>("entrypoints")
+      .unwrap()
+      .collect::<Vec<_>>();
+    flags.cached_only = true;
+    clean_flags.dry_run = matches.get_flag("dry_run");
+    node_modules_and_vendor_dir_arg_parse(flags, matches);
+  }
+  flags.subcommand = DenoSubcommand::Clean(clean_flags);
 }
 
 fn compile_parse(
