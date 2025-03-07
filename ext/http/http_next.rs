@@ -741,7 +741,7 @@ pub fn op_http_get_request_cancelled(external: *const c_void) -> bool {
 }
 
 #[op2(async)]
-pub async fn op_http_request_on_cancel(external: *const c_void) {
+pub async fn op_http_request_on_cancel(external: *const c_void) -> bool {
   let http =
     // SAFETY: op is called with external.
     unsafe { clone_external!(external, "op_http_request_on_cancel") };
@@ -750,7 +750,7 @@ pub async fn op_http_request_on_cancel(external: *const c_void) {
   http.on_cancel(tx);
   drop(http);
 
-  rx.await.ok();
+  rx.await.is_ok()
 }
 
 /// Returned promise resolves when body streaming finishes.
@@ -1082,7 +1082,7 @@ impl Drop for HttpJoinHandle {
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1129,6 +1129,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    cfg!(feature = "legacy_abort"),
   ))
 }
 
@@ -1137,7 +1138,7 @@ where
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1171,6 +1172,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    cfg!(feature = "legacy_abort"),
   ))
 }
 
