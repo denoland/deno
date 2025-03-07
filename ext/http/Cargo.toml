@@ -11,9 +11,11 @@ repository.workspace = true
 description = "HTTP server implementation for Deno"
 
 [features]
-default = ["default_property_extractor"]
+default = ["default_property_extractor", "legacy_abort"]
 "__http_tracing" = []
 default_property_extractor = []
+# https://github.com/denoland/deno/issues/27005s
+legacy_abort = []
 
 [lib]
 path = "lib.rs"

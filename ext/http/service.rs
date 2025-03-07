@@ -436,7 +436,8 @@ impl HttpRecord {
     inner.been_dropped = true;
     // The request body might include actual resources.
     inner.request_body.take();
-    if !inner.response_body_finished {
+
+    if cfg!(feature = "legacy_abort") || !inner.response_body_finished {
       if let Some(closed_channel) = inner.closed_channel.take() {
         let _ = closed_channel.send(());
       }

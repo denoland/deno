@@ -1082,7 +1082,7 @@ impl Drop for HttpJoinHandle {
 pub fn op_http_serve<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] listener_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1129,6 +1129,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    cfg!(feature = "legacy_abort"),
   ))
 }
 
@@ -1137,7 +1138,7 @@ where
 pub fn op_http_serve_on<HTTP>(
   state: Rc<RefCell<OpState>>,
   #[smi] connection_rid: ResourceId,
-) -> Result<(ResourceId, &'static str, String), HttpNextError>
+) -> Result<(ResourceId, &'static str, String, bool), HttpNextError>
 where
   HTTP: HttpPropertyExtractor,
 {
@@ -1171,6 +1172,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
+    cfg!(feature = "legacy_abort"),
   ))
 }
 
