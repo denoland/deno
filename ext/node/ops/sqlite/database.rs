@@ -17,13 +17,12 @@ use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 use serde::Deserialize;
 
-use crate::ops::sqlite::SqliteResultExt;
-
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 
+use crate::ops::sqlite::SqliteResultExt;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DatabaseSyncOptions {
