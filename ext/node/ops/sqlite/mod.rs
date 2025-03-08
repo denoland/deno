@@ -65,3 +65,75 @@ pub enum SqliteError {
   #[error("Invalid callback: {0}")]
   InvalidCallback(&'static str),
 }
+
+pub trait SqliteResultExt<T> {
+  fn with_enhanced_errors(
+    self,
+    db: &rusqlite::Connection,
+  ) -> Result<T, SqliteError>;
+}
+
+impl<T> SqliteResultExt<T> for Result<T, rusqlite::Error> {
+  fn with_enhanced_errors(
+    self,
+    db: &rusqlite::Connection,
+  ) -> Result<T, SqliteError> {
+    match self {
+      Ok(value) => Ok(value),
+      Err(error) => {
+        let handle = unsafe { db.handle() };
+        Err(SqliteError::from_rusqlite_with_details(error, handle))
+      }
+    }
+  }
+}
+
+impl SqliteError {
+  pub const ERROR_CODE_GENERIC: i32 = 1;
+
+  pub const ERROR_STR_UNKNOWN: &str = "unknown error";
+
+  pub fn from_rusqlite_with_details(
+    error: rusqlite::Error,
+    handle: *mut libsqlite3_sys::sqlite3,
+  ) -> Self {
+    let message = error.to_string();
+
+    let err_code = match &error {
+      rusqlite::Error::SqliteFailure(ffi_error, _) => ffi_error.code as i32,
+      _ => {
+        if !handle.is_null() {
+          unsafe { libsqlite3_sys::sqlite3_errcode(handle) }
+        } else {
+          Self::ERROR_CODE_GENERIC
+        }
+      }
+    };
+
+    let err_str = unsafe {
+      let ptr = libsqlite3_sys::sqlite3_errstr(err_code);
+      if !ptr.is_null() {
+        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+      } else {
+        Self::ERROR_STR_UNKNOWN.to_string()
+      }
+    };
+
+    let encoded_message = format!(
+      "{}\n  {{\n  code: 'ERR_SQLITE_ERROR',\n  errcode: {},\n  errstr: '{}'\n}}",
+      message,
+      err_code,
+      err_str
+    );
+
+    let custom_error = rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error {
+        code: rusqlite::ErrorCode::Unknown,
+        extended_code: err_code,
+      },
+      Some(encoded_message),
+    );
+
+    SqliteError::SqliteError(custom_error)
+  }
+}

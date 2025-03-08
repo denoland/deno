@@ -19,6 +19,8 @@ use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::limits::Limit;
 use serde::Deserialize;
 
+use crate::ops::sqlite::SqliteResultExt;
+
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
@@ -173,7 +175,8 @@ impl DatabaseSync {
       let db = open_db(state, options.read_only, &location)?;
 
       if options.enable_foreign_key_constraints {
-        db.execute("PRAGMA foreign_keys = ON", [])?;
+        db.execute("PRAGMA foreign_keys = ON", [])
+          .with_enhanced_errors(&db)?;
       }
       Some(db)
     } else {
@@ -200,7 +203,8 @@ impl DatabaseSync {
 
     let db = open_db(state, self.options.read_only, &self.location)?;
     if self.options.enable_foreign_key_constraints {
-      db.execute("PRAGMA foreign_keys = ON", [])?;
+      db.execute("PRAGMA foreign_keys = ON", [])
+        .with_enhanced_errors(&db)?;
     }
 
     *self.conn.borrow_mut() = Some(db);
@@ -229,7 +233,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    db.execute_batch(sql)?;
+    db.execute_batch(sql).with_enhanced_errors(db)?;
 
     Ok(())
   }
