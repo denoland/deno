@@ -81,6 +81,7 @@ impl<T> SqliteResultExt<T> for Result<T, rusqlite::Error> {
     match self {
       Ok(value) => Ok(value),
       Err(error) => {
+        // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
         let handle = unsafe { db.handle() };
         Err(SqliteError::from_rusqlite_with_details(error, handle))
       }
@@ -103,6 +104,7 @@ impl SqliteError {
       rusqlite::Error::SqliteFailure(ffi_error, _) => ffi_error.code as i32,
       _ => {
         if !handle.is_null() {
+          // SAFETY: We've verified that handle is not null in the previous condition.
           unsafe { libsqlite3_sys::sqlite3_errcode(handle) }
         } else {
           Self::ERROR_CODE_GENERIC
@@ -110,6 +112,7 @@ impl SqliteError {
       }
     };
 
+    // SAFETY: We're using sqlite3_errstr which returns a static string.
     let err_str = unsafe {
       let ptr = libsqlite3_sys::sqlite3_errstr(err_code);
       if !ptr.is_null() {
