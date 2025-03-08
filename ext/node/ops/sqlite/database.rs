@@ -21,7 +21,6 @@ use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
-
 use crate::ops::sqlite::SqliteResultExt;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
