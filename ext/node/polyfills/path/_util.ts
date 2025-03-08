@@ -2,9 +2,6 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import type { FormatInputPathObject } from "ext:deno_node/path/_interface.ts";
 import {
   CHAR_BACKWARD_SLASH,
@@ -16,6 +13,12 @@ import {
   CHAR_UPPERCASE_Z,
 } from "ext:deno_node/path/_constants.ts";
 import { ERR_INVALID_ARG_TYPE } from "ext:deno_node/internal/errors.ts";
+import { primordials } from "ext:core/mod.js";
+const {
+  StringPrototypeCharCodeAt,
+  StringPrototypeLastIndexOf,
+  StringPrototypeSlice,
+} = primordials;
 
 export function assertPath(path: string) {
   if (typeof path !== "string") {
@@ -51,7 +54,7 @@ export function normalizeString(
   let dots = 0;
   let code: number | undefined;
   for (let i = 0, len = path.length; i <= len; ++i) {
-    if (i < len) code = path.charCodeAt(i);
+    if (i < len) code = StringPrototypeCharCodeAt(path, i);
     else if (isPathSeparator(code!)) break;
     else code = CHAR_FORWARD_SLASH;
 
@@ -62,17 +65,18 @@ export function normalizeString(
         if (
           res.length < 2 ||
           lastSegmentLength !== 2 ||
-          res.charCodeAt(res.length - 1) !== CHAR_DOT ||
-          res.charCodeAt(res.length - 2) !== CHAR_DOT
+          StringPrototypeCharCodeAt(res, res.length - 1) !== CHAR_DOT ||
+          StringPrototypeCharCodeAt(res, res.length - 2) !== CHAR_DOT
         ) {
           if (res.length > 2) {
-            const lastSlashIndex = res.lastIndexOf(separator);
+            const lastSlashIndex = StringPrototypeLastIndexOf(res, separator);
             if (lastSlashIndex === -1) {
               res = "";
               lastSegmentLength = 0;
             } else {
-              res = res.slice(0, lastSlashIndex);
-              lastSegmentLength = res.length - 1 - res.lastIndexOf(separator);
+              res = StringPrototypeSlice(res, 0, lastSlashIndex);
+              lastSegmentLength = res.length - 1 -
+                StringPrototypeLastIndexOf(res, separator);
             }
             lastSlash = i;
             dots = 0;
@@ -91,8 +95,11 @@ export function normalizeString(
           lastSegmentLength = 2;
         }
       } else {
-        if (res.length > 0) res += separator + path.slice(lastSlash + 1, i);
-        else res = path.slice(lastSlash + 1, i);
+        if (res.length > 0) {
+          res += separator + StringPrototypeSlice(path, lastSlash + 1, i);
+        } else {
+          res = StringPrototypeSlice(path, lastSlash + 1, i);
+        }
         lastSegmentLength = i - lastSlash - 1;
       }
       lastSlash = i;
