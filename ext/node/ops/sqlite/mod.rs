@@ -83,7 +83,8 @@ impl<T> SqliteResultExt<T> for Result<T, rusqlite::Error> {
       Err(error) => {
         // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
         let handle = unsafe { db.handle() };
-        Err(SqliteError::from_rusqlite_with_details(error, handle))
+        // SAFETY: error conversion does not perform additional dereferencing beyond what is documented.
+        Err(unsafe { SqliteError::from_rusqlite_with_details(error, handle) })
       }
     }
   }
@@ -94,7 +95,12 @@ impl SqliteError {
 
   pub const ERROR_STR_UNKNOWN: &str = "unknown error";
 
-  pub fn from_rusqlite_with_details(
+  /// Creates a `SqliteError` from a rusqlite error and a raw SQLite handle.
+  ///
+  /// # Safety
+  ///
+  /// Caller must ensure `handle` is non-null and points to a valid, initialized sqlite3 instance.
+  pub unsafe fn from_rusqlite_with_details(
     error: rusqlite::Error,
     handle: *mut libsqlite3_sys::sqlite3,
   ) -> Self {
