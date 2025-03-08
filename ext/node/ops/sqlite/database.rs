@@ -19,13 +19,12 @@ use rusqlite::ffi as libsqlite3_sys;
 use rusqlite::limits::Limit;
 use serde::Deserialize;
 
-use crate::ops::sqlite::SqliteResultExt;
-
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
 
+use crate::ops::sqlite::SqliteResultExt;
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
