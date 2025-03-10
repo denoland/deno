@@ -1,4 +1,3 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
@@ -131,4 +130,14 @@ Deno.test("[node/crypto.hash] does not leak", () => {
 Deno.test("[node/crypto.hash] oneshot hash API", () => {
   const d = hash("sha1", "Node.js");
   assertEquals(d, "10b3493287f831e81a438811a1ffba01f8cec4b7");
+});
+
+Deno.test("[node/crypto.hash] shake-128 alias", () => {
+  const d = hash("shake-128", "Node.js", "base64url");
+  assertEquals(d, "f5wrpOiPgn1hYEVQdgWFPg");
+});
+
+Deno.test("[node/crypto.hash] shake-256 alias", () => {
+  const d = hash("shake-256", "Node.js", "base64url");
+  assertEquals(d, "f5wrpOiPgn1hYEVQdgWFPg");
 });
