@@ -599,6 +599,10 @@ impl CliOptions {
     }
   }
 
+  pub fn eszip(&self) -> bool {
+    self.flags.eszip
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
   }

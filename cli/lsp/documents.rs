@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
@@ -23,7 +23,6 @@ use deno_core::futures::future;
 use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
-use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
@@ -52,7 +51,6 @@ use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
 use crate::graph_util::CliJsrUrlProvider;
-use crate::tsc::MaybeStaticSource;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -188,14 +186,14 @@ impl IndexValid {
 #[derive(Debug)]
 pub struct AssetDocument {
   specifier: ModuleSpecifier,
-  text: MaybeStaticSource,
+  text: &'static str,
   line_index: Arc<LineIndex>,
   maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
 }
 
 impl AssetDocument {
-  pub fn new(specifier: ModuleSpecifier, text: MaybeStaticSource) -> Self {
-    let line_index = Arc::new(LineIndex::new(text.as_ref()));
+  pub fn new(specifier: ModuleSpecifier, text: &'static str) -> Self {
+    let line_index = Arc::new(LineIndex::new(text));
     Self {
       specifier,
       text,
@@ -215,8 +213,8 @@ impl AssetDocument {
     *self.maybe_navigation_tree.lock() = Some(navigation_tree);
   }
 
-  pub fn text(&self) -> MaybeStaticSource {
-    self.text.clone()
+  pub fn text(&self) -> &'static str {
+    self.text
   }
 
   pub fn line_index(&self) -> Arc<LineIndex> {
@@ -230,32 +228,30 @@ impl AssetDocument {
 
 #[derive(Debug)]
 pub struct AssetDocuments {
-  inner: RwLock<HashMap<ModuleSpecifier, Arc<AssetDocument>>>,
+  inner: HashMap<ModuleSpecifier, Arc<AssetDocument>>,
 }
 
 impl AssetDocuments {
   pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.inner.read().contains_key(k)
+    self.inner.contains_key(k)
   }
 
   pub fn get(&self, k: &ModuleSpecifier) -> Option<Arc<AssetDocument>> {
-    self.inner.read().get(k).cloned()
+    self.inner.get(k).cloned()
   }
 }
 
 pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
   Lazy::new(|| AssetDocuments {
-    inner: RwLock::new(
-      crate::tsc::LAZILY_LOADED_STATIC_ASSETS
-        .iter()
-        .map(|(k, v)| {
-          let url_str = format!("asset:///{k}");
-          let specifier = resolve_url(&url_str).unwrap();
-          let asset = Arc::new(AssetDocument::new(specifier.clone(), v.get()));
-          (specifier, asset)
-        })
-        .collect(),
-    ),
+    inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
+      .iter()
+      .map(|(k, v)| {
+        let url_str = format!("asset:///{k}");
+        let specifier = resolve_url(&url_str).unwrap();
+        let asset = Arc::new(AssetDocument::new(specifier.clone(), v.as_str()));
+        (specifier, asset)
+      })
+      .collect(),
   });
 
 #[derive(Debug, Clone)]
@@ -296,12 +292,17 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> MaybeStaticSource {
+  pub fn text_str(&self) -> &str {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => {
-        MaybeStaticSource::Computed(d.text.clone())
-      }
+      AssetOrDocument::Document(d) => d.text.as_ref(),
+    }
+  }
+
+  pub fn text_fast_string(&self) -> deno_core::FastString {
+    match self {
+      AssetOrDocument::Asset(a) => deno_core::FastString::from_static(a.text()),
+      AssetOrDocument::Document(d) => d.text.clone().into(),
     }
   }
 
@@ -1698,7 +1699,7 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
 }
 
-impl<'a> OpenDocumentsGraphLoader<'a> {
+impl OpenDocumentsGraphLoader<'_> {
   fn load_from_docs(
     &self,
     specifier: &ModuleSpecifier,
@@ -1719,7 +1720,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
   }
 }
 
-impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
   fn load(
     &self,
     specifier: &ModuleSpecifier,

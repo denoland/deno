@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -141,6 +142,122 @@ pub async fn compile(
     // errored, so attempt to remove the temporary file
     let _ = std::fs::remove_file(temp_path);
     return Err(err);
+  }
+
+  Ok(())
+}
+
+pub async fn compile_eszip(
+  flags: Arc<Flags>,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let parsed_source_cache = factory.parsed_source_cache();
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let http_client = factory.http_client_provider();
+  let entrypoint = cli_options.resolve_main_module()?;
+  let mut output_path = resolve_compile_executable_output_path(
+    http_client,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )
+  .await?;
+  output_path.set_extension("eszip");
+
+  let maybe_import_map_specifier =
+    cli_options.resolve_specified_import_map_specifier()?;
+  let (module_roots, _include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
+
+  let graph = Arc::try_unwrap(
+    module_graph_creator
+      .create_graph_and_maybe_check(module_roots.clone())
+      .await?,
+  )
+  .unwrap();
+  let graph = if cli_options.type_check_mode().is_true() {
+    // In this case, the previous graph creation did type checking, which will
+    // create a module graph with types information in it. We don't want to
+    // store that in the binary so create a code only module graph from scratch.
+    module_graph_creator
+      .create_graph(
+        GraphKind::CodeOnly,
+        module_roots,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
+      .await?
+  } else {
+    graph
+  };
+
+  let transpile_and_emit_options = tsconfig_resolver
+    .transpile_and_emit_options(cli_options.workspace().root_dir())?;
+  let transpile_options = transpile_and_emit_options.transpile.clone();
+  let emit_options = transpile_and_emit_options.emit.clone();
+
+  let parser = parsed_source_cache.as_capturing_parser();
+  let root_dir_url = cli_options.workspace().root_dir();
+  log::debug!("Binary root dir: {}", root_dir_url);
+  let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
+  let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
+    graph,
+    parser,
+    transpile_options,
+    emit_options,
+    relative_file_base: Some(relative_file_base),
+    npm_packages: None,
+    module_kind_resolver: Default::default(),
+  })?;
+
+  if let Some(import_map_specifier) = maybe_import_map_specifier {
+    let import_map_path = import_map_specifier.to_file_path().unwrap();
+    let import_map_content = std::fs::read_to_string(&import_map_path)
+      .with_context(|| {
+        format!("Failed to read import map: {:?}", import_map_path)
+      })?;
+
+    let import_map_specifier_str = if let Some(relative_import_map_specifier) =
+      root_dir_url.make_relative(&import_map_specifier)
+    {
+      relative_import_map_specifier
+    } else {
+      import_map_specifier.to_string()
+    };
+
+    eszip.add_import_map(
+      eszip::ModuleKind::Json,
+      import_map_specifier_str,
+      import_map_content.as_bytes().to_vec().into(),
+    );
+  }
+
+  log::info!(
+    "{} {} to {}",
+    colors::green("Compile"),
+    entrypoint,
+    output_path.display(),
+  );
+  validate_output_path(&output_path)?;
+
+  let mut file = std::fs::File::create(&output_path).with_context(|| {
+    format!("Opening ESZip file '{}'", output_path.display())
+  })?;
+
+  let write_result = {
+    let r = file.write_all(&eszip.into_bytes());
+    drop(file);
+    r
+  };
+
+  if let Err(err) = write_result {
+    let _ = std::fs::remove_file(output_path);
+    return Err(err.into());
   }
 
   Ok(())
@@ -357,6 +474,7 @@ mod test {
         no_terminal: false,
         icon: None,
         include: vec![],
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -382,6 +500,7 @@ mod test {
         include: vec![],
         icon: None,
         no_terminal: false,
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )

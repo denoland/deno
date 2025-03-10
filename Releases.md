@@ -6,6 +6,78 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.3 / 2025.03.05
+
+- feat(unstable): lint plugins support field selectors (#28324)
+- fix(add): better help text for --dev arg (#28304)
+- fix(check/npm): move not found errors inside npm packages to tsc diagnostics
+  (#28337)
+- fix(ext/node): SQLite reset guards to prevent database locks (#28298)
+- fix(ext/node): node compatibility issue missing fd in createServer callback
+  socket object (#27789)
+- fix(fmt/md): handle callout followed by non-text (#28333)
+- fix(lint): run with --no-prompt (#28305)
+- fix(lsp): include prefix and suffix for rename edits (#28327)
+- fix(lsp): limit languages in semantic tokens provider (#28310)
+- fix(node): require esm should prefer `module.exports` export (#28376)
+- fix(otel): don't throw when calling setActiveSpan at root (#28323)
+- fix(unstable): Missing `PrivateIdentifier` type for `PropertyDefinition` key
+  (#28358)
+- fix(unstable): lint plugin `ObjectPattern` inconsistencies (#28359)
+- fix(unstable): lint plugin child combinator not working with groups (#28360)
+- fix(unstable): lint plugin fix `:has()`, `:is/where/matches` and `:not()`
+  selectors (#28348)
+- fix(unstable): lint plugin regex attribute selector not working (#28340)
+- fix(unstable): lint plugin swapped exported and source for
+  ExportAllDeclaration (#28357)
+- fix(unstable/lint): remove duplicated `Fix` vs `FixData` interface (#28344)
+- fix: add "module.exports" export to ESM CJS wrapper module (#28373)
+- fix: deno_ast 0.46 (#28331)
+- fix: respect lockfile for multiple available jsr versions (#28375)
+- perf(http): instantiate generic functions in `deno_http`, increase opt-level
+  for some more hyper deps (#28317)
+- perf(lsp): don't set resolver npm reqs if unchanged (#28302)
+- perf(lsp): register semantic tokens provider upon opening enabled doc (#28384)
+
+### 2.2.2 / 2025.02.25
+
+- fix(check): regression - implicit jsxImportSource was not resolving (#28228)
+- fix(cli): add `compilerOptions.lib` examples to config-file.v1.json (#28226)
+- fix(config): allow specifying absolute path for patch and fix panic with
+  exports in package.json (#28279)
+- fix(ext/node): decipherIv() range error on invalid final block length (#28215)
+- fix(ext/node): descriptive sqlite error messages (#28272)
+- fix(fmt): support "--ext vto" and "--ext njk" (#28262)
+- fix(http): generate `OtelInfo` only when otel metrics are enabled (#28286)
+- fix(install): don't error on unknown media types in install (#28234)
+- fix(lint): don't recurse infinitely for large ASTs (#28265)
+- fix(lint): give access to SourceCode in 'deno test' (#28278)
+- fix(lint): plugins ignored when no rust rule active (#28269)
+- fix(lint): update deno_lint (#28271)
+- fix(lsp): close server on exit notification (#28232)
+- fix(lsp): create cacheable `ExportInfoMap` per language service (#28240)
+- fix(unstable): lint plugin `:exit` called at wrong time (#28229)
+- fix: add info suggestion for `unsafely-ignore-certificate-errors` and add
+  `--help=full` (#28203)
+- perf(install): only read initialized file if we care about the tags (#28242)
+
+### 2.2.1 / 2025.02.20
+
+- fix(check): remove instability in loading lib files (#28202)
+- fix(check/lsp): fall back to `@types/*` packages if npm package doesn't have
+  types (#28185)
+- fix(coverage): exclude scripts with invalid URLs from raw coverage output
+  (#28210)
+- fix(ext/cache): add missing Cargo feature (#28178)
+- fix(ext/node): Fix handling of sqlite large integers (#28193)
+- fix(ext/node): rewrite SQLite named parameter handing (#28197)
+- fix(outdated): hint to use `--latest` if new versions are available in
+  `outdated --update` (#28190)
+- fix(publish): support jsx/tsx (#28188)
+- fix: better jsx workspace config resolution (#28186)
+- fix: don't panic when running with // as a filepath (#28189)
+- fix: move extension file declarations to cli/tsc/dts (#28180)
+
 ### 2.2.0 / 2025.02.18
 
 - feat(bench): add `--permit-no-files` (#27048)

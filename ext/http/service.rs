@@ -188,10 +188,14 @@ pub(crate) async fn handle_request(
   server_state: SignallingRc<HttpServerState>, // Keep server alive for duration of this future.
   tx: tokio::sync::mpsc::Sender<Rc<HttpRecord>>,
 ) -> Result<Response, hyper_v014::Error> {
-  let otel_info = if deno_telemetry::OTEL_GLOBALS.get().is_some() {
+  let otel_info = if let Some(otel) = deno_telemetry::OTEL_GLOBALS
+    .get()
+    .filter(|o| o.has_metrics())
+  {
     let instant = std::time::Instant::now();
     let size_hint = request.size_hint();
     Some(OtelInfo::new(
+      otel,
       instant,
       size_hint.upper().unwrap_or(size_hint.lower()),
       OtelInfoAttributes {
@@ -511,7 +515,7 @@ impl HttpRecord {
   fn response_ready(&self) -> impl Future<Output = ()> + '_ {
     struct HttpRecordReady<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordReady<'a> {
+    impl Future for HttpRecordReady<'_> {
       type Output = ();
 
       fn poll(
@@ -536,7 +540,7 @@ impl HttpRecord {
   pub fn response_body_finished(&self) -> impl Future<Output = bool> + '_ {
     struct HttpRecordFinished<'a>(&'a HttpRecord);
 
-    impl<'a> Future for HttpRecordFinished<'a> {
+    impl Future for HttpRecordFinished<'_> {
       type Output = bool;
 
       fn poll(

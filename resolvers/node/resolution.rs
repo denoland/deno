@@ -1891,25 +1891,7 @@ fn should_be_treated_as_relative_or_absolute_path(specifier: &str) -> bool {
     return true;
   }
 
-  is_relative_specifier(specifier)
-}
-
-// TODO(ry) We very likely have this utility function elsewhere in Deno.
-fn is_relative_specifier(specifier: &str) -> bool {
-  let specifier_len = specifier.len();
-  let specifier_chars: Vec<_> = specifier.chars().take(3).collect();
-
-  if !specifier_chars.is_empty() && specifier_chars[0] == '.' {
-    if specifier_len == 1 || specifier_chars[1] == '/' {
-      return true;
-    }
-    if specifier_chars[1] == '.'
-      && (specifier_len == 2 || specifier_chars[2] == '/')
-    {
-      return true;
-    }
-  }
-  false
+  deno_path_util::is_relative_specifier(specifier)
 }
 
 /// Alternate `PathBuf::with_extension` that will handle known extensions
@@ -2130,7 +2112,7 @@ mod tests {
   use super::*;
 
   fn build_package_json(json: Value) -> PackageJson {
-    PackageJson::load_from_value(PathBuf::from("/package.json"), json)
+    PackageJson::load_from_value(PathBuf::from("/package.json"), json).unwrap()
   }
 
   #[test]

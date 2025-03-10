@@ -74,14 +74,15 @@ impl crate::worker::CoverageCollector for CoverageCollector {
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
-      // Filter out internal and http/https JS files and eval'd scripts
-      // from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
+      // Filter out internal and http/https JS files, eval'd scripts,
+      // and scripts with invalid urls from being included in coverage reports
+      if script_coverage.url.is_empty()
+        || script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
         || script_coverage.url.starts_with("http:")
         || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
-        || script_coverage.url.is_empty()
+        || Url::parse(&script_coverage.url).is_err()
       {
         continue;
       }
@@ -574,15 +575,16 @@ pub fn cover_files(
     )
   };
 
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
+
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
       &script_coverage.url,
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file_result = file_fetcher
-      .get_cached_source_or_local(&module_specifier)
-      .map_err(AnyError::from);
+    let maybe_file_result =
+      file_fetcher.get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
@@ -637,11 +639,11 @@ pub fn cover_files(
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, &original_source)?;
+      file_reports.push((coverage_report, original_source.to_string()));
     }
   }
 
-  reporter.done(&coverage_root);
+  reporter.done(&coverage_root, &file_reports);
 
   Ok(())
 }

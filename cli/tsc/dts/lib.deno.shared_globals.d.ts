@@ -475,6 +475,7 @@ type BufferSource = ArrayBufferView | ArrayBuffer;
  *
  * @category I/O
  */
+declare var console: Console;
 
 /** @category Events */
 interface ErrorEventInit extends EventInit {
@@ -765,6 +766,6 @@ interface ErrorConstructor {
  * @category Fetch
  */
 declare function fetch(
-  input: Request | URL | string,
-  init?: RequestInit & { client: Deno.HttpClient },
+  input: RequestInfo | URL,
+  init?: RequestInit & { client?: Deno.HttpClient },
 ): Promise<Response>;

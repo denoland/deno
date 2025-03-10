@@ -5,6 +5,8 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -90,6 +92,7 @@ struct LspScopeResolver {
   jsr_resolver: Option<Arc<JsrCacheResolver>>,
   npm_graph_resolver: Arc<CliNpmGraphResolver>,
   npm_installer: Option<Arc<NpmInstaller>>,
+  npm_installer_dirty: Arc<AtomicBool>,
   npm_resolution: Arc<NpmResolutionCell>,
   npm_resolver: Option<CliNpmResolver>,
   node_resolver: Option<Arc<CliNodeResolver>>,
@@ -112,6 +115,7 @@ impl Default for LspScopeResolver {
       jsr_resolver: None,
       npm_graph_resolver: factory.npm_graph_resolver().clone(),
       npm_installer: None,
+      npm_installer_dirty: Default::default(),
       npm_resolver: None,
       node_resolver: None,
       npm_resolution: factory.services.npm_resolution.clone(),
@@ -232,6 +236,7 @@ impl LspScopeResolver {
       npm_pkg_req_resolver,
       npm_resolver,
       npm_installer,
+      npm_installer_dirty: Default::default(),
       npm_resolution: factory.services.npm_resolution.clone(),
       node_resolver,
       pkg_json_resolver,
@@ -305,6 +310,7 @@ impl LspScopeResolver {
       npm_graph_resolver: factory.npm_graph_resolver().clone(),
       // npm installer isn't necessary for a snapshot
       npm_installer: None,
+      npm_installer_dirty: Default::default(),
       npm_pkg_req_resolver: factory.npm_pkg_req_resolver().cloned(),
       npm_resolution: factory.services.npm_resolution.clone(),
       npm_resolver: factory.npm_resolver().cloned(),
@@ -376,6 +382,7 @@ impl LspResolver {
         .redirect_resolver
         .as_ref()
         .inspect(|r| r.did_cache());
+      resolver.npm_installer_dirty.store(true, Ordering::Relaxed);
     }
   }
 
@@ -389,14 +396,24 @@ impl LspResolver {
       .into_iter()
       .chain(self.by_scope.iter().map(|(s, r)| (Some(s), r)))
     {
-      let dep_info = dep_info_by_scope.get(&scope.cloned());
-      if let Some(dep_info) = dep_info {
-        *resolver.dep_info.lock() = dep_info.clone();
+      let mut npm_installer_dirty =
+        resolver.npm_installer_dirty.swap(false, Ordering::Relaxed);
+      let dep_info = dep_info_by_scope
+        .get(&scope.cloned())
+        .cloned()
+        .unwrap_or_default();
+      {
+        let mut resolver_dep_info = resolver.dep_info.lock();
+        if !npm_installer_dirty {
+          npm_installer_dirty = dep_info.npm_reqs != resolver_dep_info.npm_reqs;
+        }
+        *resolver_dep_info = dep_info.clone();
+      }
+      if !npm_installer_dirty {
+        continue;
       }
       if let Some(npm_installer) = resolver.npm_installer.as_ref() {
-        let reqs = dep_info
-          .map(|i| i.npm_reqs.iter().cloned().collect::<Vec<_>>())
-          .unwrap_or_default();
+        let reqs = dep_info.npm_reqs.iter().cloned().collect::<Vec<_>>();
         if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
           lsp_warn!("Could not set npm package requirements: {:#}", err);
         }
@@ -969,7 +986,7 @@ pub struct SingleReferrerGraphResolver<'a> {
   pub jsx_import_source_config: Option<&'a JsxImportSourceConfig>,
 }
 
-impl<'a> deno_graph::source::Resolver for SingleReferrerGraphResolver<'a> {
+impl deno_graph::source::Resolver for SingleReferrerGraphResolver<'_> {
   fn default_jsx_import_source(
     &self,
     _referrer: &ModuleSpecifier,
