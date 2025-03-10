@@ -163,7 +163,7 @@ async function clippy() {
   const currentBuildMode = buildMode();
   const cmd = ["clippy", "--all-targets", "--all-features", "--locked"];
 
-  if (currentBuildMode != "debug") {
+  if (currentBuildMode !== "debug") {
     cmd.push("--release");
   }
 

@@ -109,7 +109,7 @@ export class TextProtoReader {
       // We could throw `Deno.errors.InvalidData` here,
       // but better to be liberal in what we
       // accept, so if we get an empty key, skip it.
-      if (key == "") {
+      if (key === "") {
         continue;
       }
 

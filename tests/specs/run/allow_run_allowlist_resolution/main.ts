@@ -1,9 +1,9 @@
 // Testing the following:
-// | `deno run --allow-run=binary`         | `which path == "/usr/bin/binary"` at startup | `which path != "/usr/bin/binary"` at startup |
+// | `deno run --allow-run=binary`         | `which path === "/usr/bin/binary"` at startup | `which path != "/usr/bin/binary"` at startup |
 // |---------------------------------------|----------------------------------------------|--------------------------------------------|
 // | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :white_check_mark:                                         |
 // | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :x:                                         |
-// | `deno run --allow-run=/usr/bin/binary | `which path == "/usr/bin/binary"` at runtime | `which path != "/usr/bin/binary"` at runtime |
+// | `deno run --allow-run=/usr/bin/binary | `which path === "/usr/bin/binary"` at runtime | `which path != "/usr/bin/binary"` at runtime |
 // |---------------------------------------|----------------------------------------------|--------------------------------------------|
 // | **`Deno.Command("binary")`**          | :white_check_mark:                                          | :x:                                         |
 // | **`Deno.Command("/usr/bin/binary")`** | :white_check_mark:                                          | :white_check_mark:                                         |

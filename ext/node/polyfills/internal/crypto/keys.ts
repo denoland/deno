@@ -171,7 +171,7 @@ export const kCreatePrivate = KeyHandleContext.kCreatePrivate;
 
 function isJwk(obj: unknown): obj is { kty: unknown } {
   // @ts-ignore this is fine
-  return typeof obj === "object" && obj != null && obj.kty !== undefined;
+  return typeof obj === "object" && obj?.kty !== undefined;
 }
 
 export type KeyObjectHandle = { ___keyObjectHandle: true };
@@ -472,7 +472,7 @@ function parseKeyEncoding(
     ({ cipher, passphrase, encoding } = enc);
 
     if (!isInput) {
-      if (cipher != null) {
+      if (cipher !== undefined) {
         if (typeof cipher !== "string") {
           throw new ERR_INVALID_ARG_VALUE(option("cipher", objName), cipher);
         }
@@ -493,7 +493,7 @@ function parseKeyEncoding(
     if (
       (isInput && passphrase !== undefined &&
         !isStringOrBuffer(passphrase)) ||
-      (!isInput && cipher != null && !isStringOrBuffer(passphrase))
+      (!isInput && cipher !== undefined && !isStringOrBuffer(passphrase))
     ) {
       throw new ERR_INVALID_ARG_VALUE(
         option("passphrase", objName),

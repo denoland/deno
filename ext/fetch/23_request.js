@@ -547,7 +547,7 @@ webidl.converters["Request"] = webidl.createInterfaceConverter(
 );
 webidl.converters["RequestInfo_DOMString"] = (V, prefix, context, opts) => {
   // Union for (Request or USVString)
-  if (typeof V == "object") {
+  if (typeof V === "object") {
     if (ObjectPrototypeIsPrototypeOf(RequestPrototype, V)) {
       return webidl.converters["Request"](V, prefix, context, opts);
     }

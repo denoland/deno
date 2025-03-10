@@ -503,7 +503,7 @@ export function buildMessage(
   ArrayPrototypeForEach(diffResult, (result: DiffResult<string>) => {
     const c = createColor(result.type);
 
-    const line = result.details != null
+    const line = result.details !== undefined
       ? ArrayPrototypeJoin(
         ArrayPrototypeMap(result.details, (detail) =>
           detail.type !== DiffType.common

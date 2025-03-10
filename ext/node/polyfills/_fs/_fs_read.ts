@@ -62,7 +62,7 @@ export function read(
     throw new ERR_INVALID_ARG_TYPE("fd", "number", fd);
   }
 
-  if (length == null) {
+  if (length === undefined || length === null) {
     length = 0;
   }
 
@@ -106,7 +106,7 @@ export function read(
     position = opt.position ?? null;
   }
 
-  if (position == null) {
+  if (position === undefined || position === null) {
     position = -1;
   }
 
@@ -172,7 +172,7 @@ export function readSync(
 
   validateBuffer(buffer);
 
-  if (length == null) {
+  if (length === undefined || length === null) {
     length = buffer.byteLength;
   }
 
@@ -186,7 +186,7 @@ export function readSync(
     position = opt.position ?? null;
   }
 
-  if (position == null) {
+  if (position === undefined || position === null) {
     position = -1;
   }
 

@@ -12,13 +12,13 @@ if (Deno.args.length === 0) {
 
 const args = Deno.args.slice();
 let verbose = false;
-if (args[0] == "-v") {
+if (args[0] === "-v") {
   args.shift();
   verbose = true;
 }
 
 let profile = "release";
-if (args[0] == "--profile") {
+if (args[0] === "--profile") {
   args.shift();
   profile = args.shift();
 }
@@ -35,12 +35,12 @@ await Deno.stat(gitDir);
 async function runCommand(human: string, cmd) {
   if (verbose) {
     const out = await cmd.noThrow();
-    if (out.code != 0) {
+    if (out.code !== 0) {
       exit(human);
     }
   } else {
     const out = await cmd.stdout("piped").stderr("piped").noThrow();
-    if (out.code != 0) {
+    if (out.code !== 0) {
       $.logLight("stdout");
       $.logGroup();
       $.log(out.stdout);
@@ -61,7 +61,7 @@ async function buildGitCommit(progress, commit) {
     await $`git log --pretty=oneline --abbrev-commit -n1 ${commit}`.stdout(
       "piped",
     ).stderr("piped").noThrow();
-  if (gitInfo.code != 0) {
+  if (gitInfo.code !== 0) {
     $.log(gitInfo.stdout);
     $.log(gitInfo.stderr);
     exit(`Failed to get git info for commit ${commit}`);

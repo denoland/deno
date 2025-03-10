@@ -63,7 +63,7 @@ Deno.test(async function testSignVerify() {
 
       assert(signature);
       assert(signature.byteLength > 0);
-      assert(signature.byteLength % 8 == 0);
+      assert(signature.byteLength % 8 === 0);
       assert(signature instanceof ArrayBuffer);
 
       const verified = await subtle.verify(
@@ -377,7 +377,7 @@ Deno.test(async function generateImportHmacJwk() {
   assertEquals(exportedKey.alg, "HS512");
   assertEquals(exportedKey.key_ops, ["sign"]);
   assertEquals(exportedKey.ext, true);
-  assert(typeof exportedKey.k == "string");
+  assert(typeof exportedKey.k === "string");
   assertEquals(exportedKey.k.length, 171);
 });
 
@@ -1074,7 +1074,7 @@ Deno.test(async function testImportRsaJwk() {
         "SHA-512": "PS512",
       };
 
-      if (size == 1024 && hash == "SHA-512") {
+      if (size === 1024 && hash === "SHA-512") {
         continue;
       }
 
@@ -1128,7 +1128,7 @@ Deno.test(async function testImportRsaJwk() {
         "SHA-512": "RS512",
       };
 
-      if (size == 1024 && hash == "SHA-512") {
+      if (size === 1024 && hash === "SHA-512") {
         continue;
       }
 
@@ -1184,7 +1184,7 @@ Deno.test(async function testImportRsaJwk() {
         "SHA-512": "RSA-OAEP-512",
       };
 
-      if (size == 1024 && hash == "SHA-512") {
+      if (size === 1024 && hash === "SHA-512") {
         continue;
       }
 
@@ -1565,8 +1565,8 @@ Deno.test(async function testImportEcSpkiPkcs8() {
       const hash of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]
     ) {
       if (
-        (hash == "SHA-256" && namedCurve == "P-256") ||
-        (hash == "SHA-384" && namedCurve == "P-384")
+        (hash === "SHA-256" && namedCurve === "P-256") ||
+        (hash === "SHA-384" && namedCurve === "P-384")
       ) {
         const signatureECDSA = await subtle.sign(
           { name: "ECDSA", hash },
