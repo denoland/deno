@@ -81,7 +81,6 @@ use crate::resolver::CliNpmReqResolver;
 use crate::resolver::CliResolver;
 use crate::resolver::FoundPackageJsonDepFlag;
 use crate::sys::CliSys;
-use crate::tsc;
 use crate::tsc::into_specifier_and_media_type;
 use crate::util::progress_bar::ProgressBar;
 use crate::util::progress_bar::ProgressBarStyle;

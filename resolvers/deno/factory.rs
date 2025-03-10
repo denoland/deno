@@ -23,7 +23,6 @@ use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
 use node_resolver::cache::NodeResolutionSys;
-use node_resolver::ConditionsFromResolutionMode;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
 use node_resolver::NodeResolverOptions;

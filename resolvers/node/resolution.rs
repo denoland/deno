@@ -11,6 +11,7 @@ use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
 use deno_semver::Version;
+use deno_semver::VersionReq;
 use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
@@ -1170,7 +1171,7 @@ impl<
 
         if key == "default"
           || conditions.contains(&key.as_str())
-          || resolution_kind.is_types() && key.as_str() == "types"
+          || resolution_kind.is_types() && self.matches_types_key(key)
         {
           let resolved = self.resolve_package_target(
             package_json_path,
@@ -1206,6 +1207,22 @@ impl<
       }
       .into(),
     )
+  }
+
+  fn matches_types_key(&self, key: &str) -> bool {
+    if key == "types" {
+      return true;
+    }
+    let Some(ts_version) = &self.typescript_version else {
+      return false;
+    };
+    let Some(constraint) = key.strip_prefix("types@") else {
+      return false;
+    };
+    let Ok(version_req) = VersionReq::parse_from_npm(constraint) else {
+      return false;
+    };
+    version_req.matches(ts_version)
   }
 
   #[allow(clippy::too_many_arguments)]
