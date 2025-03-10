@@ -61,13 +61,13 @@ interface Window extends EventTarget {
 
   /** Handler for unhandled promise rejection events */
   onunhandledrejection:
-  | ((this: Window, ev: PromiseRejectionEvent) => any)
-  | null;
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
 
   /** Handler for handled promise rejection events */
   onrejectionhandled:
-  | ((this: Window, ev: PromiseRejectionEvent) => any)
-  | null;
+    | ((this: Window, ev: PromiseRejectionEvent) => any)
+    | null;
 
   /** Closes the current window */
   close: () => void;
@@ -142,7 +142,7 @@ interface Window extends EventTarget {
 /** @category Platform */
 declare var Window: {
   readonly prototype: Window;
-  new(): never;
+  new (): never;
 };
 
 /**
@@ -371,7 +371,7 @@ interface Navigator {
 /** @category Platform */
 declare var Navigator: {
   readonly prototype: Navigator;
-  new(): never;
+  new (): never;
 };
 
 /** @category Platform */
@@ -572,7 +572,7 @@ interface Location {
  */
 declare var Location: {
   readonly prototype: Location;
-  new(): never;
+  new (): never;
 };
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
