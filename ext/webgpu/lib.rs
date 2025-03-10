@@ -64,7 +64,11 @@ pub type Instance = Arc<wgpu_core::global::Global>;
 deno_core::extension!(
   deno_webgpu,
   deps = [deno_webidl, deno_web],
-  ops = [op_create_gpu],
+  ops = [
+    op_create_gpu,
+    device::op_webgpu_device_start_capture,
+    device::op_webgpu_device_stop_capture,
+  ],
   objects = [
     GPU,
     adapter::GPUAdapter,
