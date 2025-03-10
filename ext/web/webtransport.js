@@ -682,10 +682,14 @@ class WebTransportDatagramDuplexStream {
     }
 
     this.#promise = promise;
-    PromisePrototypeThen(promise, ({ conn, sessionIdBuf }) => {
-      this.#conn = conn;
-      this.#sessionIdBuf = sessionIdBuf;
-    });
+    PromisePrototypeThen(
+      promise,
+      ({ conn, sessionIdBuf }) => {
+        this.#conn = conn;
+        this.#sessionIdBuf = sessionIdBuf;
+      },
+      () => {},
+    );
 
     this.#receiveDatagrams();
   }
