@@ -10,6 +10,7 @@ use anyhow::Error as AnyError;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
+use deno_semver::Version;
 use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
@@ -168,6 +169,13 @@ enum ResolvedMethod {
   PackageSubPath,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct NodeResolverOptions {
+  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  /// TypeScript version to use for typesVersions resolution.
+  pub typescript_version: Option<Version>,
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -196,6 +204,7 @@ pub struct NodeResolver<
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: NodeResolutionSys<TSys>,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  typescript_version: Option<Version>,
 }
 
 impl<
@@ -217,7 +226,7 @@ impl<
     npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: NodeResolutionSys<TSys>,
-    conditions_from_resolution_mode: ConditionsFromResolutionMode,
+    options: NodeResolverOptions,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -225,7 +234,8 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      conditions_from_resolution_mode,
+      conditions_from_resolution_mode: options.conditions_from_resolution_mode,
+      typescript_version: options.typescript_version,
     }
   }
 
