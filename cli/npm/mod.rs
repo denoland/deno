@@ -3,18 +3,24 @@
 pub mod installer;
 mod managed;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use deno_config::workspace::Workspace;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::StackString;
+use deno_semver::Version;
 use http::HeaderName;
 use http::HeaderValue;
 
@@ -38,6 +44,64 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
+
+#[derive(Debug, Default)]
+pub struct WorkspaceNpmPatchPackages(
+  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+);
+
+impl WorkspaceNpmPatchPackages {
+  pub fn from_workspace(workspace: &Workspace) -> Self {
+    let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
+      HashMap::new();
+    for pkg_json in workspace.patch_pkg_jsons() {
+      let Some(name) = pkg_json.name.as_ref() else {
+        continue;
+      };
+      // todo(THIS PR): surface this error
+      let Some(version) = pkg_json
+        .version
+        .as_ref()
+        .and_then(|v| Version::parse_from_npm(v).ok())
+      else {
+        continue;
+      };
+      let entry = entries.entry(PackageName::from_str(name)).or_default();
+      entry.push(NpmPackageVersionInfo {
+        version,
+        dist: None,
+        // todo...
+        bin: None,
+        dependencies: pkg_json
+          .dependencies
+          .as_ref()
+          .map(|d| {
+            d.into_iter()
+              .map(|(k, v)| {
+                (StackString::from_str(k), StackString::from_str(v))
+              })
+              .collect()
+          })
+          .unwrap_or_default(),
+        // todo...
+        optional_dependencies: Default::default(),
+        // todo...
+        peer_dependencies: Default::default(),
+        // todo...
+        peer_dependencies_meta: Default::default(),
+        // todo...
+        os: Default::default(),
+        // todo...
+        cpu: Default::default(),
+        // todo...
+        scripts: Default::default(),
+        // todo...
+        deprecated: Default::default(),
+      })
+    }
+    Self(entries)
+  }
+}
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

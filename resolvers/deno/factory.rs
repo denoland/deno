@@ -45,10 +45,12 @@ use sys_traits::SystemRandom;
 use sys_traits::SystemTimeNow;
 use sys_traits::ThreadSleep;
 use thiserror::Error;
+use url::Url;
 
 use crate::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use crate::npm::managed::ManagedNpmResolverCreateOptions;
 use crate::npm::managed::NpmResolutionCellRc;
+use crate::npm::ByonmInNpmPkgCheckerCreateOptions;
 use crate::npm::ByonmNpmResolverCreateOptions;
 use crate::npm::CreateInNpmPkgCheckerOptions;
 use crate::npm::DenoInNpmPackageChecker;
@@ -656,7 +658,11 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
   ) -> Result<&DenoInNpmPackageChecker, anyhow::Error> {
     self.in_npm_package_checker.get_or_try_init(|| {
       let options = match self.use_byonm()? {
-        true => CreateInNpmPkgCheckerOptions::Byonm,
+        true => CreateInNpmPkgCheckerOptions::Byonm(
+          ByonmInNpmPkgCheckerCreateOptions {
+            patch_pkg_folders: self.patch_pkg_folders()?,
+          },
+        ),
         false => CreateInNpmPkgCheckerOptions::Managed(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: self
@@ -666,11 +672,29 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             maybe_node_modules_path: self
               .workspace_factory
               .node_modules_dir_path()?,
+            patch_pkg_folders: self.patch_pkg_folders()?,
           },
         ),
       };
       Ok(DenoInNpmPackageChecker::new(options))
     })
+  }
+
+  fn patch_pkg_folders(&self) -> Result<Vec<Url>, anyhow::Error> {
+    let mut pkg_folders = Vec::new();
+    for pkg_json in self
+      .workspace_factory
+      .workspace_directory()?
+      .workspace
+      .patch_pkg_jsons()
+    {
+      if pkg_json.name.is_some() && pkg_json.version.is_some() {
+        pkg_folders.push(deno_path_util::url_from_directory_path(
+          pkg_json.dir_path(),
+        )?);
+      }
+    }
+    Ok(pkg_folders)
   }
 
   pub fn node_resolver(

@@ -92,6 +92,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmResolutionInitializer;
+use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
@@ -587,6 +588,10 @@ impl CliFactory {
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
+          // todo(THIS PR): share this
+          Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+            cli_options.workspace().as_ref(),
+          )),
           match resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -613,6 +618,9 @@ impl CliFactory {
         self.npm_registry_info_provider()?.clone(),
         self.npm_resolution()?.clone(),
         cli_options.maybe_lockfile().cloned(),
+        Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          cli_options.workspace().as_ref(),
+        )),
       )))
     })
   }

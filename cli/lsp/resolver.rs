@@ -25,6 +25,7 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::ByonmInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
@@ -752,6 +753,8 @@ impl<'a> ResolverFactory<'a> {
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
         registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
+        // todo(THIS PR): don't pass this here
+        Default::default(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -776,6 +779,7 @@ impl<'a> ResolverFactory<'a> {
         registry_info_provider,
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
+        Default::default(),
       ));
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),
@@ -887,13 +891,20 @@ impl<'a> ResolverFactory<'a> {
     self.services.in_npm_pkg_checker.get_or_init(|| {
       DenoInNpmPackageChecker::new(match &self.services.npm_resolver {
         Some(CliNpmResolver::Byonm(_)) | None => {
-          CreateInNpmPkgCheckerOptions::Byonm
+          CreateInNpmPkgCheckerOptions::Byonm(
+            ByonmInNpmPkgCheckerCreateOptions {
+              // todo(THIS PR): make this work
+              patch_pkg_folders: Vec::new(),
+            },
+          )
         }
         Some(CliNpmResolver::Managed(m)) => {
           CreateInNpmPkgCheckerOptions::Managed(
             ManagedInNpmPkgCheckerCreateOptions {
               root_cache_dir_url: m.global_cache_root_url(),
               maybe_node_modules_path: m.root_node_modules_path(),
+              // todo(THIS PR): make this work
+              patch_pkg_folders: Vec::new(),
             },
           )
         }

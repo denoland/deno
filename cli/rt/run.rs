@@ -50,6 +50,7 @@ use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::ManagedNpmResolverCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_resolver::npm::ByonmInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
@@ -724,6 +725,8 @@ pub async fn run(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: maybe_node_modules_path.as_deref(),
+            // todo(THIS PR): make this work
+            patch_pkg_folders: Default::default(),
           },
         ));
       let npm_resolution =
@@ -746,7 +749,12 @@ pub async fn run(
       let root_node_modules_dir =
         root_node_modules_dir.map(|p| vfs.root().join(p));
       let in_npm_pkg_checker =
-        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
+        DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm(
+          ByonmInNpmPkgCheckerCreateOptions {
+            // todo(THIS PR): make this work
+            patch_pkg_folders: Default::default(),
+          },
+        ));
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
           sys: node_resolution_sys.clone(),
@@ -770,6 +778,8 @@ pub async fn run(
           ManagedInNpmPkgCheckerCreateOptions {
             root_cache_dir_url: npm_cache_dir.root_dir_url(),
             maybe_node_modules_path: None,
+            // todo(THIS PR): make this work
+            patch_pkg_folders: Default::default(),
           },
         ));
       let npm_resolution = Arc::new(NpmResolutionCell::default());

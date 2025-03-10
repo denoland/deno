@@ -258,32 +258,42 @@ impl<TSys: FsCanonicalize + FsMetadata> NpmPackageFolderResolver
   }
 }
 
-#[derive(Debug, Clone)]
-pub struct ManagedInNpmPackageChecker {
-  root_dir: Url,
-}
-
-impl InNpmPackageChecker for ManagedInNpmPackageChecker {
-  fn in_npm_package(&self, specifier: &Url) -> bool {
-    specifier.as_ref().starts_with(self.root_dir.as_str())
-  }
-}
-
 #[derive(Debug)]
 pub struct ManagedInNpmPkgCheckerCreateOptions<'a> {
   pub root_cache_dir_url: &'a Url,
   pub maybe_node_modules_path: Option<&'a Path>,
+  pub patch_pkg_folders: Vec<Url>,
 }
 
-pub fn create_managed_in_npm_pkg_checker(
-  options: ManagedInNpmPkgCheckerCreateOptions,
-) -> ManagedInNpmPackageChecker {
-  let root_dir = match options.maybe_node_modules_path {
-    Some(node_modules_folder) => {
-      deno_path_util::url_from_directory_path(node_modules_folder).unwrap()
+#[derive(Debug, Clone)]
+pub struct ManagedInNpmPackageChecker {
+  root_dir: Url,
+  patch_pkg_folders: Vec<Url>,
+}
+
+impl ManagedInNpmPackageChecker {
+  pub fn new(options: ManagedInNpmPkgCheckerCreateOptions) -> Self {
+    let root_dir = match options.maybe_node_modules_path {
+      Some(node_modules_folder) => {
+        deno_path_util::url_from_directory_path(node_modules_folder).unwrap()
+      }
+      None => options.root_cache_dir_url.clone(),
+    };
+    debug_assert!(root_dir.as_str().ends_with('/'));
+    ManagedInNpmPackageChecker {
+      root_dir,
+      patch_pkg_folders: options.patch_pkg_folders,
     }
-    None => options.root_cache_dir_url.clone(),
-  };
-  debug_assert!(root_dir.as_str().ends_with('/'));
-  ManagedInNpmPackageChecker { root_dir }
+  }
+}
+
+impl InNpmPackageChecker for ManagedInNpmPackageChecker {
+  fn in_npm_package(&self, specifier: &Url) -> bool {
+    for patch_folder in &self.patch_pkg_folders {
+      if specifier.as_str().starts_with(patch_folder.as_str()) {
+        return true;
+      }
+    }
+    specifier.as_ref().starts_with(self.root_dir.as_str())
+  }
 }
