@@ -173,7 +173,8 @@ enum ResolvedMethod {
 #[derive(Debug, Default, Clone)]
 pub struct NodeResolverOptions {
   pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
-  /// TypeScript version to use for typesVersions resolution.
+  /// TypeScript version to use for typesVersions resolution and
+  /// `types@req` exports resolution.
   pub typescript_version: Option<Version>,
 }
 
