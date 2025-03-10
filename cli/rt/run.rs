@@ -786,7 +786,7 @@ pub async fn run(
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
     node_resolution_sys,
-    node_resolver::ConditionsFromResolutionMode::default(),
+    node_resolver::NodeResolverOptions::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),

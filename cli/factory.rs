@@ -49,6 +49,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
@@ -697,7 +698,15 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
-          conditions_from_resolution_mode: Default::default(),
+          node_resolver_options: NodeResolverOptions {
+            conditions_from_resolution_mode: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
