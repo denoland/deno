@@ -14,33 +14,101 @@ interface WindowEventMap {
   "rejectionhandled": PromiseRejectionEvent;
 }
 
-/** @category Platform */
+/**
+ * The Window interface represents the window containing the DOM document. In Deno,
+ * it provides a subset of the web platform's Window APIs that are relevant for the runtime.
+ *
+ * The window object implements the Window interface, which provides access to:
+ * - Window-specific properties and methods
+ * - Event handling capabilities through EventTarget
+ * - Global scope objects and functions
+ *
+ * @example
+ * ```ts
+ * // Accessing window properties
+ * console.log(window.navigator.userAgent);
+ *
+ * // Using window methods
+ * window.alert("Hello Deno!");
+ *
+ * // Event handling
+ * window.addEventListener("load", () => {
+ *   console.log("Window loaded");
+ * });
+ * ```
+ *
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window}
+ * @category Platform
+ */
 interface Window extends EventTarget {
+  /** Reference to the current window object */
   readonly window: Window & typeof globalThis;
+
+  /** Reference to the current window object */
   readonly self: Window & typeof globalThis;
+
+  /** Handler for error events */
   onerror: ((this: Window, ev: ErrorEvent) => any) | null;
+
+  /** Handler for load events */
   onload: ((this: Window, ev: Event) => any) | null;
+
+  /** Handler for before unload events */
   onbeforeunload: ((this: Window, ev: Event) => any) | null;
+
+  /** Handler for unload events */
   onunload: ((this: Window, ev: Event) => any) | null;
+
+  /** Handler for unhandled promise rejection events */
   onunhandledrejection:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
+
+  /** Handler for handled promise rejection events */
   onrejectionhandled:
-    | ((this: Window, ev: PromiseRejectionEvent) => any)
-    | null;
+  | ((this: Window, ev: PromiseRejectionEvent) => any)
+  | null;
+
+  /** Closes the current window */
   close: () => void;
+
+  /** Indicates whether the window is closed */
   readonly closed: boolean;
+
+  /** Displays an alert dialog with the specified message */
   alert: (message?: string) => void;
+
+  /** Displays a confirmation dialog with the specified message */
   confirm: (message?: string) => boolean;
+
+  /** Displays a prompt dialog with the specified message and optional default value */
   prompt: (message?: string, defaultValue?: string) => string | null;
+
+  /** Reference to the global Deno namespace */
   Deno: typeof Deno;
+
+  /** Constructor for Navigator objects */
   Navigator: typeof Navigator;
+
+  /** Reference to the Navigator object */
   navigator: Navigator;
+
+  /** Constructor for Location objects */
   Location: typeof Location;
+
+  /** Reference to the Location object */
   location: Location;
+
+  /** Reference to localStorage API */
   localStorage: Storage;
+
+  /** Reference to sessionStorage API */
   sessionStorage: Storage;
+
+  /** Reference to the Cache API */
   caches: CacheStorage;
+
+  /** The name of the window */
   name: string;
 
   addEventListener<K extends keyof WindowEventMap>(
@@ -74,14 +142,68 @@ interface Window extends EventTarget {
 /** @category Platform */
 declare var Window: {
   readonly prototype: Window;
-  new (): never;
+  new(): never;
 };
 
-/** @category Platform */
+/**
+ * Global window object that provides access to the Window interface.
+ * Represents the global context in Deno runtime.
+ *
+ * @example
+ * ```ts
+ * // Access window properties
+ * console.log(window.navigator.userAgent);
+ *
+ * // Use window methods
+ * window.addEventListener('load', () => {
+ *   console.log('Window loaded');
+ * });
+ * ```
+ *
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window}
+ * @category Platform
+ */
 declare var window: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Reference to the current window object.
+ * In Deno, self is equivalent to window and provides access to the global scope.
+ *
+ * @example
+ * ```ts
+ * // self and window are equivalent
+ * console.log(self === window); // true
+ *
+ * // Access global APIs
+ * self.addEventListener('error', (e) => {
+ *   console.error('Error:', e);
+ * });
+ * ```
+ *
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window/self}
+ * @category Platform
+ */
 declare var self: Window & typeof globalThis;
-/** @category Platform */
+
+/**
+ * Indicates whether the window is closed.
+ * In Deno, this reflects the state of the runtime process.
+ *
+ * @example
+ * ```ts
+ * // Check if window is closed
+ * if (!closed) {
+ *   // Perform operations
+ * }
+ *
+ * // Close the window/process
+ * close();
+ * console.log(closed); // true
+ * ```
+ *
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Window/closed}
+ * @category Platform
+ */
 declare var closed: boolean;
 
 /**
@@ -249,7 +371,7 @@ interface Navigator {
 /** @category Platform */
 declare var Navigator: {
   readonly prototype: Navigator;
-  new (): never;
+  new(): never;
 };
 
 /** @category Platform */
@@ -450,7 +572,7 @@ interface Location {
  */
 declare var Location: {
   readonly prototype: Location;
-  new (): never;
+  new(): never;
 };
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
