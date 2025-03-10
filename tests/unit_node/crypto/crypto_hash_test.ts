@@ -2,7 +2,7 @@
 import { createHash, createHmac, getHashes, hash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals } from "jsr:@std/assert";
 
 // https://github.com/denoland/deno/issues/18140
 Deno.test({
@@ -131,4 +131,14 @@ Deno.test("[node/crypto.hash] does not leak", () => {
 Deno.test("[node/crypto.hash] oneshot hash API", () => {
   const d = hash("sha1", "Node.js");
   assertEquals(d, "10b3493287f831e81a438811a1ffba01f8cec4b7");
+});
+
+Deno.test("[node/crypto.hash] shake-128 alias", () => {
+  const d = hash("shake-128", "Node.js", "base64url");
+  assertEquals(d, "Nkx9-EgHpFkeXY5OPsL0rg");
+});
+
+Deno.test("[node/crypto.hash] shake-256 alias", () => {
+  const d = hash("shake-256", "Node.js", "base64url");
+  assertEquals(d, "JdelDxiwp92tkk9jYjEFPMlHD0gC8bMbYtHRCIM6TTQ");
 });
