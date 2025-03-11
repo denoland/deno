@@ -1408,23 +1408,6 @@ export function parsePairKeyValue(
   return { key, value, metadata };
 }
 
-export function parseKeyPairsIntoRecord(
-  value?: string,
-): Record<string, string> {
-  if (typeof value !== "string" || value.length === 0) return {};
-  return value
-    .split(BAGGAGE_ITEMS_SEPARATOR)
-    .map((entry) => {
-      return parsePairKeyValue(entry);
-    })
-    .filter((keyPair) => keyPair !== undefined && keyPair.value.length > 0)
-    .reduce<Record<string, string>>((headers, keyPair) => {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      headers[keyPair!.key] = keyPair!.value;
-      return headers;
-    }, {});
-}
-
 class BaggageImpl implements Baggage {
   #entries: Map<string, BaggageEntry>;
 
