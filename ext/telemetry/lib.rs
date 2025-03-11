@@ -128,17 +128,41 @@ pub struct OtelConfig {
   pub metrics_enabled: bool,
   pub console: OtelConsoleConfig,
   pub deterministic: bool,
+  pub propagators: std::collections::HashSet<OtelPropagators>,
 }
 
 impl OtelConfig {
   pub fn as_v8(&self) -> Box<[u8]> {
-    Box::new([
+    let mut data = vec![
       self.tracing_enabled as u8,
       self.metrics_enabled as u8,
       self.console as u8,
       self.deterministic as u8,
-    ])
+    ];
+
+    data.extend(self.propagators.iter().map(|propagator| *propagator as u8));
+
+    data.into_boxed_slice()
   }
+}
+
+#[derive(
+  Default,
+  Debug,
+  Clone,
+  Copy,
+  Serialize,
+  Deserialize,
+  Eq,
+  PartialEq,
+  Hash,
+)]
+#[repr(u8)]
+pub enum OtelPropagators {
+  TraceContext = 0,
+  Baggage = 1,
+  #[default]
+  None = 2,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

@@ -61,6 +61,7 @@ import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,
   enterSpan,
+  PROPAGATORS,
   restoreContext,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
@@ -371,6 +372,14 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
+        for (const propagator of PROPAGATORS) {
+          propagator.inject(context, requestObject.headers, {
+            set(carrier, key, value) {
+              carrier.append(key, value);
+            },
+          });
+        }
+
         updateSpanFromRequest(span, requestObject);
       }
 

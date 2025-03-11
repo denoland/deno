@@ -91,6 +91,7 @@ import {
   builtinTracer,
   enterSpan,
   METRICS_ENABLED,
+  PROPAGATORS,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -628,7 +629,19 @@ function mapToCallback(context, callback, onError) {
       setAsyncContext(context.asyncContext);
       const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
       try {
-        enterSpan(span);
+        const otelContext = enterSpan(span);
+
+        for (const propagator of PROPAGATORS) {
+          propagator.extract(otelContext, req.headers, {
+            get(carrier: Headers, key: string) {
+              return carrier.get(key);
+            },
+            keys(carrier: Headers) {
+              return [...carrier.keys()];
+            },
+          });
+        }
+
         return SafePromisePrototypeFinally(
           origMapped(req, span),
           () => span.end(),

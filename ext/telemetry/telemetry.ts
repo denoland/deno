@@ -49,6 +49,41 @@ const { AsyncVariable, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
+export let PROPAGATORS: TextMapPropagator[] = [];
+
+const VERSION = "00";
+const VERSION_PART = "(?!ff)[\\da-f]{2}";
+const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
+const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
+const FLAGS_PART = "[\\da-f]{2}";
+const TRACE_PARENT_REGEX = new RegExp(
+  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
+);
+const VALID_TRACEID_REGEX = /^([0-9a-f]{32})$/i;
+const VALID_SPANID_REGEX = /^[0-9a-f]{16}$/i;
+const MAX_TRACE_STATE_ITEMS = 32;
+const MAX_TRACE_STATE_LEN = 512;
+const LIST_MEMBERS_SEPARATOR = ",";
+const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
+const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
+const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
+const VALID_VENDOR_KEY =
+  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
+const VALID_KEY_REGEX = new RegExp(`^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`);
+const VALID_VALUE_BASE_REGEX = /^[ -~]{0,255}[!-~]$/;
+const INVALID_VALUE_COMMA_EQUAL_REGEX = /,|=/;
+
+const TRACE_PARENT_HEADER = "traceparent";
+const TRACE_STATE_HEADER = "tracestate";
+const INVALID_TRACEID = "00000000000000000000000000000000";
+const INVALID_SPANID = "0000000000000000";
+const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
+const BAGGAGE_PROPERTIES_SEPARATOR = ";";
+const BAGGAGE_ITEMS_SEPARATOR = ",";
+const BAGGAGE_HEADER = "baggage";
+const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
+const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
+const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -1076,6 +1111,418 @@ function otelLog(message: string, level: number) {
   }
 }
 
+const otelPropagators = {
+  traceContext: 0,
+  baggage: 1,
+  none: 2,
+};
+
+function parseTraceParent(traceParent: string): SpanContext | null {
+  const match = TRACE_PARENT_REGEX.exec(traceParent);
+  if (!match) return null;
+
+  // According to the specification the implementation should be compatible
+  // with future versions. If there are more parts, we only reject it if it's using version 00
+  // See https://www.w3.org/TR/trace-context/#versioning-of-traceparent
+  if (match[1] === "00" && match[5]) return null;
+
+  return {
+    traceId: match[2],
+    spanId: match[3],
+    traceFlags: parseInt(match[4], 16),
+  };
+}
+
+interface TextMapSetter<Carrier = any> {
+  set(carrier: Carrier, key: string, value: string): void;
+}
+
+interface TextMapPropagator<Carrier = any> {
+  inject(
+    context: Context,
+    carrier: Carrier,
+    setter: TextMapSetter<Carrier>,
+  ): void;
+  extract(
+    context: Context,
+    carrier: Carrier,
+    getter: TextMapGetter<Carrier>,
+  ): Context;
+  fields(): string[];
+}
+
+interface TextMapGetter<Carrier = any> {
+  keys(carrier: Carrier): string[];
+  get(carrier: Carrier, key: string): undefined | string | string[];
+}
+
+function isTracingSuppressed(context: Context): boolean {
+  return context.getValue(
+    SymbolFor("OpenTelemetry SDK Context Key SUPPRESS_TRACING"),
+  ) === true;
+}
+
+function isValidTraceId(traceId: string): boolean {
+  return VALID_TRACEID_REGEX.test(traceId) && traceId !== INVALID_TRACEID;
+}
+
+function isValidSpanId(spanId: string): boolean {
+  return VALID_SPANID_REGEX.test(spanId) && spanId !== INVALID_SPANID;
+}
+
+function isSpanContextValid(spanContext: SpanContext): boolean {
+  return (
+    isValidTraceId(spanContext.traceId) && isValidSpanId(spanContext.spanId)
+  );
+}
+
+function validateKey(key: string): boolean {
+  return VALID_KEY_REGEX.test(key);
+}
+
+function validateValue(value: string): boolean {
+  return (
+    VALID_VALUE_BASE_REGEX.test(value) &&
+    !INVALID_VALUE_COMMA_EQUAL_REGEX.test(value)
+  );
+}
+
+class TraceStateClass implements TraceState {
+  private _internalState: Map<string, string> = new Map();
+
+  constructor(rawTraceState?: string) {
+    if (rawTraceState) this._parse(rawTraceState);
+  }
+
+  set(key: string, value: string): TraceStateClass {
+    const traceState = this._clone();
+    if (traceState._internalState.has(key)) {
+      traceState._internalState.delete(key);
+    }
+    traceState._internalState.set(key, value);
+    return traceState;
+  }
+
+  unset(key: string): TraceStateClass {
+    const traceState = this._clone();
+    traceState._internalState.delete(key);
+    return traceState;
+  }
+
+  get(key: string): string | undefined {
+    return this._internalState.get(key);
+  }
+
+  serialize(): string {
+    return this._keys()
+      .reduce((agg: string[], key) => {
+        agg.push(key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key));
+        return agg;
+      }, [])
+      .join(LIST_MEMBERS_SEPARATOR);
+  }
+
+  private _parse(rawTraceState: string) {
+    if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
+    this._internalState = rawTraceState
+      .split(LIST_MEMBERS_SEPARATOR)
+      .reverse() // Store in reverse so new keys (.set(...)) will be placed at the beginning
+      .reduce((agg: Map<string, string>, part: string) => {
+        const listMember = part.trim(); // Optional Whitespace (OWS) handling
+        const i = listMember.indexOf(LIST_MEMBER_KEY_VALUE_SPLITTER);
+        if (i !== -1) {
+          const key = listMember.slice(0, i);
+          const value = listMember.slice(i + 1, part.length);
+          if (validateKey(key) && validateValue(value)) {
+            agg.set(key, value);
+          } else {
+            // TODO: Consider to add warning log
+          }
+        }
+        return agg;
+      }, new Map());
+
+    // Because of the reverse() requirement, trunc must be done after map is created
+    if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
+      this._internalState = new Map(
+        Array.from(this._internalState.entries())
+          .reverse() // Use reverse same as original tracestate parse chain
+          .slice(0, MAX_TRACE_STATE_ITEMS),
+      );
+    }
+  }
+
+  private _keys(): string[] {
+    return Array.from(this._internalState.keys()).reverse();
+  }
+
+  private _clone(): TraceStateClass {
+    const traceState = new TraceStateClass();
+    traceState._internalState = new Map(this._internalState);
+    return traceState;
+  }
+}
+
+class W3CTraceContextPropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const spanContext = context.getValue(SPAN_KEY) as SpanContext;
+    if (
+      !spanContext ||
+      isTracingSuppressed(context) ||
+      !isSpanContextValid(spanContext)
+    ) {
+      return;
+    }
+
+    const traceParent =
+      `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
+        Number(spanContext.traceFlags || 0).toString(16)
+      }`;
+
+    setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
+    if (spanContext.traceState) {
+      setter.set(
+        carrier,
+        TRACE_STATE_HEADER,
+        spanContext.traceState.serialize(),
+      );
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
+    if (!traceParentHeader) return context;
+    const traceParent = Array.isArray(traceParentHeader)
+      ? traceParentHeader[0]
+      : traceParentHeader;
+    if (typeof traceParent !== "string") return context;
+    const spanContext = parseTraceParent(traceParent);
+    if (!spanContext) return context;
+
+    spanContext.isRemote = true;
+
+    const traceStateHeader = getter.get(carrier, TRACE_STATE_HEADER);
+    if (traceStateHeader) {
+      // If more than one `tracestate` header is found, we merge them into a
+      // single header.
+      const state = Array.isArray(traceStateHeader)
+        ? traceStateHeader.join(",")
+        : traceStateHeader;
+      spanContext.traceState = new TraceStateClass(
+        typeof state === "string" ? state : undefined,
+      );
+    }
+    return context.setValue(SPAN_KEY, spanContext);
+  }
+
+  fields(): string[] {
+    return [TRACE_PARENT_HEADER, TRACE_STATE_HEADER];
+  }
+}
+
+const baggageEntryMetadataSymbol = SymbolFor("BaggageEntryMetadata");
+
+type BaggageEntryMetadata = { toString(): string } & {
+  __TYPE__: typeof baggageEntryMetadataSymbol;
+};
+
+interface BaggageEntry {
+  value: string;
+  metadata?: BaggageEntryMetadata;
+}
+
+interface ParsedBaggageKeyValue {
+  key: string;
+  value: string;
+  metadata: BaggageEntryMetadata | undefined;
+}
+
+export interface Baggage {
+  getEntry(key: string): BaggageEntry | undefined;
+  getAllEntries(): [string, BaggageEntry][];
+  setEntry(key: string, entry: BaggageEntry): Baggage;
+  removeEntry(key: string): Baggage;
+  removeEntries(...key: string[]): Baggage;
+  clear(): Baggage;
+}
+
+export function baggageEntryMetadataFromString(
+  str: string,
+): BaggageEntryMetadata {
+  if (typeof str !== "string") {
+    str = "";
+  }
+
+  return {
+    __TYPE__: baggageEntryMetadataSymbol,
+    toString() {
+      return str;
+    },
+  };
+}
+
+export function serializeKeyPairs(keyPairs: string[]): string {
+  return keyPairs.reduce((hValue: string, current: string) => {
+    const value = `${hValue}${
+      hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
+    }${current}`;
+    return value.length > BAGGAGE_MAX_TOTAL_LENGTH ? hValue : value;
+  }, "");
+}
+
+export function getKeyPairs(baggage: Baggage): string[] {
+  return baggage.getAllEntries().map(([key, value]) => {
+    let entry = `${encodeURIComponent(key)}=${encodeURIComponent(value.value)}`;
+
+    // include opaque metadata if provided
+    // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
+    if (value.metadata !== undefined) {
+      entry += BAGGAGE_PROPERTIES_SEPARATOR + value.metadata.toString();
+    }
+
+    return entry;
+  });
+}
+
+export function parsePairKeyValue(
+  entry: string,
+): ParsedBaggageKeyValue | undefined {
+  const valueProps = entry.split(BAGGAGE_PROPERTIES_SEPARATOR);
+  if (valueProps.length <= 0) return;
+  const keyPairPart = valueProps.shift();
+  if (!keyPairPart) return;
+  const separatorIndex = keyPairPart.indexOf(BAGGAGE_KEY_PAIR_SEPARATOR);
+  if (separatorIndex <= 0) return;
+  const key = decodeURIComponent(
+    keyPairPart.substring(0, separatorIndex).trim(),
+  );
+  const value = decodeURIComponent(
+    keyPairPart.substring(separatorIndex + 1).trim(),
+  );
+  let metadata;
+  if (valueProps.length > 0) {
+    metadata = baggageEntryMetadataFromString(
+      valueProps.join(BAGGAGE_PROPERTIES_SEPARATOR),
+    );
+  }
+  return { key, value, metadata };
+}
+
+export function parseKeyPairsIntoRecord(
+  value?: string,
+): Record<string, string> {
+  if (typeof value !== "string" || value.length === 0) return {};
+  return value
+    .split(BAGGAGE_ITEMS_SEPARATOR)
+    .map((entry) => {
+      return parsePairKeyValue(entry);
+    })
+    .filter((keyPair) => keyPair !== undefined && keyPair.value.length > 0)
+    .reduce<Record<string, string>>((headers, keyPair) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      headers[keyPair!.key] = keyPair!.value;
+      return headers;
+    }, {});
+}
+
+class BaggageImpl implements Baggage {
+  #entries: Map<string, BaggageEntry>;
+
+  constructor(entries?: Map<string, BaggageEntry>) {
+    this.#entries = entries ? new Map(entries) : new Map();
+  }
+
+  getEntry(key: string): BaggageEntry | undefined {
+    const entry = this.#entries.get(key);
+    if (!entry) {
+      return undefined;
+    }
+
+    return Object.assign({}, entry);
+  }
+
+  getAllEntries(): [string, BaggageEntry][] {
+    return Array.from(this.#entries.entries()).map(([k, v]) => [k, v]);
+  }
+
+  setEntry(key: string, entry: BaggageEntry): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.set(key, entry);
+    return newBaggage;
+  }
+
+  removeEntry(key: string): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    newBaggage.#entries.delete(key);
+    return newBaggage;
+  }
+
+  removeEntries(...keys: string[]): BaggageImpl {
+    const newBaggage = new BaggageImpl(this.#entries);
+    for (const key of keys) {
+      newBaggage.#entries.delete(key);
+    }
+    return newBaggage;
+  }
+
+  clear(): BaggageImpl {
+    return new BaggageImpl();
+  }
+}
+
+export class W3CBaggagePropagator implements TextMapPropagator {
+  inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
+    const baggage = context.getValue(baggageEntryMetadataSymbol) as
+      | Baggage
+      | undefined;
+    if (!baggage || isTracingSuppressed(context)) return;
+    const keyPairs = getKeyPairs(baggage)
+      .filter((pair: string) => {
+        return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
+      })
+      .slice(0, BAGGAGE_MAX_NAME_VALUE_PAIRS);
+    const headerValue = serializeKeyPairs(keyPairs);
+    if (headerValue.length > 0) {
+      setter.set(carrier, BAGGAGE_HEADER, headerValue);
+    }
+  }
+
+  extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
+    const headerValue = getter.get(carrier, BAGGAGE_HEADER);
+    const baggageString = Array.isArray(headerValue)
+      ? headerValue.join(BAGGAGE_ITEMS_SEPARATOR)
+      : headerValue;
+    if (!baggageString) return context;
+    const baggage: Record<string, BaggageEntry> = {};
+    if (baggageString.length === 0) {
+      return context;
+    }
+    const pairs = baggageString.split(BAGGAGE_ITEMS_SEPARATOR);
+    pairs.forEach((entry) => {
+      const keyPair = parsePairKeyValue(entry);
+      if (keyPair) {
+        const baggageEntry: BaggageEntry = { value: keyPair.value };
+        if (keyPair.metadata) {
+          baggageEntry.metadata = keyPair.metadata;
+        }
+        baggage[keyPair.key] = baggageEntry;
+      }
+    });
+    if (Object.entries(baggage).length === 0) {
+      return context;
+    }
+
+    return context.setValue(
+      baggageEntryMetadataSymbol,
+      new BaggageImpl(new Map(Object.entries(baggage))),
+    );
+  }
+
+  fields(): string[] {
+    return [BAGGAGE_HEADER];
+  }
+}
+
 let builtinTracerCache: Tracer;
 
 export function builtinTracer(): Tracer {
@@ -1096,12 +1543,30 @@ export function bootstrap(
     0 | 1,
     (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
     0 | 1,
+    ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
 ): void {
-  const { 0: tracingEnabled, 1: metricsEnabled, 2: consoleConfig } = config;
+  const {
+    0: tracingEnabled,
+    1: metricsEnabled,
+    2: consoleConfig,
+    3: _deterministic,
+    4: propagators,
+  } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
+
+  PROPAGATORS = propagators.filter((propagator) =>
+    propagator !== otelPropagators.none
+  ).map((propagator) => {
+    switch (propagator) {
+      case otelPropagators.traceContext:
+        return new W3CTraceContextPropagator();
+      case otelPropagators.baggage:
+        return new W3CBaggagePropagator();
+    }
+  });
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:
@@ -1129,6 +1594,7 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
     }
+    otel.propragators = PROPAGATORS;
   }
 }
 
