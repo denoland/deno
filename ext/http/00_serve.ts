@@ -426,8 +426,9 @@ class CallbackContext {
   closing;
   listener;
   asyncContext;
+  trustProxyHeaders: boolean;
 
-  constructor(signal, args, listener) {
+  constructor(signal, args, listener, trustProxyHeaders) {
     this.asyncContext = getAsyncContext();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
@@ -443,6 +444,7 @@ class CallbackContext {
     this.fallbackHost = args[2];
     this.closed = false;
     this.listener = listener;
+    this.trustProxyHeaders = trustProxyHeaders;
   }
 
   close() {
@@ -457,12 +459,28 @@ class CallbackContext {
 
 class ServeHandlerInfo {
   #inner: InnerRequest;
-  constructor(inner: InnerRequest) {
+  #context: CallbackContext;
+
+  constructor(inner: InnerRequest, context: CallbackContext) {
     this.#inner = inner;
+    this.#context = context;
   }
+
   get remoteAddr() {
+    if (
+      this.#context.trustProxyHeaders &&
+      this.#inner.request.headers.has("x-real-ip") &&
+      this.#inner.request.headers.has("x-real-port")
+    ) {
+      return {
+        transport: "tcp",
+        hostname: this.#inner.request.headers.get("x-real-ip"),
+        port: +this.#inner.request.headers.get("x-real-port"),
+      };
+    }
     return this.#inner.remoteAddr;
   }
+
   get completed() {
     return this.#inner.completed;
   }
@@ -546,7 +564,10 @@ function mapToCallback(context, callback, onError) {
         updateSpanFromRequest(span, request);
       }
 
-      response = await callback(request, new ServeHandlerInfo(innerRequest));
+      response = await callback(
+        request,
+        new ServeHandlerInfo(innerRequest, context),
+      );
 
       // Throwing Error if the handler return value is not a Response class
       if (!ObjectPrototypeIsPrototypeOf(ResponsePrototype, response)) {
@@ -726,6 +747,7 @@ function serve(arg1, arg2) {
       console.error(error);
       return internalServerError();
     };
+  const trustProxyHeaders = options.trustProxyHeaders ?? false;
 
   if (wantsUnix) {
     const listener = listen({
@@ -741,7 +763,7 @@ function serve(arg1, arg2) {
         // deno-lint-ignore no-console
         console.error(`Listening on ${path}`);
       }
-    });
+    }, trustProxyHeaders);
   }
 
   const listenOpts = {
@@ -792,17 +814,32 @@ function serve(arg1, arg2) {
     }
   };
 
-  return serveHttpOnListener(listener, signal, handler, onError, onListen);
+  return serveHttpOnListener(
+    listener,
+    signal,
+    handler,
+    onError,
+    onListen,
+    trustProxyHeaders,
+  );
 }
 
 /**
  * Serve HTTP/1.1 and/or HTTP/2 on an arbitrary listener.
  */
-function serveHttpOnListener(listener, signal, handler, onError, onListen) {
+function serveHttpOnListener(
+  listener,
+  signal,
+  handler,
+  onError,
+  onListen,
+  trustProxyHeaders,
+) {
   const context = new CallbackContext(
     signal,
     op_http_serve(listener[internalRidSymbol]),
     listener,
+    trustProxyHeaders,
   );
   const callback = mapToCallback(context, handler, onError);
 
@@ -819,6 +856,7 @@ function serveHttpOnConnection(connection, signal, handler, onError, onListen) {
     signal,
     op_http_serve_on(connection[internalRidSymbol]),
     null,
+    false,
   );
   const callback = mapToCallback(context, handler, onError);
 

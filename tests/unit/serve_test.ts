@@ -86,6 +86,45 @@ async function makeServer(
   };
 }
 
+Deno.test(async function httpServerProxyHeadersUntrusted() {
+  const server = Deno.serve({
+    async handler(req, info) {
+      return Response.json(info.remoteAddr);
+    },
+    onListen({ hostname, port }) {
+      fetch(`http://${hostname}:${port}`, { headers: { 'x-real-ip': '1.1.1.1', 'x-real-port': '5' } })
+        .then((r) => r.json())
+        .then(({ hostname, port }) => {
+          assert(hostname !== '1.1.1.1');
+          assert(port > 5); // some ephemeral port
+        })
+        .finally(() => {
+          server.shutdown();
+        });
+    },
+  });
+});
+
+Deno.test(async function httpServerProxyHeadersTrusted() {
+  const server = Deno.serve({
+    trustProxyHeaders: true,
+    async handler(req, info) {
+      return Response.json(info.remoteAddr);
+    },
+    onListen({ hostname, port }) {
+      fetch(`http://${hostname}:${port}`, { headers: { 'x-real-ip': '1.1.1.1', 'x-real-port': '5' } })
+        .then((r) => r.json())
+        .then(({ hostname, port }) => {
+          assertEquals(hostname, '1.1.1.1');
+          assertEquals(port, 5);
+        })
+        .finally(() => {
+          server.shutdown();
+        });
+    },
+  });
+});
+
 Deno.test(async function httpServerShutsDownPortBeforeResolving() {
   const { finished, abort } = await makeServer((_req) => new Response("ok"));
   assertThrows(() => Deno.listen({ port: servePort }));

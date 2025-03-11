@@ -5113,6 +5113,12 @@ declare namespace Deno {
 
     /** The callback which is called when the server starts listening. */
     onListen?: (localAddr: Addr) => void;
+
+    /**
+     * Trust `X-Real-IP` and `X-Real-Port` as `remoteAddr`.
+     * @default {false}
+     */
+    trustProxyHeaders?: boolean;
   }
 
   /**
