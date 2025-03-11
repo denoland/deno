@@ -66,6 +66,12 @@ import {
 import { getTimerDuration } from "ext:deno_node/internal/timers.mjs";
 import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
+import {
+  builtinTracer,
+  enterSpan,
+  restoreContext,
+  TRACING_ENABLED,
+} from "ext:deno_telemetry/telemetry.ts";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
 import { resourceForReadableStream } from "ext:deno_web/06_streams.js";
@@ -459,7 +465,15 @@ class ClientRequest extends OutgoingMessage {
     }
 
     (async () => {
+      let span;
+      let context;
+
       try {
+        if (TRACING_ENABLED) {
+          span = builtinTracer().startSpan("http.request", { kind: 2 });
+          context = enterSpan(span);
+        }
+
         const parsedUrl = new URL(url);
         const handle = this.socket._handle;
         if (!handle) {
@@ -467,6 +481,15 @@ class ClientRequest extends OutgoingMessage {
           // This should be only happening in artificial test cases
           return;
         }
+
+        if (span) {
+          span.updateName(this.method);
+          span.setAttribute("url.full", parsedUrl.href);
+          span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
+          span.setAttribute("url.path", parsedUrl.pathname);
+          span.setAttribute("url.query", parsedUrl.search.slice(1));
+        }
+
         let baseConnRid = handle[kStreamBaseField][internalRidSymbol];
         if (this._encrypted) {
           [baseConnRid] = op_tls_start({
@@ -476,6 +499,7 @@ class ClientRequest extends OutgoingMessage {
             alpnProtocols: ["http/1.0", "http/1.1"],
           });
         }
+
         this._req = await op_node_http_request_with_conn(
           this.method,
           url,
@@ -525,6 +549,11 @@ class ClientRequest extends OutgoingMessage {
         });
 
         const res = await op_node_http_await_response(this._req!.requestRid);
+
+        if (span) {
+          span.setAttribute("http.response.status_code", res.status);
+        }
+
         if (this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
@@ -629,6 +658,11 @@ class ClientRequest extends OutgoingMessage {
           this.emit("error", connResetException("socket hang up"));
         } else {
           this.emit("error", err);
+        }
+      } finally {
+        span?.end();
+        if (context) {
+          restoreContext(context);
         }
       }
     })();
