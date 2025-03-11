@@ -1521,6 +1521,7 @@ dependencies = [
  "dprint-plugin-jupyter",
  "dprint-plugin-markdown",
  "dprint-plugin-typescript",
+ "eszip",
  "fancy-regex",
  "faster-hex",
  "flate2",
@@ -1609,9 +1610,9 @@ dependencies = [
 
 [[package]]
 name = "deno_ast"
-version = "0.46.0"
+version = "0.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bd3b6e14e5b1235dd613d9f5d955d7a80dec6de0fc00fa34b5d0ef5ca0a9ddb"
+checksum = "88393f34aaba238da6a3694aef7e046eec4d261c3bf98dc6669d397f1c274e5e"
 dependencies = [
  "base64 0.21.7",
  "deno_error",
@@ -1901,9 +1902,9 @@ dependencies = [
 
 [[package]]
 name = "deno_error"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c23dbc46d5804814b08b4675838f9884e3a52916987ec5105af36d42f9911b5"
+checksum = "19fae9fe305307b5ef3ee4e8244c79cffcca421ab0ce8634dea0c6b1342f220f"
 dependencies = [
  "deno_error_macro",
  "libc",
@@ -1915,9 +1916,9 @@ dependencies = [
 
 [[package]]
 name = "deno_error_macro"
-version = "0.5.5"
+version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "babccedee31ce7e57c3e6dff2cb3ab8d68c49d0df8222fe0d11d628e65192790"
+checksum = "5abb2556e91848b66f562451fcbcdee2a3b7c88281828908dcf7cca355f5d997"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2434,9 +2435,9 @@ dependencies = [
 
 [[package]]
 name = "deno_package_json"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9809d81d43f1805533e71d88adbe14343ada394abb236a754c8429ddd071ec65"
+checksum = "36ea66a2e2f45fe056b3db3e701e16c139767cb214530f339e9e86217b296cc6"
 dependencies = [
  "boxed_error",
  "deno_error",
@@ -3482,6 +3483,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
+name = "eszip"
+version = "0.83.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39f4ac1d111015e1740ec02306e01801156d8a7832785ef0b73ea217ddc65769"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "deno_ast",
+ "deno_error",
+ "deno_graph",
+ "deno_npm",
+ "deno_semver",
+ "futures",
+ "hashlink 0.8.4",
+ "indexmap 2.7.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.3",
+ "url",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4143,6 +4168,15 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
+]
+
+[[package]]
+name = "hashlink"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8094feaf31ff591f651a2664fb9cfd92bba7a60ce3197265e9482ebe753c8f7"
+dependencies = [
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -5549,6 +5583,7 @@ dependencies = [
  "deno_media_type",
  "deno_package_json",
  "deno_path_util",
+ "deno_semver",
  "futures",
  "lazy-regex",
  "once_cell",
@@ -6921,7 +6956,7 @@ dependencies = [
  "bitflags 2.8.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink",
+ "hashlink 0.9.1",
  "libsqlite3-sys",
  "smallvec",
 ]

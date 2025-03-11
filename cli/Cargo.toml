@@ -67,7 +67,7 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
@@ -89,6 +89,7 @@ deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+eszip.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
 
