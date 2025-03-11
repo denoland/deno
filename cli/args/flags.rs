@@ -4186,7 +4186,7 @@ fn config_arg() -> Arg {
     .short('c')
     .long("config")
     .value_name("FILE")
-    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting
+    .help(cstr!("Configure different aspects of deno including TypeScript, linting, and code formatting.
   <p(245)>Typically the configuration file will be called `deno.json` or `deno.jsonc` and
   automatically detected; in that case this flag is not necessary.
   Docs: https://docs.deno.com/go/config</>"))
