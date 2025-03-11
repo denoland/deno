@@ -125,7 +125,6 @@
       "child_process.js",
       "countdown.js",
       "dns.js",
-      "duplexpair.js",
       "fixtures.js",
       "hijackstdio.js",
       "index.mjs",
@@ -169,16 +168,13 @@
       "test-http-https-default-ports.js"
     ],
     "message": [
-      "eval_messages.js",
       "max_tick_depth.js",
-      "stdin_messages.js",
       "util_inspect_error.js"
     ],
     "parallel": [
       "test-arm-math-illegal-instruction.js",
       "test-assert-async.js",
       "test-assert-fail.js",
-      "test-assert-strict-exists.js",
       "test-assert.js",
       "test-async-hooks-run-in-async-scope-caught-exception.js",
       "test-async-hooks-run-in-async-scope-this-arg.js",
@@ -190,7 +186,6 @@
       "test-atomics-wake.js",
       "test-bad-unicode.js",
       "test-beforeexit-event-exit.js",
-      "test-blob-buffer-too-large.js",
       "test-blocklist.js",
       "test-btoa-atob.js",
       "test-buffer-alloc.js",
@@ -390,11 +385,8 @@
       "test-diagnostics-channel-symbol-named.js",
       "test-diagnostics-channel-sync-unsubscribe.js",
       "test-diagnostics-channel-tracing-channel-args-types.js",
-      "test-diagnostics-channel-tracing-channel-async-error.js",
-      "test-diagnostics-channel-tracing-channel-async.js",
       "test-diagnostics-channel-tracing-channel-callback-run-stores.js",
       "test-diagnostics-channel-tracing-channel-promise-run-stores.js",
-      "test-diagnostics-channel-tracing-channel-run-stores.js",
       "test-diagnostics-channel-tracing-channel-sync-error.js",
       "test-diagnostics-channel-tracing-channel-sync.js",
       "test-diagnostics-channel-udp.js",
@@ -1277,7 +1269,6 @@
     ],
     "pummel": [
       "test-crypto-dh-hash.js",
-      "test-crypto-timing-safe-equal-benchmarks.js",
       "test-dh-regr.js",
       "test-fs-largefile.js",
       "test-fs-readfile-tostring-fail.js",
