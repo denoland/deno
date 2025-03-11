@@ -3100,6 +3100,7 @@ function createStylizeWithColor(styles, colors) {
 const countMap = new SafeMap();
 const timerMap = new SafeMap();
 const isConsoleInstance = Symbol("isConsoleInstance");
+const _printFunc = Symbol("printFunc");
 
 /** @param noColor {boolean} */
 function getConsoleInspectOptions(noColor) {
@@ -3111,11 +3112,11 @@ function getConsoleInspectOptions(noColor) {
 }
 
 class Console {
-  #printFunc = null;
+  [_printFunc] = null;
   [isConsoleInstance] = false;
 
   constructor(printFunc) {
-    this.#printFunc = printFunc;
+    this[_printFunc] = printFunc;
     this.indentLevel = 0;
     this[isConsoleInstance] = true;
 
@@ -3136,7 +3137,7 @@ class Console {
   }
 
   log = (...args) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs(args, {
         ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
@@ -3146,7 +3147,7 @@ class Console {
   };
 
   debug = (...args) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs(args, {
         ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
@@ -3156,7 +3157,7 @@ class Console {
   };
 
   info = (...args) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs(args, {
         ...getConsoleInspectOptions(noColorStdout()),
         indentLevel: this.indentLevel,
@@ -3166,7 +3167,7 @@ class Console {
   };
 
   dir = (obj = undefined, options = { __proto__: null }) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs([obj], {
         ...getConsoleInspectOptions(noColorStdout()),
         ...options,
@@ -3178,7 +3179,7 @@ class Console {
   dirxml = this.dir;
 
   warn = (...args) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs(args, {
         ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
@@ -3188,7 +3189,7 @@ class Console {
   };
 
   error = (...args) => {
-    this.#printFunc(
+    this[_printFunc](
       inspectArgs(args, {
         ...getConsoleInspectOptions(noColorStderr()),
         indentLevel: this.indentLevel,
@@ -3414,8 +3415,8 @@ class Console {
 
   clear = () => {
     this.indentLevel = 0;
-    this.#printFunc(CSI.kClear, 1);
-    this.#printFunc(CSI.kClearScreenDown, 1);
+    this[_printFunc](CSI.kClear, 1);
+    this[_printFunc](CSI.kClearScreenDown, 1);
   };
 
   trace = (...args) => {
@@ -3443,6 +3444,12 @@ class Console {
   static [SymbolHasInstance](instance) {
     return instance[isConsoleInstance];
   }
+}
+
+function cloneConsole(console) {
+  const newConsole = new Console(console[_printFunc]);
+  newConsole.indentLevel = console.indentLevel;
+  return newConsole;
 }
 
 const customInspect = SymbolFor("Deno.customInspect");
@@ -3537,6 +3544,7 @@ internals.parseCss = parseCss;
 internals.parseCssColor = parseCssColor;
 
 export {
+  cloneConsole,
   colors,
   Console,
   createFilteredInspectProxy,
