@@ -65,6 +65,7 @@ import {
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromError,
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
@@ -378,6 +379,9 @@ function fetch(input, init = { __proto__: null }) {
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
+        if (span) {
+          updateSpanFromError(span, requestObject.signal.reason);
+        }
         reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
@@ -448,7 +452,11 @@ function fetch(input, init = { __proto__: null }) {
     });
 
     if (opPromise) {
-      PromisePrototypeCatch(result, () => {});
+      PromisePrototypeCatch(result, (e) => {
+        if (span) {
+          updateSpanFromError(span, e);
+        }
+      });
       return (async function fetch() {
         try {
           await opPromise;
