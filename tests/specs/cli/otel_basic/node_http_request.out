@@ -12,6 +12,12 @@
       "endTimeUnixNano": "[WILDCARD]",
       "attributes": [
         {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
           "key": "url.full",
           "value": {
             "stringValue": "http://localhost:4545/echo.ts"
@@ -64,6 +70,12 @@
       "endTimeUnixNano": "[WILDCARD]",
       "attributes": [
         {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
           "key": "url.full",
           "value": {
             "stringValue": "http://localhost:4545/not-found"
@@ -92,6 +104,12 @@
           "value": {
             "doubleValue": 404
           }
+        },
+        {
+          "key": "error.type",
+          "value": {
+            "stringValue": "404"
+          }
         }
       ],
       "droppedAttributesCount": 0,
@@ -100,8 +118,8 @@
       "links": [],
       "droppedLinksCount": 0,
       "status": {
-        "message": "",
-        "code": 0
+        "message": "Not Found",
+        "code": 2
       }
     }
   ],

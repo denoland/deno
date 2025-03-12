@@ -469,11 +469,6 @@ class ClientRequest extends OutgoingMessage {
       let context;
 
       try {
-        if (TRACING_ENABLED) {
-          span = builtinTracer().startSpan("http.request", { kind: 2 });
-          context = enterSpan(span);
-        }
-
         const parsedUrl = new URL(url);
         const handle = this.socket._handle;
         if (!handle) {
@@ -482,8 +477,10 @@ class ClientRequest extends OutgoingMessage {
           return;
         }
 
-        if (span) {
-          span.updateName(this.method);
+        if (TRACING_ENABLED) {
+          span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
+          context = enterSpan(span);
+          span.setAttribute("http.request.method", this.method);
           span.setAttribute("url.full", parsedUrl.href);
           span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
           span.setAttribute("url.path", parsedUrl.pathname);
@@ -552,6 +549,13 @@ class ClientRequest extends OutgoingMessage {
 
         if (span) {
           span.setAttribute("http.response.status_code", res.status);
+          if (res.status >= 400) {
+            span.setAttribute("error.type", String(res.status));
+            span.setStatus({
+              code: 2, // Error
+              message: res.statusText,
+            });
+          }
         }
 
         if (this._req.cancelHandleRid !== null) {
@@ -570,7 +574,7 @@ class ClientRequest extends OutgoingMessage {
         // incoming.httpVersionMinor = versionMinor;
         // incoming.httpVersion = `${versionMajor}.${versionMinor}`;
         // incoming.joinDuplicateHeaders = socket?.server?.joinDuplicateHeaders ||
-        //  parser.joinDuplicateHeaders;
+        // parser.joinDuplicateHeaders;
 
         incoming.url = res.url;
         incoming.statusCode = res.status;
@@ -634,6 +638,17 @@ class ClientRequest extends OutgoingMessage {
           this.emit("response", incoming);
         }
       } catch (err) {
+        if (span) {
+          span.recordException(err);
+          if (err.name) {
+            span.setAttribute("error.type", err.name);
+          }
+          span.setStatus({
+            code: 2, // Error
+            message: err.message,
+          });
+        }
+
         if (this._req && this._req.cancelHandleRid !== null) {
           core.tryClose(this._req.cancelHandleRid);
         }
