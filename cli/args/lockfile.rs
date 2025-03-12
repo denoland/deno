@@ -236,6 +236,33 @@ impl CliLockfile {
           ))
         })
         .collect(),
+      patches: workspace
+        .patch_pkg_jsons()
+        .filter_map(|pkg_json| {
+          let key = format!(
+            "npm:{}@{}",
+            pkg_json.name.as_ref()?,
+            pkg_json.version.as_ref()?
+          );
+          let deps = pkg_json.resolve_local_package_json_deps();
+          let deps = deps
+            .dependencies
+            .values()
+            .filter_map(|dep| dep.as_ref().ok())
+            .filter_map(|dep| match dep {
+              PackageJsonDepValue::File(_) => {
+                // ignored because this will have its own separate lockfile
+                None
+              }
+              PackageJsonDepValue::Req(req) => {
+                Some(JsrDepPackageReq::npm(req.clone()))
+              }
+              PackageJsonDepValue::Workspace(_) => None,
+            })
+            .collect();
+          Some((key, deps))
+        })
+        .collect(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,
