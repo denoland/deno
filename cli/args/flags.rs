@@ -932,10 +932,11 @@ impl Flags {
     let otel_var = |name| match std::env::var(name) {
       Ok(s) if s.to_lowercase() == "true" => Some(true),
       Ok(s) if s.to_lowercase() == "false" => Some(false),
-      _ => {
+      Ok(_) => {
         log::warn!("'{name}' env var value not recognized, only 'true' and 'false' are accepted");
         None
       }
+      Err(_) => None,
     };
 
     let disabled =
