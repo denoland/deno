@@ -375,6 +375,9 @@ lto = true
 opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
 
+[profile.dev]
+split-debuginfo = "packed"
+
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
 inherits = "release"
