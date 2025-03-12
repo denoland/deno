@@ -1534,13 +1534,13 @@ export function bootstrap(
     1: metricsEnabled,
     2: consoleConfig,
     3: _deterministic,
-    4: propagators,
+    ...propagators
   } = config;
 
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
 
-  PROPAGATORS = propagators.filter((propagator) =>
+  PROPAGATORS = Object.values(propagators).filter((propagator) =>
     propagator !== otelPropagators.none
   ).map((propagator) => {
     switch (propagator) {

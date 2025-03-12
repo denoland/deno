@@ -630,16 +630,23 @@ function mapToCallback(context, callback, onError) {
       const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
       try {
         const otelContext = enterSpan(span);
+        if (otelContext) {
+          const reqHeaders = op_http_get_request_headers(req);
+          const headers: [key: string, value: string][] = [];
+          for (let i = 0; i < reqHeaders.length; i += 2) {
+            ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+          }
 
-        for (const propagator of PROPAGATORS) {
-          propagator.extract(otelContext, req.headers, {
-            get(carrier: Headers, key: string) {
-              return carrier.get(key);
-            },
-            keys(carrier: Headers) {
-              return [...carrier.keys()];
-            },
-          });
+          for (const propagator of PROPAGATORS) {
+            propagator.extract(otelContext, headers, {
+              get(carrier: [key: string, value: string][], key: string) {
+                return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
+              },
+              keys(carrier: [key: string, value: string][]) {
+                return carrier.map(([key]) => key);
+              },
+            });
+          }
         }
 
         return SafePromisePrototypeFinally(

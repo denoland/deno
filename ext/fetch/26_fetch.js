@@ -372,12 +372,14 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
-        for (const propagator of PROPAGATORS) {
-          propagator.inject(context, requestObject.headers, {
-            set(carrier, key, value) {
-              carrier.append(key, value);
-            },
-          });
+        if (context) {
+          for (const propagator of PROPAGATORS) {
+            propagator.inject(context, requestObject.headers, {
+              set(carrier, key, value) {
+                carrier.append(key, value);
+              },
+            });
+          }
         }
 
         updateSpanFromRequest(span, requestObject);
