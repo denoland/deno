@@ -14,6 +14,7 @@ import {
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { setTimeout } from "ext:deno_web/02_timers.js";
+import { updateSpanFromError } from "ext:deno_telemetry/util.ts";
 import {
   _normalizeArgs,
   createConnection,
@@ -551,10 +552,7 @@ class ClientRequest extends OutgoingMessage {
           span.setAttribute("http.response.status_code", res.status);
           if (res.status >= 400) {
             span.setAttribute("error.type", String(res.status));
-            span.setStatus({
-              code: 2, // Error
-              message: res.statusText,
-            });
+            span.setStatus({ code: 2 }); // Code 2 = Error
           }
         }
 
@@ -639,14 +637,7 @@ class ClientRequest extends OutgoingMessage {
         }
       } catch (err) {
         if (span) {
-          span.recordException(err);
-          if (err.name) {
-            span.setAttribute("error.type", err.name);
-          }
-          span.setStatus({
-            code: 2, // Error
-            message: err.message,
-          });
+          updateSpanFromError(span, err);
         }
 
         if (this._req && this._req.cancelHandleRid !== null) {
