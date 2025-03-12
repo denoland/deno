@@ -318,7 +318,7 @@ class Tracer {
   }
 }
 
-const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
+export const SPAN_KEY = SymbolFor("OpenTelemetry Context Key SPAN");
 
 let getOtelSpan: (span: object) => OtelSpan | null | undefined;
 

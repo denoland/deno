@@ -12,12 +12,16 @@ use std::rc::Rc;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
+use std::time::SystemTime;
 
 use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_telemetry::IdGenerator;
+use deno_telemetry::OtelSpan;
+use deno_telemetry::OtelSpanState;
 use http::request::Parts;
 use hyper::body::Body;
 use hyper::body::Frame;
@@ -199,21 +203,60 @@ pub(crate) async fn handle_request(
       instant,
       size_hint.upper().unwrap_or(size_hint.lower()),
       OtelInfoAttributes {
-        http_request_method: OtelInfoAttributes::method(request.method()),
+        http_request_method: OtelInfoAttributes::method(request.method()).into(),
         url_scheme: request
           .uri()
           .scheme_str()
-          .map(|s| Cow::Owned(s.to_string()))
-          .unwrap_or_else(|| Cow::Borrowed("http")),
+          .map(|s| s.to_string().into())
+          .unwrap_or_else(|| Cow::Borrowed("http").into()),
         network_protocol_version: OtelInfoAttributes::version(
           request.version(),
-        ),
-        server_address: request.uri().host().map(|host| host.to_string()),
-        server_port: request.uri().port_u16().map(|port| port as i64),
-        error_type: Default::default(),
-        http_response_status_code: Default::default(),
+        ).into(),
+        server_address: request.uri().host().map(|host| host.to_string().into()),
+        server_port: request.uri().port_u16().map(|port| (port as i64).into()),
+        error_type: None,
+        http_route: None,
+        http_response_status_code: None,
       },
     ))
+  } else {
+    None
+  };
+  let otel_span = if let Some(deno_telemetry::OtelGlobals {
+    builtin_instrumentation_scope,
+    id_generator,
+    ..
+  }) = deno_telemetry::OTEL_GLOBALS
+    .get()
+    .filter(|o| o.has_tracing())
+  {
+    let span_context = deno_telemetry::SpanContext::new(
+      id_generator.new_trace_id(),
+      id_generator.new_span_id(),
+      deno_telemetry::TraceFlags::SAMPLED,
+      false,
+      deno_telemetry::TraceState::NONE,
+    );
+    let parent_span_id = deno_telemetry::SpanId::INVALID;
+    let span_kind = deno_telemetry::SpanKind::Server;
+    let start_time = SystemTime::now();
+    let span_data = deno_telemetry::SpanData {
+      span_context,
+      parent_span_id,
+      span_kind,
+      name: Cow::Borrowed("Deno.serve"),
+      start_time,
+      end_time: SystemTime::UNIX_EPOCH,
+      attributes: Vec::with_capacity(0),
+      dropped_attributes_count: 0,
+      status: deno_telemetry::SpanStatus::Unset,
+      events: deno_telemetry::SpanEvents::default(),
+      links: deno_telemetry::SpanLinks::default(),
+      instrumentation_scope: builtin_instrumentation_scope.clone(),
+    };
+    Some(OtelSpan(Rc::new(RefCell::new(OtelSpanState::Recording(
+      span_data,
+    )))))
   } else {
     None
   };
@@ -223,7 +266,7 @@ pub(crate) async fn handle_request(
   // The HttpRecord must live until JavaScript is done processing so is wrapped
   // in an Rc. The guard ensures unneeded resources are freed at cancellation.
   let guarded_record = guard(
-    HttpRecord::new(request, request_info, server_state, otel_info),
+    HttpRecord::new(request, request_info, server_state, otel_span, otel_info),
     HttpRecord::cancel,
   );
 
@@ -262,7 +305,8 @@ struct HttpRecordInner {
   been_dropped: bool,
   finished: bool,
   needs_close_after_finish: bool,
-  otel_info: Option<OtelInfo>,
+  otel_span: Option<OtelSpan>,
+  otel_info: Option<RefCell<OtelInfo>>,
 }
 
 pub struct HttpRecord(RefCell<Option<HttpRecordInner>>);
@@ -283,6 +327,7 @@ impl HttpRecord {
     request: Request,
     request_info: HttpConnectionProperties,
     server_state: SignallingRc<HttpServerState>,
+    otel_span: Option<OtelSpan>,
     otel_info: Option<OtelInfo>,
   ) -> Rc<Self> {
     let (request_parts, request_body) = request.into_parts();
@@ -320,7 +365,8 @@ impl HttpRecord {
       been_dropped: false,
       finished: false,
       needs_close_after_finish: false,
-      otel_info,
+      otel_span,
+      otel_info: otel_info.map(RefCell::new),
     });
     record
   }
@@ -563,18 +609,50 @@ impl HttpRecord {
   }
 
   pub fn otel_info_set_status(&self, status: u16) {
-    let mut inner = self.self_mut();
-    if let Some(info) = inner.otel_info.as_mut() {
-      info.attributes.http_response_status_code = Some(status as _);
+    let inner = self.self_ref();
+    if let Some(info) = &inner.otel_info {
+      let mut info = info.borrow_mut();
+      info.attributes.http_response_status_code = Some((status as i64).into());
       info.handle_duration_and_request_size();
     }
   }
 
   pub fn otel_info_set_error(&self, error: &'static str) {
-    let mut inner = self.self_mut();
-    if let Some(info) = inner.otel_info.as_mut() {
-      info.attributes.error_type = Some(error);
+    let inner = self.self_ref();
+    if let Some(info) = &inner.otel_info {
+      let mut info = info.borrow_mut();
+      info.attributes.error_type = Some(error.into());
       info.handle_duration_and_request_size();
+    }
+  }
+
+  pub fn get_otel_span(&self) -> Option<OtelSpan> {
+    let inner = self.self_ref();
+    inner.otel_span.clone()
+  }
+
+  pub fn update_otel_info_with_span(&self) {
+    let mut inner = self.self_mut();
+    if let Some(span) = inner.otel_span.take() {
+      if let Some(info) = &inner.otel_info {
+        let span = span.0.borrow();
+        let mut info = info.borrow_mut();
+        if let OtelSpanState::Recording(data) = &*span {
+          for attribute in &data.attributes {
+            match attribute.key.as_str() {
+              "http.request.method" => info.attributes.http_request_method = attribute.value.clone(),
+              "network.protocol.version" => info.attributes.network_protocol_version = attribute.value.clone(),
+              "url.scheme" => info.attributes.url_scheme = attribute.value.clone(),
+              "server.address" => info.attributes.server_address = Some(attribute.value.clone()),
+              "server.port" => info.attributes.server_port = Some(attribute.value.clone()),
+              "error.type" => info.attributes.error_type = Some(attribute.value.clone()),
+              "http.route" => info.attributes.http_route = Some(attribute.value.clone()),
+              "http.response_status.code" => info.attributes.http_response_status_code = Some(attribute.value.clone()),
+              _ => {}
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -636,7 +714,8 @@ impl Body for HttpRecordResponse {
 
     if let ResponseStreamResult::NonEmptyBuf(buf) = &res {
       let mut http = self.0 .0.borrow_mut();
-      if let Some(otel_info) = &mut http.as_mut().unwrap().otel_info {
+      if let Some(otel_info) = &http.as_mut().unwrap().otel_info {
+        let mut otel_info = otel_info.borrow_mut();
         if let Some(response_size) = &mut otel_info.response_size {
           *response_size += buf.len() as u64;
         }
