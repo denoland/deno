@@ -77,6 +77,11 @@ const TRACE_PARENT_HEADER = "traceparent";
 const TRACE_STATE_HEADER = "tracestate";
 const INVALID_TRACEID = "00000000000000000000000000000000";
 const INVALID_SPANID = "0000000000000000";
+const INVALID_SPAN_CONTEXT: SpanContext = {
+  traceId: INVALID_TRACEID,
+  spanId: INVALID_SPANID,
+  traceFlags: 0,
+};
 const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
 const BAGGAGE_PROPERTIES_SEPARATOR = ";";
 const BAGGAGE_ITEMS_SEPARATOR = ",";
@@ -392,12 +397,12 @@ class Span {
     _name: string,
     _attributesOrStartTime?: Attributes | TimeInput,
     _startTime?: TimeInput,
-  ): Span {
+  ): this {
     this.#otelSpan?.dropEvent();
     return this;
   }
 
-  addLink(link: Link): Span {
+  addLink(link: Link): this {
     const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
       (link.attributes ? ObjectKeys(link.attributes).length : 0);
     const valid = op_otel_span_add_link(
@@ -412,7 +417,7 @@ class Span {
     return this;
   }
 
-  addLinks(links: Link[]): Span {
+  addLinks(links: Link[]): this {
     for (let i = 0; i < links.length; i++) {
       this.addLink(links[i]);
     }
@@ -433,18 +438,17 @@ class Span {
   }
 
   // deno-lint-ignore no-explicit-any
-  recordException(_exception: any, _time?: TimeInput): Span {
+  recordException(_exception: any, _time?: TimeInput): void {
     this.#otelSpan?.dropEvent();
-    return this;
   }
 
-  setAttribute(key: string, value: AttributeValue): Span {
+  setAttribute(key: string, value: AttributeValue): this {
     if (!this.#otelSpan) return this;
     op_otel_span_attribute1(this.#otelSpan, key, value);
     return this;
   }
 
-  setAttributes(attributes: Attributes): Span {
+  setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
     const attributeKvs = ObjectEntries(attributes);
     let i = 0;
@@ -481,12 +485,12 @@ class Span {
     return this;
   }
 
-  setStatus(status: SpanStatus): Span {
+  setStatus(status: SpanStatus): this {
     this.#otelSpan?.setStatus(status.code, status.message ?? "");
     return this;
   }
 
-  updateName(name: string): Span {
+  updateName(name: string): this {
     if (!this.#otelSpan) return this;
     op_otel_span_update_name(this.#otelSpan, name);
     return this;
@@ -1114,6 +1118,53 @@ function otelLog(message: string, level: number) {
   }
 }
 
+class NonRecordingSpan implements Span {
+  constructor(
+    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT
+  ) {}
+
+  spanContext(): SpanContext {
+    return this._spanContext;
+  }
+
+  setAttribute(_key: string, _value: unknown): this {
+    return this;
+  }
+
+  setAttributes(_attributes: SpanAttributes): this {
+    return this;
+  }
+
+  addEvent(_name: string, _attributes?: SpanAttributes): this {
+    return this;
+  }
+
+  addLink(_link: Link): this {
+    return this;
+  }
+
+  addLinks(_links: Link[]): this {
+    return this;
+  }
+
+  setStatus(_status: SpanStatus): this {
+    return this;
+  }
+
+  updateName(_name: string): this {
+    return this;
+  }
+
+  end(_endTime?: TimeInput): void {}
+
+  isRecording(): boolean {
+    return false;
+  }
+
+  // deno-lint-ignore no-explicit-any
+  recordException(_exception: any, _time?: TimeInput): void {}
+}
+
 const otelPropagators = {
   traceContext: 0,
   baggage: 1,
@@ -1268,7 +1319,7 @@ class TraceStateClass implements TraceState {
 
 class W3CTraceContextPropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const spanContext = context.getValue(SPAN_KEY) as SpanContext;
+    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)?.spanContext();
     if (
       !spanContext ||
       isTracingSuppressed(context) ||
@@ -1315,7 +1366,7 @@ class W3CTraceContextPropagator implements TextMapPropagator {
         typeof state === "string" ? state : undefined,
       );
     }
-    return context.setValue(SPAN_KEY, spanContext);
+    return context.setValue(SPAN_KEY, new NonRecordingSpan(spanContext));
   }
 
   fields(): string[] {

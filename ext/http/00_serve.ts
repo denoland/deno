@@ -92,12 +92,12 @@ import {
   METRICS_ENABLED,
   PROPAGATORS,
   TRACING_ENABLED,
+  ContextManager, currentSnapshot, restoreSnapshot
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
-import { ContextManager, currentSnapshot, restoreSnapshot } from "../telemetry/telemetry.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -627,28 +627,27 @@ function mapToCallback(context, callback, onError) {
     mapped = function (req, _span) {
       const snapshot = currentSnapshot();
       restoreSnapshot(context.asyncContext);
+
+      const reqHeaders = op_http_get_request_headers(req);
+      const headers: [key: string, value: string][] = [];
+      for (let i = 0; i < reqHeaders.length; i += 2) {
+        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+      }
+      const activeContext = ContextManager.active();
+      for (const propagator of PROPAGATORS) {
+        propagator.extract(activeContext, headers, {
+          get(carrier: [key: string, value: string][], key: string) {
+            return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
+          },
+          keys(carrier: [key: string, value: string][]) {
+            return carrier.map(([key]) => key);
+          },
+        });
+      }
+
       const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
       enterSpan(span);
       try {
-        if (snapshot) {
-          const reqHeaders = op_http_get_request_headers(req);
-          const headers: [key: string, value: string][] = [];
-          for (let i = 0; i < reqHeaders.length; i += 2) {
-            ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
-          }
-          const context = ContextManager.active();
-          for (const propagator of PROPAGATORS) {
-            propagator.extract(context, headers, {
-              get(carrier: [key: string, value: string][], key: string) {
-                return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
-              },
-              keys(carrier: [key: string, value: string][]) {
-                return carrier.map(([key]) => key);
-              },
-            });
-          }
-        }
-
         return SafePromisePrototypeFinally(
           origMapped(req, span),
           () => span.end(),
