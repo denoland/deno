@@ -380,6 +380,8 @@ function fetch(input, init = { __proto__: null }) {
       // 4.
       if (requestObject.signal.aborted) {
         if (span) {
+          // Handles this case here as this is the only case where `result` promise
+          // is settled immediately.
           updateSpanFromError(span, requestObject.signal.reason);
         }
         reject(abortFetch(request, null, requestObject.signal.reason));
