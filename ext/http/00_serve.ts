@@ -631,13 +631,8 @@ function mapToCallback(context, callback, onError) {
       setAsyncContext(context.asyncContext);
 
       // TODO: how tf do i get the context?
-      const rsSpan = op_http_get_span(req);
-      context.setValue(SPAN_KEY, rsSpan.spanContext());
-      const span = builtinTracer().startSpan(
-        "deno.serve",
-        { kind: 1 },
-        context,
-      );
+      const otelSpan = op_http_get_span(req);
+      const span = new Span(otelSpan);
       CURRENT.enter(context.setValue(SPAN_KEY, span));
 
       try {
