@@ -1906,7 +1906,7 @@ Under the hood, it bundles a slimmed down version of the Deno runtime along with
 JavaScript or TypeScript code.
 
 Cross-compiling to different target architectures is supported using the <c>--target</> flag.
-On the first invocation of `deno compile`, Deno will download the appropriate binary and cache it in <c>$DENO_DIR</>.
+On the first invocation of `deno compile`, Deno will download the relevant binary and cache it in <c>$DENO_DIR</>.
 
 <y>Read more:</> <c>https://docs.deno.com/go/compile</>
 "),
