@@ -341,8 +341,6 @@ impl Hash {
       "sha512WithRSAEncryption",
       "shake128",
       "shake256",
-      "shake-128",
-      "shake-256",
       "sm3",
       "sm3WithRSAEncryption",
       "ssl3-md5",
