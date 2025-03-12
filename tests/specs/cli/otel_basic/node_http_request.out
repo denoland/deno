@@ -118,7 +118,7 @@
       "links": [],
       "droppedLinksCount": 0,
       "status": {
-        "message": "Not Found",
+        "message": "",
         "code": 2
       }
     }
