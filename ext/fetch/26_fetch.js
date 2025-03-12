@@ -488,7 +488,7 @@ function fetch(input, init = { __proto__: null }) {
     }
     return result;
   } finally {
-    if (context) restoreSnapshot(context);
+    if (snapshot) restoreSnapshot(snapshot);
   }
 }
 
