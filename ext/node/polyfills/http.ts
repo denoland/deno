@@ -465,10 +465,9 @@ class ClientRequest extends OutgoingMessage {
       this._bodyWriteRid = resourceForReadableStream(readable);
     }
 
+    let span;
+    let context;
     (async () => {
-      let span;
-      let context;
-
       try {
         const parsedUrl = new URL(url);
         const handle = this.socket._handle;
@@ -667,11 +666,12 @@ class ClientRequest extends OutgoingMessage {
         }
       } finally {
         span?.end();
-        if (context) {
-          restoreContext(context);
-        }
       }
     })();
+
+    if (context) {
+      restoreContext(context);
+    }
   }
 
   _implicitHeader() {
