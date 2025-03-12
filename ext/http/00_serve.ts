@@ -633,9 +633,9 @@ function mapToCallback(context, callback, onError) {
       for (let i = 0; i < reqHeaders.length; i += 2) {
         ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
       }
-      const activeContext = ContextManager.active();
+      let activeContext = ContextManager.active();
       for (const propagator of PROPAGATORS) {
-        propagator.extract(activeContext, headers, {
+        activeContext = propagator.extract(activeContext, headers, {
           get(carrier: [key: string, value: string][], key: string) {
             return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
           },
@@ -645,7 +645,7 @@ function mapToCallback(context, callback, onError) {
         });
       }
 
-      const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
+      const span = builtinTracer().startSpan("deno.serve", { kind: 1 }, activeContext);
       enterSpan(span);
       try {
         return SafePromisePrototypeFinally(
