@@ -60,9 +60,10 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
   PROPAGATORS,
-  restoreContext,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -352,11 +353,11 @@ function httpRedirectFetch(request, response, terminator) {
  */
 function fetch(input, init = { __proto__: null }) {
   let span;
-  let context;
+  let snapshot;
   try {
     if (TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
-      context = enterSpan(span);
+      snapshot = enterSpan(span);
     }
 
     // There is an async dispatch later that causes a stack trace disconnect.
@@ -372,14 +373,13 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
-        if (context) {
-          for (const propagator of PROPAGATORS) {
-            propagator.inject(context, requestObject.headers, {
-              set(carrier, key, value) {
-                carrier.append(key, value);
-              },
-            });
-          }
+        const context = ContextManager.active();
+        for (const propagator of PROPAGATORS) {
+          propagator.inject(context, requestObject.headers, {
+            set(carrier, key, value) {
+              carrier.append(key, value);
+            },
+          });
         }
 
         updateSpanFromRequest(span, requestObject);
@@ -488,7 +488,7 @@ function fetch(input, init = { __proto__: null }) {
     }
     return result;
   } finally {
-    if (context) restoreContext(context);
+    if (context) restoreSnapshot(context);
   }
 }
 

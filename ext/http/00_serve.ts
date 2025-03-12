@@ -44,7 +44,6 @@ const {
   Uint8Array,
   Promise,
 } = primordials;
-const { getAsyncContext, setAsyncContext } = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -98,6 +97,7 @@ import {
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
+import { ContextManager, currentSnapshot, restoreSnapshot } from "../telemetry/telemetry.ts";
 
 const _upgraded = Symbol("_upgraded");
 
@@ -426,10 +426,10 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
-  asyncContext;
+  asyncContextSnapshot;
 
   constructor(signal, args, listener) {
-    this.asyncContext = getAsyncContext();
+    this.asyncContextSnapshot = currentSnapshot();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -625,20 +625,20 @@ function mapToCallback(context, callback, onError) {
   if (TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
       const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
+      enterSpan(span);
       try {
-        const otelContext = enterSpan(span);
-        if (otelContext) {
+        if (snapshot) {
           const reqHeaders = op_http_get_request_headers(req);
           const headers: [key: string, value: string][] = [];
           for (let i = 0; i < reqHeaders.length; i += 2) {
             ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
           }
-
+          const context = ContextManager.active();
           for (const propagator of PROPAGATORS) {
-            propagator.extract(otelContext, headers, {
+            propagator.extract(context, headers, {
               get(carrier: [key: string, value: string][], key: string) {
                 return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
               },
@@ -654,19 +654,18 @@ function mapToCallback(context, callback, onError) {
           () => span.end(),
         );
       } finally {
-        // equiv to exitSpan.
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   } else {
     const origMapped = mapped;
     mapped = function (req, span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
       try {
         return origMapped(req, span);
       } finally {
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   }

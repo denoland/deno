@@ -45,7 +45,7 @@ const {
   SymbolFor,
   TypeError,
 } = primordials;
-const { AsyncVariable, setAsyncContext } = core;
+const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
@@ -178,15 +178,18 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
-export function enterSpan(span: Span): Context | undefined {
+interface AsyncContextSnapshot {
+  __brand: "AsyncContextSnapshot";
+}
+
+export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
   const context = (CURRENT.get() || ROOT_CONTEXT).setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
 
-export function restoreContext(context: Context): void {
-  setAsyncContext(context);
-}
+export const currentSnapshot = getAsyncContext;
+export const restoreSnapshot = setAsyncContext;
 
 function isDate(value: unknown): value is Date {
   return ObjectPrototypeIsPrototypeOf(value, DatePrototype);
@@ -522,7 +525,7 @@ class Context {
 const ROOT_CONTEXT = new Context();
 
 // Context manager for opentelemetry js library
-class ContextManager {
+export class ContextManager {
   constructor() {
     throw new TypeError("ContextManager can not be constructed");
   }
