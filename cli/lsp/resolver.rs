@@ -42,6 +42,7 @@ use node_resolver::cache::NodeResolutionSys;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
+use node_resolver::NodeResolverOptions;
 use node_resolver::PackageJson;
 use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
@@ -998,7 +999,15 @@ impl<'a> ResolverFactory<'a> {
             npm_resolver.clone(),
             self.pkg_json_resolver.clone(),
             self.node_resolution_sys.clone(),
-            node_resolver::ConditionsFromResolutionMode::default(),
+            NodeResolverOptions {
+              conditions_from_resolution_mode: Default::default(),
+              typescript_version: Some(
+                deno_semver::Version::parse_standard(
+                  deno_lib::version::DENO_VERSION_INFO.typescript,
+                )
+                .unwrap(),
+              ),
+            },
           )
           .with_package_resolution_lookup_cache(),
         ))
