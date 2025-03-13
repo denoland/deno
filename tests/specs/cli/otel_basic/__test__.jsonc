@@ -44,6 +44,10 @@
     "start_active_span": {
       "args": "run -A main.ts start_active_span.ts",
       "output": "start_active_span.out"
+    },
+    "node_http_request": {
+      "args": "run -A main.ts node_http_request.ts",
+      "output": "node_http_request.out"
     }
   }
 }

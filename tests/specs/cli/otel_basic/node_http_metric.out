@@ -7,9 +7,9 @@
       "parentSpanId": "",
       "flags": 1,
       "name": "GET",
-      "kind": 2,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -20,7 +20,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:[WILDCARD]/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -44,7 +44,7 @@
         {
           "key": "http.response.status_code",
           "value": {
-            "stringValue": "200"
+            "doubleValue": 200
           }
         }
       ],
@@ -66,8 +66,8 @@
       "flags": 1,
       "name": "GET",
       "kind": 2,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -78,7 +78,7 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:[WILDCARD]/"
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
@@ -123,9 +123,9 @@
       "parentSpanId": "",
       "flags": 1,
       "name": "GET",
-      "kind": 2,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -136,7 +136,181 @@
         {
           "key": "url.full",
           "value": {
-            "stringValue": "http://localhost:[WILDCARD]/"
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "doubleValue": 200
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000004",
+      "spanId": "0000000000000004",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "stringValue": "200"
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000005",
+      "spanId": "0000000000000005",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 3,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
+          }
+        },
+        {
+          "key": "url.scheme",
+          "value": {
+            "stringValue": "http"
+          }
+        },
+        {
+          "key": "url.path",
+          "value": {
+            "stringValue": "/"
+          }
+        },
+        {
+          "key": "url.query",
+          "value": {
+            "stringValue": ""
+          }
+        },
+        {
+          "key": "http.response.status_code",
+          "value": {
+            "doubleValue": 200
+          }
+        }
+      ],
+      "droppedAttributesCount": 0,
+      "events": [],
+      "droppedEventsCount": 0,
+      "links": [],
+      "droppedLinksCount": 0,
+      "status": {
+        "message": "",
+        "code": 0
+      }
+    },
+    {
+      "traceId": "00000000000000000000000000000006",
+      "spanId": "0000000000000006",
+      "traceState": "",
+      "parentSpanId": "",
+      "flags": 1,
+      "name": "GET",
+      "kind": 2,
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
+      "attributes": [
+        {
+          "key": "http.request.method",
+          "value": {
+            "stringValue": "GET"
+          }
+        },
+        {
+          "key": "url.full",
+          "value": {
+            "stringValue": "http://localhost:[WILDLINE]/"
           }
         },
         {
