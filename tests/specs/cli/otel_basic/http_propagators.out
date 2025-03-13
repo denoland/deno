@@ -240,7 +240,7 @@
       "severityNumber": 17,
       "severityText": "ERROR",
       "body": {
-        "stringValue": "Listening on http://0.0.0.0:8000/\n"
+        "stringValue": "Listening on http://[WILDCARD]:8000/\n"
       },
       "attributes": [],
       "droppedAttributesCount": 0,
@@ -254,7 +254,7 @@
       "severityNumber": 17,
       "severityText": "ERROR",
       "body": {
-        "stringValue": "Listening on http://0.0.0.0:8001/\n"
+        "stringValue": "Listening on http://[WILDCARD]:8001/\n"
       },
       "attributes": [],
       "droppedAttributesCount": 0,
