@@ -8,8 +8,8 @@
       "flags": 1,
       "name": "GET",
       "kind": 3,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -66,8 +66,8 @@
       "flags": 1,
       "name": "GET",
       "kind": 3,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -130,8 +130,8 @@
       "flags": 1,
       "name": "GET",
       "kind": 3,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
@@ -188,8 +188,8 @@
       "flags": 1,
       "name": "GET",
       "kind": 3,
-      "startTimeUnixNano": "[WILDCARD]",
-      "endTimeUnixNano": "[WILDCARD]",
+      "startTimeUnixNano": "[WILDLINE]",
+      "endTimeUnixNano": "[WILDLINE]",
       "attributes": [
         {
           "key": "http.request.method",
