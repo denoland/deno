@@ -1495,8 +1495,8 @@ function getKeyPairs(baggage: Baggage): string[] {
     // include opaque metadata if provided
     // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
     if (baggageEntry[1].metadata !== undefined) {
-      // deno-lint-ignore prefer-primordials
       entry += BAGGAGE_PROPERTIES_SEPARATOR +
+        // deno-lint-ignore prefer-primordials
         baggageEntry[1].metadata.toString();
     }
 
