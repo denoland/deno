@@ -147,15 +147,7 @@ impl OtelConfig {
 }
 
 #[derive(
-  Default,
-  Debug,
-  Clone,
-  Copy,
-  Serialize,
-  Deserialize,
-  Eq,
-  PartialEq,
-  Hash,
+  Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash,
 )]
 #[repr(u8)]
 pub enum OtelPropagators {

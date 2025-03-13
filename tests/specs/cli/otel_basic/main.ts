@@ -37,9 +37,30 @@ const server = Deno.serve(
               BigInt(a.observedTimeUnixNano) - BigInt(b.observedTimeUnixNano),
             )
           );
-          data.spans.sort((a, b) =>
-            Number(BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`))
-          );
+          data.spans.sort((a, b) => {
+            const sort = Number(
+              BigInt(`0x${a.spanId}`) - BigInt(`0x${b.spanId}`),
+            );
+
+            if (
+              sort === 0 &&
+              (a.parentSpanId.length !== 0 || b.parentSpanId.length !== 0)
+            ) {
+              if (a.parentSpanId.length !== 0 && b.parentSpanId.length === 0) {
+                return 1;
+              } else if (
+                a.parentSpanId.length === 0 && b.parentSpanId.length !== 0
+              ) {
+                return -1;
+              } else {
+                return Number(
+                  BigInt(`0x${a.parentSpanId}`) - BigInt(`0x${b.parentSpanId}`),
+                );
+              }
+            } else {
+              return sort;
+            }
+          });
           data.metrics.sort((a, b) => a.name.localeCompare(b.name));
           for (const metric of data.metrics) {
             if ("histogram" in metric) {

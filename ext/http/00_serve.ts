@@ -31,10 +31,13 @@ import {
   op_http_wait,
 } from "ext:core/ops";
 const {
+  ArrayPrototypeFind,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
@@ -88,11 +91,13 @@ import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
+  ContextManager,
+  currentSnapshot,
   enterSpan,
   METRICS_ENABLED,
   PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
-  ContextManager, currentSnapshot, restoreSnapshot
 } from "ext:deno_telemetry/telemetry.ts";
 import {
   updateSpanFromRequest,
@@ -634,18 +639,28 @@ function mapToCallback(context, callback, onError) {
         ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
       }
       let activeContext = ContextManager.active();
-      for (const propagator of PROPAGATORS) {
+      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
         activeContext = propagator.extract(activeContext, headers, {
           get(carrier: [key: string, value: string][], key: string) {
-            return carrier.find(([carrierKey]) => carrierKey === key)?.[1];
+            return ArrayPrototypeFind(
+              carrier,
+              (carrierEntry) => carrierEntry[0] === key,
+            )?.[1];
           },
           keys(carrier: [key: string, value: string][]) {
-            return carrier.map(([key]) => key);
+            return ArrayPrototypeMap(
+              carrier,
+              (carrierEntry) => carrierEntry[0],
+            );
           },
         });
       }
 
-      const span = builtinTracer().startSpan("deno.serve", { kind: 1 }, activeContext);
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
       enterSpan(span);
       try {
         return SafePromisePrototypeFinally(

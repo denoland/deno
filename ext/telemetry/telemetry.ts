@@ -27,68 +27,55 @@ import {
 import { Console } from "ext:deno_console/01_console.js";
 
 const {
+  ArrayFrom,
   ArrayIsArray,
+  ArrayPrototypeJoin,
   ArrayPrototypePush,
+  ArrayPrototypeReduce,
+  ArrayPrototypeReverse,
+  ArrayPrototypeShift,
+  ArrayPrototypeSlice,
+  ArrayPrototypeSplit,
+  SafeArrayIterator,
+  ArrayPrototypeForEach,
+  ArrayPrototypeFilter,
+  ArrayPrototypeMap,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
+  Number,
+  NumberToString,
   ObjectDefineProperty,
   ObjectEntries,
   ObjectKeys,
   ObjectPrototypeIsPrototypeOf,
+  ObjectValues,
   ReflectApply,
   SafeIterator,
   SafeMap,
   SafePromiseAll,
+  SafeRegExp,
   SafeSet,
   SafeWeakSet,
+  StringPrototypeIndexOf,
+  StringPrototypeSlice,
+  StringPrototypeSubstring,
+  StringPrototypeTrim,
+  StringPrototypeSplit,
+  MapPrototypeEntries,
+  MapPrototypeKeys,
   SymbolFor,
   TypeError,
+  encodeURIComponent,
+  decodeURIComponent,
+  ObjectAssign,
+  parseInt,
 } = primordials;
 const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
-
-const VERSION = "00";
-const VERSION_PART = "(?!ff)[\\da-f]{2}";
-const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
-const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
-const FLAGS_PART = "[\\da-f]{2}";
-const TRACE_PARENT_REGEX = new RegExp(
-  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
-);
-const VALID_TRACEID_REGEX = /^([0-9a-f]{32})$/i;
-const VALID_SPANID_REGEX = /^[0-9a-f]{16}$/i;
-const MAX_TRACE_STATE_ITEMS = 32;
-const MAX_TRACE_STATE_LEN = 512;
-const LIST_MEMBERS_SEPARATOR = ",";
-const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
-const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
-const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
-const VALID_VENDOR_KEY =
-  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
-const VALID_KEY_REGEX = new RegExp(`^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`);
-const VALID_VALUE_BASE_REGEX = /^[ -~]{0,255}[!-~]$/;
-const INVALID_VALUE_COMMA_EQUAL_REGEX = /,|=/;
-
-const TRACE_PARENT_HEADER = "traceparent";
-const TRACE_STATE_HEADER = "tracestate";
-const INVALID_TRACEID = "00000000000000000000000000000000";
-const INVALID_SPANID = "0000000000000000";
-const INVALID_SPAN_CONTEXT: SpanContext = {
-  traceId: INVALID_TRACEID,
-  spanId: INVALID_SPANID,
-  traceFlags: 0,
-};
-const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
-const BAGGAGE_PROPERTIES_SEPARATOR = ";";
-const BAGGAGE_ITEMS_SEPARATOR = ",";
-const BAGGAGE_HEADER = "baggage";
-const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
-const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
-const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -1118,9 +1105,66 @@ function otelLog(message: string, level: number) {
   }
 }
 
+/*
+ * Copyright The OpenTelemetry Authors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+const VERSION = "00";
+const VERSION_PART = "(?!ff)[\\da-f]{2}";
+const TRACE_ID_PART = "(?![0]{32})[\\da-f]{32}";
+const PARENT_ID_PART = "(?![0]{16})[\\da-f]{16}";
+const FLAGS_PART = "[\\da-f]{2}";
+const TRACE_PARENT_REGEX = new SafeRegExp(
+  `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
+);
+const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$/");
+const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$/");
+const MAX_TRACE_STATE_ITEMS = 32;
+const MAX_TRACE_STATE_LEN = 512;
+const LIST_MEMBERS_SEPARATOR = ",";
+const LIST_MEMBER_KEY_VALUE_SPLITTER = "=";
+const VALID_KEY_CHAR_RANGE = "[_0-9a-z-*/]";
+const VALID_KEY = `[a-z]${VALID_KEY_CHAR_RANGE}{0,255}`;
+const VALID_VENDOR_KEY =
+  `[a-z0-9]${VALID_KEY_CHAR_RANGE}{0,240}@[a-z]${VALID_KEY_CHAR_RANGE}{0,13}`;
+const VALID_KEY_REGEX = new SafeRegExp(
+  `^(?:${VALID_KEY}|${VALID_VENDOR_KEY})$`,
+);
+const VALID_VALUE_BASE_REGEX = new SafeRegExp("^[ -~]{0,255}[!-~]$");
+const INVALID_VALUE_COMMA_EQUAL_REGEX = new SafeRegExp(",|=");
+
+const TRACE_PARENT_HEADER = "traceparent";
+const TRACE_STATE_HEADER = "tracestate";
+const INVALID_TRACEID = "00000000000000000000000000000000";
+const INVALID_SPANID = "0000000000000000";
+const INVALID_SPAN_CONTEXT: SpanContext = {
+  traceId: INVALID_TRACEID,
+  spanId: INVALID_SPANID,
+  traceFlags: 0,
+};
+const BAGGAGE_KEY_PAIR_SEPARATOR = "=";
+const BAGGAGE_PROPERTIES_SEPARATOR = ";";
+const BAGGAGE_ITEMS_SEPARATOR = ",";
+const BAGGAGE_HEADER = "baggage";
+const BAGGAGE_MAX_NAME_VALUE_PAIRS = 180;
+const BAGGAGE_MAX_PER_NAME_VALUE_PAIRS = 4096;
+const BAGGAGE_MAX_TOTAL_LENGTH = 8192;
+
 class NonRecordingSpan implements Span {
   constructor(
-    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT
+    private readonly _spanContext: SpanContext = INVALID_SPAN_CONTEXT,
   ) {}
 
   spanContext(): SpanContext {
@@ -1187,10 +1231,12 @@ function parseTraceParent(traceParent: string): SpanContext | null {
   };
 }
 
+// deno-lint-ignore no-explicit-any
 interface TextMapSetter<Carrier = any> {
   set(carrier: Carrier, key: string, value: string): void;
 }
 
+// deno-lint-ignore no-explicit-any
 interface TextMapPropagator<Carrier = any> {
   inject(
     context: Context,
@@ -1205,6 +1251,7 @@ interface TextMapPropagator<Carrier = any> {
   fields(): string[];
 }
 
+// deno-lint-ignore no-explicit-any
 interface TextMapGetter<Carrier = any> {
   keys(carrier: Carrier): string[];
   get(carrier: Carrier, key: string): undefined | string | string[];
@@ -1242,7 +1289,7 @@ function validateValue(value: string): boolean {
 }
 
 class TraceStateClass implements TraceState {
-  private _internalState: Map<string, string> = new Map();
+  private _internalState: Map<string, string> = new SafeMap();
 
   constructor(rawTraceState?: string) {
     if (rawTraceState) this._parse(rawTraceState);
@@ -1268,58 +1315,73 @@ class TraceStateClass implements TraceState {
   }
 
   serialize(): string {
-    return this._keys()
-      .reduce((agg: string[], key) => {
-        agg.push(key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key));
+    return ArrayPrototypeJoin(
+      ArrayPrototypeReduce(this._keys(), (agg: string[], key) => {
+        ArrayPrototypePush(
+          agg,
+          key + LIST_MEMBER_KEY_VALUE_SPLITTER + this.get(key),
+        );
         return agg;
-      }, [])
-      .join(LIST_MEMBERS_SEPARATOR);
+      }, []),
+      LIST_MEMBERS_SEPARATOR,
+    );
   }
 
   private _parse(rawTraceState: string) {
     if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
-    this._internalState = rawTraceState
-      .split(LIST_MEMBERS_SEPARATOR)
-      .reverse() // Store in reverse so new keys (.set(...)) will be placed at the beginning
-      .reduce((agg: Map<string, string>, part: string) => {
-        const listMember = part.trim(); // Optional Whitespace (OWS) handling
-        const i = listMember.indexOf(LIST_MEMBER_KEY_VALUE_SPLITTER);
+    this._internalState = ArrayPrototypeReduce(
+      ArrayPrototypeReverse(
+        ArrayPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
+      ),
+      (agg: Map<string, string>, part: string) => {
+        const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
+        const i = StringPrototypeIndexOf(
+          listMember,
+          LIST_MEMBER_KEY_VALUE_SPLITTER,
+        );
         if (i !== -1) {
-          const key = listMember.slice(0, i);
-          const value = listMember.slice(i + 1, part.length);
+          const key = StringPrototypeSlice(listMember, 0, i);
+          const value = StringPrototypeSlice(listMember, i + 1, part.length);
           if (validateKey(key) && validateValue(value)) {
             agg.set(key, value);
-          } else {
-            // TODO: Consider to add warning log
           }
         }
         return agg;
-      }, new Map());
+      },
+      new SafeMap(),
+    );
 
     // Because of the reverse() requirement, trunc must be done after map is created
     if (this._internalState.size > MAX_TRACE_STATE_ITEMS) {
-      this._internalState = new Map(
-        Array.from(this._internalState.entries())
-          .reverse() // Use reverse same as original tracestate parse chain
-          .slice(0, MAX_TRACE_STATE_ITEMS),
+      this._internalState = new SafeMap(
+        ArrayPrototypeSlice(
+          ArrayPrototypeReverse(
+            ArrayFrom(MapPrototypeEntries(this._internalState)),
+          ),
+          0,
+          MAX_TRACE_STATE_ITEMS,
+        ),
       );
     }
   }
 
   private _keys(): string[] {
-    return Array.from(this._internalState.keys()).reverse();
+    return ArrayPrototypeReverse(
+      ArrayFrom(MapPrototypeKeys(this._internalState)),
+    );
   }
 
   private _clone(): TraceStateClass {
     const traceState = new TraceStateClass();
-    traceState._internalState = new Map(this._internalState);
+    traceState._internalState = new SafeMap(this._internalState);
     return traceState;
   }
 }
 
 class W3CTraceContextPropagator implements TextMapPropagator {
   inject(context: Context, carrier: unknown, setter: TextMapSetter): void {
-    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)?.spanContext();
+    const spanContext = (context.getValue(SPAN_KEY) as Span | undefined)
+      ?.spanContext();
     if (
       !spanContext ||
       isTracingSuppressed(context) ||
@@ -1330,7 +1392,7 @@ class W3CTraceContextPropagator implements TextMapPropagator {
 
     const traceParent =
       `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
-        Number(spanContext.traceFlags || 0).toString(16)
+        NumberToString(Number(spanContext.traceFlags || 0), 16)
       }`;
 
     setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
@@ -1346,7 +1408,7 @@ class W3CTraceContextPropagator implements TextMapPropagator {
   extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
     const traceParentHeader = getter.get(carrier, TRACE_PARENT_HEADER);
     if (!traceParentHeader) return context;
-    const traceParent = Array.isArray(traceParentHeader)
+    const traceParent = ArrayIsArray(traceParentHeader)
       ? traceParentHeader[0]
       : traceParentHeader;
     if (typeof traceParent !== "string") return context;
@@ -1359,8 +1421,8 @@ class W3CTraceContextPropagator implements TextMapPropagator {
     if (traceStateHeader) {
       // If more than one `tracestate` header is found, we merge them into a
       // single header.
-      const state = Array.isArray(traceStateHeader)
-        ? traceStateHeader.join(",")
+      const state = ArrayIsArray(traceStateHeader)
+        ? ArrayPrototypeJoin(traceStateHeader, ",")
         : traceStateHeader;
       spanContext.traceState = new TraceStateClass(
         typeof state === "string" ? state : undefined,
@@ -1391,7 +1453,7 @@ interface ParsedBaggageKeyValue {
   metadata: BaggageEntryMetadata | undefined;
 }
 
-export interface Baggage {
+interface Baggage {
   getEntry(key: string): BaggageEntry | undefined;
   getAllEntries(): [string, BaggageEntry][];
   setEntry(key: string, entry: BaggageEntry): Baggage;
@@ -1415,8 +1477,8 @@ export function baggageEntryMetadataFromString(
   };
 }
 
-export function serializeKeyPairs(keyPairs: string[]): string {
-  return keyPairs.reduce((hValue: string, current: string) => {
+function serializeKeyPairs(keyPairs: string[]): string {
+  return ArrayPrototypeReduce(keyPairs, (hValue: string, current: string) => {
     const value = `${hValue}${
       hValue !== "" ? BAGGAGE_ITEMS_SEPARATOR : ""
     }${current}`;
@@ -1424,39 +1486,50 @@ export function serializeKeyPairs(keyPairs: string[]): string {
   }, "");
 }
 
-export function getKeyPairs(baggage: Baggage): string[] {
-  return baggage.getAllEntries().map(([key, value]) => {
-    let entry = `${encodeURIComponent(key)}=${encodeURIComponent(value.value)}`;
+function getKeyPairs(baggage: Baggage): string[] {
+  return ArrayPrototypeMap(baggage.getAllEntries(), (baggageEntry) => {
+    let entry = `${encodeURIComponent(baggageEntry[0])}=${
+      encodeURIComponent(baggageEntry[1].value)
+    }`;
 
     // include opaque metadata if provided
     // NOTE: we intentionally don't URI-encode the metadata - that responsibility falls on the metadata implementation
-    if (value.metadata !== undefined) {
-      entry += BAGGAGE_PROPERTIES_SEPARATOR + value.metadata.toString();
+    if (baggageEntry[1].metadata !== undefined) {
+      // deno-lint-ignore prefer-primordials
+      entry += BAGGAGE_PROPERTIES_SEPARATOR +
+        baggageEntry[1].metadata.toString();
     }
 
     return entry;
   });
 }
 
-export function parsePairKeyValue(
+function parsePairKeyValue(
   entry: string,
 ): ParsedBaggageKeyValue | undefined {
-  const valueProps = entry.split(BAGGAGE_PROPERTIES_SEPARATOR);
+  const valueProps = ArrayPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
   if (valueProps.length <= 0) return;
-  const keyPairPart = valueProps.shift();
+  const keyPairPart = ArrayPrototypeShift(valueProps);
   if (!keyPairPart) return;
-  const separatorIndex = keyPairPart.indexOf(BAGGAGE_KEY_PAIR_SEPARATOR);
+  const separatorIndex = StringPrototypeIndexOf(
+    keyPairPart,
+    BAGGAGE_KEY_PAIR_SEPARATOR,
+  );
   if (separatorIndex <= 0) return;
   const key = decodeURIComponent(
-    keyPairPart.substring(0, separatorIndex).trim(),
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, 0, separatorIndex),
+    ),
   );
   const value = decodeURIComponent(
-    keyPairPart.substring(separatorIndex + 1).trim(),
+    StringPrototypeTrim(
+      StringPrototypeSubstring(keyPairPart, separatorIndex + 1),
+    ),
   );
   let metadata;
   if (valueProps.length > 0) {
     metadata = baggageEntryMetadataFromString(
-      valueProps.join(BAGGAGE_PROPERTIES_SEPARATOR),
+      ArrayPrototypeJoin(valueProps, BAGGAGE_PROPERTIES_SEPARATOR),
     );
   }
   return { key, value, metadata };
@@ -1466,7 +1539,7 @@ class BaggageImpl implements Baggage {
   #entries: Map<string, BaggageEntry>;
 
   constructor(entries?: Map<string, BaggageEntry>) {
-    this.#entries = entries ? new Map(entries) : new Map();
+    this.#entries = entries ? new SafeMap(entries) : new SafeMap();
   }
 
   getEntry(key: string): BaggageEntry | undefined {
@@ -1475,11 +1548,14 @@ class BaggageImpl implements Baggage {
       return undefined;
     }
 
-    return Object.assign({}, entry);
+    return ObjectAssign({}, entry);
   }
 
   getAllEntries(): [string, BaggageEntry][] {
-    return Array.from(this.#entries.entries()).map(([k, v]) => [k, v]);
+    return ArrayPrototypeMap(
+      ArrayFrom(MapPrototypeEntries(this.#entries)),
+      (entry) => [entry[0], entry[1]],
+    );
   }
 
   setEntry(key: string, entry: BaggageEntry): BaggageImpl {
@@ -1496,7 +1572,7 @@ class BaggageImpl implements Baggage {
 
   removeEntries(...keys: string[]): BaggageImpl {
     const newBaggage = new BaggageImpl(this.#entries);
-    for (const key of keys) {
+    for (const key of new SafeArrayIterator(keys)) {
       newBaggage.#entries.delete(key);
     }
     return newBaggage;
@@ -1513,11 +1589,13 @@ export class W3CBaggagePropagator implements TextMapPropagator {
       | Baggage
       | undefined;
     if (!baggage || isTracingSuppressed(context)) return;
-    const keyPairs = getKeyPairs(baggage)
-      .filter((pair: string) => {
+    const keyPairs = ArrayPrototypeMap(
+      ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
         return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
-      })
-      .slice(0, BAGGAGE_MAX_NAME_VALUE_PAIRS);
+      }),
+      0,
+      BAGGAGE_MAX_NAME_VALUE_PAIRS,
+    );
     const headerValue = serializeKeyPairs(keyPairs);
     if (headerValue.length > 0) {
       setter.set(carrier, BAGGAGE_HEADER, headerValue);
@@ -1526,16 +1604,16 @@ export class W3CBaggagePropagator implements TextMapPropagator {
 
   extract(context: Context, carrier: unknown, getter: TextMapGetter): Context {
     const headerValue = getter.get(carrier, BAGGAGE_HEADER);
-    const baggageString = Array.isArray(headerValue)
-      ? headerValue.join(BAGGAGE_ITEMS_SEPARATOR)
+    const baggageString = ArrayIsArray(headerValue)
+      ? ArrayPrototypeJoin(headerValue, BAGGAGE_ITEMS_SEPARATOR)
       : headerValue;
     if (!baggageString) return context;
     const baggage: Record<string, BaggageEntry> = {};
     if (baggageString.length === 0) {
       return context;
     }
-    const pairs = baggageString.split(BAGGAGE_ITEMS_SEPARATOR);
-    pairs.forEach((entry) => {
+    const pairs = StringPrototypeSplit(baggageString, BAGGAGE_ITEMS_SEPARATOR);
+    ArrayPrototypeForEach(pairs, (entry) => {
       const keyPair = parsePairKeyValue(entry);
       if (keyPair) {
         const baggageEntry: BaggageEntry = { value: keyPair.value };
@@ -1545,13 +1623,13 @@ export class W3CBaggagePropagator implements TextMapPropagator {
         baggage[keyPair.key] = baggageEntry;
       }
     });
-    if (Object.entries(baggage).length === 0) {
+    if (ObjectEntries(baggage).length === 0) {
       return context;
     }
 
     return context.setValue(
       baggageEntryMetadataSymbol,
-      new BaggageImpl(new Map(Object.entries(baggage))),
+      new BaggageImpl(new SafeMap(ObjectEntries(baggage))),
     );
   }
 
@@ -1594,16 +1672,20 @@ export function bootstrap(
   TRACING_ENABLED = tracingEnabled === 1;
   METRICS_ENABLED = metricsEnabled === 1;
 
-  PROPAGATORS = Object.values(propagators).filter((propagator) =>
-    propagator !== otelPropagators.none
-  ).map((propagator) => {
-    switch (propagator) {
-      case otelPropagators.traceContext:
-        return new W3CTraceContextPropagator();
-      case otelPropagators.baggage:
-        return new W3CBaggagePropagator();
-    }
-  });
+  PROPAGATORS = ArrayPrototypeMap(
+    ArrayPrototypeFilter(
+      ObjectValues(propagators),
+      (propagator) => propagator !== otelPropagators.none,
+    ),
+    (propagator) => {
+      switch (propagator) {
+        case otelPropagators.traceContext:
+          return new W3CTraceContextPropagator();
+        case otelPropagators.baggage:
+          return new W3CBaggagePropagator();
+      }
+    },
+  );
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:

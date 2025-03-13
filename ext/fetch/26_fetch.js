@@ -374,7 +374,7 @@ function fetch(input, init = { __proto__: null }) {
 
       if (span) {
         const context = ContextManager.active();
-        for (const propagator of PROPAGATORS) {
+        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
           propagator.inject(context, requestObject.headers, {
             set(carrier, key, value) {
               carrier.append(key, value);
