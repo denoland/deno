@@ -35,9 +35,3 @@ export function updateSpanFromError(span: Span, error: any) {
   span.setAttribute("error.type", error.name ?? "Error");
   span.setStatus({ code: 2, message: error.message ?? String(error) });
 }
-
-// deno-lint-ignore no-explicit-any
-export function updateSpanFromError(span: Span, error: any) {
-  span.setAttribute("error.type", error.name ?? "Error");
-  span.setStatus({ code: 2, message: error.message ?? String(error) });
-}
