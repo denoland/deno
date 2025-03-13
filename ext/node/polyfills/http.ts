@@ -69,8 +69,10 @@ import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
-  restoreContext,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
@@ -82,7 +84,8 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase } = primordials;
+const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
+  primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
@@ -466,7 +469,11 @@ class ClientRequest extends OutgoingMessage {
     }
 
     let span;
-    let context;
+    let snapshot;
+    if (TRACING_ENABLED) {
+      span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
+      snapshot = enterSpan(span);
+    }
     (async () => {
       try {
         const parsedUrl = new URL(url);
@@ -476,10 +483,15 @@ class ClientRequest extends OutgoingMessage {
           // This should be only happening in artificial test cases
           return;
         }
-
-        if (TRACING_ENABLED) {
-          span = builtinTracer().startSpan(this.method, { kind: 2 }); // Kind 2 = Client
-          context = enterSpan(span);
+        if (span) {
+          const context = ContextManager.active();
+          for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+            propagator.inject(context, headers, {
+              set(carrier, key, value) {
+                carrier.push([key, value]);
+              },
+            });
+          }
           span.setAttribute("http.request.method", this.method);
           span.setAttribute("url.full", parsedUrl.href);
           span.setAttribute("url.scheme", parsedUrl.protocol.slice(0, -1));
@@ -669,8 +681,8 @@ class ClientRequest extends OutgoingMessage {
       }
     })();
 
-    if (context) {
-      restoreContext(context);
+    if (snapshot) {
+      restoreSnapshot(snapshot);
     }
   }
 

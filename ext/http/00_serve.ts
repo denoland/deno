@@ -31,10 +31,13 @@ import {
   op_http_wait,
 } from "ext:core/ops";
 const {
+  ArrayPrototypeFind,
+  ArrayPrototypeMap,
   ArrayPrototypePush,
   ObjectHasOwn,
   ObjectPrototypeIsPrototypeOf,
   PromisePrototypeCatch,
+  SafeArrayIterator,
   SafePromisePrototypeFinally,
   PromisePrototypeThen,
   StringPrototypeIncludes,
@@ -44,7 +47,6 @@ const {
   Uint8Array,
   Promise,
 } = primordials;
-const { getAsyncContext, setAsyncContext } = core;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
 import { Event } from "ext:deno_web/02_event.js";
@@ -89,8 +91,12 @@ import { hasTlsKeyPairOptions, listenTls } from "ext:deno_net/02_tls.js";
 import { SymbolAsyncDispose } from "ext:deno_web/00_infra.js";
 import {
   builtinTracer,
+  ContextManager,
+  currentSnapshot,
   enterSpan,
   METRICS_ENABLED,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -425,10 +431,10 @@ class CallbackContext {
   /** @type {Promise<void> | undefined} */
   closing;
   listener;
-  asyncContext;
+  asyncContextSnapshot;
 
   constructor(signal, args, listener) {
-    this.asyncContext = getAsyncContext();
+    this.asyncContextSnapshot = currentSnapshot();
     // The abort signal triggers a non-graceful shutdown
     signal?.addEventListener(
       "abort",
@@ -624,29 +630,56 @@ function mapToCallback(context, callback, onError) {
   if (TRACING_ENABLED) {
     const origMapped = mapped;
     mapped = function (req, _span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
-      const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
+
+      const reqHeaders = op_http_get_request_headers(req);
+      const headers: [key: string, value: string][] = [];
+      for (let i = 0; i < reqHeaders.length; i += 2) {
+        ArrayPrototypePush(headers, [reqHeaders[i], reqHeaders[i + 1]]);
+      }
+      let activeContext = ContextManager.active();
+      for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+        activeContext = propagator.extract(activeContext, headers, {
+          get(carrier: [key: string, value: string][], key: string) {
+            return ArrayPrototypeFind(
+              carrier,
+              (carrierEntry) => carrierEntry[0] === key,
+            )?.[1];
+          },
+          keys(carrier: [key: string, value: string][]) {
+            return ArrayPrototypeMap(
+              carrier,
+              (carrierEntry) => carrierEntry[0],
+            );
+          },
+        });
+      }
+
+      const span = builtinTracer().startSpan(
+        "deno.serve",
+        { kind: 1 },
+        activeContext,
+      );
+      enterSpan(span);
       try {
-        enterSpan(span);
         return SafePromisePrototypeFinally(
           origMapped(req, span),
           () => span.end(),
         );
       } finally {
-        // equiv to exitSpan.
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   } else {
     const origMapped = mapped;
     mapped = function (req, span) {
-      const oldCtx = getAsyncContext();
-      setAsyncContext(context.asyncContext);
+      const snapshot = currentSnapshot();
+      restoreSnapshot(context.asyncContext);
       try {
         return origMapped(req, span);
       } finally {
-        setAsyncContext(oldCtx);
+        restoreSnapshot(snapshot);
       }
     };
   }
