@@ -501,6 +501,13 @@ declare namespace Deno {
   export const noColor: boolean;
 
   /**
+   * Get the terminal's color depth.
+   *
+   * @category Runtime
+   */
+  export const colorDepth: 1 | 4 | 8 | 24;
+
+  /**
    * Returns the release version of the Operating System.
    *
    * ```ts
