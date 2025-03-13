@@ -45,7 +45,8 @@ const {
   MapPrototypeEntries,
   MapPrototypeKeys,
   Number,
-  NumberToString,
+  NumberParseInt,
+  NumberPrototypeToString,
   ObjectAssign,
   ObjectDefineProperty,
   ObjectEntries,
@@ -69,7 +70,6 @@ const {
   TypeError,
   decodeURIComponent,
   encodeURIComponent,
-  parseInt,
 } = primordials;
 const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 
@@ -1129,8 +1129,8 @@ const FLAGS_PART = "[\\da-f]{2}";
 const TRACE_PARENT_REGEX = new SafeRegExp(
   `^\\s?(${VERSION_PART})-(${TRACE_ID_PART})-(${PARENT_ID_PART})-(${FLAGS_PART})(-.*)?\\s?$`,
 );
-const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$/");
-const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$/");
+const VALID_TRACEID_REGEX = new SafeRegExp("^([0-9a-f]{32})$", "i");
+const VALID_SPANID_REGEX = new SafeRegExp("^[0-9a-f]{16}$", "i");
 const MAX_TRACE_STATE_ITEMS = 32;
 const MAX_TRACE_STATE_LEN = 512;
 const LIST_MEMBERS_SEPARATOR = ",";
@@ -1227,7 +1227,7 @@ function parseTraceParent(traceParent: string): SpanContext | null {
   return {
     traceId: match[2],
     spanId: match[3],
-    traceFlags: parseInt(match[4], 16),
+    traceFlags: NumberParseInt(match[4], 16),
   };
 }
 
@@ -1392,7 +1392,7 @@ class W3CTraceContextPropagator implements TextMapPropagator {
 
     const traceParent =
       `${VERSION}-${spanContext.traceId}-${spanContext.spanId}-0${
-        NumberToString(Number(spanContext.traceFlags || 0), 16)
+        NumberPrototypeToString(Number(spanContext.traceFlags || 0), 16)
       }`;
 
     setter.set(carrier, TRACE_PARENT_HEADER, traceParent);
@@ -1589,7 +1589,7 @@ export class W3CBaggagePropagator implements TextMapPropagator {
       | Baggage
       | undefined;
     if (!baggage || isTracingSuppressed(context)) return;
-    const keyPairs = ArrayPrototypeMap(
+    const keyPairs = ArrayPrototypeSlice(
       ArrayPrototypeFilter(getKeyPairs(baggage), (pair: string) => {
         return pair.length <= BAGGAGE_MAX_PER_NAME_VALUE_PAIRS;
       }),
