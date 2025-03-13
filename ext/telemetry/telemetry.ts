@@ -24,7 +24,11 @@ import {
   OtelSpan,
   OtelTracer,
 } from "ext:core/ops";
-import { Console } from "ext:deno_console/01_console.js";
+import {
+  cloneConsole,
+  Console,
+  inspectArgs,
+} from "ext:deno_console/01_console.js";
 
 const {
   ArrayIsArray,
@@ -1090,6 +1094,9 @@ export function builtinTracer(): Tracer {
 // able to register anything itself with the global registration methods.
 const OTEL_API_COMPAT_VERSION = "1.999.999";
 
+let ORIGINAL_CONSOLE;
+let OTEL_CONSOLE;
+
 export function bootstrap(
   config: [
     0 | 1,
@@ -1105,13 +1112,17 @@ export function bootstrap(
 
   switch (consoleConfig) {
     case otelConsoleConfig.capture:
-      core.wrapConsole(globalThis.console, new Console(otelLog));
+      ORIGINAL_CONSOLE = cloneConsole(globalThis.console);
+      OTEL_CONSOLE = new Console(otelLog);
+      core.wrapConsole(globalThis.console, OTEL_CONSOLE);
       break;
     case otelConsoleConfig.replace:
+      ORIGINAL_CONSOLE = globalThis.console;
+      OTEL_CONSOLE = new Console(otelLog);
       ObjectDefineProperty(
         globalThis,
         "console",
-        core.propNonEnumerable(new Console(otelLog)),
+        core.propNonEnumerable(OTEL_CONSOLE),
       );
       break;
     default:
@@ -1129,6 +1140,15 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
     }
+  }
+}
+
+export function otelAwareInfoErrorLog(...args: any[]) {
+  if (ORIGINAL_CONSOLE) {
+    OTEL_CONSOLE.log(...args);
+    ORIGINAL_CONSOLE.error(...args);
+  } else {
+    console.error(...args);
   }
 }
 

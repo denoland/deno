@@ -91,6 +91,7 @@ import {
   builtinTracer,
   enterSpan,
   METRICS_ENABLED,
+  otelAwareInfoErrorLog,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -738,8 +739,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        // deno-lint-ignore no-console
-        console.error(`Listening on ${path}`);
+        otelAwareInfoErrorLog(`Listening on ${path}`);
       }
     });
   }
@@ -786,9 +786,7 @@ function serve(arg1, arg2) {
       options.onListen(addr);
     } else {
       const host = formatHostName(addr.hostname);
-
-      // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      otelAwareInfoErrorLog(`Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -960,8 +958,7 @@ function registerDeclarativeServer(exports) {
               : "";
             const host = formatHostName(hostname);
 
-            // deno-lint-ignore no-console
-            console.error(
+            otelAwareInfoErrorLog(
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
