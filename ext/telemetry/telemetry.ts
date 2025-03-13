@@ -1665,7 +1665,6 @@ export function bootstrap(
     0: tracingEnabled,
     1: metricsEnabled,
     2: consoleConfig,
-    3: _deterministic,
     ...propagators
   } = config;
 

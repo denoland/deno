@@ -983,9 +983,18 @@ impl Flags {
           }
         }
       },
-      deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+      deterministic_prefix: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
         .as_deref()
-        == Ok("1"),
+        .map(u8::from_str)
+        .map(|x| match x {
+          Ok(x) => Some(x),
+          Err(_) => {
+            log::warn!("'DENO_UNSTABLE_OTEL_DETERMINISTIC' env var value not recognized, only integers are accepted");
+            None
+          }
+        })
+        .ok()
+        .flatten(),
     }
   }
 

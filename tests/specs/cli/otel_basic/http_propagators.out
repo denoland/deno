@@ -60,7 +60,7 @@
     },
     {
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000001",
+      "spanId": "0100000000000001",
       "traceState": "",
       "parentSpanId": "0000000000000001",
       "flags": 1,
@@ -118,12 +118,12 @@
     },
     {
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000001",
+      "spanId": "0100000000000002",
       "traceState": "",
-      "parentSpanId": "0000000000000002",
+      "parentSpanId": "0100000000000001",
       "flags": 1,
       "name": "GET",
-      "kind": 2,
+      "kind": 3,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
       "attributes": [
@@ -176,12 +176,12 @@
     },
     {
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000002",
+      "spanId": "0200000000000001",
       "traceState": "",
-      "parentSpanId": "0000000000000001",
+      "parentSpanId": "0100000000000002",
       "flags": 1,
       "name": "GET",
-      "kind": 3,
+      "kind": 2,
       "startTimeUnixNano": "[WILDCARD]",
       "endTimeUnixNano": "[WILDCARD]",
       "attributes": [
@@ -235,7 +235,7 @@
   ],
   "logs": [
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 17,
       "severityText": "ERROR",
@@ -249,7 +249,7 @@
       "spanId": ""
     },
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 17,
       "severityText": "ERROR",
@@ -263,7 +263,7 @@
       "spanId": ""
     },
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
@@ -274,10 +274,10 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000001"
+      "spanId": "0100000000000001"
     },
     {
-      "timeUnixNano": "0",
+      "timeUnixNano": "[WILDCARD]",
       "observedTimeUnixNano": "[WILDCARD]",
       "severityNumber": 9,
       "severityText": "INFO",
@@ -288,7 +288,7 @@
       "droppedAttributesCount": 0,
       "flags": 1,
       "traceId": "00000000000000000000000000000001",
-      "spanId": "0000000000000001"
+      "spanId": "0200000000000001"
     }
   ],
   "metrics": []
