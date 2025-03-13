@@ -46,7 +46,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_fs::FsError;
+pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
