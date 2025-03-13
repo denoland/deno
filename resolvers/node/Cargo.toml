@@ -37,3 +37,6 @@ serde_json.workspace = true
 sys_traits.workspace = true
 thiserror.workspace = true
 url.workspace = true
+
+[dev-dependencies]
+sys_traits = { workspace = true, features = ["memory"] }
