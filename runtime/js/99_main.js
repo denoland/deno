@@ -8,9 +8,8 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
-  op_bootstrap_is_stderr_tty,
-  op_bootstrap_is_stdout_tty,
-  op_bootstrap_no_color,
+  op_bootstrap_stdout_no_color,
+  op_bootstrap_stderr_no_color,
   op_bootstrap_pid,
   op_main_module,
   op_ppid,
@@ -278,8 +277,8 @@ function importScripts(...urls) {
 const opArgs = memoizeLazy(() => op_bootstrap_args());
 const opPid = memoizeLazy(() => op_bootstrap_pid());
 setNoColorFns(
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stdout_tty(),
-  () => op_bootstrap_no_color() || !op_bootstrap_is_stderr_tty(),
+  () => op_bootstrap_stdout_no_color(),
+  () => op_bootstrap_stderr_no_color(),
 );
 
 function formatException(error) {

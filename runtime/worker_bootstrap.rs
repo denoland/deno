@@ -102,10 +102,6 @@ pub struct BootstrapOptions {
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
-  pub is_stdout_tty: bool,
-  pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
@@ -138,9 +134,6 @@ impl Default for BootstrapOptions {
       deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
-      no_color: !colors::use_color(),
-      is_stdout_tty: deno_terminal::is_stdout_tty(),
-      is_stderr_tty: deno_terminal::is_stderr_tty(),
       color_level: colors::get_color_level(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
