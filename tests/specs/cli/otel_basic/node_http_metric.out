@@ -249,16 +249,16 @@
             "count": 3,
             "sum": 0,
             "bucketCounts": [
-              3,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0,
-              0
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE],
+              [WILDLINE]
             ],
             "explicitBounds": [
               0,
