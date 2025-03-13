@@ -25,7 +25,6 @@ use deno_path_util::url_to_file_path;
 use deno_resolver::cjs::IsCjsResolutionMode;
 use deno_resolver::npm::managed::ManagedInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::managed::NpmResolutionCell;
-use deno_resolver::npm::ByonmInNpmPkgCheckerCreateOptions;
 use deno_resolver::npm::CreateInNpmPkgCheckerOptions;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolverOptions;
@@ -780,6 +779,7 @@ impl<'a> ResolverFactory<'a> {
         registry_info_provider,
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
+        // todo(THIS PR): this
         Default::default(),
       ));
       let npm_installer = Arc::new(NpmInstaller::new(
@@ -892,20 +892,13 @@ impl<'a> ResolverFactory<'a> {
     self.services.in_npm_pkg_checker.get_or_init(|| {
       DenoInNpmPackageChecker::new(match &self.services.npm_resolver {
         Some(CliNpmResolver::Byonm(_)) | None => {
-          CreateInNpmPkgCheckerOptions::Byonm(
-            ByonmInNpmPkgCheckerCreateOptions {
-              // todo(THIS PR): make this work
-              patch_pkg_folders: Vec::new(),
-            },
-          )
+          CreateInNpmPkgCheckerOptions::Byonm
         }
         Some(CliNpmResolver::Managed(m)) => {
           CreateInNpmPkgCheckerOptions::Managed(
             ManagedInNpmPkgCheckerCreateOptions {
               root_cache_dir_url: m.global_cache_root_url(),
               maybe_node_modules_path: m.root_node_modules_path(),
-              // todo(THIS PR): make this work
-              patch_pkg_folders: Vec::new(),
             },
           )
         }

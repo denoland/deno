@@ -18,20 +18,24 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
-use deno_resolver::npm::get_package_folder_id_folder_name_from_parts;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::FsCopy;
+use sys_traits::FsDirEntry;
+use sys_traits::FsReadDir;
 
 use super::common::bin_entries;
 use super::common::NpmPackageFsInstaller;
@@ -310,51 +314,54 @@ async fn sync_resolution_with_fs(
         let packages_with_deprecation_warnings =
           packages_with_deprecation_warnings.clone();
 
-        cache_futures.push(async move {
-          tarball_cache
-            .ensure_package(&package.id.nv, dist)
+        cache_futures.push(
+          async move {
+            tarball_cache
+              .ensure_package(&package.id.nv, dist)
+              .await
+              .map_err(JsErrorBox::from_err)?;
+            let pb_guard = progress_bar.update_with_prompt(
+              ProgressMessagePrompt::Initialize,
+              &package.id.nv.to_string(),
+            );
+            let sub_node_modules = folder_path.join("node_modules");
+            let package_path = join_package_name(
+              Cow::Owned(sub_node_modules),
+              &package.id.nv.name,
+            );
+            let cache_folder = cache.package_folder_for_nv(&package.id.nv);
+
+            deno_core::unsync::spawn_blocking({
+              let package_path = package_path.clone();
+              let sys = sys.clone();
+              move || {
+                clone_dir_recursive(&sys, &cache_folder, &package_path)?;
+                // write out a file that indicates this folder has been initialized
+                fs::write(initialized_file, tags)?;
+
+                Ok::<_, SyncResolutionWithFsError>(())
+              }
+            })
             .await
+            .map_err(JsErrorBox::from_err)?
             .map_err(JsErrorBox::from_err)?;
-          let pb_guard = progress_bar.update_with_prompt(
-            ProgressMessagePrompt::Initialize,
-            &package.id.nv.to_string(),
-          );
-          let sub_node_modules = folder_path.join("node_modules");
-          let package_path = join_package_name(
-            Cow::Owned(sub_node_modules),
-            &package.id.nv.name,
-          );
-          let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
-          deno_core::unsync::spawn_blocking({
-            let package_path = package_path.clone();
-            let sys = sys.clone();
-            move || {
-              clone_dir_recursive(&sys, &cache_folder, &package_path)?;
-              // write out a file that indicates this folder has been initialized
-              fs::write(initialized_file, tags)?;
-
-              Ok::<_, SyncResolutionWithFsError>(())
+            if package.bin.is_some() {
+              bin_entries_to_setup.borrow_mut().add(package, package_path);
             }
-          })
-          .await
-          .map_err(JsErrorBox::from_err)?
-          .map_err(JsErrorBox::from_err)?;
 
-          if package.bin.is_some() {
-            bin_entries_to_setup.borrow_mut().add(package, package_path);
+            if let Some(deprecated) = &package.deprecated {
+              packages_with_deprecation_warnings
+                .lock()
+                .push((package.id.clone(), deprecated.clone()));
+            }
+
+            // finally stop showing the progress bar
+            drop(pb_guard); // explicit for clarity
+            Ok::<_, JsErrorBox>(())
           }
-
-          if let Some(deprecated) = &package.deprecated {
-            packages_with_deprecation_warnings
-              .lock()
-              .push((package.id.clone(), deprecated.clone()));
-          }
-
-          // finally stop showing the progress bar
-          drop(pb_guard); // explicit for clarity
-          Ok::<_, JsErrorBox>(())
-        });
+          .boxed_local(),
+        );
       }
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;
@@ -366,71 +373,77 @@ async fn sync_resolution_with_fs(
     lifecycle_scripts.add(package, package_path.into());
   }
 
-  while let Some(result) = cache_futures.next().await {
-    result?; // surface the first error
-  }
-
   // 2. Setup the patch packages and their node_modules directories
   for patch_pkg in npm_install_deps_provider.patch_pkgs() {
-    // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name> -> local package folder
-    let package_folder_name =
-      get_package_folder_id_folder_name_from_parts(&patch_pkg.nv, 0);
-    let from = join_package_name(
-      Cow::Owned(
-        deno_local_registry_dir
-          .join(&package_folder_name)
-          .join("node_modules"),
-      ),
-      &patch_pkg.nv.name,
-    );
+    for id in snapshot.package_ids_for_nv(&patch_pkg.nv) {
+      let package = snapshot.package_from_id(id).unwrap();
+      let package_folder_name = get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      );
+      // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name> -> local package folder
+      let target = join_package_name(
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(&package_folder_name)
+            .join("node_modules"),
+        ),
+        &patch_pkg.nv.name,
+      );
 
-    let new_parent = from.parent().unwrap();
-    fs::create_dir_all(new_parent).map_err(|source| {
-      SymlinkPackageDirError::Creating {
-        parent: new_parent.to_path_buf(),
-        source,
-      }
-    })?;
-    symlink_package_dir(&patch_pkg.target_dir, &from)?;
+      cache_futures.push(
+        async move {
+          let from_path = patch_pkg.target_dir.clone();
+          let sys = sys.clone();
+          deno_core::unsync::spawn_blocking({
+            move || {
+              _ = fs::remove_dir_all(&target);
+              fs::create_dir_all(&target).map_err(|source| {
+                SyncResolutionWithFsError::Creating {
+                  path: target.clone(),
+                  source,
+                }
+              })?;
+              let from = from_path;
+              let to = target;
+              for entry in sys.fs_read_dir(&from)? {
+                let entry = entry?;
+                if entry.file_name().to_str() == Some("node_modules") {
+                  continue; // ignore
+                }
+                let file_type = entry.file_type()?;
+                let new_from = from.join(entry.file_name());
+                let new_to = to.join(entry.file_name());
 
-    let pkg = snapshot
-      .package_ids_for_nv(&patch_pkg.nv)
-      .filter_map(|id| snapshot.package_from_id(id))
-      .find(|pkg| pkg.dist.is_none() && !pkg.dependencies.is_empty());
+                if file_type.is_dir() {
+                  clone_dir_recursive(&sys, &new_from, &new_to)?;
+                } else if file_type.is_file() {
+                  hard_link_file(&sys, &new_from, &new_to).or_else(|_| {
+                    sys
+                      .fs_copy(&new_from, &new_to)
+                      .map_err(|source| SyncResolutionWithFsError::Creating {
+                        path: new_to.clone(),
+                        source,
+                      })
+                      .map(|_| ())
+                  })?;
+                }
+              }
 
-    if let Some(pkg) = pkg {
-      let dest_node_modules = patch_pkg.target_dir.join("node_modules");
-      fs::create_dir_all(&dest_node_modules).map_err(|source| {
-        SyncResolutionWithFsError::Creating {
-          path: dest_node_modules.clone(),
-          source,
+              Ok::<_, SyncResolutionWithFsError>(())
+            }
+          })
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)?;
+          Ok::<_, JsErrorBox>(())
         }
-      })?;
-
-      for (name, dep_id) in &pkg.dependencies {
-        let dep = snapshot.package_from_id(dep_id).unwrap();
-        if pkg.optional_dependencies.contains(name)
-          && !dep.system.matches_system(system_info)
-        {
-          continue; // this isn't a dependency for the current system
-        }
-        let dep_cache_folder_id = dep.get_package_cache_folder_id();
-        let dep_folder_name =
-          get_package_folder_id_folder_name(&dep_cache_folder_id);
-        let dep_folder_path = join_package_name(
-          Cow::Owned(
-            deno_local_registry_dir
-              .join(dep_folder_name)
-              .join("node_modules"),
-          ),
-          &dep_id.nv.name,
-        );
-        symlink_package_dir(
-          &dep_folder_path,
-          &join_package_name(Cow::Borrowed(&dest_node_modules), name),
-        )?;
-      }
+        .boxed_local(),
+      );
     }
+  }
+
+  while let Some(result) = cache_futures.next().await {
+    result?; // surface the first error
   }
 
   // 3. Create any "copy" packages, which are used for peer dependencies
@@ -466,9 +479,6 @@ async fn sync_resolution_with_fs(
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
   for package in package_partitions.iter_all() {
-    if package.dist.is_none() {
-      continue;
-    }
     let package_folder_name =
       get_package_folder_id_folder_name(&package.get_package_cache_folder_id());
     let sub_node_modules = deno_local_registry_dir
@@ -485,7 +495,9 @@ async fn sync_resolution_with_fs(
       let dep_cache_folder_id = dep.get_package_cache_folder_id();
       let dep_folder_name =
         get_package_folder_id_folder_name(&dep_cache_folder_id);
-      if dep_setup_cache.insert(name, &dep_folder_name) {
+      if package.dist.is_none()
+        || dep_setup_cache.insert(name, &dep_folder_name)
+      {
         let dep_folder_path = join_package_name(
           Cow::Owned(
             deno_local_registry_dir

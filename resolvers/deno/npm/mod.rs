@@ -35,14 +35,13 @@ use thiserror::Error;
 use url::Url;
 
 pub use self::byonm::ByonmInNpmPackageChecker;
-pub use self::byonm::ByonmInNpmPkgCheckerCreateOptions;
 pub use self::byonm::ByonmNpmResolver;
 pub use self::byonm::ByonmNpmResolverCreateOptions;
 pub use self::byonm::ByonmNpmResolverRc;
 pub use self::byonm::ByonmResolvePkgFolderFromDenoReqError;
 pub use self::local::get_package_folder_id_folder_name;
-pub use self::local::get_package_folder_id_folder_name_from_parts;
 pub use self::local::normalize_pkg_name_for_node_modules_deno_folder;
+use self::managed::create_managed_in_npm_pkg_checker;
 use self::managed::ManagedInNpmPackageChecker;
 use self::managed::ManagedInNpmPkgCheckerCreateOptions;
 pub use self::managed::ManagedNpmResolver;
@@ -59,7 +58,7 @@ pub mod managed;
 #[derive(Debug)]
 pub enum CreateInNpmPkgCheckerOptions<'a> {
   Managed(ManagedInNpmPkgCheckerCreateOptions<'a>),
-  Byonm(ByonmInNpmPkgCheckerCreateOptions),
+  Byonm,
 }
 
 #[derive(Debug, Clone)]
@@ -72,12 +71,12 @@ impl DenoInNpmPackageChecker {
   pub fn new(options: CreateInNpmPkgCheckerOptions) -> Self {
     match options {
       CreateInNpmPkgCheckerOptions::Managed(options) => {
-        DenoInNpmPackageChecker::Managed(ManagedInNpmPackageChecker::new(
+        DenoInNpmPackageChecker::Managed(create_managed_in_npm_pkg_checker(
           options,
         ))
       }
-      CreateInNpmPkgCheckerOptions::Byonm(options) => {
-        DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker::new(options))
+      CreateInNpmPkgCheckerOptions::Byonm => {
+        DenoInNpmPackageChecker::Byonm(ByonmInNpmPackageChecker)
       }
     }
   }

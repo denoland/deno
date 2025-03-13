@@ -434,37 +434,16 @@ impl<TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir>
   }
 }
 
-#[derive(Debug)]
-pub struct ByonmInNpmPkgCheckerCreateOptions {
-  pub patch_pkg_folders: Vec<Url>,
-}
-
 #[derive(Debug, Clone)]
-pub struct ByonmInNpmPackageChecker {
-  patch_pkg_folders: Vec<Url>,
-}
-
-impl ByonmInNpmPackageChecker {
-  pub fn new(options: ByonmInNpmPkgCheckerCreateOptions) -> Self {
-    Self {
-      patch_pkg_folders: options.patch_pkg_folders,
-    }
-  }
-}
+pub struct ByonmInNpmPackageChecker;
 
 impl InNpmPackageChecker for ByonmInNpmPackageChecker {
   fn in_npm_package(&self, specifier: &Url) -> bool {
-    if specifier.scheme() != "file" {
-      return false;
-    }
-
-    for patch_folder in &self.patch_pkg_folders {
-      if specifier.as_str().starts_with(patch_folder.as_str()) {
-        return true;
-      }
-    }
-
-    specifier.path().contains("/node_modules/")
+    specifier.scheme() == "file"
+      && specifier
+        .path()
+        .to_ascii_lowercase()
+        .contains("/node_modules/")
   }
 }
 
