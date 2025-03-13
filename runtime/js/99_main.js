@@ -8,6 +8,7 @@ import { core, internals, primordials } from "ext:core/mod.js";
 const ops = core.ops;
 import {
   op_bootstrap_args,
+  op_bootstrap_no_color,
   op_bootstrap_pid,
   op_bootstrap_stderr_no_color,
   op_bootstrap_stdout_no_color,
