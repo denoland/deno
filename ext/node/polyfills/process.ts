@@ -957,6 +957,11 @@ internals.__bootstrapNodeProcess = function (
         "stdout",
       );
     }
+    if (stdout.isTTY) {
+      Deno.addSignalListener("SIGWINCH", () => {
+        stdout.emit("resize");
+      });
+    }
 
     if (!io.stderr.isTerminal()) {
       /** https://nodejs.org/api/process.html#process_process_stderr */
@@ -964,6 +969,11 @@ internals.__bootstrapNodeProcess = function (
         io.stderr,
         "stderr",
       );
+    }
+    if (stderr.isTTY) {
+      Deno.addSignalListener("SIGWINCH", () => {
+        stderr.emit("resize");
+      });
     }
 
     arch = arch_();
