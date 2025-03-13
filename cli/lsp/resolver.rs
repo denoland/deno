@@ -684,6 +684,10 @@ impl PackageJsonDepResolutions {
         let Some(export_name) = export_key.strip_prefix("./") else {
           continue;
         };
+        // Wildcards are not supported here.
+        if export_name.chars().filter(|c| *c == '*').count() == 1 {
+          continue;
+        }
         let package_ref = format!("{name}/{export_name}");
         let Some(req_ref) =
           NpmPackageReqReference::from_str(&format!("npm:{}", &package_ref))
