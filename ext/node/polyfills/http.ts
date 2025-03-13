@@ -69,11 +69,11 @@ import { serve, upgradeHttpRaw } from "ext:deno_http/00_serve.ts";
 import { headersEntries } from "ext:deno_fetch/20_headers.js";
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
+  PROPAGATORS,
   restoreSnapshot,
   TRACING_ENABLED,
-  ContextManager,
-  PROPAGATORS,
 } from "ext:deno_telemetry/telemetry.ts";
 import { timerId } from "ext:deno_web/03_abort_signal.js";
 import { clearTimeout as webClearTimeout } from "ext:deno_web/02_timers.js";
@@ -84,7 +84,8 @@ import { methods as METHODS } from "node:_http_common";
 import { deprecate } from "node:util";
 
 const { internalRidSymbol } = core;
-const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } = primordials;
+const { ArrayIsArray, StringPrototypeToLowerCase, SafeArrayIterator } =
+  primordials;
 
 type Chunk = string | Buffer | Uint8Array;
 
