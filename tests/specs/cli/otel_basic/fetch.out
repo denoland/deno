@@ -176,7 +176,7 @@
       "links": [],
       "droppedLinksCount": 0,
       "status": {
-        "message": "error sending request for url (http://unreachable-host.abc/): client error (Connect): dns error: failed to lookup address information: [WILDLINE]",
+        "message": "error sending request for url (http://unreachable-host.abc/): client error (Connect): dns error: [WILDLINE]",
         "code": 2
       }
     },
