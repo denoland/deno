@@ -1713,7 +1713,6 @@ export function bootstrap(
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
     }
-    otel.propragators = PROPAGATORS;
   }
 }
 
