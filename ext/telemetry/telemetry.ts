@@ -176,7 +176,7 @@ interface AsyncContextSnapshot {
 
 export function enterSpan(span: Span): AsyncContextSnapshot | undefined {
   if (!span.isRecording()) return undefined;
-  const context = (CURRENT.get() || ROOT_CONTEXT).setValue(SPAN_KEY, span);
+  const context = (CURRENT.get() ?? ROOT_CONTEXT).setValue(SPAN_KEY, span);
   return CURRENT.enter(context);
 }
 
@@ -284,9 +284,9 @@ class Tracer {
       throw new Error("startActiveSpan requires a function argument");
     }
     if (options?.root) {
-      context = undefined;
+      context = ROOT_CONTEXT;
     } else {
-      context = context ?? CURRENT.get();
+      context = context ?? CURRENT.get() ?? ROOT_CONTEXT;
     }
     const span = this.startSpan(name, options, context);
     const ctx = CURRENT.enter(context.setValue(SPAN_KEY, span));

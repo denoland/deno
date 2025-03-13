@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.2.2"
+version = "2.2.3"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -67,11 +67,11 @@ winapi.workspace = true
 winres.workspace = true
 
 [dependencies]
-deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit"] }
+deno_ast = { workspace = true, features = ["bundler", "cjs", "codegen", "proposal", "react", "sourcemap", "transforms", "typescript", "view", "visit", "utils"] }
 deno_cache_dir = { workspace = true, features = ["sync"] }
 deno_config = { workspace = true, features = ["sync", "workspace"] }
 deno_core = { workspace = true, features = ["include_js_files_for_snapshotting"] }
-deno_doc = { version = "=0.168.0", features = ["rust", "comrak"] }
+deno_doc = { workspace = true, features = ["rust", "comrak"] }
 deno_error.workspace = true
 deno_graph.workspace = true
 deno_lib.workspace = true
@@ -89,6 +89,7 @@ deno_snapshots.workspace = true
 deno_task_shell.workspace = true
 deno_telemetry.workspace = true
 deno_terminal.workspace = true
+eszip.workspace = true
 libsui.workspace = true
 node_resolver.workspace = true
 
@@ -150,6 +151,7 @@ quick-junit.workspace = true
 rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
+rustc-hash.workspace = true
 rustyline.workspace = true
 rustyline-derive.workspace = true
 serde.workspace = true

@@ -3105,7 +3105,7 @@ fn lsp_rename_synbol_file_scheme_edits_only() {
                 "start": { "line": 1, "character": 17 },
                 "end": { "line": 1, "character": 26 },
               },
-              "newText": "PATH_SEPARATOR",
+              "newText": "SEPARATOR as PATH_SEPARATOR",
             },
             {
               "range": {
@@ -3879,50 +3879,65 @@ fn lsp_rename() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  client.did_open(
-    json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts",
-        "languageId": "typescript",
-        "version": 1,
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        const variable = "a";
+        console.log(variable);
+        ({ variable });
+
         // this should not rename in comments and strings
-        "text": "let variable = 'a'; // variable\nconsole.log(variable);\n\"variable\";\n"
-      }
-    }),
-  );
+        // variable
+        "variable";
+      "#,
+    },
+  }));
   let res = client.write_request(
     "textDocument/rename",
     json!({
-      "textDocument": {
-        "uri": "file:///a/file.ts"
-      },
-      "position": { "line": 0, "character": 4 },
-      "newName": "variable_modified"
+      "textDocument": { "uri": "file:///a/file.ts" },
+      "position": { "line": 1, "character": 14 },
+      "newName": "variable_modified",
     }),
   );
   assert_eq!(
     res,
     json!({
-      "documentChanges": [{
-        "textDocument": {
-          "uri": "file:///a/file.ts",
-          "version": 1
+      "documentChanges": [
+        {
+          "textDocument": {
+            "uri": "file:///a/file.ts",
+            "version": 1,
+          },
+          "edits": [
+            {
+              "range": {
+                "start": { "line": 1, "character": 14 },
+                "end": { "line": 1, "character": 22 },
+              },
+              "newText": "variable_modified",
+            },
+            {
+              "range": {
+                "start": { "line": 2, "character": 20 },
+                "end": { "line": 2, "character": 28 },
+              },
+              "newText": "variable_modified",
+            },
+            {
+              "range": {
+                "start": { "line": 3, "character": 11 },
+                "end": { "line": 3, "character": 19 },
+              },
+              "newText": "variable: variable_modified",
+            },
+          ],
         },
-        "edits": [{
-          "range": {
-            "start": { "line": 0, "character": 4 },
-            "end": { "line": 0, "character": 12 }
-          },
-          "newText": "variable_modified"
-        }, {
-          "range": {
-            "start": { "line": 1, "character": 12 },
-            "end": { "line": 1, "character": 20 }
-          },
-          "newText": "variable_modified"
-        }]
-      }]
-    })
+      ],
+    }),
   );
   client.shutdown();
 }
@@ -11473,13 +11488,11 @@ fn lsp_performance() {
       "lsp.update_diagnostics_ts",
       "lsp.update_global_cache",
       "tsc.host.$getDiagnostics",
-      "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
       "tsc.request.$getDiagnostics",
-      "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
@@ -15120,6 +15133,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res = client.write_request(
     "workspace/willRenameFiles",
     json!({
@@ -15353,7 +15367,7 @@ fn lsp_deno_json_scopes_rename_symbol() {
           "edits": [
             {
               "range": file2.range_of("foo"),
-              "newText": "bar",
+              "newText": "bar as foo",
             },
           ],
         },
@@ -15380,6 +15394,7 @@ fn lsp_deno_json_scopes_search_symbol() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res =
     client.write_request("workspace/symbol", json!({ "query": "someSymbol" }));
   assert_eq!(

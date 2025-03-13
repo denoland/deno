@@ -23,7 +23,7 @@ pub struct InstallNpmRemotePkg {
 }
 
 #[derive(Debug)]
-pub struct InstallNpmWorkspacePkg {
+pub struct InstallLocalPkg {
   pub alias: Option<StackString>,
   pub target_dir: PathBuf,
 }
@@ -40,7 +40,7 @@ pub struct PackageJsonDepValueParseWithLocationError {
 #[derive(Debug, Default)]
 pub struct NpmInstallDepsProvider {
   remote_pkgs: Vec<InstallNpmRemotePkg>,
-  workspace_pkgs: Vec<InstallNpmWorkspacePkg>,
+  local_pkgs: Vec<InstallLocalPkg>,
   pkg_json_dep_errors: Vec<PackageJsonDepValueParseWithLocationError>,
 }
 
@@ -51,7 +51,7 @@ impl NpmInstallDepsProvider {
 
   pub fn from_workspace(workspace: &Arc<Workspace>) -> Self {
     // todo(dsherret): estimate capacity?
-    let mut workspace_pkgs = Vec::new();
+    let mut local_pkgs = Vec::new();
     let mut remote_pkgs = Vec::new();
     let mut pkg_json_dep_errors = Vec::new();
     let workspace_npm_pkgs = workspace.npm_packages();
@@ -77,7 +77,7 @@ impl NpmInstallDepsProvider {
               .find(|pkg| pkg.matches_req(&pkg_req));
 
             if let Some(pkg) = workspace_pkg {
-              workspace_pkgs.push(InstallNpmWorkspacePkg {
+              local_pkgs.push(InstallLocalPkg {
                 alias: None,
                 target_dir: pkg.pkg_json.dir_path().to_path_buf(),
               });
@@ -118,15 +118,21 @@ impl NpmInstallDepsProvider {
             }
           };
           match dep {
+            PackageJsonDepValue::File(specifier) => {
+              local_pkgs.push(InstallLocalPkg {
+                alias: Some(alias.clone()),
+                target_dir: pkg_json.dir_path().join(specifier),
+              })
+            }
             PackageJsonDepValue::Req(pkg_req) => {
               let workspace_pkg = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_req(pkg_req)
-              // do not resolve to the current package
-              && pkg.pkg_json.path != pkg_json.path
+                // do not resolve to the current package
+                && pkg.pkg_json.path != pkg_json.path
               });
 
               if let Some(pkg) = workspace_pkg {
-                workspace_pkgs.push(InstallNpmWorkspacePkg {
+                local_pkgs.push(InstallLocalPkg {
                   alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
@@ -151,7 +157,7 @@ impl NpmInstallDepsProvider {
               if let Some(pkg) = workspace_npm_pkgs.iter().find(|pkg| {
                 pkg.matches_name_and_version_req(alias, &version_req)
               }) {
-                workspace_pkgs.push(InstallNpmWorkspacePkg {
+                local_pkgs.push(InstallLocalPkg {
                   alias: Some(alias.clone()),
                   target_dir: pkg.pkg_json.dir_path().to_path_buf(),
                 });
@@ -167,10 +173,10 @@ impl NpmInstallDepsProvider {
     }
 
     remote_pkgs.shrink_to_fit();
-    workspace_pkgs.shrink_to_fit();
+    local_pkgs.shrink_to_fit();
     Self {
       remote_pkgs,
-      workspace_pkgs,
+      local_pkgs,
       pkg_json_dep_errors,
     }
   }
@@ -179,8 +185,8 @@ impl NpmInstallDepsProvider {
     &self.remote_pkgs
   }
 
-  pub fn workspace_pkgs(&self) -> &[InstallNpmWorkspacePkg] {
-    &self.workspace_pkgs
+  pub fn local_pkgs(&self) -> &[InstallLocalPkg] {
+    &self.local_pkgs
   }
 
   pub fn pkg_json_dep_errors(
