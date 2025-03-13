@@ -1,0 +1,7 @@
+Check [WILDCARD]/main.ts
+running 2 tests from [WILDCARD]/main.ts
+no-op ... ok ([WILDCARD])
+leak interval ... ok ([WILDCARD])
+
+ok | 2 passed | 0 failed ([WILDCARD])
+
