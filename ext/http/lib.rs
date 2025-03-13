@@ -172,6 +172,8 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_get_span,
+    http_next::op_http_update_metrics_with_span,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -220,6 +222,8 @@ deno_core::extension!(
     http_next::op_http_close,
     http_next::op_http_cancel,
     http_next::op_http_metric_handle_otel_error,
+    http_next::op_http_get_span,
+    http_next::op_http_update_metrics_with_span,
   ],
   esm = ["00_serve.ts", "01_http.js", "02_websocket.ts"],
   options = {
@@ -303,13 +307,14 @@ struct OtelInfo {
 }
 
 struct OtelInfoAttributes {
-  http_request_method: Cow<'static, str>,
-  network_protocol_version: &'static str,
-  url_scheme: Cow<'static, str>,
-  server_address: Option<String>,
-  server_port: Option<i64>,
-  error_type: Option<&'static str>,
-  http_response_status_code: Option<i64>,
+  http_request_method: deno_telemetry::Value,
+  network_protocol_version: deno_telemetry::Value,
+  url_scheme: deno_telemetry::Value,
+  server_address: Option<deno_telemetry::Value>,
+  server_port: Option<deno_telemetry::Value>,
+  error_type: Option<deno_telemetry::Value>,
+  http_route: Option<deno_telemetry::Value>,
+  http_response_status_code: Option<deno_telemetry::Value>,
 }
 
 impl OtelInfoAttributes {
@@ -385,7 +390,7 @@ impl OtelInfoAttributes {
     if let Some(address) = self.server_address.clone() {
       attributes.push(deno_telemetry::KeyValue::new("server.address", address));
     }
-    if let Some(port) = self.server_port {
+    if let Some(port) = self.server_port.clone() {
       attributes.push(deno_telemetry::KeyValue::new("server.port", port));
     }
 
@@ -401,7 +406,7 @@ impl OtelInfoAttributes {
       deno_telemetry::KeyValue::new("url.scheme", self.url_scheme.clone()),
       deno_telemetry::KeyValue::new(
         "network.protocol.version",
-        self.network_protocol_version,
+        self.network_protocol_version.clone(),
       ),
     ];
 
@@ -409,18 +414,18 @@ impl OtelInfoAttributes {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("server.address", address));
     }
-    if let Some(port) = self.server_port {
+    if let Some(port) = self.server_port.clone() {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("server.port", port));
     }
-    if let Some(status_code) = self.http_response_status_code {
+    if let Some(status_code) = self.http_response_status_code.clone() {
       histogram_attributes.push(deno_telemetry::KeyValue::new(
         "http.response.status_code",
         status_code,
       ));
     }
 
-    if let Some(error) = self.error_type {
+    if let Some(error) = self.error_type.clone() {
       histogram_attributes
         .push(deno_telemetry::KeyValue::new("error.type", error));
     }
@@ -571,7 +576,7 @@ fn handle_error_otel(
         HttpError::ResponseAlreadyCompleted => "response already completed",
         HttpError::UpgradeBodyUsed => "upgrade body used",
         HttpError::Other(_) => "unknown",
-      });
+      }.into());
     }
   }
 }
@@ -677,15 +682,16 @@ impl HttpConnResource {
             OtelInfoAttributes {
               http_request_method: OtelInfoAttributes::method_v02(
                 request.method(),
-              ),
-              url_scheme: Cow::Borrowed(self.scheme),
+              ).into(),
+              url_scheme: Cow::Borrowed(self.scheme).into(),
               network_protocol_version: OtelInfoAttributes::version_v02(
                 request.version(),
-              ),
-              server_address: request.uri().host().map(|host| host.to_string()),
-              server_port: request.uri().port_u16().map(|port| port as i64),
-              error_type: Default::default(),
-              http_response_status_code: Default::default(),
+              ).into(),
+              server_address: request.uri().host().map(|host| host.to_string().into()),
+              server_port: request.uri().port_u16().map(|port| (port as i64).into()),
+              error_type: None,
+              http_route: None,
+              http_response_status_code: None,
             },
           ))))
         });
@@ -1176,7 +1182,7 @@ async fn op_http_write_headers(
   if let Some(otel) = stream.otel_info.as_ref() {
     let mut otel = otel.borrow_mut();
     if let Some(otel_info) = otel.as_mut() {
-      otel_info.attributes.http_response_status_code = Some(status as _);
+      otel_info.attributes.http_response_status_code = Some((status as i64).into());
       otel_info.handle_duration_and_request_size();
     }
   }

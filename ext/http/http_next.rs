@@ -1423,3 +1423,20 @@ pub fn op_http_metric_handle_otel_error(external: *const c_void) {
 
   http.otel_info_set_error("user");
 }
+
+#[op2]
+#[cppgc]
+pub fn op_http_get_span(external: *const c_void) -> deno_telemetry::OtelSpan {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_get_span") };
+  http.get_otel_span().unwrap()
+}
+
+#[op2(fast)]
+pub fn op_http_update_metrics_with_span(external: *const c_void) {
+  let http =
+    // SAFETY: op is called with external.
+    unsafe { clone_external!(external, "op_http_update_metrics_with_span") };
+  http.update_otel_info_with_span();
+}

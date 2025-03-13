@@ -13,6 +13,8 @@ import {
   op_http_close_after_finish,
   op_http_get_request_headers,
   op_http_get_request_method_and_url,
+  op_http_get_span,
+  op_http_update_metrics_with_span,
   op_http_metric_handle_otel_error,
   op_http_read_request_body,
   op_http_request_on_cancel,
@@ -91,6 +93,7 @@ import {
   builtinTracer,
   enterSpan,
   METRICS_ENABLED,
+  SPAN_KEY,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
@@ -626,12 +629,22 @@ function mapToCallback(context, callback, onError) {
     mapped = function (req, _span) {
       const oldCtx = getAsyncContext();
       setAsyncContext(context.asyncContext);
-      const span = builtinTracer().startSpan("deno.serve", { kind: 1 });
+
+      // TODO: how tf do i get the context?
+      const otelSpan = op_http_get_span(req);
+      const span = new Span(otelSpan);
+      CURRENT.enter(context.setValue(SPAN_KEY, span));
+
       try {
         enterSpan(span);
         return SafePromisePrototypeFinally(
           origMapped(req, span),
-          () => span.end(),
+          () => {
+            // TODO: make sure this is called only if req is still available.
+            //  if its not available, figure out alternative solution to use the span. maybe on drop?
+            op_http_update_metrics_with_span(req);
+            span.end();
+          },
         );
       } finally {
         // equiv to exitSpan.
