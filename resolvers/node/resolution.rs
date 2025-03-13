@@ -321,7 +321,7 @@ impl<
 
     let url_or_path =
       self.finalize_resolution(url, resolved_kind, Some(&referrer))?;
-    (|| {
+    let maybe_cache_resolution = || {
       let package_resolution_lookup_cache =
         self.package_resolution_lookup_cache.as_ref()?;
       if specifier_is_url
@@ -334,7 +334,8 @@ impl<
       let url = url_or_path.clone().into_url().ok()?;
       package_resolution_lookup_cache.insert(url, specifier.to_string());
       Some(())
-    })();
+    };
+    maybe_cache_resolution();
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
