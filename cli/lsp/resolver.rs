@@ -825,6 +825,7 @@ impl<'a> ResolverFactory<'a> {
       let patch_packages: Arc<WorkspaceNpmPatchPackages> = self
         .config_data
         .as_ref()
+        .filter(|c| c.node_modules_dir.is_some()) // requires a node_modules dir
         .map(|d| {
           Arc::new(WorkspaceNpmPatchPackages::from_workspace(
             &d.member_dir.workspace,

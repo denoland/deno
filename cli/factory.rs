@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -683,9 +685,14 @@ impl CliFactory {
       .workspace_npm_patch_packages
       .get_or_try_init(|| {
         let cli_options = self.cli_options()?;
-        Ok(Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+        let npm_packages = Arc::new(WorkspaceNpmPatchPackages::from_workspace(
           cli_options.workspace().as_ref(),
-        )))
+        ));
+        if !npm_packages.0.is_empty() && self.workspace_factory()?.node_modules_dir_mode()? == NodeModulesDirMode::None {
+          bail!("Patching npm packages requires using a node_modules directory. Set the \"nodeModulesDir\" to \"auto\" or \"manual\" in your root deno.json.")
+        } else {
+          Ok(npm_packages)
+        }
       })
   }
 
