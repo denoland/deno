@@ -338,7 +338,11 @@ fn get_module_roots_and_include_files(
       | MediaType::Tsx
       | MediaType::Json
       | MediaType::Wasm => true,
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => false,
+      MediaType::Css
+      | MediaType::Html
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => false,
     }
   }
 
