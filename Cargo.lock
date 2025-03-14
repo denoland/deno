@@ -1747,6 +1747,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.50.0"
+source = "git+https://github.com/dsherret/deno_config?rev=6ca50ed30280a95340500e51ae83c205eb169eff#6ca50ed30280a95340500e51ae83c205eb169eff"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -2190,6 +2191,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.24.0"
+source = "git+https://github.com/dsherret/deno_lockfile?rev=a06870cbc7ce25b3b52812fe49a26e27d0b015df#a06870cbc7ce25b3b52812fe49a26e27d0b015df"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2350,6 +2352,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.27.2"
+source = "git+https://github.com/dsherret/deno_npm?rev=eabd787cb992a960e6b1b00a4de2f22cf75b243f#eabd787cb992a960e6b1b00a4de2f22cf75b243f"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
