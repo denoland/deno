@@ -909,7 +909,11 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             }));
           }
-          MediaType::Css | MediaType::Wasm | MediaType::SourceMap => {
+          MediaType::Css
+          | MediaType::Html
+          | MediaType::Sql
+          | MediaType::Wasm
+          | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
           }
         };

@@ -280,7 +280,9 @@ impl Emitter {
       | MediaType::Json
       | MediaType::Wasm
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         // clear this specifier from the parsed source cache as it's now out of date
         self.parsed_source_cache.free(specifier);
