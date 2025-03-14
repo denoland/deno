@@ -6,6 +6,33 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.4 / 2025.03.14
+
+- feat(otel): span context propagators (#28460)
+- feat(unstable/otel): add otel tracing to node:http.request (#28463)
+- feat: support FORCE_COLOR (#28490)
+- fix(bench): lower bench time budget when `n` is specified (#28454)
+- fix(check): support `types@` export conditions (#28450)
+- fix(check): support `typesVersions` in npm dependencies (#28468)
+- fix(cli): warn when an otel env var has an invalid value (#28394)
+- fix(ext/node): correct `STATUS_CODES` strings (#28489)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_util.ts` (#28432)
+- fix(install): exclude npm workspace packages from graph roots in `install`
+  (#28401)
+- fix(install): support "file:" dependencies in local package.json (#28396)
+- fix(lsp): auto-import from npm package exports with manual node_modules
+  (#28414)
+- fix(lsp): silence errors from "codeAction/resolve" (#28400)
+- fix(node): support re-exported esm modules in cjs export analysis (#28379)
+- fix(otel): don't print otel warning when variable is not set (#28475)
+- fix(otel/unstable): trace error cases of fetch (#28480)
+- fix(run): skip the cjs suggestion for mjs/mts modules (#26698)
+- fix(unstable): lint plugin `!==` wrongly parsed as `!=` (#28403)
+- fix(unstable): wrong node with shorthand ObjectPattern + AssignPattern
+  (#28402)
+- fix: unhandled rejection from quic (#28448)
+- perf(lsp): lazily start the ts server (#28392)
+
 ### 2.2.3 / 2025.03.05
 
 - feat(unstable): lint plugins support field selectors (#28324)
