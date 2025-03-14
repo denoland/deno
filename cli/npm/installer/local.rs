@@ -396,40 +396,9 @@ async fn sync_resolution_with_fs(
           let sys = sys.clone();
           deno_core::unsync::spawn_blocking({
             move || {
-              _ = fs::remove_dir_all(&target);
-              fs::create_dir_all(&target).map_err(|source| {
-                SyncResolutionWithFsError::Creating {
-                  path: target.clone(),
-                  source,
-                }
-              })?;
-              let from = from_path;
-              let to = target;
-              for entry in sys.fs_read_dir(&from)? {
-                let entry = entry?;
-                if entry.file_name().to_str() == Some("node_modules") {
-                  continue; // ignore
-                }
-                let file_type = entry.file_type()?;
-                let new_from = from.join(entry.file_name());
-                let new_to = to.join(entry.file_name());
-
-                if file_type.is_dir() {
-                  clone_dir_recursive(&sys, &new_from, &new_to)?;
-                } else if file_type.is_file() {
-                  hard_link_file(&sys, &new_from, &new_to).or_else(|_| {
-                    sys
-                      .fs_copy(&new_from, &new_to)
-                      .map_err(|source| SyncResolutionWithFsError::Creating {
-                        path: new_to.clone(),
-                        source,
-                      })
-                      .map(|_| ())
-                  })?;
-                }
-              }
-
-              Ok::<_, SyncResolutionWithFsError>(())
+              clone_dir_recrusive_except_node_modules_child(
+                &sys, &from_path, &target,
+              )
             }
           })
           .await
@@ -761,6 +730,44 @@ async fn sync_resolution_with_fs(
   drop(single_process_lock);
   drop(pb_clear_guard);
 
+  Ok(())
+}
+
+fn clone_dir_recrusive_except_node_modules_child(
+  sys: &CliSys,
+  from: &Path,
+  to: &Path,
+) -> Result<(), SyncResolutionWithFsError> {
+  _ = fs::remove_dir_all(to);
+  fs::create_dir_all(to).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  for entry in sys.fs_read_dir(from)? {
+    let entry = entry?;
+    if entry.file_name().to_str() == Some("node_modules") {
+      continue; // ignore
+    }
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      clone_dir_recursive(sys, &new_from, &new_to)?;
+    } else if file_type.is_file() {
+      hard_link_file(sys, &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .map_err(|source| SyncResolutionWithFsError::Creating {
+            path: new_to.clone(),
+            source,
+          })
+          .map(|_| ())
+      })?;
+    }
+  }
   Ok(())
 }
 

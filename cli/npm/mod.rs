@@ -114,7 +114,7 @@ fn pkg_json_to_version_info(
       .unwrap_or_default()
   }
 
-  fn parse_array(v: &Vec<String>) -> Vec<SmallStackString> {
+  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
     v.iter().map(|s| SmallStackString::from_str(s)).collect()
   }
 
@@ -139,8 +139,8 @@ fn pkg_json_to_version_info(
       .clone()
       .and_then(|m| serde_json::from_value(m).ok())
       .unwrap_or_default(),
-    os: pkg_json.os.as_ref().map(parse_array).unwrap_or_default(),
-    cpu: pkg_json.cpu.as_ref().map(parse_array).unwrap_or_default(),
+    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
+    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
     scripts: pkg_json
       .scripts
       .as_ref()
