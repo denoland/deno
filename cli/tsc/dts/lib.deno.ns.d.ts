@@ -1,4 +1,4 @@
-// Copyright 2018-2025 the Deno authors. MIT license.
+// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
@@ -10,7 +10,7 @@
  *
  * @category Platform
  */
-interface ImportMeta {
+declare interface ImportMeta {
   /** A string representation of the fully qualified module URL. When the
    * module is loaded locally, the value will be a file URL (e.g.
    * `file:///path/module.ts`).
@@ -89,7 +89,7 @@ interface ImportMeta {
  *
  * @category Performance
  */
-interface Performance {
+declare interface Performance {
   /** Stores a timestamp with the associated name (a "mark"). */
   mark(markName: string, options?: PerformanceMarkOptions): PerformanceMark;
 
@@ -109,7 +109,7 @@ interface Performance {
  *
  * @category Performance
  */
-interface PerformanceMarkOptions {
+declare interface PerformanceMarkOptions {
   /** Metadata to be included in the mark. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
@@ -126,7 +126,7 @@ interface PerformanceMarkOptions {
  *
  * @category Performance
  */
-interface PerformanceMeasureOptions {
+declare interface PerformanceMeasureOptions {
   /** Metadata to be included in the measure. */
   // deno-lint-ignore no-explicit-any
   detail?: any;
@@ -317,7 +317,6 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotADirectory extends Error {}
-
     /**
      * Raised when trying to perform an operation while the relevant Deno
      * permission (like `--allow-read`) has not been granted.
@@ -327,8 +326,6 @@ declare namespace Deno {
      *
      * @category Errors */
     export class NotCapable extends Error {}
-
-    export {}; // only export exports
   }
 
   /** The current process ID of this instance of the Deno CLI.
@@ -556,23 +553,14 @@ declare namespace Deno {
      */
     env?: "inherit" | boolean | string[];
 
-    /** Specifies if the `ffi` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `ffi` permission will be inherited.
-     * If set to `true`, the global `ffi` permission will be requested.
-     * If set to `false`, the global `ffi` permission will be revoked.
+    /** Specifies if the `sys` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `sys` permission will be inherited.
+     * If set to `true`, the global `sys` permission will be requested.
+     * If set to `false`, the global `sys` permission will be revoked.
      *
      * @default {false}
      */
-    ffi?: "inherit" | boolean | Array<string | URL>;
-
-    /** Specifies if the `import` permission should be requested or revoked.
-     * If set to `"inherit"` the current `import` permission will be inherited.
-     * If set to `true`, the global `import` permission will be requested.
-     * If set to `false`, the global `import` permission will be revoked.
-     * If set to `Array<string>`, the `import` permissions will be requested with the
-     * specified domains.
-     */
-    import?: "inherit" | boolean | Array<string>;
+    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `net` permission should be requested or revoked.
      * if set to `"inherit"`, the current `net` permission will be inherited.
@@ -647,6 +635,15 @@ declare namespace Deno {
      */
     net?: "inherit" | boolean | string[];
 
+    /** Specifies if the `ffi` permission should be requested or revoked.
+     * If set to `"inherit"`, the current `ffi` permission will be inherited.
+     * If set to `true`, the global `ffi` permission will be requested.
+     * If set to `false`, the global `ffi` permission will be revoked.
+     *
+     * @default {false}
+     */
+    ffi?: "inherit" | boolean | Array<string | URL>;
+
     /** Specifies if the `read` permission should be requested or revoked.
      * If set to `"inherit"`, the current `read` permission will be inherited.
      * If set to `true`, the global `read` permission will be requested.
@@ -666,15 +663,6 @@ declare namespace Deno {
      * @default {false}
      */
     run?: "inherit" | boolean | Array<string | URL>;
-
-    /** Specifies if the `sys` permission should be requested or revoked.
-     * If set to `"inherit"`, the current `sys` permission will be inherited.
-     * If set to `true`, the global `sys` permission will be requested.
-     * If set to `false`, the global `sys` permission will be revoked.
-     *
-     * @default {false}
-     */
-    sys?: "inherit" | boolean | string[];
 
     /** Specifies if the `write` permission should be requested or revoked.
      * If set to `"inherit"`, the current `write` permission will be inherited.
@@ -1242,17 +1230,6 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
-    /** Number of iterations to perform.
-     * @remarks When the benchmark is very fast, this will only be used as a
-     * suggestion in order to get a more accurate measurement.
-     */
-    n?: number;
-    /** Number of warmups to do before running the benchmark.
-     * @remarks A warmup will always be performed even if this is `0` in order to
-     * determine the speed of the benchmark in order to improve the measurement. When
-     * the benchmark is very fast, this will be used as a suggestion.
-     */
-    warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
@@ -1680,6 +1657,47 @@ declare namespace Deno {
     End = 2,
   }
 
+  /**
+   * An abstract interface which when implemented provides an interface to seek
+   * within an open file/resource asynchronously.
+   *
+   * @category I/O */
+  export interface Seeker {
+    /** Seek sets the offset for the next `read()` or `write()` to offset,
+     * interpreted according to `whence`: `Start` means relative to the
+     * start of the file, `Current` means relative to the current offset,
+     * and `End` means relative to the end. Seek resolves to the new offset
+     * relative to the start of the file.
+     *
+     * Seeking to an offset before the start of the file is an error. Seeking to
+     * any positive offset is legal, but the behavior of subsequent I/O
+     * operations on the underlying object is implementation-dependent.
+     *
+     * It resolves with the updated offset.
+     */
+    seek(offset: number | bigint, whence: SeekMode): Promise<number>;
+  }
+
+  /**
+   * An abstract interface which when implemented provides an interface to seek
+   * within an open file/resource synchronously.
+   *
+   * @category I/O */
+  export interface SeekerSync {
+    /** Seek sets the offset for the next `readSync()` or `writeSync()` to
+     * offset, interpreted according to `whence`: `Start` means relative
+     * to the start of the file, `Current` means relative to the current
+     * offset, and `End` means relative to the end.
+     *
+     * Seeking to an offset before the start of the file is an error. Seeking to
+     * any positive offset is legal, but the behavior of subsequent I/O
+     * operations on the underlying object is implementation-dependent.
+     *
+     * It returns the updated offset.
+     */
+    seekSync(offset: number | bigint, whence: SeekMode): number;
+  }
+
   /** Open a file and resolve to an instance of {@linkcode Deno.FsFile}. The
    * file does not need to previously exist if using the `create` or `createNew`
    * open options. The caller may have the resulting file automatically closed
@@ -1784,7 +1802,7 @@ declare namespace Deno {
    *
    * @category File System
    */
-  export class FsFile implements Disposable {
+  export class FsFile implements Seeker, SeekerSync, Disposable {
     /** A {@linkcode ReadableStream} instance representing to the byte contents
      * of the file. This makes it easy to interoperate with other web streams
      * based APIs.
@@ -1797,7 +1815,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+    readonly readable: ReadableStream<Uint8Array>;
     /** A {@linkcode WritableStream} instance to write the contents of the
      * file. This makes it easy to interoperate with other web streams based
      * APIs.
@@ -1812,7 +1830,7 @@ declare namespace Deno {
      * }
      * ```
      */
-    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
+    readonly writable: WritableStream<Uint8Array>;
     /** Write the contents of the array buffer (`p`) to the file.
      *
      * Resolves to the number of bytes written.
@@ -2279,7 +2297,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A readable stream interface to `stdin`. */
-    readonly readable: ReadableStream<Uint8Array<ArrayBuffer>>;
+    readonly readable: ReadableStream<Uint8Array>;
     /**
      * Set TTY to be under raw mode or not. In raw mode, characters are read and
      * returned as is, without being processed. All special processing of
@@ -2357,7 +2375,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stdout`. */
-    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
+    readonly writable: WritableStream<Uint8Array>;
     /**
      * Checks if `stdout` is a TTY (terminal).
      *
@@ -2421,7 +2439,7 @@ declare namespace Deno {
      */
     close(): void;
     /** A writable stream interface to `stderr`. */
-    readonly writable: WritableStream<Uint8Array<ArrayBufferLike>>;
+    readonly writable: WritableStream<Uint8Array>;
     /**
      * Checks if `stderr` is a TTY (terminal).
      *
@@ -2916,7 +2934,7 @@ declare namespace Deno {
 
   /** Reads and resolves to the entire contents of a file as an array of bytes.
    * `TextDecoder` can be used to transform the bytes to string if required.
-   * Rejects with an error when reading a directory.
+   * Reading a directory returns an empty data array.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2932,11 +2950,11 @@ declare namespace Deno {
   export function readFile(
     path: string | URL,
     options?: ReadFileOptions,
-  ): Promise<Uint8Array<ArrayBuffer>>;
+  ): Promise<Uint8Array>;
 
   /** Synchronously reads and returns the entire contents of a file as an array
    * of bytes. `TextDecoder` can be used to transform the bytes to string if
-   * required. Throws an error when reading a directory.
+   * required. Reading a directory returns an empty data array.
    *
    * ```ts
    * const decoder = new TextDecoder("utf-8");
@@ -2949,7 +2967,7 @@ declare namespace Deno {
    * @tags allow-read
    * @category File System
    */
-  export function readFileSync(path: string | URL): Uint8Array<ArrayBuffer>;
+  export function readFileSync(path: string | URL): Uint8Array;
 
   /** Provides information about a file and is returned by
    * {@linkcode Deno.stat}, {@linkcode Deno.lstat}, {@linkcode Deno.statSync},
@@ -2982,10 +3000,6 @@ declare namespace Deno {
      * field from `stat` on Mac/BSD and `ftCreationTime` on Windows. This may
      * not be available on all platforms. */
     birthtime: Date | null;
-    /** The last change time of the file. This corresponds to the `ctime`
-     * field from `stat` on Mac/BSD and `ChangeTime` on Windows. This may
-     * not be available on all platforms. */
-    ctime: Date | null;
     /** ID of the device containing the file. */
     dev: number;
     /** Inode number.
@@ -2994,7 +3008,8 @@ declare namespace Deno {
     ino: number | null;
     /** The underlying raw `st_mode` bits that contain the standard Unix
      * permissions for this file/directory.
-     */
+     *
+     * _Linux/Mac OS only._ */
     mode: number | null;
     /** Number of hard links pointing to this file.
      *
@@ -3135,7 +3150,7 @@ declare namespace Deno {
    * @tags allow-read
    * @category File System
    */
-  export function readDirSync(path: string | URL): IteratorObject<DirEntry>;
+  export function readDirSync(path: string | URL): Iterable<DirEntry>;
 
   /** Copies the contents and permissions of one file to another specified path,
    * by default creating a new file if needed, else overwriting. Fails if target
@@ -3510,6 +3525,10 @@ declare namespace Deno {
     close(): void;
     /**
      * Stops watching the file system and closes the watcher resource.
+     *
+     * @deprecated This will be removed in Deno 2.0. See the
+     * {@link https://docs.deno.com/runtime/manual/advanced/migrate_deprecations | Deno 1.x to 2.x Migration Guide}
+     * for migration instructions.
      */
     return?(value?: any): Promise<IteratorResult<FsEvent>>;
     [Symbol.asyncIterator](): AsyncIterableIterator<FsEvent>;
@@ -3742,9 +3761,9 @@ declare namespace Deno {
    * @category Subprocess
    */
   export class ChildProcess implements AsyncDisposable {
-    get stdin(): WritableStream<Uint8Array<ArrayBufferLike>>;
-    get stdout(): ReadableStream<Uint8Array<ArrayBuffer>>;
-    get stderr(): ReadableStream<Uint8Array<ArrayBuffer>>;
+    get stdin(): WritableStream<Uint8Array>;
+    get stdout(): ReadableStream<Uint8Array>;
+    get stderr(): ReadableStream<Uint8Array>;
     readonly pid: number;
     /** Get the status of the child. */
     readonly status: Promise<CommandStatus>;
@@ -3856,9 +3875,9 @@ declare namespace Deno {
    */
   export interface CommandOutput extends CommandStatus {
     /** The buffered output from the child process' `stdout`. */
-    readonly stdout: Uint8Array<ArrayBuffer>;
+    readonly stdout: Uint8Array;
     /** The buffered output from the child process' `stderr`. */
-    readonly stderr: Uint8Array<ArrayBuffer>;
+    readonly stderr: Uint8Array;
   }
 
   /** Option which can be specified when performing {@linkcode Deno.inspect}.
@@ -4546,7 +4565,7 @@ declare namespace Deno {
   /** The object that is returned from a {@linkcode Deno.upgradeWebSocket}
    * request.
    *
-   * @category WebSockets */
+   * @category Web Sockets */
   export interface WebSocketUpgrade {
     /** The response object that represents the HTTP response to the client,
      * which should be used to the {@linkcode RequestEvent} `.respondWith()` for
@@ -4560,7 +4579,7 @@ declare namespace Deno {
   /** Options which can be set when performing a
    * {@linkcode Deno.upgradeWebSocket} upgrade of a {@linkcode Request}
    *
-   * @category WebSockets */
+   * @category Web Sockets */
   export interface UpgradeWebSocketOptions {
     /** Sets the `.protocol` property on the client side web socket to the
      * value provided here, which should be one of the strings specified in the
@@ -4608,7 +4627,7 @@ declare namespace Deno {
    * This operation does not yet consume the request or open the websocket. This
    * only happens once the returned response has been passed to `respondWith()`.
    *
-   * @category WebSockets
+   * @category Web Sockets
    */
   export function upgradeWebSocket(
     request: Request,
@@ -5097,7 +5116,7 @@ declare namespace Deno {
      *
      * @category HTTP Server
      */
-    fetch: ServeHandler;
+    fetch: (request: Request) => Response | Promise<Response>;
   }
 
   /** Options which can be set when calling {@linkcode Deno.serve}.
@@ -5374,9 +5393,8 @@ declare namespace Deno {
    * @category HTTP Server
    */
   export function serve(
-    options:
-      & (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem))
-      & ServeInit<Deno.NetAddr>,
+    options: (ServeTcpOptions | (ServeTcpOptions & TlsCertifiedKeyPem)) &
+      ServeInit<Deno.NetAddr>,
   ): HttpServer<Deno.NetAddr>;
 
   /** All plain number types for interfacing with foreign functions.
@@ -5433,14 +5451,12 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export interface NativeStructType {
-    readonly struct: readonly NativeType[];
-  }
+  export type NativeStructType = { readonly struct: readonly NativeType[] };
 
   /**
    * @category FFI
    */
-  export const brand: unique symbol;
+  const brand: unique symbol;
 
   /**
    * @category FFI
@@ -5476,8 +5492,7 @@ declare namespace Deno {
    * @category FFI
    */
   export type NativeTypedFunction<T extends UnsafeCallbackDefinition> =
-    & "function"
-    & {
+    "function" & {
       [brand]: T;
     };
 
@@ -5503,25 +5518,38 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export type ToNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerValue<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : never;
+  export type ToNativeType<T extends NativeType = NativeType> =
+    T extends NativeStructType
+      ? BufferSource
+      : T extends NativeNumberType
+        ? T extends NativeU8Enum<infer U>
+          ? U
+          : T extends NativeI8Enum<infer U>
+            ? U
+            : T extends NativeU16Enum<infer U>
+              ? U
+              : T extends NativeI16Enum<infer U>
+                ? U
+                : T extends NativeU32Enum<infer U>
+                  ? U
+                  : T extends NativeI32Enum<infer U>
+                    ? U
+                    : number
+        : T extends NativeBigIntType
+          ? bigint
+          : T extends NativeBooleanType
+            ? boolean
+            : T extends NativePointerType
+              ? T extends NativeTypedPointer<infer U>
+                ? U | null
+                : PointerValue
+              : T extends NativeFunctionType
+                ? T extends NativeTypedFunction<infer U>
+                  ? PointerValue<U> | null
+                  : PointerValue
+                : T extends NativeBufferType
+                  ? BufferSource | null
+                  : never;
 
   /** Type conversion for unsafe callback return types.
    *
@@ -5529,25 +5557,39 @@ declare namespace Deno {
    */
   export type ToNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? BufferSource
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeBufferType ? BufferSource | null
-    : T extends NativeVoidType ? void
-    : never;
+  > = T extends NativeStructType
+    ? BufferSource
+    : T extends NativeNumberType
+      ? T extends NativeU8Enum<infer U>
+        ? U
+        : T extends NativeI8Enum<infer U>
+          ? U
+          : T extends NativeU16Enum<infer U>
+            ? U
+            : T extends NativeI16Enum<infer U>
+              ? U
+              : T extends NativeU32Enum<infer U>
+                ? U
+                : T extends NativeI32Enum<infer U>
+                  ? U
+                  : number
+      : T extends NativeBigIntType
+        ? bigint
+        : T extends NativeBooleanType
+          ? boolean
+          : T extends NativePointerType
+            ? T extends NativeTypedPointer<infer U>
+              ? U | null
+              : PointerValue
+            : T extends NativeFunctionType
+              ? T extends NativeTypedFunction<infer U>
+                ? PointerObject<U> | null
+                : PointerValue
+              : T extends NativeBufferType
+                ? BufferSource | null
+                : T extends NativeVoidType
+                  ? void
+                  : never;
 
   /** A utility type for conversion of parameter types of foreign functions.
    *
@@ -5555,37 +5597,53 @@ declare namespace Deno {
    */
   export type ToNativeParameterTypes<T extends readonly NativeType[]> =
     //
-    [T[number][]] extends [T] ? ToNativeType<T[number]>[]
-      : [readonly T[number][]] extends [T] ? readonly ToNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: ToNativeType<T[K]>;
-        }
-      : never;
+    [T[number][]] extends [T]
+      ? ToNativeType<T[number]>[]
+      : [readonly T[number][]] extends [T]
+        ? readonly ToNativeType<T[number]>[]
+        : T extends readonly [...NativeType[]]
+          ? {
+              [K in keyof T]: ToNativeType<T[K]>;
+            }
+          : never;
 
   /** Type conversion for foreign symbol return types and unsafe callback
    * parameters.
    *
    * @category FFI
    */
-  export type FromNativeType<T extends NativeType = NativeType> = T extends
-    NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : never;
+  export type FromNativeType<T extends NativeType = NativeType> =
+    T extends NativeStructType
+      ? Uint8Array
+      : T extends NativeNumberType
+        ? T extends NativeU8Enum<infer U>
+          ? U
+          : T extends NativeI8Enum<infer U>
+            ? U
+            : T extends NativeU16Enum<infer U>
+              ? U
+              : T extends NativeI16Enum<infer U>
+                ? U
+                : T extends NativeU32Enum<infer U>
+                  ? U
+                  : T extends NativeI32Enum<infer U>
+                    ? U
+                    : number
+        : T extends NativeBigIntType
+          ? bigint
+          : T extends NativeBooleanType
+            ? boolean
+            : T extends NativePointerType
+              ? T extends NativeTypedPointer<infer U>
+                ? U | null
+                : PointerValue
+              : T extends NativeBufferType
+                ? PointerValue
+                : T extends NativeFunctionType
+                  ? T extends NativeTypedFunction<infer U>
+                    ? PointerObject<U> | null
+                    : PointerValue
+                  : never;
 
   /** Type conversion for foreign symbol return types.
    *
@@ -5593,37 +5651,53 @@ declare namespace Deno {
    */
   export type FromNativeResultType<
     T extends NativeResultType = NativeResultType,
-  > = T extends NativeStructType ? Uint8Array
-    : T extends NativeNumberType ? T extends NativeU8Enum<infer U> ? U
-      : T extends NativeI8Enum<infer U> ? U
-      : T extends NativeU16Enum<infer U> ? U
-      : T extends NativeI16Enum<infer U> ? U
-      : T extends NativeU32Enum<infer U> ? U
-      : T extends NativeI32Enum<infer U> ? U
-      : number
-    : T extends NativeBigIntType ? bigint
-    : T extends NativeBooleanType ? boolean
-    : T extends NativePointerType
-      ? T extends NativeTypedPointer<infer U> ? U | null
-      : PointerValue
-    : T extends NativeBufferType ? PointerValue
-    : T extends NativeFunctionType
-      ? T extends NativeTypedFunction<infer U> ? PointerObject<U> | null
-      : PointerValue
-    : T extends NativeVoidType ? void
-    : never;
+  > = T extends NativeStructType
+    ? Uint8Array
+    : T extends NativeNumberType
+      ? T extends NativeU8Enum<infer U>
+        ? U
+        : T extends NativeI8Enum<infer U>
+          ? U
+          : T extends NativeU16Enum<infer U>
+            ? U
+            : T extends NativeI16Enum<infer U>
+              ? U
+              : T extends NativeU32Enum<infer U>
+                ? U
+                : T extends NativeI32Enum<infer U>
+                  ? U
+                  : number
+      : T extends NativeBigIntType
+        ? bigint
+        : T extends NativeBooleanType
+          ? boolean
+          : T extends NativePointerType
+            ? T extends NativeTypedPointer<infer U>
+              ? U | null
+              : PointerValue
+            : T extends NativeBufferType
+              ? PointerValue
+              : T extends NativeFunctionType
+                ? T extends NativeTypedFunction<infer U>
+                  ? PointerObject<U> | null
+                  : PointerValue
+                : T extends NativeVoidType
+                  ? void
+                  : never;
 
   /** @category FFI
    */
   export type FromNativeParameterTypes<T extends readonly NativeType[]> =
     //
-    [T[number][]] extends [T] ? FromNativeType<T[number]>[]
+    [T[number][]] extends [T]
+      ? FromNativeType<T[number]>[]
       : [readonly T[number][]] extends [T]
         ? readonly FromNativeType<T[number]>[]
-      : T extends readonly [...NativeType[]] ? {
-          [K in keyof T]: FromNativeType<T[K]>;
-        }
-      : never;
+        : T extends readonly [...NativeType[]]
+          ? {
+              [K in keyof T]: FromNativeType<T[K]>;
+            }
+          : never;
 
   /** The interface for a foreign function as defined by its parameter and result
    * types.
@@ -5680,17 +5754,20 @@ declare namespace Deno {
    * @category FFI
    */
   export type StaticForeignSymbol<T extends ForeignFunction | ForeignStatic> =
-    T extends ForeignFunction ? FromForeignFunction<T>
-      : T extends ForeignStatic ? FromNativeType<T["type"]>
-      : never;
+    T extends ForeignFunction
+      ? FromForeignFunction<T>
+      : T extends ForeignStatic
+        ? FromNativeType<T["type"]>
+        : never;
 
   /**  @category FFI
    */
   export type FromForeignFunction<T extends ForeignFunction> =
-    T["parameters"] extends readonly [] ? () => StaticForeignSymbolReturnType<T>
+    T["parameters"] extends readonly []
+      ? () => StaticForeignSymbolReturnType<T>
       : (
-        ...args: ToNativeParameterTypes<T["parameters"]>
-      ) => StaticForeignSymbolReturnType<T>;
+          ...args: ToNativeParameterTypes<T["parameters"]>
+        ) => StaticForeignSymbolReturnType<T>;
 
   /** @category FFI
    */
@@ -5728,9 +5805,7 @@ declare namespace Deno {
    *
    * @category FFI
    */
-  export interface PointerObject<T = unknown> {
-    [brand]: T;
-  }
+  export type PointerObject<T = unknown> = { [brand]: T };
 
   /** Pointers are represented either with a {@linkcode PointerObject}
    * object or a `null` if the pointer is null.
@@ -5852,10 +5927,9 @@ declare namespace Deno {
     /** The definition of the function. */
     definition: Fn;
 
-    constructor(
-      pointer: PointerObject<NoInfer<Omit<Fn, "nonblocking">>>,
-      definition: Fn,
-    );
+    constructor(pointer: PointerObject<NoInfer<Fn>>, definition: Fn);
+    /** @deprecated Properly type {@linkcode pointer} using {@linkcode NativeTypedFunction} or {@linkcode UnsafeCallbackDefinition} types. */
+    constructor(pointer: PointerObject, definition: Fn);
 
     /** Call the foreign function. */
     call: FromForeignFunction<Fn>;
@@ -5882,10 +5956,11 @@ declare namespace Deno {
   export type UnsafeCallbackFunction<
     Parameters extends readonly NativeType[] = readonly NativeType[],
     Result extends NativeResultType = NativeResultType,
-  > = Parameters extends readonly [] ? () => ToNativeResultType<Result>
+  > = Parameters extends readonly []
+    ? () => ToNativeResultType<Result>
     : (
-      ...args: FromNativeParameterTypes<Parameters>
-    ) => ToNativeResultType<Result>;
+        ...args: FromNativeParameterTypes<Parameters>
+      ) => ToNativeResultType<Result>;
 
   /** An unsafe function pointer for passing JavaScript functions as C function
    * pointers to foreign function calls.
@@ -5909,8 +5984,8 @@ declare namespace Deno {
    * @category FFI
    */
   export class UnsafeCallback<
-    const Definition extends UnsafeCallbackDefinition =
-      UnsafeCallbackDefinition,
+    const Definition extends
+      UnsafeCallbackDefinition = UnsafeCallbackDefinition,
   > {
     constructor(
       definition: Definition,
@@ -6051,124 +6126,4 @@ declare namespace Deno {
     filename: string | URL,
     symbols: S,
   ): DynamicLibrary<S>;
-
-  /**
-   * A custom `HttpClient` for use with {@linkcode fetch} function. This is
-   * designed to allow custom certificates or proxies to be used with `fetch()`.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const req = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   */
-  export class HttpClient implements Disposable {
-    /** Close the HTTP client. */
-    close(): void;
-
-    [Symbol.dispose](): void;
-  }
-
-  /**
-   * The options used when creating a {@linkcode Deno.HttpClient}.
-   *
-   * @category Fetch
-   */
-  export interface CreateHttpClientOptions {
-    /** A list of root certificates that will be used in addition to the
-     * default root certificates to verify the peer's certificate.
-     *
-     * Must be in PEM format. */
-    caCerts?: string[];
-    /** A HTTP proxy to use for new connections. */
-    proxy?: Proxy;
-    /** Sets the maximum number of idle connections per host allowed in the pool. */
-    poolMaxIdlePerHost?: number;
-    /** Set an optional timeout for idle sockets being kept-alive.
-     * Set to false to disable the timeout. */
-    poolIdleTimeout?: number | false;
-    /**
-     * Whether HTTP/1.1 is allowed or not.
-     *
-     * @default {true}
-     */
-    http1?: boolean;
-    /** Whether HTTP/2 is allowed or not.
-     *
-     * @default {true}
-     */
-    http2?: boolean;
-    /** Whether setting the host header is allowed or not.
-     *
-     * @default {false}
-     */
-    allowHost?: boolean;
-  }
-
-  /**
-   * The definition of a proxy when specifying
-   * {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   */
-  export interface Proxy {
-    /** The string URL of the proxy server to use. */
-    url: string;
-    /** The basic auth credentials to be used against the proxy server. */
-    basicAuth?: BasicAuth;
-  }
-
-  /**
-   * Basic authentication credentials to be used with a {@linkcode Deno.Proxy}
-   * server when specifying {@linkcode Deno.CreateHttpClientOptions}.
-   *
-   * @category Fetch
-   */
-  export interface BasicAuth {
-    /** The username to be used against the proxy server. */
-    username: string;
-    /** The password to be used against the proxy server. */
-    password: string;
-  }
-
-  /** Create a custom HttpClient to use with {@linkcode fetch}. This is an
-   * extension of the web platform Fetch API which allows Deno to use custom
-   * TLS CA certificates and connect via a proxy while using `fetch()`.
-   *
-   * The `cert` and `key` options can be used to specify a client certificate
-   * and key to use when connecting to a server that requires client
-   * authentication (mutual TLS or mTLS). The `cert` and `key` options must be
-   * provided in PEM format.
-   *
-   * @example ```ts
-   * const caCert = await Deno.readTextFile("./ca.pem");
-   * const client = Deno.createHttpClient({ caCerts: [ caCert ] });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @example ```ts
-   * const client = Deno.createHttpClient({
-   *   proxy: { url: "http://myproxy.com:8080" }
-   * });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @example ```ts
-   * const key = "----BEGIN PRIVATE KEY----...";
-   * const cert = "----BEGIN CERTIFICATE----...";
-   * const client = Deno.createHttpClient({ key, cert });
-   * const response = await fetch("https://myserver.com", { client });
-   * ```
-   *
-   * @category Fetch
-   */
-  export function createHttpClient(
-    options:
-      | CreateHttpClientOptions
-      | (CreateHttpClientOptions & TlsCertifiedKeyPem),
-  ): HttpClient;
-
-  export {}; // only export exports
 }
