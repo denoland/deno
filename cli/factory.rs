@@ -343,6 +343,7 @@ struct CliFactoryServices {
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
   workspace_external_import_map_loader:
     Deferred<Arc<WorkspaceExternalImportMapLoader>>,
+  workspace_npm_patch_packages: Deferred<Arc<WorkspaceNpmPatchPackages>>,
 }
 
 #[derive(Debug, Default)]
@@ -642,10 +643,7 @@ impl CliFactory {
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
-          // todo(THIS PR): share this
-          Arc::new(WorkspaceNpmPatchPackages::from_workspace(
-            cli_options.workspace().as_ref(),
-          )),
+          self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -672,11 +670,23 @@ impl CliFactory {
         self.npm_registry_info_provider()?.clone(),
         self.npm_resolution()?.clone(),
         cli_options.maybe_lockfile().cloned(),
-        Arc::new(WorkspaceNpmPatchPackages::from_workspace(
-          cli_options.workspace().as_ref(),
-        )),
+        self.workspace_npm_patch_packages()?.clone(),
       )))
     })
+  }
+
+  fn workspace_npm_patch_packages(
+    &self,
+  ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
+    self
+      .services
+      .workspace_npm_patch_packages
+      .get_or_try_init(|| {
+        let cli_options = self.cli_options()?;
+        Ok(Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          cli_options.workspace().as_ref(),
+        )))
+      })
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
