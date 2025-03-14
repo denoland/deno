@@ -1008,7 +1008,9 @@ impl Config {
       MediaType::Json
       | MediaType::Wasm
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => None,
     }
   }
