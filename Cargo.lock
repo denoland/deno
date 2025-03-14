@@ -926,7 +926,7 @@ dependencies = [
  "deno_cache_dir",
  "deno_lockfile",
  "deno_semver",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "deno_tower_lsp",
  "deno_unsync",
  "fastwebsockets",
@@ -1512,7 +1512,7 @@ dependencies = [
  "deno_snapshots",
  "deno_task_shell",
  "deno_telemetry",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "deno_tower_lsp",
  "dhat",
  "dissimilar",
@@ -1617,7 +1617,7 @@ dependencies = [
  "base64 0.21.7",
  "deno_error",
  "deno_media_type",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "dprint-swc-ext",
  "once_cell",
  "percent-encoding",
@@ -1884,7 +1884,7 @@ dependencies = [
  "deno_ast",
  "deno_graph",
  "deno_path_util",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "handlebars",
  "html-escape",
  "import_map",
@@ -2154,7 +2154,7 @@ dependencies = [
  "deno_resolver",
  "deno_runtime",
  "deno_semver",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "env_logger",
  "faster-hex",
  "indexmap 2.7.1",
@@ -2478,7 +2478,7 @@ dependencies = [
  "deno_core",
  "deno_error",
  "deno_path_util",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "fqdn",
  "libc",
  "log",
@@ -2535,7 +2535,7 @@ dependencies = [
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "futures",
  "import_map",
  "indexmap 2.7.1",
@@ -2580,7 +2580,7 @@ dependencies = [
  "deno_process",
  "deno_resolver",
  "deno_telemetry",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "deno_tls",
  "deno_url",
  "deno_web",
@@ -2694,9 +2694,9 @@ dependencies = [
 
 [[package]]
 name = "deno_terminal"
-version = "0.2.0"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daef12499e89ee99e51ad6000a91f600d3937fb028ad4918af76810c5bc9e0d5"
+checksum = "23f71c27009e0141dedd315f1dfa3ebb0a6ca4acce7c080fac576ea415a465f6"
 dependencies = [
  "once_cell",
  "termcolor",
@@ -2942,7 +2942,7 @@ dependencies = [
  "deno_runtime",
  "deno_semver",
  "deno_snapshots",
- "deno_terminal 0.2.0",
+ "deno_terminal 0.2.2",
  "import_map",
  "indexmap 2.7.1",
  "libsui",
