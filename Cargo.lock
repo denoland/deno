@@ -2191,7 +2191,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.24.0"
-source = "git+https://github.com/dsherret/deno_lockfile?rev=a06870cbc7ce25b3b52812fe49a26e27d0b015df#a06870cbc7ce25b3b52812fe49a26e27d0b015df"
+source = "git+https://github.com/dsherret/deno_lockfile?rev=d383040d87d80deda088ee350dc9335a5cbfdabd#d383040d87d80deda088ee350dc9335a5cbfdabd"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2439,7 +2439,7 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.5.2"
-source = "git+https://github.com/dsherret/deno_package_json?rev=7c11f99d951d56ff7f3d528c74614697186a55fd#7c11f99d951d56ff7f3d528c74614697186a55fd"
+source = "git+https://github.com/dsherret/deno_package_json?rev=e17765ea1d10865bb8182c8684837f306a49a0a3#e17765ea1d10865bb8182c8684837f306a49a0a3"
 dependencies = [
  "boxed_error",
  "deno_error",
