@@ -671,7 +671,7 @@ interface Crypto {
    * @returns A randomly generated, 36-character long v4 UUID.
    *
    * @example
-   * ```typescript
+   * ```ts
    * const uuid = crypto.randomUUID();
    * console.log(uuid);
    * // Example output: '36b8f84d-df4e-4d49-b662-bcde71a8764f'
@@ -683,7 +683,7 @@ interface Crypto {
    * at {@link https://jsr.io/@std/uuid}.
    *
    * @example
-   * ```typescript
+   * ```ts
    * import { v1 } from 'jsr:@std/uuid';
    *
    * // Generate a time-based UUID (v1)
