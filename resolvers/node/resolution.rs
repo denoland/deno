@@ -7,9 +7,12 @@ use std::path::PathBuf;
 
 use anyhow::bail;
 use anyhow::Error as AnyError;
+use dashmap::DashMap;
 use deno_media_type::MediaType;
 use deno_package_json::PackageJson;
 use deno_path_util::url_to_file_path;
+use deno_semver::Version;
+use deno_semver::VersionReq;
 use serde_json::Map;
 use serde_json::Value;
 use sys_traits::FileType;
@@ -168,6 +171,14 @@ enum ResolvedMethod {
   PackageSubPath,
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct NodeResolverOptions {
+  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  /// TypeScript version to use for typesVersions resolution and
+  /// `types@req` exports resolution.
+  pub typescript_version: Option<Version>,
+}
+
 #[allow(clippy::disallowed_types)]
 pub type NodeResolverRc<
   TInNpmPackageChecker,
@@ -196,6 +207,8 @@ pub struct NodeResolver<
   pkg_json_resolver: PackageJsonResolverRc<TSys>,
   sys: NodeResolutionSys<TSys>,
   conditions_from_resolution_mode: ConditionsFromResolutionMode,
+  typescript_version: Option<Version>,
+  package_resolution_lookup_cache: Option<DashMap<Url, String>>,
 }
 
 impl<
@@ -217,7 +230,7 @@ impl<
     npm_pkg_folder_resolver: TNpmPackageFolderResolver,
     pkg_json_resolver: PackageJsonResolverRc<TSys>,
     sys: NodeResolutionSys<TSys>,
-    conditions_from_resolution_mode: ConditionsFromResolutionMode,
+    options: NodeResolverOptions,
   ) -> Self {
     Self {
       in_npm_pkg_checker,
@@ -225,7 +238,16 @@ impl<
       npm_pkg_folder_resolver,
       pkg_json_resolver,
       sys,
-      conditions_from_resolution_mode,
+      conditions_from_resolution_mode: options.conditions_from_resolution_mode,
+      typescript_version: options.typescript_version,
+      package_resolution_lookup_cache: None,
+    }
+  }
+
+  pub fn with_package_resolution_lookup_cache(self) -> Self {
+    Self {
+      package_resolution_lookup_cache: Some(Default::default()),
+      ..self
     }
   }
 
@@ -252,7 +274,9 @@ impl<
       return Ok(NodeResolution::BuiltIn(specifier.to_string()));
     }
 
+    let mut specifier_is_url = false;
     if let Ok(url) = Url::parse(specifier) {
+      specifier_is_url = true;
       if url.scheme() == "data" {
         return Ok(NodeResolution::Module(UrlOrPath::Url(url)));
       }
@@ -297,6 +321,21 @@ impl<
 
     let url_or_path =
       self.finalize_resolution(url, resolved_kind, Some(&referrer))?;
+    let maybe_cache_resolution = || {
+      let package_resolution_lookup_cache =
+        self.package_resolution_lookup_cache.as_ref()?;
+      if specifier_is_url
+        || specifier.starts_with("./")
+        || specifier.starts_with("../")
+        || specifier.starts_with("/")
+      {
+        return None;
+      }
+      let url = url_or_path.clone().into_url().ok()?;
+      package_resolution_lookup_cache.insert(url, specifier.to_string());
+      Some(())
+    };
+    maybe_cache_resolution();
     let resolve_response = NodeResolution::Module(url_or_path);
     // TODO(bartlomieju): skipped checking errors for commonJS resolution and
     // "preserveSymlinksMain"/"preserveSymlinks" options.
@@ -459,6 +498,17 @@ impl<
         .into(),
       ),
     }
+  }
+
+  pub fn lookup_package_specifier_for_resolution(
+    &self,
+    url: &Url,
+  ) -> Option<String> {
+    self
+      .package_resolution_lookup_cache
+      .as_ref()?
+      .get(url)
+      .map(|r| r.value().clone())
   }
 
   fn module_not_found_ext_suggestion(
@@ -1160,7 +1210,7 @@ impl<
 
         if key == "default"
           || conditions.contains(&key.as_str())
-          || resolution_kind.is_types() && key.as_str() == "types"
+          || resolution_kind.is_types() && self.matches_types_key(key)
         {
           let resolved = self.resolve_package_target(
             package_json_path,
@@ -1196,6 +1246,22 @@ impl<
       }
       .into(),
     )
+  }
+
+  fn matches_types_key(&self, key: &str) -> bool {
+    if key == "types" {
+      return true;
+    }
+    let Some(ts_version) = &self.typescript_version else {
+      return false;
+    };
+    let Some(constraint) = key.strip_prefix("types@") else {
+      return false;
+    };
+    let Ok(version_req) = VersionReq::parse_from_npm(constraint) else {
+      return false;
+    };
+    version_req.matches(ts_version)
   }
 
   #[allow(clippy::too_many_arguments)]
@@ -1543,7 +1609,7 @@ impl<
     }
 
     if package_subpath == "." {
-      return self
+      self
         .legacy_main_resolve(
           package_json,
           referrer,
@@ -1553,36 +1619,74 @@ impl<
         )
         .map(|url| (url, ResolvedMethod::PackageSubPath))
         .map_err(|err| {
-          PackageSubpathResolveErrorKind::LegacyResolve(err).into()
-        });
+          PackageSubpathResolveErrorKind::LegacyResolve(err).into_box()
+        })
+    } else {
+      self
+        .resolve_subpath_exact(
+          package_json.path.parent().unwrap(),
+          package_subpath,
+          Some(package_json),
+          referrer,
+          resolution_mode,
+          conditions,
+          resolution_kind,
+        )
+        .map(|url| (url, ResolvedMethod::PackageSubPath))
+        .map_err(|err| {
+          PackageSubpathResolveErrorKind::LegacyResolve(err.into()).into_box()
+        })
     }
+  }
 
-    self
-      .resolve_subpath_exact(
-        package_json.path.parent().unwrap(),
-        package_subpath,
-        referrer,
-        resolution_mode,
-        conditions,
-        resolution_kind,
-      )
-      .map(|url| (url, ResolvedMethod::PackageSubPath))
-      .map_err(|err| {
-        PackageSubpathResolveErrorKind::LegacyResolve(err.into()).into()
+  fn pkg_json_types_versions<'a>(
+    &'a self,
+    pkg_json: &'a PackageJson,
+    resolution_kind: NodeResolutionKind,
+  ) -> Option<TypesVersions<'a, TSys>> {
+    if !resolution_kind.is_types() {
+      return None;
+    }
+    pkg_json
+      .types_versions
+      .as_ref()
+      .and_then(|entries| {
+        let ts_version = self.typescript_version.as_ref()?;
+        entries
+          .iter()
+          .filter_map(|(k, v)| {
+            let version_req = VersionReq::parse_from_npm(k).ok()?;
+            version_req.matches(ts_version).then_some(v)
+          })
+          .next()
+      })
+      .and_then(|value| value.as_object())
+      .map(|value| TypesVersions {
+        value,
+        dir_path: pkg_json.dir_path(),
+        sys: &self.sys,
       })
   }
 
+  #[allow(clippy::too_many_arguments)]
   fn resolve_subpath_exact(
     &self,
     directory: &Path,
     package_subpath: &str,
+    package_json: Option<&PackageJson>,
     referrer: Option<&UrlOrPathRef>,
     resolution_mode: ResolutionMode,
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
   ) -> Result<MaybeTypesResolvedUrl, TypesNotFoundError> {
     assert_ne!(package_subpath, ".");
-    let file_path = directory.join(package_subpath);
+    let types_versions = package_json.and_then(|pkg_json| {
+      self.pkg_json_types_versions(pkg_json, resolution_kind)
+    });
+    let package_subpath = types_versions
+      .and_then(|v| v.map(package_subpath))
+      .unwrap_or(Cow::Borrowed(package_subpath));
+    let file_path = directory.join(package_subpath.as_ref());
     self.maybe_resolve_types(
       LocalUrlOrPath::Path(LocalPath {
         path: file_path,
@@ -1616,6 +1720,7 @@ impl<
         .resolve_subpath_exact(
           directory,
           package_subpath,
+          None,
           maybe_referrer,
           resolution_mode,
           conditions,
@@ -1637,9 +1742,18 @@ impl<
       ResolutionMode::Require => deno_package_json::NodeModuleKind::Cjs,
       ResolutionMode::Import => deno_package_json::NodeModuleKind::Esm,
     };
+
     let maybe_main = if resolution_kind.is_types() {
       match package_json.types.as_ref() {
-        Some(types) => Some(types.as_str()),
+        Some(types) => {
+          let types_versions =
+            self.pkg_json_types_versions(package_json, resolution_kind);
+          Some(
+            types_versions
+              .and_then(|v| v.map(types.as_ref()))
+              .unwrap_or(Cow::Borrowed(types.as_str())),
+          )
+        }
         None => {
           // fallback to checking the main entrypoint for
           // a corresponding declaration file
@@ -1663,10 +1777,10 @@ impl<
         }
       }
     } else {
-      package_json.main(pkg_json_kind)
+      package_json.main(pkg_json_kind).map(Cow::Borrowed)
     };
 
-    if let Some(main) = maybe_main {
+    if let Some(main) = maybe_main.as_deref() {
       let guess = package_json.path.parent().unwrap().join(main).clean();
       if self.sys.is_file(&guess) {
         return Ok(self.maybe_resolve_types(
@@ -2105,9 +2219,64 @@ fn node_join_url(url: &Url, path: &str) -> Result<Url, url::ParseError> {
   }
 }
 
+struct TypesVersions<'a, TSys: FsMetadata> {
+  dir_path: &'a Path,
+  value: &'a serde_json::Map<std::string::String, serde_json::Value>,
+  sys: &'a NodeResolutionSys<TSys>,
+}
+
+impl<'a, TSys: FsMetadata> TypesVersions<'a, TSys> {
+  pub fn map(&self, search: &str) -> Option<Cow<'a, str>> {
+    let mut search = search
+      .strip_prefix("./")
+      .unwrap_or(search)
+      .trim_matches('/');
+    for (key, value) in self.value {
+      let key = key.strip_suffix("./").unwrap_or(key).trim_matches('/');
+      let is_match = if key == "*" || key == search {
+        true
+      } else if let Some(key_prefix) = key.strip_suffix("/*") {
+        if let Some(new_search) = search.strip_prefix(key_prefix) {
+          search = new_search.trim_matches('/');
+          true
+        } else {
+          false
+        }
+      } else {
+        false
+      };
+      if !is_match {
+        continue;
+      }
+      if let Some(values) = value.as_array() {
+        for value in values.iter().filter_map(|s| s.as_str()) {
+          let value = if let Some(asterisk_index) = value.find('*') {
+            Cow::Owned(format!(
+              "{}{}{}",
+              &value[..asterisk_index],
+              search,
+              &value[asterisk_index + 1..]
+            ))
+          } else {
+            Cow::Borrowed(value)
+          };
+          let path = self.dir_path.join(value.as_ref());
+          if self.sys.is_file(&path) {
+            return Some(value);
+          }
+        }
+      }
+    }
+    None
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use serde_json::json;
+  use sys_traits::impls::InMemorySys;
+  use sys_traits::FsCreateDirAll;
+  use sys_traits::FsWrite;
 
   use super::*;
 
@@ -2294,5 +2463,110 @@ mod tests {
       types_package_name("@scoped/package"),
       "@types/scoped__package"
     );
+  }
+
+  #[test]
+  fn test_types_versions() {
+    let dir_path = PathBuf::from("/dir");
+    let sys = InMemorySys::default();
+    sys.fs_create_dir_all(dir_path.join("ts3.1")).unwrap();
+    sys.fs_write(dir_path.join("file.d.ts"), "").unwrap();
+    sys.fs_write(dir_path.join("ts3.1/file.d.ts"), "").unwrap();
+    sys.fs_write(dir_path.join("ts3.1/file2.d.ts"), "").unwrap();
+    let node_resolution_sys = NodeResolutionSys::new(sys, None);
+
+    // asterisk key
+    {
+      let value = serde_json::json!({
+        "*": ["ts3.1/*"]
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(types_versions.map("file.d.ts").unwrap(), "ts3.1/file.d.ts");
+      assert_eq!(
+        types_versions.map("file2.d.ts").unwrap(),
+        "ts3.1/file2.d.ts"
+      );
+      assert!(types_versions.map("non_existent/file.d.ts").is_none());
+    }
+    // specific file
+    {
+      let value = serde_json::json!({
+        "types.d.ts": ["ts3.1/file.d.ts"]
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(types_versions.map("types.d.ts").unwrap(), "ts3.1/file.d.ts");
+      assert!(types_versions.map("file2.d.ts").is_none());
+    }
+    // multiple specific files
+    {
+      let value = serde_json::json!({
+        "types.d.ts": ["ts3.1/file.d.ts"],
+        "other.d.ts": ["ts3.1/file2.d.ts"],
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(types_versions.map("types.d.ts").unwrap(), "ts3.1/file.d.ts");
+      assert_eq!(
+        types_versions.map("other.d.ts").unwrap(),
+        "ts3.1/file2.d.ts"
+      );
+      assert!(types_versions.map("file2.d.ts").is_none());
+    }
+    // existing fallback
+    {
+      let value = serde_json::json!({
+        "*": ["ts3.1/*", "ts3.1/file2.d.ts"]
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(
+        types_versions.map("testing/types.d.ts").unwrap(),
+        "ts3.1/file2.d.ts"
+      );
+    }
+    // text then asterisk in key
+    {
+      let value = serde_json::json!({
+        "sub/*": ["ts3.1/file.d.ts"]
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(
+        types_versions.map("sub/types.d.ts").unwrap(),
+        "ts3.1/file.d.ts"
+      );
+    }
+    // text then asterisk in key and asterisk in value
+    {
+      let value = serde_json::json!({
+        "sub/*": ["ts3.1/*"]
+      });
+      let types_versions = TypesVersions {
+        dir_path: &dir_path,
+        value: value.as_object().unwrap(),
+        sys: &node_resolution_sys,
+      };
+      assert_eq!(
+        types_versions.map("sub/file.d.ts").unwrap(),
+        "ts3.1/file.d.ts"
+      );
+    }
   }
 }

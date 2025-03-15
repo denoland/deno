@@ -16,7 +16,7 @@ const server = Deno.serve(
         args: ["run", "-A", "-q", "--unstable-otel", Deno.args[0]],
         env: {
           OTEL_DENO: "true",
-          DENO_UNSTABLE_OTEL_DETERMINISTIC: "1",
+          DENO_UNSTABLE_OTEL_DETERMINISTIC: "0",
           OTEL_EXPORTER_OTLP_PROTOCOL: "http/json",
           OTEL_EXPORTER_OTLP_ENDPOINT: `https://localhost:${port}`,
           OTEL_EXPORTER_OTLP_CERTIFICATE: "../../../testdata/tls/RootCA.crt",

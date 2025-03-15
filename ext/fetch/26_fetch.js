@@ -60,11 +60,14 @@ import {
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
 import {
   builtinTracer,
+  ContextManager,
   enterSpan,
-  restoreContext,
+  PROPAGATORS,
+  restoreSnapshot,
   TRACING_ENABLED,
 } from "ext:deno_telemetry/telemetry.ts";
 import {
+  updateSpanFromError,
   updateSpanFromRequest,
   updateSpanFromResponse,
 } from "ext:deno_telemetry/util.ts";
@@ -351,11 +354,11 @@ function httpRedirectFetch(request, response, terminator) {
  */
 function fetch(input, init = { __proto__: null }) {
   let span;
-  let context;
+  let snapshot;
   try {
     if (TRACING_ENABLED) {
       span = builtinTracer().startSpan("fetch", { kind: 2 });
-      context = enterSpan(span);
+      snapshot = enterSpan(span);
     }
 
     // There is an async dispatch later that causes a stack trace disconnect.
@@ -371,6 +374,15 @@ function fetch(input, init = { __proto__: null }) {
       const requestObject = new Request(input, init);
 
       if (span) {
+        const context = ContextManager.active();
+        for (const propagator of new SafeArrayIterator(PROPAGATORS)) {
+          propagator.inject(context, requestObject.headers, {
+            set(carrier, key, value) {
+              carrier.append(key, value);
+            },
+          });
+        }
+
         updateSpanFromRequest(span, requestObject);
       }
 
@@ -378,6 +390,11 @@ function fetch(input, init = { __proto__: null }) {
       const request = toInnerRequest(requestObject);
       // 4.
       if (requestObject.signal.aborted) {
+        if (span) {
+          // Handles this case here as this is the only case where `result` promise
+          // is settled immediately.
+          updateSpanFromError(span, requestObject.signal.reason);
+        }
         reject(abortFetch(request, null, requestObject.signal.reason));
         return;
       }
@@ -448,7 +465,11 @@ function fetch(input, init = { __proto__: null }) {
     });
 
     if (opPromise) {
-      PromisePrototypeCatch(result, () => {});
+      PromisePrototypeCatch(result, (e) => {
+        if (span) {
+          updateSpanFromError(span, e);
+        }
+      });
       return (async function fetch() {
         try {
           await opPromise;
@@ -477,7 +498,7 @@ function fetch(input, init = { __proto__: null }) {
     }
     return result;
   } finally {
-    if (context) restoreContext(context);
+    if (snapshot) restoreSnapshot(snapshot);
   }
 }
 

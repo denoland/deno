@@ -1101,8 +1101,11 @@ function loadESMFromCJS(module, filename, code) {
     url.pathToFileURL(filename).toString(),
     code,
   );
-
-  module.exports = namespace;
+  if (ObjectHasOwn(namespace, "module.exports")) {
+    module.exports = namespace["module.exports"];
+  } else {
+    module.exports = namespace;
+  }
 }
 
 function stripBOM(content) {

@@ -55,10 +55,13 @@ const {
   ReflectConstruct,
   Symbol,
   SymbolAsyncIterator,
-  SafePromisePrototypeFinally,
 } = primordials;
 
 let getEndpointResource;
+
+function promiseFinallyWithoutUnhandled(p, f) {
+  return PromisePrototypeThen(p, f, f);
+}
 
 function transportOptions({
   keepAliveInterval,
@@ -385,7 +388,7 @@ class QuicReceiveStream extends ReadableStream {
 
 function readableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
   return readableStreamForRid(
@@ -397,7 +400,7 @@ function readableStream(rid, closed) {
 
 function writableStream(rid, closed) {
   // stream can be indirectly closed by closing connection.
-  SafePromisePrototypeFinally(closed, () => {
+  promiseFinallyWithoutUnhandled(closed, () => {
     core.tryClose(rid);
   });
   return writableStreamForRid(

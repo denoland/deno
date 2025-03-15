@@ -6,6 +6,66 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.4 / 2025.03.14
+
+- feat(otel): span context propagators (#28460)
+- feat(unstable/otel): add otel tracing to node:http.request (#28463)
+- feat: support FORCE_COLOR (#28490)
+- fix(bench): lower bench time budget when `n` is specified (#28454)
+- fix(check): support `types@` export conditions (#28450)
+- fix(check): support `typesVersions` in npm dependencies (#28468)
+- fix(cli): warn when an otel env var has an invalid value (#28394)
+- fix(ext/node): correct `STATUS_CODES` strings (#28489)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_util.ts` (#28432)
+- fix(install): exclude npm workspace packages from graph roots in `install`
+  (#28401)
+- fix(install): support "file:" dependencies in local package.json (#28396)
+- fix(lsp): auto-import from npm package exports with manual node_modules
+  (#28414)
+- fix(lsp): silence errors from "codeAction/resolve" (#28400)
+- fix(node): support re-exported esm modules in cjs export analysis (#28379)
+- fix(otel): don't print otel warning when variable is not set (#28475)
+- fix(otel/unstable): trace error cases of fetch (#28480)
+- fix(run): skip the cjs suggestion for mjs/mts modules (#26698)
+- fix(unstable): lint plugin `!==` wrongly parsed as `!=` (#28403)
+- fix(unstable): wrong node with shorthand ObjectPattern + AssignPattern
+  (#28402)
+- fix: unhandled rejection from quic (#28448)
+- perf(lsp): lazily start the ts server (#28392)
+
+### 2.2.3 / 2025.03.05
+
+- feat(unstable): lint plugins support field selectors (#28324)
+- fix(add): better help text for --dev arg (#28304)
+- fix(check/npm): move not found errors inside npm packages to tsc diagnostics
+  (#28337)
+- fix(ext/node): SQLite reset guards to prevent database locks (#28298)
+- fix(ext/node): node compatibility issue missing fd in createServer callback
+  socket object (#27789)
+- fix(fmt/md): handle callout followed by non-text (#28333)
+- fix(lint): run with --no-prompt (#28305)
+- fix(lsp): include prefix and suffix for rename edits (#28327)
+- fix(lsp): limit languages in semantic tokens provider (#28310)
+- fix(node): require esm should prefer `module.exports` export (#28376)
+- fix(otel): don't throw when calling setActiveSpan at root (#28323)
+- fix(unstable): Missing `PrivateIdentifier` type for `PropertyDefinition` key
+  (#28358)
+- fix(unstable): lint plugin `ObjectPattern` inconsistencies (#28359)
+- fix(unstable): lint plugin child combinator not working with groups (#28360)
+- fix(unstable): lint plugin fix `:has()`, `:is/where/matches` and `:not()`
+  selectors (#28348)
+- fix(unstable): lint plugin regex attribute selector not working (#28340)
+- fix(unstable): lint plugin swapped exported and source for
+  ExportAllDeclaration (#28357)
+- fix(unstable/lint): remove duplicated `Fix` vs `FixData` interface (#28344)
+- fix: add "module.exports" export to ESM CJS wrapper module (#28373)
+- fix: deno_ast 0.46 (#28331)
+- fix: respect lockfile for multiple available jsr versions (#28375)
+- perf(http): instantiate generic functions in `deno_http`, increase opt-level
+  for some more hyper deps (#28317)
+- perf(lsp): don't set resolver npm reqs if unchanged (#28302)
+- perf(lsp): register semantic tokens provider upon opening enabled doc (#28384)
+
 ### 2.2.2 / 2025.02.25
 
 - fix(check): regression - implicit jsxImportSource was not resolving (#28228)

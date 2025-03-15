@@ -82,6 +82,7 @@ const PropFlags = {
 /** @typedef {import("./40_lint_types.d.ts").LintState} LintState */
 /** @typedef {import("./40_lint_types.d.ts").TransformFn} TransformFn */
 /** @typedef {import("./40_lint_types.d.ts").MatchContext} MatchContext */
+/** @typedef {import("./40_lint_types.d.ts").MatcherFn} MatcherFn */
 
 /** @type {LintState} */
 const state = {
@@ -770,11 +771,15 @@ function getString(strTable, id) {
 
 /** @implements {MatchContext} */
 class MatchCtx {
+  parentLimitIdx = 0;
+
   /**
    * @param {AstContext} ctx
+   * @param {CancellationToken} cancellationToken
    */
-  constructor(ctx) {
+  constructor(ctx, cancellationToken) {
     this.ctx = ctx;
+    this.cancellationToken = cancellationToken;
   }
 
   /**
@@ -782,7 +787,15 @@ class MatchCtx {
    * @returns {number}
    */
   getParent(idx) {
-    return readParent(this.ctx.buf, idx);
+    if (idx === this.parentLimitIdx) return AST_IDX_INVALID;
+    const parent = readParent(this.ctx.buf, idx);
+
+    const parentType = readType(this.ctx.buf, parent);
+    if (parentType === AST_GROUP_TYPE) {
+      return readParent(this.ctx.buf, parent);
+    }
+
+    return parent;
   }
 
   /**
@@ -946,13 +959,31 @@ class MatchCtx {
 
     return out;
   }
+
+  /**
+   * Used for `:has()` and `:not()`
+   * @param {MatcherFn[]} selectors
+   * @param {number} idx
+   * @returns {boolean}
+   */
+  subSelect(selectors, idx) {
+    const prevLimit = this.parentLimitIdx;
+    this.parentLimitIdx = idx;
+
+    try {
+      return subTraverse(this.ctx, selectors, idx, idx, this.cancellationToken);
+    } finally {
+      this.parentLimitIdx = prevLimit;
+    }
+  }
 }
 
 /**
  * @param {Uint8Array} buf
+ * @param {CancellationToken} token
  * @returns {AstContext}
  */
-function createAstContext(buf) {
+function createAstContext(buf, token) {
   /** @type {Map<number, string>} */
   const strTable = new Map();
 
@@ -1032,7 +1063,7 @@ function createAstContext(buf) {
     propByStr,
     matcher: /** @type {*} */ (null),
   };
-  ctx.matcher = new MatchCtx(ctx);
+  ctx.matcher = new MatchCtx(ctx, token);
 
   setNodeGetters(ctx);
 
@@ -1053,7 +1084,8 @@ const NOOP = (_node) => {};
  * @param {Uint8Array} serializedAst
  */
 export function runPluginsForFile(fileName, serializedAst) {
-  const ctx = createAstContext(serializedAst);
+  const token = new CancellationToken();
+  const ctx = createAstContext(serializedAst, token);
 
   /** @type {Map<string, CompiledVisitor["info"]>}>} */
   const bySelector = new Map();
@@ -1162,7 +1194,6 @@ export function runPluginsForFile(fileName, serializedAst) {
     visitors.push({ info, matcher });
   }
 
-  const token = new CancellationToken();
   // Traverse ast with all visitors at the same time to avoid traversing
   // multiple times.
   try {
@@ -1184,11 +1215,12 @@ export function runPluginsForFile(fileName, serializedAst) {
  * @param {CancellationToken} cancellationToken
  */
 function traverse(ctx, visitors, idx, cancellationToken) {
+  const { buf } = ctx;
+
   while (idx !== AST_IDX_INVALID) {
     if (cancellationToken.isCancellationRequested()) return;
 
-    const { buf } = ctx;
-    const nodeType = readType(ctx.buf, idx);
+    const nodeType = readType(buf, idx);
 
     /** @type {VisitorFn[] | null} */
     let exits = null;
@@ -1231,6 +1263,51 @@ function traverse(ctx, visitors, idx, cancellationToken) {
 
     idx = readNext(buf, idx);
   }
+}
+
+/**
+ * Used for subqueries in `:has()` and `:not()`
+ * @param {AstContext} ctx
+ * @param {MatcherFn[]} selectors
+ * @param {number} rootIdx
+ * @param {number} idx
+ * @param {CancellationToken} cancellationToken
+ * @returns {boolean}
+ */
+function subTraverse(ctx, selectors, rootIdx, idx, cancellationToken) {
+  const { buf } = ctx;
+
+  while (idx > AST_IDX_INVALID) {
+    if (cancellationToken.isCancellationRequested()) return false;
+
+    const nodeType = readType(buf, idx);
+
+    if (nodeType !== AST_GROUP_TYPE) {
+      for (let i = 0; i < selectors.length; i++) {
+        const sel = selectors[i];
+
+        if (sel(ctx.matcher, idx)) {
+          return true;
+        }
+      }
+    }
+
+    const childIdx = readChild(buf, idx);
+    if (
+      childIdx > AST_IDX_INVALID &&
+      subTraverse(ctx, selectors, rootIdx, childIdx, cancellationToken)
+    ) {
+      return true;
+    }
+
+    if (idx === rootIdx) {
+      break;
+    }
+
+    idx = readNext(buf, idx);
+  }
+
+  return false;
 }
 
 /**

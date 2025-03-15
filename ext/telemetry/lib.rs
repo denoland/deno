@@ -127,18 +127,33 @@ pub struct OtelConfig {
   pub tracing_enabled: bool,
   pub metrics_enabled: bool,
   pub console: OtelConsoleConfig,
-  pub deterministic: bool,
+  pub deterministic_prefix: Option<u8>,
+  pub propagators: std::collections::HashSet<OtelPropagators>,
 }
 
 impl OtelConfig {
   pub fn as_v8(&self) -> Box<[u8]> {
-    Box::new([
+    let mut data = vec![
       self.tracing_enabled as u8,
       self.metrics_enabled as u8,
       self.console as u8,
-      self.deterministic as u8,
-    ])
+    ];
+
+    data.extend(self.propagators.iter().map(|propagator| *propagator as u8));
+
+    data.into_boxed_slice()
   }
+}
+
+#[derive(
+  Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash,
+)]
+#[repr(u8)]
+pub enum OtelPropagators {
+  TraceContext = 0,
+  Baggage = 1,
+  #[default]
+  None = 2,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -725,8 +740,8 @@ pub fn init(
       .with_version(rt_config.runtime_version.clone())
       .build();
 
-  let id_generator = if config.deterministic {
-    DenoIdGenerator::deterministic()
+  let id_generator = if let Some(prefix) = config.deterministic_prefix {
+    DenoIdGenerator::deterministic(prefix)
   } else {
     DenoIdGenerator::random()
   };
@@ -866,10 +881,11 @@ impl DenoIdGenerator {
     Self::Random(RandomIdGenerator::default())
   }
 
-  fn deterministic() -> Self {
+  fn deterministic(prefix: u8) -> Self {
+    let prefix = u64::from(prefix) << 56;
     Self::Deterministic {
-      next_trace_id: AtomicU64::new(1),
-      next_span_id: AtomicU64::new(1),
+      next_trace_id: AtomicU64::new(prefix + 1),
+      next_span_id: AtomicU64::new(prefix + 1),
     }
   }
 }
