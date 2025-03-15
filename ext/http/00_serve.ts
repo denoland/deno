@@ -458,7 +458,7 @@ class CallbackContext {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
-    this.legacyAbort = args[3] == true;
+    this.legacyAbort = args[3] == false;
     this.closed = false;
     this.listener = listener;
   }
