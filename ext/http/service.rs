@@ -750,6 +750,7 @@ mod tests {
         request_info.clone(),
         server_state.clone(),
         tx.clone(),
+        true,
       )
     });
 
