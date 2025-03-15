@@ -179,12 +179,17 @@ class InnerRequest {
       if (success) {
         this.#completed.resolve(undefined);
       } else {
+        if (!this.#context.legacyAbort) {
+          abortRequest(this.request);
+        }
         this.#completed.reject(
           new Interrupted("HTTP response was not sent successfully"),
         );
       }
     }
-    abortRequest(this.request);
+    if (this.#context.legacyAbort) {
+      abortRequest(this.request);
+    }
     this.#external = null;
   }
 
@@ -414,11 +419,16 @@ class InnerRequest {
 
   onCancel(callback) {
     if (this.#external === null) {
-      callback();
+      if (this.#context.legacyAbort) callback();
       return;
     }
 
-    PromisePrototypeThen(op_http_request_on_cancel(this.#external), callback);
+    PromisePrototypeThen(
+      op_http_request_on_cancel(this.#external),
+      (r) => {
+        return !this.#context.legacyAbort ? r && callback() : callback();
+      },
+    );
   }
 }
 
@@ -432,6 +442,7 @@ class CallbackContext {
   closing;
   listener;
   asyncContextSnapshot;
+  legacyAbort;
 
   constructor(signal, args, listener) {
     this.asyncContextSnapshot = currentSnapshot();
@@ -447,6 +458,7 @@ class CallbackContext {
     this.serverRid = args[0];
     this.scheme = args[1];
     this.fallbackHost = args[2];
+    this.legacyAbort = args[3] == false;
     this.closed = false;
     this.listener = listener;
   }

@@ -3035,6 +3035,8 @@ for (const delay of ["delay", "nodelay"]) {
   }
 }
 
+// NOTE: This test will start failing when we disable "deno_http/legacy_abort" feature.
+//
 // Test for the internal implementation detail of cached request signals. Ensure that the request's
 // signal is aborted if we try to access it after the request has been completed.
 Deno.test(
