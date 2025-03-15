@@ -71,6 +71,8 @@ fn set_db_config(
   config: i32,
   value: bool,
 ) -> bool {
+  // SAFETY: call to sqlite3_db_config is safe because the connection
+  // handle is valid and the parameters are correct.
   unsafe {
     let mut set = 0;
     let r = libsqlite3_sys::sqlite3_db_config(
