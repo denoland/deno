@@ -420,6 +420,27 @@ declare var URL: {
   new (url: string | URL, base?: string | URL): URL;
 
   /**
+   * Parses a URL string or URL object and returns a URL object.
+   *
+   * @example
+   * ```ts
+   * const myURL = URL.parse('https://example.org');
+   * console.log(myURL.href);  // Logs "https://example.org/"
+   * console.log(myURL.hostname);  // Logs "example.org"
+   * console.log(myURL.pathname);  // Logs "/"
+   * console.log(myURL.protocol);  // Logs "https:"
+   * ```
+   *
+   * @example
+   * ```ts
+   * const baseURL = new URL('https://example.org');
+   * const myURL = URL.parse('/foo', baseURL);
+   * console.log(myURL.href);  // Logs "https://example.org/foo"
+   * console.log(myURL.hostname);  // Logs "example.org"
+   * console.log(myURL.pathname);  // Logs "/foo"
+   * console.log(myURL.protocol);  // Logs "https:"
+   * ```
+   *
    * @see https://developer.mozilla.org/docs/Web/API/URL/parse_static
    */
   parse(url: string | URL, base?: string | URL): URL | null;
