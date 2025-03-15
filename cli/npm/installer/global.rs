@@ -101,11 +101,11 @@ async fn cache_packages(
 ) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
+    if let Some(dist) = &package.dist {
+      futures_unordered.push(async move {
+        tarball_cache.ensure_package(&package.id.nv, dist).await
+      });
+    }
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error

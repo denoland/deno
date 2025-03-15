@@ -1747,8 +1747,7 @@ dependencies = [
 [[package]]
 name = "deno_config"
 version = "0.50.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56792005d20f0b38f2e190b15918362440bebc0065b825af59d6022be465f764"
+source = "git+https://github.com/dsherret/deno_config?rev=6ca50ed30280a95340500e51ae83c205eb169eff#6ca50ed30280a95340500e51ae83c205eb169eff"
 dependencies = [
  "boxed_error",
  "capacity_builder 0.5.0",
@@ -2192,8 +2191,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632e835a53ed667d62fdd766c5780fe8361c831d3e3fbf1a760a0b7896657587"
+source = "git+https://github.com/dsherret/deno_lockfile?rev=d383040d87d80deda088ee350dc9335a5cbfdabd#d383040d87d80deda088ee350dc9335a5cbfdabd"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2354,8 +2352,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4adceb4c34f10e837d0e3ae76e88dddefb13e83c05c1ef1699fa5519241c9d27"
+source = "git+https://github.com/dsherret/deno_npm?rev=eabd787cb992a960e6b1b00a4de2f22cf75b243f#eabd787cb992a960e6b1b00a4de2f22cf75b243f"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -2442,8 +2439,7 @@ dependencies = [
 [[package]]
 name = "deno_package_json"
 version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36ea66a2e2f45fe056b3db3e701e16c139767cb214530f339e9e86217b296cc6"
+source = "git+https://github.com/dsherret/deno_package_json?rev=e17765ea1d10865bb8182c8684837f306a49a0a3#e17765ea1d10865bb8182c8684837f306a49a0a3"
 dependencies = [
  "boxed_error",
  "deno_error",

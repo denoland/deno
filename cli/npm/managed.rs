@@ -14,6 +14,7 @@ use deno_resolver::npm::managed::NpmResolutionCell;
 use thiserror::Error;
 
 use super::CliNpmRegistryInfoProvider;
+use super::WorkspaceNpmPatchPackages;
 use crate::args::CliLockfile;
 use crate::sys::CliSys;
 
@@ -37,6 +38,7 @@ enum SyncState {
 pub struct NpmResolutionInitializer {
   npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
   npm_resolution: Arc<NpmResolutionCell>,
+  patch_packages: Arc<WorkspaceNpmPatchPackages>,
   queue: tokio::sync::Mutex<()>,
   sync_state: Mutex<SyncState>,
 }
@@ -45,11 +47,13 @@ impl NpmResolutionInitializer {
   pub fn new(
     npm_registry_info_provider: Arc<CliNpmRegistryInfoProvider>,
     npm_resolution: Arc<NpmResolutionCell>,
+    patch_packages: Arc<WorkspaceNpmPatchPackages>,
     snapshot_option: CliNpmResolverManagedSnapshotOption,
   ) -> Self {
     Self {
       npm_registry_info_provider,
       npm_resolution,
+      patch_packages,
       queue: tokio::sync::Mutex::new(()),
       sync_state: Mutex::new(SyncState::Pending(Some(snapshot_option))),
     }
@@ -95,8 +99,12 @@ impl NpmResolutionInitializer {
       }
     };
 
-    match resolve_snapshot(&self.npm_registry_info_provider, snapshot_option)
-      .await
+    match resolve_snapshot(
+      &self.npm_registry_info_provider,
+      snapshot_option,
+      &self.patch_packages,
+    )
+    .await
     {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
@@ -145,6 +153,7 @@ impl ResolveSnapshotError {
 async fn resolve_snapshot(
   registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
+  patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<Option<ValidSerializedNpmResolutionSnapshot>, ResolveSnapshotError>
 {
   match snapshot {
@@ -153,6 +162,7 @@ async fn resolve_snapshot(
         let snapshot = snapshot_from_lockfile(
           lockfile.clone(),
           &registry_info_provider.as_npm_registry_api(),
+          patch_packages,
         )
         .await
         .map_err(|source| ResolveSnapshotError {
@@ -183,6 +193,7 @@ pub enum SnapshotFromLockfileError {
 async fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   api: &dyn NpmRegistryApi,
+  patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
   let (incomplete_snapshot, skip_integrity_check) = {
     let lock = lockfile.lock();
@@ -195,6 +206,7 @@ async fn snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       incomplete_snapshot,
       api,
+      patch_packages: &patch_packages.0,
       skip_integrity_check,
     },
   )

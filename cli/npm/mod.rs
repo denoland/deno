@@ -3,20 +3,30 @@
 pub mod installer;
 mod managed;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use deno_config::workspace::Workspace;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
 use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
+use deno_runtime::colors;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
+use deno_semver::SmallStackString;
+use deno_semver::StackString;
+use deno_semver::Version;
 use http::HeaderName;
 use http::HeaderValue;
+use indexmap::IndexMap;
+use thiserror::Error;
 
 pub use self::managed::CliManagedNpmResolverCreateOptions;
 pub use self::managed::CliNpmResolverManagedSnapshotOption;
@@ -38,6 +48,114 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
+
+#[derive(Debug, Default)]
+pub struct WorkspaceNpmPatchPackages(
+  pub HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+);
+
+impl WorkspaceNpmPatchPackages {
+  pub fn from_workspace(workspace: &Workspace) -> Self {
+    let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
+      HashMap::new();
+    for pkg_json in workspace.patch_pkg_jsons() {
+      let Some(name) = pkg_json.name.as_ref() else {
+        log::warn!(
+          "{} Patch package ignored because package.json was missing name field.\n    at {}",
+          colors::yellow("Warning"),
+          pkg_json.path.display(),
+        );
+        continue;
+      };
+      match pkg_json_to_version_info(pkg_json) {
+        Ok(version_info) => {
+          let entry = entries.entry(PackageName::from_str(name)).or_default();
+          entry.push(version_info);
+        }
+        Err(err) => {
+          log::warn!(
+            "{} {}\n    at {}",
+            colors::yellow("Warning"),
+            err.to_string(),
+            pkg_json.path.display(),
+          );
+        }
+      }
+    }
+    Self(entries)
+  }
+}
+
+#[derive(Debug, Error)]
+enum PkgJsonToVersionInfoError {
+  #[error(
+    "Patch package ignored because package.json was missing version field."
+  )]
+  VersionMissing,
+  #[error("Patch package ignored because package.json version field could not be parsed.")]
+  VersionInvalid {
+    #[source]
+    source: deno_semver::npm::NpmVersionParseError,
+  },
+}
+
+fn pkg_json_to_version_info(
+  pkg_json: &deno_package_json::PackageJson,
+) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+  fn parse_deps(
+    deps: Option<&IndexMap<String, String>>,
+  ) -> HashMap<StackString, StackString> {
+    deps
+      .map(|d| {
+        d.into_iter()
+          .map(|(k, v)| (StackString::from_str(k), StackString::from_str(v)))
+          .collect()
+      })
+      .unwrap_or_default()
+  }
+
+  fn parse_array(v: &[String]) -> Vec<SmallStackString> {
+    v.iter().map(|s| SmallStackString::from_str(s)).collect()
+  }
+
+  let Some(version) = &pkg_json.version else {
+    return Err(PkgJsonToVersionInfoError::VersionMissing);
+  };
+
+  let version = Version::parse_from_npm(version)
+    .map_err(|source| PkgJsonToVersionInfoError::VersionInvalid { source })?;
+  Ok(NpmPackageVersionInfo {
+    version,
+    dist: None,
+    bin: pkg_json
+      .bin
+      .as_ref()
+      .and_then(|v| serde_json::from_value(v.clone()).ok()),
+    dependencies: parse_deps(pkg_json.dependencies.as_ref()),
+    optional_dependencies: parse_deps(pkg_json.optional_dependencies.as_ref()),
+    peer_dependencies: parse_deps(pkg_json.peer_dependencies.as_ref()),
+    peer_dependencies_meta: pkg_json
+      .peer_dependencies_meta
+      .clone()
+      .and_then(|m| serde_json::from_value(m).ok())
+      .unwrap_or_default(),
+    os: pkg_json.os.as_deref().map(parse_array).unwrap_or_default(),
+    cpu: pkg_json.cpu.as_deref().map(parse_array).unwrap_or_default(),
+    scripts: pkg_json
+      .scripts
+      .as_ref()
+      .map(|scripts| {
+        scripts
+          .iter()
+          .map(|(k, v)| (SmallStackString::from_str(k), v.clone()))
+          .collect()
+      })
+      .unwrap_or_default(),
+    // not worth increasing memory for showing a deprecated
+    // message for patched packages
+    deprecated: None,
+  })
+}
 
 #[derive(Debug)]
 pub struct CliNpmCacheHttpClient {

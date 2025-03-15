@@ -701,7 +701,10 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  pub fn node_modules_dir(
+  /// Gets the explicitly specified NodeModulesDir setting.
+  ///
+  /// Use `WorkspaceFactory.node_modules_dir_mode()` to get the resolved value.
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<
     Option<NodeModulesDirMode>,

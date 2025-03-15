@@ -38,6 +38,9 @@ mod tarball;
 mod tarball_extract;
 
 pub use fs_util::hard_link_dir_recursive;
+pub use fs_util::hard_link_file;
+pub use fs_util::HardLinkDirRecursiveError;
+pub use fs_util::HardLinkFileError;
 // todo(#27198): make both of these private and get the rest of the code
 // using RegistryInfoProvider.
 pub use registry_info::get_package_url;
