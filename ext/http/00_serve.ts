@@ -820,8 +820,13 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
+      const url = `${scheme}${host}:${addr.port}/`;
+      const helper = addr.hostname === "0.0.0.0" || addr.hostname === "::"
+        ? `(accessible via http://localhost:${addr.port})`
+        : "";
+
       // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      console.error(`Listening on ${url} ${helper}`);
     }
   };
 
