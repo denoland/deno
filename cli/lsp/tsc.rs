@@ -35,6 +35,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -51,6 +52,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
@@ -70,6 +72,7 @@ use tower_lsp::lsp_types as lsp;
 
 use super::analysis::CodeActionData;
 use super::code_lens;
+use super::code_lens::CodeLensData;
 use super::config;
 use super::config::LspTsConfig;
 use super::documents::AssetOrDocument;
@@ -470,6 +473,15 @@ impl TsServer {
     self.start_once.is_completed()
   }
 
+  pub fn project_changed2<'a>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    changed_specifiers_by_scope: BTreeMap<&Arc<Url>, Vec<Url>>,
+    new_configs_by_scope: Option<BTreeMap<Url, Arc<LspTsConfig>>>,
+  ) {
+    // TODO(nayeemrmn): Implement!
+  }
+
   pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -593,6 +605,33 @@ impl TsServer {
         })
         .ok();
     }
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn find_references2(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: Url,
+    position: u32,
+    scope: Option<Url>,
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
+    let req = TscRequest::FindReferences((
+      self.specifier_map.denormalize(&specifier),
+      position,
+    ));
+    self
+      .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut symbols| {
+        for symbol in symbols.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          symbol.normalize(&self.specifier_map)?;
+        }
+        Ok(symbols)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -765,7 +804,8 @@ impl TsServer {
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
-    code_action_data: &CodeActionData,
+    specifier: &Url,
+    fix_id: &str,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
@@ -774,9 +814,9 @@ impl TsServer {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
         r#type: "file",
-        file_name: self.specifier_map.denormalize(&code_action_data.specifier),
+        file_name: self.specifier_map.denormalize(specifier),
       },
-      code_action_data.fix_id.clone(),
+      fix_id.to_string(),
       format_code_settings,
       preferences,
     )));
@@ -2234,8 +2274,9 @@ impl NavigationTree {
   pub fn to_code_lens(
     &self,
     line_index: Arc<LineIndex>,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
-    source: &code_lens::CodeLensSource,
+    source: code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
@@ -2248,9 +2289,10 @@ impl NavigationTree {
     lsp::CodeLens {
       range,
       command: None,
-      data: Some(json!({
-        "specifier": specifier,
-        "source": source
+      data: Some(json!(CodeLensData {
+        source,
+        uri: uri.clone(),
+        specifier: specifier.clone(),
       })),
     }
   }
@@ -2908,6 +2950,7 @@ pub struct ApplicableRefactorInfo {
 impl ApplicableRefactorInfo {
   pub fn to_code_actions(
     &self,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     range: &lsp::Range,
     token: &CancellationToken,
@@ -2918,8 +2961,9 @@ impl ApplicableRefactorInfo {
       if token.is_cancelled() {
         return Err(anyhow!("request cancelled"));
       }
-      code_actions
-        .push(self.as_inline_code_action(action, specifier, range, &self.name));
+      code_actions.push(
+        self.as_inline_code_action(action, uri, specifier, range, &self.name),
+      );
     }
     Ok(code_actions)
   }
@@ -2927,6 +2971,7 @@ impl ApplicableRefactorInfo {
   fn as_inline_code_action(
     &self,
     action: &RefactorActionInfo,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     range: &lsp::Range,
     refactor_name: &str,
@@ -2944,6 +2989,7 @@ impl ApplicableRefactorInfo {
       disabled,
       data: Some(
         serde_json::to_value(RefactorCodeActionData {
+          uri: uri.clone(),
           specifier: specifier.clone(),
           range: *range,
           refactor_name: refactor_name.to_owned(),
@@ -3238,12 +3284,12 @@ impl CallHierarchyItem {
       .unwrap_or_else(|_| INVALID_URI.clone());
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
-    {
-      url_to_file_path(&uri_to_url(&uri)).ok()
-    } else {
-      None
-    };
+    let maybe_file_path =
+      if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+        url_to_file_path(&uri_to_url(&uri)).ok()
+      } else {
+        None
+      };
     let name = if use_file_name {
       if let Some(file_path) = maybe_file_path.as_ref() {
         file_path.file_name().unwrap().to_string_lossy().to_string()
@@ -5754,6 +5800,7 @@ mod tests {
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
+  use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
@@ -5780,6 +5827,18 @@ mod tests {
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let mut documents2 = Documents2::default();
+    for (relative_specifier, source, version, language_id) in sources {
+      let specifier = temp_dir.url().join(relative_specifier).unwrap();
+      documents2.open(specifier, *version, *language_id, (*source).into());
+    }
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
+      &config,
+      &resolver,
+      &cache,
+      &Default::default(),
+    );
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_specifier, source, version, language_id) in sources {
@@ -5789,6 +5848,8 @@ mod tests {
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
       documents: Arc::new(documents),
+      documents2: Arc::new(documents2),
+      document_modules: Arc::new(document_modules),
       config: Arc::new(config),
       resolver,
     });

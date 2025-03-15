@@ -1,15 +1,18 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
 use deno_ast::MediaType;
+use deno_config::UrlToFilePathError;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
+use deno_path_util::url_to_file_path;
 use lsp_types::Uri;
 use once_cell::sync::Lazy;
 
@@ -60,6 +63,7 @@ const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 /// `Uri` path.
 const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
   &percent_encoding::CONTROLS
+    .add(b' ')
     .add(b'[')
     .add(b']')
     .add(b'^')
@@ -174,7 +178,26 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
 }
 
 pub fn uri_to_url(uri: &Uri) -> Url {
-  Url::parse(uri.as_str()).unwrap()
+  (|| {
+    let scheme = uri.scheme()?;
+    if !scheme.eq_lowercase("untitled")
+      && !scheme.eq_lowercase("vscode-notebook-cell")
+      && !scheme.eq_lowercase("deno-notebook-cell")
+    {
+      return None;
+    }
+    Url::parse(&format!(
+      "file:///{}",
+      &uri.as_str()[uri.path_bounds.0 as usize..uri.path_bounds.1 as usize]
+        .trim_start_matches('/'),
+    ))
+    .ok()
+  })()
+  .unwrap_or_else(|| Url::parse(uri.as_str()).unwrap())
+}
+
+pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
+  url_to_file_path(&uri_to_url(uri))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -291,7 +314,7 @@ impl LspUrlMap {
 ///   ),
 ///   Some(Url::parse("file:///path/to/file.ipynb?scheme=untitled#abc").unwrap()),
 /// );
-fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
+pub fn file_like_to_file_specifier(specifier: &Url) -> Option<Url> {
   if matches!(
     specifier.scheme(),
     "untitled" | "vscode-notebook-cell" | "deno-notebook-cell"

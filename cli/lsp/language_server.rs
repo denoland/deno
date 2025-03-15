@@ -73,7 +73,11 @@ use super::diagnostics::DiagnosticsState;
 use super::documents::to_lsp_range;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
+use super::documents::Document2;
+use super::documents::DocumentModule;
+use super::documents::DocumentModules;
 use super::documents::Documents;
+use super::documents::Documents2;
 use super::documents::DocumentsFilter;
 use super::documents::LanguageId;
 use super::documents::ASSET_DOCUMENTS;
@@ -95,6 +99,7 @@ use super::tsc::ChangeKind;
 use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
+use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::Flags;
@@ -126,6 +131,33 @@ impl RootCertStoreProvider for LspRootCertStoreProvider {
   }
 }
 
+/// Used as a filtering option for `Inner::get_document()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Enabled {
+  /// Return Ok(None) if not enabled.
+  Filter,
+  /// Allow even if not enabled.
+  Ignore,
+}
+
+/// Used as a filtering option for `Inner::get_document()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Exists {
+  /// Return Err(LspError::InvalidParams(...)) if non-existent.
+  Enforce,
+  /// Return Ok(None) if non-existent.
+  Filter,
+}
+
+/// Used as a filtering option for `Inner::get_document()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Diagnosable {
+  /// Return Ok(None) if not diagnosable.
+  Filter,
+  /// Allow even if not diagnosable.
+  Ignore,
+}
+
 #[derive(Debug, Clone)]
 pub struct LanguageServer {
   client: Client,
@@ -146,6 +178,8 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
+  pub documents2: Arc<Documents2>,
+  pub document_modules: Arc<DocumentModules>,
   pub resolver: Arc<LspResolver>,
 }
 
@@ -198,7 +232,10 @@ pub struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
+  pub documents2: Documents2,
+  // TODO(nayeemrmn): Remove!
   pub documents: Documents,
+  pub document_modules: DocumentModules,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
   jsr_search_api: CliJsrSearchApi,
@@ -217,6 +254,8 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
+  workspace_files2: IndexSet<PathBuf>,
+  // TODO(nayeemrmn): Remove!
   workspace_files: IndexSet<ModuleSpecifier>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
@@ -502,7 +541,9 @@ impl Inner {
       config,
       diagnostics_state,
       diagnostics_server,
+      documents2: Default::default(),
       documents,
+      document_modules: Default::default(),
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
       jsr_search_api,
@@ -518,9 +559,72 @@ impl Inner {
       ts_server,
       url_map: Default::default(),
       workspace_files: Default::default(),
+      workspace_files2: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
     }
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub fn get_document(
+    &self,
+    uri: &Uri,
+    enabled: Enabled,
+    exists: Exists,
+    diagnosable: Diagnosable,
+  ) -> LspResult<Option<Document2>> {
+    match enabled {
+      Enabled::Filter => {
+        if !self.config.uri_enabled(uri) {
+          return Ok(None);
+        }
+      }
+      Enabled::Ignore => {}
+    }
+    let Some(document) = self.documents2.get(uri) else {
+      match exists {
+        Exists::Enforce => {
+          return Err(LspError::invalid_params(format!(
+            "Unable to find document for: {}",
+            uri.as_str()
+          )));
+        }
+        Exists::Filter => {
+          return Ok(None);
+        }
+      }
+    };
+    match diagnosable {
+      Diagnosable::Filter => {
+        if !document.is_diagnosable() {
+          return Ok(None);
+        }
+      }
+      Diagnosable::Ignore => {}
+    }
+    Ok(Some(document))
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub fn get_primary_module(
+    &self,
+    document: &Document2,
+  ) -> LspResult<Option<Arc<DocumentModule>>> {
+    let Some(module) = self.document_modules.primary_module(document) else {
+      if document
+        .uri()
+        .scheme()
+        .is_some_and(|s| s.eq_lowercase("deno"))
+      {
+        return Ok(None);
+      }
+      lsp_warn!(
+        "Unable to get module for document: {}",
+        document.uri().as_str(),
+      );
+      return Err(LspError::internal_error());
+    };
+    Ok(Some(module))
   }
 
   /// Searches assets and documents for the provided
@@ -552,6 +656,48 @@ impl Inner {
     }
   }
 
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_navigation_tree2(
+    &self,
+    module: &DocumentModule,
+    token: &CancellationToken,
+  ) -> LspResult<Arc<tsc::NavigationTree>> {
+    let mark = self.performance.mark_with_args(
+      "lsp.get_navigation_tree",
+      json!({ "uri": &module.specifier }),
+    );
+    let result = module
+      .navigation_tree
+      .get_or_try_init(|| async {
+        self
+          .ts_server
+          .get_navigation_tree(
+            self.snapshot(),
+            module.specifier.as_ref().clone(),
+            module.scope.as_deref().cloned(),
+            token,
+          )
+          .await
+          .map(Arc::new)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!(
+                "Error getting navigation tree for \"{}\": {:#}",
+                &module.specifier, err,
+              );
+              LspError::internal_error()
+            }
+          })
+      })
+      .await
+      .map(Clone::clone);
+    self.performance.measure(mark);
+    result
+  }
+
+  // TODO(nayeemrmn): Remove!
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigation_tree(
     &self,
@@ -615,6 +761,8 @@ impl Inner {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       documents: Arc::new(self.documents.clone()),
+      documents2: Arc::new(self.documents2.clone()),
+      document_modules: Arc::new(self.document_modules.clone()),
       resolver: self.resolver.snapshot(),
     })
   }
@@ -752,6 +900,11 @@ impl Inner {
       return;
     }
     let exists_enabled_document = self
+      .documents2
+      .open_docs()
+      .any(|doc| doc.is_diagnosable() && self.config.uri_enabled(&doc.uri));
+    // TODO(nayeemrmn): Remove!
+    let exists_enabled_document = self
       .documents
       .documents(DocumentsFilter::OpenDiagnosable)
       .into_iter()
@@ -766,6 +919,7 @@ impl Inner {
           )
         }) && self.config.specifier_enabled(doc.specifier())
       });
+    //
     if !exists_enabled_document {
       return;
     }
@@ -890,6 +1044,136 @@ impl Inner {
       server_info: Some(server_info),
       offset_encoding: None,
     })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn walk_workspace2(config: &Config) -> (IndexSet<PathBuf>, bool) {
+    if !config.workspace_capable() {
+      log::debug!("Skipped workspace walk due to client incapability.");
+      return (Default::default(), false);
+    }
+    let mut workspace_files = IndexSet::default();
+    let entry_limit = 1000;
+    let mut pending = VecDeque::new();
+    let mut entry_count = 0;
+    let mut roots = config
+      .workspace_folders
+      .iter()
+      .filter_map(|(_, f)| uri_to_file_path(&f.uri).ok())
+      .collect::<Vec<_>>();
+    roots.sort();
+    let roots = roots
+      .iter()
+      .enumerate()
+      .filter(|(i, root)| *i == 0 || !root.starts_with(&roots[i - 1]))
+      .map(|(_, r)| r.clone())
+      .collect::<Vec<_>>();
+    let mut root_ancestors = BTreeSet::new();
+    for root in roots {
+      for ancestor in root.ancestors().skip(1) {
+        if root_ancestors.insert(ancestor.to_path_buf()) {
+          break;
+        }
+      }
+      if let Ok(read_dir) = std::fs::read_dir(&root) {
+        pending.push_back((root, read_dir));
+      }
+    }
+    for root_ancestor in root_ancestors {
+      for deno_json in ["deno.json", "deno.jsonc"] {
+        let path = root_ancestor.join(deno_json);
+        if path.exists() {
+          workspace_files.insert(path);
+        }
+      }
+    }
+    while let Some((parent_path, read_dir)) = pending.pop_front() {
+      // Sort entries from each dir for consistency across operating systems.
+      let mut dir_files = BTreeSet::new();
+      let mut dir_subdirs = BTreeMap::new();
+      for entry in read_dir {
+        let Ok(entry) = entry else {
+          continue;
+        };
+        if entry_count >= entry_limit {
+          return (workspace_files, true);
+        }
+        entry_count += 1;
+        let path = parent_path.join(entry.path());
+        let Ok(file_type) = entry.file_type() else {
+          continue;
+        };
+        let Some(file_name) = path.file_name() else {
+          continue;
+        };
+        if config.settings.path_enabled(&path) == Some(false) {
+          continue;
+        }
+        if file_type.is_dir() {
+          let dir_name = file_name.to_string_lossy().to_lowercase();
+          // We ignore these directories by default because there is a
+          // high likelihood they aren't relevant. Someone can opt-into
+          // them by specifying one of them as an enabled path.
+          if matches!(
+            dir_name.as_str(),
+            "vendor" | "coverage" | "node_modules" | ".git"
+          ) {
+            continue;
+          }
+          // ignore cargo target directories for anyone using Deno with Rust
+          if dir_name == "target"
+            && path
+              .parent()
+              .map(|p| p.join("Cargo.toml").exists())
+              .unwrap_or(false)
+          {
+            continue;
+          }
+          if let Ok(read_dir) = std::fs::read_dir(&path) {
+            dir_subdirs.insert(path, read_dir);
+          }
+        } else if file_type.is_file()
+          || file_type.is_symlink()
+            && std::fs::metadata(&path)
+              .ok()
+              .map(|m| m.is_file())
+              .unwrap_or(false)
+        {
+          if file_name.to_string_lossy().contains(".min.") {
+            continue;
+          }
+          let media_type = MediaType::from_path(&path);
+          match media_type {
+            MediaType::JavaScript
+            | MediaType::Jsx
+            | MediaType::Mjs
+            | MediaType::Cjs
+            | MediaType::TypeScript
+            | MediaType::Mts
+            | MediaType::Cts
+            | MediaType::Dts
+            | MediaType::Dmts
+            | MediaType::Dcts
+            | MediaType::Json
+            | MediaType::Tsx => {}
+            MediaType::Wasm
+            | MediaType::SourceMap
+            | MediaType::Css
+            | MediaType::Html
+            | MediaType::Sql
+            | MediaType::Unknown => {
+              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
+                continue;
+              }
+            }
+          }
+          dir_files.insert(path);
+        }
+      }
+      workspace_files.extend(dir_files);
+      pending.extend(dir_subdirs.into_iter());
+    }
+    (workspace_files, false)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1032,6 +1316,7 @@ impl Inner {
     if self.workspace_files_hash == enable_settings_hash {
       return;
     }
+    let (workspace_files2, hit_limit) = Self::walk_workspace2(&self.config);
     let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
     if hit_limit {
       let document_preload_limit =
@@ -1050,6 +1335,7 @@ impl Inner {
         );
       }
     }
+    self.workspace_files2 = workspace_files2;
     self.workspace_files = workspace_files;
     self.workspace_files_hash = enable_settings_hash;
   }
@@ -1124,18 +1410,29 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_documents_config(&mut self) {
+    self.document_modules.update_config(
+      &self.config,
+      &self.resolver,
+      &self.cache,
+      &self.workspace_files,
+    );
+    // TODO(nayeemrmn): Remove!
     self.documents.update_config(
       &self.config,
       &self.resolver,
       &self.cache,
       &self.workspace_files,
     );
+    //
 
     // refresh the npm specifiers because it might have discovered
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
+    self.project_changed2([], true);
+    // TODO(nayeemrmn): Remove!
     self.project_changed([], true);
+    //
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1144,10 +1441,9 @@ impl Inner {
     let Some(scheme) = params.text_document.uri.scheme() else {
       return;
     };
-    if scheme.as_str() == "deno" {
-      // we can ignore virtual text documents opening, as they don't need to
-      // be tracked in memory, as they are static assets that won't change
-      // already managed by the language service
+    // `deno:` documents are read-only and should only be handled as server
+    // documents.
+    if scheme.eq_lowercase("deno") {
       return;
     }
     let language_id =
@@ -1166,6 +1462,28 @@ impl Inner {
         params.text_document.uri.as_str()
       );
     }
+    let document2 = self.documents2.open(
+      params.text_document.uri.clone(),
+      params.text_document.version,
+      params.text_document.language_id.parse().unwrap(),
+      // TODO(nayeemrmn): Don't clone!
+      params.text_document.text.clone().into(),
+    );
+    if document2.is_diagnosable() {
+      self.check_semantic_tokens_capabilities();
+      self.document_modules.did_open(&document2);
+      self.refresh_dep_info().await;
+      self.project_changed2(
+        [(&params.text_document.uri, ChangeKind::Opened)],
+        false,
+      );
+      self
+        .diagnostics_server
+        .invalidate2(&[&params.text_document.uri]);
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
+    // TODO(nayeemrmn): Remove!
     let file_referrer = Some(uri_to_url(&params.text_document.uri))
       .filter(|s| self.documents.is_valid_file_referrer(s));
     let specifier = self
@@ -1186,12 +1504,55 @@ impl Inner {
       self.send_diagnostics_update();
       self.send_testing_update();
     }
+    //
     self.performance.measure(mark);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    // `deno:` documents are read-only and should only be handled as server
+    // documents.
+    if scheme.eq_lowercase("deno") {
+      return;
+    }
+    let document2 = match self.documents2.change(
+      &params.text_document.uri,
+      params.text_document.version,
+      // TODO(nayeemrmn): Don't clone!
+      params.content_changes.clone(),
+    ) {
+      Ok(doc) => doc,
+      Err(err) => {
+        error!("{:#}", err);
+        return;
+      }
+    };
+    if document2.is_diagnosable() {
+      let old_scopes_with_node_specifier =
+        self.document_modules.scopes_with_node_specifier();
+      self.document_modules.did_change(&document2);
+      self.refresh_dep_info().await;
+      let mut config_changed = false;
+      if !self
+        .document_modules
+        .scopes_with_node_specifier()
+        .equivalent(&old_scopes_with_node_specifier)
+      {
+        config_changed = true;
+      }
+      self.project_changed2(
+        [(&document2.uri, ChangeKind::Modified)],
+        config_changed,
+      );
+      self.diagnostics_server.invalidate2(&[&document2.uri]);
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
+    // TODO(nayeemrmn): Remove!
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
@@ -1224,12 +1585,63 @@ impl Inner {
       }
       Err(err) => error!("{:#}", err),
     }
+    //
     self.performance.measure(mark);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn did_save(&mut self, params: DidSaveTextDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.did_save");
+    let Ok(Some(document2)) = self
+      .get_document(
+        &params.text_document.uri,
+        Enabled::Filter,
+        Exists::Enforce,
+        Diagnosable::Filter,
+      )
+      .inspect_err(|err| {
+        lsp_warn!("{:#}", err);
+      })
+    else {
+      return;
+    };
+    if !self
+      .config
+      .workspace_settings_for_uri(document2.uri())
+      .cache_on_save
+      || !self.config.uri_enabled(document2.uri())
+      || !self
+        .diagnostics_state
+        .has_no_cache_diagnostics2(document2.uri())
+    {
+      return;
+    }
+    let Ok(Some(module)) =
+      self.get_primary_module(&document2).inspect_err(|err| {
+        lsp_warn!("{:#}", err);
+      })
+    else {
+      return;
+    };
+    if !module.is_remote_or_node_modules {
+      return;
+    }
+    self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
+      spawn(async move {
+        if let Err(err) = ls
+          .cache(vec![], module.specifier.as_ref().clone(), false)
+          .await
+        {
+          lsp_warn!(
+            "Failed to cache \"{}\" on save: {:#}",
+            &module.specifier,
+            err
+          );
+        }
+      });
+    }));
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
@@ -1254,11 +1666,15 @@ impl Inner {
         }
       });
     }));
+    //
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn refresh_dep_info(&mut self) {
+    let dep_info_by_scope = self.document_modules.dep_info_by_scope();
+    // TODO(nayeemrmn): Remove!
     let dep_info_by_scope = self.documents.dep_info_by_scope();
+    //
     self
       .resolver
       .set_dep_info_by_scope(&dep_info_by_scope)
@@ -1271,7 +1687,37 @@ impl Inner {
     let Some(scheme) = params.text_document.uri.scheme() else {
       return;
     };
-    if scheme.as_str() == "deno" {
+    // `deno:` documents are read-only and should only be handled as server
+    // documents.
+    if scheme.eq_lowercase("deno") {
+      return;
+    }
+    self.diagnostics_state.clear2(&params.text_document.uri);
+    let document2 = match self.documents2.close(&params.text_document.uri) {
+      Ok(doc) => doc,
+      Err(err) => {
+        error!("{:#}", err);
+        return;
+      }
+    };
+    if document2.is_diagnosable() {
+      self.document_modules.did_close(&params.text_document.uri);
+      self.refresh_dep_info().await;
+      self.project_changed2(
+        [(&params.text_document.uri, ChangeKind::Closed)],
+        false,
+      );
+      self
+        .diagnostics_server
+        .invalidate2(&[&params.text_document.uri]);
+      self.send_diagnostics_update();
+      self.send_testing_update();
+    }
+    // TODO(nayeemrmn): Remove!
+    let Some(scheme) = params.text_document.uri.scheme() else {
+      return;
+    };
+    if scheme.eq_lowercase("deno") {
       // we can ignore virtual text documents closing, as they don't need to
       // be tracked in memory, as they are static assets that won't change
       // already managed by the language service
@@ -1289,6 +1735,7 @@ impl Inner {
     }
     self.documents.close(&specifier);
     self.project_changed([(&specifier, ChangeKind::Closed)], false);
+    //
     self.performance.measure(mark);
   }
 
@@ -1418,6 +1865,24 @@ impl Inner {
     params: DocumentSymbolParams,
     token: &CancellationToken,
   ) -> LspResult<Option<DocumentSymbolResponse>> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.document_symbol", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let navigation_tree = self.get_navigation_tree2(&module, token).await?;
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
@@ -1426,10 +1891,6 @@ impl Inner {
     {
       return Ok(None);
     }
-
-    let mark = self
-      .performance
-      .mark_with_args("lsp.document_symbol", &params);
     let asset_or_document = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_document.line_index();
 
@@ -1447,6 +1908,7 @@ impl Inner {
           LspError::internal_error()
         }
       })?;
+    //
 
     let response = if let Some(child_items) = &navigation_tree.child_items {
       let mut document_symbols = Vec::<DocumentSymbol>::new();
@@ -1471,6 +1933,85 @@ impl Inner {
     params: DocumentFormattingParams,
     _token: &CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
+    let mark = self.performance.mark_with_args("lsp.formatting", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let fmt_config =
+      self.config.tree.fmt_config_for_specifier(&module.specifier);
+    if fmt_config.files.matches_specifier(&module.specifier) {
+      return Ok(None);
+    }
+    let file_path = url_to_file_path(&module.specifier)
+      .or_else(|_| uri_to_file_path(document2.uri()))
+      .map_err(|err| {
+        lsp_warn!("{:#}", err);
+        LspError::invalid_request()
+      })?;
+
+    // spawn a blocking task to allow doing other work while this is occurring
+    let text_edits = deno_core::unsync::spawn_blocking({
+      let mut fmt_options = fmt_config.options.clone();
+      let config_data = self.config.tree.data_for_specifier(&module.specifier);
+      #[allow(clippy::nonminimal_bool)] // clippy's suggestion is more confusing
+      if !config_data.is_some_and(|d| d.maybe_deno_json().is_some()) {
+        fmt_options.use_tabs = Some(!params.options.insert_spaces);
+        fmt_options.indent_width = Some(params.options.tab_size as u8);
+      }
+      let unstable_options = UnstableFmtOptions {
+        component: config_data
+          .map(|d| d.unstable.contains("fmt-component"))
+          .unwrap_or(false),
+        sql: config_data
+          .map(|d| d.unstable.contains("fmt-sql"))
+          .unwrap_or(false),
+      };
+      move || {
+        let format_result = match &module.parsed_source {
+          Some(Ok(parsed_source)) => {
+            format_parsed_source(parsed_source, &fmt_options)
+          }
+          Some(Err(err)) => Err(anyhow!("{:#}", err)),
+          None => {
+            let ext = document2.open().and_then(|d| {
+              d.language_id.as_extension().map(|s| s.to_string())
+            });
+            format_file(
+              &file_path,
+              &document2.text(),
+              &fmt_options,
+              &unstable_options,
+              ext,
+            )
+          }
+        };
+        match format_result {
+          Ok(Some(new_text)) => Some(text::get_edits(
+            &document2.text(),
+            &new_text,
+            &module.line_index,
+          )),
+          Ok(None) => Some(Vec::new()),
+          Err(err) => {
+            lsp_warn!("Format error: {:#}", err);
+            None
+          }
+        }
+      }
+    })
+    .await
+    .unwrap();
+
+    // TODO(nayeemrmn): Remove!
     let file_referrer = Some(uri_to_url(&params.text_document.uri))
       .filter(|s| self.documents.is_valid_file_referrer(s));
     let mut specifier = self
@@ -1496,7 +2037,11 @@ impl Inner {
     // counterparts, but for formatting we want to favour the file URL.
     // TODO(nayeemrmn): Implement `Document::file_resource_path()` or similar.
     if specifier.scheme() != "file"
-      && params.text_document.uri.scheme().map(|s| s.as_str()) == Some("file")
+      && params
+        .text_document
+        .uri
+        .scheme()
+        .is_some_and(|s| s.eq_lowercase("file"))
     {
       specifier = uri_to_url(&params.text_document.uri);
     }
@@ -1504,7 +2049,6 @@ impl Inner {
       error!("{:#}", err);
       LspError::invalid_request()
     })?;
-    let mark = self.performance.mark_with_args("lsp.formatting", &params);
 
     // spawn a blocking task to allow doing other work while this is occurring
     let text_edits = deno_core::unsync::spawn_blocking({
@@ -1568,6 +2112,7 @@ impl Inner {
     })
     .await
     .unwrap();
+    //
 
     self.performance.measure(mark);
     if let Some(text_edits) = text_edits {
@@ -1587,6 +2132,104 @@ impl Inner {
     params: HoverParams,
     token: &CancellationToken,
   ) -> LspResult<Option<Hover>> {
+    let mark = self.performance.mark_with_args("lsp.hover", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document_position_params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let hover = if let Some((_, dep, range)) = module
+      .dependency_at_position(&params.text_document_position_params.position)
+    {
+      let dep_module = dep.get_code().and_then(|s| {
+        self
+          .document_modules
+          .inspect_module_from_specifier(s, module.scope.as_deref())
+      });
+      let dep_types_dependency = dep_module.as_ref().map(|m| {
+        m.types_dependency
+          .as_ref()
+          .map(|d| &d.dependency)
+          .unwrap_or(&Resolution::None)
+      });
+      let value = match (dep.maybe_code.is_none(), dep.maybe_type.is_none(), &dep_types_dependency) {
+        (false, false, None) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+        ),
+        (false, false, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n**Types**: {}\n**Import Types**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+          self.resolution_to_hover_text(types_dep, module.scope.as_deref()),
+        ),
+        (false, false, Some(_)) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+        ),
+        (false, true, Some(types_dep)) if !types_dep.is_none() => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n\n**Types**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+          self.resolution_to_hover_text(types_dep, module.scope.as_deref()),
+        ),
+        (false, true, _) => format!(
+          "**Resolved Dependency**\n\n**Code**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_code, module.scope.as_deref()),
+        ),
+        (true, false, _) => format!(
+          "**Resolved Dependency**\n\n**Types**: {}\n",
+          self.resolution_to_hover_text(&dep.maybe_type, module.scope.as_deref()),
+        ),
+        (true, true, _) => unreachable!("{}", json!(params)),
+      };
+      let value = if let Some(docs) = self.module_registry.get_hover(&dep).await
+      {
+        format!("{value}\n\n---\n\n{docs}")
+      } else {
+        value
+      };
+      Some(Hover {
+        contents: HoverContents::Markup(MarkupContent {
+          kind: MarkupKind::Markdown,
+          value,
+        }),
+        range: Some(to_lsp_range(&range)),
+      })
+    } else {
+      let position = module
+        .line_index
+        .offset_tsc(params.text_document_position_params.position)?;
+      let maybe_quick_info = self
+        .ts_server
+        .get_quick_info(
+          self.snapshot(),
+          module.specifier.as_ref().clone(),
+          position,
+          module.scope.as_deref().cloned(),
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to get quick info from TypeScript: {:#}", err);
+            LspError::internal_error()
+          }
+        })?;
+      maybe_quick_info.map(|qi| qi.to_hover(module.line_index.clone(), self))
+    };
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
@@ -1596,8 +2239,6 @@ impl Inner {
     {
       return Ok(None);
     }
-
-    let mark = self.performance.mark_with_args("lsp.hover", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let file_referrer = asset_or_doc.file_referrer();
     let hover = if let Some((_, dep, range)) = asset_or_doc
@@ -1731,6 +2372,246 @@ impl Inner {
     params: CodeActionParams,
     token: &CancellationToken,
   ) -> LspResult<Option<CodeActionResponse>> {
+    let mark = self.performance.mark_with_args("lsp.code_action", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+
+    let mut all_actions = CodeActionResponse::new();
+
+    // QuickFix
+    let ts_fixable_diagnosics = self.ts_fixable_diagnostics().await;
+    let fixable_diagnostics: Vec<&Diagnostic> = params
+      .context
+      .diagnostics
+      .iter()
+      .filter(|d| match &d.source {
+        Some(source) => match source.as_str() {
+          "deno-ts" => match &d.code {
+            Some(NumberOrString::String(code)) => {
+              ts_fixable_diagnosics.contains(code)
+            }
+            Some(NumberOrString::Number(code)) => {
+              ts_fixable_diagnosics.contains(&code.to_string())
+            }
+            _ => false,
+          },
+          "deno-lint" => d.code.is_some(),
+          "deno" => diagnostics::DenoDiagnostic::is_fixable(d),
+          _ => false,
+        },
+        None => false,
+      })
+      .collect();
+    let mut code_actions = CodeActionCollection::default();
+    if !fixable_diagnostics.is_empty() {
+      let file_diagnostics = self.diagnostics_server.get_ts_diagnostics2(
+        &document2.uri(),
+        document2.open().map(|d| d.version),
+      );
+      let mut includes_no_cache = false;
+      for diagnostic in &fixable_diagnostics {
+        match diagnostic.source.as_deref() {
+          Some("deno-ts") => {
+            let code = match diagnostic.code.as_ref().unwrap() {
+              NumberOrString::String(code) => match code.parse() {
+                Ok(c) => c,
+                Err(e) => {
+                  lsp_warn!("Invalid diagnostic code {code}: {e}");
+                  continue;
+                }
+              },
+              NumberOrString::Number(code) => *code,
+            };
+            let codes = vec![code];
+            let actions = self
+              .ts_server
+              .get_code_fixes(
+                self.snapshot(),
+                module.specifier.as_ref().clone(),
+                module.line_index.offset_tsc(diagnostic.range.start)?
+                  ..module.line_index.offset_tsc(diagnostic.range.end)?,
+                codes,
+                (&self
+                  .config
+                  .tree
+                  .fmt_config_for_specifier(&module.specifier)
+                  .options)
+                  .into(),
+                tsc::UserPreferences::from_config_for_specifier(
+                  &self.config,
+                  &module.specifier,
+                ),
+                module.scope.as_deref().cloned(),
+                token,
+              )
+              .await
+              .unwrap_or_else(|err| {
+                // sometimes tsc reports errors when retrieving code actions
+                // because they don't reflect the current state of the document
+                // so we will log them to the output, but we won't send an error
+                // message back to the client.
+                if !token.is_cancelled() {
+                  error!(
+                    "Unable to get code actions from TypeScript: {:#}",
+                    err
+                  );
+                }
+                vec![]
+              });
+            for action in actions {
+              if token.is_cancelled() {
+                return Err(LspError::request_cancelled());
+              }
+              code_actions
+                .add_ts_fix_action(
+                  &module.specifier,
+                  module.resolution_mode,
+                  &action,
+                  diagnostic,
+                  self,
+                )
+                .map_err(|err| {
+                  error!("Unable to convert fix: {:#}", err);
+                  LspError::internal_error()
+                })?;
+              if code_actions.is_fix_all_action(
+                &action,
+                diagnostic,
+                &file_diagnostics,
+              ) {
+                code_actions.add_ts_fix_all_action(
+                  &action,
+                  document2.uri(),
+                  &module.specifier,
+                  diagnostic,
+                );
+              }
+            }
+          }
+          Some("deno") => {
+            if diagnostic.code
+              == Some(NumberOrString::String("no-cache".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("not-installed-jsr".to_string()))
+              || diagnostic.code
+                == Some(NumberOrString::String("not-installed-npm".to_string()))
+            {
+              includes_no_cache = true;
+            }
+            code_actions
+              .add_deno_fix_action(
+                document2.uri(),
+                &module.specifier,
+                diagnostic,
+              )
+              .map_err(|err| {
+                error!("{:#}", err);
+                LspError::internal_error()
+              })?
+          }
+          Some("deno-lint") => code_actions
+            .add_deno_lint_actions2(document2.uri(), &module, diagnostic)
+            .map_err(|err| {
+              error!("Unable to fix lint error: {:#}", err);
+              LspError::internal_error()
+            })?,
+          _ => (),
+        }
+      }
+      if includes_no_cache {
+        let no_cache_diagnostics = self
+          .diagnostics_state
+          .no_cache_diagnostics2(document2.uri());
+        let uncached_deps = no_cache_diagnostics
+          .iter()
+          .filter_map(|d| {
+            let data = serde_json::from_value::<DiagnosticDataSpecifier>(
+              d.data.clone().into(),
+            )
+            .ok()?;
+            Some(data.specifier)
+          })
+          .collect::<HashSet<_>>();
+        if uncached_deps.len() > 1 {
+          code_actions.add_cache_all_action(
+            &module.specifier,
+            no_cache_diagnostics.to_owned(),
+          );
+        }
+      }
+    }
+
+    code_actions.set_preferred_fixes();
+    all_actions.extend(code_actions.get_response());
+
+    // Refactor
+    let only = params
+      .context
+      .only
+      .as_ref()
+      .and_then(|values| values.first().map(|v| v.as_str().to_owned()))
+      .unwrap_or_default();
+    let refactor_infos = self
+      .ts_server
+      .get_applicable_refactors(
+        self.snapshot(),
+        module.specifier.as_ref().clone(),
+        module.line_index.offset_tsc(params.range.start)?
+          ..module.line_index.offset_tsc(params.range.end)?,
+        Some(tsc::UserPreferences::from_config_for_specifier(
+          &self.config,
+          &module.specifier,
+        )),
+        params.context.trigger_kind,
+        only,
+        module.scope.as_deref().cloned(),
+        token,
+      )
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get refactor info from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
+    let refactor_actions = refactor_infos
+      .into_iter()
+      .map(|refactor_info| {
+        refactor_info
+          .to_code_actions(
+            document2.uri(),
+            &module.specifier,
+            &params.range,
+            token,
+          )
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to convert refactor info: {:#}", err);
+              LspError::internal_error()
+            }
+          })
+      })
+      .collect::<Result<Vec<_>, _>>()?
+      .into_iter()
+      .flatten()
+      // TODO(nayeemrmn): Remove type annotation!
+      .collect::<Vec<_>>();
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
@@ -1740,7 +2621,6 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark_with_args("lsp.code_action", &params);
     let mut all_actions = CodeActionResponse::new();
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
@@ -1849,8 +2729,12 @@ impl Inner {
                 diagnostic,
                 &file_diagnostics,
               ) {
-                code_actions
-                  .add_ts_fix_all_action(&action, &specifier, diagnostic);
+                code_actions.add_ts_fix_all_action(
+                  &action,
+                  &params.text_document.uri,
+                  &specifier,
+                  diagnostic,
+                );
               }
             }
           }
@@ -1865,7 +2749,11 @@ impl Inner {
               includes_no_cache = true;
             }
             code_actions
-              .add_deno_fix_action(&specifier, diagnostic)
+              .add_deno_fix_action(
+                &params.text_document.uri,
+                &specifier,
+                diagnostic,
+              )
               .map_err(|err| {
                 error!("{:#}", err);
                 LspError::internal_error()
@@ -1946,7 +2834,12 @@ impl Inner {
       .into_iter()
       .map(|refactor_info| {
         refactor_info
-          .to_code_actions(&specifier, &params.range, token)
+          .to_code_actions(
+            &params.text_document.uri,
+            &specifier,
+            &params.range,
+            token,
+          )
           .map_err(|err| {
             if token.is_cancelled() {
               LspError::request_cancelled()
@@ -1960,6 +2853,7 @@ impl Inner {
       .into_iter()
       .flatten()
       .collect();
+    //
     all_actions.extend(
       refactor::prune_invalid_actions(refactor_actions, 5)
         .into_iter()
@@ -1988,13 +2882,184 @@ impl Inner {
     params: CodeAction,
     token: &CancellationToken,
   ) -> LspResult<CodeAction> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.code_action_resolve", &params);
+    let (Some(kind), Some(data)) = (params.kind.as_ref(), params.data.as_ref())
+    else {
+      // TODO(nayeemrmn): Don't clone!
+      return Ok(params.clone());
+    };
+    let result = if kind.as_str().starts_with(CodeActionKind::QUICKFIX.as_str())
+    {
+      let code_action_data: CodeActionData =
+        from_value(data.clone()).map_err(|err| {
+          error!("Unable to decode code action data: {:#}", err);
+          LspError::invalid_params("The CodeAction's data is invalid.")
+        })?;
+      let Some(document2) = self.get_document(
+        &code_action_data.uri,
+        Enabled::Filter,
+        Exists::Enforce,
+        Diagnosable::Filter,
+      )?
+      else {
+        // TODO(nayeemrmn): Don't clone!
+        return Ok(params.clone());
+      };
+      let Some(module) = self.get_primary_module(&document2)? else {
+        // TODO(nayeemrmn): Don't clone!
+        return Ok(params.clone());
+      };
+      let combined_code_actions = self
+        .ts_server
+        .get_combined_code_fix(
+          self.snapshot(),
+          &module.specifier,
+          &code_action_data.fix_id,
+          (&self
+            .config
+            .tree
+            .fmt_config_for_specifier(&module.specifier)
+            .options)
+            .into(),
+          tsc::UserPreferences::from_config_for_specifier(
+            &self.config,
+            &module.specifier,
+          ),
+          module.scope.as_deref().cloned(),
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to get combined fix from TypeScript: {:#}", err);
+            LspError::internal_error()
+          }
+        })?;
+      if combined_code_actions.commands.is_some() {
+        error!("Deno does not support code actions with commands.");
+        return Err(LspError::invalid_request());
+      }
+
+      let changes = if code_action_data.fix_id == "fixMissingImport" {
+        fix_ts_import_changes(&combined_code_actions.changes, self, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to fix import changes: {:#}", err);
+              LspError::internal_error()
+            }
+          })?
+      } else {
+        combined_code_actions.changes
+      };
+      // TODO(nayeemrmn): Don't clone!
+      let mut code_action = params.clone();
+      code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {
+        error!("Unable to convert changes to edits: {:#}", err);
+        LspError::internal_error()
+      })?;
+      code_action
+    } else if let Some(kind_suffix) = kind
+      .as_str()
+      .strip_prefix(CodeActionKind::REFACTOR.as_str())
+    {
+      // TODO(nayeemrmn): Don't clone!
+      let mut code_action = params.clone();
+      let action_data: refactor::RefactorCodeActionData =
+        from_value(data.clone()).map_err(|err| {
+          error!("Unable to decode code action data: {:#}", err);
+          LspError::invalid_params("The CodeAction's data is invalid.")
+        })?;
+      let Some(document2) = self.get_document(
+        &action_data.uri,
+        Enabled::Filter,
+        Exists::Enforce,
+        Diagnosable::Filter,
+      )?
+      else {
+        return Ok(code_action);
+      };
+      let Some(module) = self.get_primary_module(&document2)? else {
+        return Ok(code_action);
+      };
+      let refactor_edit_info = self
+        .ts_server
+        .get_edits_for_refactor(
+          self.snapshot(),
+          module.specifier.as_ref().clone(),
+          (&self
+            .config
+            .tree
+            .fmt_config_for_specifier(&module.specifier)
+            .options)
+            .into(),
+          module.line_index.offset_tsc(action_data.range.start)?
+            ..module.line_index.offset_tsc(action_data.range.end)?,
+          action_data.refactor_name.clone(),
+          action_data.action_name.clone(),
+          Some(tsc::UserPreferences::from_config_for_specifier(
+            &self.config,
+            &module.specifier,
+          )),
+          module.scope.as_deref().cloned(),
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Unable to get refactor edit info from TypeScript: {:#}",
+              err
+            );
+            LspError::invalid_request()
+          }
+        });
+      match refactor_edit_info {
+        Ok(mut refactor_edit_info) => {
+          if kind_suffix == ".rewrite.function.returnType"
+            || kind_suffix == ".move.newFile"
+          {
+            refactor_edit_info.edits =
+              fix_ts_import_changes(&refactor_edit_info.edits, self, token)
+                .map_err(|err| {
+                  if token.is_cancelled() {
+                    LspError::request_cancelled()
+                  } else {
+                    error!("Unable to fix import changes: {:#}", err);
+                    LspError::internal_error()
+                  }
+                })?
+          }
+          code_action.edit =
+            refactor_edit_info.to_workspace_edit(self, token)?;
+        }
+        Err(err) => {
+          if token.is_cancelled() {
+            return Err(LspError::request_cancelled());
+          } else {
+            lsp_warn!("Unable to get refactor edit info from TypeScript: {:#}\nCode action data: {:#}", err, json!(&action_data));
+          }
+        }
+      }
+      code_action
+    } else {
+      // The code action doesn't need to be resolved
+      // TODO(nayeemrmn): Don't clone!
+      params.clone()
+    };
+
+    // TODO(nayeemrmn): Remove!
     if params.kind.is_none() || params.data.is_none() {
       return Ok(params);
     }
 
-    let mark = self
-      .performance
-      .mark_with_args("lsp.code_action_resolve", &params);
     let kind = params.kind.clone().unwrap();
     let data = params.data.clone().unwrap();
 
@@ -2012,7 +3077,8 @@ impl Inner {
         .ts_server
         .get_combined_code_fix(
           self.snapshot(),
-          &code_action_data,
+          &code_action_data.specifier,
+          &code_action_data.fix_id,
           (&self
             .config
             .tree
@@ -2137,6 +3203,7 @@ impl Inner {
       // The code action doesn't need to be resolved
       params
     };
+    //
 
     self.performance.measure(mark);
     Ok(result)
@@ -2167,6 +3234,69 @@ impl Inner {
     params: CodeLensParams,
     token: &CancellationToken,
   ) -> LspResult<Option<Vec<CodeLens>>> {
+    let mark = self.performance.mark_with_args("lsp.code_lens", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let settings = self
+      .config
+      .workspace_settings_for_specifier(&module.specifier);
+    let mut code_lenses = Vec::new();
+    if settings.code_lens.test
+      && self.config.specifier_enabled_for_test(&module.specifier)
+    {
+      if let Some(Ok(parsed_source)) = &module.parsed_source {
+        code_lenses.extend(
+          code_lens::collect_test(&module.specifier, parsed_source, token)
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!(
+                  "Error getting test code lenses for \"{}\": {:#}",
+                  &module.specifier, err
+                );
+                LspError::internal_error()
+              }
+            })?,
+        );
+      }
+    }
+    if settings.code_lens.implementations || settings.code_lens.references {
+      let navigation_tree = self.get_navigation_tree2(&module, token).await?;
+      code_lenses.extend(
+        code_lens::collect_tsc(
+          document2.uri(),
+          &module.specifier,
+          &settings.code_lens,
+          module.line_index.clone(),
+          &navigation_tree,
+          token,
+        )
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!(
+              "Error getting ts code lenses for \"{:#}\": {:#}",
+              &module.specifier, err
+            );
+            LspError::internal_error()
+          }
+        })?,
+      );
+    }
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self
       .url_map
       .uri_to_specifier(&params.text_document.uri, LspUrlKind::File);
@@ -2176,7 +3306,6 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark_with_args("lsp.code_lens", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let settings = self.config.workspace_settings_for_specifier(&specifier);
     let mut code_lenses = Vec::new();
@@ -2219,6 +3348,7 @@ impl Inner {
       let line_index = asset_or_doc.line_index();
       code_lenses.extend(
         code_lens::collect_tsc(
+          &params.text_document.uri,
           &specifier,
           &settings.code_lens,
           line_index,
@@ -2238,6 +3368,7 @@ impl Inner {
         })?,
       );
     }
+    //
     self.performance.measure(mark);
 
     if code_lenses.is_empty() {
@@ -2281,6 +3412,47 @@ impl Inner {
     params: DocumentHighlightParams,
     token: &CancellationToken,
   ) -> LspResult<Option<Vec<DocumentHighlight>>> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.document_highlight", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document_position_params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let maybe_document_highlights = self
+      .ts_server
+      .get_document_highlights(
+        self.snapshot(),
+        module.specifier.as_ref().clone(),
+        module
+          .line_index
+          .offset_tsc(params.text_document_position_params.position)?,
+        vec![module.specifier.as_ref().clone()],
+        module.scope.as_deref().cloned(),
+        token,
+      )
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!(
+            "Unable to get document highlights from TypeScript: {:#}",
+            err
+          );
+          LspError::internal_error()
+        }
+      })?;
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
@@ -2291,9 +3463,6 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self
-      .performance
-      .mark_with_args("lsp.document_highlight", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let files_to_search = vec![specifier.clone()];
@@ -2319,6 +3488,7 @@ impl Inner {
           LspError::internal_error()
         }
       })?;
+    //
 
     let document_highlights = maybe_document_highlights
       .map(|document_highlights| {
@@ -2348,6 +3518,71 @@ impl Inner {
     params: ReferenceParams,
     token: &CancellationToken,
   ) -> LspResult<Option<Vec<Location>>> {
+    let mark = self.performance.mark_with_args("lsp.references", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document_position.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let mut locations = IndexSet::new();
+    for (scope, module) in
+      self.document_modules.inspect_modules_by_scope(&document2)
+    {
+      let symbols = self
+        .ts_server
+        .find_references2(
+          self.snapshot(),
+          module.specifier.as_ref().clone(),
+          module.line_index.offset_tsc(params.text_document_position.position)?,
+          scope.as_deref().cloned(),
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to get references from TypeScript: {:#}\nSpecifier: {}\n Scope: {}", err, &module.specifier, module.scope.as_ref().map(|s| s.as_str()).unwrap_or("null"));
+            LspError::internal_error()
+          }
+        })?;
+      for reference in symbols.iter().flatten().flat_map(|s| &s.references) {
+        if token.is_cancelled() {
+          return Err(LspError::request_cancelled());
+        }
+        if !params.context.include_declaration && reference.is_definition {
+          continue;
+        }
+        let reference_specifier =
+          resolve_url(&reference.entry.document_span.file_name).unwrap();
+        if reference_specifier == *module.specifier {
+          locations.insert(
+            reference.entry.to_location(module.line_index.clone(), self),
+          );
+        } else if let Some(reference_module) = self
+          .document_modules
+          .inspect_module_from_specifier(&reference_specifier, scope.as_deref())
+        {
+          locations.insert(
+            reference
+              .entry
+              .to_location(reference_module.line_index.clone(), self),
+          );
+        };
+      }
+    }
+    let locations = if locations.is_empty() {
+      None
+    } else {
+      // TODO(nayeemrmn): Remove type annotation!
+      Some(locations.into_iter().collect::<Vec<_>>())
+    };
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position.text_document.uri,
       LspUrlKind::File,
@@ -2358,7 +3593,6 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self.performance.mark_with_args("lsp.references", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let maybe_referenced_symbols = self
@@ -2379,7 +3613,7 @@ impl Inner {
         }
       })?;
 
-    if let Some(symbols) = maybe_referenced_symbols {
+    let locations = if let Some(symbols) = maybe_referenced_symbols {
       let mut results = Vec::new();
       for reference in symbols.iter().flat_map(|s| &s.references) {
         if token.is_cancelled() {
@@ -2399,13 +3633,14 @@ impl Inner {
         };
         results.push(reference.entry.to_location(reference_line_index, self));
       }
-
-      self.performance.measure(mark);
-      Ok(Some(results))
+      Some(results)
     } else {
-      self.performance.measure(mark);
-      Ok(None)
-    }
+      None
+    };
+    //
+
+    self.performance.measure(mark);
+    Ok(locations)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -2414,6 +3649,43 @@ impl Inner {
     params: GotoDefinitionParams,
     token: &CancellationToken,
   ) -> LspResult<Option<GotoDefinitionResponse>> {
+    let mark = self
+      .performance
+      .mark_with_args("lsp.goto_definition", &params);
+    let Some(document2) = self.get_document(
+      &params.text_document_position_params.text_document.uri,
+      Enabled::Filter,
+      Exists::Enforce,
+      Diagnosable::Filter,
+    )?
+    else {
+      return Ok(None);
+    };
+    let Some(module) = self.get_primary_module(&document2)? else {
+      return Ok(None);
+    };
+    let maybe_definition = self
+      .ts_server
+      .get_definition(
+        self.snapshot(),
+        module.specifier.as_ref().clone(),
+        module
+          .line_index
+          .offset_tsc(params.text_document_position_params.position)?,
+        module.scope.as_deref().cloned(),
+        token,
+      )
+      .await
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          error!("Unable to get definition info from TypeScript: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
+
+    // TODO(nayeemrmn): Remove!
     let specifier = self.url_map.uri_to_specifier(
       &params.text_document_position_params.text_document.uri,
       LspUrlKind::File,
@@ -2424,9 +3696,6 @@ impl Inner {
       return Ok(None);
     }
 
-    let mark = self
-      .performance
-      .mark_with_args("lsp.goto_definition", &params);
     let asset_or_doc = self.get_asset_or_document(&specifier)?;
     let line_index = asset_or_doc.line_index();
     let maybe_definition = self
@@ -2447,6 +3716,7 @@ impl Inner {
           LspError::internal_error()
         }
       })?;
+    //
 
     if let Some(definition) = maybe_definition {
       let results =
@@ -3513,6 +4783,31 @@ impl Inner {
 
     self.performance.measure(mark);
     Ok(maybe_symbol_information)
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  fn project_changed2<'a>(
+    &mut self,
+    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
+    config_changed: bool,
+  ) {
+    self.project_version += 1; // increment before getting the snapshot
+    let changed_specifiers_by_scope = self
+      .document_modules
+      .changed_docs_to_specifiers_by_scope(changed_docs);
+    self.ts_server.project_changed2(
+      self.snapshot(),
+      changed_specifiers_by_scope,
+      config_changed.then(|| {
+        self
+          .config
+          .tree
+          .data_by_scope()
+          .iter()
+          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
+    );
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

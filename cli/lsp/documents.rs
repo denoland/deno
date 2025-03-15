@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::future::Future;
 use std::ops::Range;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
@@ -24,9 +25,11 @@ use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
 use deno_graph::Resolution;
+use deno_graph::TypesDependency;
 use deno_path_util::url_to_file_path;
 use deno_runtime::deno_node;
 use deno_semver::jsr::JsrPackageReqReference;
@@ -34,15 +37,19 @@ use deno_semver::npm::NpmPackageReqReference;
 use deno_semver::package::PackageReq;
 use indexmap::IndexMap;
 use indexmap::IndexSet;
+use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
+use tower_lsp::CancellationToken;
 
 use super::cache::calculate_fs_version;
+use super::cache::calculate_fs_version_at_path;
 use super::cache::LspCache;
 use super::config::Config;
+use super::logging::lsp_warn;
 use super::resolver::LspResolver;
 use super::resolver::ScopeDepInfo;
 use super::resolver::SingleReferrerGraphResolver;
@@ -50,7 +57,566 @@ use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
+use super::tsc::ChangeKind;
+use super::tsc::NavigationTree;
+use super::urls::uri_to_url;
 use crate::graph_util::CliJsrUrlProvider;
+
+#[derive(Debug)]
+pub struct OpenDocument {
+  pub uri: Uri,
+  pub text: Arc<str>,
+  pub line_index: Arc<LineIndex>,
+  pub version: i32,
+  pub language_id: LanguageId,
+}
+
+impl OpenDocument {
+  fn new(
+    uri: Uri,
+    version: i32,
+    language_id: LanguageId,
+    text: Arc<str>,
+  ) -> Self {
+    let line_index = Arc::new(LineIndex::new(&text));
+    OpenDocument {
+      uri,
+      text,
+      line_index,
+      version,
+      language_id,
+    }
+  }
+
+  fn with_change(
+    &self,
+    version: i32,
+    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+  ) -> Result<Self, AnyError> {
+    let mut text = self.text.to_string();
+    let mut line_index = self.line_index.clone();
+    let mut index_valid = IndexValid::All;
+    for change in changes {
+      if let Some(range) = change.range {
+        if !index_valid.covers(range.start.line) {
+          line_index = Arc::new(LineIndex::new(&text));
+        }
+        index_valid = IndexValid::UpTo(range.start.line);
+        let range = line_index.get_text_range(range)?;
+        text.replace_range(Range::<usize>::from(range), &change.text);
+      } else {
+        text = change.text;
+        index_valid = IndexValid::UpTo(0);
+      }
+    }
+    let text: Arc<str> = text.into();
+    let line_index = if index_valid == IndexValid::All {
+      line_index
+    } else {
+      Arc::new(LineIndex::new(&text))
+    };
+    Ok(OpenDocument {
+      uri: self.uri.clone(),
+      text,
+      line_index,
+      version,
+      language_id: self.language_id,
+    })
+  }
+
+  pub fn is_diagnosable(&self) -> bool {
+    matches!(
+      self.language_id,
+      LanguageId::JavaScript
+        | LanguageId::Jsx
+        | LanguageId::TypeScript
+        | LanguageId::Tsx
+    )
+  }
+}
+
+fn asset_url_to_uri(url: &Url) -> Option<Uri> {
+  if url.scheme() != "asset" {
+    return None;
+  }
+  Uri::from_str(&format!("deno:/asset{}", url.path()))
+    .inspect_err(|err| {
+      lsp_warn!("Couldn't convert asset URL \"{url}\" to URI: {err}")
+    })
+    .ok()
+}
+
+fn data_url_to_uri(url: &Url) -> Option<Uri> {
+  if url.scheme() != "data" {
+    return None;
+  }
+  let data_url = deno_media_type::data_url::RawDataUrl::parse(url).ok()?;
+  let media_type = data_url.media_type();
+  let extension = if media_type == MediaType::Unknown {
+    ""
+  } else {
+    media_type.as_ts_extension()
+  };
+  let mut file_name_str = url.path().to_string();
+  if let Some(query) = url.query() {
+    file_name_str.push('?');
+    file_name_str.push_str(query);
+  }
+  let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
+  Uri::from_str(&format!("deno:/data_url/{hash}.{extension}",))
+    .inspect_err(|err| {
+      lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
+    })
+    .ok()
+}
+
+#[derive(Debug, Clone)]
+pub enum DocumentText {
+  Static(&'static str),
+  Arc(Arc<str>),
+}
+
+impl DocumentText {
+  /// Will clone the string if static.
+  pub fn to_arc(&self) -> Arc<str> {
+    match self {
+      Self::Static(s) => (*s).into(),
+      Self::Arc(s) => s.clone(),
+    }
+  }
+}
+
+impl std::ops::Deref for DocumentText {
+  type Target = str;
+
+  fn deref(&self) -> &Self::Target {
+    match self {
+      Self::Static(s) => *s,
+      Self::Arc(s) => s,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub enum ServerDocumentKind {
+  Fs {
+    path: PathBuf,
+    fs_version: String,
+    text: Arc<str>,
+  },
+  DataUrl {
+    url: Arc<Url>,
+    text: Arc<str>,
+  },
+  Asset {
+    url: Arc<Url>,
+    text: &'static str,
+  },
+}
+
+#[derive(Debug)]
+pub struct ServerDocument {
+  pub uri: Uri,
+  pub media_type: MediaType,
+  pub line_index: Arc<LineIndex>,
+  pub kind: ServerDocumentKind,
+}
+
+impl ServerDocument {
+  fn load(uri: &Uri) -> Option<Self> {
+    let scheme = uri.scheme()?;
+    if scheme.eq_lowercase("file") {
+      let url = uri_to_url(uri);
+      let path = url_to_file_path(&url).ok()?;
+      let bytes = fs::read(&path).ok()?;
+      let media_type = MediaType::from_specifier(&url);
+      let text: Arc<str> =
+        bytes_to_content(&url, media_type, bytes, None).ok()?.into();
+      let fs_version = calculate_fs_version_at_path(&path)?;
+      let line_index = Arc::new(LineIndex::new(&text));
+      return Some(Self {
+        uri: uri.clone(),
+        media_type,
+        line_index,
+        kind: ServerDocumentKind::Fs {
+          path,
+          fs_version,
+          text,
+        },
+      });
+    }
+    None
+  }
+
+  fn asset(name: &str, text: &'static str) -> Self {
+    let url = Arc::new(Url::parse(&format!("asset:///{name}")).unwrap());
+    let uri = asset_url_to_uri(&url).unwrap();
+    let media_type = MediaType::from_specifier(&url);
+    let line_index = Arc::new(LineIndex::new(text.as_ref()));
+    Self {
+      uri,
+      media_type,
+      line_index,
+      kind: ServerDocumentKind::Asset { url, text },
+    }
+  }
+
+  fn data_url(uri: &Uri, url: Arc<Url>) -> Option<Self> {
+    let raw_data_url =
+      deno_media_type::data_url::RawDataUrl::parse(&url).ok()?;
+    let media_type = raw_data_url.media_type();
+    let text: Arc<str> = raw_data_url.decode().ok()?.into();
+    let line_index = Arc::new(LineIndex::new(&text));
+    Some(Self {
+      uri: uri.clone(),
+      media_type,
+      line_index,
+      kind: ServerDocumentKind::DataUrl { url, text },
+    })
+  }
+
+  pub fn text(&self) -> DocumentText {
+    match &self.kind {
+      ServerDocumentKind::Fs { text, .. } => DocumentText::Arc(text.clone()),
+      ServerDocumentKind::DataUrl { text, .. } => {
+        DocumentText::Arc(text.clone())
+      }
+      ServerDocumentKind::Asset { text, .. } => DocumentText::Static(*text),
+    }
+  }
+
+  pub fn exists(&self) -> bool {
+    match &self.kind {
+      ServerDocumentKind::Fs { path, .. } => path.is_file(),
+      ServerDocumentKind::DataUrl { .. } => true,
+      ServerDocumentKind::Asset { .. } => true,
+    }
+  }
+
+  pub fn is_diagnosable(&self) -> bool {
+    media_type_is_diagnosable(self.media_type)
+  }
+}
+
+#[derive(Debug)]
+pub struct AssetDocuments2 {
+  inner: HashMap<Uri, Arc<ServerDocument>>,
+}
+
+impl AssetDocuments2 {
+  pub fn get(&self, k: &Uri) -> Option<&Arc<ServerDocument>> {
+    self.inner.get(k)
+  }
+
+  pub fn contains_specifier(&self, specifier: &Url) -> bool {
+    let Some(uri) = asset_url_to_uri(specifier) else {
+      return false;
+    };
+    self.inner.contains_key(&uri)
+  }
+}
+
+pub static ASSET_DOCUMENTS2: Lazy<AssetDocuments2> =
+  Lazy::new(|| AssetDocuments2 {
+    inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
+      .iter()
+      .map(|(k, v)| {
+        let doc = Arc::new(ServerDocument::asset(k, v.as_str()));
+        let uri = doc.uri.clone();
+        (uri, doc)
+      })
+      .collect(),
+  });
+
+#[derive(Debug, Clone)]
+pub enum Document2 {
+  Open(Arc<OpenDocument>),
+  Server(Arc<ServerDocument>),
+}
+
+impl Document2 {
+  pub fn open(&self) -> Option<&Arc<OpenDocument>> {
+    match self {
+      Self::Open(d) => Some(d),
+      Self::Server(d) => None,
+    }
+  }
+
+  pub fn server(&self) -> Option<&Arc<ServerDocument>> {
+    match self {
+      Self::Open(d) => None,
+      Self::Server(d) => Some(d),
+    }
+  }
+
+  pub fn uri(&self) -> &Uri {
+    match self {
+      Self::Open(d) => &d.uri,
+      Self::Server(d) => &d.uri,
+    }
+  }
+
+  pub fn text(&self) -> DocumentText {
+    match self {
+      Self::Open(d) => DocumentText::Arc(d.text.clone()),
+      Self::Server(d) => d.text(),
+    }
+  }
+
+  pub fn line_index(&self) -> &Arc<LineIndex> {
+    match self {
+      Self::Open(d) => &d.line_index,
+      Self::Server(d) => &d.line_index,
+    }
+  }
+
+  pub fn is_diagnosable(&self) -> bool {
+    match self {
+      Self::Open(d) => d.is_diagnosable(),
+      Self::Server(d) => d.is_diagnosable(),
+    }
+  }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct Documents2 {
+  open: IndexMap<Uri, Arc<OpenDocument>>,
+  server: DashMap<Uri, Arc<ServerDocument>>,
+  /// Data URLs can not be recovered from the URIs we assign them without this
+  /// map. We want to be able to discard old data URL documents but keep this
+  /// mapping.
+  data_urls_by_uri: DashMap<Uri, Arc<Url>>,
+}
+
+impl Documents2 {
+  pub fn open(
+    &mut self,
+    uri: Uri,
+    version: i32,
+    language_id: LanguageId,
+    text: Arc<str>,
+  ) -> Arc<OpenDocument> {
+    self.server.remove(&uri);
+    let doc =
+      Arc::new(OpenDocument::new(uri.clone(), version, language_id, text));
+    self.open.insert(uri, doc.clone());
+    doc
+  }
+
+  pub fn change(
+    &mut self,
+    uri: &Uri,
+    version: i32,
+    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+  ) -> Result<Arc<OpenDocument>, AnyError> {
+    let Some((uri, doc)) = self.open.remove_entry(uri) else {
+      return Err(
+        JsErrorBox::new(
+          "NotFound",
+          format!(
+            "The URI \"{}\" does not refer to an open document.",
+            uri.as_str()
+          ),
+        )
+        .into(),
+      );
+    };
+    let doc = Arc::new(doc.with_change(version, changes)?);
+    self.open.insert(uri, doc.clone());
+    Ok(doc)
+  }
+
+  pub fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
+    self.open.remove(uri).ok_or_else(|| {
+      JsErrorBox::new(
+        "NotFound",
+        format!(
+          "The URI \"{}\" does not refer to an open document.",
+          uri.as_str()
+        ),
+      )
+      .into()
+    })
+  }
+
+  pub fn get(&self, uri: &Uri) -> Option<Document2> {
+    if let Some(doc) = self.open.get(uri) {
+      return Some(Document2::Open(doc.clone()));
+    }
+    if let Some(doc) = ASSET_DOCUMENTS2.get(uri) {
+      return Some(Document2::Server(doc.clone()));
+    }
+    if let Some(doc) = self.server.get(uri) {
+      return Some(Document2::Server(doc.clone()));
+    }
+    let doc = if let Some(doc) = ServerDocument::load(uri) {
+      doc
+    } else if let Some(data_url) = self.data_urls_by_uri.get(uri) {
+      ServerDocument::data_url(uri, data_url.value().clone())?
+    } else {
+      return None;
+    };
+    let doc = Arc::new(doc);
+    self.server.insert(uri.clone(), doc.clone());
+    Some(Document2::Server(doc))
+  }
+
+  pub fn get_for_data_url(&self, url: &Url) -> Option<Document2> {
+    let uri = data_url_to_uri(&url)?;
+    let url = Arc::new(url.clone());
+    self.data_urls_by_uri.insert(uri.clone(), url.clone());
+    let doc = Arc::new(ServerDocument::data_url(&uri, url)?);
+    self.server.insert(uri, doc.clone());
+    Some(Document2::Server(doc))
+  }
+
+  pub fn open_docs(&self) -> impl Iterator<Item = &Arc<OpenDocument>> {
+    self.open.values()
+  }
+}
+
+#[derive(Debug)]
+pub struct DocumentModule {
+  pub uri: Arc<Uri>,
+  pub specifier: Arc<Url>,
+  pub scope: Option<Arc<Url>>,
+  pub media_type: MediaType,
+  pub text: DocumentText,
+  pub line_index: Arc<LineIndex>,
+  pub resolution_mode: ResolutionMode,
+  pub parsed_source:
+    Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>>,
+  pub dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
+  pub types_dependency: Option<TypesDependency>,
+  pub is_remote_or_node_modules: bool,
+  pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
+  text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
+}
+
+impl DocumentModule {
+  pub fn dependency_at_position(
+    &self,
+    position: &lsp::Position,
+  ) -> Option<(&str, &deno_graph::Dependency, &deno_graph::Range)> {
+    let position = deno_graph::Position {
+      line: position.line as usize,
+      character: position.character as usize,
+    };
+    self
+      .dependencies
+      .iter()
+      .find_map(|(s, dep)| dep.includes(position).map(|r| (s.as_str(), dep, r)))
+  }
+
+  pub fn text_info(&self) -> &SourceTextInfo {
+    // try to get the text info from the parsed source and if
+    // not then create one in the cell
+    self
+      .parsed_source
+      .as_ref()
+      .and_then(|p| p.as_ref().ok())
+      .map(|p| p.text_info_lazy())
+      .unwrap_or_else(|| {
+        self
+          .text_info_cell
+          .get_or_init(|| SourceTextInfo::new(self.text.to_arc()))
+      })
+  }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct DocumentModules {
+  config: Arc<Config>,
+  dep_info_by_scope: Arc<BTreeMap<Option<Url>, Arc<ScopeDepInfo>>>,
+  dep_info_by_scope_dirty: bool,
+}
+
+impl DocumentModules {
+  pub fn update_config(
+    &mut self,
+    config: &Config,
+    resolver: &Arc<LspResolver>,
+    cache: &LspCache,
+    workspace_files: &IndexSet<Url>,
+  ) {
+    self.config = Arc::new(config.clone());
+    // TODO(nayeemrmn): Implement!
+  }
+
+  pub fn did_open(&mut self, doc: &Arc<OpenDocument>) {
+    self.dep_info_by_scope_dirty = true;
+    // TODO(nayeemrmn): Implement!
+  }
+
+  pub fn did_change(&mut self, doc: &Arc<OpenDocument>) {
+    self.dep_info_by_scope_dirty = true;
+    // TODO(nayeemrmn): Implement!
+  }
+
+  pub fn did_close(&mut self, uri: &Uri) {
+    self.dep_info_by_scope_dirty = true;
+    // TODO(nayeemrmn): Implement!
+  }
+
+  pub fn module(
+    &self,
+    document: &Document2,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  pub fn primary_module(
+    &self,
+    document: &Document2,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_modules_by_scope(
+    &self,
+    document: &Document2,
+  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_module_from_specifier(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  pub fn dep_info_by_scope(
+    &mut self,
+  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
+    if self.dep_info_by_scope_dirty {
+      // TODO(nayeemrmn): Implement!
+      self.dep_info_by_scope_dirty = true;
+    }
+    self.dep_info_by_scope.clone()
+  }
+
+  pub fn scopes_with_node_specifier(&self) -> HashSet<Arc<Url>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn changed_docs_to_specifiers_by_scope<'a>(
+    &self,
+    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
+  ) -> BTreeMap<&Arc<Url>, Vec<Url>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+}
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -820,6 +1386,7 @@ impl Document {
           .get_or_init(|| SourceTextInfo::new(self.text.clone()))
       })
   }
+
   pub fn line_index(&self) -> Arc<LineIndex> {
     self.line_index.clone()
   }
@@ -1007,6 +1574,9 @@ impl FileSystemDocuments {
     cache: &Arc<LspCache>,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
+    if specifier.scheme() == "data" {
+      dbg!(specifier.as_str());
+    }
     let doc = if specifier.scheme() == "file" {
       let path = url_to_file_path(specifier).ok()?;
       let bytes = fs::read(path).ok()?;
@@ -1301,6 +1871,9 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
+    if specifier.scheme() == "data" {
+      dbg!(specifier.as_str());
+    }
     if let Some(document) = self.open_docs.get(specifier) {
       Some(document.clone())
     } else {
@@ -1475,6 +2048,9 @@ impl Documents {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
       fs_docs.docs.retain(|specifier, _| {
+        if specifier.scheme() == "data" {
+          dbg!(specifier.as_str());
+        }
         let Ok(path) = url_to_file_path(specifier) else {
           // Remove non-file schemed docs (deps). They may not be dependencies
           // anymore after updating resolvers.
