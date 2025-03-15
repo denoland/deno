@@ -5,7 +5,19 @@
 /// <reference no-default-lib="true" />
 /// <reference lib="esnext" />
 
-/** @category URL */
+/**
+ * Iterator for the URLSearchParams class used to iterate over key-value pairs in search parameters.
+ *
+ * @example
+ * ```ts
+ * const params = new URLSearchParams('a=1&b=2');
+ * const iterator = params.entries();
+ * console.log(iterator.next().value); // ['a', '1']
+ * console.log(iterator.next().value); // ['b', '2']
+ * ```
+ *
+ * @category URL
+ */
 interface URLSearchParamsIterator<T>
   extends IteratorObject<T, BuiltinIteratorReturn, unknown> {
   [Symbol.iterator](): URLSearchParamsIterator<T>;
@@ -166,6 +178,39 @@ interface URLSearchParams {
 /** @category URL */
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
+  /**
+   * Creates a new URLSearchParams object.
+   *
+   * @param init - Optional initial value. Can be a search string, an array of key/value pairs, a record object, or another URLSearchParams instance.
+   *
+   * @example
+   * ```ts
+   * // Empty search parameters
+   * const params1 = new URLSearchParams();
+   * console.log(params1.toString());  // Logs ""
+   * ```
+   *
+   * @example
+   * ```ts
+   * // From a string
+   * const params2 = new URLSearchParams("foo=bar&baz=qux");
+   * console.log(params2.get("foo"));  // Logs "bar"
+   * ```
+   *
+   * @example
+   * ```ts
+   * // From an array of pairs
+   * const params3 = new URLSearchParams([["foo", "1"], ["bar", "2"]]);
+   * console.log(params3.toString());  // Logs "foo=1&bar=2"
+   * ```
+   *
+   * @example
+   * ```ts
+   * // From a record object
+   * const params4 = new URLSearchParams({"foo": "1", "bar": "2"});
+   * console.log(params4.toString());  // Logs "foo=1&bar=2"
+   * ```
+   */
   new (
     init?:
       | Iterable<string[]>
@@ -408,13 +453,36 @@ interface URL {
 }
 
 /** The URL interface represents an object providing static methods used for
- * creating object URLs.
+ * creating, parsing, and manipulating URLs.
+ *
+ * @see https://developer.mozilla.org/docs/Web/API/URL
  *
  * @category URL
  */
 declare var URL: {
   readonly prototype: URL;
   /**
+   * Creates a new URL object by parsing the specified URL string with an optional base URL.
+   *
+   * @param url - A string or URL object representing an absolute or relative URL.
+   * @param base - A string representing the base URL to use for a relative URL, or a URL object.
+   *
+   * @example
+   * ```ts
+   * // Creating a URL from an absolute URL string
+   * const url1 = new URL('https://example.org/foo');
+   * console.log(url1.href);  // Logs "https://example.org/foo"
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Creating a URL from a relative URL string with a base URL
+   * const url2 = new URL('/bar', 'https://example.org');
+   * console.log(url2.href);  // Logs "https://example.org/bar"
+   * ```
+   *
+   * @throws {TypeError} If the URL is invalid or if a relative URL is provided without a base.
+   *
    * @see https://developer.mozilla.org/docs/Web/API/URL/URL
    */
   new (url: string | URL, base?: string | URL): URL;
@@ -446,17 +514,68 @@ declare var URL: {
   parse(url: string | URL, base?: string | URL): URL | null;
 
   /**
+   * Returns a boolean value indicating if a URL string is valid and can be parsed.
+   *
+   * @param url - A string or URL object representing an absolute or relative URL.
+   * @param base - A string representing the base URL to use for a relative URL, or a URL object.
+   *
+   * @example
+   * ```ts
+   * // Check if an absolute URL string is valid
+   * console.log(URL.canParse('https://example.org'));  // Logs true
+   * console.log(URL.canParse('invalid://%'));  // Logs false
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Check if a relative URL string with a base is valid
+   * console.log(URL.canParse('/foo', 'https://example.org'));  // Logs true
+   * console.log(URL.canParse('/foo', 'invalid://%'));  // Logs false
+   * ```
+   *
+   * @returns {boolean} A boolean indicating whether the provided URL is valid.
    * @see https://developer.mozilla.org/docs/Web/API/URL/canParse_static
    */
   canParse(url: string | URL, base?: string | URL): boolean;
 
   /**
-   * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL
+   * Creates a DOMString containing a URL representing the object given in the parameter.
+   * The URL lifetime is tied to the document in the window on which it was created.
+   *
+   * @param blob - A Blob, File, or MediaSource object to create an object URL for.
+   *
+   * @example
+   * ```ts
+   * // Create a URL string for a Blob
+   * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
+   * const url = URL.createObjectURL(blob);
+   * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
+   * ```
+   *
+   * @returns {string} A string containing an object URL that can be used to reference the contents of the specified source object.
+   * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
    */
   createObjectURL(blob: Blob): string;
 
   /**
-   * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL
+   * Revokes an object URL previously created using URL.createObjectURL().
+   *
+   * @param url - A string containing the URL to revoke.
+   *
+   * @example
+   * ```ts
+   * // Create a URL string for a Blob
+   * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
+   * const url = URL.createObjectURL(blob);
+   *
+   * // Use the URL for something, then revoke it when no longer needed
+   * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
+   *
+   * // When done with the URL, revoke it to free memory
+   * URL.revokeObjectURL(url);
+   * ```
+   *
+   * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
    */
   revokeObjectURL(url: string): void;
 };
