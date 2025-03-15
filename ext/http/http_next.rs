@@ -1129,7 +1129,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
-    cfg!(feature = "legacy_abort"),
+    options.no_legacy_abort,
   ))
 }
 
@@ -1172,7 +1172,7 @@ where
     state.borrow_mut().resource_table.add_rc(resource),
     listen_properties.scheme,
     listen_properties.fallback_host,
-    cfg!(feature = "legacy_abort"),
+    options.no_legacy_abort,
   ))
 }
 
