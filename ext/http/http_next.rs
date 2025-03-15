@@ -928,8 +928,15 @@ fn serve_https(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     async move {
@@ -976,8 +983,15 @@ fn serve_http(
     listen_cancel_handle,
   } = lifetime;
 
+  let legacy_abort = !options.no_legacy_abort;
   let svc = service_fn(move |req: Request| {
-    handle_request(req, request_info.clone(), server_state.clone(), tx.clone())
+    handle_request(
+      req,
+      request_info.clone(),
+      server_state.clone(),
+      tx.clone(),
+      legacy_abort,
+    )
   });
   spawn(
     serve_http2_autodetect(io, svc, listen_cancel_handle, options)
