@@ -16,12 +16,16 @@ use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
 use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
+
+const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
+const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,11 +87,6 @@ fn set_db_config(
     set == value as i32
   }
 }
-
-const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
-const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
-
-use rusqlite::limits::Limit;
 
 fn open_db(
   state: &mut OpState,
