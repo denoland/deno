@@ -9,14 +9,13 @@ use std::ffi::CString;
 use std::ptr::null;
 use std::rc::Rc;
 
-use rusqlite::ffi as libsqlite3_sys;
-
 use deno_core::op2;
 use deno_core::serde_v8;
 use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
+use rusqlite::ffi as libsqlite3_sys;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
@@ -63,7 +62,11 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
-fn set_db_config(conn: &rusqlite::Connection, config: i32, value: bool) -> bool {
+fn set_db_config(
+  conn: &rusqlite::Connection,
+  config: i32,
+  value: bool,
+) -> bool {
   unsafe {
     let mut set = 0;
     let r = libsqlite3_sys::sqlite3_db_config(
@@ -84,6 +87,8 @@ fn set_db_config(conn: &rusqlite::Connection, config: i32, value: bool) -> bool 
 const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
 const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
+use rusqlite::limits::Limit;
+
 fn open_db(
   state: &mut OpState,
   readonly: bool,
@@ -91,9 +96,18 @@ fn open_db(
 ) -> Result<rusqlite::Connection, SqliteError> {
   if location == ":memory:" {
     let conn = rusqlite::Connection::open_in_memory()?;
-    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, false));
-    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
 
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -106,9 +120,18 @@ fn open_db(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
     )?;
-    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE, false));
-    assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
 
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
     return Ok(conn);
   }
 
@@ -117,7 +140,12 @@ fn open_db(
     .check_write_with_api_name(location, Some("node:sqlite"))?;
 
   let conn = rusqlite::Connection::open(location)?;
-  assert!(set_db_config(&conn, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, false));
+  assert!(set_db_config(
+    &conn,
+    SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+    false
+  ));
+  conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
 
   Ok(conn)
 }
