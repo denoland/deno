@@ -286,3 +286,25 @@ Deno.test("[node/sqlite] StatementSync reset guards don't lock db", () => {
 
   db.exec("DROP TABLE IF EXISTS foo");
 });
+
+// https://github.com/denoland/deno/issues/28492
+Deno.test("[node/sqlite] StatementSync reset step change metadata", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec(`CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  birthdate TEXT NOT NULL
+) STRICT`);
+
+  const insertPeople = db.prepare(`
+INSERT INTO people
+  (name, birthdate)
+VALUES
+  (:name, :birthdate)
+RETURNING id
+`);
+
+  const id1 = insertPeople.run({ name: "Flash", birthdate: "1956-07-16" });
+  assertEquals(id1, { lastInsertRowid: 1, changes: 1 });
+});
