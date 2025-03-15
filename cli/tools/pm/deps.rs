@@ -351,6 +351,9 @@ fn add_deps_from_package_json(
         }
       };
       match v {
+        deno_package_json::PackageJsonDepValue::File(_) => {
+          // ignore
+        }
         deno_package_json::PackageJsonDepValue::Req(req) => {
           let alias = k.as_str();
           let alias = (alias != req.name).then(|| alias.to_string());

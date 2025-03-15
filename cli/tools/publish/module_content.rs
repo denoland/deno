@@ -88,6 +88,8 @@ impl<TSys: FsMetadata + FsRead> ModuleContentProvider<TSys> {
           }
           MediaType::SourceMap
           | MediaType::Unknown
+          | MediaType::Html
+          | MediaType::Sql
           | MediaType::Json
           | MediaType::Wasm
           | MediaType::Css => {

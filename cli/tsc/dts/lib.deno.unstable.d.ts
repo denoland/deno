@@ -1359,7 +1359,7 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface FixData {
+    export interface Fix {
       range: Range;
       text?: string;
     }
@@ -1369,14 +1369,14 @@ declare namespace Deno {
      * @experimental
      */
     export interface Fixer {
-      insertTextAfter(node: Node, text: string): FixData;
-      insertTextAfterRange(range: Range, text: string): FixData;
-      insertTextBefore(node: Node, text: string): FixData;
-      insertTextBeforeRange(range: Range, text: string): FixData;
-      remove(node: Node): FixData;
-      removeRange(range: Range): FixData;
-      replaceText(node: Node, text: string): FixData;
-      replaceTextRange(range: Range, text: string): FixData;
+      insertTextAfter(node: Node, text: string): Fix;
+      insertTextAfterRange(range: Range, text: string): Fix;
+      insertTextBefore(node: Node, text: string): Fix;
+      insertTextBeforeRange(range: Range, text: string): Fix;
+      remove(node: Node): Fix;
+      removeRange(range: Range): Fix;
+      replaceText(node: Node, text: string): Fix;
+      replaceTextRange(range: Range, text: string): Fix;
     }
 
     /**
@@ -1388,7 +1388,7 @@ declare namespace Deno {
       range?: Range;
       message: string;
       hint?: string;
-      fix?(fixer: Fixer): FixData | Iterable<FixData>;
+      fix?(fixer: Fixer): Fix | Iterable<Fix>;
     }
 
     /**
@@ -1502,21 +1502,12 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Fix {
-      range: Range;
-      text?: string;
-    }
-
-    /**
-     * @category Linter
-     * @experimental
-     */
     export interface Diagnostic {
       id: string;
       message: string;
       hint?: string;
       range: Range;
-      fix?: Fix;
+      fix?: Fix[];
     }
 
     /**
@@ -1955,7 +1946,12 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      key:
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | PrivateIdentifier;
       value: Expression | null;
       typeAnnotation: TSTypeAnnotation | undefined;
     }

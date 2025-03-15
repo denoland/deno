@@ -632,6 +632,23 @@ declare var SubtleCrypto: {
 /** @category Crypto */
 interface Crypto {
   readonly subtle: SubtleCrypto;
+
+  /**
+   * Mutates the provided typed array with cryptographically secure random
+   * values.
+   *
+   * @returns The same typed array, now populated with random values.
+   *
+   * @example
+   * ```ts
+   * const array = new Uint32Array(4);
+   * crypto.getRandomValues(array);
+   * console.log(array);
+   * // output: Uint32Array(4) [ 3629234207, 1947236412, 3171234560, 4294901234 ]
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Crypto/getRandomValues
+   */
   getRandomValues<
     T extends
       | Int8Array
@@ -646,6 +663,37 @@ interface Crypto {
   >(
     array: T,
   ): T;
+
+  /**
+   * Generates a random RFC 4122 version 4 UUID using a cryptographically
+   * secure random number generator.
+   *
+   * @returns A randomly generated, 36-character long v4 UUID.
+   *
+   * @example
+   * ```ts
+   * const uuid = crypto.randomUUID();
+   * console.log(uuid);
+   * // Example output: '36b8f84d-df4e-4d49-b662-bcde71a8764f'
+   * ```
+   *
+   * The `randomUUID` method generates a version 4 UUID, which is purely
+   * random. If you require other versions of UUIDs, such as time-based (v1) or
+   * name-based (v3 and v5), consider using the `@std/uuid` package available
+   * at {@link https://jsr.io/@std/uuid}.
+   *
+   * @example
+   * ```ts
+   * import { v1 } from 'jsr:@std/uuid';
+   *
+   * // Generate a time-based UUID (v1)
+   * const uuidV1 = v1.generate();
+   * console.log(uuidV1);
+   * // output: 'a0c74f7e-82f1-11eb-8dcd-0242ac130003'
+   * ```
+   *
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Crypto/randomUUID
+   */
   randomUUID(): `${string}-${string}-${string}-${string}-${string}`;
 }
 
