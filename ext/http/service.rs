@@ -9,11 +9,11 @@ use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use std::task::Waker;
 
-use deno_core::futures::ready;
 use deno_core::BufView;
 use deno_core::OpState;
 use deno_core::ResourceId;

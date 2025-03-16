@@ -1,13 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::convert::Infallible;
+use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::result::Result;
 
 use bytes::Bytes;
-use futures::Future;
 use futures::FutureExt;
 use futures::Stream;
 use futures::StreamExt;
