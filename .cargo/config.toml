@@ -1,5 +1,11 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = [
+  "-C",
+  "target-feature=+crt-static",
+  "-C",
+  # align the stack size with what we tell v8 it is
+  "link-arg=/STACK:2097152",
+]
 
 [target.'cfg(all(windows, debug_assertions))']
 rustflags = [
