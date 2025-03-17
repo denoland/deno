@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::fmt::Display;
+use std::future::poll_fn;
 use std::future::Future;
 use std::io::Write;
 use std::pin::Pin;
@@ -10,7 +11,6 @@ use std::task::ready;
 use std::task::Poll;
 use std::time::Duration;
 
-use deno_core::futures::future::poll_fn;
 use deno_core::parking_lot;
 use deno_core::parking_lot::lock_api::RawMutex;
 use deno_core::parking_lot::lock_api::RawMutexTimed;
