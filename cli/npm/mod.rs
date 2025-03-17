@@ -299,3 +299,108 @@ pub fn get_npm_config_user_agent() -> String {
     std::env::consts::ARCH
   )
 }
+
+#[cfg(test)]
+mod test {
+  use std::path::PathBuf;
+
+  use deno_npm::registry::NpmPeerDependencyMeta;
+
+  use super::*;
+
+  #[test]
+  fn test_pkg_json_to_version_info() {
+    fn convert(
+      text: &str,
+    ) -> Result<NpmPackageVersionInfo, PkgJsonToVersionInfoError> {
+      let pkg_json = deno_package_json::PackageJson::load_from_string(
+        PathBuf::from("package.json"),
+        text,
+      )
+      .unwrap();
+      pkg_json_to_version_info(&pkg_json)
+    }
+
+    assert_eq!(
+      convert(
+        r#"{
+  "name": "pkg",
+  "version": "1.0.0",
+  "bin": "./bin.js",
+  "dependencies": {
+    "my-dep": "1"
+  },
+  "optionalDependencies": {
+    "optional-dep": "~1"
+  },
+  "peerDependencies": {
+    "my-peer-dep": "^2"
+  },
+  "peerDependenciesMeta": {
+    "my-peer-dep": {
+      "optional": true
+    }
+  },
+  "os": ["win32"],
+  "cpu": ["x86_64"],
+  "scripts": {
+    "script": "testing",
+    "postInstall": "testing2"
+  },
+  "deprecated": "ignored for now"
+}"#
+      )
+      .unwrap(),
+      NpmPackageVersionInfo {
+        version: Version::parse_from_npm("1.0.0").unwrap(),
+        dist: None,
+        bin: Some(deno_npm::registry::NpmPackageVersionBinEntry::String(
+          "./bin.js".to_string()
+        )),
+        dependencies: HashMap::from([(
+          StackString::from_static("my-dep"),
+          StackString::from_static("1")
+        )]),
+        optional_dependencies: HashMap::from([(
+          StackString::from_static("optional-dep"),
+          StackString::from_static("~1")
+        )]),
+        peer_dependencies: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          StackString::from_static("^2")
+        )]),
+        peer_dependencies_meta: HashMap::from([(
+          StackString::from_static("my-peer-dep"),
+          NpmPeerDependencyMeta { optional: true }
+        )]),
+        os: vec![SmallStackString::from_static("win32")],
+        cpu: vec![SmallStackString::from_static("x86_64")],
+        scripts: HashMap::from([
+          (
+            SmallStackString::from_static("script"),
+            "testing".to_string(),
+          ),
+          (
+            SmallStackString::from_static("postInstall"),
+            "testing2".to_string(),
+          )
+        ]),
+        // we don't bother ever setting this because we don't store it in deno_package_json
+        deprecated: None,
+      }
+    );
+
+    match convert("{}").unwrap_err() {
+      PkgJsonToVersionInfoError::VersionMissing => {
+        // ok
+      }
+      _ => unreachable!(),
+    }
+    match convert(r#"{ "version": "1.0.~" }"#).unwrap_err() {
+      PkgJsonToVersionInfoError::VersionInvalid { source: err } => {
+        assert_eq!(err.to_string(), "Invalid npm version");
+      }
+      _ => unreachable!(),
+    }
+  }
+}

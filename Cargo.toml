@@ -495,4 +495,4 @@ opt-level = 3
 deno_package_json = { git = "https://github.com/dsherret/deno_package_json", rev = "e17765ea1d10865bb8182c8684837f306a49a0a3" }
 deno_config = { git = "https://github.com/dsherret/deno_config", rev = "6ca50ed30280a95340500e51ae83c205eb169eff" }
 deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile", rev = "d383040d87d80deda088ee350dc9335a5cbfdabd" }
-deno_npm = { git = "https://github.com/dsherret/deno_npm", rev = "eabd787cb992a960e6b1b00a4de2f22cf75b243f" }
+deno_npm = { git = "https://github.com/dsherret/deno_npm", rev = "3e51f1d1dc1790f5d29d966fef3fe6569aebe703" }

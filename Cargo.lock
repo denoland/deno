@@ -2352,7 +2352,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.27.2"
-source = "git+https://github.com/dsherret/deno_npm?rev=eabd787cb992a960e6b1b00a4de2f22cf75b243f#eabd787cb992a960e6b1b00a4de2f22cf75b243f"
+source = "git+https://github.com/dsherret/deno_npm?rev=3e51f1d1dc1790f5d29d966fef3fe6569aebe703#3e51f1d1dc1790f5d29d966fef3fe6569aebe703"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
