@@ -228,11 +228,7 @@ fn populate_lockfile_from_snapshot(
 
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg
-        .dist
-        .as_ref()
-        .map(|d| d.integrity().for_lockfile())
-        .unwrap_or_else(|| "patch".to_string()),
+      integrity: pkg.dist.as_ref().map(|d| d.integrity().for_lockfile()),
       dependencies,
     }
   }

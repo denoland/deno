@@ -2191,7 +2191,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.24.0"
-source = "git+https://github.com/dsherret/deno_lockfile?rev=0406826#04068266570b814aa4080d0e640d78ff3bd5d2c4"
+source = "git+https://github.com/dsherret/deno_lockfile?rev=7dbd7de#7dbd7debfbf6d8e1d5a61104e2a43efd575d7b62"
 dependencies = [
  "deno_semver",
  "serde",
@@ -2352,7 +2352,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.27.2"
-source = "git+https://github.com/dsherret/deno_npm?rev=aa91a1e#aa91a1e8b93579cb476c1920f2451c900a4d6239"
+source = "git+https://github.com/dsherret/deno_npm?rev=22b18e8#22b18e861df7382432ef5f3ab2148376ba7b9de5"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",

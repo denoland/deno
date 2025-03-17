@@ -494,5 +494,5 @@ opt-level = 3
 [patch.crates-io]
 deno_package_json = { git = "https://github.com/dsherret/deno_package_json", rev = "e17765ea1d10865bb8182c8684837f306a49a0a3" }
 deno_config = { git = "https://github.com/dsherret/deno_config", rev = "6ca50ed30280a95340500e51ae83c205eb169eff" }
-deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile", rev = "0406826" }
-deno_npm = { git = "https://github.com/dsherret/deno_npm", rev = "aa91a1e" }
+deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile", rev = "7dbd7de" }
+deno_npm = { git = "https://github.com/dsherret/deno_npm", rev = "22b18e8" }
