@@ -186,15 +186,15 @@ declare var URLSearchParams: {
    * // Empty search parameters
    * const params1 = new URLSearchParams();
    * console.log(params1.toString());  // Logs ""
-   * 
+   *
    * // From a string
    * const params2 = new URLSearchParams("foo=bar&baz=qux");
    * console.log(params2.get("foo"));  // Logs "bar"
-   * 
+   *
    * // From an array of pairs
    * const params3 = new URLSearchParams([["foo", "1"], ["bar", "2"]]);
    * console.log(params3.toString());  // Logs "foo=1&bar=2"
-   * 
+   *
    * // From a record object
    * const params4 = new URLSearchParams({"foo": "1", "bar": "2"});
    * console.log(params4.toString());  // Logs "foo=1&bar=2"
@@ -225,7 +225,7 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo#bar');
    * console.log(myURL.hash);  // Logs "#bar"
-   * 
+   *
    * const myOtherURL = new URL('https://example.org');
    * console.log(myOtherURL.hash);  // Logs ""
    * ```
@@ -241,7 +241,7 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo');
    * console.log(myURL.host);  // Logs "example.org"
-   * 
+   *
    * const myOtherURL = new URL('https://example.org:8080/foo');
    * console.log(myOtherURL.host);  // Logs "example.org:8080"
    * ```
@@ -341,7 +341,7 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org:8080/foo');
    * console.log(myURL.port);  // Logs "8080"
-   * 
+   *
    * const myOtherURL = new URL('https://example.org/foo');
    * console.log(myOtherURL.port);  // Logs ""
    * ```
@@ -371,7 +371,7 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo?bar=baz');
    * console.log(myURL.search);  // Logs "?bar=baz"
-   * 
+   *
    * const myOtherURL = new URL('https://example.org/foo?bar=baz#quux');
    * console.log(myOtherURL.search);  // Logs "?bar=baz"
    * ```
@@ -434,19 +434,18 @@ declare var URL: {
   readonly prototype: URL;
   /**
    * Creates a new URL object by parsing the specified URL string with an optional base URL.
+   * Throws a TypeError If the URL is invalid or if a relative URL is provided without a base.
    *
    * @example
    * ```ts
    * // Creating a URL from an absolute URL string
    * const url1 = new URL('https://example.org/foo');
    * console.log(url1.href);  // Logs "https://example.org/foo"
-   * 
+   *
    * // Creating a URL from a relative URL string with a base URL
    * const url2 = new URL('/bar', 'https://example.org');
    * console.log(url2.href);  // Logs "https://example.org/bar"
    * ```
-   *
-   * @throws {TypeError} If the URL is invalid or if a relative URL is provided without a base.
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/URL
    */
@@ -462,7 +461,7 @@ declare var URL: {
    * console.log(myURL.hostname);  // Logs "example.org"
    * console.log(myURL.pathname);  // Logs "/"
    * console.log(myURL.protocol);  // Logs "https:"
-   * 
+   *
    * const baseURL = new URL('https://example.org');
    * const myNewURL = URL.parse('/foo', baseURL);
    * console.log(myNewURL.href);  // Logs "https://example.org/foo"
@@ -482,14 +481,13 @@ declare var URL: {
    * ```ts
    * // Check if an absolute URL string is valid
    * console.log(URL.canParse('https://example.org'));  // Logs true
-   * console.log(URL.canParse('invalid://%'));  // Logs false
-   * 
+   * console.log(URL.canParse('https:://example.org'));  // Logs false
+   *
    * // Check if a relative URL string with a base is valid
    * console.log(URL.canParse('/foo', 'https://example.org'));  // Logs true
-   * console.log(URL.canParse('/foo', 'invalid://%'));  // Logs false
+   * console.log(URL.canParse('/foo', 'https:://example.org'));  // Logs false
    * ```
    *
-   * @returns {boolean} A boolean indicating whether the provided URL is valid.
    * @see https://developer.mozilla.org/docs/Web/API/URL/canParse_static
    */
   canParse(url: string | URL, base?: string | URL): boolean;
@@ -497,6 +495,8 @@ declare var URL: {
   /**
    * Creates a DOMString containing a URL representing the object given in the parameter.
    * The URL lifetime is tied to the document in the window on which it was created.
+   *
+   * Returns a string containing an object URL that can be used to reference the contents of the specified source object.
    *
    * @example
    * ```ts
@@ -506,7 +506,6 @@ declare var URL: {
    * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
    * ```
    *
-   * @returns {string} A string containing an object URL that can be used to reference the contents of the specified source object.
    * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
    */
   createObjectURL(blob: Blob): string;
