@@ -186,24 +186,15 @@ declare var URLSearchParams: {
    * // Empty search parameters
    * const params1 = new URLSearchParams();
    * console.log(params1.toString());  // Logs ""
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * // From a string
    * const params2 = new URLSearchParams("foo=bar&baz=qux");
    * console.log(params2.get("foo"));  // Logs "bar"
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * // From an array of pairs
    * const params3 = new URLSearchParams([["foo", "1"], ["bar", "2"]]);
    * console.log(params3.toString());  // Logs "foo=1&bar=2"
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * // From a record object
    * const params4 = new URLSearchParams({"foo": "1", "bar": "2"});
    * console.log(params4.toString());  // Logs "foo=1&bar=2"
@@ -234,12 +225,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo#bar');
    * console.log(myURL.hash);  // Logs "#bar"
-   * ```
-   *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org');
-   * console.log(myURL.hash);  // Logs ""
+   * 
+   * const myOtherURL = new URL('https://example.org');
+   * console.log(myOtherURL.hash);  // Logs ""
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/hash
@@ -253,12 +241,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo');
    * console.log(myURL.host);  // Logs "example.org"
-   * ```
-   *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org:8080/foo');
-   * console.log(myURL.host);  // Logs "example.org:8080"
+   * 
+   * const myOtherURL = new URL('https://example.org:8080/foo');
+   * console.log(myOtherURL.host);  // Logs "example.org:8080"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/host
@@ -311,12 +296,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://foo.example.org/bar');
    * console.log(myURL.origin);  // Logs "https://foo.example.org"
-   * ```
    *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org:8080/foo');
-   * console.log(myURL.origin);  // Logs "https://example.org:8080"
+   * const myOtherURL = new URL('https://example.org:8080/foo');
+   * console.log(myOtherURL.origin);  // Logs "https://example.org:8080"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/origin
@@ -343,12 +325,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo/bar');
    * console.log(myURL.pathname);  // Logs "/foo/bar"
-   * ```
    *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org');
-   * console.log(myURL.pathname);  // Logs "/"
+   * const myOtherURL = new URL('https://example.org');
+   * console.log(myOtherURL.pathname);  // Logs "/"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/pathname
@@ -362,12 +341,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org:8080/foo');
    * console.log(myURL.port);  // Logs "8080"
-   * ```
-   *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org/foo');
-   * console.log(myURL.port);  // Logs ""
+   * 
+   * const myOtherURL = new URL('https://example.org/foo');
+   * console.log(myOtherURL.port);  // Logs ""
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/port
@@ -395,12 +371,9 @@ interface URL {
    * ```ts
    * const myURL = new URL('https://example.org/foo?bar=baz');
    * console.log(myURL.search);  // Logs "?bar=baz"
-   * ```
-   *
-   * @example
-   * ```ts
-   * const myURL = new URL('https://example.org/foo?bar=baz#quux');
-   * console.log(myURL.search);  // Logs "?bar=baz"
+   * 
+   * const myOtherURL = new URL('https://example.org/foo?bar=baz#quux');
+   * console.log(myOtherURL.search);  // Logs "?bar=baz"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/search
@@ -467,10 +440,7 @@ declare var URL: {
    * // Creating a URL from an absolute URL string
    * const url1 = new URL('https://example.org/foo');
    * console.log(url1.href);  // Logs "https://example.org/foo"
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * // Creating a URL from a relative URL string with a base URL
    * const url2 = new URL('/bar', 'https://example.org');
    * console.log(url2.href);  // Logs "https://example.org/bar"
@@ -492,16 +462,13 @@ declare var URL: {
    * console.log(myURL.hostname);  // Logs "example.org"
    * console.log(myURL.pathname);  // Logs "/"
    * console.log(myURL.protocol);  // Logs "https:"
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * const baseURL = new URL('https://example.org');
-   * const myURL = URL.parse('/foo', baseURL);
-   * console.log(myURL.href);  // Logs "https://example.org/foo"
-   * console.log(myURL.hostname);  // Logs "example.org"
-   * console.log(myURL.pathname);  // Logs "/foo"
-   * console.log(myURL.protocol);  // Logs "https:"
+   * const myNewURL = URL.parse('/foo', baseURL);
+   * console.log(myNewURL.href);  // Logs "https://example.org/foo"
+   * console.log(myNewURL.hostname);  // Logs "example.org"
+   * console.log(myNewURL.pathname);  // Logs "/foo"
+   * console.log(myNewURL.protocol);  // Logs "https:"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/parse_static
@@ -516,10 +483,7 @@ declare var URL: {
    * // Check if an absolute URL string is valid
    * console.log(URL.canParse('https://example.org'));  // Logs true
    * console.log(URL.canParse('invalid://%'));  // Logs false
-   * ```
-   *
-   * @example
-   * ```ts
+   * 
    * // Check if a relative URL string with a base is valid
    * console.log(URL.canParse('/foo', 'https://example.org'));  // Logs true
    * console.log(URL.canParse('/foo', 'invalid://%'));  // Logs false
