@@ -40,6 +40,7 @@ use deno_path_util::url_to_file_path;
 use deno_runtime::deno_permissions::SysDescriptor;
 use deno_telemetry::OtelConfig;
 use deno_telemetry::OtelConsoleConfig;
+use deno_telemetry::OtelPropagators;
 use log::debug;
 use log::Level;
 use serde::Deserialize;
@@ -943,11 +944,29 @@ impl Flags {
       !has_unstable_flag || otel_var("OTEL_SDK_DISABLED").unwrap_or(false);
     let default = !disabled && otel_var("OTEL_DENO").unwrap_or(false);
 
+    let propagators = if default {
+      if let Ok(propagators) = std::env::var("OTEL_PROPAGATORS") {
+        propagators
+          .split(',')
+          .filter_map(|p| match p.trim() {
+            "tracecontext" => Some(OtelPropagators::TraceContext),
+            "baggage" => Some(OtelPropagators::Baggage),
+            _ => None,
+          })
+          .collect()
+      } else {
+        HashSet::from([OtelPropagators::TraceContext, OtelPropagators::Baggage])
+      }
+    } else {
+      HashSet::default()
+    };
+
     OtelConfig {
       tracing_enabled: !disabled
         && otel_var("OTEL_DENO_TRACING").unwrap_or(default),
       metrics_enabled: !disabled
         && otel_var("OTEL_DENO_METRICS").unwrap_or(default),
+      propagators,
       console: match std::env::var("OTEL_DENO_CONSOLE").as_deref() {
         Ok(_) if disabled => OtelConsoleConfig::Ignore,
         Ok("ignore") => OtelConsoleConfig::Ignore,
@@ -964,9 +983,18 @@ impl Flags {
           }
         }
       },
-      deterministic: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
+      deterministic_prefix: std::env::var("DENO_UNSTABLE_OTEL_DETERMINISTIC")
         .as_deref()
-        == Ok("1"),
+        .map(u8::from_str)
+        .map(|x| match x {
+          Ok(x) => Some(x),
+          Err(_) => {
+            log::warn!("'DENO_UNSTABLE_OTEL_DETERMINISTIC' env var value not recognized, only integers are accepted");
+            None
+          }
+        })
+        .ok()
+        .flatten(),
     }
   }
 
@@ -1153,6 +1181,7 @@ static ENV_VARIABLES_HELP: &str = cstr!(
   <g>DENO_TRACE_PERMISSIONS</> Environmental variable to enable stack traces in permission prompts.
                          Possible values: "system", "mozilla".
                           <p(245)>(defaults to "mozilla")</>
+  <g>FORCE_COLOR</>            Set force color output even if stdout isn't a tty
   <g>HTTP_PROXY</>             Proxy address for HTTP requests
                           <p(245)>(module downloads, fetch)</>
   <g>HTTPS_PROXY</>            Proxy address for HTTPS requests
@@ -1906,7 +1935,11 @@ Under the hood, it bundles a slimmed down version of the Deno runtime along with
 JavaScript or TypeScript code.
 
 Cross-compiling to different target architectures is supported using the <c>--target</> flag.
+<<<<<<< HEAD
 On the first invocation, Deno will download the appropriate binary and cache it in <c>$DENO_DIR</>.
+=======
+On the first invocation of `deno compile`, Deno will download the relevant binary and cache it in <c>$DENO_DIR</>.
+>>>>>>> aee38ab6e39f2e5a22445e352fb817cf2262d000
 
 <y>Read more:</> <c>https://docs.deno.com/go/compile</>
 "),

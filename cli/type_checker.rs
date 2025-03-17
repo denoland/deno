@@ -833,7 +833,9 @@ impl<'a> GraphWalker<'a> {
           MediaType::Json
           | MediaType::Wasm
           | MediaType::Css
+          | MediaType::Html
           | MediaType::SourceMap
+          | MediaType::Sql
           | MediaType::Unknown => None,
         };
         if result.is_some() {
@@ -947,7 +949,9 @@ fn has_ts_check(media_type: MediaType, file_text: &str) -> bool {
     | MediaType::Json
     | MediaType::Wasm
     | MediaType::Css
+    | MediaType::Html
     | MediaType::SourceMap
+    | MediaType::Sql
     | MediaType::Unknown => false,
   }
 }
