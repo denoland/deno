@@ -62,10 +62,6 @@ declare interface WorkerGlobalScope extends EventTarget {
 
   /**
    * Adds an event listener for events of a specific type on the worker.
-   *
-   * @param type - The event type to listen for
-   * @param listener - The callback function to execute when the event occurs
-   * @param options - Options that control the behavior of the event listener
    */
   addEventListener<K extends keyof WorkerGlobalScopeEventMap>(
     type: K,
@@ -78,10 +74,6 @@ declare interface WorkerGlobalScope extends EventTarget {
 
   /**
    * Adds an event listener for events of a specific type on the worker.
-   *
-   * @param type - The event type to listen for
-   * @param listener - The callback function to execute when the event occurs
-   * @param options - Options that control the behavior of the event listener
    */
   addEventListener(
     type: string,
@@ -91,10 +83,6 @@ declare interface WorkerGlobalScope extends EventTarget {
 
   /**
    * Removes an event listener previously registered with addEventListener.
-   *
-   * @param type - The event type for which the listener was registered
-   * @param listener - The callback function to remove
-   * @param options - Options that match those used when the event listener was added
    */
   removeEventListener<K extends keyof WorkerGlobalScopeEventMap>(
     type: K,
@@ -107,10 +95,6 @@ declare interface WorkerGlobalScope extends EventTarget {
 
   /**
    * Removes an event listener previously registered with addEventListener.
-   *
-   * @param type - The event type for which the listener was registered
-   * @param listener - The callback function to remove
-   * @param options - Options that match those used when the event listener was added
    */
   removeEventListener(
     type: string,
@@ -269,9 +253,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   /**
    * Sends a message to the main thread that spawned the worker.
    *
-   * @param message - The data to send to the main thread
-   * @param transfer - An optional array of Transferable objects to transfer ownership of
-   *
    * @example
    * ```ts
    * // Inside a worker
@@ -284,9 +265,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
   /**
    * Sends a message to the main thread that spawned the worker.
    *
-   * @param message - The data to send to the main thread
-   * @param options - An object that can contain a transfer property with an array of Transferable objects
-   *
    * @example
    * ```ts
    * // Inside a worker, transferring an ArrayBuffer
@@ -298,10 +276,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 
   /**
    * Adds an event listener for events of a specific type on the dedicated worker.
-   *
-   * @param type - The event type to listen for
-   * @param listener - The callback function to execute when the event occurs
-   * @param options - Options that control the behavior of the event listener
    */
   addEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
@@ -314,10 +288,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 
   /**
    * Adds an event listener for events of a specific type on the dedicated worker.
-   *
-   * @param type - The event type to listen for
-   * @param listener - The callback function to execute when the event occurs
-   * @param options - Options that control the behavior of the event listener
    */
   addEventListener(
     type: string,
@@ -327,10 +297,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 
   /**
    * Removes an event listener previously registered with addEventListener.
-   *
-   * @param type - The event type for which the listener was registered
-   * @param listener - The callback function to remove
-   * @param options - Options that match those used when the event listener was added
    */
   removeEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
@@ -343,10 +309,6 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
 
   /**
    * Removes an event listener previously registered with addEventListener.
-   *
-   * @param type - The event type for which the listener was registered
-   * @param listener - The callback function to remove
-   * @param options - Options that match those used when the event listener was added
    */
   removeEventListener(
     type: string,
@@ -400,18 +362,12 @@ declare function close(): void;
 /**
  * Sends a message to the main thread that spawned the worker.
  *
- * @param message - The data to send to the main thread
- * @param transfer - An optional array of Transferable objects to transfer ownership of
- *
  * @category Workers
  */
 declare function postMessage(message: any, transfer: Transferable[]): void;
 
 /**
  * Sends a message to the main thread that spawned the worker.
- *
- * @param message - The data to send to the main thread
- * @param options - An object that can contain a transfer property with an array of Transferable objects
  *
  * @category Workers
  */
@@ -455,10 +411,6 @@ declare var self: WorkerGlobalScope & typeof globalThis;
 /**
  * Adds an event listener for events of a specific type on the worker.
  *
- * @param type - The event type to listen for
- * @param listener - The callback function to execute when the event occurs
- * @param options - Options that control the behavior of the event listener
- *
  * @category Events
  */
 declare function addEventListener<
@@ -475,10 +427,6 @@ declare function addEventListener<
 /**
  * Adds an event listener for events of a specific type on the worker.
  *
- * @param type - The event type to listen for
- * @param listener - The callback function to execute when the event occurs
- * @param options - Options that control the behavior of the event listener
- *
  * @category Events
  */
 declare function addEventListener(
@@ -489,10 +437,6 @@ declare function addEventListener(
 
 /**
  * Removes an event listener previously registered with addEventListener.
- *
- * @param type - The event type for which the listener was registered
- * @param listener - The callback function to remove
- * @param options - Options that match those used when the event listener was added
  *
  * @category Events
  */
@@ -509,10 +453,6 @@ declare function removeEventListener<
 
 /**
  * Removes an event listener previously registered with addEventListener.
- *
- * @param type - The event type for which the listener was registered
- * @param listener - The callback function to remove
- * @param options - Options that match those used when the event listener was added
  *
  * @category Events
  */

@@ -181,8 +181,6 @@ declare var URLSearchParams: {
   /**
    * Creates a new URLSearchParams object.
    *
-   * @param init - Optional initial value. Can be a search string, an array of key/value pairs, a record object, or another URLSearchParams instance.
-   *
    * @example
    * ```ts
    * // Empty search parameters
@@ -464,9 +462,6 @@ declare var URL: {
   /**
    * Creates a new URL object by parsing the specified URL string with an optional base URL.
    *
-   * @param url - A string or URL object representing an absolute or relative URL.
-   * @param base - A string representing the base URL to use for a relative URL, or a URL object.
-   *
    * @example
    * ```ts
    * // Creating a URL from an absolute URL string
@@ -516,9 +511,6 @@ declare var URL: {
   /**
    * Returns a boolean value indicating if a URL string is valid and can be parsed.
    *
-   * @param url - A string or URL object representing an absolute or relative URL.
-   * @param base - A string representing the base URL to use for a relative URL, or a URL object.
-   *
    * @example
    * ```ts
    * // Check if an absolute URL string is valid
@@ -542,8 +534,6 @@ declare var URL: {
    * Creates a DOMString containing a URL representing the object given in the parameter.
    * The URL lifetime is tied to the document in the window on which it was created.
    *
-   * @param blob - A Blob, File, or MediaSource object to create an object URL for.
-   *
    * @example
    * ```ts
    * // Create a URL string for a Blob
@@ -559,8 +549,6 @@ declare var URL: {
 
   /**
    * Revokes an object URL previously created using URL.createObjectURL().
-   *
-   * @param url - A string containing the URL to revoke.
    *
    * @example
    * ```ts
