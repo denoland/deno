@@ -186,9 +186,7 @@ declare interface DedicatedWorkerGlobalScopeEventMap
  * @category Platform
  */
 declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
-  /**
-   * The name given to the worker when it was created.
-   */
+  /** The name given to the worker when it was created. */
   readonly name: string;
 
   /** Event handler for message events received from the parent context. */
