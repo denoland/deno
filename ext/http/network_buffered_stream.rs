@@ -1,13 +1,13 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::future::poll_fn;
 use std::io;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
+use std::task::ready;
 use std::task::Poll;
 
 use bytes::Bytes;
-use deno_core::futures::future::poll_fn;
-use deno_core::futures::ready;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::ReadBuf;
