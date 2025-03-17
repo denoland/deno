@@ -6,11 +6,13 @@
 /// <reference lib="esnext" />
 
 /**
- * Iterator for the URLSearchParams class used to iterate over key-value pairs in search parameters.
+ * Iterator for the URLSearchParams class, used to iterate over key-value pairs in search parameters.
  *
  * @example
  * ```ts
- * const params = new URLSearchParams('a=1&b=2');
+ * const url = new URL('https://example.org/path?a=1&b=2');
+ * const queryString = url.search.substring(1); // Remove the leading '?'
+ * const params = new URLSearchParams(queryString);
  * const iterator = params.entries();
  * console.log(iterator.next().value); // ['a', '1']
  * console.log(iterator.next().value); // ['b', '2']
@@ -179,25 +181,41 @@ interface URLSearchParams {
 declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**
-   * Creates a new URLSearchParams object.
+   * Creates a new URLSearchParams object for parsing query strings.
+   * 
+   * URLSearchParams is Deno's built-in query string parser, providing a standard 
+   * way to parse, manipulate, and stringify URL query parameters. Instead of manually
+   * parsing query strings with regex or string operations, use this API for robust
+   * handling of URL query parameters.
    *
    * @example
    * ```ts
+   * // From a URL object's query string (recommended approach for parsing query strings in URLs)
+   * const url = new URL('https://example.org/path?foo=bar&baz=qux');
+   * const params = url.searchParams;  // No need to manually extract the query string
+   * console.log(params.get('foo'));  // Logs "bar"
+   * 
+   * // Manually parsing a query string from a URL
+   * const urlString = 'https://example.org/path?foo=bar&baz=qux';
+   * const queryString = urlString.split('?')[1];  // Extract query string part
+   * const params2 = new URLSearchParams(queryString);
+   * console.log(params2.get('foo'));  // Logs "bar"
+   * 
    * // Empty search parameters
-   * const params1 = new URLSearchParams();
-   * console.log(params1.toString());  // Logs ""
+   * const params3 = new URLSearchParams();
+   * console.log(params3.toString());  // Logs ""
    *
    * // From a string
-   * const params2 = new URLSearchParams("foo=bar&baz=qux");
-   * console.log(params2.get("foo"));  // Logs "bar"
+   * const params4 = new URLSearchParams("foo=bar&baz=qux");
+   * console.log(params4.get("foo"));  // Logs "bar"
    *
    * // From an array of pairs
-   * const params3 = new URLSearchParams([["foo", "1"], ["bar", "2"]]);
-   * console.log(params3.toString());  // Logs "foo=1&bar=2"
+   * const params5 = new URLSearchParams([["foo", "1"], ["bar", "2"]]);
+   * console.log(params5.toString());  // Logs "foo=1&bar=2"
    *
    * // From a record object
-   * const params4 = new URLSearchParams({"foo": "1", "bar": "2"});
-   * console.log(params4.toString());  // Logs "foo=1&bar=2"
+   * const params6 = new URLSearchParams({"foo": "1", "bar": "2"});
+   * console.log(params6.toString());  // Logs "foo=1&bar=2"
    * ```
    */
   new (
@@ -504,7 +522,7 @@ declare var URL: {
    * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
    * const url = URL.createObjectURL(blob);
    * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
-   * ```
+      * ```
    *
    * The URL.createObjectURL() method is used to create a unique URL string that represents a given object, typically used for Blob, File, or MediaSource objects.
    * For example it could be used to dynamically create Worker or SharedWorker objects, or to create a URL when a user uploads or creates a file, or to save canvas content in the browser.
@@ -515,7 +533,8 @@ declare var URL: {
 
   /**
    * Revokes an object URL previously created using URL.createObjectURL().
-   *
+   * 
+      *
    * @example
    * ```ts
    * // Create a URL string for a Blob
@@ -527,7 +546,7 @@ declare var URL: {
    *
    * // When done with the URL, revoke it to free memory
    * URL.revokeObjectURL(url);
-   * ```
+      * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
    */
