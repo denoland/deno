@@ -337,7 +337,7 @@ async fn sync_resolution_with_fs(
               move || {
                 clone_dir_recursive(&sys, &cache_folder, &package_path)?;
                 // write out a file that indicates this folder has been initialized
-                fs::write(initialized_file, tags)?;
+                write_initialized_file(&initialized_file, &tags)?;
 
                 Ok::<_, SyncResolutionWithFsError>(())
               }
@@ -364,7 +364,7 @@ async fn sync_resolution_with_fs(
         );
       }
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
-      fs::write(initialized_file, tags)?;
+      write_initialized_file(&initialized_file, &tags)?;
     }
 
     let sub_node_modules = folder_path.join("node_modules");
@@ -412,10 +412,6 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  while let Some(result) = cache_futures.next().await {
-    result?; // surface the first error
-  }
-
   // 3. Create any "copy" packages, which are used for peer dependencies
   for package in &package_partitions.copy_packages {
     let package_cache_folder_id = package.get_package_cache_folder_id();
@@ -426,7 +422,6 @@ async fn sync_resolution_with_fs(
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
         join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-
       let source_path = join_package_name(
         Cow::Owned(
           deno_local_registry_dir
@@ -438,10 +433,28 @@ async fn sync_resolution_with_fs(
         &package.id.nv.name,
       );
 
-      clone_dir_recursive(sys, &source_path, &package_path)?;
-      // write out a file that indicates this folder has been initialized
-      fs::write(initialized_file, "")?;
+      cache_futures.push(
+        async move {
+          let sys = sys.clone();
+          deno_core::unsync::spawn_blocking(move || {
+            clone_dir_recursive(&sys, &source_path, &package_path)
+              .map_err(JsErrorBox::from_err)?;
+            // write out a file that indicates this folder has been initialized
+            create_initialized_file(&initialized_file)?;
+            Ok::<_, JsErrorBox>(())
+          })
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)?;
+          Ok::<_, JsErrorBox>(())
+        }
+        .boxed_local(),
+      );
     }
+  }
+
+  while let Some(result) = cache_futures.next().await {
+    result?; // surface the first error
   }
 
   // 4. Symlink all the dependencies into the .deno directory.
@@ -814,7 +827,7 @@ impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
     &self,
     package: &NpmResolutionPackage,
   ) -> std::result::Result<(), std::io::Error> {
-    std::fs::write(self.ran_scripts_file(package), "")?;
+    _ = std::fs::File::create(self.ran_scripts_file(package))?;
     Ok(())
   }
 
@@ -849,7 +862,8 @@ impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
       );
 
       for (package, _) in packages {
-        let _ignore_err = fs::write(self.warned_scripts_file(package), "");
+        let _ignore_err =
+          create_initialized_file(&self.warned_scripts_file(package));
       }
     }
     Ok(())
@@ -1101,6 +1115,30 @@ fn junction_or_symlink_dir(
       })
     }
   }
+}
+
+fn write_initialized_file(path: &Path, text: &str) -> Result<(), JsErrorBox> {
+  if text.is_empty() {
+    create_initialized_file(path)
+  } else {
+    std::fs::write(path, text).map_err(|err| {
+      JsErrorBox::generic(format!(
+        "Failed writing '{}': {}",
+        path.display(),
+        err
+      ))
+    })
+  }
+}
+
+fn create_initialized_file(path: &Path) -> Result<(), JsErrorBox> {
+  std::fs::File::create(path).map(|_| ()).map_err(|err| {
+    JsErrorBox::generic(format!(
+      "Failed to create '{}': {}",
+      path.display(),
+      err
+    ))
+  })
 }
 
 fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
