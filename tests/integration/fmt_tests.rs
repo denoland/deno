@@ -260,7 +260,19 @@ itest!(fmt_check_parse_error {
 
 itest!(fmt_check_invalid_data {
   args: "fmt --check fmt/invalid_data.json",
-  output: "fmt/invalid_data.out",
+  output: "fmt/fmt_check_invalid_data.out",
+  exit_code: 1,
+});
+
+itest!(fmt_parse_error {
+  args: "fmt fmt/parse_error/parse_error.ts",
+  output: "fmt/fmt_parse_error.out",
+  exit_code: 1,
+});
+
+itest!(fmt_invalid_data {
+  args: "fmt fmt/invalid_data.json",
+  output: "fmt/fmt_invalid_data.out",
   exit_code: 1,
 });
 
