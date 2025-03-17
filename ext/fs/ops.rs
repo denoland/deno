@@ -102,6 +102,7 @@ impl From<FsError> for FsOpsError {
         FsOpsErrorKind::Other(JsErrorBox::not_supported())
       }
       FsError::NotCapable(err) => FsOpsErrorKind::NotCapable(err),
+      FsError::Paused => FsOpsErrorKind::Canceled(deno_core::Canceled),
     }
     .into_box()
   }

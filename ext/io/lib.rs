@@ -26,6 +26,7 @@ use deno_core::AsyncRefCell;
 use deno_core::AsyncResult;
 use deno_core::BufMutView;
 use deno_core::BufView;
+use deno_core::CancelFuture;
 use deno_core::CancelHandle;
 use deno_core::CancelTryFuture;
 use deno_core::OpState;
@@ -49,6 +50,7 @@ use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::process;
+use tokio::sync::oneshot;
 #[cfg(windows)]
 use winapi::um::processenv::GetStdHandle;
 #[cfg(windows)]
@@ -217,6 +219,9 @@ pub static STDERR_HANDLE: Lazy<StdFile> = Lazy::new(|| {
 
 deno_core::extension!(deno_io,
   deps = [ deno_web ],
+  ops = [
+    op_io_read_stop,
+  ],
   esm = [ "12_io.js" ],
   options = {
     stdio: Option<Stdio>,
@@ -482,6 +487,7 @@ pub struct StdFileResourceInner {
   // to occur at a time
   cell_async_task_queue: Rc<TaskQueue>,
   handle: ResourceHandleFd,
+  read_cancel_handle: RefCell<Option<oneshot::Sender<()>>>,
 }
 
 impl StdFileResourceInner {
@@ -497,6 +503,7 @@ impl StdFileResourceInner {
       handle,
       cell: RefCell::new(Some(fs_file)),
       cell_async_task_queue: Default::default(),
+      read_cancel_handle: Default::default(),
     }
   }
 
@@ -953,6 +960,13 @@ impl crate::fs::File for StdFileResourceInner {
       .await
   }
 
+  fn read_stop(self: Rc<Self>) {
+    if let Some(sender) = self.read_cancel_handle.borrow_mut().take() {
+        println!("read_stop");
+      let _ = sender.send(());
+    }
+  }
+
   async fn read_byob(
     self: Rc<Self>,
     mut buf: BufMutView,
@@ -964,12 +978,20 @@ impl crate::fs::File for StdFileResourceInner {
         self.handle_stdin_read(state.clone(), buf).await
       }
       _ => {
-        self
+          println!("read_byob");
+        let (tx, rx) = oneshot::channel();
+
+        self.read_cancel_handle.borrow_mut().replace(tx);
+        let result = self
           .with_inner_blocking_task(|file| {
             let nread = file.read(&mut buf)?;
             Ok((nread, buf))
-          })
-          .await
+          });
+
+        tokio::select! {
+          result = result => result,
+          _ = rx => Err(FsError::Paused),
+        }
       }
     }
   }
@@ -982,6 +1004,7 @@ impl crate::fs::File for StdFileResourceInner {
         cell: RefCell::new(Some(inner.try_clone()?)),
         cell_async_task_queue: Default::default(),
         handle: self.handle,
+        read_cancel_handle: Default::default(),
       })),
       None => Err(FsError::FileBusy),
     }
@@ -1000,6 +1023,17 @@ impl crate::fs::File for StdFileResourceInner {
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd> {
     Some(self.handle)
   }
+}
+
+#[op2(fast)]
+pub fn op_io_read_stop(
+  state: &mut OpState,
+  #[smi] rid: u32,
+) -> Result<(), JsErrorBox> {
+    FileResource::with_file(state, rid, |file| {
+      file.read_stop();
+      Ok(())
+    })
 }
 
 // override op_print to use the stdout and stderr in the resource table

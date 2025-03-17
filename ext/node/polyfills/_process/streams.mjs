@@ -217,6 +217,25 @@ export const initStdin = (warmup = false) => {
     }
   }
 
+  if (stdin._handle?.readStop) {
+    stdin._handle.reading = false;
+    stdin._readableState.reading = false;
+    stdin._handle.readStop();
+  }
+
+  function onpause() {
+    if (!stdin._handle) {
+      return;
+    }
+	  console.log(!stdin.readableFlowing, stdin._handle.reading);
+    if (stdin._handle.reading && !stdin.readableFlowing) {
+      stdin._readableState.reading = false;
+	    console.log("readStop");
+      stdin._handle.reading = false;
+      stdin._handle.readStop();
+    }
+  }
+  stdin.on("pause", process.nextTick.bind(null, onpause));
   stdin.on("close", () => io.stdin?.close());
   stdin.fd = io.stdin ? io.STDIN_RID : -1;
   ObjectDefineProperty(stdin, "isTTY", {
