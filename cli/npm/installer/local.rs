@@ -373,8 +373,9 @@ async fn sync_resolution_with_fs(
     lifecycle_scripts.add(package, package_path.into());
   }
 
-  // 2. Setup the patch packages and their node_modules directories
+  // 2. Setup the patch packages
   for patch_pkg in npm_install_deps_provider.patch_pkgs() {
+    // there might be multiple ids per package due to peer dep copy packages
     for id in snapshot.package_ids_for_nv(&patch_pkg.nv) {
       let package = snapshot.package_from_id(id).unwrap();
       let package_folder_name = get_package_folder_id_folder_name(

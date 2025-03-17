@@ -688,8 +688,8 @@ impl CliFactory {
         let npm_packages = Arc::new(WorkspaceNpmPatchPackages::from_workspace(
           cli_options.workspace().as_ref(),
         ));
-        if !npm_packages.0.is_empty() && self.workspace_factory()?.node_modules_dir_mode()? == NodeModulesDirMode::None {
-          bail!("Patching npm packages requires using a node_modules directory. Set the \"nodeModulesDir\" to \"auto\" or \"manual\" in your root deno.json.")
+        if !npm_packages.0.is_empty() && !matches!(self.workspace_factory()?.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
+          bail!("Patching npm packages requires using a node_modules directory. Set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
         } else {
           Ok(npm_packages)
         }

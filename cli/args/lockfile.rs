@@ -265,7 +265,8 @@ impl CliLockfile {
             pkg_json.name.as_ref()?,
             pkg_json.version.as_ref()?
           );
-          // anything that affects resolution should go here
+          // anything that affects npm resolution should go here in order to bust
+          // the npm resolution when it changes
           let value = deno_lockfile::LockfilePatchContent {
             dependencies: collect_deps(pkg_json.dependencies.as_ref()),
             peer_dependencies: collect_deps(
