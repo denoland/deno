@@ -12,7 +12,6 @@ use deno_cache_dir::HttpCacheRc;
 use deno_cache_dir::LocalHttpCache;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::FolderConfigs;
-use deno_config::workspace::PackageJsonDepResolution;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
@@ -23,9 +22,10 @@ use deno_npm::NpmSystemInfo;
 use deno_path_util::fs::canonicalize_path_maybe_not_exists;
 use deno_path_util::normalize_path;
 use futures::future::FutureExt;
-use node_resolver::ConditionsFromResolutionMode;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolver;
+use node_resolver::NodeResolverOptions;
 use node_resolver::NodeResolverRc;
 use node_resolver::PackageJsonResolver;
 use node_resolver::PackageJsonResolverRc;
@@ -60,12 +60,13 @@ use crate::npm::NpmResolverCreateOptions;
 use crate::npmrc::discover_npmrc_from_workspace;
 use crate::npmrc::NpmRcDiscoverError;
 use crate::npmrc::ResolvedNpmRcRc;
-use crate::sloppy_imports::SloppyImportsCachedFs;
-use crate::sloppy_imports::SloppyImportsResolver;
-use crate::sloppy_imports::SloppyImportsResolverRc;
 use crate::sync::new_rc;
 use crate::sync::MaybeSend;
 use crate::sync::MaybeSync;
+use crate::workspace::FsCacheOptions;
+use crate::workspace::PackageJsonDepResolution;
+use crate::workspace::SloppyImportsOptions;
+use crate::workspace::WorkspaceResolver;
 use crate::DefaultDenoResolverRc;
 use crate::DenoResolver;
 use crate::DenoResolverOptions;
@@ -132,7 +133,7 @@ pub trait SpecifiedImportMapProvider:
 {
   async fn get(
     &self,
-  ) -> Result<Option<deno_config::workspace::SpecifiedImportMap>, anyhow::Error>;
+  ) -> Result<Option<crate::workspace::SpecifiedImportMap>, anyhow::Error>;
 }
 
 #[derive(Debug, Clone)]
@@ -558,9 +559,9 @@ impl<TSys: WorkspaceFactorySys> WorkspaceFactory<TSys> {
 
 #[derive(Debug, Default)]
 pub struct ResolverFactoryOptions {
-  pub conditions_from_resolution_mode: ConditionsFromResolutionMode,
-  pub no_sloppy_imports_cache: bool,
   pub npm_system_info: NpmSystemInfo,
+  pub node_resolver_options: NodeResolverOptions,
+  pub node_resolution_cache: Option<node_resolver::NodeResolutionCacheRc>,
   pub package_json_cache: Option<node_resolver::PackageJsonCacheRc>,
   pub package_json_dep_resolution: Option<PackageJsonDepResolution>,
   pub specified_import_map: Option<Box<dyn SpecifiedImportMapProvider>>,
@@ -569,6 +570,7 @@ pub struct ResolverFactoryOptions {
 
 pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   options: ResolverFactoryOptions,
+  sys: NodeResolutionSys<TSys>,
   deno_resolver: async_once_cell::OnceCell<DefaultDenoResolverRc<TSys>>,
   in_npm_package_checker: Deferred<DenoInNpmPackageChecker>,
   node_resolver: Deferred<
@@ -590,8 +592,6 @@ pub struct ResolverFactory<TSys: WorkspaceFactorySys> {
   npm_resolver: Deferred<NpmResolver<TSys>>,
   npm_resolution: NpmResolutionCellRc,
   pkg_json_resolver: Deferred<PackageJsonResolverRc<TSys>>,
-  sloppy_imports_resolver:
-    Deferred<Option<SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>>,
   workspace_factory: WorkspaceFactoryRc<TSys>,
   workspace_resolver: async_once_cell::OnceCell<WorkspaceResolverRc<TSys>>,
 }
@@ -602,6 +602,10 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     options: ResolverFactoryOptions,
   ) -> Self {
     Self {
+      sys: NodeResolutionSys::new(
+        workspace_factory.sys.clone(),
+        options.node_resolution_cache.clone(),
+      ),
       deno_resolver: Default::default(),
       in_npm_package_checker: Default::default(),
       node_resolver: Default::default(),
@@ -609,7 +613,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
       npm_resolution: Default::default(),
       npm_resolver: Default::default(),
       pkg_json_resolver: Default::default(),
-      sloppy_imports_resolver: Default::default(),
       workspace_factory,
       workspace_resolver: Default::default(),
       options,
@@ -639,7 +642,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               .workspace_directory()?
               .workspace
               .vendor_dir_path(),
-            sloppy_imports_resolver: self.sloppy_imports_resolver()?.cloned(),
             workspace_resolver: self.workspace_resolver().await?.clone(),
           })))
         }
@@ -688,8 +690,8 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
         DenoIsBuiltInNodeModuleChecker,
         self.npm_resolver()?.clone(),
         self.pkg_json_resolver().clone(),
-        self.workspace_factory.sys.clone(),
-        self.options.conditions_from_resolution_mode.clone(),
+        self.sys.clone(),
+        self.options.node_resolver_options.clone(),
       )))
     })
   }
@@ -723,7 +725,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     self.npm_resolver.get_or_try_init(|| {
       Ok(NpmResolver::<TSys>::new::<TSys>(if self.use_byonm()? {
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: self.workspace_factory.sys.clone(),
+          sys: self.sys.clone(),
           pkg_json_resolver: self.pkg_json_resolver().clone(),
           root_node_modules_dir: Some(
             match self.workspace_factory.node_modules_dir_path()? {
@@ -763,38 +765,6 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
     })
   }
 
-  pub fn sloppy_imports_resolver(
-    &self,
-  ) -> Result<
-    Option<&SloppyImportsResolverRc<SloppyImportsCachedFs<TSys>>>,
-    anyhow::Error,
-  > {
-    self
-      .sloppy_imports_resolver
-      .get_or_try_init(|| {
-        let enabled = self.options.unstable_sloppy_imports
-          || self
-            .workspace_factory
-            .workspace_directory()?
-            .workspace
-            .has_unstable("sloppy-imports");
-        if enabled {
-          Ok(Some(new_rc(SloppyImportsResolver::new(
-            if self.options.no_sloppy_imports_cache {
-              SloppyImportsCachedFs::new_without_stat_cache(
-                self.workspace_factory.sys.clone(),
-              )
-            } else {
-              SloppyImportsCachedFs::new(self.workspace_factory.sys.clone())
-            },
-          ))))
-        } else {
-          Ok(None)
-        }
-      })
-      .map(|v| v.as_ref())
-  }
-
   pub async fn workspace_resolver(
     &self,
   ) -> Result<&WorkspaceResolverRc<TSys>, anyhow::Error> {
@@ -808,7 +778,7 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
             Some(import_map) => import_map.get().await?,
             None => None,
           };
-          let options = deno_config::workspace::CreateResolverOptions {
+          let options = crate::workspace::CreateResolverOptions {
             pkg_json_dep_resolution: match self
               .options
               .package_json_dep_resolution
@@ -827,9 +797,24 @@ impl<TSys: WorkspaceFactorySys> ResolverFactory<TSys> {
               }
             },
             specified_import_map,
+            sloppy_imports_options: if self.options.unstable_sloppy_imports
+              || self
+                .workspace_factory
+                .workspace_directory()?
+                .workspace
+                .has_unstable("sloppy-imports")
+            {
+              SloppyImportsOptions::Enabled
+            } else {
+              SloppyImportsOptions::Disabled
+            },
+            fs_cache_options: FsCacheOptions::Enabled,
           };
-          let resolver = workspace
-            .create_resolver(self.workspace_factory.sys.clone(), options)?;
+          let resolver = WorkspaceResolver::from_workspace(
+            workspace,
+            self.workspace_factory.sys.clone(),
+            options,
+          )?;
           if !resolver.diagnostics().is_empty() {
             // todo(dsherret): do not log this in this crate... that should be
             // a CLI responsibility

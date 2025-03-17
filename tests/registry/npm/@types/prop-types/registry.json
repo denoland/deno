@@ -39,6 +39,5 @@
     "type": "git",
     "directory": "types/prop-types"
   },
-  "description": "TypeScript definitions for prop-types",
-  "readmeFilename": ""
+  "description": "TypeScript definitions for prop-types"
 }

@@ -38,7 +38,6 @@ declare class GPUSupportedLimits {
   maxBufferSize?: number;
   maxVertexAttributes?: number;
   maxVertexBufferArrayStride?: number;
-  maxInterStageShaderComponents?: number;
   maxColorAttachments?: number;
   maxColorAttachmentBytesPerSample?: number;
   maxComputeWorkgroupStorageSize?: number;
@@ -73,6 +72,8 @@ declare class GPUAdapterInfo {
   readonly architecture: string;
   readonly device: string;
   readonly description: string;
+  readonly subgroupMinSize: number;
+  readonly subgroupMaxSize: number;
 }
 
 /** @category GPU */
@@ -105,36 +106,55 @@ declare class GPUAdapter {
 /** @category GPU */
 interface GPUDeviceDescriptor extends GPUObjectDescriptorBase {
   requiredFeatures?: GPUFeatureName[];
-  requiredLimits?: Record<string, number>;
+  requiredLimits?: Record<string, number | undefined>;
 }
 
 /** @category GPU */
 type GPUFeatureName =
   | "depth-clip-control"
-  | "depth32float-stencil8"
-  | "pipeline-statistics-query"
-  | "texture-compression-bc"
-  | "texture-compression-etc2"
-  | "texture-compression-astc"
   | "timestamp-query"
   | "indirect-first-instance"
   | "shader-f16"
+  | "depth32float-stencil8"
+  | "texture-compression-bc"
+  | "texture-compression-bc-sliced-3d"
+  | "texture-compression-etc2"
+  | "texture-compression-astc"
   | "rg11b10ufloat-renderable"
   | "bgra8unorm-storage"
   | "float32-filterable"
+  | "dual-source-blending"
+  | "subgroups"
   // extended from spec
+  | "texture-format-16-bit-norm"
+  | "texture-compression-astc-hdr"
+  | "texture-adapter-specific-format-features"
+  | "pipeline-statistics-query"
+  | "timestamp-query-inside-passes"
   | "mappable-primary-buffers"
-  | "sampled-texture-binding-array"
-  | "sampled-texture-array-dynamic-indexing"
-  | "sampled-texture-array-non-uniform-indexing"
-  | "unsized-binding-array"
+  | "texture-binding-array"
+  | "buffer-binding-array"
+  | "storage-resource-binding-array"
+  | "sampled-texture-and-storage-buffer-array-non-uniform-indexing"
+  | "uniform-buffer-and-storage-texture-array-non-uniform-indexing"
+  | "partially-bound-binding-array"
   | "multi-draw-indirect"
   | "multi-draw-indirect-count"
   | "push-constants"
+  | "address-mode-clamp-to-zero"
   | "address-mode-clamp-to-border"
-  | "texture-adapter-specific-format-features"
-  | "shader-float64"
-  | "vertex-attribute-64bit";
+  | "polygon-mode-line"
+  | "polygon-mode-point"
+  | "conservative-rasterization"
+  | "vertex-writable-storage"
+  | "clear-texture"
+  | "spirv-shader-passthrough"
+  | "multiview"
+  | "vertex-attribute-64-bit"
+  | "shader-f64"
+  | "shader-i16"
+  | "shader-primitive-index"
+  | "shader-early-depth-test";
 
 /** @category GPU */
 declare class GPUDevice extends EventTarget implements GPUObjectBase {
@@ -146,6 +166,7 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
 
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
+  readonly adapterInfo: GPUAdapterInfo;
   readonly queue: GPUQueue;
 
   destroy(): undefined;
@@ -296,6 +317,7 @@ declare class GPUTextureView implements GPUObjectBase {
 interface GPUTextureViewDescriptor extends GPUObjectDescriptorBase {
   format?: GPUTextureFormat;
   dimension?: GPUTextureViewDimension;
+  usage?: GPUTextureUsageFlags;
   aspect?: GPUTextureAspect;
   baseMipLevel?: number;
   mipLevelCount?: number;
@@ -744,7 +766,11 @@ type GPUBlendFactor =
   | "one-minus-dst-alpha"
   | "src-alpha-saturated"
   | "constant"
-  | "one-minus-constant";
+  | "one-minus-constant"
+  | "src1"
+  | "one-minus-src1"
+  | "src1-alpha"
+  | "one-minus-src1-alpha";
 
 /** @category GPU */
 type GPUBlendOperation =
@@ -758,8 +784,8 @@ type GPUBlendOperation =
 interface GPUDepthStencilState {
   format: GPUTextureFormat;
 
-  depthWriteEnabled: boolean;
-  depthCompare: GPUCompareFunction;
+  depthWriteEnabled?: boolean;
+  depthCompare?: GPUCompareFunction;
 
   stencilFront?: GPUStencilFaceState;
   stencilBack?: GPUStencilFaceState;
@@ -852,7 +878,7 @@ interface GPUVertexAttribute {
 }
 
 /** @category GPU */
-interface GPUImageDataLayout {
+interface GPUTexelCopyBufferLayout {
   offset?: number;
   bytesPerRow?: number;
   rowsPerImage?: number;
@@ -884,20 +910,20 @@ declare class GPUCommandEncoder implements GPUObjectBase {
   ): undefined;
 
   copyBufferToTexture(
-    source: GPUImageCopyBuffer,
-    destination: GPUImageCopyTexture,
+    source: GPUTexelCopyBufferInfo,
+    destination: GPUTexelCopyTextureInfo,
     copySize: GPUExtent3D,
   ): undefined;
 
   copyTextureToBuffer(
-    source: GPUImageCopyTexture,
-    destination: GPUImageCopyBuffer,
+    source: GPUTexelCopyTextureInfo,
+    destination: GPUTexelCopyBufferInfo,
     copySize: GPUExtent3D,
   ): undefined;
 
   copyTextureToTexture(
-    source: GPUImageCopyTexture,
-    destination: GPUImageCopyTexture,
+    source: GPUTexelCopyTextureInfo,
+    destination: GPUTexelCopyTextureInfo,
     copySize: GPUExtent3D,
   ): undefined;
 
@@ -928,12 +954,12 @@ declare class GPUCommandEncoder implements GPUObjectBase {
 interface GPUCommandEncoderDescriptor extends GPUObjectDescriptorBase {}
 
 /** @category GPU */
-interface GPUImageCopyBuffer extends GPUImageDataLayout {
+interface GPUTexelCopyBufferInfo extends GPUTexelCopyBufferLayout {
   buffer: GPUBuffer;
 }
 
 /** @category GPU */
-interface GPUImageCopyTexture {
+interface GPUTexelCopyTextureInfo {
   texture: GPUTexture;
   mipLevel?: number;
   origin?: GPUOrigin3D;
@@ -944,13 +970,13 @@ interface GPUImageCopyTexture {
 interface GPUProgrammablePassEncoder {
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsets?: number[],
   ): undefined;
 
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsetsData: Uint32Array,
     dynamicOffsetsDataStart: number,
     dynamicOffsetsDataLength: number,
@@ -967,12 +993,12 @@ declare class GPUComputePassEncoder
   label: string;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsets?: number[],
   ): undefined;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsetsData: Uint32Array,
     dynamicOffsetsDataStart: number,
     dynamicOffsetsDataLength: number,
@@ -1046,12 +1072,12 @@ declare class GPURenderPassEncoder
   label: string;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsets?: number[],
   ): undefined;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsetsData: Uint32Array,
     dynamicOffsetsDataStart: number,
     dynamicOffsetsDataLength: number,
@@ -1198,12 +1224,12 @@ declare class GPURenderBundleEncoder
   pushDebugGroup(groupLabel: string): undefined;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsets?: number[],
   ): undefined;
   setBindGroup(
     index: number,
-    bindGroup: GPUBindGroup,
+    bindGroup: GPUBindGroup | null,
     dynamicOffsetsData: Uint32Array,
     dynamicOffsetsDataStart: number,
     dynamicOffsetsDataLength: number,
@@ -1255,9 +1281,9 @@ declare class GPUQueue implements GPUObjectBase {
   ): undefined;
 
   writeTexture(
-    destination: GPUImageCopyTexture,
+    destination: GPUTexelCopyTextureInfo,
     data: BufferSource,
-    dataLayout: GPUImageDataLayout,
+    dataLayout: GPUTexelCopyBufferLayout,
     size: GPUExtent3D,
   ): undefined;
 }

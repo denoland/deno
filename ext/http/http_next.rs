@@ -270,8 +270,12 @@ pub async fn op_http_upgrade_websocket_next(
   // Stage 1: set the response to 101 Switching Protocols and send it
   let upgrade = http.upgrade()?;
   {
+    {
+      http.otel_info_set_status(StatusCode::SWITCHING_PROTOCOLS.as_u16());
+    }
     let mut response_parts = http.response_parts();
     response_parts.status = StatusCode::SWITCHING_PROTOCOLS;
+
     for (name, value) in headers {
       response_parts.headers.append(
         HeaderName::from_bytes(&name).unwrap(),
@@ -305,7 +309,10 @@ fn set_promise_complete(http: Rc<HttpRecord>, status: u16) {
   // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
   // will quietly ignore invalid values.
   if let Ok(code) = StatusCode::from_u16(status) {
-    http.response_parts().status = code;
+    {
+      http.response_parts().status = code;
+    }
+    http.otel_info_set_status(status);
   }
   http.complete();
 }
@@ -713,7 +720,10 @@ fn set_response(
     // The Javascript code should never provide a status that is invalid here (see 23_response.js), so we
     // will quietly ignore invalid values.
     if let Ok(code) = StatusCode::from_u16(status) {
-      http.response_parts().status = code;
+      {
+        http.response_parts().status = code;
+      }
+      http.otel_info_set_status(status);
     }
   } else if force_instantiate_body {
     response_fn(Compression::None).abort();
@@ -1403,4 +1413,13 @@ pub async fn op_raw_write_vectored(
     state.borrow().resource_table.get::<UpgradeStream>(rid)?;
   let nwritten = resource.write_vectored(&buf1, &buf2).await?;
   Ok(nwritten)
+}
+
+#[op2(fast)]
+pub fn op_http_metric_handle_otel_error(external: *const c_void) {
+  let http =
+    // SAFETY: external is deleted before calling this op.
+    unsafe { take_external!(external, "op_http_metric_handle_otel_error") };
+
+  http.otel_info_set_error("user");
 }

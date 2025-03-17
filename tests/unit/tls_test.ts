@@ -6,8 +6,9 @@ import {
   assertRejects,
   assertStrictEquals,
   assertThrows,
+  BufReader,
+  BufWriter,
 } from "./test_util.ts";
-import { BufReader, BufWriter } from "@std/io";
 import { readAll } from "@std/io/read-all";
 import { writeAll } from "@std/io/write-all";
 import { TextProtoReader } from "../testdata/run/textproto.ts";

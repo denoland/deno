@@ -7,11 +7,6 @@ use std::path::PathBuf;
 
 use boxed_error::Boxed;
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::MappedResolution;
-use deno_config::workspace::MappedResolutionDiagnostic;
-use deno_config::workspace::MappedResolutionError;
-use deno_config::workspace::WorkspaceResolvePkgJsonFolderError;
-use deno_config::workspace::WorkspaceResolver;
 use deno_error::JsError;
 use deno_package_json::PackageJsonDepValue;
 use deno_package_json::PackageJsonDepValueParseError;
@@ -31,9 +26,6 @@ use npm::NpmReqResolverRc;
 use npm::ResolveIfForNpmPackageErrorKind;
 use npm::ResolvePkgFolderFromDenoReqError;
 use npm::ResolveReqWithSubPathErrorKind;
-use sloppy_imports::SloppyImportResolverFs;
-use sloppy_imports::SloppyImportsResolutionKind;
-use sloppy_imports::SloppyImportsResolverRc;
 use sys_traits::FsCanonicalize;
 use sys_traits::FsMetadata;
 use sys_traits::FsRead;
@@ -41,12 +33,18 @@ use sys_traits::FsReadDir;
 use thiserror::Error;
 use url::Url;
 
+use crate::workspace::MappedResolution;
+use crate::workspace::MappedResolutionDiagnostic;
+use crate::workspace::MappedResolutionError;
+use crate::workspace::WorkspaceResolvePkgJsonFolderError;
+use crate::workspace::WorkspaceResolver;
+
 pub mod cjs;
 pub mod factory;
 pub mod npm;
 pub mod npmrc;
-pub mod sloppy_imports;
 mod sync;
+pub mod workspace;
 
 #[allow(clippy::disallowed_types)]
 pub type WorkspaceResolverRc<TSys> =
@@ -70,6 +68,9 @@ pub enum DenoResolveErrorKind {
   #[class(type)]
   #[error("Importing from the vendor directory is not permitted. Use a remote specifier instead or disable vendoring.")]
   InvalidVendorFolderImport,
+  #[class(type)]
+  #[error("Importing npm packages via a file: specifier is only supported with --node-modules-dir=manual")]
+  UnsupportedPackageJsonFileSpecifier,
   #[class(inherit)]
   #[error(transparent)]
   MappedResolution(#[from] MappedResolutionError),
@@ -128,7 +129,6 @@ pub struct DenoResolverOptions<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSloppyImportResolverFs: SloppyImportResolverFs,
   TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
   pub in_npm_pkg_checker: TInNpmPackageChecker,
@@ -140,8 +140,6 @@ pub struct DenoResolverOptions<
       TSys,
     >,
   >,
-  pub sloppy_imports_resolver:
-    Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
   pub workspace_resolver: WorkspaceResolverRc<TSys>,
   /// Whether "bring your own node_modules" is enabled where Deno does not
   /// setup the node_modules directories automatically, but instead uses
@@ -155,14 +153,12 @@ pub type DenoResolverRc<
   TInNpmPackageChecker,
   TIsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver,
-  TSloppyImportResolverFs,
   TSys,
 > = crate::sync::MaybeArc<
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
-    TSloppyImportResolverFs,
     TSys,
   >,
 >;
@@ -173,7 +169,6 @@ pub type DefaultDenoResolverRc<TSys> = DenoResolverRc<
   npm::DenoInNpmPackageChecker,
   node_resolver::DenoIsBuiltInNodeModuleChecker,
   npm::NpmResolver<TSys>,
-  sloppy_imports::SloppyImportsCachedFs<TSys>,
   TSys,
 >;
 
@@ -184,7 +179,6 @@ pub struct DenoResolver<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSloppyImportResolverFs: SloppyImportResolverFs,
   TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
 > {
   in_npm_pkg_checker: TInNpmPackageChecker,
@@ -196,8 +190,6 @@ pub struct DenoResolver<
       TSys,
     >,
   >,
-  sloppy_imports_resolver:
-    Option<SloppyImportsResolverRc<TSloppyImportResolverFs>>,
   workspace_resolver: WorkspaceResolverRc<TSys>,
   is_byonm: bool,
   maybe_vendor_specifier: Option<Url>,
@@ -207,14 +199,12 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSloppyImportResolverFs: SloppyImportResolverFs,
     TSys: FsCanonicalize + FsMetadata + FsRead + FsReadDir,
   >
   DenoResolver<
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver,
-    TSloppyImportResolverFs,
     TSys,
   >
 {
@@ -223,14 +213,12 @@ impl<
       TInNpmPackageChecker,
       TIsBuiltInNodeModuleChecker,
       TNpmPackageFolderResolver,
-      TSloppyImportResolverFs,
       TSys,
     >,
   ) -> Self {
     Self {
       in_npm_pkg_checker: options.in_npm_pkg_checker,
       node_and_npm_resolver: options.node_and_req_resolver,
-      sloppy_imports_resolver: options.sloppy_imports_resolver,
       workspace_resolver: options.workspace_resolver,
       is_byonm: options.is_byonm,
       maybe_vendor_specifier: options
@@ -277,33 +265,10 @@ impl<
         MappedResolution::Normal {
           specifier,
           maybe_diagnostic: current_diagnostic,
-        }
-        | MappedResolution::ImportMap {
-          specifier,
-          maybe_diagnostic: current_diagnostic,
+          ..
         } => {
           maybe_diagnostic = current_diagnostic;
-          // do sloppy imports resolution if enabled
-          if let Some(sloppy_imports_resolver) = &self.sloppy_imports_resolver {
-            Ok(
-              sloppy_imports_resolver
-                .resolve(
-                  &specifier,
-                  match resolution_kind {
-                    NodeResolutionKind::Execution => {
-                      SloppyImportsResolutionKind::Execution
-                    }
-                    NodeResolutionKind::Types => {
-                      SloppyImportsResolutionKind::Types
-                    }
-                  },
-                )
-                .map(|s| s.into_specifier())
-                .unwrap_or(specifier),
-            )
-          } else {
-            Ok(specifier)
-          }
+          Ok(specifier)
         }
         MappedResolution::WorkspaceJsrPackage { specifier, .. } => {
           Ok(specifier)
@@ -343,6 +308,16 @@ impl<
                 .into_box()
             })
             .and_then(|dep| match dep {
+              PackageJsonDepValue::File(_) => {
+                // We don't support --node-modules-dir=auto/none because it's too
+                // much work to get this to work with a lockfile properly and for
+                // multiple managed node_modules directories to work. If someone wants
+                // to do this, then they need to use the default (manual)
+                Err(
+                  DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+                    .into_box(),
+                )
+              }
               // todo(dsherret): it seems bad that we're converting this
               // to a url because the req might not be a valid url.
               PackageJsonDepValue::Req(req) => Url::parse(&format!(

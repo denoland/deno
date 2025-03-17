@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::too_many_arguments)]
+#![expect(unexpected_cfgs)]
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -38,8 +39,10 @@ use opentelemetry::logs::AnyValue;
 use opentelemetry::logs::LogRecord as LogRecordTrait;
 use opentelemetry::logs::Severity;
 use opentelemetry::metrics::AsyncInstrumentBuilder;
+pub use opentelemetry::metrics::Histogram;
 use opentelemetry::metrics::InstrumentBuilder;
-use opentelemetry::metrics::MeterProvider as _;
+pub use opentelemetry::metrics::MeterProvider;
+pub use opentelemetry::metrics::UpDownCounter;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
 use opentelemetry::trace::Link;
@@ -51,10 +54,10 @@ use opentelemetry::trace::TraceFlags;
 use opentelemetry::trace::TraceId;
 use opentelemetry::trace::TraceState;
 use opentelemetry::InstrumentationScope;
-use opentelemetry::Key;
-use opentelemetry::KeyValue;
-use opentelemetry::StringValue;
-use opentelemetry::Value;
+pub use opentelemetry::Key;
+pub use opentelemetry::KeyValue;
+pub use opentelemetry::StringValue;
+pub use opentelemetry::Value;
 use opentelemetry_otlp::HttpExporterBuilder;
 use opentelemetry_otlp::Protocol;
 use opentelemetry_otlp::WithExportConfig;
@@ -124,18 +127,33 @@ pub struct OtelConfig {
   pub tracing_enabled: bool,
   pub metrics_enabled: bool,
   pub console: OtelConsoleConfig,
-  pub deterministic: bool,
+  pub deterministic_prefix: Option<u8>,
+  pub propagators: std::collections::HashSet<OtelPropagators>,
 }
 
 impl OtelConfig {
   pub fn as_v8(&self) -> Box<[u8]> {
-    Box::new([
+    let mut data = vec![
       self.tracing_enabled as u8,
       self.metrics_enabled as u8,
       self.console as u8,
-      self.deterministic as u8,
-    ])
+    ];
+
+    data.extend(self.propagators.iter().map(|propagator| *propagator as u8));
+
+    data.into_boxed_slice()
   }
+}
+
+#[derive(
+  Default, Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash,
+)]
+#[repr(u8)]
+pub enum OtelPropagators {
+  TraceContext = 0,
+  Baggage = 1,
+  #[default]
+  None = 2,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -196,7 +214,7 @@ fn otel_create_shared_runtime() -> UnboundedSender<BoxFuture<'static, ()>> {
 }
 
 #[derive(Clone, Copy)]
-struct OtelSharedRuntime;
+pub struct OtelSharedRuntime;
 
 impl hyper::rt::Executor<BoxFuture<'static, ()>> for OtelSharedRuntime {
   fn execute(&self, fut: BoxFuture<'static, ()>) {
@@ -586,19 +604,31 @@ mod hyper_client {
   }
 }
 
-struct OtelGlobals {
-  span_processor: BatchSpanProcessor<OtelSharedRuntime>,
-  log_processor: BatchLogProcessor<OtelSharedRuntime>,
-  id_generator: DenoIdGenerator,
-  meter_provider: SdkMeterProvider,
-  builtin_instrumentation_scope: InstrumentationScope,
+#[derive(Debug)]
+pub struct OtelGlobals {
+  pub span_processor: BatchSpanProcessor<OtelSharedRuntime>,
+  pub log_processor: BatchLogProcessor<OtelSharedRuntime>,
+  pub id_generator: DenoIdGenerator,
+  pub meter_provider: SdkMeterProvider,
+  pub builtin_instrumentation_scope: InstrumentationScope,
+  pub config: OtelConfig,
 }
 
-static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
+impl OtelGlobals {
+  pub fn has_tracing(&self) -> bool {
+    self.config.tracing_enabled
+  }
+
+  pub fn has_metrics(&self) -> bool {
+    self.config.metrics_enabled
+  }
+}
+
+pub static OTEL_GLOBALS: OnceCell<OtelGlobals> = OnceCell::new();
 
 pub fn init(
   rt_config: OtelRuntimeConfig,
-  config: &OtelConfig,
+  config: OtelConfig,
 ) -> deno_core::anyhow::Result<()> {
   // Parse the `OTEL_EXPORTER_OTLP_PROTOCOL` variable. The opentelemetry_*
   // crates don't do this automatically.
@@ -710,8 +740,8 @@ pub fn init(
       .with_version(rt_config.runtime_version.clone())
       .build();
 
-  let id_generator = if config.deterministic {
-    DenoIdGenerator::deterministic()
+  let id_generator = if let Some(prefix) = config.deterministic_prefix {
+    DenoIdGenerator::deterministic(prefix)
   } else {
     DenoIdGenerator::random()
   };
@@ -723,6 +753,7 @@ pub fn init(
       id_generator,
       meter_provider,
       builtin_instrumentation_scope,
+      config,
     })
     .map_err(|_| deno_core::anyhow::anyhow!("failed to set otel globals"))?;
 
@@ -774,7 +805,7 @@ pub fn handle_log(record: &log::Record) {
 
   struct Visitor<'s>(&'s mut LogRecord);
 
-  impl<'s, 'kvs> log::kv::VisitSource<'kvs> for Visitor<'s> {
+  impl<'kvs> log::kv::VisitSource<'kvs> for Visitor<'_> {
     fn visit_pair(
       &mut self,
       key: log::kv::Key<'kvs>,
@@ -808,7 +839,7 @@ pub fn handle_log(record: &log::Record) {
 }
 
 #[derive(Debug)]
-enum DenoIdGenerator {
+pub enum DenoIdGenerator {
   Random(RandomIdGenerator),
   Deterministic {
     next_trace_id: AtomicU64,
@@ -850,10 +881,11 @@ impl DenoIdGenerator {
     Self::Random(RandomIdGenerator::default())
   }
 
-  fn deterministic() -> Self {
+  fn deterministic(prefix: u8) -> Self {
+    let prefix = u64::from(prefix) << 56;
     Self::Deterministic {
-      next_trace_id: AtomicU64::new(1),
-      next_span_id: AtomicU64::new(1),
+      next_trace_id: AtomicU64::new(prefix + 1),
+      next_span_id: AtomicU64::new(prefix + 1),
     }
   }
 }
@@ -1184,7 +1216,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1251,7 +1283,7 @@ impl OtelTracer {
     let start_time = start_time
       .map(|start_time| {
         SystemTime::UNIX_EPOCH
-          .checked_add(std::time::Duration::from_secs_f64(start_time))
+          .checked_add(std::time::Duration::from_secs_f64(start_time / 1000.0))
           .ok_or_else(|| JsErrorBox::generic("invalid start time"))
       })
       .unwrap_or_else(|| Ok(SystemTime::now()))?;
@@ -1366,7 +1398,7 @@ impl OtelSpan {
       SystemTime::now()
     } else {
       SystemTime::UNIX_EPOCH
-        .checked_add(Duration::from_secs_f64(end_time))
+        .checked_add(Duration::from_secs_f64(end_time / 1000.0))
         .unwrap()
     };
 
@@ -1708,9 +1740,9 @@ impl OtelMeter {
 
 enum Instrument {
   Counter(opentelemetry::metrics::Counter<f64>),
-  UpDownCounter(opentelemetry::metrics::UpDownCounter<f64>),
+  UpDownCounter(UpDownCounter<f64>),
   Gauge(opentelemetry::metrics::Gauge<f64>),
-  Histogram(opentelemetry::metrics::Histogram<f64>),
+  Histogram(Histogram<f64>),
   Observable(Arc<Mutex<HashMap<Vec<KeyValue>, f64>>>),
 }
 

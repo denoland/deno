@@ -38,6 +38,7 @@ use crate::args::Flags;
 use crate::colors;
 use crate::display::write_json_to_stdout;
 use crate::factory::CliFactory;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -456,13 +457,19 @@ pub async fn run_benchmarks(
     .flatten()
     .collect::<Vec<_>>();
 
-  if specifiers.is_empty() {
+  if !workspace_bench_options.permit_no_files && specifiers.is_empty() {
     return Err(anyhow!("No bench modules found"));
   }
 
   let main_graph_container = factory.main_module_graph_container().await?;
   main_graph_container
-    .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+    .check_specifiers(
+      &specifiers,
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
+    )
     .await?;
 
   if workspace_bench_options.no_run {
@@ -595,7 +602,13 @@ pub async fn run_benchmarks_with_watch(
         factory
           .main_module_graph_container()
           .await?
-          .check_specifiers(&specifiers, cli_options.ext_flag().as_ref())
+          .check_specifiers(
+            &specifiers,
+            CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              allow_unknown_media_types: false,
+            },
+          )
           .await?;
 
         if workspace_bench_options.no_run {

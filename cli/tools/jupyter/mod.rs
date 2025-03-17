@@ -22,6 +22,7 @@ use jupyter_runtime::messaging::StreamContent;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::args::Flags;
 use crate::args::JupyterFlags;
@@ -390,7 +391,9 @@ impl JupyterReplSession {
         line_text,
         position,
       } => JupyterReplResponse::LspCompletions(
-        self.lsp_completions(&line_text, position).await,
+        self
+          .lsp_completions(&line_text, position, CancellationToken::new())
+          .await,
       ),
       JupyterReplRequest::JsGetProperties { object_id } => {
         JupyterReplResponse::JsGetProperties(
@@ -432,11 +435,12 @@ impl JupyterReplSession {
     &mut self,
     line_text: &str,
     position: usize,
+    token: CancellationToken,
   ) -> Vec<ReplCompletionItem> {
     self
       .repl_session
       .language_server
-      .completions(line_text, position)
+      .completions(line_text, position, token)
       .await
   }
 

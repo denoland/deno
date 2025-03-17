@@ -67,6 +67,7 @@ use rand::SeedableRng;
 use regex::Regex;
 use serde::Deserialize;
 use tokio::signal;
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::args::CliOptions;
 use crate::args::Flags;
@@ -76,6 +77,7 @@ use crate::colors;
 use crate::display;
 use crate::factory::CliFactory;
 use crate::file_fetcher::CliFileFetcher;
+use crate::graph_container::CheckSpecifiersOptions;
 use crate::graph_util::has_graph_root_local_dependent_changed;
 use crate::ops;
 use crate::sys::CliSys;
@@ -615,6 +617,7 @@ async fn configure_main_worker(
   permissions_container: PermissionsContainer,
   worker_sender: TestEventWorkerSender,
   options: &TestSpecifierOptions,
+  sender: UnboundedSender<jupyter_runtime::messaging::content::StreamContent>,
 ) -> Result<
   (Option<Box<dyn CoverageCollector>>, MainWorker),
   CreateCustomWorkerError,
@@ -626,7 +629,8 @@ async fn configure_main_worker(
       permissions_container,
       vec![
         ops::testing::deno_test::init_ops(worker_sender.sender),
-        ops::lint::deno_lint::init_ops(),
+        ops::lint::deno_lint_ext_for_test::init_ops(),
+        ops::jupyter::deno_jupyter_for_test::init_ops(sender),
       ],
       Stdio {
         stdin: StdioPipe::inherit(),
@@ -672,12 +676,14 @@ pub async fn test_specifier(
   if fail_fast_tracker.should_stop() {
     return Ok(());
   }
+  let jupyter_channel = tokio::sync::mpsc::unbounded_channel();
   let (coverage_collector, mut worker) = configure_main_worker(
     worker_factory,
     &specifier,
     permissions_container,
     worker_sender,
     &options,
+    jupyter_channel.0,
   )
   .await?;
 
@@ -1599,7 +1605,10 @@ pub async fn run_tests(
   main_graph_container
     .check_specifiers(
       &specifiers_for_typecheck_and_test,
-      cli_options.ext_flag().as_ref(),
+      CheckSpecifiersOptions {
+        ext_overwrite: cli_options.ext_flag().as_ref(),
+        ..Default::default()
+      },
     )
     .await?;
 
@@ -1782,7 +1791,10 @@ pub async fn run_tests_with_watch(
         main_graph_container
           .check_specifiers(
             &specifiers_for_typecheck_and_test,
-            cli_options.ext_flag().as_ref(),
+            crate::graph_container::CheckSpecifiersOptions {
+              ext_overwrite: cli_options.ext_flag().as_ref(),
+              ..Default::default()
+            },
           )
           .await?;
 

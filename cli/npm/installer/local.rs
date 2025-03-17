@@ -176,9 +176,7 @@ async fn sync_resolution_with_fs(
   system_info: &NpmSystemInfo,
   lifecycle_scripts: &LifecycleScriptsConfig,
 ) -> Result<(), SyncResolutionWithFsError> {
-  if snapshot.is_empty()
-    && npm_install_deps_provider.workspace_pkgs().is_empty()
-  {
+  if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
   }
 
@@ -279,15 +277,23 @@ async fn sync_resolution_with_fs(
       TagsOutdated,
     }
     let initialized_file = folder_path.join(".initialized");
-    let package_state = std::fs::read_to_string(&initialized_file)
-      .map(|s| {
-        if s != tags {
-          PackageFolderState::TagsOutdated
-        } else {
-          PackageFolderState::UpToDate
-        }
-      })
-      .unwrap_or(PackageFolderState::Uninitialized);
+    let package_state = if tags.is_empty() {
+      if initialized_file.exists() {
+        PackageFolderState::UpToDate
+      } else {
+        PackageFolderState::Uninitialized
+      }
+    } else {
+      std::fs::read_to_string(&initialized_file)
+        .map(|s| {
+          if s != tags {
+            PackageFolderState::TagsOutdated
+          } else {
+            PackageFolderState::UpToDate
+          }
+        })
+        .unwrap_or(PackageFolderState::Uninitialized)
+    };
     if !cache
       .cache_setting()
       .should_use_for_npm_package(&package.id.nv.name)
@@ -621,13 +627,13 @@ async fn sync_resolution_with_fs(
     // todo(dsherret): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
     // but this is good enough for a first pass
-    for workspace in npm_install_deps_provider.workspace_pkgs() {
-      let Some(workspace_alias) = &workspace.alias else {
+    for pkg in npm_install_deps_provider.local_pkgs() {
+      let Some(pkg_alias) = &pkg.alias else {
         continue;
       };
       symlink_package_dir(
-        &workspace.target_dir,
-        &root_node_modules_dir_path.join(workspace_alias),
+        &pkg.target_dir,
+        &root_node_modules_dir_path.join(pkg_alias),
       )?;
     }
   }
@@ -689,7 +695,7 @@ struct LocalLifecycleScripts<'a> {
   deno_local_registry_dir: &'a Path,
 }
 
-impl<'a> LocalLifecycleScripts<'a> {
+impl LocalLifecycleScripts<'_> {
   /// `node_modules/.deno/<package>/.scripts-run`
   fn ran_scripts_file(&self, package: &NpmResolutionPackage) -> PathBuf {
     local_node_modules_package_folder(self.deno_local_registry_dir, package)
@@ -703,8 +709,8 @@ impl<'a> LocalLifecycleScripts<'a> {
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for LocalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for LocalLifecycleScripts<'_>
 {
   fn package_path(&self, package: &NpmResolutionPackage) -> PathBuf {
     local_node_modules_package_contents_path(
@@ -776,7 +782,7 @@ struct SetupCacheDep<'a> {
   current: &'a mut BTreeMap<String, String>,
 }
 
-impl<'a> SetupCacheDep<'a> {
+impl SetupCacheDep<'_> {
   pub fn insert(&mut self, name: &str, target_folder_name: &str) -> bool {
     self
       .current

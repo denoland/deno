@@ -46,6 +46,8 @@ use crate::resolve_addr::resolve_addr_sync;
 use crate::tcp::TcpListener;
 use crate::NetPermissions;
 
+pub type Fd = u32;
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TlsHandshakeInfo {
@@ -165,7 +167,7 @@ pub(crate) fn accept_err(e: std::io::Error) -> NetError {
 pub async fn op_net_accept_tcp(
   state: Rc<RefCell<OpState>>,
   #[smi] rid: ResourceId,
-) -> Result<(ResourceId, IpAddr, IpAddr), NetError> {
+) -> Result<(ResourceId, IpAddr, IpAddr, Option<Fd>), NetError> {
   let resource = state
     .borrow()
     .resource_table
@@ -180,6 +182,14 @@ pub async fn op_net_accept_tcp(
     .try_or_cancel(cancel)
     .await
     .map_err(accept_err)?;
+  let mut _fd_raw: Option<Fd> = None;
+  #[cfg(not(windows))]
+  {
+    use std::os::fd::AsFd;
+    use std::os::fd::AsRawFd;
+    let fd = tcp_stream.as_fd();
+    _fd_raw = Some(fd.as_raw_fd() as u32);
+  }
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -187,7 +197,12 @@ pub async fn op_net_accept_tcp(
   let rid = state
     .resource_table
     .add(TcpStreamResource::new(tcp_stream.into_split()));
-  Ok((rid, IpAddr::from(local_addr), IpAddr::from(remote_addr)))
+  Ok((
+    rid,
+    IpAddr::from(local_addr),
+    IpAddr::from(remote_addr),
+    _fd_raw,
+  ))
 }
 
 #[op2(async)]
