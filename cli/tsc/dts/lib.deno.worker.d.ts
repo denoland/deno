@@ -33,19 +33,13 @@ declare interface WorkerGlobalScopeEventMap {
  * @category Workers
  */
 declare interface WorkerGlobalScope extends EventTarget {
-  /**
-   * The location of the worker's script, represented by a WorkerLocation object.
-   */
+  /** The location of the worker's script, represented by a WorkerLocation object. */
   readonly location: WorkerLocation;
 
-  /**
-   * The navigator object for the worker context.
-   */
+  /** The navigator object for the worker context. */
   readonly navigator: WorkerNavigator;
 
-  /**
-   * Event handler for error events that occur in the worker.
-   */
+  /** Event handler for error events that occur in the worker. */
   onerror: ((this: WorkerGlobalScope, ev: ErrorEvent) => any) | null;
 
   /**
@@ -55,14 +49,10 @@ declare interface WorkerGlobalScope extends EventTarget {
     | ((this: WorkerGlobalScope, ev: PromiseRejectionEvent) => any)
     | null;
 
-  /**
-   * Reference to the worker's global scope, which is the worker itself.
-   */
+  /** Reference to the worker's global scope, which is the worker itself. */
   readonly self: WorkerGlobalScope & typeof globalThis;
 
-  /**
-   * Adds an event listener for events of a specific type on the worker.
-   */
+  /** Adds an event listener for events of a specific type on the worker. */
   addEventListener<K extends keyof WorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -72,18 +62,14 @@ declare interface WorkerGlobalScope extends EventTarget {
     options?: boolean | AddEventListenerOptions,
   ): void;
 
-  /**
-   * Adds an event listener for events of a specific type on the worker.
-   */
+  /** Adds an event listener for events of a specific type on the worker. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void;
 
-  /**
-   * Removes an event listener previously registered with addEventListener.
-   */
+  /** Removes an event listener previously registered with addEventListener. */
   removeEventListener<K extends keyof WorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -93,23 +79,17 @@ declare interface WorkerGlobalScope extends EventTarget {
     options?: boolean | EventListenerOptions,
   ): void;
 
-  /**
-   * Removes an event listener previously registered with addEventListener.
-   */
+  /** Removes an event listener previously registered with addEventListener. */
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | EventListenerOptions,
   ): void;
 
-  /**
-   * The Deno namespace containing runtime APIs.
-   */
+  /** The Deno namespace containing runtime APIs. */
   Deno: typeof Deno;
 
-  /**
-   * The cache storage object for the worker.
-   */
+  /** The cache storage object for the worker. */
   caches: CacheStorage;
 }
 
@@ -137,29 +117,19 @@ declare var WorkerGlobalScope: {
  * @category Platform
  */
 declare interface WorkerNavigator {
-  /**
-   * Provides access to the WebGPU API.
-   */
+  /** Provides access to the WebGPU API. */
   readonly gpu: GPU;
 
-  /**
-   * Returns the number of logical processors available to run threads on the user's computer.
-   */
+  /** Returns the number of logical processors available to run threads on the user's computer. */
   readonly hardwareConcurrency: number;
 
-  /**
-   * Returns the user agent string for the current browser.
-   */
+  /** Returns the user agent string for the current browser. */
   readonly userAgent: string;
 
-  /**
-   * Returns the preferred language of the user, as a string.
-   */
+  /** Returns the preferred language of the user, as a string. */
   readonly language: string;
 
-  /**
-   * Returns an array of strings representing the languages known to the user.
-   */
+  /** Returns an array of strings representing the languages known to the user. */
   readonly languages: string[];
 }
 
@@ -221,16 +191,12 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
    */
   readonly name: string;
 
-  /**
-   * Event handler for message events received from the parent context.
-   */
+  /** Event handler for message events received from the parent context. */
   onmessage:
     | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
     | null;
 
-  /**
-   * Event handler for messageerror events that occur when a message cannot be deserialized.
-   */
+  /** Event handler for messageerror events that occur when a message cannot be deserialized. */
   onmessageerror:
     | ((this: DedicatedWorkerGlobalScope, ev: MessageEvent) => any)
     | null;
@@ -274,9 +240,7 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
    */
   postMessage(message: any, options?: StructuredSerializeOptions): void;
 
-  /**
-   * Adds an event listener for events of a specific type on the dedicated worker.
-   */
+  /** Adds an event listener for events of a specific type on the dedicated worker. */
   addEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -286,18 +250,14 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
     options?: boolean | AddEventListenerOptions,
   ): void;
 
-  /**
-   * Adds an event listener for events of a specific type on the dedicated worker.
-   */
+  /** Adds an event listener for events of a specific type on the dedicated worker. */
   addEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
     options?: boolean | AddEventListenerOptions,
   ): void;
 
-  /**
-   * Removes an event listener previously registered with addEventListener.
-   */
+  /** Removes an event listener previously registered with addEventListener. */
   removeEventListener<K extends keyof DedicatedWorkerGlobalScopeEventMap>(
     type: K,
     listener: (
@@ -307,9 +267,7 @@ declare interface DedicatedWorkerGlobalScope extends WorkerGlobalScope {
     options?: boolean | EventListenerOptions,
   ): void;
 
-  /**
-   * Removes an event listener previously registered with addEventListener.
-   */
+  /** Removes an event listener previously registered with addEventListener. */
   removeEventListener(
     type: string,
     listener: EventListenerOrEventListenerObject,
@@ -472,54 +430,34 @@ declare function removeEventListener(
  * @category Platform
  */
 declare interface WorkerLocation {
-  /**
-   * The fragment identifier of the worker's URL, including the leading '#' character or an empty string if there is no fragment identifier.
-   */
+  /** The fragment identifier of the worker's URL, including the leading '#' character or an empty string if there is no fragment identifier. */
   readonly hash: string;
 
-  /**
-   * The host and port of the worker's URL.
-   */
+  /** The host and port of the worker's URL. */
   readonly host: string;
 
-  /**
-   * The domain of the worker's URL.
-   */
+  /** The domain of the worker's URL. */
   readonly hostname: string;
 
-  /**
-   * The complete URL of the worker script.
-   */
+  /** The complete URL of the worker script. */
   readonly href: string;
 
-  /**
-   * Returns a string containing the serialized URL of the worker script.
-   */
+  /** Returns a string containing the serialized URL of the worker script. */
   toString(): string;
 
-  /**
-   * The origin of the worker's URL, which is the scheme, domain, and port.
-   */
+  /** The origin of the worker's URL, which is the scheme, domain, and port. */
   readonly origin: string;
 
-  /**
-   * The path component of the worker's URL, including the leading slash.
-   */
+  /** The path component of the worker's URL, including the leading slash. */
   readonly pathname: string;
 
-  /**
-   * The port component of the worker's URL, or an empty string if the port is not specified.
-   */
+  /** The port component of the worker's URL, or an empty string if the port is not specified. */
   readonly port: string;
 
-  /**
-   * The protocol scheme of the worker's URL, including the trailing colon.
-   */
+  /** The protocol scheme of the worker's URL, including the trailing colon. */
   readonly protocol: string;
 
-  /**
-   * The search (query) component of the worker's URL, including the leading '?' character or an empty string if there is no search component.
-   */
+  /** The search (query) component of the worker's URL, including the leading '?' character or an empty string if there is no search component. */
   readonly search: string;
 }
 

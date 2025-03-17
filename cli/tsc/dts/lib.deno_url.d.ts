@@ -497,9 +497,6 @@ declare var URL: {
    * The URL lifetime is tied to the document in the window on which it was created.
    *
    * Returns a string containing an object URL that can be used to reference the contents of the specified source object.
-   * 
-   * Used to create a unique URL string that represents a given object, typically used for Blob, File, or MediaSource objects.
-   * For example it could be used to dynamically create Worker or SharedWorker objects, or to create a URL when a user uploads or creates a file, or to save canvas content in the browser. 
    *
    * @example
    * ```ts
@@ -507,19 +504,10 @@ declare var URL: {
    * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
    * const url = URL.createObjectURL(blob);
    * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
-   * 
-   * // Create a Worker from dynamically generated code
-   * const workerScript = `self.onmessage = e => self.postMessage(e.data.toUpperCase());`;
-   * const blob2 = new Blob([workerScript], { type: "text/javascript" });
-   * const workerUrl = URL.createObjectURL(blob2);
-   * const worker = new Worker(workerUrl, { type: "module" });
-   * 
-   * worker.onmessage = e => console.log(e.data); // HELLO
-   * worker.postMessage("hello");
-   * 
-   * // Always revoke the URL when done
-   * // URL.revokeObjectURL(workerUrl);
    * ```
+   *
+   * The URL.createObjectURL() method is used to create a unique URL string that represents a given object, typically used for Blob, File, or MediaSource objects.
+   * For example it could be used to dynamically create Worker or SharedWorker objects, or to create a URL when a user uploads or creates a file, or to save canvas content in the browser.
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
    */
@@ -527,9 +515,6 @@ declare var URL: {
 
   /**
    * Revokes an object URL previously created using URL.createObjectURL().
-   * 
-   * It's important to revoke object URLs when they are no longer needed to free up memory. Each object URL consumes memory until revoked, even if the original blob is garbage collected. 
-   * Revoking can prevent memory leaks and will release references to the underlying objects, allowing them to be garbage collected when no longer needed.
    *
    * @example
    * ```ts
