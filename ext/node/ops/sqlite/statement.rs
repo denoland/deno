@@ -449,9 +449,11 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    let _reset = ResetGuard(self);
+    let reset = ResetGuard(self);
 
     self.step()?;
+    // Reset to return correct change metadata.
+    drop(reset);
 
     Ok(RunStatementResult {
       last_insert_rowid: db.last_insert_rowid(),

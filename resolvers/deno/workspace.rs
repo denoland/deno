@@ -498,6 +498,8 @@ impl<TSys: FsMetadata> SloppyImportsResolver<TSys> {
             | MediaType::Json
             | MediaType::Wasm
             | MediaType::Css
+            | MediaType::Html
+            | MediaType::Sql
             | MediaType::SourceMap => {
               return None;
             }

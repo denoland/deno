@@ -1010,6 +1010,8 @@ impl Inner {
             MediaType::Wasm
             | MediaType::SourceMap
             | MediaType::Css
+            | MediaType::Html
+            | MediaType::Sql
             | MediaType::Unknown => {
               if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
                 continue;

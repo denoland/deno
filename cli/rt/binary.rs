@@ -357,7 +357,11 @@ impl<'a> DenoCompileModuleData<'a> {
         (ModuleType::Wasm, DenoCompileModuleSource::Bytes(data))
       }
       // just assume javascript if we made it here
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => {
+      MediaType::Css
+      | MediaType::Html
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => {
         (ModuleType::JavaScript, DenoCompileModuleSource::Bytes(data))
       }
     };
