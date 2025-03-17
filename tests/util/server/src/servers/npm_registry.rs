@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::convert::Infallible;
+use std::future::Future;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV6;
@@ -8,7 +9,6 @@ use std::path::PathBuf;
 
 use bytes::Bytes;
 use futures::future::LocalBoxFuture;
-use futures::Future;
 use futures::FutureExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper::body::Incoming;
