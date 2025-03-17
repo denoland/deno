@@ -1,6 +1,7 @@
 # Deno
 
 [![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
+[![](https://github.com/denoland/deno/actions/workflows/ci.yml/badge.svg)](https://github.com/denoland/deno/actions/workflows/ci.yml)
 [![Twitter badge][]][Twitter link] [![Discord badge][]][Discord link]
 [![YouTube badge][]][YouTube link]
 
