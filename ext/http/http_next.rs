@@ -2,6 +2,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::c_void;
+use std::future::poll_fn;
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
@@ -10,7 +11,6 @@ use std::rc::Rc;
 
 use cache_control::CacheControl;
 use deno_core::external;
-use deno_core::futures::future::poll_fn;
 use deno_core::futures::TryFutureExt;
 use deno_core::op2;
 use deno_core::serde_v8::from_v8;
