@@ -1,6 +1,6 @@
 {
   "ignore": {
-    "common": ["index.js", "internet.js"],
+    "common": ["duplexpair.js", "index.js", "internet.js"],
     "fixtures": [
       "baz.js",
       "child-process-spawn-node.js",
@@ -203,6 +203,7 @@
       "child_process.js",
       "countdown.js",
       "dns.js",
+      "duplexpair.js",
       "fixtures.js",
       "hijackstdio.js",
       "index.mjs",
