@@ -1542,7 +1542,7 @@ dependencies = [
  "lsp-types",
  "malva",
  "markup_fmt",
- "memmem",
+ "memchr",
  "nix",
  "node_resolver",
  "notify",
@@ -2071,7 +2071,7 @@ dependencies = [
  "hyper 1.6.0",
  "hyper-util",
  "itertools 0.10.5",
- "memmem",
+ "memchr",
  "mime",
  "once_cell",
  "percent-encoding",
@@ -5360,12 +5360,6 @@ checksum = "fd3f7eed9d3848f8b98834af67102b720745c4ec028fcd0aa0239277e7de374f"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "memmem"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a64a92489e2744ce060c349162be1c5f33c6969234104dbd99ddb5feb08b8c15"
 
 [[package]]
 name = "memoffset"
