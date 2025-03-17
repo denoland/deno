@@ -25,7 +25,17 @@ interface URLSearchParamsIterator<T>
   [Symbol.iterator](): URLSearchParamsIterator<T>;
 }
 
-/** @category URL */
+/**
+ * URLSearchParams provides methods for working with the query string of a URL.
+ *
+ * Use this interface to:
+ * - Parse query parameters from URLs
+ * - Build and modify query strings
+ * - Handle form data (when used with FormData)
+ * - Safely encode/decode URL parameter values
+ *
+ * @category URL
+ */
 interface URLSearchParams {
   /** Appends a specified key/value pair as a new search parameter.
    *
@@ -182,8 +192,8 @@ declare var URLSearchParams: {
   readonly prototype: URLSearchParams;
   /**
    * Creates a new URLSearchParams object for parsing query strings.
-   * 
-   * URLSearchParams is Deno's built-in query string parser, providing a standard 
+   *
+   * URLSearchParams is Deno's built-in query string parser, providing a standard
    * way to parse, manipulate, and stringify URL query parameters. Instead of manually
    * parsing query strings with regex or string operations, use this API for robust
    * handling of URL query parameters.
@@ -194,13 +204,13 @@ declare var URLSearchParams: {
    * const url = new URL('https://example.org/path?foo=bar&baz=qux');
    * const params = url.searchParams;  // No need to manually extract the query string
    * console.log(params.get('foo'));  // Logs "bar"
-   * 
+   *
    * // Manually parsing a query string from a URL
    * const urlString = 'https://example.org/path?foo=bar&baz=qux';
    * const queryString = urlString.split('?')[1];  // Extract query string part
    * const params2 = new URLSearchParams(queryString);
    * console.log(params2.get('foo'));  // Logs "bar"
-   * 
+   *
    * // Empty search parameters
    * const params3 = new URLSearchParams();
    * console.log(params3.toString());  // Logs ""
@@ -228,7 +238,11 @@ declare var URLSearchParams: {
 };
 
 /** The URL interface represents an object providing static methods used for
- * creating, parsing, and manipulating URLs.
+ * creating, parsing, and manipulating URLs in Deno.
+ *
+ * Use the URL API for safely parsing, constructing, normalizing, and encoding URLs.
+ * This is the preferred way to work with URLs in Deno rather than manual string
+ * manipulation which can lead to errors and security issues.
  *
  * @see https://developer.mozilla.org/docs/Web/API/URL
  *
@@ -399,15 +413,40 @@ interface URL {
   search: string;
 
   /**
-   * The `searchParams` property of the URL interface is a {@linkcode URL.URLSearchParams} object that represents the search parameters of the URL.
+   * The `searchParams` property of the URL interface provides a direct interface to
+   * query parameters through a {@linkcode URLSearchParams} object.
+   *
+   * This property offers a convenient way to:
+   * - Parse URL query parameters
+   * - Manipulate query strings
+   * - Add, modify, or delete URL parameters
+   * - Work with form data in a URL-encoded format
+   * - Handle query string encoding/decoding automatically
    *
    * @example
    * ```ts
-   * const myURL = new URL('https://example.org/foo?bar=baz');
+   * // Parse and access query parameters from a URL
+   * const myURL = new URL('https://example.org/search?term=deno&page=2&sort=desc');
    * const params = myURL.searchParams;
    *
-   * console.log(params);  // Logs { bar: "baz" }
-   * console.log(params.get('bar'));  // Logs "baz"
+   * console.log(params.get('term'));  // Logs "deno"
+   * console.log(params.get('page'));  // Logs "2"
+   *
+   * // Check if a parameter exists
+   * console.log(params.has('sort'));  // Logs true
+   *
+   * // Add or modify parameters (automatically updates the URL)
+   * params.append('filter', 'recent');
+   * params.set('page', '3');
+   * console.log(myURL.href);  // URL is updated with new parameters
+   *
+   * // Remove a parameter
+   * params.delete('sort');
+   *
+   * // Iterate over all parameters
+   * for (const [key, value] of params) {
+   *   console.log(`${key}: ${value}`);
+   * }
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/searchParams
@@ -454,6 +493,10 @@ declare var URL: {
    * Creates a new URL object by parsing the specified URL string with an optional base URL.
    * Throws a TypeError If the URL is invalid or if a relative URL is provided without a base.
    *
+   * Use this to parse and validate URLs safely. Use this instead of string
+   * manipulation to ensure correct URL handling, proper encoding, and protection against
+   * security issues like path traversal attacks.
+   *
    * @example
    * ```ts
    * // Creating a URL from an absolute URL string
@@ -463,6 +506,18 @@ declare var URL: {
    * // Creating a URL from a relative URL string with a base URL
    * const url2 = new URL('/bar', 'https://example.org');
    * console.log(url2.href);  // Logs "https://example.org/bar"
+   *
+   * // Joining path segments safely (prevents path traversal)
+   * const baseUrl = 'https://api.example.com/v1';
+   * const userInput = '../secrets'; // Potentially malicious input
+   * const safeUrl = new URL(userInput, baseUrl);
+   * console.log(safeUrl.href); // Correctly resolves to "https://api.example.com/secrets"
+   *
+   * // Constructing URLs with proper encoding
+   * const search = 'query with spaces';
+   * const url3 = new URL('https://example.org/search');
+   * url3.searchParams.set('q', search); // Automatically handles URL encoding
+   * console.log(url3.href); // "https://example.org/search?q=query+with+spaces"
    * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/URL
@@ -511,10 +566,15 @@ declare var URL: {
   canParse(url: string | URL, base?: string | URL): boolean;
 
   /**
-   * Creates a DOMString containing a URL representing the object given in the parameter.
-   * The URL lifetime is tied to the document in the window on which it was created.
+   * Creates a unique, temporary URL that represents a given Blob, File, or MediaSource object.
    *
-   * Returns a string containing an object URL that can be used to reference the contents of the specified source object.
+   * This method is particularly useful for:
+   * - Creating URLs for dynamically generated content
+   * - Working with blobs in a browser context
+   * - Creating workers from dynamically generated code
+   * - Setting up temporary URL references for file downloads
+   *
+   * Note: Always call URL.revokeObjectURL() when you're done using the URL to prevent memory leaks.
    *
    * @example
    * ```ts
@@ -522,31 +582,67 @@ declare var URL: {
    * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
    * const url = URL.createObjectURL(blob);
    * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
-      * ```
    *
-   * The URL.createObjectURL() method is used to create a unique URL string that represents a given object, typically used for Blob, File, or MediaSource objects.
-   * For example it could be used to dynamically create Worker or SharedWorker objects, or to create a URL when a user uploads or creates a file, or to save canvas content in the browser.
+   * // Dynamic web worker creation in Deno
+   * const workerCode = `
+   *   self.onmessage = (e) => {
+   *     self.postMessage(e.data.toUpperCase());
+   *   };
+   * `;
+   * const workerBlob = new Blob([workerCode], { type: "application/javascript" });
+   * const workerUrl = URL.createObjectURL(workerBlob);
+   * const worker = new Worker(workerUrl, { type: "module" });
+   *
+   * worker.onmessage = (e) => console.log(e.data);
+   * worker.postMessage("hello from deno");
+   *
+   * // Always revoke when done to prevent memory leaks
+   * URL.revokeObjectURL(workerUrl);
+   * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/createObjectURL_static
    */
   createObjectURL(blob: Blob): string;
 
   /**
-   * Revokes an object URL previously created using URL.createObjectURL().
-   * 
-      *
+   * Revokes a previously created object URL, freeing the memory associated with it.
+   *
+   * Important for memory management in applications that create dynamic URLs.
+   * Once an object URL is revoked:
+   * - It can no longer be used to fetch the content it referenced
+   * - The browser/runtime is allowed to release the memory or resources associated with it
+   * - Workers created via the URL will continue to run, but the URL becomes invalid for new creations
+   *
+   * For security and performance in Deno applications, always revoke object URLs as soon as
+   * they're no longer needed, especially when processing large files or generating many URLs.
+   *
    * @example
    * ```ts
-   * // Create a URL string for a Blob
+   * // Create and use a blob URL
    * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
    * const url = URL.createObjectURL(blob);
    *
-   * // Use the URL for something, then revoke it when no longer needed
-   * console.log(url);  // Logs something like "blob:null/1234-5678-9101-1121"
+   * // Use the URL for something...
+   * console.log(url);  // e.g., "blob:null/1234-5678-9101-1121"
    *
-   * // When done with the URL, revoke it to free memory
+   * // Then revoke when finished to free memory
    * URL.revokeObjectURL(url);
-      * ```
+   *
+   * // Example with fetch and a timeout
+   * async function fetchAndProcessBlob() {
+   *   const response = await fetch("https://example.com/some-image.jpg");
+   *   const blob = await response.blob();
+   *   const imageUrl = URL.createObjectURL(blob);
+   *
+   *   try {
+   *     // Process the blob URL...
+   *     await processImage(imageUrl);
+   *   } finally {
+   *     // Always revoke the URL when done, even if processing fails
+   *     URL.revokeObjectURL(imageUrl);
+   *   }
+   * }
+   * ```
    *
    * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
    */
@@ -616,31 +712,60 @@ interface URLPatternOptions {
 }
 
 /**
- * The URLPattern API provides a web platform primitive for matching URLs based
- * on a convenient pattern syntax.
+ * The URLPattern API provides a powerful way to match URLs in Deno applications.
  *
- * The syntax is based on path-to-regexp. Wildcards, named capture groups,
- * regular groups, and group modifiers are all supported.
+ * Common use cases for URLPattern in Deno include:
+ * - Building routers for web applications
+ * - Pattern-matching URLs for middleware
+ * - Extracting parameters from URL paths
+ * - URL-based feature toggles
+ * - Routing in serverless and edge functions
  *
+ * The syntax is based on path-to-regexp, supporting wildcards, named capture groups,
+ * regular groups, and group modifiers - similar to Express.js route patterns.
+ *
+ * @example
  * ```ts
- * // Specify the pattern as structured data.
- * const pattern = new URLPattern({ pathname: "/users/:user" });
- * const match = pattern.exec("https://blog.example.com/users/joe");
- * console.log(match.pathname.groups.user); // joe
+ * // Basic routing with URLPattern (similar to Express.js)
+ * const routes = [
+ *   new URLPattern({ pathname: "/users" }),
+ *   new URLPattern({ pathname: "/users/:id" }),
+ *   new URLPattern({ pathname: "/products/:category/:id?" }),
+ * ];
+ *
+ * // Check incoming request against routes
+ * function handleRequest(req: Request) {
+ *   const url = new URL(req.url);
+ *
+ *   for (const route of routes) {
+ *     const match = route.exec(url);
+ *     if (match) {
+ *       // Extract parameters from the URL
+ *       const params = match.pathname.groups;
+ *       return new Response(`Matched: ${JSON.stringify(params)}`);
+ *     }
+ *   }
+ *
+ *   return new Response("Not found", { status: 404 });
+ * }
  * ```
  *
+ * @example
  * ```ts
- * // Specify a fully qualified string pattern.
- * const pattern = new URLPattern("https://example.com/books/:id");
- * console.log(pattern.test("https://example.com/books/123")); // true
- * console.log(pattern.test("https://deno.land/books/123")); // false
- * ```
+ * // Matching different URL parts
+ * const apiPattern = new URLPattern({
+ *   protocol: "https",
+ *   hostname: "api.example.com",
+ *   pathname: "/v:version/:resource/:id?",
+ *   search: "*", // Match any query string
+ * });
  *
- * ```ts
- * // Specify a relative string pattern with a base URL.
- * const pattern = new URLPattern("/article/:id", "https://blog.example.com");
- * console.log(pattern.test("https://blog.example.com/article")); // false
- * console.log(pattern.test("https://blog.example.com/article/123")); // true
+ * const match = apiPattern.exec("https://api.example.com/v1/users/123?format=json");
+ * if (match) {
+ *   console.log(match.pathname.groups.version); // "1"
+ *   console.log(match.pathname.groups.resource); // "users"
+ *   console.log(match.pathname.groups.id); // "123"
+ * }
  * ```
  *
  * @category URL
