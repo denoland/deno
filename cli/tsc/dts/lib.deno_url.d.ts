@@ -616,34 +616,6 @@ declare var URL: {
    * For security and performance in Deno applications, always revoke object URLs as soon as
    * they're no longer needed, especially when processing large files or generating many URLs.
    *
-   * @example
-   * ```ts
-   * // Create and use a blob URL
-   * const blob = new Blob(["Hello, world!"], { type: "text/plain" });
-   * const url = URL.createObjectURL(blob);
-   *
-   * // Use the URL for something...
-   * console.log(url);  // e.g., "blob:null/1234-5678-9101-1121"
-   *
-   * // Then revoke when finished to free memory
-   * URL.revokeObjectURL(url);
-   *
-   * // Example with fetch and a timeout
-   * async function fetchAndProcessBlob() {
-   *   const response = await fetch("https://example.com/some-image.jpg");
-   *   const blob = await response.blob();
-   *   const imageUrl = URL.createObjectURL(blob);
-   *
-   *   try {
-   *     // Process the blob URL...
-   *     await processImage(imageUrl);
-   *   } finally {
-   *     // Always revoke the URL when done, even if processing fails
-   *     URL.revokeObjectURL(imageUrl);
-   *   }
-   * }
-   * ```
-   *
    * @see https://developer.mozilla.org/docs/Web/API/URL/revokeObjectURL_static
    */
   revokeObjectURL(url: string): void;
@@ -712,9 +684,10 @@ interface URLPatternOptions {
 }
 
 /**
- * The URLPattern API provides a powerful way to match URLs in Deno applications.
+ * The URLPattern API provides a web platform primitive for matching URLs based
+ * on a convenient pattern syntax.
  *
- * Common use cases for URLPattern in Deno include:
+ * Common use cases for URLPattern include:
  * - Building routers for web applications
  * - Pattern-matching URLs for middleware
  * - Extracting parameters from URL paths
