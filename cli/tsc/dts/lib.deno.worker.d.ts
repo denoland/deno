@@ -525,8 +525,9 @@ declare interface WorkerLocation {
 
 // TODO(nayeemrmn): Move this to `extensions/web` where its implementation is.
 // The types there must first be split into window, worker and global types.
-/**
- * The WorkerLocation interface constructor.
+/** The absolute location of the script executed by the Worker. Such an object
+ * is initialized for each worker and is available via the
+ * WorkerGlobalScope.location property obtained by calling self.location.
  *
  * @category Platform
  */
