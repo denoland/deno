@@ -10081,6 +10081,7 @@ dependencies = [
  "crc32fast",
  "crossbeam-utils",
  "displaydoc",
+ "flate2",
  "indexmap 2.7.1",
  "memchr",
  "thiserror 2.0.3",
