@@ -335,7 +335,7 @@ x25519-dalek = "2.0.0"
 x509-parser = "0.15.0"
 yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
-zip = { version = "2.1.6", default-features = false }
+zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
 zstd = "=0.12.4"
 
 opentelemetry = "0.27.0"
