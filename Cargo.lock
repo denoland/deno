@@ -524,26 +524,6 @@ dependencies = [
 
 [[package]]
 name = "bindgen"
-version = "0.69.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "271383c67ccabffb7381723dea0672a673f292304fcb45c01cc648c7a8d58088"
-dependencies = [
- "bitflags 2.8.0",
- "cexpr",
- "clang-sys",
- "itertools 0.10.5",
- "lazy_static",
- "lazycell",
- "proc-macro2",
- "quote",
- "regex",
- "rustc-hash 1.1.0",
- "shlex",
- "syn 2.0.87",
-]
-
-[[package]]
-name = "bindgen"
 version = "0.70.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
@@ -558,6 +538,24 @@ dependencies = [
  "quote",
  "regex",
  "rustc-hash 1.1.0",
+ "shlex",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.71.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f58bf3d7db68cfbac37cfc485a8d711e87e064c3d0fe0435b92f7a407f9d6b3"
+dependencies = [
+ "bitflags 2.8.0",
+ "cexpr",
+ "clang-sys",
+ "itertools 0.13.0",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash 2.1.1",
  "shlex",
  "syn 2.0.87",
 ]
@@ -2309,7 +2307,6 @@ dependencies = [
  "ipnetwork",
  "k256",
  "libc",
- "libsqlite3-sys",
  "libz-sys",
  "md-5",
  "md4",
@@ -2858,9 +2855,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_proto"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5b77de4d3b9215e14624d4f4eb16cb38c0810e3f5860ba3b3fc47d0537f9a4d"
+checksum = "fdc7c5c829ce15275d0898c94eecc243e2a47269a3f8ec5a1da45fe268a90886"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2874,9 +2871,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_remote"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6497c28eec268ed99f1e8664f0842935f02d1508529c67d94c57ca5d893d743"
+checksum = "ecd57015ff7b5d51cd7a61b83baec8e38367631cd13dc77140412fe5143e15fb"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -2900,9 +2897,9 @@ dependencies = [
 
 [[package]]
 name = "denokv_sqlite"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dc0f21a450a35eb85760761401fddf9bfff9840127be07a6ca5c31863127913d"
+checksum = "01024c5ad6ce7838d27dc35cfcc0877eee57e07a25126ccaac8eb2b61a0cf04f"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -4187,11 +4184,11 @@ dependencies = [
 
 [[package]]
 name = "hashlink"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
+checksum = "7382cf6263419f2d8df38c55d7da83da5c18aef87fc7a7fc1fb1e344edfe14c1"
 dependencies = [
- "hashbrown 0.14.5",
+ "hashbrown 0.15.2",
 ]
 
 [[package]]
@@ -5071,12 +5068,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazycell"
-version = "1.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
-
-[[package]]
 name = "lcms2"
 version = "6.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5162,11 +5153,11 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.30.1"
+version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e99fb7a497b1e3339bc746195567ed8d3e24945ecd636e3619d20b9de9e9149"
+checksum = "fbb8270bb4060bd76c6e96f20c52d80620f1d82a3470885694e41e0f81ef6fe7"
 dependencies = [
- "bindgen 0.69.5",
+ "bindgen 0.71.1",
  "cc",
  "pkg-config",
  "vcpkg",
@@ -6949,14 +6940,14 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.32.0"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cdbe9230a57259b37f7257d0aff38b8c9dbda3513edba2105e59b130189d82f"
+checksum = "37e34486da88d8e051c7c0e23c3f15fd806ea8546260aa2fec247e97242ec143"
 dependencies = [
  "bitflags 2.8.0",
  "fallible-iterator",
  "fallible-streaming-iterator",
- "hashlink 0.9.1",
+ "hashlink 0.10.0",
  "libsqlite3-sys",
  "smallvec",
 ]
