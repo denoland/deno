@@ -300,6 +300,11 @@ class InnerRequest {
     const authority = this.#methodAndUri[1] ?? this.#context.fallbackHost;
     const path = this.#methodAndUri[2];
 
+    // * is valid only for OPTIONS (RFC 9110, Section 9.3.7)
+    if (path === "*" && method === "OPTIONS") {
+      return (this.#urlValue = "*");
+    }
+
     // CONNECT requires an authority
     if (method === "CONNECT") {
       return (this.#urlValue = this.#methodAndUri[1]);
