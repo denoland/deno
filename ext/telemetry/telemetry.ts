@@ -38,7 +38,6 @@ const {
   ArrayPrototypeReverse,
   ArrayPrototypeShift,
   ArrayPrototypeSlice,
-  ArrayPrototypeSplit,
   DatePrototype,
   DatePrototypeGetTime,
   Error,
@@ -1331,7 +1330,7 @@ class TraceStateClass implements TraceState {
     if (rawTraceState.length > MAX_TRACE_STATE_LEN) return;
     this._internalState = ArrayPrototypeReduce(
       ArrayPrototypeReverse(
-        ArrayPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
+        StringPrototypeSplit(rawTraceState, LIST_MEMBERS_SEPARATOR),
       ),
       (agg: Map<string, string>, part: string) => {
         const listMember = StringPrototypeTrim(part); // Optional Whitespace (OWS) handling
@@ -1507,7 +1506,7 @@ function getKeyPairs(baggage: Baggage): string[] {
 function parsePairKeyValue(
   entry: string,
 ): ParsedBaggageKeyValue | undefined {
-  const valueProps = ArrayPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
+  const valueProps = StringPrototypeSplit(entry, BAGGAGE_PROPERTIES_SEPARATOR);
   if (valueProps.length <= 0) return;
   const keyPairPart = ArrayPrototypeShift(valueProps);
   if (!keyPairPart) return;
