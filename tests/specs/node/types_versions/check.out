@@ -1,0 +1,14 @@
+Check file:///[WILDLINE]/main.ts
+TS2322 [ERROR]: Type '"expected"' is not assignable to type '"not"'.
+  const local: "not" = pkg.value;
+        ~~~~~
+    at file:///[WILDLINE]/main.ts:6:9
+
+TS2322 [ERROR]: Type '"sub-types"' is not assignable to type '"not"'.
+  const local: "not" = sub.value;
+        ~~~~~
+    at file:///[WILDLINE]/main.ts:12:9
+
+Found 2 errors.
+
+error: Type checking failed.

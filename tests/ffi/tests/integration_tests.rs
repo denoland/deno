@@ -1,10 +1,11 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 #![allow(clippy::print_stdout)]
 #![allow(clippy::print_stderr)]
 
-use pretty_assertions::assert_eq;
 use std::process::Command;
+
+use pretty_assertions::assert_eq;
 use test_util::deno_cmd;
 use test_util::deno_config_path;
 use test_util::ffi_tests_path;

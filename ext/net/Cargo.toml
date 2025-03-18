@@ -1,8 +1,8 @@
-# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+# Copyright 2018-2025 the Deno authors. MIT license.
 
 [package]
 name = "deno_net"
-version = "0.172.0"
+version = "0.187.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,13 +15,18 @@ path = "lib.rs"
 
 [dependencies]
 deno_core.workspace = true
+deno_error.workspace = true
 deno_permissions.workspace = true
 deno_tls.workspace = true
-hickory-proto = "0.24"
+hickory-proto.workspace = true
 hickory-resolver.workspace = true
 pin-project.workspace = true
+quinn = { workspace = true, features = ["runtime-tokio", "rustls", "ring"] }
 rustls-tokio-stream.workspace = true
 serde.workspace = true
+sha2.workspace = true
 socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+url.workspace = true
+web-transport-proto.workspace = true

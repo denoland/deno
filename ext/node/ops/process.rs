@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_core::op2;
 use deno_core::OpState;
@@ -50,7 +50,7 @@ pub fn op_node_process_kill(
   state: &mut OpState,
   #[smi] pid: i32,
   #[smi] sig: i32,
-) -> Result<i32, deno_core::error::AnyError> {
+) -> Result<i32, deno_permissions::PermissionCheckError> {
   state
     .borrow_mut::<PermissionsContainer>()
     .check_run_all("process.kill")?;

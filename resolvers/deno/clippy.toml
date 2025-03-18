@@ -47,6 +47,5 @@ disallowed-methods = [
   { path = "url::Url::from_directory_path", reason = "Use deno_path_util instead so it works in Wasm" },
 ]
 disallowed-types = [
-  # todo(dsherret): consider for the future
-  # { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
+  { path = "std::sync::Arc", reason = "use crate::sync::MaybeArc instead" },
 ]

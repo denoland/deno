@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -7,8 +7,7 @@ use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::rc::Rc;
 
-use deno_core::anyhow::Context;
-use deno_core::serde_json;
+use anyhow::Context;
 use file_test_runner::collection::collect_tests_or_exit;
 use file_test_runner::collection::strategies::FileTestMapperStrategy;
 use file_test_runner::collection::strategies::TestPerDirectoryCollectionStrategy;
@@ -118,6 +117,12 @@ struct MultiStepMetaData {
   /// steps.
   #[serde(default)]
   pub temp_dir: bool,
+  /// Whether the temporary directory should be canonicalized.
+  ///
+  /// This should be used sparingly, but is sometimes necessary
+  /// on the CI.
+  #[serde(default)]
+  pub canonicalized_temp_dir: bool,
   /// Whether the temporary directory should be symlinked to another path.
   #[serde(default)]
   pub symlinked_temp_dir: bool,
@@ -144,6 +149,8 @@ struct SingleTestMetaData {
   #[serde(default)]
   pub temp_dir: bool,
   #[serde(default)]
+  pub canonicalized_temp_dir: bool,
+  #[serde(default)]
   pub symlinked_temp_dir: bool,
   #[serde(default)]
   pub repeat: Option<usize>,
@@ -159,6 +166,7 @@ impl SingleTestMetaData {
       base: self.base,
       cwd: None,
       temp_dir: self.temp_dir,
+      canonicalized_temp_dir: self.canonicalized_temp_dir,
       symlinked_temp_dir: self.symlinked_temp_dir,
       repeat: self.repeat,
       envs: Default::default(),
@@ -326,6 +334,13 @@ fn test_context_from_metadata(
     builder = builder.cwd(cwd.to_string_lossy());
   }
 
+  if metadata.canonicalized_temp_dir {
+    // not actually deprecated, we just want to discourage its use
+    #[allow(deprecated)]
+    {
+      builder = builder.use_canonicalized_temp_dir();
+    }
+  }
   if metadata.symlinked_temp_dir {
     // not actually deprecated, we just want to discourage its use
     // because it's mostly used for testing purposes locally

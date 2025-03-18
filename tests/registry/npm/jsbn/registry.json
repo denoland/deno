@@ -48,6 +48,5 @@
   "bugs": {
     "url": "https://github.com/andyperlitch/jsbn/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "README.md"
+  "license": "MIT"
 }

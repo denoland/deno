@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use test_util::TestContext;
 use test_util::TestContextBuilder;
@@ -34,16 +34,16 @@ fn cache_matching_package_json_dep_should_not_install_all() {
   let temp_dir = context.temp_dir();
   temp_dir.write(
     "package.json",
-    r#"{ "dependencies": { "@types/node": "18.8.2", "@denotest/esm-basic": "*" } }"#,
+    r#"{ "dependencies": { "@types/node": "22.12.0", "@denotest/esm-basic": "*" } }"#,
   );
   let output = context
     .new_command()
-    .args("cache npm:@types/node@18.8.2")
+    .args("cache npm:@types/node@22.12.0")
     .run();
   output.assert_matches_text(concat!(
     "Download http://localhost:4260/@types/node\n",
     "Download http://localhost:4260/@types/node/node-18.8.2.tgz\n",
-    "Initialize @types/node@18.8.2\n",
+    "Initialize @types/node@22.12.0\n",
   ));
 }
 
@@ -107,5 +107,5 @@ fn loads_type_graph() {
     .new_command()
     .args("cache --reload -L debug run/type_directives_js_main.js")
     .run();
-  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow_with_options - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
+  output.assert_matches_text("[WILDCARD] - FileFetcher::fetch_no_follow - specifier: file:///[WILDCARD]/subdir/type_reference.d.ts[WILDCARD]");
 }

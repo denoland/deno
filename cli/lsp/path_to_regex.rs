@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // The logic of this module is heavily influenced by path-to-regexp at:
 // https://github.com/pillarjs/path-to-regexp/ which is licensed as follows:
@@ -26,15 +26,16 @@
 // THE SOFTWARE.
 //
 
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Write as _;
+use std::iter::Peekable;
+
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use fancy_regex::Regex as FancyRegex;
 use once_cell::sync::Lazy;
 use regex::Regex;
-use std::collections::HashMap;
-use std::fmt;
-use std::fmt::Write as _;
-use std::iter::Peekable;
 
 static ESCAPE_STRING_RE: Lazy<Regex> =
   lazy_regex::lazy_regex!(r"([.+*?=^!:${}()\[\]|/\\])");

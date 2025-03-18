@@ -1,3 +1,4 @@
-[UNORDERED_START]
-error: Error getting response at http://localhost:4261/@denotest%2fbasic for package "@denotest/basic": Both the username and password must be provided for basic auth
-[UNORDERED_END]
+error: Failed loading http://localhost:4261/@denotest%2fbasic for package "@denotest/basic"
+
+Caused by:
+    Both the username and password must be provided for basic auth

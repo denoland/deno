@@ -1,24 +1,10 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use deno_lockfile::NewLockfileOptions;
 use deno_semver::jsr::JsrDepPackageReq;
 use test_util as util;
-use test_util::itest;
 use util::TestContext;
 use util::TestContextBuilder;
-
-itest!(check_all {
-  args: "check --allow-import --quiet --all check/all/check_all.ts",
-  output: "check/all/check_all.out",
-  http_server: true,
-  exit_code: 1,
-});
-
-itest!(check_all_local {
-  args: "check --allow-import --quiet check/all/check_all.ts",
-  output_str: Some(""),
-  http_server: true,
-});
 
 #[test]
 fn cache_switching_config_then_no_config() {
@@ -160,7 +146,7 @@ fn check_error_in_dep_then_fix() {
   let check_command = test_context.new_command().args_vec(["check", "main.ts"]);
 
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 
   temp_dir.write("greet.ts", correct_code);
@@ -169,7 +155,7 @@ fn check_error_in_dep_then_fix() {
 
   temp_dir.write("greet.ts", incorrect_code);
   let output = check_command.run();
-  output.assert_matches_text("Check [WILDCARD]main.ts\nerror: TS234[WILDCARD]");
+  output.assert_matches_text("Check [WILDCARD]main.ts\nTS234[WILDCARD]");
   output.assert_exit_code(1);
 }
 
@@ -193,7 +179,7 @@ fn json_module_check_then_error() {
   temp_dir.write("test.json", incorrect_code);
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2551[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2551[WILDCARD]")
     .assert_exit_code(1);
 }
 
@@ -232,7 +218,7 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "1.0.0".to_string(),
+    "1.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
   temp_dir.write(
@@ -250,12 +236,12 @@ fn npm_module_check_then_error() {
       "npm:@denotest/breaking-change-between-versions",
     )
     .unwrap(),
-    "2.0.0".to_string(),
+    "2.0.0".into(),
   );
   lockfile_path.write(lockfile.as_json_string());
 
   check_command
     .run()
-    .assert_matches_text("Check [WILDCARD]main.ts\nerror: TS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
+    .assert_matches_text("Check [WILDCARD]main.ts\nTS2305[WILDCARD]has no exported member 'oldName'[WILDCARD]")
     .assert_exit_code(1);
 }

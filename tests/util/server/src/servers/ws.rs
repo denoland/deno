@@ -1,4 +1,9 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::future::poll_fn;
+use std::future::Future;
+use std::pin::Pin;
+use std::result::Result;
 
 use anyhow::anyhow;
 use bytes::Bytes;
@@ -8,8 +13,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 use futures::future::join3;
-use futures::future::poll_fn;
-use futures::Future;
 use futures::StreamExt;
 use h2::server::Handshake;
 use h2::server::SendResponse;
@@ -22,8 +25,6 @@ use hyper::Response;
 use hyper::StatusCode;
 use hyper_util::rt::TokioIo;
 use pretty_assertions::assert_eq;
-use std::pin::Pin;
-use std::result::Result;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 

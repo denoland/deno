@@ -1,0 +1,7 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "run -A npm:npm-check-updates",
+    "output": "output.out"
+  }]
+}

@@ -6,6 +6,419 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.4 / 2025.03.14
+
+- feat(otel): span context propagators (#28460)
+- feat(unstable/otel): add otel tracing to node:http.request (#28463)
+- feat: support FORCE_COLOR (#28490)
+- fix(bench): lower bench time budget when `n` is specified (#28454)
+- fix(check): support `types@` export conditions (#28450)
+- fix(check): support `typesVersions` in npm dependencies (#28468)
+- fix(cli): warn when an otel env var has an invalid value (#28394)
+- fix(ext/node): correct `STATUS_CODES` strings (#28489)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/_util.ts` (#28432)
+- fix(install): exclude npm workspace packages from graph roots in `install`
+  (#28401)
+- fix(install): support "file:" dependencies in local package.json (#28396)
+- fix(lsp): auto-import from npm package exports with manual node_modules
+  (#28414)
+- fix(lsp): silence errors from "codeAction/resolve" (#28400)
+- fix(node): support re-exported esm modules in cjs export analysis (#28379)
+- fix(otel): don't print otel warning when variable is not set (#28475)
+- fix(otel/unstable): trace error cases of fetch (#28480)
+- fix(run): skip the cjs suggestion for mjs/mts modules (#26698)
+- fix(unstable): lint plugin `!==` wrongly parsed as `!=` (#28403)
+- fix(unstable): wrong node with shorthand ObjectPattern + AssignPattern
+  (#28402)
+- fix: unhandled rejection from quic (#28448)
+- perf(lsp): lazily start the ts server (#28392)
+
+### 2.2.3 / 2025.03.05
+
+- feat(unstable): lint plugins support field selectors (#28324)
+- fix(add): better help text for --dev arg (#28304)
+- fix(check/npm): move not found errors inside npm packages to tsc diagnostics
+  (#28337)
+- fix(ext/node): SQLite reset guards to prevent database locks (#28298)
+- fix(ext/node): node compatibility issue missing fd in createServer callback
+  socket object (#27789)
+- fix(fmt/md): handle callout followed by non-text (#28333)
+- fix(lint): run with --no-prompt (#28305)
+- fix(lsp): include prefix and suffix for rename edits (#28327)
+- fix(lsp): limit languages in semantic tokens provider (#28310)
+- fix(node): require esm should prefer `module.exports` export (#28376)
+- fix(otel): don't throw when calling setActiveSpan at root (#28323)
+- fix(unstable): Missing `PrivateIdentifier` type for `PropertyDefinition` key
+  (#28358)
+- fix(unstable): lint plugin `ObjectPattern` inconsistencies (#28359)
+- fix(unstable): lint plugin child combinator not working with groups (#28360)
+- fix(unstable): lint plugin fix `:has()`, `:is/where/matches` and `:not()`
+  selectors (#28348)
+- fix(unstable): lint plugin regex attribute selector not working (#28340)
+- fix(unstable): lint plugin swapped exported and source for
+  ExportAllDeclaration (#28357)
+- fix(unstable/lint): remove duplicated `Fix` vs `FixData` interface (#28344)
+- fix: add "module.exports" export to ESM CJS wrapper module (#28373)
+- fix: deno_ast 0.46 (#28331)
+- fix: respect lockfile for multiple available jsr versions (#28375)
+- perf(http): instantiate generic functions in `deno_http`, increase opt-level
+  for some more hyper deps (#28317)
+- perf(lsp): don't set resolver npm reqs if unchanged (#28302)
+- perf(lsp): register semantic tokens provider upon opening enabled doc (#28384)
+
+### 2.2.2 / 2025.02.25
+
+- fix(check): regression - implicit jsxImportSource was not resolving (#28228)
+- fix(cli): add `compilerOptions.lib` examples to config-file.v1.json (#28226)
+- fix(config): allow specifying absolute path for patch and fix panic with
+  exports in package.json (#28279)
+- fix(ext/node): decipherIv() range error on invalid final block length (#28215)
+- fix(ext/node): descriptive sqlite error messages (#28272)
+- fix(fmt): support "--ext vto" and "--ext njk" (#28262)
+- fix(http): generate `OtelInfo` only when otel metrics are enabled (#28286)
+- fix(install): don't error on unknown media types in install (#28234)
+- fix(lint): don't recurse infinitely for large ASTs (#28265)
+- fix(lint): give access to SourceCode in 'deno test' (#28278)
+- fix(lint): plugins ignored when no rust rule active (#28269)
+- fix(lint): update deno_lint (#28271)
+- fix(lsp): close server on exit notification (#28232)
+- fix(lsp): create cacheable `ExportInfoMap` per language service (#28240)
+- fix(unstable): lint plugin `:exit` called at wrong time (#28229)
+- fix: add info suggestion for `unsafely-ignore-certificate-errors` and add
+  `--help=full` (#28203)
+- perf(install): only read initialized file if we care about the tags (#28242)
+
+### 2.2.1 / 2025.02.20
+
+- fix(check): remove instability in loading lib files (#28202)
+- fix(check/lsp): fall back to `@types/*` packages if npm package doesn't have
+  types (#28185)
+- fix(coverage): exclude scripts with invalid URLs from raw coverage output
+  (#28210)
+- fix(ext/cache): add missing Cargo feature (#28178)
+- fix(ext/node): Fix handling of sqlite large integers (#28193)
+- fix(ext/node): rewrite SQLite named parameter handing (#28197)
+- fix(outdated): hint to use `--latest` if new versions are available in
+  `outdated --update` (#28190)
+- fix(publish): support jsx/tsx (#28188)
+- fix: better jsx workspace config resolution (#28186)
+- fix: don't panic when running with // as a filepath (#28189)
+- fix: move extension file declarations to cli/tsc/dts (#28180)
+
+### 2.2.0 / 2025.02.18
+
+- feat(bench): add `--permit-no-files` (#27048)
+- feat(bench): add `warmup` and `n` for controlling number of iterations
+  (#28123)
+- feat(check/lsp): support "compilerOptions.rootDirs" (#27844)
+- feat(compile): show remote modules and metadata size when compiling (#27415)
+- feat(compile): support sloppy imports (#27944)
+- feat(ext/cache): support lscache (#27628)
+- feat(ext/canvas): enhance `createImageBitmap` specification compliance
+  (#25517)
+- feat(ext/node): implement `node:sqlite` (#27308)
+- feat(http): add otel metrics (#28034)
+- feat(jupyter): make GPUTexture and GPUBuffer displayable (#28117)
+- feat(lint): add JavaScript plugin support (#27203)
+- feat(lint): add rules for react/preact (#27162)
+- feat(lint): change behavior of `--rules` flag (#27245)
+- feat(node:http): add http information support (#27381)
+- feat(outdated): interactive update (#27812)
+- feat(task): add support for task wildcards (#27007)
+- feat(unstable): WebTransport (#27431)
+- feat(unstable): add `lint.plugins` to config schema (#27982)
+- feat(unstable): add basic support for otel trace links (#27727)
+- feat(unstable): add js lint plugin source code helpers (#28065)
+- feat(unstable): add lint plugin ast types (#27977)
+- feat(unstable): add test for lint plugin destroy hook (#27981)
+- feat(unstable): align lint ast with TSEStree (#27996)
+- feat(unstable): support multiple fixes from lint plugins (#28040)
+- feat(unstable): type lint plugin visitor (#28005)
+- feat: Deno.cwd() no longer requires --allow-read permission (#27192)
+- feat: TypeScript 5.7 (#27857)
+- feat: Upgrade V8 to 13.4 (#28080)
+- feat: implement `process.cpuUsage` (`Deno.cpuUsage`) (#27217)
+- feat: support XDG_CACHE_HOME for deno dir on macos (#28173)
+- fix(check): npm resolution errors to tsc diagnostics (#28174)
+- fix(check): support sloppy imports with "compilerOptions.rootDirs" (#27973)
+- fix(cli): remove extraneous comma in task --eval help (#26985)
+- fix(completions): remove problematic character for powershell (#28102)
+- fix(ext/node): `DatabaseSync#exec` should execute batch statements (#28053)
+- fix(ext/node): enforce -RW perms on `node:sqlite` (#27928)
+- fix(ext/node): expose sqlite changeset constants (#27992)
+- fix(ext/node): implement SQLite Session API (#27909)
+- fix(ext/node): implement StatementSync#iterate (#28168)
+- fix(ext/node): implement `DatabaseSync#applyChangeset()` (#27967)
+- fix(ext/node): represent sqlite blob as Uint8Array (#27889)
+- fix(ext/node): sqlite bind support bigint values (#27890)
+- fix(ext/node): support read-only database in `node:sqlite` (#27930)
+- fix(ext/node): throw RangeError when sqlite INTEGER is too large (#27907)
+- fix(ext/node): throw Session methods when database is closed (#27968)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/common.ts` (#28164)
+- fix(ext/sqlite): add `sourceSQL` and `expandedSQL` getters (#27921)
+- fix(init): force --reload if npm or jsr package (#28150)
+- fix(install/global): do not error if path is an npm pkg and relative file
+  (#26975)
+- fix(lint): `Deno.lint.runPlugin` throws in `deno run` (#28063)
+- fix(lint): clear plugin diagnostics on each lint file run (#28011)
+- fix(lint): disable incremental caching if JS plugins are used (#28026)
+- fix(lint): don't mark plugin diagnostic as fixable, if it's not (#28147)
+- fix(lint): don't show docs URLs for plugins (#28033)
+- fix(lint): out of order diagnostics for plugins (#28029)
+- fix(lint): react-rules-of-hooks works with destructuring (#28113)
+- fix(lint): update jsx/react related rules and names (#27836)
+- fix(lsp): include description for auto-import completions (#28088)
+- fix(node/sqlite): sqlite named parameters (#28154)
+- fix(publish): error on missing name field (#27131)
+- fix(task): support --frozen flag (#28094)
+- fix(task): update --filter flag description (#26974)
+- fix(unstable): add missing rule context types (#28014)
+- fix(unstable): align js lint context API with eslint (#28066)
+- fix(unstable/temporal): implement
+  `Temporal.ZonedDateTime.getTimeZoneTransition` (#27770)
+- fix(workspace): diagnostic for imports in member with importMap at root
+  (#28116)
+- fix: add hint to run with `--no-check` when type checking fails (#28091)
+- fix: cache bust http cache on lockfile integrity mismatch (#28087)
+- fix: handle all values for buffers in turbocall codegen (#28170)
+- perf(check): use v8 code cache for extension sources in `deno check` (#28089)
+- perf(lsp): add built-in tracing support for the LSP (#27843)
+- perf(lsp): don't clone asset text (#28165)
+- perf(lsp): make auto-imports a little faster (#28106)
+
+### 2.1.10 / 2025.02.13
+
+- Revert "fix(lsp): silence debug error for 'move to a new file' action
+  (#27780)" (#27903)
+- fix(cli): Fix panic in `load_native_certs` (#27863)
+- fix(compile): never include the specified output executable in itself (#27877)
+- fix(ext/napi): napi_is_buffer tests for ArrayBufferView (#27956)
+- fix(ext/node): expose brotli stream APIs (#27943)
+- fix(ext/node): fix missing privateKey.x in curve25519 JWK (#27990)
+- fix(ext/node): fix twitter-api-v2 compatibility (#27971)
+- fix(ext/node): handle non-ws upgrade headers (#27931)
+- fix(ext/node): set process fields on own instance (#27927)
+- fix(ext/node): set process.env as own property (#27891)
+- fix(ext/node): support proxy http request (#27871)
+- fix(lsp): ignore a few more diagnostics for ambient modules (#27949)
+- fix(node): resolve module as maybe CJS when it's missing a file extension
+  (#27904)
+- fix(node): show directory import and missing extension suggestions (#27905)
+- fix(otel): custom span start + end times are fractional ms (#27995)
+- fix(publish): correct coloring in --help (#27939)
+- fix(streams): handle Resource stream error (#27975)
+- fix: allow creating TSC host without a snapshot (#28058)
+- fix: do special file permission check for `check_read_path` (#27989)
+- fix: panic with js lint plugins and invalid js syntax (#28006)
+- perf(compile): use bytes already in memory after downloading executable
+  (#28000)
+- perf(lsp): cancellation checks in blocking code (#27997)
+- perf: node resolution cache (#27838)
+
+### 2.1.9 / 2025.01.30
+
+- fix(ext/node): add http information support (#27381)
+- perf(crypto): use ring for asm implementations of sha256/sha512 (#27885)
+
+### 2.1.8 / 2025.01.30
+
+- feat(unstable): support https otlp endpoints (#27743)
+- fix(check): better handling of TypeScript in npm packages for type checking
+  (#27853)
+- fix(check): compiler options from workspace members (#27785)
+- fix(core): Fix `create_stack_trace` from empty trace (#27873)
+- fix(core): handle dyn imports exceeding call stack size (#27825)
+- fix(ext/crypto): export private x25519 JWK key (#27828)
+- fix(ext/crypto): fix jwk key_ops validation (#27827)
+- fix(ext/fetch): update h2 to fix sending a PROTOCOL_ERROR instead of
+  REFUSED_STREAM when receiving oversized headers (#27531)
+- fix(ext/node): clear tz cache when setting process.env.TZ (#27826)
+- fix(ext/node): do not apply socket-init-workaround to ipc socket (#27779)
+- fix(ext/node): fix async variant of brotliDecompress (#27815)
+- fix(ext/node): fix formatting of debug logs (#27772)
+- fix(ext/node): fix panic when invalid AES GCM key size (#27818)
+- fix(ext/node): implement X509Certificate#checkHost (#27821)
+- fix(ext/node): implement `aes-128-ctr`, `aes-192-ctr`, and `aes-256-ctr`
+  (#27630)
+- fix(ext/node): implement `crypto.hash` (#27858)
+- fix(ext/node): npm:mqtt compatibility (#27792)
+- fix(ext/node): reference error in zlib.crc32 (#27777)
+- fix(ext/node): scrypt panic when `log_n` > 64 (#27816)
+- fix(init): correct dev task for --lib (#27860)
+- fix(install/global): warn about not including auto-discovered config file
+  (#27745)
+- fix(lsp): ignore errors on ambient module imports (#27855)
+- fix(lsp): silence debug error for 'move to a new file' action (#27780)
+- fix(node): align type stripping in node_modules error message with Node
+  (#27809)
+- fix(npmrc): merge `.npmrc` in user's homedir and project (#27119)
+- fix(process/windows): correct command resolution when PATH env var not
+  uppercase (#27846)
+- fix(publish): unfurl sloppy imports in d.ts files and type imports (#27793)
+- fix(types): `Deno.readDirSync`'s type returns an `IteratorObject` (#27805)
+- fix: do not log cache creation failure on readonly file system (#27794)
+- perf(lsp): cache completion item resolution during request (#27831)
+- perf(node_resolver): reduce url to/from path conversions (#27839)
+- perf: full LTO in sysroot (#27771)
+
+### 2.1.7 / 2025.01.21
+
+- fix(deps): update yanked crates (#27512)
+- fix(ext/node): GCM auth tag check on DechiperIv#final (#27733)
+- fix(ext/node): add FileHandle#sync (#27677)
+- fix(ext/node): propagate socket error to client request object (#27678)
+- fix(ext/node): tls.connect regression (#27707)
+- fix(ext/os): pass SignalState to web worker (#27741)
+- fix(install/global): remove importMap field from specified config file
+  (#27744)
+- fix: use 'getrandom' feature for 'sys_traits' crate
+- perf(compile): remove swc from denort (#27721)
+
+### 2.1.6 / 2025.01.16
+
+- fix(check/lsp): correctly resolve compilerOptions.types (#27686)
+- fix(check/lsp): fix bugs with tsc type resolution, allow npm packages to
+  augment `ImportMeta` (#27690)
+- fix(compile): store embedded fs case sensitivity (#27653)
+- fix(compile/windows): better handling of deno_dir on different drive letter
+  than code (#27654)
+- fix(ext/console): change Temporal color (#27684)
+- fix(ext/node): add `writev` method to `FileHandle` (#27563)
+- fix(ext/node): add chown method to FileHandle class (#27638)
+- fix(ext/node): apply `@npmcli/agent` workaround to `npm-check-updates`
+  (#27639)
+- fix(ext/node): fix playwright http client (#27662)
+- fix(ext/node): show bare-node-builtin hint when using an import map (#27632)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs_common.ts` (#27589)
+- fix(lsp): handle pathless untitled URIs (#27637)
+- fix(lsp/check): don't resolve unknown media types to a `.js` extension
+  (#27631)
+- fix(node): Prevent node:child_process from always inheriting the parent
+  environment (#27343) (#27340)
+- fix(node/fs): add utimes method to the FileHandle class (#27582)
+- fix(outdated): Use `latest` tag even when it's the same as the current version
+  (#27699)
+- fix(outdated): retain strict semver specifier when updating (#27701)
+
+### 2.1.5 / 2025.01.09
+
+- feat(unstable): implement QUIC (#21942)
+- feat(unstable): add JS linting plugin infrastructure (#27416)
+- feat(unstable): add OTEL MeterProvider (#27240)
+- feat(unstable): no config npm:@opentelemetry/api integration (#27541)
+- feat(unstable): replace SpanExporter with TracerProvider (#27473)
+- feat(unstable): support selectors in JS lint plugins (#27452)
+- fix(check): line-break between diagnostic message chain entries (#27543)
+- fix(check): move module not found errors to typescript diagnostics (#27533)
+- fix(compile): analyze modules in directory specified in --include (#27296)
+- fix(compile): be more deterministic when compiling the same code in different
+  directories (#27395)
+- fix(compile): display embedded file sizes and total (#27360)
+- fix(compile): output contents of embedded file system (#27302)
+- fix(ext/fetch): better error message when body resource is unavailable
+  (#27429)
+- fix(ext/fetch): retry some http/2 errors (#27417)
+- fix(ext/fs): do not throw for bigint ctime/mtime/atime (#27453)
+- fix(ext/http): improve error message when underlying resource of request body
+  unavailable (#27463)
+- fix(ext/net): update moka cache to avoid potential panic in `Deno.resolveDns`
+  on some laptops with Ryzen CPU (#27572)
+- fix(ext/node): fix `fs.access`/`fs.promises.access` with `X_OK` mode parameter
+  on Windows (#27407)
+- fix(ext/node): fix `os.cpus()` on Linux (#27592)
+- fix(ext/node): RangeError timingSafeEqual with different byteLength (#27470)
+- fix(ext/node): add `truncate` method to the `FileHandle` class (#27389)
+- fix(ext/node): add support of any length IV for aes-(128|256)-gcm ciphers
+  (#27476)
+- fix(ext/node): convert brotli chunks with proper byte offset (#27455)
+- fix(ext/node): do not exit worker thread when there is pending async op
+  (#27378)
+- fix(ext/node): have `process` global available in Node context (#27562)
+- fix(ext/node): make getCiphers return supported ciphers (#27466)
+- fix(ext/node): sort list of built-in modules alphabetically (#27410)
+- fix(ext/node): support createConnection option in node:http.request() (#25470)
+- fix(ext/node): support private key export in JWK format (#27325)
+- fix(ext/web): add `[[ErrorData]]` slot to `DOMException` (#27342)
+- fix(ext/websocket): Fix close code without reason (#27578)
+- fix(jsr): Wasm imports fail to load (#27594)
+- fix(kv): improve backoff error message and inline documentation (#27537)
+- fix(lint): fix single char selectors being ignored (#27576)
+- fix(lockfile): include dependencies listed in external import map in lockfile
+  (#27337)
+- fix(lsp): css preprocessor formatting (#27526)
+- fix(lsp): don't skip dirs with enabled subdirs (#27580)
+- fix(lsp): include "node:" prefix for node builtin auto-imports (#27404)
+- fix(lsp): respect "typescript.suggestionActions.enabled" setting (#27373)
+- fix(lsp): rewrite imports for 'Move to a new file' action (#27427)
+- fix(lsp): sql and component file formatting (#27350)
+- fix(lsp): use verbatim specifier for URL auto-imports (#27605)
+- fix(no-slow-types): handle rest param with internal assignments (#27581)
+- fix(node/fs): add a chmod method to the FileHandle class (#27522)
+- fix(node): add missing `inspector/promises` (#27491)
+- fix(node): handle cjs exports with escaped chars (#27438)
+- fix(npm): deterministically output tags to initialized file (#27514)
+- fix(npm): search node_modules folder for package matching npm specifier
+  (#27345)
+- fix(outdated): ensure "Latest" version is greater than "Update" version
+  (#27390)
+- fix(outdated): support updating dependencies in external import maps (#27339)
+- fix(permissions): implicit `--allow-import` when using `--cached-only`
+  (#27530)
+- fix(publish): infer literal types in const contexts (#27425)
+- fix(task): properly handle task name wildcards with --recursive (#27396)
+- fix(task): support tasks without commands (#27191)
+- fix(unstable): don't error on non-existing attrs or type attr (#27456)
+- fix: FastString v8_string() should error when cannot allocated (#27375)
+- fix: deno_resolver crate without 'sync' feature (#27403)
+- fix: incorrect memory info free/available bytes on mac (#27460)
+- fix: upgrade deno_doc to 0.161.3 (#27377)
+- perf(fs/windows): stat - only open file once (#27487)
+- perf(node/fs/copy): reduce metadata lookups copying directory (#27495)
+- perf: don't store duplicate info for ops in the snapshot (#27430)
+- perf: remove now needless canonicalization getting closest package.json
+  (#27437)
+- perf: upgrade to deno_semver 0.7 (#27426)
+
+### 2.1.4 / 2024.12.11
+
+- feat(unstable): support caching npm dependencies only as they're needed
+  (#27300)
+- fix(compile): correct read length for transpiled typescript files (#27301)
+- fix(ext/node): accept file descriptor in fs.readFile(Sync) (#27252)
+- fix(ext/node): handle Float16Array in node:v8 module (#27285)
+- fix(lint): do not error providing --allow-import (#27321)
+- fix(node): update list of builtin node modules, add missing export to
+  _http_common (#27294)
+- fix(outdated): error when there are no config files (#27306)
+- fix(outdated): respect --quiet flag for hints (#27317)
+- fix(outdated): show a suggestion for updating (#27304)
+- fix(task): do not always kill child on ctrl+c on windows (#27269)
+- fix(unstable): don't unwrap optional state in otel (#27292)
+- fix: do not error when subpath has an @ symbol (#27290)
+- fix: do not panic when fetching invalid file url on Windows (#27259)
+- fix: replace the @deno-types with @ts-types (#27310)
+- perf(compile): improve FileBackedVfsFile (#27299)
+
+### 2.1.3 / 2024.12.05
+
+- feat(unstable): add metrics to otel (#27143)
+- fix(fmt): stable formatting of HTML files with JS (#27164)
+- fix(install): use locked version of jsr package when fetching exports (#27237)
+- fix(node/fs): support `recursive` option in readdir (#27179)
+- fix(node/worker_threads): data url not encoded properly with eval (#27184)
+- fix(outdated): allow `--latest` without `--update` (#27227)
+- fix(task): `--recursive` option not working (#27183)
+- fix(task): don't panic with filter on missing task argument (#27180)
+- fix(task): forward signals to spawned sub-processes on unix (#27141)
+- fix(task): kill descendants when killing task process on Windows (#27163)
+- fix(task): only pass args to root task (#27213)
+- fix(unstable): otel context with multiple keys (#27230)
+- fix(unstable/temporal): respect locale in `Duration.prototype.toLocaleString`
+  (#27000)
+- fix: clear dep analysis when module loading is done (#27204)
+- fix: improve auto-imports for npm packages (#27224)
+- fix: support `workspace:^` and `workspace:~` version constraints (#27096)
+
 ### 2.1.2 / 2024.11.28
 
 - feat(unstable): Instrument Deno.serve (#26964)

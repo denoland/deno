@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod blocklist;
 pub mod buffer;
@@ -13,6 +13,7 @@ pub mod os;
 pub mod perf_hooks;
 pub mod process;
 pub mod require;
+pub mod sqlite;
 pub mod tls;
 pub mod util;
 pub mod v8;

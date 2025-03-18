@@ -63,6 +63,5 @@
   "bugs": {
     "url": "https://github.com/kevva/shebang-command/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

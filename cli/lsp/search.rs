@@ -1,11 +1,12 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
+
+use std::sync::Arc;
 
 use deno_core::error::AnyError;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
-use std::sync::Arc;
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 pub trait PackageSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError>;
   async fn versions(&self, name: &str) -> Result<Arc<Vec<Version>>, AnyError>;
@@ -15,9 +16,11 @@ pub trait PackageSearchApi {
 
 #[cfg(test)]
 pub mod tests {
-  use super::*;
-  use deno_core::anyhow::anyhow;
   use std::collections::BTreeMap;
+
+  use deno_core::anyhow::anyhow;
+
+  use super::*;
 
   #[derive(Debug, Default)]
   pub struct TestPackageSearchApi {
@@ -42,7 +45,7 @@ pub mod tests {
     }
   }
 
-  #[async_trait::async_trait]
+  #[async_trait::async_trait(?Send)]
   impl PackageSearchApi for TestPackageSearchApi {
     async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
       let names = self
@@ -67,7 +70,9 @@ pub mod tests {
       &self,
       nv: &PackageNv,
     ) -> Result<Arc<Vec<String>>, AnyError> {
-      let Some(exports_by_version) = self.package_versions.get(&nv.name) else {
+      let Some(exports_by_version) =
+        self.package_versions.get(nv.name.as_str())
+      else {
         return Err(anyhow!("Package not found."));
       };
       let Some(exports) = exports_by_version.get(&nv.version) else {

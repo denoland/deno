@@ -1,5 +1,5 @@
 #!/usr/bin/env -S deno run --allow-all --config=tests/config/deno.json
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-console
 
@@ -211,7 +211,7 @@ async function ensureNoNewITests() {
     "bench_tests.rs": 0,
     "cache_tests.rs": 0,
     "cert_tests.rs": 0,
-    "check_tests.rs": 2,
+    "check_tests.rs": 0,
     "compile_tests.rs": 0,
     "coverage_tests.rs": 0,
     "eval_tests.rs": 0,

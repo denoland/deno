@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 /// <https://chromedevtools.github.io/devtools-protocol/tot/>
 use deno_core::serde_json::Value;

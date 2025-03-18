@@ -6,8 +6,8 @@ success ... ok ([WILDCARD])
 
 Deno.exitCode => ./main.js:1:6
 error: Error: Test case finished with exit code set to 42
-    at exitSanitizer (ext:cli/40_test.js:113:15)
-    at async outerWrapped (ext:cli/40_test.js:134:14)
+    at exitSanitizer ([WILDLINE])
+    at async outerWrapped ([WILDLINE])
 
  FAILURES 
 
