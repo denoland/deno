@@ -2532,6 +2532,27 @@ fn broken_stdout_repl() {
   assert_not_contains!(stderr, "panic");
 }
 
+#[test]
+fn broken_pipe_info_command() {
+  // Use similar approach as other broken pipe tests
+  let (reader, writer) = os_pipe::pipe().unwrap();
+  // drop the reader to create a broken pipe
+  drop(reader);
+
+  let output = util::deno_cmd()
+    .arg("info")
+    .stdout(writer)
+    .stderr_piped()
+    .spawn()
+    .unwrap()
+    .wait_with_output()
+    .unwrap();
+
+  // Verify the process handled the broken pipe without panic
+  let stderr = std::str::from_utf8(&output.stderr).unwrap();
+  assert_not_contains!(stderr, "panicked");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn websocketstream_ping() {
   let _g = util::http_server();
