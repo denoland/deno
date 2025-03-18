@@ -153,6 +153,17 @@ Deno.test({
       );
       db.close();
     }
+    {
+      const db = new DatabaseSync(":memory:");
+      assertThrows(
+        () => {
+          db.exec("ATTACH DATABASE 'test.db' AS test");
+        },
+        Error,
+        "too many attached databases - max 0",
+      );
+      db.close();
+    }
   },
 });
 
