@@ -59,7 +59,7 @@ pub fn create_basic_runtime() -> tokio::runtime::Runtime {
 #[inline(always)]
 fn create_and_run_current_thread_inner<F, R>(
   future: F,
-  metrics_enabled: bool,
+  _metrics_enabled: bool,
 ) -> R
 where
   F: std::future::Future<Output = R> + 'static,
@@ -80,7 +80,7 @@ where
   let future = unsafe { MaskFutureAsSend::new(future) };
 
   #[cfg(tokio_unstable)]
-  let join_handle = if metrics_enabled {
+  let join_handle = if _metrics_enabled {
     rt.spawn(async move {
       let metrics_interval: u64 = std::env::var("DENO_TOKIO_METRICS_INTERVAL")
         .ok()
@@ -132,6 +132,6 @@ where
   F: std::future::Future<Output = R> + 'static,
   R: Send + 'static,
 {
-  let metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
-  create_and_run_current_thread_inner(future, metrics_enabled)
+  let _metrics_enabled = std::env::var("DENO_TOKIO_METRICS").ok().is_some();
+  create_and_run_current_thread_inner(future, _metrics_enabled)
 }
