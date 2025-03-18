@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::GarbageCollected;
-use libsqlite3_sys as ffi;
+use rusqlite::ffi;
 use serde::Deserialize;
 
 use super::SqliteError;
