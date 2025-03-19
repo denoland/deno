@@ -169,6 +169,24 @@ function hrToMs(hr: [number, number]): number {
   return (hr[0] * 1e3 + hr[1] / 1e6);
 }
 
+function isTimeInput(input: unknown): input is TimeInput {
+  return typeof input === "number" ||
+    (input && (ArrayIsArray(input) || isDate(input)));
+}
+
+function timeInputToMs(input?: TimeInput): number | undefined {
+  if (input && ArrayIsArray(input)) {
+    return hrToMs(input);
+  } else if (input && isDate(input)) {
+    return DatePrototypeGetTime(input);
+  }
+  return input;
+}
+
+function countAttributes(attributes?: Attributes): number {
+  return attributes ? ObjectKeys(attributes).length : 0;
+}
+
 interface AsyncContextSnapshot {
   __brand: "AsyncContextSnapshot";
 }
@@ -215,6 +233,11 @@ interface OtelSpan {
 
   spanContext(): SpanContext;
   setStatus(status: SpanStatusCode, errorDescription: string): void;
+  addEvent(
+    name: string,
+    startTime: number,
+    droppedAttributeCount: number,
+  ): void;
   dropEvent(): void;
   end(endTime: number): void;
 }
@@ -303,20 +326,13 @@ class Tracer {
       context = context ?? CURRENT.get();
     }
 
-    let startTime = options?.startTime;
-    if (startTime && ArrayIsArray(startTime)) {
-      startTime = hrToMs(startTime);
-    } else if (startTime && isDate(startTime)) {
-      startTime = DatePrototypeGetTime(startTime);
-    }
+    const startTime = timeInputToMs(options?.startTime);
 
     const parentSpan = context?.getValue(SPAN_KEY) as
       | Span
       | { spanContext(): SpanContext }
       | undefined;
-    const attributesCount = options?.attributes
-      ? ObjectKeys(options.attributes).length
-      : 0;
+    const attributesCount = countAttributes(options?.attributes);
     const parentOtelSpan: OtelSpan | null | undefined = parentSpan !== undefined
       ? getOtelSpan(parentSpan) ?? undefined
       : undefined;
@@ -380,17 +396,27 @@ class Span {
   }
 
   addEvent(
-    _name: string,
-    _attributesOrStartTime?: Attributes | TimeInput,
-    _startTime?: TimeInput,
+    name: string,
+    attributesOrStartTime?: Attributes | TimeInput,
+    startTime?: TimeInput,
   ): this {
-    this.#otelSpan?.dropEvent();
+    if (isTimeInput(attributesOrStartTime)) {
+      startTime = attributesOrStartTime;
+      attributesOrStartTime = undefined;
+    }
+    const startTimeMs = timeInputToMs(startTime);
+
+    this.#otelSpan?.addEvent(
+      name,
+      startTimeMs ?? NaN,
+      countAttributes(attributesOrStartTime),
+    );
     return this;
   }
 
   addLink(link: Link): this {
     const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
-      (link.attributes ? ObjectKeys(link.attributes).length : 0);
+      countAttributes(link.attributes);
     const valid = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
@@ -411,12 +437,7 @@ class Span {
   }
 
   end(endTime?: TimeInput): void {
-    if (endTime && ArrayIsArray(endTime)) {
-      endTime = hrToMs(endTime);
-    } else if (endTime && isDate(endTime)) {
-      endTime = DatePrototypeGetTime(endTime);
-    }
-    this.#otelSpan?.end(endTime || NaN);
+    this.#otelSpan?.end(timeInputToMs(endTime) || NaN);
   }
 
   isRecording(): boolean {
