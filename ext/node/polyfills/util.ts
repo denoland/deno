@@ -49,6 +49,8 @@ import process from "node:process";
 import {
   validateAbortSignal,
   validateString,
+  validateNumber,
+  validateObject,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
@@ -318,6 +320,48 @@ export async function aborted(
   return abortPromise.promise;
 }
 
+function prepareStackTrace(_error, stackTraces) {
+  return stackTraces.map(stack => {
+    return ({
+      functionName: stack.getFunctionName() ?? '',
+      // TODO(kt3k): This needs to be script's id
+      scriptId: '0',
+      scriptName: stack.getFileName(),
+      lineNumber: stack.getLineNumber(),
+      column: stack.getColumnNumber(),
+      columnNumber: stack.getColumnNumber(),
+    })
+  })
+}
+
+const kDefaultMaxCallStackSizeToCapture = 200
+
+/**
+ * Returns the call sites of the current call stack
+ * @param frameCount The limit of the number of frames to return
+ * @param _options The options
+ * @returns The call sites
+ */
+export function getCallSites(frameCount = 10, options: unknown = {}) {
+  validateNumber(frameCount, "frameCount", 0, kDefaultMaxCallStackSizeToCapture);
+  if (options) {
+    validateObject(options, "options");
+  }
+  const target = {}
+  const original = Error.prepareStackTrace
+  const limitOriginal = Error.stackTraceLimit
+
+  Error.stackTraceLimit = frameCount
+  Error.prepareStackTrace = prepareStackTrace
+  Error.captureStackTrace(target, getCallSites)
+
+  const capturedTraces = target.stack
+  Error.prepareStackTrace = original
+  Error.stackTraceLimit = limitOriginal
+
+  return capturedTraces
+}
+
 export { getSystemErrorName, isDeepStrictEqual };
 
 export default {
@@ -340,6 +384,7 @@ export default {
   isPrimitive,
   isBuffer,
   _extend,
+  getCallSites,
   getSystemErrorName,
   aborted,
   deprecate,
