@@ -12,6 +12,7 @@ import process, {
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
+  cpuUsage as importedCpuUsage
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -1196,6 +1197,10 @@ Deno.test("process.cpuUsage()", () => {
     },
     RangeError,
   );
+});
+
+Deno.test("importedCpuUsage", () => {
+  assert(importedCpuUsage === process.cpuUsage)
 });
 
 Deno.test("process.stdout.columns writable", () => {
