@@ -1145,9 +1145,57 @@ Deno.test(function importedExecPathTest() {
 });
 
 Deno.test("process.cpuUsage()", () => {
+  assert(process.cpuUsage.length === 1);
   const cpuUsage = process.cpuUsage();
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
+  const a = process.cpuUsage();
+  const b = process.cpuUsage(a);
+  assert(a.user > b.user);
+  assert(a.system > b.system);
+
+  assertThrows(
+    () => {
+      process.cpuUsage({});
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: "1", system: 2 });
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: 1, system: "2" });
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: -1, system: 2 });
+    },
+    RangeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: 1, system: -2 });
+    },
+    RangeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: 1, system: Infinity });
+    },
+    RangeError,
+  );
+  assertThrows(
+    () => {
+      process.cpuUsage({ user: Infinity, system: 2 });
+    },
+    RangeError,
+  );
 });
 
 Deno.test("process.stdout.columns writable", () => {
