@@ -6,13 +6,13 @@ import process, {
   arch as importedArch,
   argv,
   argv0 as importedArgv0,
+  cpuUsage as importedCpuUsage,
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
   geteuid,
   pid as importedPid,
   platform as importedPlatform,
-  cpuUsage as importedCpuUsage
 } from "node:process";
 
 import { Readable } from "node:stream";
@@ -1195,7 +1195,7 @@ Deno.test("process.cpuUsage()", () => {
 });
 
 Deno.test("importedCpuUsage", () => {
-  assert(importedCpuUsage === process.cpuUsage)
+  assert(importedCpuUsage === process.cpuUsage);
 });
 
 Deno.test("process.stdout.columns writable", () => {
