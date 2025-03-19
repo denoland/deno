@@ -175,9 +175,10 @@ function isTimeInput(input: unknown): input is TimeInput {
 }
 
 function timeInputToMs(input?: TimeInput): number | undefined {
-  if (input && ArrayIsArray(input)) {
+  if (input === undefined) return;
+  if (ArrayIsArray(input)) {
     return hrToMs(input);
-  } else if (input && isDate(input)) {
+  } else if (isDate(input)) {
     return DatePrototypeGetTime(input);
   }
   return input;
@@ -201,7 +202,7 @@ export const currentSnapshot = getAsyncContext;
 export const restoreSnapshot = setAsyncContext;
 
 function isDate(value: unknown): value is Date {
-  return ObjectPrototypeIsPrototypeOf(value, DatePrototype);
+  return ObjectPrototypeIsPrototypeOf(DatePrototype, value);
 }
 
 interface OtelTracer {
