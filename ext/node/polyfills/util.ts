@@ -4,6 +4,7 @@ import { primordials } from "ext:core/mod.js";
 const {
   ArrayIsArray,
   ArrayPrototypeJoin,
+  ArrayPrototypeMap,
   Date,
   DatePrototypeGetDate,
   DatePrototypeGetHours,
@@ -48,9 +49,9 @@ import { isDeepStrictEqual } from "ext:deno_node/internal/util/comparisons.ts";
 import process from "node:process";
 import {
   validateAbortSignal,
-  validateString,
   validateNumber,
   validateObject,
+  validateString,
 } from "ext:deno_node/internal/validators.mjs";
 import { parseArgs } from "ext:deno_node/internal/util/parse_args/parse_args.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
@@ -321,45 +322,61 @@ export async function aborted(
 }
 
 function prepareStackTrace(_error, stackTraces) {
-  return stackTraces.map(stack => {
+  return ArrayPrototypeMap(stackTraces, (stack) => {
     return ({
-      functionName: stack.getFunctionName() ?? '',
+      functionName: stack.getFunctionName() ?? "",
       // TODO(kt3k): This needs to be script's id
-      scriptId: '0',
+      scriptId: "0",
       scriptName: stack.getFileName(),
       lineNumber: stack.getLineNumber(),
       column: stack.getColumnNumber(),
       columnNumber: stack.getColumnNumber(),
-    })
-  })
+    });
+  });
 }
 
-const kDefaultMaxCallStackSizeToCapture = 200
+const kDefaultMaxCallStackSizeToCapture = 200;
 
+// deno-lint-ignore-start
 /**
  * Returns the call sites of the current call stack
  * @param frameCount The limit of the number of frames to return
  * @param _options The options
  * @returns The call sites
  */
-export function getCallSites(frameCount = 10, options: unknown = {}) {
-  validateNumber(frameCount, "frameCount", 0, kDefaultMaxCallStackSizeToCapture);
+export function getCallSites(
+  frameCount = 10,
+  options: unknown = { __proto__: null },
+) {
+  validateNumber(
+    frameCount,
+    "frameCount",
+    0,
+    kDefaultMaxCallStackSizeToCapture,
+  );
   if (options) {
     validateObject(options, "options");
   }
-  const target = {}
-  const original = Error.prepareStackTrace
-  const limitOriginal = Error.stackTraceLimit
+  const target = {};
+  // deno-lint-ignore prefer-primordials
+  const original = Error.prepareStackTrace;
+  // deno-lint-ignore prefer-primordials
+  const limitOriginal = Error.stackTraceLimit;
 
-  Error.stackTraceLimit = frameCount
-  Error.prepareStackTrace = prepareStackTrace
-  Error.captureStackTrace(target, getCallSites)
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = frameCount;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = prepareStackTrace;
+  // deno-lint-ignore prefer-primordials
+  Error.captureStackTrace(target, getCallSites);
 
-  const capturedTraces = target.stack
-  Error.prepareStackTrace = original
-  Error.stackTraceLimit = limitOriginal
+  const capturedTraces = target.stack;
+  // deno-lint-ignore prefer-primordials
+  Error.prepareStackTrace = original;
+  // deno-lint-ignore prefer-primordials
+  Error.stackTraceLimit = limitOriginal;
 
-  return capturedTraces
+  return capturedTraces;
 }
 
 export { getSystemErrorName, isDeepStrictEqual };
