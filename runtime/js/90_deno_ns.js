@@ -79,12 +79,12 @@ const denoNs = {
         );
       }
       if (previousValue.user < 0 || !NumberIsFinite(previousValue.user)) {
-        throw new RangeErrorConstructor(
+        throw new RangeError(
           'The "previousValue.user" property must be 0 or greater.',
         );
       }
       if (previousValue.system < 0 || !NumberIsFinite(previousValue.system)) {
-        throw new RangeErrorConstructor(
+        throw new RangeError(
           'The "previousValue.system" property must be 0 or greater.',
         );
       }
