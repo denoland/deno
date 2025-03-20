@@ -138,7 +138,10 @@ export async function runNodeCompatTestCase(
     switch (flag) {
       case "--expose_externalize_string":
         v8Flags.push("--expose-externalize-string");
-        knownGlobals.push("createExternalizableString");
+        knownGlobals.push(
+          "createExternalizableString",
+          "createExternalizableTwoByteString",
+        );
         break;
       case "--expose-gc":
         v8Flags.push("--expose-gc");
