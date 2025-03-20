@@ -1749,6 +1749,38 @@ fn diagnose_dependency(
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
+  /// Given a specifier and a referring specifier, determine if a value in the
+  /// import map could be used as an import specifier that resolves using the
+  /// import map.
+  ///
+  /// This was inlined from the import_map crate in order to ignore entries
+  /// with a `./` value.
+  fn import_map_lookup(
+    import_map: &ImportMap,
+    specifier: &Url,
+    referrer: &Url,
+  ) -> Option<String> {
+    let specifier_str = specifier.as_str();
+    for entry in import_map.entries_for_referrer(referrer) {
+      if entry.raw_value == Some("./") {
+        // ignore `./` entries because it creates an annoying diagnostic
+        continue;
+      }
+
+      if let Some(address) = entry.value {
+        let address_str = address.as_str();
+        if address_str == specifier_str {
+          return Some(entry.raw_key.to_string());
+        }
+        if address_str.ends_with('/') && specifier_str.starts_with(address_str)
+        {
+          return Some(specifier_str.replace(address_str, entry.raw_key));
+        }
+      }
+    }
+    None
+  }
+
   let referrer = referrer_doc.specifier();
   if snapshot.resolver.in_node_modules(referrer) {
     return; // ignore, surface typescript errors instead
@@ -1765,7 +1797,9 @@ fn diagnose_dependency(
       .ok()
       .or_else(|| dependency.maybe_type.ok());
     if let Some(resolved) = resolved {
-      if let Some(to) = import_map.lookup(&resolved.specifier, referrer) {
+      if let Some(to) =
+        import_map_lookup(import_map, &resolved.specifier, referrer)
+      {
         if dependency_key != to {
           diagnostics.push(
             DenoDiagnostic::ImportMapRemap {
