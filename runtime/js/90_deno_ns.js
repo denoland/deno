@@ -33,7 +33,6 @@ import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 
 const {
-  RangeErrorConstructor,
   TypeErrorConstructor,
   NumberIsFinite,
   ObjectDefineProperties,
