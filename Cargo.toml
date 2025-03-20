@@ -54,13 +54,13 @@ deno_ast = { version = "=0.46.2", features = ["transpiling"] }
 deno_core = { version = "0.340.0" }
 
 deno_bench_util = { version = "0.189.0", path = "./bench_util" }
-deno_config = { version = "=0.50.0", features = ["workspace"] }
+deno_config = { version = "=0.51.0", features = ["workspace"] }
 deno_doc = "=0.169.1"
 deno_graph = "=0.89.2"
 deno_lint = "=0.74.0"
-deno_lockfile = "=0.24.0"
+deno_lockfile = "=0.25.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
-deno_npm = "=0.27.2"
+deno_npm = "=0.28.0"
 deno_path_util = "=0.3.2"
 deno_permissions = { version = "0.54.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.203.0", path = "./runtime" }
@@ -152,7 +152,7 @@ data-url = "=0.3.1"
 deno_cache_dir = "=0.18.0"
 deno_error = "=0.5.6"
 deno_native_certs = "0.3.0"
-deno_package_json = { version = "=0.5.2", default-features = false }
+deno_package_json = { version = "=0.6.0", default-features = false }
 deno_task_shell = "=0.20.2"
 deno_unsync = "0.4.2"
 deno_whoami = "0.1.0"
@@ -490,9 +490,3 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_unsync]
 opt-level = 3
-
-[patch.crates-io]
-deno_package_json = { git = "https://github.com/dsherret/deno_package_json", rev = "e17765ea1d10865bb8182c8684837f306a49a0a3" }
-deno_config = { git = "https://github.com/dsherret/deno_config", rev = "6ca50ed30280a95340500e51ae83c205eb169eff" }
-deno_lockfile = { git = "https://github.com/dsherret/deno_lockfile", rev = "7dbd7de" }
-deno_npm = { git = "https://github.com/dsherret/deno_npm", rev = "22b18e8" }
