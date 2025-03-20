@@ -992,8 +992,8 @@ function registerDeclarativeServer(exports) {
               ? ` with ${serveWorkerCount} threads`
               : "";
             const host = formatHostName(hostname);
-
             // deno-lint-ignore no-console
+            // Log server information
             console.error(
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
@@ -1001,6 +1001,11 @@ function registerDeclarativeServer(exports) {
               "color: yellow",
               "color: inherit",
             );
+          }
+
+          // Check if `onListen` is provided by `exports` and call it if present
+          if (typeof exports.onListen === "function") {
+            exports.onListen({ port, hostname });
           }
         },
         handler: (req, connInfo) => {
