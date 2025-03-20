@@ -70,7 +70,7 @@ contextual awareness, it is the author's opinion that it is best to spend the
    - Revert/merge any changes to lib files that provide forward support. This is
      the "hardest" thing, because you need to assess if the updated version of
      TypeScript now includes the type definitions that we forward support.
-     Currently there are four:
+     Currently there the following:
 
      - `lib.esnext.array.d.ts` contains additional array APIs. These likely will
        be moved to ES2022 at some point, but currently only the
