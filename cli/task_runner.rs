@@ -8,7 +8,6 @@ use std::rc::Rc;
 use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures;
 use deno_core::futures::future::LocalBoxFuture;
 use deno_semver::package::PackageNv;
 use deno_task_shell::ExecutableCommand;
@@ -246,9 +245,9 @@ impl ShellCommand for NpmCommand {
       Ok(path) => path,
       Err(err) => {
         let _ = context.stderr.write_line(&format!("{}", err));
-        return Box::pin(futures::future::ready(
-          ExecuteResult::from_exit_code(err.exit_code()),
-        ));
+        return Box::pin(std::future::ready(ExecuteResult::from_exit_code(
+          err.exit_code(),
+        )));
       }
     };
     ExecutableCommand::new("npm".to_string(), npm_path).execute(context)
@@ -337,7 +336,7 @@ impl ShellCommand for NpxCommand {
           Ok(npx) => npx,
           Err(err) => {
             let _ = context.stderr.write_line(&format!("{}", err));
-            return Box::pin(futures::future::ready(
+            return Box::pin(std::future::ready(
               ExecuteResult::from_exit_code(err.exit_code()),
             ));
           }
@@ -346,7 +345,7 @@ impl ShellCommand for NpxCommand {
       }
     } else {
       let _ = context.stderr.write_line("npx: missing command");
-      Box::pin(futures::future::ready(ExecuteResult::from_exit_code(1)))
+      Box::pin(std::future::ready(ExecuteResult::from_exit_code(1)))
     }
   }
 }
@@ -621,7 +620,7 @@ async fn listen_and_forward_all_signals(kill_signal: KillSignal) {
       .boxed_local(),
     )
   }
-  futures::future::join_all(futures).await;
+  deno_core::futures::future::join_all(futures).await;
 }
 
 #[cfg(test)]
