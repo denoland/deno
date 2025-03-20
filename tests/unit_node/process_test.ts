@@ -1161,30 +1161,21 @@ Deno.test("process.cpuUsage()", () => {
     },
     TypeError,
   );
-  assertThrows(
-    () => {
-      process.cpuUsage({ user: -1, system: 2 });
-    },
-    RangeError,
-  );
-  assertThrows(
-    () => {
-      process.cpuUsage({ user: 1, system: -2 });
-    },
-    RangeError,
-  );
-  assertThrows(
-    () => {
-      process.cpuUsage({ user: 1, system: Infinity });
-    },
-    RangeError,
-  );
-  assertThrows(
-    () => {
-      process.cpuUsage({ user: Infinity, system: 2 });
-    },
-    RangeError,
-  );
+
+  for (const invalidNumber of [-1, -Infinity, Infinity, NaN]) {
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: invalidNumber, system: 2 });
+      },
+      RangeError,
+    );
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: 2, system: invalidNumber });
+      },
+      RangeError,
+    );
+  }
 });
 
 Deno.test("importedCpuUsage", () => {
