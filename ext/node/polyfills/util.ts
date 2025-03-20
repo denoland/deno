@@ -11,6 +11,7 @@ const {
   DatePrototypeGetMinutes,
   DatePrototypeGetMonth,
   DatePrototypeGetSeconds,
+  ErrorCaptureStackTrace,
   ErrorPrototype,
   NumberPrototypeToString,
   ObjectDefineProperty,
@@ -367,8 +368,7 @@ export function getCallSites(
   Error.stackTraceLimit = frameCount;
   // deno-lint-ignore prefer-primordials
   Error.prepareStackTrace = prepareStackTrace;
-  // deno-lint-ignore prefer-primordials
-  Error.captureStackTrace(target, getCallSites);
+  ErrorCaptureStackTrace(target, getCallSites);
 
   const capturedTraces = target.stack;
   // deno-lint-ignore prefer-primordials
