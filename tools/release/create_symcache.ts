@@ -24,5 +24,5 @@ if (!outfile) {
   Deno.exit(1);
 }
 
-const symcache = create_symcache(Deno.readFileSync(debugFile));
+const symcache = createSymcache(Deno.readFileSync(debugFile));
 Deno.writeFileSync(outfile, symcache);
