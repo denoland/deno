@@ -45,6 +45,7 @@ pub use opentelemetry::metrics::MeterProvider;
 pub use opentelemetry::metrics::UpDownCounter;
 use opentelemetry::otel_debug;
 use opentelemetry::otel_error;
+use opentelemetry::trace::Event;
 use opentelemetry::trace::Link;
 use opentelemetry::trace::SpanContext;
 use opentelemetry::trace::SpanId;
@@ -1379,6 +1380,32 @@ impl OtelSpan {
       _ => return Err(InvalidSpanStatusCodeError),
     };
     Ok(())
+  }
+
+  #[fast]
+  fn add_event(
+    &self,
+    #[string] name: String,
+    start_time: f64,
+    #[smi] dropped_attributes_count: u32,
+  ) {
+    let start_time = if start_time.is_nan() {
+      SystemTime::now()
+    } else {
+      SystemTime::UNIX_EPOCH
+        .checked_add(Duration::from_secs_f64(start_time / 1000.0))
+        .unwrap()
+    };
+    let mut state = self.0.borrow_mut();
+    let OtelSpanState::Recording(span) = &mut **state else {
+      return;
+    };
+    span.events.events.push(Event::new(
+      name,
+      start_time,
+      vec![],
+      dropped_attributes_count,
+    ));
   }
 
   #[fast]
