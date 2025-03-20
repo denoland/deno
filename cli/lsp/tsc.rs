@@ -35,6 +35,7 @@ use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
 use deno_core::serde_v8;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::JsRuntime;
 use deno_core::ModuleSpecifier;
@@ -51,6 +52,7 @@ use indexmap::IndexMap;
 use indexmap::IndexSet;
 use lazy_regex::lazy_regex;
 use log::error;
+use lsp_types::Uri;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
@@ -70,6 +72,7 @@ use tower_lsp::lsp_types as lsp;
 
 use super::analysis::CodeActionData;
 use super::code_lens;
+use super::code_lens::CodeLensData;
 use super::config;
 use super::config::LspTsConfig;
 use super::documents::AssetOrDocument;
@@ -470,6 +473,15 @@ impl TsServer {
     self.start_once.is_completed()
   }
 
+  pub fn project_changed2<'a>(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    changed_specifiers_by_scope: BTreeMap<&Arc<Url>, Vec<Url>>,
+    new_configs_by_scope: Option<BTreeMap<Url, Arc<LspTsConfig>>>,
+  ) {
+    // TODO(nayeemrmn): Implement!
+  }
+
   pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -593,6 +605,33 @@ impl TsServer {
         })
         .ok();
     }
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn find_references2(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: Url,
+    position: u32,
+    scope: Option<Url>,
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
+    let req = TscRequest::FindReferences((
+      self.specifier_map.denormalize(&specifier),
+      position,
+    ));
+    self
+      .request::<Option<Vec<ReferencedSymbol>>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut symbols| {
+        for symbol in symbols.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          symbol.normalize(&self.specifier_map)?;
+        }
+        Ok(symbols)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -765,7 +804,8 @@ impl TsServer {
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
-    code_action_data: &CodeActionData,
+    specifier: &Url,
+    fix_id: &str,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
     scope: Option<ModuleSpecifier>,
@@ -774,9 +814,9 @@ impl TsServer {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
       CombinedCodeFixScope {
         r#type: "file",
-        file_name: self.specifier_map.denormalize(&code_action_data.specifier),
+        file_name: self.specifier_map.denormalize(specifier),
       },
-      code_action_data.fix_id.clone(),
+      fix_id.to_string(),
       format_code_settings,
       preferences,
     )));
@@ -828,6 +868,7 @@ impl TsServer {
     new_specifier: ModuleSpecifier,
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
+    scope: Option<ModuleSpecifier>,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
@@ -836,47 +877,22 @@ impl TsServer {
       format_code_settings,
       user_preferences,
     )));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<FileTextChanges>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_changes = IndexSet::new();
-    while let Some(changes) = results.next().await {
-      if let Some(err) = changes.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!(
-            "Unable to get edits for file rename from TypeScript: {err}"
-          );
-        }
-      }
-      let mut changes = changes.unwrap_or_default();
-      for changes in &mut changes {
-        changes.normalize(&self.specifier_map)?;
-        for text_changes in &mut changes.text_changes {
-          if token.is_cancelled() {
-            return Err(anyhow!("request cancelled"));
+    self
+      .request::<Vec<FileTextChanges>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut changes| {
+        for changes in &mut changes {
+          changes.normalize(&self.specifier_map)?;
+          for text_changes in &mut changes.text_changes {
+            if token.is_cancelled() {
+              return Err(anyhow!("request cancelled"));
+            }
+            text_changes.new_text =
+              to_percent_decoded_str(&text_changes.new_text);
           }
-          text_changes.new_text =
-            to_percent_decoded_str(&text_changes.new_text);
         }
-      }
-      all_changes.extend(changes);
-    }
-    Ok(all_changes.into_iter().collect())
+        Ok(changes)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1011,6 +1027,35 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub async fn get_implementations2(
+    &self,
+    snapshot: Arc<StateSnapshot>,
+    specifier: ModuleSpecifier,
+    position: u32,
+    scope: Option<Url>,
+    token: &CancellationToken,
+  ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
+    let req = TscRequest::GetImplementationAtPosition((
+      self.specifier_map.denormalize(&specifier),
+      position,
+    ));
+    self
+      .request::<Option<Vec<ImplementationLocation>>>(
+        snapshot, req, scope, token,
+      )
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          location.normalize(&self.specifier_map)?;
+        }
+        Ok(locations)
+      })
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1085,47 +1130,22 @@ impl TsServer {
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
     position: u32,
+    scope: Option<ModuleSpecifier>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
       self.specifier_map.denormalize(&specifier),
       position,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<CallHierarchyIncomingCall>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_calls = IndexSet::new();
-    while let Some(calls) = results.next().await {
-      if let Some(err) = calls.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!("Unable to get incoming calls from TypeScript: {err}");
+    self
+      .request::<Vec<CallHierarchyIncomingCall>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut calls| {
+        for call in &mut calls {
+          call.normalize(&self.specifier_map)?;
         }
-      }
-      let mut calls = calls.unwrap_or_default();
-      for call in &mut calls {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        call.normalize(&self.specifier_map)?;
-      }
-      all_calls.extend(calls)
-    }
-    Ok(all_calls.into_iter().collect())
+        Ok(calls)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1310,6 +1330,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     args: GetNavigateToItemsArgs,
+    scope: Option<ModuleSpecifier>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
@@ -1320,41 +1341,18 @@ impl TsServer {
         Err(_) => f,
       }),
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Vec<NavigateToItem>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_items = IndexSet::new();
-    while let Some(items) = results.next().await {
-      if let Some(err) = items.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          lsp_warn!("Unable to get 'navigate to' items from TypeScript: {err}");
+    self
+      .request::<Vec<NavigateToItem>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut items| {
+        for item in &mut items {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
+          }
+          item.normalize(&self.specifier_map)?;
         }
-      }
-      let mut items = items.unwrap_or_default();
-      for item in &mut items {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        item.normalize(&self.specifier_map)?;
-      }
-      all_items.extend(items)
-    }
-    Ok(all_items.into_iter().collect())
+        Ok(items)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -2234,8 +2232,8 @@ impl NavigationTree {
   pub fn to_code_lens(
     &self,
     line_index: Arc<LineIndex>,
-    specifier: &ModuleSpecifier,
-    source: &code_lens::CodeLensSource,
+    uri: &Uri,
+    source: code_lens::CodeLensSource,
   ) -> lsp::CodeLens {
     let range = if let Some(name_span) = &self.name_span {
       name_span.to_range(line_index)
@@ -2248,9 +2246,9 @@ impl NavigationTree {
     lsp::CodeLens {
       range,
       command: None,
-      data: Some(json!({
-        "specifier": specifier,
-        "source": source
+      data: Some(json!(CodeLensData {
+        source,
+        uri: uri.clone(),
       })),
     }
   }
@@ -2908,6 +2906,7 @@ pub struct ApplicableRefactorInfo {
 impl ApplicableRefactorInfo {
   pub fn to_code_actions(
     &self,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     range: &lsp::Range,
     token: &CancellationToken,
@@ -2918,8 +2917,9 @@ impl ApplicableRefactorInfo {
       if token.is_cancelled() {
         return Err(anyhow!("request cancelled"));
       }
-      code_actions
-        .push(self.as_inline_code_action(action, specifier, range, &self.name));
+      code_actions.push(
+        self.as_inline_code_action(action, uri, specifier, range, &self.name),
+      );
     }
     Ok(code_actions)
   }
@@ -2927,6 +2927,7 @@ impl ApplicableRefactorInfo {
   fn as_inline_code_action(
     &self,
     action: &RefactorActionInfo,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     range: &lsp::Range,
     refactor_name: &str,
@@ -2944,6 +2945,7 @@ impl ApplicableRefactorInfo {
       disabled,
       data: Some(
         serde_json::to_value(RefactorCodeActionData {
+          uri: uri.clone(),
           specifier: specifier.clone(),
           range: *range,
           refactor_name: refactor_name.to_owned(),
@@ -3238,12 +3240,12 @@ impl CallHierarchyItem {
       .unwrap_or_else(|_| INVALID_URI.clone());
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path = if uri.scheme().is_some_and(|s| s.as_str() == "file")
-    {
-      url_to_file_path(&uri_to_url(&uri)).ok()
-    } else {
-      None
-    };
+    let maybe_file_path =
+      if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+        url_to_file_path(&uri_to_url(&uri)).ok()
+      } else {
+        None
+      };
     let name = if use_file_name {
       if let Some(file_path) = maybe_file_path.as_ref() {
         file_path.file_name().unwrap().to_string_lossy().to_string()
@@ -3709,6 +3711,7 @@ impl CompletionInfo {
     &self,
     line_index: Arc<LineIndex>,
     settings: &config::CompletionSettings,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
@@ -3727,6 +3730,7 @@ impl CompletionInfo {
         line_index.clone(),
         self,
         settings,
+        uri,
         specifier,
         position,
         language_server,
@@ -3764,6 +3768,7 @@ pub struct CompletionSpecifierRewrite {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
+  pub uri: Uri,
   pub specifier: ModuleSpecifier,
   pub position: u32,
   pub name: String,
@@ -3942,6 +3947,7 @@ impl CompletionEntry {
     line_index: Arc<LineIndex>,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     position: u32,
     language_server: &language_server::Inner,
@@ -4086,6 +4092,7 @@ impl CompletionEntry {
       };
 
     let tsc = CompletionItemData {
+      uri: uri.clone(),
       specifier: specifier.clone(),
       position,
       name: self.name.clone(),
@@ -5754,6 +5761,7 @@ mod tests {
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::Documents;
+  use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
@@ -5780,6 +5788,18 @@ mod tests {
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let mut documents2 = Documents2::default();
+    for (relative_specifier, source, version, language_id) in sources {
+      let specifier = temp_dir.url().join(relative_specifier).unwrap();
+      documents2.open(specifier, *version, *language_id, (*source).into());
+    }
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
+      &config,
+      &resolver,
+      &cache,
+      &Default::default(),
+    );
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_specifier, source, version, language_id) in sources {
@@ -5789,6 +5809,8 @@ mod tests {
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
       documents: Arc::new(documents),
+      documents2: Arc::new(documents2),
+      document_modules: Arc::new(document_modules),
       config: Arc::new(config),
       resolver,
     });
@@ -6587,6 +6609,7 @@ mod tests {
         temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
+        None,
         &Default::default(),
       )
       .await

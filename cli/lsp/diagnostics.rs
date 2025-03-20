@@ -36,6 +36,7 @@ use deno_semver::package::PackageReq;
 use import_map::ImportMap;
 use import_map::ImportMapErrorKind;
 use log::error;
+use lsp_types::Uri;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::Duration;
@@ -231,6 +232,15 @@ type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
 struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
 
 impl TsDiagnosticsStore {
+  pub fn get2(
+    &self,
+    uri: &Uri,
+    document_version: Option<i32>,
+  ) -> Vec<lsp::Diagnostic> {
+    // TODO(nayeemrmn): Implement!
+    vec![]
+  }
+
   pub fn get(
     &self,
     specifier: &ModuleSpecifier,
@@ -246,6 +256,11 @@ impl TsDiagnosticsStore {
     Vec::new()
   }
 
+  pub fn invalidate2(&self, uris: &[&Uri]) {
+    // TODO(nayeemrmn): Implement!
+  }
+
+  // TODO(nayeemrmn): Remove!
   pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
     let mut ts_diagnostics = self.0.lock();
     for specifier in specifiers {
@@ -358,10 +373,21 @@ impl DiagnosticsState {
     );
   }
 
+  pub fn clear2(&self, uri: &Uri) {
+    // TODO(nayeemrmn): Implement!
+  }
+
+  // TODO(nayeemrmn): Remove!
   pub fn clear(&self, specifier: &ModuleSpecifier) {
     self.specifiers.write().remove(specifier);
   }
 
+  pub fn has_no_cache_diagnostics2(&self, uri: &Uri) -> bool {
+    // TODO(nayeemrmn): Implement!
+    false
+  }
+
+  // TODO(nayeemrmn): Remove!
   pub fn has_no_cache_diagnostics(&self, specifier: &ModuleSpecifier) -> bool {
     self
       .specifiers
@@ -369,6 +395,11 @@ impl DiagnosticsState {
       .get(specifier)
       .map(|s| !s.no_cache_diagnostics.is_empty())
       .unwrap_or(false)
+  }
+
+  pub fn no_cache_diagnostics2(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
+    // TODO(nayeemrmn): Implement!
+    vec![]
   }
 
   pub fn no_cache_diagnostics(
@@ -397,6 +428,11 @@ struct DeferredDiagnostics {
 }
 
 impl DeferredDiagnostics {
+  fn invalidate2(&mut self, uris: &[&Uri]) {
+    // TODO(nayeemrmn): Implement!
+  }
+
+  // TODO(nayeemrmn): Remove!
   fn invalidate(&mut self, specifiers: &[ModuleSpecifier]) {
     if let Some(diagnostics) = &mut self.diagnostics {
       diagnostics.retain(|d| !specifiers.contains(&d.document_specifier));
@@ -405,6 +441,7 @@ impl DeferredDiagnostics {
       ambient.dirty = true;
     }
   }
+
   fn invalidate_all(&mut self) {
     self.diagnostics = None;
     for ambient in self.ambient_modules_by_scope.values_mut() {
@@ -544,15 +581,15 @@ impl DiagnosticsServer {
 
   pub fn get_ts_diagnostics(
     &self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    self.ts_diagnostics.get(specifier, document_version)
+    self.ts_diagnostics.get2(uri, document_version)
   }
 
-  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
-    self.ts_diagnostics.invalidate(specifiers);
-    self.deferred_diagnostics.lock().invalidate(specifiers);
+  pub fn invalidate(&self, uris: &[&Uri]) {
+    self.ts_diagnostics.invalidate2(uris);
+    self.deferred_diagnostics.lock().invalidate2(uris);
   }
 
   pub fn invalidate_all(&self) {
@@ -1253,6 +1290,7 @@ impl DenoDiagnostic {
   /// A "static" method which for a diagnostic that originated from the
   /// structure returns a code action which can resolve the diagnostic.
   pub fn get_code_action(
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<lsp::CodeAction, AnyError> {
@@ -1271,7 +1309,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier)?,
+                uri.clone(),
                 vec![lsp::TextEdit {
                   new_text: format!("\"{to}\""),
                   range: diagnostic.range,
@@ -1288,7 +1326,7 @@ impl DenoDiagnostic {
           diagnostics: Some(vec![diagnostic.clone()]),
           edit: Some(lsp::WorkspaceEdit {
             changes: Some(HashMap::from([(
-              url_to_uri(specifier)?,
+              uri.clone(),
               vec![lsp::TextEdit {
                 new_text: " with { type: \"json\" }".to_string(),
                 range: lsp::Range {
@@ -1339,7 +1377,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier)?,
+                uri.clone(),
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1365,7 +1403,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier)?,
+                uri.clone(),
                 vec![lsp::TextEdit {
                   new_text: format!(
                     "\"{}\"",
@@ -1391,7 +1429,7 @@ impl DenoDiagnostic {
             diagnostics: Some(vec![diagnostic.clone()]),
             edit: Some(lsp::WorkspaceEdit {
               changes: Some(HashMap::from([(
-                url_to_uri(specifier)?,
+                uri.clone(),
                 vec![lsp::TextEdit {
                   new_text: format!("\"node:{}\"", data.specifier),
                   range: diagnostic.range,
@@ -1928,6 +1966,7 @@ fn generate_deno_diagnostics(
 
 #[cfg(test)]
 mod tests {
+  use std::str::FromStr;
   use std::sync::Arc;
 
   use deno_config::deno_json::ConfigFile;
@@ -1939,7 +1978,9 @@ mod tests {
   use crate::lsp::config::Config;
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
+  use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::Documents;
+  use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
@@ -1982,6 +2023,23 @@ mod tests {
     }
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
+    let mut documents2 = Documents2::default();
+    for (relative_path, source, version, language_id) in sources {
+      let specifier = root_uri.join(relative_path).unwrap();
+      documents2.open(
+        specifier.clone(),
+        *version,
+        *language_id,
+        (*source).into(),
+      );
+    }
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
+      &config,
+      &resolver,
+      &cache,
+      &Default::default(),
+    );
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_path, source, version, language_id) in sources {
@@ -1999,6 +2057,8 @@ mod tests {
       StateSnapshot {
         project_version: 0,
         documents: Arc::new(documents),
+        documents2: Arc::new(documents2),
+        document_modules: Arc::new(document_modules),
         config: Arc::new(config),
         resolver,
       },
@@ -2202,8 +2262,9 @@ let c: number = "a";
 
   #[test]
   fn test_get_code_action_import_map_remap() {
+    let uri = Uri::from_str("file:///a/file.ts").unwrap();
     let specifier = ModuleSpecifier::parse("file:///a/file.ts").unwrap();
-    let result = DenoDiagnostic::get_code_action(&specifier, &lsp::Diagnostic {
+    let result = DenoDiagnostic::get_code_action(&uri, &specifier, &lsp::Diagnostic {
       range: lsp::Range {
         start: lsp::Position { line: 0, character: 23 },
         end: lsp::Position { line: 0, character: 50 },

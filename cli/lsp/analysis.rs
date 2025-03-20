@@ -33,6 +33,7 @@ use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
+use lsp_types::Uri;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -45,6 +46,7 @@ use tower_lsp::lsp_types::Range;
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
+use super::documents::DocumentModule;
 use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
@@ -841,6 +843,8 @@ pub fn ts_changes_to_edit(
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionData {
+  pub uri: Uri,
+  // TODO(nayeemrmn): Remove!
   pub specifier: ModuleSpecifier,
   pub fix_id: String,
 }
@@ -866,27 +870,27 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub fn add_deno_fix_action(
     &mut self,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    let code_action =
+      DenoDiagnostic::get_code_action(uri, specifier, diagnostic)?;
     self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 
   pub fn add_deno_lint_actions(
     &mut self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
+    module: &DocumentModule,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<&SourceTextInfo>,
-    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     if let Some(data_quick_fixes) = diagnostic
       .data
       .as_ref()
       .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
     {
-      let uri = url_to_uri(specifier)?;
       for quick_fix in data_quick_fixes {
         let mut changes = HashMap::new();
         changes.insert(
@@ -917,22 +921,15 @@ impl CodeActionCollection {
         self.actions.push(CodeActionKind::DenoLint(code_action));
       }
     }
-    self.add_deno_lint_ignore_action(
-      specifier,
-      diagnostic,
-      maybe_text_info,
-      maybe_parsed_source,
-    )
+    self.add_deno_lint_ignore_action(uri, module, diagnostic)
   }
 
   fn add_deno_lint_ignore_action(
     &mut self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
+    module: &DocumentModule,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<&SourceTextInfo>,
-    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
-    let uri = url_to_uri(specifier)?;
     let code = diagnostic
       .code
       .as_ref()
@@ -941,11 +938,11 @@ impl CodeActionCollection {
         _ => "".to_string(),
       })
       .unwrap();
+    let text_info = module.text_info();
 
-    let line_content = maybe_text_info.map(|ti| {
-      ti.line_text(diagnostic.range.start.line as usize)
-        .to_string()
-    });
+    let line_content = text_info
+      .line_text(diagnostic.range.start.line as usize)
+      .to_string();
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -953,7 +950,7 @@ impl CodeActionCollection {
       vec![lsp::TextEdit {
         new_text: prepend_whitespace(
           format!("// deno-lint-ignore {code}\n"),
-          line_content,
+          Some(line_content),
         ),
         range: lsp::Range {
           start: lsp::Position {
@@ -986,7 +983,8 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let maybe_ignore_comment = maybe_parsed_source.and_then(|ps| {
+    let maybe_ignore_comment = module.parsed_source.as_ref().and_then(|ps| {
+      let ps = ps.as_ref().ok()?;
       // Note: we can use ps.get_leading_comments() but it doesn't
       // work when shebang is present at the top of the file.
       ps.comments().get_vec().iter().find_map(|c| {
@@ -1017,9 +1015,7 @@ impl CodeActionCollection {
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = maybe_text_info
-        .unwrap()
-        .line_and_column_index(ignore_comment.end());
+      let line = text_info.line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
@@ -1051,7 +1047,7 @@ impl CodeActionCollection {
 
     let mut changes = HashMap::new();
     changes.insert(
-      uri,
+      uri.clone(),
       vec![lsp::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
         range: lsp::Range {
@@ -1160,11 +1156,13 @@ impl CodeActionCollection {
   pub fn add_ts_fix_all_action(
     &mut self,
     action: &tsc::CodeFixAction,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) {
     let data = action.fix_id.as_ref().map(|fix_id| {
       json!(CodeActionData {
+        uri: uri.clone(),
         specifier: specifier.clone(),
         fix_id: fix_id.clone(),
       })

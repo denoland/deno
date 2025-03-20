@@ -25,6 +25,8 @@ use tower_lsp::lsp_types as lsp;
 use super::client::Client;
 use super::config::Config;
 use super::config::WorkspaceSettings;
+use super::documents::DocumentModule;
+use super::documents::DocumentModules;
 use super::documents::Documents;
 use super::documents::DocumentsFilter;
 use super::jsr::CliJsrSearchApi;
@@ -152,37 +154,35 @@ fn to_narrow_lsp_range(
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
-  specifier: &ModuleSpecifier,
+  module: &DocumentModule,
   position: &lsp::Position,
   config: &Config,
   client: &Client,
   module_registries: &ModuleRegistry,
   jsr_search_api: &CliJsrSearchApi,
   npm_search_api: &CliNpmSearchApi,
-  documents: &Documents,
+  document_modules: &DocumentModules,
   resolver: &LspResolver,
   maybe_import_map: Option<&ImportMap>,
 ) -> Option<lsp::CompletionResponse> {
-  let document = documents.get(specifier)?;
-  let file_referrer = document.file_referrer();
-  let (text, _, graph_range) = document.get_maybe_dependency(position)?;
+  let (text, _, graph_range) = module.dependency_at_position(position)?;
   let resolution_mode = graph_range
     .resolution_mode
     .map(to_node_resolution_mode)
-    .unwrap_or_else(|| document.resolution_mode());
-  let range = to_narrow_lsp_range(document.text_info(), graph_range.range);
+    .unwrap_or_else(|| module.resolution_mode);
+  let range = to_narrow_lsp_range(module.text_info(), graph_range.range);
   let resolved = resolver
-    .as_cli_resolver(file_referrer)
+    .as_cli_resolver(module.scope.as_deref())
     .resolve(
       &text,
-      specifier,
+      &module.specifier,
       deno_graph::Position::zeroed(),
       resolution_mode,
       NodeResolutionKind::Execution,
     )
     .ok();
   if let Some(completion_list) = get_jsr_completions(
-    specifier,
+    &module.specifier,
     &text,
     &range,
     resolved.as_ref(),
@@ -193,39 +193,46 @@ pub async fn get_import_completions(
   {
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
-    get_npm_completions(specifier, &text, &range, npm_search_api).await
+    get_npm_completions(&module.specifier, &text, &range, npm_search_api).await
   {
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) = get_node_completions(&text, &range) {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_import_map_completions(specifier, &text, &range, maybe_import_map)
-  {
+  } else if let Some(completion_list) = get_import_map_completions(
+    &module.specifier,
+    &text,
+    &range,
+    maybe_import_map,
+  ) {
     // completions for import map specifiers
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) =
-    get_local_completions(specifier, resolution_mode, &text, &range, resolver)
-  {
+  } else if let Some(completion_list) = get_local_completions(
+    &module.specifier,
+    resolution_mode,
+    &text,
+    &range,
+    resolver,
+  ) {
     // completions for local relative modules
     Some(lsp::CompletionResponse::List(completion_list))
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(
       &text,
-      config.workspace_settings_for_specifier(specifier),
+      config.workspace_settings_for_specifier(&module.specifier),
       client,
       module_registries,
     )
     .await;
     let maybe_list = module_registries
       .get_completions(&text, &range, resolved.as_ref(), |s| {
-        documents.exists(s, file_referrer)
+        document_modules.specifier_exists(s, module.scope.as_deref())
       })
       .await;
     let maybe_list = maybe_list
       .or_else(|| module_registries.get_origin_completions(&text, &range));
     let list = maybe_list.unwrap_or_else(|| CompletionList {
-      items: get_workspace_completions(specifier, &text, &range, documents),
+      items: get_remote_completions(module, &text, &range, document_modules),
       is_incomplete: false,
     });
     Some(lsp::CompletionResponse::List(list))
@@ -248,7 +255,10 @@ pub async fn get_import_completions(
       .collect();
     let mut is_incomplete = false;
     if let Some(import_map) = maybe_import_map {
-      items.extend(get_base_import_map_completions(import_map, specifier));
+      items.extend(get_base_import_map_completions(
+        import_map,
+        &module.specifier,
+      ));
     }
     if let Some(origin_items) =
       module_registries.get_origin_completions(&text, &range)
@@ -440,12 +450,12 @@ fn get_local_completions(
   }
 }
 
-fn get_relative_specifiers(
+fn get_relative_specifiers<'a>(
   base: &ModuleSpecifier,
-  specifiers: Vec<ModuleSpecifier>,
+  specifiers: impl IntoIterator<Item = &'a ModuleSpecifier>,
 ) -> Vec<String> {
   specifiers
-    .iter()
+    .into_iter()
     .filter_map(|s| {
       if s != base {
         Some(relative_specifier(base, s).unwrap_or_else(|| s.to_string()))
@@ -770,6 +780,46 @@ fn get_node_completions(
   })
 }
 
+/// Get remote completions that include modules in the Deno cache which match
+/// the current specifier string.
+fn get_remote_completions(
+  module: &DocumentModule,
+  current: &str,
+  range: &lsp::Range,
+  document_modules: &DocumentModules,
+) -> Vec<lsp::CompletionItem> {
+  let remote_specifiers =
+    document_modules.cached_remote_specifiers(module.scope.as_deref());
+  let specifier_strings = get_relative_specifiers(
+    &module.specifier,
+    remote_specifiers.iter().map(|s| s.as_ref()),
+  );
+  specifier_strings
+    .into_iter()
+    .filter_map(|label| {
+      if label.starts_with(current) {
+        let text_edit = Some(lsp::CompletionTextEdit::Edit(lsp::TextEdit {
+          range: *range,
+          new_text: label.clone(),
+        }));
+        Some(lsp::CompletionItem {
+          label,
+          kind: Some(lsp::CompletionItemKind::FILE),
+          detail: Some("(remote)".to_string()),
+          sort_text: Some("1".to_string()),
+          text_edit,
+          commit_characters: Some(
+            IMPORT_COMMIT_CHARS.iter().map(|&c| c.into()).collect(),
+          ),
+          ..Default::default()
+        })
+      } else {
+        None
+      }
+    })
+    .collect()
+}
+
 /// Get workspace completions that include modules in the Deno cache which match
 /// the current specifier string.
 fn get_workspace_completions(
@@ -782,9 +832,9 @@ fn get_workspace_completions(
     .documents(DocumentsFilter::AllDiagnosable)
     .into_iter()
     .map(|d| d.specifier().clone())
-    .collect();
+    .collect::<Vec<_>>();
   let specifier_strings =
-    get_relative_specifiers(specifier, workspace_specifiers);
+    get_relative_specifiers(specifier, &workspace_specifiers);
   specifier_strings
     .into_iter()
     .filter_map(|label| {
@@ -878,7 +928,7 @@ mod tests {
       resolve_url("https://deno.land/x/a/b/c.ts").unwrap(),
     ];
     assert_eq!(
-      get_relative_specifiers(&base, specifiers),
+      get_relative_specifiers(&base, &specifiers),
       vec![
         "./d.ts".to_string(),
         "../c/c.ts".to_string(),
