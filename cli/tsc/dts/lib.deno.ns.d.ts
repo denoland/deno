@@ -1166,6 +1166,14 @@ declare namespace Deno {
       options: Omit<TestDefinition, "fn" | "only">,
       fn: (t: TestContext) => void | Promise<void>,
     ): void;
+
+    /** Disable op and resource sanitizers for the whole test file.
+     *
+     * Individual tests can still use sanitizers, by specifying relevant
+     * `sanitizeOps` and `sanitizeResources` options.
+     * @category Testing
+     */
+    disableSanitizers(): void;
   }
 
   /**
