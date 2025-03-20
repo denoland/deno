@@ -60,6 +60,8 @@ use super::text::LineIndex;
 use super::tsc;
 use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
+use super::urls::uri_is_file_like;
+use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use crate::graph_util::CliJsrUrlProvider;
 
@@ -70,6 +72,7 @@ pub struct OpenDocument {
   pub line_index: Arc<LineIndex>,
   pub version: i32,
   pub language_id: LanguageId,
+  pub fs_version_on_open: Option<String>,
 }
 
 impl OpenDocument {
@@ -80,12 +83,16 @@ impl OpenDocument {
     text: Arc<str>,
   ) -> Self {
     let line_index = Arc::new(LineIndex::new(&text));
+    let fs_version_on_open = uri_to_file_path(&uri)
+      .ok()
+      .and_then(calculate_fs_version_at_path);
     OpenDocument {
       uri: Arc::new(uri),
       text,
       line_index,
       version,
       language_id,
+      fs_version_on_open,
     }
   }
 
@@ -122,6 +129,7 @@ impl OpenDocument {
       line_index,
       version,
       language_id: self.language_id,
+      fs_version_on_open: self.fs_version_on_open.clone(),
     })
   }
 
@@ -133,6 +141,19 @@ impl OpenDocument {
         | LanguageId::TypeScript
         | LanguageId::Tsx
     )
+  }
+
+  pub fn is_file_like(&self) -> bool {
+    uri_is_file_like(&self.uri)
+  }
+
+  pub fn script_version(&self) -> String {
+    let fs_version = self
+      .fs_version_on_open
+      .as_ref()
+      .map(|s| s.as_str())
+      .unwrap_or("1");
+    format!("{fs_version}+{}", self.version)
   }
 }
 
@@ -297,6 +318,18 @@ impl ServerDocument {
   pub fn is_diagnosable(&self) -> bool {
     media_type_is_diagnosable(self.media_type)
   }
+
+  pub fn is_file_like(&self) -> bool {
+    uri_is_file_like(&self.uri)
+  }
+
+  pub fn script_version(&self) -> String {
+    match &self.kind {
+      ServerDocumentKind::Fs { fs_version, .. } => fs_version.clone(),
+      ServerDocumentKind::DataUrl { .. } => "1".to_string(),
+      ServerDocumentKind::Asset { .. } => "1".to_string(),
+    }
+  }
 }
 
 #[derive(Debug)]
@@ -371,10 +404,24 @@ impl Document2 {
     }
   }
 
+  pub fn script_version(&self) -> String {
+    match self {
+      Self::Open(d) => d.script_version(),
+      Self::Server(d) => d.script_version(),
+    }
+  }
+
   pub fn is_diagnosable(&self) -> bool {
     match self {
       Self::Open(d) => d.is_diagnosable(),
       Self::Server(d) => d.is_diagnosable(),
+    }
+  }
+
+  pub fn is_file_like(&self) -> bool {
+    match self {
+      Self::Open(d) => d.is_file_like(),
+      Self::Server(d) => d.is_file_like(),
     }
   }
 }

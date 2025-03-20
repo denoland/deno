@@ -99,34 +99,44 @@ impl TestServer {
               let mut keys: HashSet<ModuleSpecifier> =
                 tests.keys().cloned().collect();
               for document in snapshot
-                .documents
-                .documents(DocumentsFilter::AllDiagnosable)
+                .documents2
+                .filtered_docs(|d| d.is_file_like() && d.is_diagnosable())
               {
-                let specifier = document.specifier();
-                if specifier.scheme() != "file" {
+                let Some(module) =
+                  snapshot.document_modules.primary_module(&document)
+                else {
+                  continue;
+                };
+                if module.specifier.scheme() != "file" {
                   continue;
                 }
-                if !snapshot.config.specifier_enabled_for_test(specifier) {
+                if !snapshot
+                  .config
+                  .specifier_enabled_for_test(&module.specifier)
+                {
                   continue;
                 }
-                keys.remove(specifier);
+                keys.remove(&module.specifier);
                 let script_version = document.script_version();
-                let valid =
-                  if let Some((_, old_script_version)) = tests.get(specifier) {
-                    old_script_version == &script_version
-                  } else {
-                    false
-                  };
+                let valid = if let Some((_, old_script_version)) =
+                  tests.get(&module.specifier)
+                {
+                  old_script_version == &script_version
+                } else {
+                  false
+                };
                 if !valid {
                   let was_empty = tests
-                    .remove(specifier)
+                    .remove(&module.specifier)
                     .map(|(tm, _)| tm.is_empty())
                     .unwrap_or(true);
-                  let test_module = document
-                    .maybe_test_module()
+                  let test_module = module
+                    .test_module()
                     .await
                     .map(|tm| tm.as_ref().clone())
-                    .unwrap_or_else(|| TestModule::new(specifier.clone()));
+                    .unwrap_or_else(|| {
+                      TestModule::new(module.specifier.as_ref().clone())
+                    });
                   if !test_module.is_empty() {
                     if let Ok(params) =
                       test_module.as_replace_notification(mru.as_ref())
@@ -134,12 +144,16 @@ impl TestServer {
                       client.send_test_notification(params);
                     }
                   } else if !was_empty {
-                    if let Ok(params) = as_delete_notification(specifier) {
+                    if let Ok(params) =
+                      as_delete_notification(&module.specifier)
+                    {
                       client.send_test_notification(params);
                     }
                   }
-                  tests
-                    .insert(specifier.clone(), (test_module, script_version));
+                  tests.insert(
+                    module.specifier.as_ref().clone(),
+                    (test_module, script_version),
+                  );
                 }
               }
               for key in &keys {

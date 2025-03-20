@@ -34,7 +34,7 @@ pub fn calculate_fs_version(
 }
 
 /// Calculate a version for for a given path.
-pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
+pub fn calculate_fs_version_at_path(path: impl AsRef<Path>) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {

@@ -200,6 +200,16 @@ pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
   url_to_file_path(&uri_to_url(uri))
 }
 
+pub fn uri_is_file_like(uri: &Uri) -> bool {
+  let Some(scheme) = uri.scheme() else {
+    return false;
+  };
+  scheme.eq_lowercase("file")
+    || scheme.eq_lowercase("untitled")
+    || scheme.eq_lowercase("vscode-notebook-cell")
+    || scheme.eq_lowercase("deno-notebook-cell")
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum LspUrlKind {
   File,
