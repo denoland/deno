@@ -1,7 +1,7 @@
 <!-- deno-fmt-ignore-file -->
 # Remaining Node Tests
 
-1147 tests out of 3993 have been ported from Node 23.9.0 (28.73% ported, 71.78% remaining).
+1149 tests out of 3993 have been ported from Node 23.9.0 (28.78% ported, 71.75% remaining).
 
 NOTE: This file should not be manually edited. Please edit `tests/node_compat/config.json` and run `deno task setup` in `tests/node_compat/runner` dir instead.
 
@@ -2378,7 +2378,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-util-callbackify.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-callbackify.js)
 - [parallel/test-util-emit-experimental-warning.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-emit-experimental-warning.js)
 - [parallel/test-util-getcallsite.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-getcallsite.js)
-- [parallel/test-util-getcallsites.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-getcallsites.js)
 - [parallel/test-util-internal.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-internal.js)
 - [parallel/test-util-parse-env.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-parse-env.js)
 - [parallel/test-util-sigint-watchdog.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-util-sigint-watchdog.js)
