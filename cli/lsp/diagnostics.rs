@@ -1763,7 +1763,8 @@ fn diagnose_dependency(
     let specifier_str = specifier.as_str();
     for entry in import_map.entries_for_referrer(referrer) {
       if entry.raw_value == Some("./") {
-        // ignore `./` entries because it creates an annoying diagnostic
+        // ignore `./` entries because it creates a
+        // diagnostic for every relative import
         continue;
       }
 
@@ -2178,7 +2179,13 @@ let c: number = "a";
         ),
         (
           "a/file.ts",
-          "import { assert } from \"../std/assert/mod.ts\";\n\nassert();\n",
+          "import { assert } from \"../std/assert/mod.ts\";\n\nassert();\nexport function a() {}",
+          1,
+          LanguageId::TypeScript,
+        ),
+        (
+          "a/file2.ts",
+          "import { a } from './file.ts';\nconsole.log(a);\n",
           1,
           LanguageId::TypeScript,
         ),
@@ -2187,7 +2194,8 @@ let c: number = "a";
         "a/deno.json",
         r#"{
         "imports": {
-          "/~/std/": "../std/"
+          "/~/std/": "../std/",
+          "$@": "./"
         }
       }"#,
       )),
@@ -2196,7 +2204,7 @@ let c: number = "a";
     let config = mock_config();
     let token = CancellationToken::new();
     let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
-    assert_eq!(actual.len(), 2);
+    assert_eq!(actual.len(), 3);
     for record in actual {
       let relative_specifier =
         temp_dir.url().make_relative(&record.specifier).unwrap();
@@ -2229,6 +2237,9 @@ let c: number = "a";
             }
           ])
         ),
+        "a/file2.ts" => {
+          assert_eq!(json!(record.versioned.diagnostics), json!([]))
+        }
         _ => unreachable!("unexpected specifier {}", record.specifier),
       }
     }
