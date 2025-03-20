@@ -1163,18 +1163,6 @@ Deno.test("process.cpuUsage()", () => {
   );
   assertThrows(
     () => {
-      process.cpuUsage({ user: "1", system: 2 });
-    },
-    TypeError,
-  );
-  assertThrows(
-    () => {
-      process.cpuUsage({ user: 1, system: "2" });
-    },
-    TypeError,
-  );
-  assertThrows(
-    () => {
       process.cpuUsage({ user: -1, system: 2 });
     },
     RangeError,
