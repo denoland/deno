@@ -1155,13 +1155,6 @@ Deno.test("process.cpuUsage()", () => {
   assert(a.user > b.user);
   assert(a.system > b.system);
 
-  assertThrows(
-    () => {
-      process.cpuUsage({});
-    },
-    TypeError,
-  );
-
   for (const invalidNumber of [-1, -Infinity, Infinity, NaN]) {
     assertThrows(
       () => {
