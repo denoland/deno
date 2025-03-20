@@ -237,50 +237,54 @@ impl CliLockfile {
           ))
         })
         .collect(),
-      patches: workspace
-        .patch_pkg_jsons()
-        .filter_map(|pkg_json| {
-          fn collect_deps(
-            deps: Option<&IndexMap<String, String>>,
-          ) -> HashSet<JsrDepPackageReq> {
-            deps
-              .map(|i| {
-                i.iter()
-                  .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
-                  .filter_map(|dep| match dep {
-                    PackageJsonDepValue::Req(req) => {
-                      Some(JsrDepPackageReq::npm(req.clone()))
-                    }
-                    // not supported
-                    PackageJsonDepValue::File(_)
-                    | PackageJsonDepValue::Workspace(_) => None,
-                  })
-                  .collect()
-              })
-              .unwrap_or_default()
-          }
+      patches: if workspace.has_unstable("npm-patch") {
+        workspace
+          .patch_pkg_jsons()
+          .filter_map(|pkg_json| {
+            fn collect_deps(
+              deps: Option<&IndexMap<String, String>>,
+            ) -> HashSet<JsrDepPackageReq> {
+              deps
+                .map(|i| {
+                  i.iter()
+                    .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
+                    .filter_map(|dep| match dep {
+                      PackageJsonDepValue::Req(req) => {
+                        Some(JsrDepPackageReq::npm(req.clone()))
+                      }
+                      // not supported
+                      PackageJsonDepValue::File(_)
+                      | PackageJsonDepValue::Workspace(_) => None,
+                    })
+                    .collect()
+                })
+                .unwrap_or_default()
+            }
 
-          let key = format!(
-            "npm:{}@{}",
-            pkg_json.name.as_ref()?,
-            pkg_json.version.as_ref()?
-          );
-          // anything that affects npm resolution should go here in order to bust
-          // the npm resolution when it changes
-          let value = deno_lockfile::LockfilePatchContent {
-            dependencies: collect_deps(pkg_json.dependencies.as_ref()),
-            peer_dependencies: collect_deps(
-              pkg_json.peer_dependencies.as_ref(),
-            ),
-            peer_dependencies_meta: pkg_json
-              .peer_dependencies_meta
-              .clone()
-              .and_then(|v| serde_json::from_value(v).ok())
-              .unwrap_or_default(),
-          };
-          Some((key, value))
-        })
-        .collect(),
+            let key = format!(
+              "npm:{}@{}",
+              pkg_json.name.as_ref()?,
+              pkg_json.version.as_ref()?
+            );
+            // anything that affects npm resolution should go here in order to bust
+            // the npm resolution when it changes
+            let value = deno_lockfile::LockfilePatchContent {
+              dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+              peer_dependencies: collect_deps(
+                pkg_json.peer_dependencies.as_ref(),
+              ),
+              peer_dependencies_meta: pkg_json
+                .peer_dependencies_meta
+                .clone()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            };
+            Some((key, value))
+          })
+          .collect()
+      } else {
+        Default::default()
+      },
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,

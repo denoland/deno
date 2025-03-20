@@ -1125,20 +1125,21 @@ impl CliOptions {
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace().unstable_features().to_vec();
-
-    self
-      .flags
-      .unstable_config
-      .features
+    let from_config_file = self.workspace().unstable_features();
+    let unstable_features = from_config_file
       .iter()
-      .for_each(|feature| {
-        if !from_config_file.contains(feature) {
-          from_config_file.push(feature.to_string());
-        }
-      });
+      .chain(
+        self
+          .flags
+          .unstable_config
+          .features
+          .iter()
+          .filter(|f| !from_config_file.contains(f)),
+      )
+      .map(|f| f.to_owned())
+      .collect::<Vec<_>>();
 
-    if !from_config_file.is_empty() {
+    if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
         .iter()
         .map(|granular_flag| granular_flag.name)
@@ -1150,12 +1151,13 @@ impl CliOptions {
           "fmt-component",
           "fmt-sql",
           "lazy-npm-caching",
+          "npm-patch",
         ])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
-      for unstable_value_from_config_file in &from_config_file {
+      for unstable_value_from_config_file in &unstable_features {
         if !all_valid_unstable_flags
           .contains(&unstable_value_from_config_file.as_str())
         {
@@ -1168,7 +1170,7 @@ impl CliOptions {
       }
     }
 
-    from_config_file
+    unstable_features
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

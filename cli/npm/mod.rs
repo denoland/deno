@@ -58,29 +58,41 @@ impl WorkspaceNpmPatchPackages {
   pub fn from_workspace(workspace: &Workspace) -> Self {
     let mut entries: HashMap<PackageName, Vec<NpmPackageVersionInfo>> =
       HashMap::new();
-    for pkg_json in workspace.patch_pkg_jsons() {
-      let Some(name) = pkg_json.name.as_ref() else {
-        log::warn!(
+    if workspace.has_unstable("npm-patch") {
+      for pkg_json in workspace.patch_pkg_jsons() {
+        let Some(name) = pkg_json.name.as_ref() else {
+          log::warn!(
           "{} Patch package ignored because package.json was missing name field.\n    at {}",
           colors::yellow("Warning"),
           pkg_json.path.display(),
         );
-        continue;
-      };
-      match pkg_json_to_version_info(pkg_json) {
-        Ok(version_info) => {
-          let entry = entries.entry(PackageName::from_str(name)).or_default();
-          entry.push(version_info);
-        }
-        Err(err) => {
-          log::warn!(
-            "{} {}\n    at {}",
-            colors::yellow("Warning"),
-            err.to_string(),
-            pkg_json.path.display(),
-          );
+          continue;
+        };
+        match pkg_json_to_version_info(pkg_json) {
+          Ok(version_info) => {
+            let entry = entries.entry(PackageName::from_str(name)).or_default();
+            entry.push(version_info);
+          }
+          Err(err) => {
+            log::warn!(
+              "{} {}\n    at {}",
+              colors::yellow("Warning"),
+              err.to_string(),
+              pkg_json.path.display(),
+            );
+          }
         }
       }
+    } else if workspace.package_jsons().next().is_some() {
+      log::warn!(
+        "{} {}\n    at {}",
+        colors::yellow("Warning"),
+        "Patching npm packages is only supported when setting \"unstable\": [\"npm-patch\"] in the root deno.json",
+        workspace
+          .root_deno_json()
+          .map(|d| d.specifier.to_string())
+          .unwrap_or_else(|| workspace.root_dir().to_string()),
+      );
     }
     Self(entries)
   }
