@@ -1753,8 +1753,8 @@ fn diagnose_dependency(
   /// import map could be used as an import specifier that resolves using the
   /// import map.
   ///
-  /// This was inlined from the import_map crate in order to ignore entries
-  /// with a `./` value.
+  /// This was inlined from the import_map crate in order to ignore more
+  /// entries.
   fn import_map_lookup(
     import_map: &ImportMap,
     specifier: &Url,
@@ -1762,14 +1762,14 @@ fn diagnose_dependency(
   ) -> Option<String> {
     let specifier_str = specifier.as_str();
     for entry in import_map.entries_for_referrer(referrer) {
-      if entry.raw_value == Some("./") {
-        // ignore `./` entries because it creates a
-        // diagnostic for every relative import
-        continue;
-      }
-
       if let Some(address) = entry.value {
         let address_str = address.as_str();
+        if referrer.as_str().starts_with(address_str) {
+          // ignore when the referrer has a common base with the
+          // import map entry (ex. `./src/a.ts` importing `./src/b.ts`
+          // and there's a `"$src/": "./src/"` import map entry)
+          continue;
+        }
         if address_str == specifier_str {
           return Some(entry.raw_key.to_string());
         }
@@ -2195,7 +2195,8 @@ let c: number = "a";
         r#"{
         "imports": {
           "/~/std/": "../std/",
-          "$@": "./"
+          "$@/": "./",
+          "$a/": "../a/"
         }
       }"#,
       )),
