@@ -299,18 +299,16 @@ async fn resolve_implementation_code_lens(
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
       }
-      let Ok(implementation_specifier) =
-        resolve_url(&implementation.document_span.file_name)
+      let Some(location) = implementation.to_location(&module, language_server)
       else {
         continue;
       };
-      let implementation_location =
-        implementation.to_location(module.line_index.clone(), language_server);
-      if !(implementation_specifier == *module.specifier
-        && implementation_location.range.start == code_lens.range.start)
+      if location.uri == *module.uri
+        && location.range.start == code_lens.range.start
       {
-        locations.push(implementation_location);
+        continue;
       }
+      locations.push(location);
     }
     let command = if !locations.is_empty() {
       let title = if locations.len() > 1 {

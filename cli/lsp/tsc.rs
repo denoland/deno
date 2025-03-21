@@ -2415,20 +2415,27 @@ impl ImplementationLocation {
 
   pub fn to_location(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
-  ) -> lsp::Location {
-    let specifier = resolve_url(&self.document_span.file_name)
-      .unwrap_or_else(|_| ModuleSpecifier::parse("deno://invalid").unwrap());
-    let file_referrer = language_server.documents.get_file_referrer(&specifier);
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| INVALID_URI.clone());
-    lsp::Location {
-      uri,
-      range: self.document_span.text_span.to_range(line_index),
-    }
+  ) -> Option<lsp::Location> {
+    let target_specifier = resolve_url(&self.document_span.file_name).ok()?;
+    let target_module = if target_specifier == *module.specifier {
+      module.clone()
+    } else {
+      language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )?
+    };
+    Some(lsp::Location {
+      uri: target_module.uri.as_ref().clone(),
+      range: self
+        .document_span
+        .text_span
+        .to_range(target_module.line_index.clone()),
+    })
   }
 
   pub fn to_link(
@@ -3164,24 +3171,23 @@ impl ReferenceEntry {
     module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::Location> {
-    let reference_specifier =
-      resolve_url(&self.document_span.file_name).ok()?;
-    let reference_module = if reference_specifier == *module.specifier {
+    let target_specifier = resolve_url(&self.document_span.file_name).ok()?;
+    let target_module = if target_specifier == *module.specifier {
       module.clone()
     } else {
       language_server
         .document_modules
         .inspect_module_from_specifier(
-          &reference_specifier,
+          &target_specifier,
           module.scope.as_deref(),
         )?
     };
     Some(lsp::Location {
-      uri: reference_module.uri.as_ref().clone(),
+      uri: target_module.uri.as_ref().clone(),
       range: self
         .document_span
         .text_span
-        .to_range(reference_module.line_index.clone()),
+        .to_range(target_module.line_index.clone()),
     })
   }
 }
