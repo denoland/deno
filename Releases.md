@@ -8,9 +8,9 @@ https://github.com/denoland/deno_install
 
 ### 2.2.5 / 2025.03.21
 
-- feat(otel): basic event recording (#28552)
+- feat(unstable): basic otel event recording (#28552)
 - feat(unstable): support using a local copy of npm packages (#28512)
-- feat: upgrade deno_core and V8 (#28562)
+- feat: upgrade deno_core and V8 13.5 (#28562)
 - fix(doc): do not stack overflow for namespace that exports self or ancestor
   (#28533)
 - fix(ext/node): add util.getCallSites (#28546)
