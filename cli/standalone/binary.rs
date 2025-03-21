@@ -706,7 +706,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       build_time: std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .ok()
-        .map(|x| x.as_secs()),
+        .map(|x| x.as_millis()),
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
