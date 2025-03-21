@@ -75,6 +75,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverCreateOptions;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::NpmResolutionInitializer;
+use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliIsCjsResolver;
 use crate::resolver::CliNpmGraphResolver;
@@ -821,9 +822,20 @@ impl<'a> ResolverFactory<'a> {
         npm_client.clone(),
         npmrc.clone(),
       ));
+      let patch_packages: Arc<WorkspaceNpmPatchPackages> = self
+        .config_data
+        .as_ref()
+        .filter(|c| c.node_modules_dir.is_some()) // requires a node_modules dir
+        .map(|d| {
+          Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+            &d.member_dir.workspace,
+          ))
+        })
+        .unwrap_or_default();
       let npm_resolution_initializer = Arc::new(NpmResolutionInitializer::new(
         registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
+        patch_packages.clone(),
         match self.config_data.and_then(|d| d.lockfile.as_ref()) {
           Some(lockfile) => {
             CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
@@ -848,6 +860,7 @@ impl<'a> ResolverFactory<'a> {
         registry_info_provider,
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
+        patch_packages,
       ));
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),

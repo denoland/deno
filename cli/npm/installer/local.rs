@@ -18,12 +18,14 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
+use deno_npm_cache::hard_link_file;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_resolver::npm::get_package_folder_id_folder_name;
 use deno_resolver::npm::managed::NpmResolutionCell;
@@ -31,6 +33,9 @@ use deno_semver::package::PackageNv;
 use deno_semver::StackString;
 use serde::Deserialize;
 use serde::Serialize;
+use sys_traits::FsCopy;
+use sys_traits::FsDirEntry;
+use sys_traits::FsReadDir;
 
 use super::common::bin_entries;
 use super::common::NpmPackageFsInstaller;
@@ -142,6 +147,15 @@ pub enum SyncResolutionWithFsError {
     source: std::io::Error,
   },
   #[class(inherit)]
+  #[error("Copying '{from}' to '{to}'")]
+  Copying {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
   #[error(transparent)]
   CopyDirRecursive(#[from] crate::util::fs::CopyDirRecursiveError),
   #[class(inherit)]
@@ -190,14 +204,14 @@ async fn sync_resolution_with_fs(
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   fs::create_dir_all(&deno_node_modules_dir).map_err(|source| {
     SyncResolutionWithFsError::Creating {
-      path: deno_local_registry_dir.to_path_buf(),
+      path: deno_node_modules_dir.to_path_buf(),
       source,
     }
   })?;
   let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
   fs::create_dir_all(&bin_node_modules_dir_path).map_err(|source| {
     SyncResolutionWithFsError::Creating {
-      path: deno_local_registry_dir.to_path_buf(),
+      path: bin_node_modules_dir_path.to_path_buf(),
       source,
     }
   })?;
@@ -299,60 +313,67 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.id.nv.name)
       || matches!(package_state, PackageFolderState::Uninitialized)
     {
-      // cache bust the dep from the dep setup cache so the symlinks
-      // are forced to be recreated
-      setup_cache.remove_dep(&package_folder_name);
+      if let Some(dist) = &package.dist {
+        // cache bust the dep from the dep setup cache so the symlinks
+        // are forced to be recreated
+        setup_cache.remove_dep(&package_folder_name);
 
-      let folder_path = folder_path.clone();
-      let bin_entries_to_setup = bin_entries.clone();
-      let packages_with_deprecation_warnings =
-        packages_with_deprecation_warnings.clone();
+        let folder_path = folder_path.clone();
+        let bin_entries_to_setup = bin_entries.clone();
+        let packages_with_deprecation_warnings =
+          packages_with_deprecation_warnings.clone();
 
-      cache_futures.push(async move {
-        tarball_cache
-          .ensure_package(&package.id.nv, &package.dist)
-          .await
-          .map_err(JsErrorBox::from_err)?;
-        let pb_guard = progress_bar.update_with_prompt(
-          ProgressMessagePrompt::Initialize,
-          &package.id.nv.to_string(),
-        );
-        let sub_node_modules = folder_path.join("node_modules");
-        let package_path =
-          join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-        let cache_folder = cache.package_folder_for_nv(&package.id.nv);
+        cache_futures.push(
+          async move {
+            tarball_cache
+              .ensure_package(&package.id.nv, dist)
+              .await
+              .map_err(JsErrorBox::from_err)?;
+            let pb_guard = progress_bar.update_with_prompt(
+              ProgressMessagePrompt::Initialize,
+              &package.id.nv.to_string(),
+            );
+            let sub_node_modules = folder_path.join("node_modules");
+            let package_path = join_package_name(
+              Cow::Owned(sub_node_modules),
+              &package.id.nv.name,
+            );
+            let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
-        deno_core::unsync::spawn_blocking({
-          let package_path = package_path.clone();
-          let sys = sys.clone();
-          move || {
-            clone_dir_recursive(&sys, &cache_folder, &package_path)?;
-            // write out a file that indicates this folder has been initialized
-            fs::write(initialized_file, tags)?;
+            deno_core::unsync::spawn_blocking({
+              let package_path = package_path.clone();
+              let sys = sys.clone();
+              move || {
+                clone_dir_recursive(&sys, &cache_folder, &package_path)?;
+                // write out a file that indicates this folder has been initialized
+                write_initialized_file(&initialized_file, &tags)?;
 
-            Ok::<_, SyncResolutionWithFsError>(())
+                Ok::<_, SyncResolutionWithFsError>(())
+              }
+            })
+            .await
+            .map_err(JsErrorBox::from_err)?
+            .map_err(JsErrorBox::from_err)?;
+
+            if package.bin.is_some() {
+              bin_entries_to_setup.borrow_mut().add(package, package_path);
+            }
+
+            if let Some(deprecated) = &package.deprecated {
+              packages_with_deprecation_warnings
+                .lock()
+                .push((package.id.clone(), deprecated.clone()));
+            }
+
+            // finally stop showing the progress bar
+            drop(pb_guard); // explicit for clarity
+            Ok::<_, JsErrorBox>(())
           }
-        })
-        .await
-        .map_err(JsErrorBox::from_err)?
-        .map_err(JsErrorBox::from_err)?;
-
-        if package.bin.is_some() {
-          bin_entries_to_setup.borrow_mut().add(package, package_path);
-        }
-
-        if let Some(deprecated) = &package.deprecated {
-          packages_with_deprecation_warnings
-            .lock()
-            .push((package.id.clone(), deprecated.clone()));
-        }
-
-        // finally stop showing the progress bar
-        drop(pb_guard); // explicit for clarity
-        Ok::<_, JsErrorBox>(())
-      });
+          .boxed_local(),
+        );
+      }
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
-      fs::write(initialized_file, tags)?;
+      write_initialized_file(&initialized_file, &tags)?;
     }
 
     let sub_node_modules = folder_path.join("node_modules");
@@ -361,11 +382,52 @@ async fn sync_resolution_with_fs(
     lifecycle_scripts.add(package, package_path.into());
   }
 
+  // 2. Setup the patch packages
+  for patch_pkg in npm_install_deps_provider.patch_pkgs() {
+    // there might be multiple ids per package due to peer dep copy packages
+    for id in snapshot.package_ids_for_nv(&patch_pkg.nv) {
+      let package = snapshot.package_from_id(id).unwrap();
+      let package_folder_name = get_package_folder_id_folder_name(
+        &package.get_package_cache_folder_id(),
+      );
+      // node_modules/.deno/<package_folder_id_folder_name>/node_modules/<package_name> -> local package folder
+      let target = join_package_name(
+        Cow::Owned(
+          deno_local_registry_dir
+            .join(&package_folder_name)
+            .join("node_modules"),
+        ),
+        &patch_pkg.nv.name,
+      );
+
+      cache_futures.push(
+        async move {
+          let from_path = patch_pkg.target_dir.clone();
+          let sys = sys.clone();
+          deno_core::unsync::spawn_blocking({
+            move || {
+              clone_dir_recrusive_except_node_modules_child(
+                &sys, &from_path, &target,
+              )
+            }
+          })
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)?;
+          Ok::<_, JsErrorBox>(())
+        }
+        .boxed_local(),
+      );
+    }
+  }
+
+  // copy packages copy from the main packages, so wait
+  // until these are all done
   while let Some(result) = cache_futures.next().await {
     result?; // surface the first error
   }
 
-  // 2. Create any "copy" packages, which are used for peer dependencies
+  // 3. Create any "copy" packages, which are used for peer dependencies
   for package in &package_partitions.copy_packages {
     let package_cache_folder_id = package.get_package_cache_folder_id();
     let destination_path = deno_local_registry_dir
@@ -375,7 +437,6 @@ async fn sync_resolution_with_fs(
       let sub_node_modules = destination_path.join("node_modules");
       let package_path =
         join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-
       let source_path = join_package_name(
         Cow::Owned(
           deno_local_registry_dir
@@ -387,13 +448,31 @@ async fn sync_resolution_with_fs(
         &package.id.nv.name,
       );
 
-      clone_dir_recursive(sys, &source_path, &package_path)?;
-      // write out a file that indicates this folder has been initialized
-      fs::write(initialized_file, "")?;
+      cache_futures.push(
+        async move {
+          let sys = sys.clone();
+          deno_core::unsync::spawn_blocking(move || {
+            clone_dir_recursive(&sys, &source_path, &package_path)
+              .map_err(JsErrorBox::from_err)?;
+            // write out a file that indicates this folder has been initialized
+            create_initialized_file(&initialized_file)?;
+            Ok::<_, JsErrorBox>(())
+          })
+          .await
+          .map_err(JsErrorBox::from_err)?
+          .map_err(JsErrorBox::from_err)?;
+          Ok::<_, JsErrorBox>(())
+        }
+        .boxed_local(),
+      );
     }
   }
 
-  // 3. Symlink all the dependencies into the .deno directory.
+  while let Some(result) = cache_futures.next().await {
+    result?; // surface the first error
+  }
+
+  // 4. Symlink all the dependencies into the .deno directory.
   //
   // Symlink node_modules/.deno/<package_id>/node_modules/<dep_name> to
   // node_modules/.deno/<dep_id>/node_modules/<dep_package_name>
@@ -414,7 +493,9 @@ async fn sync_resolution_with_fs(
       let dep_cache_folder_id = dep.get_package_cache_folder_id();
       let dep_folder_name =
         get_package_folder_id_folder_name(&dep_cache_folder_id);
-      if dep_setup_cache.insert(name, &dep_folder_name) {
+      if package.dist.is_none()
+        || dep_setup_cache.insert(name, &dep_folder_name)
+      {
         let dep_folder_path = join_package_name(
           Cow::Owned(
             deno_local_registry_dir
@@ -436,7 +517,7 @@ async fn sync_resolution_with_fs(
   // set of node_modules in workspace packages that we've already ensured exist
   let mut existing_child_node_modules_dirs: HashSet<PathBuf> = HashSet::new();
 
-  // 4. Create symlinks for package json dependencies
+  // 5. Create symlinks for package json dependencies
   {
     for remote in npm_install_deps_provider.remote_pkgs() {
       let remote_pkg = if let Ok(remote_pkg) =
@@ -519,7 +600,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 5. Create symlinks for the remaining top level packages in the node_modules folder.
+  // 6. Create symlinks for the remaining top level packages in the node_modules folder.
   // (These may be present if they are not in the package.json dependencies)
   // Symlink node_modules/.deno/<package_id>/node_modules/<package_name> to
   // node_modules/<package_name>
@@ -560,7 +641,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 6. Create a node_modules/.deno/node_modules/<package-name> directory with
+  // 7. Create a node_modules/.deno/node_modules/<package-name> directory with
   // the remaining packages
   for package in newest_packages_by_name.values() {
     match found_names.entry(&package.id.nv.name) {
@@ -595,7 +676,7 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // 7. Set up `node_modules/.bin` entries for packages that need it.
+  // 8. Set up `node_modules/.bin` entries for packages that need it.
   {
     let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(
@@ -622,7 +703,7 @@ async fn sync_resolution_with_fs(
     )?;
   }
 
-  // 8. Create symlinks for the workspace packages
+  // 9. Create symlinks for the workspace packages
   {
     // todo(dsherret): this is not exactly correct because it should
     // install correctly for a workspace (potentially in sub directories),
@@ -681,6 +762,45 @@ async fn sync_resolution_with_fs(
   Ok(())
 }
 
+fn clone_dir_recrusive_except_node_modules_child(
+  sys: &CliSys,
+  from: &Path,
+  to: &Path,
+) -> Result<(), SyncResolutionWithFsError> {
+  _ = fs::remove_dir_all(to);
+  fs::create_dir_all(to).map_err(|source| {
+    SyncResolutionWithFsError::Creating {
+      path: to.to_path_buf(),
+      source,
+    }
+  })?;
+  for entry in sys.fs_read_dir(from)? {
+    let entry = entry?;
+    if entry.file_name().to_str() == Some("node_modules") {
+      continue; // ignore
+    }
+    let file_type = entry.file_type()?;
+    let new_from = from.join(entry.file_name());
+    let new_to = to.join(entry.file_name());
+
+    if file_type.is_dir() {
+      clone_dir_recursive(sys, &new_from, &new_to)?;
+    } else if file_type.is_file() {
+      hard_link_file(sys, &new_from, &new_to).or_else(|_| {
+        sys
+          .fs_copy(&new_from, &new_to)
+          .map_err(|source| SyncResolutionWithFsError::Copying {
+            from: new_from.clone(),
+            to: new_to.clone(),
+            source,
+          })
+          .map(|_| ())
+      })?;
+    }
+  }
+  Ok(())
+}
+
 /// `node_modules/.deno/<package>/`
 fn local_node_modules_package_folder(
   local_registry_dir: &Path,
@@ -723,7 +843,7 @@ impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
     &self,
     package: &NpmResolutionPackage,
   ) -> std::result::Result<(), std::io::Error> {
-    std::fs::write(self.ran_scripts_file(package), "")?;
+    _ = std::fs::File::create(self.ran_scripts_file(package))?;
     Ok(())
   }
 
@@ -758,7 +878,8 @@ impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
       );
 
       for (package, _) in packages {
-        let _ignore_err = fs::write(self.warned_scripts_file(package), "");
+        let _ignore_err =
+          create_initialized_file(&self.warned_scripts_file(package));
       }
     }
     Ok(())
@@ -1010,6 +1131,30 @@ fn junction_or_symlink_dir(
       })
     }
   }
+}
+
+fn write_initialized_file(path: &Path, text: &str) -> Result<(), JsErrorBox> {
+  if text.is_empty() {
+    create_initialized_file(path)
+  } else {
+    std::fs::write(path, text).map_err(|err| {
+      JsErrorBox::generic(format!(
+        "Failed writing '{}': {}",
+        path.display(),
+        err
+      ))
+    })
+  }
+}
+
+fn create_initialized_file(path: &Path) -> Result<(), JsErrorBox> {
+  std::fs::File::create(path).map(|_| ()).map_err(|err| {
+    JsErrorBox::generic(format!(
+      "Failed to create '{}': {}",
+      path.display(),
+      err
+    ))
+  })
 }
 
 fn join_package_name(mut path: Cow<Path>, package_name: &str) -> PathBuf {
