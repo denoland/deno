@@ -28,6 +28,7 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
+use crate::lsp::documents::DocumentModule;
 use crate::lsp::logging::lsp_warn;
 
 use super::analysis::source_range_to_lsp_range;
@@ -361,6 +362,7 @@ async fn resolve_references_code_lens(
 ) -> LspResult<lsp::CodeLens> {
   fn get_locations(
     maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
+    module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> LspResult<Vec<lsp::Location>> {
@@ -376,18 +378,11 @@ async fn resolve_references_code_lens(
       if reference.is_definition {
         continue;
       }
-      let Ok(reference_specifier) =
-        resolve_url(&reference.entry.document_span.file_name)
+      let Some(location) = reference.entry.to_location(module, language_server)
       else {
         continue;
       };
-      let asset_or_doc =
-        language_server.get_asset_or_document(&reference_specifier)?;
-      locations.push(
-        reference
-          .entry
-          .to_location(asset_or_doc.line_index(), language_server),
-      );
+      locations.push(location);
     }
     Ok(locations)
   }
@@ -426,7 +421,7 @@ async fn resolve_references_code_lens(
       }
     })?;
   let locations =
-    get_locations(maybe_referenced_symbols, language_server, token)?;
+    get_locations(maybe_referenced_symbols, &module, language_server, token)?;
   let title = if locations.len() == 1 {
     "1 reference".to_string()
   } else {

@@ -2637,22 +2637,10 @@ impl Inner {
         if !params.context.include_declaration && reference.is_definition {
           continue;
         }
-        let reference_specifier =
-          resolve_url(&reference.entry.document_span.file_name).unwrap();
-        if reference_specifier == *module.specifier {
-          locations.insert(
-            reference.entry.to_location(module.line_index.clone(), self),
-          );
-        } else if let Some(reference_module) = self
-          .document_modules
-          .inspect_module_from_specifier(&reference_specifier, scope.as_deref())
-        {
-          locations.insert(
-            reference
-              .entry
-              .to_location(reference_module.line_index.clone(), self),
-          );
+        let Some(location) = reference.entry.to_location(&module, self) else {
+          continue;
         };
+        locations.insert(location);
       }
     }
     let locations = if locations.is_empty() {
