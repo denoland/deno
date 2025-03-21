@@ -6,6 +6,24 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.5 / 2025.03.21
+
+- feat(unstable): basic otel event recording (#28552)
+- feat(unstable): support using a local copy of npm packages (#28512)
+- feat: upgrade deno_core and V8 13.5 (#28562)
+- fix(doc): do not stack overflow for namespace that exports self or ancestor
+  (#28533)
+- fix(ext/node): add util.getCallSites (#28546)
+- fix(ext/node): reset statement immidiately in run() (#28506)
+- fix(ext/node): restrict ATTACH DATABASE statement (#28513)
+- fix(ext/os): explicitly enable `sysinfoapi` feature on `winapi` dependency
+  (#28568)
+- fix(lsp): do not show import-map-remap diagnostic when referrer and target are
+  within the entry base (#28560)
+- fix(otel): replace `ArrayPrototypeSplit` with `StringPrototypeSplit` (#28538)
+- fix: add stackTraceLimit to ErrorConstructor interface and removed
+  ErrorWithStackTraceLimit interface (#28539)
+
 ### 2.2.4 / 2025.03.14
 
 - feat(otel): span context propagators (#28460)
