@@ -2804,10 +2804,6 @@ impl Inner {
     if !language_settings.map(|s| s.suggest.enabled).unwrap_or(true) {
       return Ok(None);
     }
-    let specifier = self.url_map.uri_to_specifier(
-      &params.text_document_position.text_document.uri,
-      LspUrlKind::File,
-    );
 
     // Import specifiers are something wholly internal to Deno, so for
     // completions, we will use internal logic and if there are completions
@@ -2949,6 +2945,9 @@ impl Inner {
           .get_completion_details(
             self.snapshot(),
             GetCompletionDetailsArgs {
+              specifier: module.specifier.as_ref().clone(),
+              position: data.position,
+              name: data.name.clone(),
               format_code_settings: Some(
                 (&self
                   .config
@@ -2957,13 +2956,14 @@ impl Inner {
                   .options)
                   .into(),
               ),
+              source: data.source.clone(),
               preferences: Some(
                 tsc::UserPreferences::from_config_for_specifier(
                   &self.config,
                   &module.specifier,
                 ),
               ),
-              ..data.into()
+              data: data.data.clone(),
             },
             module.scope.as_deref().cloned(),
             token,

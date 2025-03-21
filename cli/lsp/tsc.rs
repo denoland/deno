@@ -3765,7 +3765,6 @@ pub struct CompletionSpecifierRewrite {
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItemData {
   pub uri: Uri,
-  pub specifier: ModuleSpecifier,
   pub position: u32,
   pub name: String,
   #[serde(skip_serializing_if = "Option::is_none")]
@@ -4089,7 +4088,6 @@ impl CompletionEntry {
 
     let tsc = CompletionItemData {
       uri: uri.clone(),
-      specifier: specifier.clone(),
       position,
       name: self.name.clone(),
       source: self.source.clone(),
@@ -5454,20 +5452,6 @@ pub struct GetCompletionDetailsArgs {
   pub preferences: Option<UserPreferences>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub data: Option<Value>,
-}
-
-impl From<&CompletionItemData> for GetCompletionDetailsArgs {
-  fn from(item_data: &CompletionItemData) -> Self {
-    Self {
-      specifier: item_data.specifier.clone(),
-      position: item_data.position,
-      name: item_data.name.clone(),
-      source: item_data.source.clone(),
-      preferences: None,
-      format_code_settings: None,
-      data: item_data.data.clone(),
-    }
-  }
 }
 
 #[derive(Debug)]
