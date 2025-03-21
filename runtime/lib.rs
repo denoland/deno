@@ -140,6 +140,12 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     id: 12,
   },
   UnstableGranularFlag {
+    name: "no-legacy-abort",
+    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    show_in_help: true,
+    id: 13,
+  },
+  UnstableGranularFlag {
     name: deno_webgpu::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable `WebGPU` APIs",
     show_in_help: true,

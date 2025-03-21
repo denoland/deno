@@ -1281,7 +1281,8 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      otel_config: self.cli_options()?.otel_config(),
+      otel_config: cli_options.otel_config(),
+      no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     })
   }
