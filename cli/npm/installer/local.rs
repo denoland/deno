@@ -147,6 +147,15 @@ pub enum SyncResolutionWithFsError {
     source: std::io::Error,
   },
   #[class(inherit)]
+  #[error("Copying '{from}' to '{to}'")]
+  Copying {
+    from: PathBuf,
+    to: PathBuf,
+    #[source]
+    #[inherit]
+    source: std::io::Error,
+  },
+  #[class(inherit)]
   #[error(transparent)]
   CopyDirRecursive(#[from] crate::util::fs::CopyDirRecursiveError),
   #[class(inherit)]
@@ -195,14 +204,14 @@ async fn sync_resolution_with_fs(
   let deno_node_modules_dir = deno_local_registry_dir.join("node_modules");
   fs::create_dir_all(&deno_node_modules_dir).map_err(|source| {
     SyncResolutionWithFsError::Creating {
-      path: deno_local_registry_dir.to_path_buf(),
+      path: deno_node_modules_dir.to_path_buf(),
       source,
     }
   })?;
   let bin_node_modules_dir_path = root_node_modules_dir_path.join(".bin");
   fs::create_dir_all(&bin_node_modules_dir_path).map_err(|source| {
     SyncResolutionWithFsError::Creating {
-      path: deno_local_registry_dir.to_path_buf(),
+      path: bin_node_modules_dir_path.to_path_buf(),
       source,
     }
   })?;
@@ -410,6 +419,12 @@ async fn sync_resolution_with_fs(
         .boxed_local(),
       );
     }
+  }
+
+  // copy packages copy from the main packages, so wait
+  // until these are all done
+  while let Some(result) = cache_futures.next().await {
+    result?; // surface the first error
   }
 
   // 3. Create any "copy" packages, which are used for peer dependencies
@@ -774,8 +789,9 @@ fn clone_dir_recrusive_except_node_modules_child(
       hard_link_file(sys, &new_from, &new_to).or_else(|_| {
         sys
           .fs_copy(&new_from, &new_to)
-          .map_err(|source| SyncResolutionWithFsError::Creating {
-            path: new_to.clone(),
+          .map_err(|source| SyncResolutionWithFsError::Copying {
+            from: new_from.clone(),
+            to: new_to.clone(),
             source,
           })
           .map(|_| ())
