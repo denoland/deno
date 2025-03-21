@@ -95,6 +95,28 @@ impl SqliteError {
 
   pub const ERROR_STR_UNKNOWN: &str = "unknown error";
 
+  pub fn create_enhanced_error<T>(
+    extended_code: i32,
+    message: &str,
+    db_handle: Option<*mut libsqlite3_sys::sqlite3>,
+  ) -> Result<T, Self> {
+    let rusqlite_error = rusqlite::Error::SqliteFailure(
+      rusqlite::ffi::Error {
+        code: rusqlite::ErrorCode::Unknown,
+        extended_code,
+      },
+      Some(message.to_string()),
+    );
+
+    let handle = db_handle.unwrap_or(std::ptr::null_mut());
+    unsafe {
+      Err(SqliteError::from_rusqlite_with_details(
+        rusqlite_error,
+        handle,
+      ))
+    }
+  }
+
   /// Creates a `SqliteError` from a rusqlite error and a raw SQLite handle.
   ///
   /// # Safety
