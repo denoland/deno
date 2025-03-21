@@ -624,35 +624,6 @@ impl Inner {
     Ok(Some(module))
   }
 
-  /// Searches assets and documents for the provided
-  /// specifier erroring if it doesn't exist.
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub fn get_asset_or_document(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> LspResult<AssetOrDocument> {
-    self
-      .get_maybe_asset_or_document(specifier)
-      .map(Ok)
-      .unwrap_or_else(|| {
-        Err(LspError::invalid_params(format!(
-          "Unable to find asset or document for: {specifier}"
-        )))
-      })
-  }
-
-  /// Searches assets and documents for the provided specifier.
-  pub fn get_maybe_asset_or_document(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<AssetOrDocument> {
-    if specifier.scheme() == "asset" {
-      ASSET_DOCUMENTS.get(specifier).map(AssetOrDocument::Asset)
-    } else {
-      self.documents.get(specifier).map(AssetOrDocument::Document)
-    }
-  }
-
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub async fn get_navigation_tree(
     &self,
@@ -2279,15 +2250,20 @@ impl Inner {
       }
 
       let changes = if code_action_data.fix_id == "fixMissingImport" {
-        fix_ts_import_changes(&combined_code_actions.changes, self, token)
-          .map_err(|err| {
-            if token.is_cancelled() {
-              LspError::request_cancelled()
-            } else {
-              error!("Unable to fix import changes: {:#}", err);
-              LspError::internal_error()
-            }
-          })?
+        fix_ts_import_changes(
+          &combined_code_actions.changes,
+          &module,
+          self,
+          token,
+        )
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            error!("Unable to fix import changes: {:#}", err);
+            LspError::internal_error()
+          }
+        })?
       } else {
         combined_code_actions.changes
       };
@@ -2359,16 +2335,20 @@ impl Inner {
           if kind_suffix == ".rewrite.function.returnType"
             || kind_suffix == ".move.newFile"
           {
-            refactor_edit_info.edits =
-              fix_ts_import_changes(&refactor_edit_info.edits, self, token)
-                .map_err(|err| {
-                  if token.is_cancelled() {
-                    LspError::request_cancelled()
-                  } else {
-                    error!("Unable to fix import changes: {:#}", err);
-                    LspError::internal_error()
-                  }
-                })?
+            refactor_edit_info.edits = fix_ts_import_changes(
+              &refactor_edit_info.edits,
+              &module,
+              self,
+              token,
+            )
+            .map_err(|err| {
+              if token.is_cancelled() {
+                LspError::request_cancelled()
+              } else {
+                error!("Unable to fix import changes: {:#}", err);
+                LspError::internal_error()
+              }
+            })?
           }
           code_action.edit =
             refactor_edit_info.to_workspace_edit(&module, self, token)?;

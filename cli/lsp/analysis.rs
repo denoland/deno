@@ -11,6 +11,7 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -645,6 +646,7 @@ fn try_reverse_map_package_json_exports(
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
   changes: &[tsc::FileTextChanges],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
@@ -653,16 +655,31 @@ pub fn fix_ts_import_changes(
     if token.is_cancelled() {
       return Err(anyhow!("request cancelled"));
     }
-    let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
+    let is_new_file = change.is_new_file.unwrap_or(false);
+    let Ok(target_specifier) = resolve_url(&change.file_name) else {
       continue;
     };
-    let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
-    let resolution_mode = referrer_doc
+    let target_module = if is_new_file {
+      None
+    } else {
+      let Some(target_module) = language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )
+      else {
+        continue;
+      };
+      Some(target_module)
+    };
+    let resolution_mode = target_module
       .as_ref()
-      .map(|d| d.resolution_mode())
+      .map(|m| m.resolution_mode)
       .unwrap_or(ResolutionMode::Import);
-    let import_mapper =
-      language_server.get_ts_response_import_mapper(&referrer);
+    let import_mapper = language_server.get_ts_response_import_mapper(
+      module.scope.as_deref().unwrap_or(&target_specifier),
+    );
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
@@ -673,7 +690,11 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, &referrer, resolution_mode)
+              .check_unresolved_specifier(
+                specifier,
+                &target_specifier,
+                resolution_mode,
+              )
             {
               line.replace(specifier, &new_specifier)
             } else {

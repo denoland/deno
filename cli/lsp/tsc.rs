@@ -2564,24 +2564,37 @@ impl FileTextChanges {
     module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<lsp::TextDocumentEdit> {
+    let is_new_file = self.is_new_file.unwrap_or(false);
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_module = language_server
-      .document_modules
-      .inspect_module_from_specifier(
-        &target_specifier,
-        module.scope.as_deref(),
-      )?;
+    let target_module = if is_new_file {
+      None
+    } else {
+      Some(
+        language_server
+          .document_modules
+          .inspect_module_from_specifier(
+            &target_specifier,
+            module.scope.as_deref(),
+          )?,
+      )
+    };
+    let target_uri = target_module
+      .as_ref()
+      .map(|m| m.uri.clone())
+      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
+    let line_index = target_module
+      .as_ref()
+      .map(|m| m.line_index.clone())
+      .unwrap_or_else(|| Arc::new(LineIndex::new("")));
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| {
-        tc.as_text_or_annotated_text_edit(target_module.line_index.clone())
-      })
+      .map(|tc| tc.as_text_or_annotated_text_edit(line_index.clone()))
       .collect();
     Some(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: target_module.uri.as_ref().clone(),
-        version: target_module.version_if_open,
+        uri: target_uri.as_ref().clone(),
+        version: target_module.and_then(|m| m.version_if_open),
       },
       edits,
     })
@@ -2611,9 +2624,6 @@ impl FileTextChanges {
       .as_ref()
       .map(|m| m.uri.clone())
       .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
-    if !target_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-      return None;
-    }
     let line_index = target_module
       .as_ref()
       .map(|m| m.line_index.clone())
@@ -2640,7 +2650,7 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: target_uri.as_ref().clone(),
-        version: target_module.and_then(|d| d.version_if_open),
+        version: target_module.and_then(|m| m.version_if_open),
       },
       edits,
     }));
