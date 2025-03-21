@@ -606,7 +606,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn find_references2(
+  pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
     specifier: Url,
@@ -630,61 +630,6 @@ impl TsServer {
         }
         Ok(symbols)
       })
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn find_references(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    position: u32,
-    token: &CancellationToken,
-  ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
-    let req = TscRequest::FindReferences((
-      self.specifier_map.denormalize(&specifier),
-      position,
-    ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<ReferencedSymbol>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_symbols = IndexSet::new();
-    while let Some(symbols) = results.next().await {
-      let symbols = symbols
-        .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get references from TypeScript: {err}");
-          }
-        })
-        .unwrap_or_default();
-      let Some(mut symbols) = symbols else {
-        continue;
-      };
-      for symbol in &mut symbols {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        symbol.normalize(&self.specifier_map)?;
-      }
-      all_symbols.extend(symbols);
-    }
-    if all_symbols.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_symbols.into_iter().collect()))
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

@@ -356,68 +356,25 @@ async fn resolve_references_code_lens(
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> LspResult<lsp::CodeLens> {
-  fn get_locations(
-    maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
-    module: &Arc<DocumentModule>,
-    language_server: &language_server::Inner,
-    token: &CancellationToken,
-  ) -> LspResult<Vec<lsp::Location>> {
-    let symbols = match maybe_referenced_symbols {
-      Some(symbols) => symbols,
-      None => return Ok(Vec::new()),
-    };
-    let mut locations = Vec::new();
-    for reference in symbols.iter().flat_map(|s| &s.references) {
-      if token.is_cancelled() {
-        return Err(LspError::request_cancelled());
-      }
-      if reference.is_definition {
-        continue;
-      }
-      let Some(location) = reference.entry.to_location(module, language_server)
-      else {
-        continue;
-      };
-      locations.push(location);
-    }
-    Ok(locations)
-  }
-
-  let Some(document) = language_server.get_document(
-    &data.uri,
-    language_server::Enabled::Filter,
-    language_server::Exists::Enforce,
-    language_server::Diagnosable::Filter,
-  )?
-  else {
-    return Ok(code_lens);
-  };
-  let Some(module) = language_server.get_primary_module(&document)? else {
-    return Ok(code_lens);
-  };
-
-  let maybe_referenced_symbols = language_server
-    .ts_server
-    .find_references(
-      language_server.snapshot(),
-      module.specifier.as_ref().clone(),
-      module.line_index.offset_tsc(code_lens.range.start)?,
+  let locations = language_server
+    .references(
+      lsp::ReferenceParams {
+        text_document_position: lsp::TextDocumentPositionParams {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: data.uri.clone(),
+          },
+          position: code_lens.range.start,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: lsp::ReferenceContext {
+          include_declaration: false,
+        },
+      },
       token,
     )
-    .await
-    .map_err(|err| {
-      if token.is_cancelled() {
-        LspError::request_cancelled()
-      } else {
-        lsp_warn!(
-          "Unable to get references for code lens from TypeScript: {:#}",
-          err
-        );
-        LspError::internal_error()
-      }
-    })?;
-  let locations =
-    get_locations(maybe_referenced_symbols, &module, language_server, token)?;
+    .await?
+    .unwrap_or_default();
   let title = if locations.len() == 1 {
     "1 reference".to_string()
   } else {

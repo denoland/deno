@@ -2582,7 +2582,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn references(
+  pub async fn references(
     &self,
     params: ReferenceParams,
     token: &CancellationToken,
@@ -2606,7 +2606,7 @@ impl Inner {
       }
       let symbols = self
         .ts_server
-        .find_references2(
+        .find_references(
           self.snapshot(),
           module.specifier.as_ref().clone(),
           module
