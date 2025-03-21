@@ -1475,7 +1475,7 @@ version = "2.2.4"
 dependencies = [
  "anstream",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bincode",
  "boxed_error",
  "bytes",
@@ -1679,7 +1679,7 @@ version = "0.127.0"
 dependencies = [
  "async-stream",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "deno_core",
@@ -1841,7 +1841,7 @@ dependencies = [
  "aes",
  "aes-gcm",
  "aes-kw",
- "base64 0.21.7",
+ "base64 0.22.1",
  "cbc",
  "const-oid",
  "ctr",
@@ -1929,7 +1929,7 @@ dependencies = [
 name = "deno_fetch"
 version = "0.219.0"
 dependencies = [
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "data-url",
  "deno_core",
@@ -2050,7 +2050,7 @@ version = "0.193.0"
 dependencies = [
  "async-compression",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bencher",
  "brotli",
  "bytes",
@@ -2113,7 +2113,7 @@ version = "0.103.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "boxed_error",
  "bytes",
  "chrono",
@@ -2268,7 +2268,7 @@ version = "0.133.0"
 dependencies = [
  "aead-gcm-stream",
  "aes",
- "base64 0.21.7",
+ "base64 0.22.1",
  "blake2",
  "boxed_error",
  "brotli",
@@ -2373,7 +2373,7 @@ name = "deno_npm_cache"
 version = "0.14.0"
 dependencies = [
  "async-trait",
- "base64 0.21.7",
+ "base64 0.22.1",
  "boxed_error",
  "deno_cache_dir",
  "deno_error",
@@ -8403,7 +8403,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-stream",
- "base64 0.21.7",
+ "base64 0.22.1",
  "bytes",
  "console_static_text",
  "deno_unsync",
