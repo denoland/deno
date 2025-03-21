@@ -18,6 +18,7 @@ use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
+use deno_core::url::Url;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;
@@ -367,6 +368,19 @@ impl CliMainWorkerFactory {
         Default::default(),
       )
       .await
+  }
+
+  /// Resolve the npm binary entrypoint for a package. This forwards to the
+  /// underlying `LibMainWorkerFactory`, but exposes it on this type for use
+  /// in CLI subcommands.
+  pub fn resolve_npm_binary_entrypoint(
+    &self,
+    package_folder: &std::path::Path,
+    sub_path: Option<&str>,
+  ) -> Result<Url, ResolveNpmBinaryEntrypointError> {
+    self
+      .lib_main_worker_factory
+      .resolve_npm_binary_entrypoint(package_folder, sub_path)
   }
 
   pub async fn create_custom_worker(

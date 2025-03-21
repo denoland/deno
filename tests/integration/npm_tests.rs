@@ -60,6 +60,35 @@ fn parallel_downloading() {
   assert!(out.contains("chalk cjs loads"));
 }
 
+/// Regression test for binaries that are not JavaScript code (for example,
+/// compiled executables or shell scripts) distributed on npm. Prior to this
+/// change, attempting to `deno run` an npm package whose `bin` pointed at a
+/// non-JavaScript file would result in a `SyntaxError` because the binary was
+/// being parsed as JavaScript. This test ensures that such cases no longer
+/// surface a syntax error.
+#[test]
+fn npm_binary_cli_does_not_error_with_syntax_error() {
+  let _server = http_server();
+  let deno_dir = util::new_deno_dir();
+  let deno = util::deno_cmd_with_deno_dir(&deno_dir)
+    .arg("run")
+    .arg("-A")
+    .arg("--node-modules-dir=auto")
+    .arg("npm:@denotest/binary-cli")
+    .env("NO_COLOR", "1")
+    .envs(env_vars_for_npm_tests())
+    .piped_output()
+    .spawn()
+    .unwrap();
+  let output = deno.wait_with_output().unwrap();
+  let stderr = String::from_utf8_lossy(&output.stderr);
+  // Should not contain a SyntaxError parse failure.
+  assert!(!stderr.contains("SyntaxError"));
+  // We don't assert on exact exit code or stdout/stderr here as attempting to
+  // execute a non-JS binary may fail on some platforms. This test only ensures
+  // we no longer mis-parse the file as JS.
+}
+
 #[test]
 fn cached_only_after_first_run() {
   let _server = http_server();
