@@ -3380,7 +3380,7 @@ impl CallHierarchyOutgoingCall {
 fn parse_code_actions(
   maybe_code_actions: Option<&Vec<CodeAction>>,
   data: &CompletionItemData,
-  specifier: &ModuleSpecifier,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
   if let Some(code_actions) = maybe_code_actions {
@@ -3391,12 +3391,10 @@ fn parse_code_actions(
         has_remaining_commands_or_edits = true;
       }
 
-      let asset_or_doc =
-        language_server.get_asset_or_document(&data.specifier)?;
       for change in &ts_action.changes {
-        if data.specifier.as_str() == change.file_name {
+        if module.specifier.as_str() == change.file_name {
           additional_text_edits.extend(change.text_changes.iter().map(|tc| {
-            let mut text_edit = tc.as_text_edit(asset_or_doc.line_index());
+            let mut text_edit = tc.as_text_edit(module.line_index.clone());
             if let Some(specifier_rewrite) = &data.specifier_rewrite {
               let specifier_index = text_edit
                 .new_text
@@ -3436,7 +3434,7 @@ fn parse_code_actions(
             .changes
             .clone()
             .into_iter()
-            .filter(|ch| ch.file_name == data.specifier.as_str())
+            .filter(|ch| ch.file_name == module.specifier.as_str())
             .collect();
           json!({
             "commands": ca.commands,
@@ -3448,7 +3446,10 @@ fn parse_code_actions(
       command = Some(lsp::Command {
         title: "".to_string(),
         command: "_typescript.applyCompletionCodeAction".to_string(),
-        arguments: Some(vec![json!(specifier.to_string()), json!(actions)]),
+        arguments: Some(vec![
+          json!(module.specifier.to_string()),
+          json!(actions),
+        ]),
       });
     }
 
@@ -3636,7 +3637,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
-      &module.specifier,
+      module,
       language_server,
     )?;
     let mut insert_text_format = original_item.insert_text_format;
