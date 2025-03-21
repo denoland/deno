@@ -354,26 +354,44 @@ pub async fn op_crypto_sign_key(
         .to_vec()
       }
       Algorithm::Ecdsa => {
-        let curve: &EcdsaSigningAlgorithm = args
+        let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
+        let named_curve = args
           .named_curve
-          .ok_or_else(JsErrorBox::not_supported)?
-          .into();
-
-        let rng = RingRand::SystemRandom::new();
-        let key_pair = EcdsaKeyPair::from_pkcs8(curve, &args.key.data, &rng)?;
-        // We only support P256-SHA256 & P384-SHA384. These are recommended signature pairs.
-        // https://briansmith.org/rustdoc/ring/signature/index.html#statics
-        if let Some(hash) = args.hash {
-          match hash {
-            CryptoHash::Sha256 | CryptoHash::Sha384 => (),
-            _ => return Err(CryptoError::UnsupportedAlgorithm),
+          .ok_or_else(JsErrorBox::not_supported)?;
+        match named_curve {
+          CryptoNamedCurve::P256 => {
+            use p256::ecdsa::signature::hazmat::PrehashSigner;
+            use p256::ecdsa::SigningKey;
+            // Decode PKCS#8 private key.
+            let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| CryptoError::InvalidKeyFormat)?;
+            let signing_key = SigningKey::from(secret_key);
+            let prehash = match hash {
+              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            };
+            // Sign the prehashed message, producing a raw r||s signature.
+            let signature: p256::ecdsa::Signature = signing_key.sign_prehash(&prehash)?;
+            signature.to_bytes().to_vec()
           }
-        };
-
-        let signature = key_pair.sign(&rng, data)?;
-
-        // Signature data as buffer.
-        signature.as_ref().to_vec()
+          CryptoNamedCurve::P384 => {
+            use p384::ecdsa::signature::hazmat::PrehashSigner;
+            use p384::ecdsa::SigningKey;
+            let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+              .map_err(|_| CryptoError::InvalidKeyFormat)?;
+            let signing_key = SigningKey::from(secret_key);
+            let prehash = match hash {
+              CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+              CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+              CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+              CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+            };
+            let signature: p384::ecdsa::Signature = signing_key.sign_prehash(&prehash)?;
+            signature.to_bytes().to_vec()
+          }
+        }
       }
       Algorithm::Hmac => {
         let hash: HmacAlgorithm =
@@ -476,33 +494,63 @@ pub async fn op_crypto_verify_key(
         ring::hmac::verify(&key, data, &args.signature).is_ok()
       }
       Algorithm::Ecdsa => {
-        let signing_alg: &EcdsaSigningAlgorithm = args
+        use signature::hazmat::PrehashVerifier;
+        let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
+        let named_curve = args
           .named_curve
-          .ok_or_else(JsErrorBox::not_supported)?
-          .into();
-        let verify_alg: &EcdsaVerificationAlgorithm = args
-          .named_curve
-          .ok_or_else(JsErrorBox::not_supported)?
-          .into();
-
-        let private_key;
-
-        let public_key_bytes = match args.key.r#type {
-          KeyType::Private => {
-            let rng = RingRand::SystemRandom::new();
-            private_key =
-              EcdsaKeyPair::from_pkcs8(signing_alg, &args.key.data, &rng)?;
-
-            private_key.public_key().as_ref()
+          .ok_or_else(JsErrorBox::not_supported)?;
+        match named_curve {
+          CryptoNamedCurve::P256 => {
+            use p256::ecdsa::{Signature as P256Signature, VerifyingKey};
+            let verifying_key = match args.key.r#type {
+              KeyType::Public => VerifyingKey::from_sec1_bytes(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?,
+              KeyType::Private => {
+                let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                let signing_key = p256::ecdsa::SigningKey::from(secret_key);
+                signing_key.verifying_key().clone()
+              }
+              _ => return Err(CryptoError::InvalidKeyFormat),
+            };
+            if let Ok(signature) = P256Signature::from_slice(&args.signature) {
+              let prehash = match hash {
+                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              };
+              verifying_key.verify_prehash(&prehash, &signature).is_ok()
+            } else {
+              false
+            }
           }
-          KeyType::Public => &*args.key.data,
-          _ => return Err(CryptoError::InvalidKeyFormat),
-        };
-
-        let public_key =
-          ring::signature::UnparsedPublicKey::new(verify_alg, public_key_bytes);
-
-        public_key.verify(data, &args.signature).is_ok()
+          CryptoNamedCurve::P384 => {
+            use p384::ecdsa::{Signature as P384Signature, VerifyingKey};
+            let verifying_key = match args.key.r#type {
+              KeyType::Public => VerifyingKey::from_sec1_bytes(&args.key.data)
+                .map_err(|_| CryptoError::InvalidKeyFormat)?,
+              KeyType::Private => {
+                let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
+                  .map_err(|_| CryptoError::InvalidKeyFormat)?;
+                let signing_key = p384::ecdsa::SigningKey::from(secret_key);
+                signing_key.verifying_key().clone()
+              }
+              _ => return Err(CryptoError::InvalidKeyFormat),
+            };
+            if let Ok(signature) = P384Signature::from_slice(&args.signature) {
+              let prehash = match hash {
+                CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
+                CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
+                CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
+                CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
+              };
+              verifying_key.verify_prehash(&prehash, &signature).is_ok()
+            } else {
+              false
+            }
+          }
+        }
       }
       _ => return Err(CryptoError::UnsupportedAlgorithm),
     };
