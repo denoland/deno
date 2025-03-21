@@ -209,10 +209,9 @@ class InnerRequest {
       this.headerList;
       this.close();
 
-      this.#upgraded = () => {};
-
+      // Only flag as upgraded once the underlying upgrade succeeds.
       const upgradeRid = op_http_upgrade_raw(external);
-
+      this.#upgraded = () => {};
       const conn = new UpgradedConn(
         upgradeRid,
         underlyingConn?.remoteAddr,
