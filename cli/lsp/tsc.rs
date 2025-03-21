@@ -95,8 +95,6 @@ use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
-use super::urls::INVALID_SPECIFIER;
-use super::urls::INVALID_URI;
 use crate::args::jsr_url;
 use crate::args::FmtOptionsConfig;
 use crate::lsp::logging::lsp_warn;
@@ -2129,29 +2127,28 @@ pub struct InlayHintDisplayPart {
 impl InlayHintDisplayPart {
   pub fn to_lsp(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::InlayHintLabelPart {
-    let location = self.file.as_ref().map(|f| {
-      let specifier =
-        resolve_url(f).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-      let file_referrer =
-        language_server.documents.get_file_referrer(&specifier);
-      let uri = language_server
-        .url_map
-        .specifier_to_uri(&specifier, file_referrer.as_deref())
-        .unwrap_or_else(|_| INVALID_URI.clone());
+    let location = self.file.as_ref().and_then(|f| {
+      let target_specifier = resolve_url(f).ok()?;
+      let target_module = language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )?;
       let range = self
         .span
         .as_ref()
-        .and_then(|s| {
-          let asset_or_doc =
-            language_server.get_asset_or_document(&specifier).ok()?;
-          Some(s.to_range(asset_or_doc.line_index()))
-        })
+        .and_then(|s| Some(s.to_range(target_module.line_index.clone())))
         .unwrap_or_else(|| {
           lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
         });
-      lsp::Location { uri, range }
+      Some(lsp::Location {
+        uri: target_module.uri.as_ref().clone(),
+        range,
+      })
     });
     lsp::InlayHintLabelPart {
       value: self.text.clone(),
@@ -2193,16 +2190,16 @@ pub struct InlayHint {
 impl InlayHint {
   pub fn to_lsp(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::InlayHint {
     lsp::InlayHint {
-      position: line_index.position_utf16(self.position.into()),
+      position: module.line_index.position_utf16(self.position.into()),
       label: if let Some(display_parts) = &self.display_parts {
         lsp::InlayHintLabel::LabelParts(
           display_parts
             .iter()
-            .map(|p| p.to_lsp(language_server))
+            .map(|p| p.to_lsp(module, language_server))
             .collect(),
         )
       } else {

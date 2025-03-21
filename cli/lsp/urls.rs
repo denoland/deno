@@ -14,20 +14,9 @@ use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_path_util::url_to_file_path;
 use lsp_types::Uri;
-use once_cell::sync::Lazy;
 
 use super::cache::LspCache;
 use super::logging::lsp_warn;
-
-/// Used in situations where a default URL needs to be used where otherwise a
-/// panic is undesired.
-pub static INVALID_SPECIFIER: Lazy<ModuleSpecifier> =
-  Lazy::new(|| ModuleSpecifier::parse("deno://invalid").unwrap());
-
-/// Used in situations where a default URL needs to be used where otherwise a
-/// panic is undesired.
-pub static INVALID_URI: Lazy<Uri> =
-  Lazy::new(|| Uri::from_str("deno://invalid").unwrap());
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.

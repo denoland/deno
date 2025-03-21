@@ -4796,7 +4796,7 @@ impl Inner {
             if token.is_cancelled() {
               return Err(LspError::request_cancelled());
             }
-            Ok(hint.to_lsp(module.line_index.clone(), self))
+            Ok(hint.to_lsp(&module, self))
           })
           .collect()
       })
