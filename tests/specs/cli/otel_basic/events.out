@@ -44,8 +44,15 @@
         {
           "timeUnixNano": "[WILDCARD]",
           "name": "example event",
-          "attributes": [],
-          "droppedAttributesCount": 1
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
         }
       ],
       "droppedEventsCount": 0,
@@ -72,8 +79,15 @@
         {
           "timeUnixNano": "[WILDCARD]",
           "name": "example event",
-          "attributes": [],
-          "droppedAttributesCount": 1
+          "attributes": [
+            {
+              "key": "key",
+              "value": {
+                "stringValue": "value"
+              }
+            }
+          ],
+          "droppedAttributesCount": 0
         }
       ],
       "droppedEventsCount": 0,
