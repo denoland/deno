@@ -83,7 +83,7 @@ impl WorkspaceNpmPatchPackages {
           }
         }
       }
-    } else if workspace.package_jsons().next().is_some() {
+    } else if workspace.patch_pkg_jsons().next().is_some() {
       log::warn!(
         "{} {}\n    at {}",
         colors::yellow("Warning"),
