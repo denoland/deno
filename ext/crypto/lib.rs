@@ -15,6 +15,10 @@ use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
+// ECDSA signing and verifying support for P-256 and P-384.
+use p256::ecdsa::{Signature as P256Signature, SigningKey as P256SigningKey, VerifyingKey as P256VerifyingKey};
+use p384::ecdsa::{Signature as P384Signature, SigningKey as P384SigningKey, VerifyingKey as P384VerifyingKey};
+use signature::hazmat::{PrehashSigner, PrehashVerifier};
 pub use rand;
 use rand::rngs::OsRng;
 use rand::rngs::StdRng;
@@ -355,17 +359,13 @@ pub async fn op_crypto_sign_key(
       }
       Algorithm::Ecdsa => {
         let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
-        let named_curve = args
-          .named_curve
-          .ok_or_else(JsErrorBox::not_supported)?;
+        let named_curve = args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
         match named_curve {
           CryptoNamedCurve::P256 => {
-            use p256::ecdsa::signature::hazmat::PrehashSigner;
-            use p256::ecdsa::SigningKey;
             // Decode PKCS#8 private key.
             let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
               .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let signing_key = SigningKey::from(secret_key);
+            let signing_key = P256SigningKey::from(secret_key);
             let prehash = match hash {
               CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
@@ -373,22 +373,20 @@ pub async fn op_crypto_sign_key(
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
             };
             // Sign the prehashed message, producing a raw r||s signature.
-            let signature: p256::ecdsa::Signature = signing_key.sign_prehash(&prehash)?;
+            let signature: P256Signature = signing_key.sign_prehash(&prehash)?;
             signature.to_bytes().to_vec()
           }
           CryptoNamedCurve::P384 => {
-            use p384::ecdsa::signature::hazmat::PrehashSigner;
-            use p384::ecdsa::SigningKey;
             let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
               .map_err(|_| CryptoError::InvalidKeyFormat)?;
-            let signing_key = SigningKey::from(secret_key);
+            let signing_key = P384SigningKey::from(secret_key);
             let prehash = match hash {
               CryptoHash::Sha1 => sha1::Sha1::digest(data).to_vec(),
               CryptoHash::Sha256 => sha2::Sha256::digest(data).to_vec(),
               CryptoHash::Sha384 => sha2::Sha384::digest(data).to_vec(),
               CryptoHash::Sha512 => sha2::Sha512::digest(data).to_vec(),
             };
-            let signature: p384::ecdsa::Signature = signing_key.sign_prehash(&prehash)?;
+            let signature: P384Signature = signing_key.sign_prehash(&prehash)?;
             signature.to_bytes().to_vec()
           }
         }
@@ -494,21 +492,17 @@ pub async fn op_crypto_verify_key(
         ring::hmac::verify(&key, data, &args.signature).is_ok()
       }
       Algorithm::Ecdsa => {
-        use signature::hazmat::PrehashVerifier;
         let hash = args.hash.ok_or_else(|| CryptoError::MissingArgumentHash)?;
-        let named_curve = args
-          .named_curve
-          .ok_or_else(JsErrorBox::not_supported)?;
+        let named_curve = args.named_curve.ok_or_else(JsErrorBox::not_supported)?;
         match named_curve {
           CryptoNamedCurve::P256 => {
-            use p256::ecdsa::{Signature as P256Signature, VerifyingKey};
             let verifying_key = match args.key.r#type {
-              KeyType::Public => VerifyingKey::from_sec1_bytes(&args.key.data)
+              KeyType::Public => P256VerifyingKey::from_sec1_bytes(&args.key.data)
                 .map_err(|_| CryptoError::InvalidKeyFormat)?,
               KeyType::Private => {
                 let secret_key = p256::SecretKey::from_pkcs8_der(&args.key.data)
                   .map_err(|_| CryptoError::InvalidKeyFormat)?;
-                let signing_key = p256::ecdsa::SigningKey::from(secret_key);
+                let signing_key = P256SigningKey::from(secret_key);
                 signing_key.verifying_key().clone()
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
@@ -526,14 +520,13 @@ pub async fn op_crypto_verify_key(
             }
           }
           CryptoNamedCurve::P384 => {
-            use p384::ecdsa::{Signature as P384Signature, VerifyingKey};
             let verifying_key = match args.key.r#type {
-              KeyType::Public => VerifyingKey::from_sec1_bytes(&args.key.data)
+              KeyType::Public => P384VerifyingKey::from_sec1_bytes(&args.key.data)
                 .map_err(|_| CryptoError::InvalidKeyFormat)?,
               KeyType::Private => {
                 let secret_key = p384::SecretKey::from_pkcs8_der(&args.key.data)
                   .map_err(|_| CryptoError::InvalidKeyFormat)?;
-                let signing_key = p384::ecdsa::SigningKey::from(secret_key);
+                let signing_key = P384SigningKey::from(secret_key);
                 signing_key.verifying_key().clone()
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
