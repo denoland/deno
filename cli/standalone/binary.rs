@@ -703,6 +703,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       },
       otel_config: self.cli_options.otel_config(),
       vfs_case_sensitivity: vfs.case_sensitivity,
+      build_time: std::time::SystemTime::now().duration_since(std::time::SystemTime::UNIX_EPOCH).ok().map(|x| x.as_secs())
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(
