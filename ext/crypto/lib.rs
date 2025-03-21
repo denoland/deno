@@ -34,11 +34,6 @@ use ring::hkdf;
 use ring::hmac::Algorithm as HmacAlgorithm;
 use ring::hmac::Key as HmacKey;
 use ring::pbkdf2;
-use ring::rand as RingRand;
-use ring::signature::EcdsaKeyPair;
-use ring::signature::EcdsaSigningAlgorithm;
-use ring::signature::EcdsaVerificationAlgorithm;
-use ring::signature::KeyPair;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::DecodeRsaPublicKey;
 use rsa::signature::SignatureEncoding;
@@ -516,7 +511,7 @@ pub async fn op_crypto_verify_key(
                   p256::SecretKey::from_pkcs8_der(&args.key.data)
                     .map_err(|_| CryptoError::InvalidKeyFormat)?;
                 let signing_key = P256SigningKey::from(secret_key);
-                signing_key.verifying_key().clone()
+                *signing_key.verifying_key()
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
@@ -543,7 +538,7 @@ pub async fn op_crypto_verify_key(
                   p384::SecretKey::from_pkcs8_der(&args.key.data)
                     .map_err(|_| CryptoError::InvalidKeyFormat)?;
                 let signing_key = P384SigningKey::from(secret_key);
-                signing_key.verifying_key().clone()
+                *signing_key.verifying_key()
               }
               _ => return Err(CryptoError::InvalidKeyFormat),
             };
