@@ -22,7 +22,6 @@ use super::lsp_custom;
 use crate::lsp::client::Client;
 use crate::lsp::client::TestingNotification;
 use crate::lsp::config;
-use crate::lsp::documents::DocumentsFilter;
 use crate::lsp::language_server::StateSnapshot;
 use crate::lsp::performance::Performance;
 use crate::lsp::urls::url_to_uri;

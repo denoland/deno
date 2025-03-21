@@ -51,7 +51,6 @@ use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
-use super::urls::url_to_uri;
 use crate::args::jsr_url;
 use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::CliLinter;
@@ -844,8 +843,6 @@ pub fn ts_changes_to_edit(
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionData {
   pub uri: Uri,
-  // TODO(nayeemrmn): Remove!
-  pub specifier: ModuleSpecifier,
   pub fix_id: String,
 }
 
@@ -1163,7 +1160,6 @@ impl CodeActionCollection {
     let data = action.fix_id.as_ref().map(|fix_id| {
       json!(CodeActionData {
         uri: uri.clone(),
-        specifier: specifier.clone(),
         fix_id: fix_id.clone(),
       })
     });

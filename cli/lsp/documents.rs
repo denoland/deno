@@ -44,7 +44,6 @@ use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
-use tower_lsp::CancellationToken;
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;

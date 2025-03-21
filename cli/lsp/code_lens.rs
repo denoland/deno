@@ -11,9 +11,7 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -581,6 +579,7 @@ pub fn collect_tsc(
 #[cfg(test)]
 mod tests {
   use deno_ast::MediaType;
+  use deno_core::resolve_url;
 
   use super::*;
 

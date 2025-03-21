@@ -70,7 +70,6 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-use super::analysis::CodeActionData;
 use super::code_lens;
 use super::code_lens::CodeLensData;
 use super::config;

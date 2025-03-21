@@ -57,7 +57,6 @@ use super::tsc;
 use super::tsc::ScopedAmbientModules;
 use super::tsc::TsServer;
 use super::urls::uri_parse_unencoded;
-use super::urls::url_to_uri;
 use super::urls::LspUrlMap;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
@@ -2019,6 +2018,7 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
+  use crate::lsp::urls::url_to_uri;
 
   fn mock_config() -> Config {
     let root_url = resolve_url("file:///").unwrap();
