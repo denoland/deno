@@ -1903,7 +1903,7 @@ impl Inner {
             LspError::internal_error()
           }
         })?;
-      maybe_quick_info.map(|qi| qi.to_hover(module.line_index.clone(), self))
+      maybe_quick_info.map(|qi| qi.to_hover(&module, self))
     };
     self.performance.measure(mark);
     Ok(hover)
@@ -2973,7 +2973,7 @@ impl Inner {
           Ok(maybe_completion_info) => {
             if let Some(completion_info) = maybe_completion_info {
               completion_info
-                .as_completion_item(&params, data, &module.specifier, self)
+                .as_completion_item(&params, data, &module, self)
                 .map_err(|err| {
                   error!(
                     "Failed to serialize virtual_text_document response: {:#}",
@@ -3679,7 +3679,7 @@ impl Inner {
     let result = if let Some(signature_help_items) = maybe_signature_help_items
     {
       let signature_help = signature_help_items
-        .into_signature_help(self, token)
+        .into_signature_help(&module, self, token)
         .map_err(|err| {
           if token.is_cancelled() {
             LspError::request_cancelled()

@@ -1423,12 +1423,13 @@ impl TsServer {
 
 fn get_tag_body_text(
   tag: &JsDocTagInfo,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Option<String> {
   tag.text.as_ref().map(|display_parts| {
     // TODO(@kitsonk) check logic in vscode about handling this API change in
     // tsserver
-    let text = display_parts_to_string(display_parts, language_server);
+    let text = display_parts_to_string(display_parts, module, language_server);
     match tag.name.as_str() {
       "example" => {
         if CAPTION_RE.is_match(&text) {
@@ -1452,6 +1453,7 @@ fn get_tag_body_text(
 
 fn get_tag_documentation(
   tag: &JsDocTagInfo,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> String {
   match tag.name.as_str() {
@@ -1459,7 +1461,8 @@ fn get_tag_documentation(
       if let Some(display_parts) = &tag.text {
         // TODO(@kitsonk) check logic in vscode about handling this API change
         // in tsserver
-        let text = display_parts_to_string(display_parts, language_server);
+        let text =
+          display_parts_to_string(display_parts, module, language_server);
         let body: Vec<&str> = PART_RE.split(&text).collect();
         if body.len() == 3 {
           let param = body[1];
@@ -1479,7 +1482,7 @@ fn get_tag_documentation(
     _ => (),
   }
   let label = format!("*@{}*", tag.name);
-  let maybe_text = get_tag_body_text(tag, language_server);
+  let maybe_text = get_tag_body_text(tag, module, language_server);
   if let Some(text) = maybe_text {
     if text.contains('\n') {
       format!("{label}  \n{text}")
@@ -1799,6 +1802,7 @@ struct Link {
 /// to the their source location.
 fn display_parts_to_string(
   parts: &[SymbolDisplayPart],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> String {
   let mut out = Vec::<String>::new();
@@ -1809,7 +1813,7 @@ fn display_parts_to_string(
       "link" => {
         if let Some(link) = current_link.as_mut() {
           if let Some(target) = &link.target {
-            if let Some(specifier) = target.to_target(language_server) {
+            if let Some(specifier) = target.to_target(module, language_server) {
               let link_text = link.text.clone().unwrap_or_else(|| {
                 link
                   .name
@@ -1908,14 +1912,14 @@ fn display_parts_to_string(
 impl QuickInfo {
   pub fn to_hover(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::Hover {
     let mut parts = Vec::<lsp::MarkedString>::new();
     if let Some(display_string) = self
       .display_parts
       .clone()
-      .map(|p| display_parts_to_string(&p, language_server))
+      .map(|p| display_parts_to_string(&p, module, language_server))
     {
       parts.push(lsp::MarkedString::from_language_code(
         "typescript".to_string(),
@@ -1925,14 +1929,16 @@ impl QuickInfo {
     if let Some(documentation) = self
       .documentation
       .clone()
-      .map(|p| display_parts_to_string(&p, language_server))
+      .map(|p| display_parts_to_string(&p, module, language_server))
     {
       parts.push(lsp::MarkedString::from_markdown(documentation));
     }
     if let Some(tags) = &self.tags {
       let tags_preview = tags
         .iter()
-        .map(|tag_info| get_tag_documentation(tag_info, language_server))
+        .map(|tag_info| {
+          get_tag_documentation(tag_info, module, language_server)
+        })
         .collect::<Vec<String>>()
         .join("  \n\n");
       if !tags_preview.is_empty() {
@@ -1943,7 +1949,7 @@ impl QuickInfo {
     }
     lsp::Hover {
       contents: lsp::HoverContents::Array(parts),
-      range: Some(self.text_span.to_range(line_index)),
+      range: Some(self.text_span.to_range(module.line_index.clone())),
     }
   }
 }
@@ -2016,19 +2022,18 @@ impl DocumentSpan {
   /// links to markdown links.
   fn to_target(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<ModuleSpecifier> {
-    let specifier = resolve_url(&self.file_name).ok()?;
-    let asset_or_doc =
-      language_server.get_maybe_asset_or_document(&specifier)?;
-    let line_index = asset_or_doc.line_index();
-    let range = self.text_span.to_range(line_index);
-    let file_referrer = asset_or_doc.file_referrer();
-    let target_uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer)
-      .ok()?;
-    let mut target = uri_to_url(&target_uri);
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_from_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
+    let range = self.text_span.to_range(target_module.line_index.clone());
+    let mut target = uri_to_url(&target_module.uri);
     target.set_fragment(Some(&format!(
       "L{},{}",
       range.start.line + 1,
@@ -3535,7 +3540,7 @@ impl CompletionEntryDetails {
     &self,
     original_item: &lsp::CompletionItem,
     data: &CompletionItemData,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Result<lsp::CompletionItem, AnyError> {
     let detail = if original_item.detail.is_some() {
@@ -3543,6 +3548,7 @@ impl CompletionEntryDetails {
     } else if !self.display_parts.is_empty() {
       Some(replace_links(display_parts_to_string(
         &self.display_parts,
+        module,
         language_server,
       )))
     } else {
@@ -3550,11 +3556,13 @@ impl CompletionEntryDetails {
     };
     let documentation = if let Some(parts) = &self.documentation {
       // NOTE: similar as `QuickInfo::to_hover()`
-      let mut value = display_parts_to_string(parts, language_server);
+      let mut value = display_parts_to_string(parts, module, language_server);
       if let Some(tags) = &self.tags {
         let tags_preview = tags
           .iter()
-          .map(|tag_info| get_tag_documentation(tag_info, language_server))
+          .map(|tag_info| {
+            get_tag_documentation(tag_info, module, language_server)
+          })
           .collect::<Vec<String>>()
           .join("  \n\n");
         if !tags_preview.is_empty() {
@@ -3628,7 +3636,7 @@ impl CompletionEntryDetails {
     let (command, additional_text_edits) = parse_code_actions(
       self.code_actions.as_ref(),
       data,
-      specifier,
+      &module.specifier,
       language_server,
     )?;
     let mut insert_text_format = original_item.insert_text_format;
@@ -4216,6 +4224,7 @@ pub struct SignatureHelpItems {
 impl SignatureHelpItems {
   pub fn into_signature_help(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::SignatureHelp, AnyError> {
@@ -4226,7 +4235,7 @@ impl SignatureHelpItems {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        Ok(item.into_signature_information(language_server))
+        Ok(item.into_signature_information(module, language_server))
       })
       .collect::<Result<_, _>>()?;
     Ok(lsp::SignatureHelp {
@@ -4252,22 +4261,29 @@ pub struct SignatureHelpItem {
 impl SignatureHelpItem {
   pub fn into_signature_information(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::SignatureInformation {
-    let prefix_text =
-      display_parts_to_string(&self.prefix_display_parts, language_server);
+    let prefix_text = display_parts_to_string(
+      &self.prefix_display_parts,
+      module,
+      language_server,
+    );
     let params_text = self
       .parameters
       .iter()
       .map(|param| {
-        display_parts_to_string(&param.display_parts, language_server)
+        display_parts_to_string(&param.display_parts, module, language_server)
       })
       .collect::<Vec<String>>()
       .join(", ");
-    let suffix_text =
-      display_parts_to_string(&self.suffix_display_parts, language_server);
+    let suffix_text = display_parts_to_string(
+      &self.suffix_display_parts,
+      module,
+      language_server,
+    );
     let documentation =
-      display_parts_to_string(&self.documentation, language_server);
+      display_parts_to_string(&self.documentation, module, language_server);
     lsp::SignatureInformation {
       label: format!("{prefix_text}{params_text}{suffix_text}"),
       documentation: Some(lsp::Documentation::MarkupContent(
@@ -4280,7 +4296,9 @@ impl SignatureHelpItem {
         self
           .parameters
           .into_iter()
-          .map(|param| param.into_parameter_information(language_server))
+          .map(|param| {
+            param.into_parameter_information(module, language_server)
+          })
           .collect(),
       ),
       active_parameter: None,
@@ -4300,13 +4318,15 @@ pub struct SignatureHelpParameter {
 impl SignatureHelpParameter {
   pub fn into_parameter_information(
     self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> lsp::ParameterInformation {
     let documentation =
-      display_parts_to_string(&self.documentation, language_server);
+      display_parts_to_string(&self.documentation, module, language_server);
     lsp::ParameterInformation {
       label: lsp::ParameterLabel::Simple(display_parts_to_string(
         &self.display_parts,
+        module,
         language_server,
       )),
       documentation: Some(lsp::Documentation::MarkupContent(
