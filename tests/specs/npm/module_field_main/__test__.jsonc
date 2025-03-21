@@ -1,0 +1,5 @@
+{
+  // use `--node-modules-dir=manual` because the dependency uses a file: spec and local node_modules.
+  "args": "run --quiet --node-modules-dir=manual main.ts",
+  "output": "main.out"
+}

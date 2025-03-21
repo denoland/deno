@@ -1,0 +1,7 @@
+{
+  "name": "module-field-main",
+  "version": "1.0.0",
+  "dependencies": {
+    "module_field_pkg": "file:./node_modules/module_field_pkg"
+  }
+}

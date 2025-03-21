@@ -1777,7 +1777,22 @@ impl<
         }
       }
     } else {
-      package_json.main(pkg_json_kind).map(Cow::Borrowed)
+      match package_json.main(pkg_json_kind) {
+        Some(main) => Some(Cow::Borrowed(main)),
+        None => {
+          if resolution_mode == ResolutionMode::Import {
+            // As a non-standard fallback, attempt to read the `module` field
+            // from package.json when resolving ESM.
+            if let Some(module) = self.get_module_field(package_json) {
+              Some(Cow::Owned(module))
+            } else {
+              None
+            }
+          } else {
+            None
+          }
+        }
+      }
     };
 
     if let Some(main) = maybe_main.as_deref() {
@@ -1836,6 +1851,25 @@ impl<
       resolution_mode,
       resolution_kind,
     )
+  }
+
+  /// Attempts to read the "module" field from a package.json for cases where
+  /// a package only defines a `module` entrypoint without a `main`.
+  /// Note: this is a non-standard Node resolution behavior used to support
+  /// npm packages that only expose ESM builds via a `module` field.
+  fn get_module_field(&self, package_json: &PackageJson) -> Option<String> {
+    // read the package.json file and attempt to parse a `module` field
+    let file_bytes = match self.sys.fs_read(&package_json.path) {
+      Ok(bytes_cow) => bytes_cow,
+      Err(_) => return None,
+    };
+    let text = String::from_utf8_lossy(&file_bytes);
+    if let Ok(value) = serde_json::from_str::<Value>(&text) {
+      if let Some(module_val) = value.get("module") {
+        return module_val.as_str().map(|s| s.trim().to_string());
+      }
+    }
+    None
   }
 
   fn legacy_index_resolve(
