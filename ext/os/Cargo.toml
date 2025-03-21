@@ -27,7 +27,7 @@ thiserror.workspace = true
 tokio.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
+winapi = { workspace = true, features = ["commapi", "knownfolders", "mswsock", "objbase", "psapi", "shlobj", "sysinfoapi", "tlhelp32", "winbase", "winerror", "winuser", "winsock2"] }
 ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
