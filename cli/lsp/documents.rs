@@ -561,7 +561,10 @@ impl Documents2 {
 
 #[derive(Debug)]
 pub struct DocumentModule {
+  // TODO(nayeemrmn): Remove, return document alongside this instead!
   pub uri: Arc<Uri>,
+  // TODO(nayeemrmn): Remove, return document alongside this instead!
+  pub lsp_version: Option<i32>,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,

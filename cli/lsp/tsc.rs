@@ -2459,52 +2459,45 @@ impl RenameLocation {
   }
 }
 
-pub struct RenameLocations {
-  pub locations: Vec<RenameLocation>,
-}
-
-impl RenameLocations {
-  pub fn into_workspace_edit(
-    self,
+impl RenameLocation {
+  pub fn collect_into_workspace_edit(
+    locations_with_modules: impl IntoIterator<
+      Item = (RenameLocation, Arc<DocumentModule>),
+    >,
     new_name: &str,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<lsp::WorkspaceEdit, AnyError> {
     let mut text_document_edit_map = IndexMap::new();
     let mut includes_non_files = false;
-    for location in self.locations.iter() {
+    for (location, module) in locations_with_modules {
       if token.is_cancelled() {
         return Err(anyhow!("request cancelled"));
       }
-      let specifier = resolve_url(&location.document_span.file_name)?;
-      if specifier.scheme() != "file" {
+      let target_specifier = resolve_url(&location.document_span.file_name)?;
+      if target_specifier.scheme() != "file" {
         includes_non_files = true;
         continue;
       }
-      let file_referrer =
-        language_server.documents.get_file_referrer(&specifier);
-      let uri = language_server
-        .url_map
-        .specifier_to_uri(&specifier, file_referrer.as_deref())?;
-      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
-
-      // ensure TextDocumentEdit for `location.file_name`.
-      if !text_document_edit_map.contains_key(&uri) {
-        text_document_edit_map.insert(
-          uri.clone(),
-          lsp::TextDocumentEdit {
-            text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-              uri: uri.clone(),
-              version: asset_or_doc.document_lsp_version(),
-            },
-            edits:
-              Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(),
+      let Some(target_module) = language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )
+      else {
+        continue;
+      };
+      let document_edit = text_document_edit_map
+        .entry(target_module.uri.clone())
+        .or_insert_with(|| lsp::TextDocumentEdit {
+          text_document: lsp::OptionalVersionedTextDocumentIdentifier {
+            uri: target_module.uri.as_ref().clone(),
+            version: target_module.lsp_version,
           },
-        );
-      }
-
-      // push TextEdit for ensured `TextDocumentEdit.edits`.
-      let document_edit = text_document_edit_map.get_mut(&uri).unwrap();
+          edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
+          ),
+        });
       let new_text = [
         location.prefix_text.as_deref(),
         Some(new_name),
@@ -2518,7 +2511,7 @@ impl RenameLocations {
         range: location
           .document_span
           .text_span
-          .to_range(asset_or_doc.line_index()),
+          .to_range(target_module.line_index.clone()),
         new_text,
       }));
     }

@@ -3374,7 +3374,7 @@ impl Inner {
     else {
       return Ok(None);
     };
-    let mut locations = IndexSet::new();
+    let mut locations_with_modules = IndexMap::new();
     for (scope, module) in
       self.document_modules.inspect_modules_by_scope(&document)
     {
@@ -3406,24 +3406,30 @@ impl Inner {
           }
         })
         .unwrap_or_default();
-      locations.extend(maybe_locations.into_iter().flatten());
+      locations_with_modules.extend(
+        maybe_locations
+          .into_iter()
+          .flatten()
+          .map(|l| (l, module.clone())),
+      );
     }
-    let result = if locations.is_empty() {
+    let result = if locations_with_modules.is_empty() {
       None
     } else {
-      let rename_locations = tsc::RenameLocations {
-        locations: locations.into_iter().collect(),
-      };
-      let workspace_edits = rename_locations
-        .into_workspace_edit(&params.new_name, self, token)
-        .map_err(|err| {
-          if token.is_cancelled() {
-            LspError::request_cancelled()
-          } else {
-            lsp_warn!("Unable to covert rename locations: {:#}", err);
-            LspError::internal_error()
-          }
-        })?;
+      let workspace_edits = tsc::RenameLocation::collect_into_workspace_edit(
+        locations_with_modules,
+        &params.new_name,
+        self,
+        token,
+      )
+      .map_err(|err| {
+        if token.is_cancelled() {
+          LspError::request_cancelled()
+        } else {
+          lsp_warn!("Unable to covert rename locations: {:#}", err);
+          LspError::internal_error()
+        }
+      })?;
       Some(workspace_edits)
     };
     self.performance.measure(mark);
