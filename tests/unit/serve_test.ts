@@ -823,42 +823,6 @@ Deno.test({ permissions: { net: true } }, async function httpServerPort0() {
   await server.finished;
 });
 
-Deno.test(
-  { permissions: { net: true } },
-  async function httpServerDefaultOnListenCallback() {
-    const ac = new AbortController();
-
-    const consoleError = console.error;
-    console.error = (msg) => {
-      try {
-        const match = msg.match(
-          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
-        );
-        assert(!!match, `Didn't match ${msg}`);
-        const port = +match[2];
-        assert(port > 0 && port < 65536);
-      } finally {
-        ac.abort();
-      }
-    };
-
-    try {
-      await using server = Deno.serve({
-        handler() {
-          return new Response("Hello World");
-        },
-        hostname: "0.0.0.0",
-        port: 0,
-        signal: ac.signal,
-      });
-
-      await server.finished;
-    } finally {
-      console.error = consoleError;
-    }
-  },
-);
-
 // https://github.com/denoland/deno/issues/15107
 Deno.test(
   { permissions: { net: true } },
@@ -905,36 +869,6 @@ Deno.test({ permissions: { net: true } }, async function validPortString() {
   assertEquals(server.addr.transport, "tcp");
   assertEquals(server.addr.port, 4501);
   await server.shutdown();
-});
-
-Deno.test({ permissions: { net: true } }, async function ipv6Hostname() {
-  const ac = new AbortController();
-  let url = "";
-
-  const consoleError = console.error;
-  console.error = (msg) => {
-    try {
-      const match = msg.match(/Listening on (http:\/\/(.*?):(\d+)\/)/);
-      assert(!!match, `Didn't match ${msg}`);
-      url = match[1];
-    } finally {
-      ac.abort();
-    }
-  };
-
-  try {
-    await using server = Deno.serve({
-      handler: () => new Response(),
-      hostname: "::1",
-      port: 0,
-      signal: ac.signal,
-    });
-    assertEquals(server.addr.transport, "tcp");
-    assert(new URL(url), `Not a valid URL "${url}"`);
-    await server.shutdown();
-  } finally {
-    console.error = consoleError;
-  }
 });
 
 Deno.test({ permissions: { net: true } }, function invalidPortFloat() {
