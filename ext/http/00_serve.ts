@@ -584,8 +584,11 @@ function mapToCallback(context, callback, onError) {
         if (METRICS_ENABLED) {
           op_http_metric_handle_otel_error(req);
         }
-        // deno-lint-ignore no-console
-        console.error("Exception in onError while handling exception", error);
+        import.meta.log(
+          "error",
+          "Exception in onError while handling exception",
+          error,
+        );
         response = internalServerError();
       }
     }
@@ -598,8 +601,10 @@ function mapToCallback(context, callback, onError) {
     if (innerRequest?.[_upgraded]) {
       // We're done here as the connection has been upgraded during the callback and no longer requires servicing.
       if (response !== UPGRADE_RESPONSE_SENTINEL) {
-        // deno-lint-ignore no-console
-        console.error("Upgrade response was not returned from callback");
+        import.meta.log(
+          "error",
+          "Upgrade response was not returned from callback",
+        );
         context.close();
       }
       innerRequest?.[_upgraded]();
@@ -755,8 +760,7 @@ function serve(arg1, arg2) {
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
-      // deno-lint-ignore no-console
-      console.error(error);
+      import.meta.log("error", error);
       return internalServerError();
     };
 
@@ -771,8 +775,7 @@ function serve(arg1, arg2) {
       if (options.onListen) {
         options.onListen(listener.addr);
       } else {
-        // deno-lint-ignore no-console
-        console.error(`Listening on ${path}`);
+        import.meta.log("info", `Listening on ${path}`);
       }
     });
   }
@@ -820,8 +823,7 @@ function serve(arg1, arg2) {
     } else {
       const host = formatHostName(addr.hostname);
 
-      // deno-lint-ignore no-console
-      console.error(`Listening on ${scheme}${host}:${addr.port}/`);
+      import.meta.log("info", `Listening on ${scheme}${host}:${addr.port}/`);
     }
   };
 
@@ -866,8 +868,11 @@ function serveHttpOn(context, addr, callback) {
 
   const promiseErrorHandler = (error) => {
     // Abnormal exit
-    // deno-lint-ignore no-console
-    console.error("Terminating Deno.serve loop due to unexpected error", error);
+    import.meta.log(
+      "error",
+      "Terminating Deno.serve loop due to unexpected error",
+      error,
+    );
     context.close();
   };
 
@@ -993,8 +998,8 @@ function registerDeclarativeServer(exports) {
               : "";
             const host = formatHostName(hostname);
 
-            // deno-lint-ignore no-console
-            console.error(
+            import.meta.log(
+              "info",
               `%cdeno serve%c: Listening on %chttp://${host}:${port}/%c${nThreads}`,
               "color: green",
               "color: inherit",
