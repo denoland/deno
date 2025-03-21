@@ -970,7 +970,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn get_implementations2(
+  pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
     specifier: ModuleSpecifier,
@@ -996,61 +996,6 @@ impl TsServer {
         }
         Ok(locations)
       })
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub async fn get_implementations(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    position: u32,
-    token: &CancellationToken,
-  ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
-    let req = TscRequest::GetImplementationAtPosition((
-      self.specifier_map.denormalize(&specifier),
-      position,
-    ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<ImplementationLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_locations = IndexSet::new();
-    while let Some(locations) = results.next().await {
-      let locations = locations
-        .inspect_err(|err| {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get implementations from TypeScript: {err}");
-          }
-        })
-        .unwrap_or_default();
-      let Some(mut locations) = locations else {
-        continue;
-      };
-      for location in &mut locations {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        location.normalize(&self.specifier_map)?;
-      }
-      all_locations.extend(locations);
-    }
-    if all_locations.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_locations.into_iter().collect()))
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -2356,31 +2301,6 @@ impl ImplementationLocation {
     Ok(())
   }
 
-  pub fn to_location(
-    &self,
-    module: &Arc<DocumentModule>,
-    language_server: &language_server::Inner,
-  ) -> Option<lsp::Location> {
-    let target_specifier = resolve_url(&self.document_span.file_name).ok()?;
-    let target_module = if target_specifier == *module.specifier {
-      module.clone()
-    } else {
-      language_server
-        .document_modules
-        .inspect_module_from_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-        )?
-    };
-    Some(lsp::Location {
-      uri: target_module.uri.as_ref().clone(),
-      range: self
-        .document_span
-        .text_span
-        .to_range(target_module.line_index.clone()),
-    })
-  }
-
   pub fn to_link(
     &self,
     module: &DocumentModule,
@@ -3325,7 +3245,6 @@ fn parse_code_actions(
   maybe_code_actions: Option<&Vec<CodeAction>>,
   data: &CompletionItemData,
   module: &DocumentModule,
-  language_server: &language_server::Inner,
 ) -> Result<(Option<lsp::Command>, Option<Vec<lsp::TextEdit>>), AnyError> {
   if let Some(code_actions) = maybe_code_actions {
     let mut additional_text_edits: Vec<lsp::TextEdit> = Vec::new();
@@ -3578,12 +3497,8 @@ impl CompletionEntryDetails {
         .join("\n\n"),
     )
     .filter(|s| !s.is_empty());
-    let (command, additional_text_edits) = parse_code_actions(
-      self.code_actions.as_ref(),
-      data,
-      module,
-      language_server,
-    )?;
+    let (command, additional_text_edits) =
+      parse_code_actions(self.code_actions.as_ref(), data, module)?;
     let mut insert_text_format = original_item.insert_text_format;
     let insert_text = if data.use_code_snippet {
       insert_text_format = Some(lsp::InsertTextFormat::SNIPPET);

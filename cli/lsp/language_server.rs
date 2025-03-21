@@ -3011,7 +3011,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  async fn goto_implementation(
+  pub async fn goto_implementation(
     &self,
     params: GotoImplementationParams,
     token: &CancellationToken,
@@ -3037,7 +3037,7 @@ impl Inner {
       }
       let maybe_implementations = self
         .ts_server
-        .get_implementations2(
+        .get_implementations(
           self.snapshot(),
           module.specifier.as_ref().clone(),
           module

@@ -259,95 +259,60 @@ async fn resolve_implementation_code_lens(
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> LspResult<lsp::CodeLens> {
-  let Some(document) = language_server.get_document(
-    &data.uri,
-    language_server::Enabled::Filter,
-    language_server::Exists::Enforce,
-    language_server::Diagnosable::Filter,
-  )?
-  else {
-    return Ok(code_lens);
-  };
-  let Some(module) = language_server.get_primary_module(&document)? else {
-    return Ok(code_lens);
-  };
-  let maybe_implementations = language_server
-    .ts_server
-    .get_implementations(
-      language_server.snapshot(),
-      module.specifier.as_ref().clone(),
-      module.line_index.offset_tsc(code_lens.range.start)?,
+  let locations = language_server
+    .goto_implementation(
+      lsp::request::GotoImplementationParams {
+        text_document_position_params: lsp::TextDocumentPositionParams {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: data.uri.clone(),
+          },
+          position: code_lens.range.start,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+      },
       token,
     )
-    .await
-    .map_err(|err| {
-      if token.is_cancelled() {
-        LspError::request_cancelled()
-      } else {
-        lsp_warn!(
-          "Unable to get implementation locations for code lens from TypeScript: {:#}",
-          err,
-        );
-        LspError::internal_error()
-      }
-    })?;
-  let code_lens = if let Some(implementations) = maybe_implementations {
-    let mut locations = Vec::new();
-    for implementation in implementations {
-      if token.is_cancelled() {
-        return Err(LspError::request_cancelled());
-      }
-      let Some(location) = implementation.to_location(&module, language_server)
-      else {
-        continue;
-      };
-      if location.uri == *module.uri
-        && location.range.start == code_lens.range.start
-      {
-        continue;
-      }
-      locations.push(location);
-    }
-    let command = if !locations.is_empty() {
-      let title = if locations.len() > 1 {
-        format!("{} implementations", locations.len())
-      } else {
-        "1 implementation".to_string()
-      };
-      lsp::Command {
-        title,
-        command: "deno.client.showReferences".to_string(),
-        arguments: Some(vec![
-          json!(data.uri),
-          json!(code_lens.range.start),
-          json!(locations),
-        ]),
-      }
-    } else {
-      lsp::Command {
-        title: "0 implementations".to_string(),
-        command: "".to_string(),
-        arguments: None,
-      }
-    };
-    lsp::CodeLens {
-      range: code_lens.range,
-      command: Some(command),
-      data: None,
+    .await?
+    .map(|r| match r {
+      lsp::GotoDefinitionResponse::Scalar(location) => vec![location],
+      lsp::GotoDefinitionResponse::Array(locations) => locations,
+      lsp::GotoDefinitionResponse::Link(links) => links
+        .into_iter()
+        .map(|l| lsp::Location {
+          uri: l.target_uri,
+          range: l.target_selection_range,
+        })
+        .collect(),
+    })
+    .unwrap_or(Vec::new());
+  let title = if locations.len() == 1 {
+    "1 implementation".to_string()
+  } else {
+    format!("{} implementations", locations.len())
+  };
+  let command = if locations.is_empty() {
+    lsp::Command {
+      title,
+      command: String::new(),
+      arguments: None,
     }
   } else {
-    let command = Some(lsp::Command {
-      title: "0 implementations".to_string(),
-      command: "".to_string(),
-      arguments: None,
-    });
-    lsp::CodeLens {
-      range: code_lens.range,
-      command,
-      data: None,
+    lsp::Command {
+      title,
+      command: "deno.client.showReferences".to_string(),
+      arguments: Some(vec![
+        json!(data.uri),
+        json!(code_lens.range.start),
+        json!(locations),
+      ]),
     }
   };
-  Ok(code_lens)
+  Ok(lsp::CodeLens {
+    range: code_lens.range,
+    command: Some(command),
+    data: None,
+  })
 }
 
 async fn resolve_references_code_lens(
