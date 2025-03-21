@@ -2696,16 +2696,17 @@ impl Inner {
       })?;
 
     if let Some(definition) = maybe_definition {
-      let results = definition
-        .to_definition(module.line_index.clone(), self, token)
-        .map_err(|err| {
-          if token.is_cancelled() {
-            LspError::request_cancelled()
-          } else {
-            error!("Unable to convert definition info: {:#}", err);
-            LspError::internal_error()
-          }
-        })?;
+      let results =
+        definition
+          .to_definition(&module, self, token)
+          .map_err(|err| {
+            if token.is_cancelled() {
+              LspError::request_cancelled()
+            } else {
+              error!("Unable to convert definition info: {:#}", err);
+              LspError::internal_error()
+            }
+          })?;
       self.performance.measure(mark);
       Ok(results)
     } else {
@@ -2765,9 +2766,7 @@ impl Inner {
         if token.is_cancelled() {
           return Err(LspError::request_cancelled());
         }
-        if let Some(link) =
-          info.document_span.to_link(module.line_index.clone(), self)
-        {
+        if let Some(link) = info.document_span.to_link(&module, self) {
           location_links.push(link);
         }
       }
@@ -3033,7 +3032,7 @@ impl Inner {
     else {
       return Ok(None);
     };
-    let mut implementations = IndexSet::new();
+    let mut implementations_with_modules = IndexMap::new();
     for (scope, module) in
       self.document_modules.inspect_modules_by_scope(&document)
     {
@@ -3062,15 +3061,20 @@ impl Inner {
           }
         })
         .unwrap_or_default();
-      implementations.extend(maybe_implementations.into_iter().flatten());
+      implementations_with_modules.extend(
+        maybe_implementations
+          .into_iter()
+          .flatten()
+          .map(|i| (i, module.clone())),
+      );
     }
-    let links = implementations
+    let links = implementations_with_modules
       .iter()
-      .flat_map(|i| {
+      .flat_map(|(i, module)| {
         if token.is_cancelled() {
           return Some(Err(LspError::request_cancelled()));
         }
-        Some(Ok(i.to_link(document.line_index().clone(), self)?))
+        Some(Ok(i.to_link(module, self)?))
       })
       .collect::<Result<Vec<_>, _>>()?;
     let result = if links.is_empty() {

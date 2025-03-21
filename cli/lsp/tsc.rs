@@ -1972,42 +1972,39 @@ impl DocumentSpan {
 impl DocumentSpan {
   pub fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
     let target_specifier = resolve_url(&self.file_name).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-    let target_line_index = target_asset_or_doc.line_index();
-    let file_referrer = target_asset_or_doc.file_referrer();
-    let target_uri = language_server
-      .url_map
-      .specifier_to_uri(&target_specifier, file_referrer)
-      .ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_from_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
     let (target_range, target_selection_range) =
       if let Some(context_span) = &self.context_span {
         (
-          context_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          context_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(target_module.line_index.clone()),
         )
       } else {
         (
-          self.text_span.to_range(target_line_index.clone()),
-          self.text_span.to_range(target_line_index),
+          self.text_span.to_range(target_module.line_index.clone()),
+          self.text_span.to_range(target_module.line_index.clone()),
         )
       };
     let origin_selection_range =
       if let Some(original_context_span) = &self.original_context_span {
-        Some(original_context_span.to_range(line_index))
+        Some(original_context_span.to_range(module.line_index.clone()))
       } else {
-        self
-          .original_text_span
-          .as_ref()
-          .map(|original_text_span| original_text_span.to_range(line_index))
+        self.original_text_span.as_ref().map(|original_text_span| {
+          original_text_span.to_range(module.line_index.clone())
+        })
       };
     let link = lsp::LocationLink {
       origin_selection_range,
-      target_uri,
+      target_uri: target_module.uri.as_ref().clone(),
       target_range,
       target_selection_range,
     };
@@ -2437,10 +2434,10 @@ impl ImplementationLocation {
 
   pub fn to_link(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Option<lsp::LocationLink> {
-    self.document_span.to_link(line_index, language_server)
+    self.document_span.to_link(module, language_server)
   }
 }
 
@@ -2597,7 +2594,7 @@ impl DefinitionInfoAndBoundSpan {
 
   pub fn to_definition(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> Result<Option<lsp::GotoDefinitionResponse>, AnyError> {
@@ -2607,10 +2604,7 @@ impl DefinitionInfoAndBoundSpan {
         if token.is_cancelled() {
           return Err(anyhow!("request cancelled"));
         }
-        if let Some(link) = di
-          .document_span
-          .to_link(line_index.clone(), language_server)
-        {
+        if let Some(link) = di.document_span.to_link(module, language_server) {
           location_links.push(link);
         }
       }
