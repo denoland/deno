@@ -832,7 +832,7 @@ Deno.test(
     console.error = (msg) => {
       try {
         const match = msg.match(
-          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\//,
+          /Listening on http:\/\/(localhost|0\.0\.0\.0):(\d+)\/ \(accessible via http:\/\/localhost:\2\)/,
         );
         assert(!!match, `Didn't match ${msg}`);
         const port = +match[2];
