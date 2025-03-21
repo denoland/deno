@@ -77,6 +77,7 @@ use super::config;
 use super::config::LspTsConfig;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
+use super::documents::DocumentModule;
 use super::documents::DocumentsFilter;
 use super::documents::ASSET_DOCUMENTS;
 use super::language_server;
@@ -3209,54 +3210,42 @@ impl CallHierarchyItem {
 
   pub fn try_resolve_call_hierarchy_item(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyItem> {
-    let target_specifier = resolve_url(&self.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
-    Some(self.to_call_hierarchy_item(
-      target_asset_or_doc.line_index(),
-      language_server,
-      maybe_root_path,
-    ))
+    let (item, _) =
+      self.to_call_hierarchy_item(module, language_server, maybe_root_path)?;
+    Some(item)
   }
 
-  pub fn to_call_hierarchy_item(
+  fn to_call_hierarchy_item(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
-  ) -> lsp::CallHierarchyItem {
-    let target_specifier =
-      resolve_url(&self.file).unwrap_or_else(|_| INVALID_SPECIFIER.clone());
-    let file_referrer = language_server
-      .documents
-      .get_file_referrer(&target_specifier);
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&target_specifier, file_referrer.as_deref())
-      .unwrap_or_else(|_| INVALID_URI.clone());
+  ) -> Option<(lsp::CallHierarchyItem, Arc<DocumentModule>)> {
+    let target_specifier = resolve_url(&self.file).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_from_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
 
     let use_file_name = self.is_source_file_item();
-    let maybe_file_path =
-      if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-        url_to_file_path(&uri_to_url(&uri)).ok()
-      } else {
-        None
-      };
+    let maybe_file_path = url_to_file_path(&target_module.specifier).ok();
     let name = if use_file_name {
-      if let Some(file_path) = maybe_file_path.as_ref() {
+      if let Some(file_path) = &maybe_file_path {
         file_path.file_name().unwrap().to_string_lossy().to_string()
       } else {
-        uri.as_str().to_string()
+        target_module.uri.to_string()
       }
     } else {
       self.name.clone()
     };
     let detail = if use_file_name {
-      if let Some(file_path) = maybe_file_path.as_ref() {
+      if let Some(file_path) = &maybe_file_path {
         // TODO: update this to work with multi root workspaces
         let parent_dir = file_path.parent().unwrap();
         if let Some(root_path) = maybe_root_path {
@@ -3283,16 +3272,21 @@ impl CallHierarchyItem {
       }
     }
 
-    lsp::CallHierarchyItem {
-      name,
-      tags,
-      uri,
-      detail: Some(detail),
-      kind: self.kind.clone().into(),
-      range: self.span.to_range(line_index.clone()),
-      selection_range: self.selection_span.to_range(line_index),
-      data: None,
-    }
+    Some((
+      lsp::CallHierarchyItem {
+        name,
+        tags,
+        uri: target_module.uri.as_ref().clone(),
+        detail: Some(detail),
+        kind: self.kind.clone().into(),
+        range: self.span.to_range(target_module.line_index.clone()),
+        selection_range: self
+          .selection_span
+          .to_range(target_module.line_index.clone()),
+        data: None,
+      },
+      target_module,
+    ))
   }
 
   fn is_source_file_item(&self) -> bool {
@@ -3320,23 +3314,21 @@ impl CallHierarchyIncomingCall {
 
   pub fn try_resolve_call_hierarchy_incoming_call(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyIncomingCall> {
-    let target_specifier = resolve_url(&self.from.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
+    let (from, target_module) = self.from.to_call_hierarchy_item(
+      module,
+      language_server,
+      maybe_root_path,
+    )?;
     Some(lsp::CallHierarchyIncomingCall {
-      from: self.from.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
-        language_server,
-        maybe_root_path,
-      ),
+      from,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(target_asset_or_doc.line_index()))
+        .map(|span| span.to_range(target_module.line_index.clone()))
         .collect(),
     })
   }
@@ -3360,24 +3352,21 @@ impl CallHierarchyOutgoingCall {
 
   pub fn try_resolve_call_hierarchy_outgoing_call(
     &self,
-    line_index: Arc<LineIndex>,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
     maybe_root_path: Option<&Path>,
   ) -> Option<lsp::CallHierarchyOutgoingCall> {
-    let target_specifier = resolve_url(&self.to.file).ok()?;
-    let target_asset_or_doc =
-      language_server.get_maybe_asset_or_document(&target_specifier)?;
-
+    let (to, _) = self.to.to_call_hierarchy_item(
+      module,
+      language_server,
+      maybe_root_path,
+    )?;
     Some(lsp::CallHierarchyOutgoingCall {
-      to: self.to.to_call_hierarchy_item(
-        target_asset_or_doc.line_index(),
-        language_server,
-        maybe_root_path,
-      ),
+      to,
       from_ranges: self
         .from_spans
         .iter()
-        .map(|span| span.to_range(line_index.clone()))
+        .map(|span| span.to_range(module.line_index.clone()))
         .collect(),
     })
   }

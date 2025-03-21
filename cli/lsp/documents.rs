@@ -666,15 +666,6 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_modules_by_scope(
-    &self,
-    document: &Document2,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_module_from_specifier(
     &self,
     specifier: &Url,
@@ -682,6 +673,15 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     // TODO(nayeemrmn): Implement!
     None
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_modules_by_scope(
+    &self,
+    document: &Document2,
+  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
   }
 
   pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {

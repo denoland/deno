@@ -35,6 +35,7 @@ use deno_runtime::deno_tls::rustls::RootCertStore;
 use deno_runtime::deno_tls::RootCertStoreProvider;
 use deno_semver::jsr::JsrPackageReqReference;
 use indexmap::Equivalent;
+use indexmap::IndexMap;
 use indexmap::IndexSet;
 use log::error;
 use node_resolver::NodeResolutionKind;
@@ -3173,7 +3174,7 @@ impl Inner {
     else {
       return Ok(None);
     };
-    let mut incoming_calls = IndexSet::new();
+    let mut incoming_calls_with_modules = IndexMap::new();
     for (scope, module) in
       self.document_modules.inspect_modules_by_scope(&document)
     {
@@ -3202,19 +3203,21 @@ impl Inner {
           }
         })
         .unwrap_or_default();
-      incoming_calls.extend(calls);
+      incoming_calls_with_modules
+        .extend(calls.into_iter().map(|c| (c, module.clone())));
     }
     let root_path = self
       .config
       .root_uri()
       .and_then(|s| url_to_file_path(s).ok());
-    let resolved_items = incoming_calls
+    let resolved_items = incoming_calls_with_modules
       .iter()
-      .flat_map(|c| {
+      .flat_map(|(c, module)| {
         if token.is_cancelled() {
           return Some(Err(LspError::request_cancelled()));
         }
         Some(Ok(c.try_resolve_call_hierarchy_incoming_call(
+          module,
           self,
           root_path.as_deref(),
         )?))
@@ -3276,7 +3279,7 @@ impl Inner {
           return Some(Err(LspError::request_cancelled()));
         }
         Some(Ok(c.try_resolve_call_hierarchy_outgoing_call(
-          module.line_index.clone(),
+          &module,
           self,
           root_path.as_deref(),
         )?))
@@ -3336,9 +3339,11 @@ impl Inner {
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
         tsc::OneOrMany::One(item) => {
-          if let Some(resolved) =
-            item.try_resolve_call_hierarchy_item(self, root_path.as_deref())
-          {
+          if let Some(resolved) = item.try_resolve_call_hierarchy_item(
+            &module,
+            self,
+            root_path.as_deref(),
+          ) {
             resolved_items.push(resolved)
           }
         }
@@ -3347,9 +3352,11 @@ impl Inner {
             if token.is_cancelled() {
               return Err(LspError::request_cancelled());
             }
-            if let Some(resolved) =
-              item.try_resolve_call_hierarchy_item(self, root_path.as_deref())
-            {
+            if let Some(resolved) = item.try_resolve_call_hierarchy_item(
+              &module,
+              self,
+              root_path.as_deref(),
+            ) {
               resolved_items.push(resolved);
             }
           }
