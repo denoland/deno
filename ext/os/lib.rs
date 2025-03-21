@@ -532,8 +532,7 @@ fn get_cpu_usage() -> (std::time::Duration, std::time::Duration) {
 fn op_runtime_memory_usage(
   scope: &mut v8::HandleScope,
 ) -> (usize, usize, usize, usize) {
-  let mut s = v8::HeapStatistics::default();
-  scope.get_heap_statistics(&mut s);
+  let s = scope.get_heap_statistics();
 
   let (rss, heap_total, heap_used, external) = (
     rss(),

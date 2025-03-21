@@ -51,16 +51,16 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.46.2", features = ["transpiling"] }
-deno_core = { version = "0.340.0" }
+deno_core = { version = "0.341.0" }
 
 deno_bench_util = { version = "0.189.0", path = "./bench_util" }
-deno_config = { version = "=0.50.0", features = ["workspace"] }
+deno_config = { version = "=0.51.0", features = ["workspace"] }
 deno_doc = "=0.169.1"
 deno_graph = "=0.89.2"
 deno_lint = "=0.74.0"
-deno_lockfile = "=0.24.0"
+deno_lockfile = "=0.25.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
-deno_npm = "=0.27.2"
+deno_npm = "=0.28.0"
 deno_path_util = "=0.3.2"
 deno_permissions = { version = "0.54.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.203.0", path = "./runtime" }
@@ -152,7 +152,7 @@ data-url = "=0.3.1"
 deno_cache_dir = "=0.18.0"
 deno_error = "=0.5.6"
 deno_native_certs = "0.3.0"
-deno_package_json = { version = "=0.5.2", default-features = false }
+deno_package_json = { version = "=0.6.0", default-features = false }
 deno_task_shell = "=0.20.2"
 deno_unsync = "0.4.2"
 deno_whoami = "0.1.0"
@@ -267,7 +267,7 @@ rand = "=0.8.5"
 rayon = "1.8.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
-ring = "^0.17.0"
+ring = "^0.17.14"
 ripemd = "0.1.3"
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
 rustc-hash = "2.1.1"
