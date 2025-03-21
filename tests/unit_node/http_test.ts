@@ -401,6 +401,10 @@ Deno.test("[node/http] request non-ws upgrade header", async () => {
   await promise;
 });
 
+// The Node.js HTTP server should be able to handle upgrade requests if needed,
+// but currently upgrade scenarios are covered in other tests and require
+// a full WebSocket handshake. See #27106 for related upgrade edge cases.
+
 Deno.test("[node/http] request with headers", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((req, res) => {
