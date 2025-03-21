@@ -2363,7 +2363,7 @@ impl RenameLocation {
         .or_insert_with(|| lsp::TextDocumentEdit {
           text_document: lsp::OptionalVersionedTextDocumentIdentifier {
             uri: target_module.uri.as_ref().clone(),
-            version: target_module.lsp_version,
+            version: target_module.version_if_open,
           },
           edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
           ),
@@ -2582,25 +2582,45 @@ impl FileTextChanges {
 
   pub fn to_text_document_change_ops(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Result<Vec<lsp::DocumentChangeOperation>, AnyError> {
+  ) -> Result<Option<Vec<lsp::DocumentChangeOperation>>, AnyError> {
+    let is_new_file = self.is_new_file.unwrap_or(false);
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
-    let specifier = resolve_url(&self.file_name)?;
-    let maybe_asset_or_document = if !self.is_new_file.unwrap_or(false) {
-      let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
-      Some(asset_or_doc)
-    } else {
+    let target_specifier = resolve_url(&self.file_name)?;
+    let target_module = if is_new_file {
       None
+    } else {
+      let Some(target_module) = language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )
+      else {
+        return Ok(None);
+      };
+      Some(target_module)
     };
-    let line_index = maybe_asset_or_document
+    let Some(target_uri) = target_module
       .as_ref()
-      .map(|d| d.line_index())
+      .map(|m| m.uri.clone())
+      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))
+    else {
+      return Ok(None);
+    };
+    if !target_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+      return Ok(None);
+    }
+    let line_index = target_module
+      .as_ref()
+      .map(|m| m.line_index.clone())
       .unwrap_or_else(|| Arc::new(LineIndex::new("")));
 
-    if self.is_new_file.unwrap_or(false) {
+    if is_new_file {
       ops.push(lsp::DocumentChangeOperation::Op(lsp::ResourceOp::Create(
         lsp::CreateFile {
-          uri: url_to_uri(&specifier)?,
+          uri: target_uri.as_ref().clone(),
           options: Some(lsp::CreateFileOptions {
             ignore_if_exists: Some(true),
             overwrite: None,
@@ -2617,13 +2637,13 @@ impl FileTextChanges {
       .collect();
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: url_to_uri(&specifier)?,
-        version: maybe_asset_or_document.and_then(|d| d.document_lsp_version()),
+        uri: target_uri.as_ref().clone(),
+        version: target_module.and_then(|d| d.version_if_open),
       },
       edits,
     }));
 
-    Ok(ops)
+    Ok(Some(ops))
   }
 }
 
@@ -2819,18 +2839,22 @@ impl ApplicableRefactorInfo {
   }
 }
 
-pub fn file_text_changes_to_workspace_edit(
-  changes: &[FileTextChanges],
+pub fn file_text_changes_to_workspace_edit<'a>(
+  changes_with_modules: impl IntoIterator<
+    Item = (&'a FileTextChanges, &'a Arc<DocumentModule>),
+  >,
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> LspResult<Option<lsp::WorkspaceEdit>> {
   let mut all_ops = Vec::<lsp::DocumentChangeOperation>::new();
-  for change in changes {
+  for (change, module) in changes_with_modules {
     if token.is_cancelled() {
       return Err(LspError::request_cancelled());
     }
-    let ops = match change.to_text_document_change_ops(language_server) {
-      Ok(op) => op,
+    let ops = match change.to_text_document_change_ops(module, language_server)
+    {
+      Ok(Some(op)) => op,
+      Ok(None) => continue,
       Err(err) => {
         error!("Unable to convert changes to edits: {}", err);
         return Err(LspError::internal_error());
@@ -2866,10 +2890,15 @@ impl RefactorEditInfo {
 
   pub fn to_workspace_edit(
     &self,
+    module: &Arc<DocumentModule>,
     language_server: &language_server::Inner,
     token: &CancellationToken,
   ) -> LspResult<Option<lsp::WorkspaceEdit>> {
-    file_text_changes_to_workspace_edit(&self.edits, language_server, token)
+    file_text_changes_to_workspace_edit(
+      self.edits.iter().map(|c| (c, module)),
+      language_server,
+      token,
+    )
   }
 }
 

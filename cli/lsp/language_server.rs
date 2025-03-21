@@ -2370,7 +2370,7 @@ impl Inner {
                 })?
           }
           code_action.edit =
-            refactor_edit_info.to_workspace_edit(self, token)?;
+            refactor_edit_info.to_workspace_edit(&module, self, token)?;
         }
         Err(err) => {
           if token.is_cancelled() {
@@ -3701,7 +3701,7 @@ impl Inner {
     if !self.ts_server.is_started() {
       return Ok(None);
     }
-    let mut changes = IndexSet::new();
+    let mut changes_with_modules = IndexMap::new();
     for rename in params.files {
       let Some(document) = self.get_document(
         &Uri::from_str(&rename.old_uri).unwrap(),
@@ -3734,39 +3734,38 @@ impl Inner {
           .fmt_config_for_specifier(&module.specifier)
           .options)
           .into();
-        changes.extend(
-          self
-            .ts_server
-            .get_edits_for_file_rename(
-              self.snapshot(),
-              module.specifier.as_ref().clone(),
-              uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
-              format_code_settings,
-              tsc::UserPreferences {
-                allow_text_changes_in_new_files: Some(true),
-                ..Default::default()
-              },
-              scope.as_deref().cloned(),
-              token,
-            )
-            .await
-            .map_err(|err| {
-              if token.is_cancelled() {
-                LspError::request_cancelled()
-              } else {
-                lsp_warn!(
-                  "Unable to get edits for file rename from TypeScript: {:#}\nScope: {}",
-                  err,
-                  scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
-                );
-                LspError::internal_error()
-              }
-            })?,
-        );
+        let changes = self
+        .ts_server
+        .get_edits_for_file_rename(
+          self.snapshot(),
+          module.specifier.as_ref().clone(),
+          uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
+          format_code_settings,
+          tsc::UserPreferences {
+            allow_text_changes_in_new_files: Some(true),
+            ..Default::default()
+          },
+          scope.as_deref().cloned(),
+          token,
+        )
+        .await
+        .map_err(|err| {
+          if token.is_cancelled() {
+            LspError::request_cancelled()
+          } else {
+            lsp_warn!(
+              "Unable to get edits for file rename from TypeScript: {:#}\nScope: {}",
+              err,
+              scope.as_ref().map(|s| s.as_str()).unwrap_or("null"),
+            );
+            LspError::internal_error()
+          }
+        })?;
+        changes_with_modules
+          .extend(changes.into_iter().map(|c| (c, module.clone())));
       }
     }
-    let changes = changes.into_iter().collect::<Vec<_>>();
-    file_text_changes_to_workspace_edit(&changes, self, token)
+    file_text_changes_to_workspace_edit(&changes_with_modules, self, token)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

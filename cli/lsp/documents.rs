@@ -456,7 +456,7 @@ impl Documents2 {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
-    let Some((uri, doc)) = self.open.remove_entry(uri) else {
+    let Some((uri, doc)) = self.open.shift_remove_entry(uri) else {
       return Err(
         JsErrorBox::new(
           "NotFound",
@@ -561,7 +561,7 @@ impl Documents2 {
 #[derive(Debug)]
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
-  pub lsp_version: Option<i32>,
+  pub version_if_open: Option<i32>,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,

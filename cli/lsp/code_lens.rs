@@ -26,9 +26,6 @@ use tower_lsp::jsonrpc::Error as LspError;
 use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
-use crate::lsp::documents::DocumentModule;
-use crate::lsp::logging::lsp_warn;
-
 use super::analysis::source_range_to_lsp_range;
 use super::config::CodeLensSettings;
 use super::language_server;
