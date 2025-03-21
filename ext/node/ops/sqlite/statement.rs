@@ -277,6 +277,7 @@ impl StatementSync {
       if !lossless {
         let db = self.db.borrow();
         let db = db.as_ref().ok_or(SqliteError::InUse)?;
+        // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
         let handle = unsafe { db.handle() };
 
         return SqliteError::create_enhanced_error(
@@ -293,6 +294,7 @@ impl StatementSync {
     } else {
       let db = self.db.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
       let handle = unsafe { db.handle() };
 
       return SqliteError::create_enhanced_error(
@@ -309,6 +311,7 @@ impl StatementSync {
     if r != ffi::SQLITE_OK {
       let db = self.db.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
       let handle = unsafe { db.handle() };
 
       // SAFETY: lifetime of the connection is guaranteed by reference
@@ -365,6 +368,7 @@ impl StatementSync {
             if e.is_some() {
               let db = self.db.borrow();
               let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
               let handle = unsafe { db.handle() };
 
               return SqliteError::create_enhanced_error(
@@ -396,6 +400,7 @@ impl StatementSync {
             if r == 0 {
               let db = self.db.borrow();
               let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
               let handle = unsafe { db.handle() };
 
               return SqliteError::create_enhanced_error(

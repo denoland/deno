@@ -7,6 +7,7 @@ mod statement;
 pub use database::DatabaseSync;
 pub use session::Session;
 pub use statement::StatementSync;
+use rusqlite::ffi as libsqlite3_sys;
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum SqliteError {
@@ -109,12 +110,8 @@ impl SqliteError {
     );
 
     let handle = db_handle.unwrap_or(std::ptr::null_mut());
-    unsafe {
-      Err(SqliteError::from_rusqlite_with_details(
-        rusqlite_error,
-        handle,
-      ))
-    }
+    // SAFETY: error conversion does not perform additional dereferencing beyond what is documented.
+    Err(unsafe { SqliteError::from_rusqlite_with_details(rusqlite_error, handle) })
   }
 
   /// Creates a `SqliteError` from a rusqlite error and a raw SQLite handle.
