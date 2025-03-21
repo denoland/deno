@@ -3780,7 +3780,7 @@ impl Inner {
     }
 
     let mark = self.performance.mark_with_args("lsp.symbol", &params);
-    let mut navigate_to_items = IndexSet::new();
+    let mut items_with_scopes = IndexMap::new();
     for scope in self.document_modules.scopes() {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3807,25 +3807,24 @@ impl Inner {
           );
         })
         .unwrap_or_default();
-      navigate_to_items.extend(items);
+      items_with_scopes.extend(items.into_iter().map(|i| (i, scope.clone())));
     }
-    let navigate_to_items = navigate_to_items.into_iter().collect::<Vec<_>>();
-    let maybe_symbol_information = if navigate_to_items.is_empty() {
+    let symbol_information = items_with_scopes
+      .into_iter()
+      .flat_map(|(item, scope)| {
+        if token.is_cancelled() {
+          return Some(Err(LspError::request_cancelled()));
+        }
+        Some(Ok(item.to_symbol_information(scope.as_deref(), self)?))
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+    let symbol_information = if symbol_information.is_empty() {
       None
     } else {
-      let mut symbol_information = Vec::new();
-      for item in navigate_to_items {
-        if token.is_cancelled() {
-          return Err(LspError::request_cancelled());
-        }
-        if let Some(info) = item.to_symbol_information(self) {
-          symbol_information.push(info);
-        }
-      }
       Some(symbol_information)
     };
     self.performance.measure(mark);
-    Ok(maybe_symbol_information)
+    Ok(symbol_information)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]

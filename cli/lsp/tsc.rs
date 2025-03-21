@@ -1972,19 +1972,18 @@ impl NavigateToItem {
 impl NavigateToItem {
   pub fn to_symbol_information(
     &self,
+    scope: Option<&Url>,
     language_server: &language_server::Inner,
   ) -> Option<lsp::SymbolInformation> {
-    let specifier = resolve_url(&self.file_name).ok()?;
-    let asset_or_doc =
-      language_server.get_asset_or_document(&specifier).ok()?;
-    let line_index = asset_or_doc.line_index();
-    let file_referrer = asset_or_doc.file_referrer();
-    let uri = language_server
-      .url_map
-      .specifier_to_uri(&specifier, file_referrer)
-      .ok()?;
-    let range = self.text_span.to_range(line_index);
-    let location = lsp::Location { uri, range };
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_from_specifier(&target_specifier, scope)?;
+    let range = self.text_span.to_range(target_module.line_index.clone());
+    let location = lsp::Location {
+      uri: target_module.uri.as_ref().clone(),
+      range,
+    };
 
     let mut tags: Option<Vec<lsp::SymbolTag>> = None;
     let kind_modifiers = parse_kind_modifier(&self.kind_modifiers);
