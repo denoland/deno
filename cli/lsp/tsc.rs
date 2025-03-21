@@ -2562,19 +2562,27 @@ impl FileTextChanges {
 
   pub fn to_text_document_edit(
     &self,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Result<lsp::TextDocumentEdit, AnyError> {
-    let specifier = resolve_url(&self.file_name)?;
-    let asset_or_doc = language_server.get_asset_or_document(&specifier)?;
+  ) -> Option<lsp::TextDocumentEdit> {
+    let target_specifier = resolve_url(&self.file_name).ok()?;
+    let target_module = language_server
+      .document_modules
+      .inspect_module_from_specifier(
+        &target_specifier,
+        module.scope.as_deref(),
+      )?;
     let edits = self
       .text_changes
       .iter()
-      .map(|tc| tc.as_text_or_annotated_text_edit(asset_or_doc.line_index()))
+      .map(|tc| {
+        tc.as_text_or_annotated_text_edit(target_module.line_index.clone())
+      })
       .collect();
-    Ok(lsp::TextDocumentEdit {
+    Some(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
-        uri: url_to_uri(&specifier)?,
-        version: asset_or_doc.document_lsp_version(),
+        uri: target_module.uri.as_ref().clone(),
+        version: target_module.version_if_open,
       },
       edits,
     })
@@ -2584,33 +2592,28 @@ impl FileTextChanges {
     &self,
     module: &DocumentModule,
     language_server: &language_server::Inner,
-  ) -> Result<Option<Vec<lsp::DocumentChangeOperation>>, AnyError> {
+  ) -> Option<Vec<lsp::DocumentChangeOperation>> {
     let is_new_file = self.is_new_file.unwrap_or(false);
     let mut ops = Vec::<lsp::DocumentChangeOperation>::new();
-    let target_specifier = resolve_url(&self.file_name)?;
+    let target_specifier = resolve_url(&self.file_name).ok()?;
     let target_module = if is_new_file {
       None
     } else {
-      let Some(target_module) = language_server
-        .document_modules
-        .inspect_module_from_specifier(
-          &target_specifier,
-          module.scope.as_deref(),
-        )
-      else {
-        return Ok(None);
-      };
-      Some(target_module)
+      Some(
+        language_server
+          .document_modules
+          .inspect_module_from_specifier(
+            &target_specifier,
+            module.scope.as_deref(),
+          )?,
+      )
     };
-    let Some(target_uri) = target_module
+    let target_uri = target_module
       .as_ref()
       .map(|m| m.uri.clone())
-      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))
-    else {
-      return Ok(None);
-    };
+      .or_else(|| url_to_uri(&target_specifier).ok().map(Arc::new))?;
     if !target_uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-      return Ok(None);
+      return None;
     }
     let line_index = target_module
       .as_ref()
@@ -2643,7 +2646,7 @@ impl FileTextChanges {
       edits,
     }));
 
-    Ok(Some(ops))
+    Some(ops)
   }
 }
 
@@ -2851,14 +2854,9 @@ pub fn file_text_changes_to_workspace_edit<'a>(
     if token.is_cancelled() {
       return Err(LspError::request_cancelled());
     }
-    let ops = match change.to_text_document_change_ops(module, language_server)
-    {
-      Ok(Some(op)) => op,
-      Ok(None) => continue,
-      Err(err) => {
-        error!("Unable to convert changes to edits: {}", err);
-        return Err(LspError::internal_error());
-      }
+    let Some(ops) = change.to_text_document_change_ops(module, language_server)
+    else {
+      continue;
     };
     all_ops.extend(ops);
   }

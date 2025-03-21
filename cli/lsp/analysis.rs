@@ -52,7 +52,6 @@ use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
 use crate::args::jsr_url;
-use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 
@@ -819,16 +818,14 @@ fn is_preferred(
 /// for an LSP CodeAction.
 pub fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let edit = match change.to_text_document_edit(language_server) {
-      Ok(e) => e,
-      Err(err) => {
-        lsp_warn!("Couldn't covert text document edit: {:#}", err);
-        continue;
-      }
+    let Some(edit) = change.to_text_document_edit(module, language_server)
+    else {
+      continue;
     };
     text_document_edits.push(edit);
   }
@@ -1083,7 +1080,7 @@ impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
   pub fn add_ts_fix_action(
     &mut self,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     resolution_mode: ResolutionMode,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
@@ -1105,12 +1102,15 @@ impl CodeActionCollection {
         .into(),
       );
     }
-    let Some(action) =
-      fix_ts_import_action(specifier, resolution_mode, action, language_server)
-    else {
+    let Some(action) = fix_ts_import_action(
+      &module.specifier,
+      resolution_mode,
+      action,
+      language_server,
+    ) else {
       return Ok(());
     };
-    let edit = ts_changes_to_edit(&action.changes, language_server)?;
+    let edit = ts_changes_to_edit(&action.changes, module, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),

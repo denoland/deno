@@ -2057,7 +2057,7 @@ impl Inner {
               }
               code_actions
                 .add_ts_fix_action(
-                  &module.specifier,
+                  &module,
                   module.resolution_mode,
                   &action,
                   diagnostic,
@@ -2292,10 +2292,11 @@ impl Inner {
         combined_code_actions.changes
       };
       let mut code_action = params;
-      code_action.edit = ts_changes_to_edit(&changes, self).map_err(|err| {
-        error!("Unable to convert changes to edits: {:#}", err);
-        LspError::internal_error()
-      })?;
+      code_action.edit =
+        ts_changes_to_edit(&changes, &module, self).map_err(|err| {
+          error!("Unable to convert changes to edits: {:#}", err);
+          LspError::internal_error()
+        })?;
       code_action
     } else if let Some(kind_suffix) = kind
       .as_str()
