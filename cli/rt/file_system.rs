@@ -1279,7 +1279,7 @@ impl FileBackedVfsMetadata {
   fn get_build_time(&self) -> u64 {
     match METADATA.get() {
       Some(metadata) => metadata.build_time.unwrap_or(0),
-      None => 0
+      None => 0,
     }
   }
 }
