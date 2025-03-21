@@ -237,10 +237,57 @@ interface OtelSpan {
   addEvent(
     name: string,
     startTime: number,
-    droppedAttributeCount: number,
   ): void;
   dropEvent(): void;
   end(endTime: number): void;
+}
+
+enum SpanAttributesLocation {
+  SELF = 0,
+  LAST_EVENT = 1,
+  LAST_LINK = 2,
+}
+
+function spanAddAttributes(
+  span: OtelSpan,
+  attributesLocation: SpanAttributesLocation,
+  attributes: Attributes,
+) {
+  const attributeKvs = ObjectEntries(attributes);
+  let i = 0;
+  while (i < attributeKvs.length) {
+    if (i + 2 < attributeKvs.length) {
+      op_otel_span_attribute3(
+        span,
+        attributesLocation,
+        attributeKvs[i][0],
+        attributeKvs[i][1],
+        attributeKvs[i + 1][0],
+        attributeKvs[i + 1][1],
+        attributeKvs[i + 2][0],
+        attributeKvs[i + 2][1],
+      );
+      i += 3;
+    } else if (i + 1 < attributeKvs.length) {
+      op_otel_span_attribute2(
+        span,
+        attributesLocation,
+        attributeKvs[i][0],
+        attributeKvs[i][1],
+        attributeKvs[i + 1][0],
+        attributeKvs[i + 1][1],
+      );
+      i += 2;
+    } else {
+      op_otel_span_attribute1(
+        span,
+        attributesLocation,
+        attributeKvs[i][0],
+        attributeKvs[i][1],
+      );
+      i += 1;
+    }
+  }
 }
 
 interface TracerOptions {
@@ -401,31 +448,46 @@ class Span {
     attributesOrStartTime?: Attributes | TimeInput,
     startTime?: TimeInput,
   ): this {
+    if (!this.#otelSpan) return this;
+    let attributes: Attributes | undefined;
     if (isTimeInput(attributesOrStartTime)) {
       startTime = attributesOrStartTime;
-      attributesOrStartTime = undefined;
+    } else {
+      attributes = attributesOrStartTime;
     }
     const startTimeMs = timeInputToMs(startTime);
 
-    this.#otelSpan?.addEvent(
+    this.#otelSpan.addEvent(
       name,
       startTimeMs ?? NaN,
-      countAttributes(attributesOrStartTime),
     );
+    if (attributes) {
+      spanAddAttributes(
+        this.#otelSpan,
+        SpanAttributesLocation.LAST_EVENT,
+        attributes,
+      );
+    }
     return this;
   }
 
   addLink(link: Link): this {
-    const droppedAttributeCount = (link.droppedAttributesCount ?? 0) +
-      countAttributes(link.attributes);
+    if (!this.#otelSpan) return this;
     const valid = op_otel_span_add_link(
       this.#otelSpan,
       link.context.traceId,
       link.context.spanId,
       link.context.traceFlags,
       link.context.isRemote ?? false,
-      droppedAttributeCount,
+      link.droppedAttributesCount ?? 0,
     );
+    if (link.attributes) {
+      spanAddAttributes(
+        this.#otelSpan,
+        SpanAttributesLocation.LAST_LINK,
+        link.attributes,
+      );
+    }
     if (!valid) return this;
     return this;
   }
@@ -452,44 +514,18 @@ class Span {
 
   setAttribute(key: string, value: AttributeValue): this {
     if (!this.#otelSpan) return this;
-    op_otel_span_attribute1(this.#otelSpan, key, value);
+    op_otel_span_attribute1(
+      this.#otelSpan,
+      SpanAttributesLocation.SELF,
+      key,
+      value,
+    );
     return this;
   }
 
   setAttributes(attributes: Attributes): this {
     if (!this.#otelSpan) return this;
-    const attributeKvs = ObjectEntries(attributes);
-    let i = 0;
-    while (i < attributeKvs.length) {
-      if (i + 2 < attributeKvs.length) {
-        op_otel_span_attribute3(
-          this.#otelSpan,
-          attributeKvs[i][0],
-          attributeKvs[i][1],
-          attributeKvs[i + 1][0],
-          attributeKvs[i + 1][1],
-          attributeKvs[i + 2][0],
-          attributeKvs[i + 2][1],
-        );
-        i += 3;
-      } else if (i + 1 < attributeKvs.length) {
-        op_otel_span_attribute2(
-          this.#otelSpan,
-          attributeKvs[i][0],
-          attributeKvs[i][1],
-          attributeKvs[i + 1][0],
-          attributeKvs[i + 1][1],
-        );
-        i += 2;
-      } else {
-        op_otel_span_attribute1(
-          this.#otelSpan,
-          attributeKvs[i][0],
-          attributeKvs[i][1],
-        );
-        i += 1;
-      }
-    }
+    spanAddAttributes(this.#otelSpan, SpanAttributesLocation.SELF, attributes);
     return this;
   }
 
