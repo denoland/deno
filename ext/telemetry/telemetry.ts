@@ -126,6 +126,13 @@ interface Attributes {
 
 type SpanAttributes = Attributes;
 
+interface Exception {
+  code?: string | number;
+  message?: string;
+  name?: string;
+  stack?: string;
+}
+
 type TimeInput = [number, number] | number | Date;
 
 interface SpanOptions {
@@ -507,9 +514,33 @@ class Span {
     return this.#otelSpan !== undefined;
   }
 
-  // deno-lint-ignore no-explicit-any
-  recordException(_exception: any, _time?: TimeInput): void {
-    this.#otelSpan?.dropEvent();
+  recordException(exception: string | Exception, time?: TimeInput): void {
+    if (typeof exception === "string") {
+      this.addEvent("exception", {
+        "exception.message": exception,
+      }, time);
+      return;
+    }
+    const attributes: Attributes = {};
+
+    if (exception.code) {
+      if (typeof exception.code === "number") {
+        attributes["exception.type"] = NumberPrototypeToString(exception.code);
+      } else {
+        attributes["exception.type"] = exception.code;
+      }
+    } else if (exception.name) {
+      attributes["exception.type"] = exception.name;
+    }
+
+    if (exception.message) {
+      attributes["exception.message"] = exception.message;
+    }
+    if (exception.stack) {
+      attributes["exception.stacktrace"] = exception.stack;
+    }
+
+    this.addEvent("exception", attributes, time);
   }
 
   setAttribute(key: string, value: AttributeValue): this {
