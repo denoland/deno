@@ -32,7 +32,11 @@ import * as cron from "ext:deno_cron/01_cron.ts";
 import * as webgpuSurface from "ext:deno_webgpu/02_surface.js";
 import * as telemetry from "ext:deno_telemetry/telemetry.ts";
 
-const { ObjectDefineProperties } = primordials;
+const {
+  TypeErrorConstructor,
+  NumberIsFinite,
+  ObjectDefineProperties,
+} = primordials;
 
 const loadQuic = core.createLazyLoader("ext:deno_net/03_quic.js");
 const loadWebTransport = core.createLazyLoader("ext:deno_web/webtransport.js");
@@ -60,8 +64,35 @@ const denoNs = {
   makeTempDir: fs.makeTempDir,
   makeTempFileSync: fs.makeTempFileSync,
   makeTempFile: fs.makeTempFile,
-  cpuUsage: () => {
+  cpuUsage: (previousValue) => {
     const { 0: system, 1: user } = op_runtime_cpu_usage();
+    if (previousValue) {
+      if (typeof previousValue.user !== "number") {
+        throw new TypeErrorConstructor(
+          'The "previousValue.user" property must be of type number.',
+        );
+      }
+      if (typeof previousValue.system !== "number") {
+        throw new TypeErrorConstructor(
+          'The "previousValue.system" property must be of type number.',
+        );
+      }
+      if (previousValue.user < 0 || !NumberIsFinite(previousValue.user)) {
+        throw new RangeError(
+          'The "previousValue.user" property must be 0 or greater.',
+        );
+      }
+      if (previousValue.system < 0 || !NumberIsFinite(previousValue.system)) {
+        throw new RangeError(
+          'The "previousValue.system" property must be 0 or greater.',
+        );
+      }
+
+      return {
+        system: system - previousValue.system,
+        user: user - previousValue.user,
+      };
+    }
     return { system, user };
   },
   memoryUsage: () => {

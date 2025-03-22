@@ -144,6 +144,15 @@ function addReadOnlyProcessAlias(
   }
 }
 
+interface CpuUsage {
+  user: number;
+  system: number;
+}
+
+export function cpuUsage(previousValue?: CpuUsage): CpuUsage {
+  return Deno.cpuUsage(previousValue);
+}
+
 function createWarningObject(
   warning: string,
   type: string,
@@ -574,9 +583,7 @@ process.config = {
   },
 };
 
-process.cpuUsage = function () {
-  return Deno.cpuUsage();
-};
+process.cpuUsage = cpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
