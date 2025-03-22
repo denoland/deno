@@ -1,0 +1,25 @@
+{
+  "tempDir": true,
+  "tests": {
+    "check_parse_error": {
+      "args": "fmt --check parse_error.ts",
+      "output": "check_parse_error.out",
+      "exitCode": 1
+    },
+    "check_invalid_data": {
+      "args": "fmt --check invalid_data.json",
+      "output": "check_invalid_data.out",
+      "exitCode": 1
+    },
+    "parse_error": {
+      "args": "fmt parse_error.ts",
+      "output": "parse_error.out",
+      "exitCode": 1
+    },
+    "invalid_data": {
+      "args": "fmt invalid_data.json",
+      "output": "invalid_data.out",
+      "exitCode": 1
+    }
+  }
+}
