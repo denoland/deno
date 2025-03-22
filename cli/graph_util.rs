@@ -330,13 +330,31 @@ pub fn enhance_graph_error(
         .unwrap_or_else(|| format_deno_graph_error(error))
     }
   };
-
-  if let Some(range) = error.maybe_range() {
-    if mode == EnhanceGraphErrorMode::ShowRange
-      && !range.specifier.as_str().contains("/$deno$eval")
-    {
-      message.push_str("\n    at ");
-      message.push_str(&format_range_with_colors(range));
+  // attempt to provide some context for the error if we have a range.
+  // For resolution errors in Wasm modules the specifier range is often
+  // missing, but we can fall back to the referrer range if available.
+  if mode == EnhanceGraphErrorMode::ShowRange {
+    // first attempt to use the error's specifier range
+    let mut maybe_range = error.maybe_range();
+    if maybe_range.is_none() {
+      // fallback: for resolution errors use the referrer's range
+      if let ModuleGraphError::ResolutionError(resolution_error) = error {
+        // resolution errors always have a referrer range on the variant itself
+        // which points to the location in the importing module.
+        // When the specifier range is missing (ex. wasm binary), fall back to this.
+        use deno_graph::ResolutionError;
+        maybe_range = match resolution_error {
+          ResolutionError::InvalidSpecifier { range, .. } => Some(range),
+          ResolutionError::ResolverError { range, .. } => Some(range),
+          _ => None,
+        };
+      }
+    }
+    if let Some(range) = maybe_range {
+      if !range.specifier.as_str().contains("/$deno$eval") {
+        message.push_str("\n    at ");
+        message.push_str(&format_range_with_colors(range));
+      }
     }
   }
   message
