@@ -13,6 +13,12 @@
         "output": "lock.out"
       }]
     },
+    "enabled_check": {
+      // when using --check we don't do this because statically analyzable
+      // dynamic imports might be necessary for type checking
+      "args": "run --no-lock --unstable-lazy-dynamic-imports --check main.ts",
+      "output": "check.out"
+    },
     "enabled_config": {
       "args": "run --no-lock --config=deno.enabled.json main.ts",
       "output": "enabled.out"
