@@ -2013,7 +2013,7 @@ mod tests {
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_uri.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
-      config.tree.inject_config_file(config_file).await;
+      config.tree.inject_config_file(config_file, todo!()).await;
     }
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);

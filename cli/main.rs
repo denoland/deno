@@ -135,7 +135,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean(flags)
+      tools::clean::clean(flags).await
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
@@ -145,7 +145,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags)
+      tools::coverage::cover_files(flags, coverage_flags).await
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
@@ -172,7 +172,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async {
+    DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
@@ -183,7 +183,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      lsp::start().await
+      let factory = CliFactory::from_flags(flags.clone());
+      lsp::start(Arc::new(factory.npm_registry_info_provider().await?.as_npm_registry_api())).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -227,7 +228,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();
@@ -414,6 +415,9 @@ pub fn main() {
   #[cfg(feature = "dhat-heap")]
   let profiler = dhat::Profiler::new_heap();
 
+  unsafe {
+    backtrace_on_stack_overflow::enable();
+  }
   setup_panic_hook();
 
   util::unix::raise_fd_limit();

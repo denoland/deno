@@ -12,6 +12,7 @@ use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -117,11 +118,12 @@ impl CliLockfile {
     Ok(())
   }
 
-  pub fn discover(
+  pub async fn discover(
     sys: &CliSys,
     flags: &Flags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
+    api: &dyn NpmPackageInfoProvider,
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -192,7 +194,9 @@ impl CliLockfile {
         frozen,
         skip_write: flags.internal.lockfile_skip_write,
       },
-    )?;
+      api,
+    )
+    .await?;
 
     // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
@@ -295,16 +299,23 @@ impl CliLockfile {
     Ok(Some(lockfile))
   }
 
-  pub fn read_from_path(
+  pub async fn read_from_path(
     sys: &CliSys,
     opts: CliLockfileReadFromPathOptions,
+    api: &dyn NpmPackageInfoProvider,
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
-      Ok(text) => Lockfile::new(deno_lockfile::NewLockfileOptions {
-        file_path: opts.file_path,
-        content: &text,
-        overwrite: false,
-      })?,
+      Ok(text) => {
+        Lockfile::new(
+          deno_lockfile::NewLockfileOptions {
+            file_path: opts.file_path,
+            content: &text,
+            overwrite: false,
+          },
+          api,
+        )
+        .await?
+      }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
         Lockfile::new_empty(opts.file_path, false)
       }

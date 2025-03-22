@@ -23,8 +23,8 @@ pub async fn cache_top_level_deps(
   factory: &CliFactory,
   jsr_resolver: Option<Arc<crate::jsr::JsrFetchResolver>>,
 ) -> Result<(), AnyError> {
-  let npm_installer = factory.npm_installer()?;
-  let cli_options = factory.cli_options()?;
+  let npm_installer = factory.npm_installer().await?;
+  let cli_options = factory.cli_options().await?;
   npm_installer
     .ensure_top_level_package_json_install()
     .await?;
@@ -40,7 +40,7 @@ pub async fn cache_top_level_deps(
       resolver
     } else {
       Arc::new(crate::jsr::JsrFetchResolver::new(
-        factory.file_fetcher()?.clone(),
+        factory.file_fetcher().await?.clone(),
       ))
     };
     let mut graph_permit = factory

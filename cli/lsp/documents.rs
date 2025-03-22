@@ -2010,21 +2010,22 @@ console.log(b, "hello deno");
 
     // set the initial import map and point to file 2
     {
-      config
-        .tree
-        .inject_config_file(
-          ConfigFile::new(
-            &json!({
-              "imports": {
-                "test": "./file2.ts",
-              },
-            })
-            .to_string(),
-            config.root_uri().unwrap().join("deno.json").unwrap(),
-          )
-          .unwrap(),
-        )
-        .await;
+      // config
+      //   .tree
+      //   .inject_config_file(
+      //     ConfigFile::new(
+      //       &json!({
+      //         "imports": {
+      //           "test": "./file2.ts",
+      //         },
+      //       })
+      //       .to_string(),
+      //       config.root_uri().unwrap().join("deno.json").unwrap(),
+      //     )
+      //     .unwrap(),
+      //   )
+      //   .await;
+      todo!();
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -2066,6 +2067,7 @@ console.log(b, "hello deno");
             config.root_uri().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          todo!(),
         )
         .await;
 

@@ -103,7 +103,7 @@ impl<'a> BinEntries<'a> {
     self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
-    match package.bin.as_ref().unwrap() {
+    match package.extra.as_ref().unwrap().bin.as_ref().unwrap() {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
         let bin_name = default_bin_name(package);
 
@@ -153,7 +153,7 @@ impl<'a> BinEntries<'a> {
       if !filter(package) {
         continue;
       }
-      if let Some(bin_entries) = &package.bin {
+      if let Some(bin_entries) = &package.extra.as_ref().unwrap().bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
             let name = default_bin_name(package);

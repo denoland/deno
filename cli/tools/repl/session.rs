@@ -33,6 +33,7 @@ use deno_graph::Position;
 use deno_graph::PositionRange;
 use deno_graph::SpecifierWithRange;
 use deno_lib::util::result::any_and_jserrorbox_downcast_ref;
+use deno_npm::registry::NpmRegistryApi;
 use deno_runtime::worker::MainWorker;
 use deno_semver::npm::NpmPackageReqReference;
 use node_resolver::NodeResolutionKind;
@@ -208,8 +209,9 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
+    registry_provider: Arc<dyn NpmRegistryApi>,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized().await?;
+    let language_server = ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker

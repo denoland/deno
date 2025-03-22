@@ -33,7 +33,7 @@ pub async fn compile(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
@@ -152,10 +152,10 @@ pub async fn compile_eszip(
   compile_flags: CompileFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let module_graph_creator = factory.module_graph_creator().await?;
   let parsed_source_cache = factory.parsed_source_cache();
-  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let tsconfig_resolver = factory.tsconfig_resolver().await?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
   let mut output_path = resolve_compile_executable_output_path(

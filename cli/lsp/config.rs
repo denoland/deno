@@ -42,6 +42,7 @@ use deno_lib::args::has_flag_env_var;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lint::linter::LintConfig as DenoLintConfig;
 use deno_npm::npm_rc::ResolvedNpmRc;
+use deno_npm::registry::NpmRegistryApi;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
@@ -66,6 +67,7 @@ use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
+use crate::npm::CliNpmRegistryInfoProvider;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
@@ -1228,6 +1230,7 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
   ) -> Self {
     let scope = Arc::new(scope.clone());
     let discover_result = match scope.to_file_path() {
@@ -1261,7 +1264,14 @@ impl ConfigData {
     };
     match discover_result {
       Ok(member_dir) => {
-        Self::load_inner(member_dir, scope, settings, Some(file_fetcher)).await
+        Self::load_inner(
+          member_dir,
+          scope,
+          settings,
+          Some(file_fetcher),
+          npm_package_info_provider,
+        )
+        .await
       }
       Err(err) => {
         lsp_warn!("  Couldn't open workspace \"{}\": {}", scope.as_str(), err);
@@ -1275,6 +1285,7 @@ impl ConfigData {
           scope.clone(),
           settings,
           Some(file_fetcher),
+          npm_package_info_provider,
         )
         .await;
         // check if any of these need to be added to the workspace
@@ -1317,6 +1328,7 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1459,7 +1471,10 @@ impl ConfigData {
 
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
-    let lockfile = resolve_lockfile_from_workspace(&member_dir).map(Arc::new);
+    let lockfile =
+      resolve_lockfile_from_workspace(&member_dir, &npm_package_info_provider)
+        .await
+        .map(Arc::new);
     if let Some(lockfile) = &lockfile {
       if let Ok(specifier) = ModuleSpecifier::from_file_path(&lockfile.filename)
       {
@@ -1864,6 +1879,7 @@ impl ConfigTree {
     settings: &Settings,
     workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<CliFileFetcher>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1896,6 +1912,7 @@ impl ConfigTree {
                 &deno_json_cache,
                 &pkg_json_cache,
                 &workspace_cache,
+                npm_package_info_provider,
               )
               .await,
             ),
@@ -1926,6 +1943,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          npm_package_info_provider,
         )
         .await,
       );
@@ -1942,6 +1960,7 @@ impl ConfigTree {
           &deno_json_cache,
           &pkg_json_cache,
           &workspace_cache,
+          npm_package_info_provider,
         )
         .await;
         scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
@@ -1952,7 +1971,11 @@ impl ConfigTree {
   }
 
   #[cfg(test)]
-  pub async fn inject_config_file(&mut self, config_file: ConfigFile) {
+  pub async fn inject_config_file(
+    &mut self,
+    config_file: ConfigFile,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+  ) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
@@ -1982,6 +2005,7 @@ impl ConfigTree {
         Arc::new(scope.clone()),
         &Default::default(),
         None,
+        npm_package_info_provider,
       )
       .await,
     );
@@ -1990,8 +2014,9 @@ impl ConfigTree {
   }
 }
 
-fn resolve_lockfile_from_workspace(
+async fn resolve_lockfile_from_workspace(
   workspace: &WorkspaceDirectory,
+  npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -2006,7 +2031,8 @@ fn resolve_lockfile_from_workspace(
     .root_deno_json()
     .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
     .unwrap_or(false);
-  resolve_lockfile_from_path(lockfile_path, frozen)
+  resolve_lockfile_from_path(lockfile_path, frozen, npm_package_info_provider)
+    .await
 }
 
 fn resolve_node_modules_dir(
@@ -2039,9 +2065,10 @@ fn resolve_node_modules_dir(
   canonicalize_path_maybe_not_exists(&node_modules_dir).ok()
 }
 
-fn resolve_lockfile_from_path(
+async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
+  npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
@@ -2050,7 +2077,10 @@ fn resolve_lockfile_from_path(
       frozen,
       skip_write: false,
     },
-  ) {
+    &crate::npm::NpmPackageInfoApiAdapter(npm_package_info_provider.clone()),
+  )
+  .await
+  {
     Ok(value) => {
       if value.filename.exists() {
         if let Ok(specifier) = ModuleSpecifier::from_file_path(&value.filename)
@@ -2380,12 +2410,13 @@ mod tests {
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     assert!(!config.specifier_enabled(&root_uri));
 
-    config
-      .tree
-      .inject_config_file(
-        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
-      )
-      .await;
+    // config
+    //   .tree
+    //   .inject_config_file(
+    //     ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+    //   )
+    //   .await;
+    todo!();
     assert!(config.specifier_enabled(&root_uri));
   }
 
@@ -2427,22 +2458,23 @@ mod tests {
     settings.enable_paths = None;
     config.set_workspace_settings(settings, vec![]);
 
-    config
-      .tree
-      .inject_config_file(
-        ConfigFile::new(
-          &json!({
-            "exclude": ["mod2.ts"],
-            "test": {
-              "exclude": ["mod3.ts"],
-            },
-          })
-          .to_string(),
-          root_uri.join("deno.json").unwrap(),
-        )
-        .unwrap(),
-      )
-      .await;
+    // config
+    //   .tree
+    //   .inject_config_file(
+    //     ConfigFile::new(
+    //       &json!({
+    //         "exclude": ["mod2.ts"],
+    //         "test": {
+    //           "exclude": ["mod3.ts"],
+    //         },
+    //       })
+    //       .to_string(),
+    //       root_uri.join("deno.json").unwrap(),
+    //     )
+    //     .unwrap(),
+    //   )
+    //   .await;
+    todo!();
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
@@ -2453,21 +2485,22 @@ mod tests {
       !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
     );
 
-    config
-      .tree
-      .inject_config_file(
-        ConfigFile::new(
-          &json!({
-            "test": {
-              "include": ["mod1.ts"],
-            },
-          })
-          .to_string(),
-          root_uri.join("deno.json").unwrap(),
-        )
-        .unwrap(),
-      )
-      .await;
+    // config
+    //   .tree
+    //   .inject_config_file(
+    //     ConfigFile::new(
+    //       &json!({
+    //         "test": {
+    //           "include": ["mod1.ts"],
+    //         },
+    //       })
+    //       .to_string(),
+    //       root_uri.join("deno.json").unwrap(),
+    //     )
+    //     .unwrap(),
+    //   )
+    //   .await;
+    todo!();
 
     config
       .tree
@@ -2483,6 +2516,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
+        todo!(),
       )
       .await;
     assert!(

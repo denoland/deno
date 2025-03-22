@@ -224,7 +224,7 @@ impl TestRun {
       args.into_iter().map(|s| From::from(s.as_ref())).collect(),
     )?);
     let factory = CliFactory::from_flags(flags);
-    let cli_options = factory.cli_options()?;
+    let cli_options = factory.cli_options().await?;
     // Various test files should not share the same permissions in terms of
     // `PermissionsContainer` - otherwise granting/revoking permissions in one
     // file would have impact on other files, which is undesirable.

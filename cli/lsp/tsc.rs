@@ -5776,6 +5776,7 @@ mod tests {
           temp_dir.url().join("deno.json").unwrap(),
         )
         .unwrap(),
+        todo!(),
       )
       .await;
     let resolver =

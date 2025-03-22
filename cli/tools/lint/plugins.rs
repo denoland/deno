@@ -145,7 +145,7 @@ async fn create_plugin_runner_inner(
   };
   let flags = Arc::new(flags);
   let factory = CliFactory::from_flags(flags.clone());
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let main_module =
     resolve_url_or_path("./$deno$lint.mts", cli_options.initial_cwd()).unwrap();
   let perm_parser = factory.permission_desc_parser()?;
