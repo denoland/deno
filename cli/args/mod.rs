@@ -607,6 +607,10 @@ impl CliOptions {
     self.flags.otel_config()
   }
 
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
+  }
+
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
     self.flags.env_file.as_ref()
   }

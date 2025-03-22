@@ -112,6 +112,7 @@ pub struct BootstrapOptions {
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub mode: WorkerExecutionMode,
+  pub no_legacy_abort: bool,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
@@ -148,6 +149,7 @@ impl Default for BootstrapOptions {
       node_debug: None,
       node_ipc_fd: None,
       mode: WorkerExecutionMode::None,
+      no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
       otel_config: Default::default(),
