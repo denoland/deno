@@ -1505,6 +1505,7 @@ dependencies = [
  "deno_npm 0.29.0",
  "deno_npm_cache",
  "deno_package_json",
+ "deno_panic",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -2487,6 +2488,10 @@ dependencies = [
  "thiserror 2.0.3",
  "url",
 ]
+
+[[package]]
+name = "deno_panic"
+version = "0.1.0"
 
 [[package]]
 name = "deno_path_util"
