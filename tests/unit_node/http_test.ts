@@ -1945,3 +1945,18 @@ Deno.test("[node/http] supports proxy http request", async () => {
   await promise;
   await server.finished;
 });
+
+Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let socketCloseEmitted = false;
+  const req = http.request("http://localhost:4545/echo.ts", async (res) => {
+    res.on("close", resolve);
+    req.socket?.on("close", () => {
+      socketCloseEmitted = true;
+    });
+    await text(res);
+  });
+  req.end();
+  await promise;
+  assert(socketCloseEmitted);
+});
