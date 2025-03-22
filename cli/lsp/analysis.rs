@@ -11,6 +11,7 @@ use deno_ast::SourceRangedForSpanned;
 use deno_ast::SourceTextInfo;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
+use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
@@ -33,6 +34,7 @@ use deno_semver::SmallStackString;
 use deno_semver::StackString;
 use deno_semver::Version;
 use import_map::ImportMap;
+use lsp_types::Uri;
 use node_resolver::InNpmPackageChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
@@ -45,13 +47,12 @@ use tower_lsp::lsp_types::Range;
 
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
+use super::documents::DocumentModule;
 use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
-use super::urls::url_to_uri;
 use crate::args::jsr_url;
-use crate::lsp::logging::lsp_warn;
 use crate::tools::lint::CliLinter;
 use crate::util::path::relative_specifier;
 
@@ -645,6 +646,7 @@ fn try_reverse_map_package_json_exports(
 /// like an import and rewrite the import specifier to include the extension
 pub fn fix_ts_import_changes(
   changes: &[tsc::FileTextChanges],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
   token: &CancellationToken,
 ) -> Result<Vec<tsc::FileTextChanges>, AnyError> {
@@ -653,16 +655,31 @@ pub fn fix_ts_import_changes(
     if token.is_cancelled() {
       return Err(anyhow!("request cancelled"));
     }
-    let Ok(referrer) = ModuleSpecifier::parse(&change.file_name) else {
+    let is_new_file = change.is_new_file.unwrap_or(false);
+    let Ok(target_specifier) = resolve_url(&change.file_name) else {
       continue;
     };
-    let referrer_doc = language_server.get_asset_or_document(&referrer).ok();
-    let resolution_mode = referrer_doc
+    let target_module = if is_new_file {
+      None
+    } else {
+      let Some(target_module) = language_server
+        .document_modules
+        .inspect_module_from_specifier(
+          &target_specifier,
+          module.scope.as_deref(),
+        )
+      else {
+        continue;
+      };
+      Some(target_module)
+    };
+    let resolution_mode = target_module
       .as_ref()
-      .map(|d| d.resolution_mode())
+      .map(|m| m.resolution_mode)
       .unwrap_or(ResolutionMode::Import);
-    let import_mapper =
-      language_server.get_ts_response_import_mapper(&referrer);
+    let import_mapper = language_server.get_ts_response_import_mapper(
+      module.scope.as_deref().unwrap_or(&target_specifier),
+    );
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
@@ -673,7 +690,11 @@ pub fn fix_ts_import_changes(
             let specifier =
               captures.iter().skip(1).find_map(|s| s).unwrap().as_str();
             if let Some(new_specifier) = import_mapper
-              .check_unresolved_specifier(specifier, &referrer, resolution_mode)
+              .check_unresolved_specifier(
+                specifier,
+                &target_specifier,
+                resolution_mode,
+              )
             {
               line.replace(specifier, &new_specifier)
             } else {
@@ -818,16 +839,14 @@ fn is_preferred(
 /// for an LSP CodeAction.
 pub fn ts_changes_to_edit(
   changes: &[tsc::FileTextChanges],
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Result<Option<lsp::WorkspaceEdit>, AnyError> {
   let mut text_document_edits = Vec::new();
   for change in changes {
-    let edit = match change.to_text_document_edit(language_server) {
-      Ok(e) => e,
-      Err(err) => {
-        lsp_warn!("Couldn't covert text document edit: {:#}", err);
-        continue;
-      }
+    let Some(edit) = change.to_text_document_edit(module, language_server)
+    else {
+      continue;
     };
     text_document_edits.push(edit);
   }
@@ -841,7 +860,7 @@ pub fn ts_changes_to_edit(
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeActionData {
-  pub specifier: ModuleSpecifier,
+  pub uri: Uri,
   pub fix_id: String,
 }
 
@@ -866,27 +885,27 @@ pub struct CodeActionCollection {
 impl CodeActionCollection {
   pub fn add_deno_fix_action(
     &mut self,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) -> Result<(), AnyError> {
-    let code_action = DenoDiagnostic::get_code_action(specifier, diagnostic)?;
+    let code_action =
+      DenoDiagnostic::get_code_action(uri, specifier, diagnostic)?;
     self.actions.push(CodeActionKind::Deno(code_action));
     Ok(())
   }
 
   pub fn add_deno_lint_actions(
     &mut self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
+    module: &DocumentModule,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<&SourceTextInfo>,
-    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
     if let Some(data_quick_fixes) = diagnostic
       .data
       .as_ref()
       .and_then(|d| serde_json::from_value::<Vec<DataQuickFix>>(d.clone()).ok())
     {
-      let uri = url_to_uri(specifier)?;
       for quick_fix in data_quick_fixes {
         let mut changes = HashMap::new();
         changes.insert(
@@ -917,22 +936,15 @@ impl CodeActionCollection {
         self.actions.push(CodeActionKind::DenoLint(code_action));
       }
     }
-    self.add_deno_lint_ignore_action(
-      specifier,
-      diagnostic,
-      maybe_text_info,
-      maybe_parsed_source,
-    )
+    self.add_deno_lint_ignore_action(uri, module, diagnostic)
   }
 
   fn add_deno_lint_ignore_action(
     &mut self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
+    module: &DocumentModule,
     diagnostic: &lsp::Diagnostic,
-    maybe_text_info: Option<&SourceTextInfo>,
-    maybe_parsed_source: Option<&deno_ast::ParsedSource>,
   ) -> Result<(), AnyError> {
-    let uri = url_to_uri(specifier)?;
     let code = diagnostic
       .code
       .as_ref()
@@ -941,11 +953,11 @@ impl CodeActionCollection {
         _ => "".to_string(),
       })
       .unwrap();
+    let text_info = module.text_info();
 
-    let line_content = maybe_text_info.map(|ti| {
-      ti.line_text(diagnostic.range.start.line as usize)
-        .to_string()
-    });
+    let line_content = text_info
+      .line_text(diagnostic.range.start.line as usize)
+      .to_string();
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -953,7 +965,7 @@ impl CodeActionCollection {
       vec![lsp::TextEdit {
         new_text: prepend_whitespace(
           format!("// deno-lint-ignore {code}\n"),
-          line_content,
+          Some(line_content),
         ),
         range: lsp::Range {
           start: lsp::Position {
@@ -986,7 +998,8 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let maybe_ignore_comment = maybe_parsed_source.and_then(|ps| {
+    let maybe_ignore_comment = module.parsed_source.as_ref().and_then(|ps| {
+      let ps = ps.as_ref().ok()?;
       // Note: we can use ps.get_leading_comments() but it doesn't
       // work when shebang is present at the top of the file.
       ps.comments().get_vec().iter().find_map(|c| {
@@ -1017,9 +1030,7 @@ impl CodeActionCollection {
     if let Some(ignore_comment) = maybe_ignore_comment {
       new_text = format!(" {code}");
       // Get the end position of the comment.
-      let line = maybe_text_info
-        .unwrap()
-        .line_and_column_index(ignore_comment.end());
+      let line = text_info.line_and_column_index(ignore_comment.end());
       let position = lsp::Position {
         line: line.line_index as u32,
         character: line.column_index as u32,
@@ -1051,7 +1062,7 @@ impl CodeActionCollection {
 
     let mut changes = HashMap::new();
     changes.insert(
-      uri,
+      uri.clone(),
       vec![lsp::TextEdit {
         new_text: "// deno-lint-ignore-file\n".to_string(),
         range: lsp::Range {
@@ -1090,7 +1101,7 @@ impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
   pub fn add_ts_fix_action(
     &mut self,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     resolution_mode: ResolutionMode,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
@@ -1112,12 +1123,15 @@ impl CodeActionCollection {
         .into(),
       );
     }
-    let Some(action) =
-      fix_ts_import_action(specifier, resolution_mode, action, language_server)
-    else {
+    let Some(action) = fix_ts_import_action(
+      &module.specifier,
+      resolution_mode,
+      action,
+      language_server,
+    ) else {
       return Ok(());
     };
-    let edit = ts_changes_to_edit(&action.changes, language_server)?;
+    let edit = ts_changes_to_edit(&action.changes, module, language_server)?;
     let code_action = lsp::CodeAction {
       title: action.description.clone(),
       kind: Some(lsp::CodeActionKind::QUICKFIX),
@@ -1160,12 +1174,13 @@ impl CodeActionCollection {
   pub fn add_ts_fix_all_action(
     &mut self,
     action: &tsc::CodeFixAction,
+    uri: &Uri,
     specifier: &ModuleSpecifier,
     diagnostic: &lsp::Diagnostic,
   ) {
     let data = action.fix_id.as_ref().map(|fix_id| {
       json!(CodeActionData {
-        specifier: specifier.clone(),
+        uri: uri.clone(),
         fix_id: fix_id.clone(),
       })
     });

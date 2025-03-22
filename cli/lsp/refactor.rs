@@ -6,6 +6,7 @@
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::ModuleSpecifier;
+use lsp_types::Uri;
 use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
 
@@ -150,6 +151,8 @@ pub static ALL_KNOWN_REFACTOR_ACTION_KINDS: Lazy<
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RefactorCodeActionData {
+  pub uri: Uri,
+  // TODO(nayeemrmn): Remove!
   pub specifier: ModuleSpecifier,
   pub range: lsp::Range,
   pub refactor_name: String,

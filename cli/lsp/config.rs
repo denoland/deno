@@ -54,10 +54,12 @@ use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
+use lsp_types::Uri;
 use tower_lsp::lsp_types as lsp;
 
 use super::logging::lsp_log;
 use super::lsp_custom;
+use super::urls::uri_to_url;
 use super::urls::url_to_uri;
 use crate::args::CliLockfile;
 use crate::args::CliLockfileReadFromPathOptions;
@@ -827,14 +829,8 @@ pub struct Settings {
 }
 
 impl Settings {
-  /// Returns `None` if the value should be deferred to the presence of a
-  /// `deno.json` file.
-  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
-    let Ok(path) = url_to_file_path(specifier) else {
-      // Non-file URLs are not disabled by these settings.
-      return Some(true);
-    };
-    let (settings, mut folder_uri) = self.get_for_specifier(specifier);
+  pub fn path_enabled(&self, path: &Path) -> Option<bool> {
+    let (settings, mut folder_uri) = self.get_for_path(path);
     folder_uri = folder_uri.or(self.first_folder.as_ref());
     let mut disable_paths = vec![];
     let mut enable_paths = None;
@@ -859,7 +855,7 @@ impl Settings {
     } else if let Some(enable_paths) = &enable_paths {
       for enable_path in enable_paths {
         // Also enable if the checked path is a dir containing an enabled path.
-        if path.starts_with(enable_path) || enable_path.starts_with(&path) {
+        if path.starts_with(enable_path) || enable_path.starts_with(path) {
           return Some(true);
         }
       }
@@ -869,17 +865,24 @@ impl Settings {
     }
   }
 
+  /// Returns `None` if the value should be deferred to the presence of a
+  /// `deno.json` file.
+  pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> Option<bool> {
+    let Ok(path) = url_to_file_path(specifier) else {
+      // Non-file URLs are not disabled by these settings.
+      return Some(true);
+    };
+    self.path_enabled(&path)
+  }
+
   pub fn get_unscoped(&self) -> &WorkspaceSettings {
     &self.unscoped
   }
 
-  pub fn get_for_specifier(
+  pub fn get_for_path(
     &self,
-    specifier: &ModuleSpecifier,
+    path: &Path,
   ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
-    let Ok(path) = url_to_file_path(specifier) else {
-      return (&self.unscoped, self.first_folder.as_ref());
-    };
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       if let Some(settings) = settings {
         let Ok(folder_path) = url_to_file_path(folder_uri) else {
@@ -891,6 +894,23 @@ impl Settings {
       }
     }
     (&self.unscoped, self.first_folder.as_ref())
+  }
+
+  pub fn get_for_uri(
+    &self,
+    uri: &Uri,
+  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+    self.get_for_specifier(&uri_to_url(uri))
+  }
+
+  pub fn get_for_specifier(
+    &self,
+    specifier: &ModuleSpecifier,
+  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return (&self.unscoped, self.first_folder.as_ref());
+    };
+    self.get_for_path(&path)
   }
 
   pub fn enable_settings_hash(&self) -> u64 {
@@ -981,6 +1001,10 @@ impl Config {
     self.settings.get_unscoped()
   }
 
+  pub fn workspace_settings_for_uri(&self, uri: &Uri) -> &WorkspaceSettings {
+    self.settings.get_for_uri(uri).0
+  }
+
   pub fn workspace_settings_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
@@ -1036,6 +1060,10 @@ impl Config {
 
   pub fn root_uri(&self) -> Option<&Url> {
     self.workspace_folders.first().map(|p| &p.0)
+  }
+
+  pub fn uri_enabled(&self, uri: &Uri) -> bool {
+    self.specifier_enabled(&uri_to_url(uri))
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
