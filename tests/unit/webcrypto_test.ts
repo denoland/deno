@@ -1547,7 +1547,7 @@ Deno.test(async function testImportEcSpkiPkcs8() {
   assert(subtle);
 
   for (
-    const { namedCurve, raw, spki, pkcs8, signatureLength } of ecTestKeys
+    const { namedCurve, raw, spki, pkcs8 } of ecTestKeys
   ) {
     const rawPublicKeyECDSA = await subtle.importKey(
       "raw",
