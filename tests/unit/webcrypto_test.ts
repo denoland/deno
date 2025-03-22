@@ -1613,7 +1613,8 @@ Deno.test(async function testImportEcSpkiPkcs8() {
     ) {
       if (
         (hash == "SHA-256" && namedCurve == "P-256") ||
-        (hash == "SHA-384" && namedCurve == "P-384")
+        (hash == "SHA-384" && namedCurve == "P-384") ||
+        (hash == "SHA-512" && namedCurve == "P-521")
       ) {
         const signatureECDSA = await subtle.sign(
           { name: "ECDSA", hash },
@@ -1628,30 +1629,6 @@ Deno.test(async function testImportEcSpkiPkcs8() {
           new Uint8Array([1, 2, 3, 4]),
         );
         assert(verifyECDSA);
-      } else {
-        await assertRejects(
-          async () => {
-            await subtle.sign(
-              { name: "ECDSA", hash },
-              privateKeyECDSA,
-              new Uint8Array([1, 2, 3, 4]),
-            );
-          },
-          DOMException,
-          "Not implemented",
-        );
-        await assertRejects(
-          async () => {
-            await subtle.verify(
-              { name: "ECDSA", hash },
-              publicKeyECDSA,
-              new Uint8Array(signatureLength),
-              new Uint8Array([1, 2, 3, 4]),
-            );
-          },
-          DOMException,
-          "Not implemented",
-        );
       }
     }
   }
