@@ -13,11 +13,9 @@ use deno_core::JsBuffer;
 use deno_core::OpState;
 use deno_core::ToJsBuffer;
 use deno_error::JsErrorBox;
-// ECDSA signing and verifying support for P-256 and P-384.
-use p256::ecdsa::{
-  Signature as P256Signature, SigningKey as P256SigningKey,
-  VerifyingKey as P256VerifyingKey,
-};
+use p256::ecdsa::Signature as P256Signature;
+use p256::ecdsa::SigningKey as P256SigningKey;
+use p256::ecdsa::VerifyingKey as P256VerifyingKey;
 use p256::elliptic_curve::sec1::FromEncodedPoint;
 use p256::pkcs8::DecodePrivateKey;
 use p384::ecdsa::Signature as P384Signature;
