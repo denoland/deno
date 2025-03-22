@@ -4413,6 +4413,20 @@ impl CommandExt for Command {
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
     ).arg(
+      Arg::new("unstable-lazy-dynamic-imports")
+      .long("unstable-lazy-dynamic-imports")
+      .help("Lazily loads statically analyzable dynamic imports when not running with type checking. Warning: This may change the order of semver specifier resolution.")
+      .env("DENO_UNSTABLE_LAZY_DYNAMIC_IMPORTS")
+      .value_parser(FalseyValueParser::new())
+      .action(ArgAction::SetTrue)
+      .hide(true)
+      .long_help(match cfg {
+        UnstableArgsConfig::None => None,
+        UnstableArgsConfig::ResolutionOnly | UnstableArgsConfig::ResolutionAndRuntime => Some("true")
+      })
+      .help_heading(UNSTABLE_HEADING)
+      .display_order(next_display_order())
+    ).arg(
       Arg::new("unstable-sloppy-imports")
       .long("unstable-sloppy-imports")
       .help("Enable unstable resolving of specifiers by extension probing, .js to .ts, and directory probing")
@@ -6038,6 +6052,8 @@ fn unstable_args_parse(
   flags.unstable_config.bare_node_builtins =
     matches.get_flag("unstable-bare-node-builtins");
   flags.unstable_config.detect_cjs = matches.get_flag("unstable-detect-cjs");
+  flags.unstable_config.lazy_dynamic_imports =
+    matches.get_flag("unstable-lazy-dynamic-imports");
   flags.unstable_config.sloppy_imports =
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
