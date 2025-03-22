@@ -120,7 +120,7 @@ async-once-cell = "0.5.4"
 async-stream = "0.3"
 async-trait = "0.1.73"
 base32 = "=0.5.1"
-base64 = "0.21.7"
+base64 = "0.22.1"
 base64-simd = "0.8"
 bencher = "0.1"
 bincode = "=1.3.3"
@@ -173,12 +173,12 @@ ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.8.3"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
-encoding_rs = "=0.8.33"
+encoding_rs = "=0.8.35"
 env_logger = "=0.10.0"
 error_reporter = "1"
 fancy-regex = "=0.10.0"
 fast-socks5 = "0.9.6"
-faster-hex = "0.9"
+faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
 file_test_runner = "0.7.3"
 filetime = "0.2.16"
@@ -220,7 +220,7 @@ libffi-sys = "=2.3.0"
 libloading = "0.7"
 libsqlite3-sys = "0.30.1"
 libsui = "0.5.0"
-libuv-sys-lite = "=1.48.2"
+libuv-sys-lite = "=1.48.3"
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.20", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
@@ -243,7 +243,7 @@ num-integer = "0.1.45"
 num-traits = "0.2.19"
 once_cell = "1.17.1"
 open = "5.0.1"
-os_pipe = { version = "=1.1.5", features = ["io_safety"] }
+os_pipe = { version = "=1.2.1", features = ["io_safety"] }
 p224 = { version = "0.13.0", features = ["ecdh"] }
 p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
 p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
@@ -257,7 +257,7 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
 pkcs8 = "0.10.2"
-pretty_assertions = "=1.4.0"
+pretty_assertions = "=1.4.1"
 pretty_yaml = "=0.5.0"
 prost = "0.13"
 prost-build = "0.13"
@@ -301,7 +301,7 @@ spki = "0.7.2"
 sqlformat = "=0.3.2"
 strsim = "0.11.1"
 sys_traits = "=0.1.8"
-tar = "=0.4.40"
+tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
 text-size = "=1.1.0"
@@ -326,7 +326,7 @@ unicode-width = "0.1.3"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
 uuid = { version = "1.3.0", features = ["v4"] }
-walkdir = "=2.3.2"
+walkdir = "=2.5.0"
 web-transport-proto = "0.2.3"
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
