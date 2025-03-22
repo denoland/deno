@@ -429,7 +429,7 @@ pub async fn run_benchmarks(
   bench_flags: BenchFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let workspace_bench_options =
     cli_options.resolve_workspace_bench_options(&bench_flags);
   // Various bench files should not share the same permissions in terms of
@@ -518,7 +518,7 @@ pub async fn run_benchmarks_with_watch(
           flags,
           watcher_communicator.clone(),
         );
-        let cli_options = factory.cli_options()?;
+        let cli_options = factory.cli_options().await?;
         let workspace_bench_options =
           cli_options.resolve_workspace_bench_options(&bench_flags);
 

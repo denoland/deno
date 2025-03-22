@@ -492,12 +492,13 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(
+  pub async fn from_flags(
     sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
+    registry_info_provider: &dyn deno_lockfile::NpmPackageInfoProvider,
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
@@ -508,7 +509,9 @@ impl CliOptions {
       &flags,
       &start_dir.workspace,
       maybe_external_import_map.as_ref().map(|v| &v.value),
-    )?;
+      registry_info_provider,
+    )
+    .await?;
 
     log::debug!("Finished config loading.");
 

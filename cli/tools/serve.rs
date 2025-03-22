@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
 
@@ -27,7 +28,7 @@ pub async fn serve(
   }
 
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
 
@@ -159,7 +160,7 @@ async fn serve_with_watch(
           flags,
           watcher_communicator.clone(),
         );
-        let cli_options = factory.cli_options()?;
+        let cli_options = factory.cli_options().await?;
         let main_module = cli_options.resolve_main_module()?;
 
         maybe_npm_install(&factory).await?;
@@ -175,6 +176,7 @@ async fn serve_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
   Ok(0)
 }

@@ -79,7 +79,7 @@ pub async fn publish(
   let auth_method =
     get_auth_method(publish_flags.token, publish_flags.dry_run)?;
 
-  let cli_options = cli_factory.cli_options()?;
+  let cli_options = cli_factory.cli_options().await?;
   let directory_path = cli_options.initial_cwd();
   let mut publish_configs = cli_options.start_dir.jsr_packages_for_publish();
   if publish_configs.is_empty() {
@@ -121,7 +121,7 @@ pub async fn publish(
     cli_factory.parsed_source_cache().clone(),
     specifier_unfurler,
     cli_factory.sys(),
-    cli_factory.tsconfig_resolver()?.clone(),
+    cli_factory.tsconfig_resolver().await?.clone(),
   ));
   let publish_preparer = PublishPreparer::new(
     GraphDiagnosticsCollector::new(cli_factory.parsed_source_cache().clone()),

@@ -315,13 +315,13 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
-fn load_configs(
+async fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
 ) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
 {
   let cli_factory = CliFactory::from_flags(flags.clone());
-  let options = cli_factory.cli_options()?;
+  let options = cli_factory.cli_options().await?;
   let start_dir = &options.start_dir;
   let npm_config = match start_dir.maybe_pkg_json() {
     Some(pkg_json) => Some(ConfigUpdater::new(
@@ -345,7 +345,7 @@ fn load_configs(
     }
     _ => {
       let factory = create_deno_json(flags, options)?;
-      let options = factory.cli_options()?.clone();
+      let options = factory.cli_options().await?.clone();
       let deno_json = options
         .start_dir
         .maybe_deno_json()
@@ -379,7 +379,8 @@ pub async fn add(
   let (cli_factory, mut npm_config, mut deno_config) =
     load_configs(&flags, || {
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })?;
+    })
+    .await?;
 
   if let Some(deno) = &deno_config {
     if deno.obj().get("importMap").is_some() {
@@ -395,7 +396,7 @@ pub async fn add(
     }
   }
 
-  let start_dir = cli_factory.cli_options()?.start_dir.dir_path();
+  let start_dir = cli_factory.cli_options().await?.start_dir.dir_path();
 
   // only prefer to add npm deps to `package.json` if there isn't a closer deno.json.
   // example: if deno.json is in the CWD and package.json is in the parent, we should add
@@ -411,7 +412,7 @@ pub async fn add(
   };
 
   let http_client = cli_factory.http_client_provider();
-  let deps_http_cache = cli_factory.global_http_cache()?;
+  let deps_http_cache = cli_factory.global_http_cache().await?;
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
@@ -423,7 +424,7 @@ pub async fn add(
     log::Level::Trace,
   );
 
-  let npmrc = cli_factory.npmrc()?;
+  let npmrc = cli_factory.npmrc().await?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
@@ -820,7 +821,7 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
+  let (_, npm_config, deno_config) = load_configs(&flags, || false).await?;
 
   let mut configs = [npm_config, deno_config];
 
@@ -878,12 +879,12 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
-  let npm_installer = cli_factory.npm_installer()?;
+  let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
-  if let Some(lockfile) = cli_factory.cli_options()?.maybe_lockfile() {
+  if let Some(lockfile) = cli_factory.cli_options().await?.maybe_lockfile() {
     lockfile.write_if_changed()?;
   }
 

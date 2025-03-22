@@ -60,7 +60,7 @@ pub async fn format(
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
     let factory = CliFactory::from_flags(flags);
-    let cli_options = factory.cli_options()?;
+    let cli_options = factory.cli_options().await?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -89,8 +89,8 @@ pub async fn format(
         watcher_communicator.show_path_changed(changed_paths.clone());
         Ok(async move {
           let factory = CliFactory::from_flags(flags);
-          let cli_options = factory.cli_options()?;
-          let caches = factory.caches()?;
+          let cli_options = factory.cli_options().await?;
+          let caches = factory.caches().await?;
           let mut paths_with_options_batches =
             resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
 
@@ -140,8 +140,8 @@ pub async fn format(
     .await?;
   } else {
     let factory = CliFactory::from_flags(flags);
-    let cli_options = factory.cli_options()?;
-    let caches = factory.caches()?;
+    let cli_options = factory.cli_options().await?;
+    let caches = factory.caches().await?;
     let paths_with_options_batches =
       resolve_paths_with_options_batches(cli_options, &fmt_flags)?;
     format_files(caches, cli_options, &fmt_flags, paths_with_options_batches)

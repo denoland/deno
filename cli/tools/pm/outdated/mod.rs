@@ -180,10 +180,10 @@ pub async fn outdated(
   update_flags: OutdatedFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
-  let cli_options = factory.cli_options()?;
+  let cli_options = factory.cli_options().await?;
   let workspace = cli_options.workspace();
   let http_client = factory.http_client_provider();
-  let deps_http_cache = factory.global_http_cache()?;
+  let deps_http_cache = factory.global_http_cache().await?;
   let file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
@@ -197,7 +197,7 @@ pub async fn outdated(
   let file_fetcher = Arc::new(file_fetcher);
   let npm_fetch_resolver = Arc::new(NpmFetchResolver::new(
     file_fetcher.clone(),
-    factory.npmrc()?.clone(),
+    factory.npmrc().await?.clone(),
   ));
   let jsr_fetch_resolver =
     Arc::new(JsrFetchResolver::new(file_fetcher.clone()));
@@ -410,7 +410,7 @@ async fn update(
     .await?;
 
     let mut updated_to_versions = HashSet::new();
-    let cli_options = factory.cli_options()?;
+    let cli_options = factory.cli_options().await?;
     let args = dep_manager_args(
       &factory,
       cli_options,
@@ -526,8 +526,8 @@ async fn dep_manager_args(
     jsr_fetch_resolver,
     npm_fetch_resolver,
     npm_resolver: factory.npm_resolver().await?.clone(),
-    npm_installer: factory.npm_installer()?.clone(),
-    permissions_container: factory.root_permissions_container()?.clone(),
+    npm_installer: factory.npm_installer().await?.clone(),
+    permissions_container: factory.root_permissions_container().await?.clone(),
     main_module_graph_container: factory
       .main_module_graph_container()
       .await?

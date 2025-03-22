@@ -22,6 +22,7 @@ use clap::ColorChoice;
 use clap::Command;
 use clap::ValueHint;
 use color_print::cstr;
+use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
@@ -1107,6 +1108,18 @@ impl Flags {
         || arg.starts_with("--allow-write")
         || arg.starts_with("--deny-write")
     })
+  }
+
+  pub fn cache_setting(&self) -> CacheSetting {
+    if self.cached_only {
+      CacheSetting::Only
+    } else if !self.cache_blocklist.is_empty() {
+      CacheSetting::ReloadSome(self.cache_blocklist.clone())
+    } else if self.reload {
+      CacheSetting::ReloadAll
+    } else {
+      CacheSetting::Use
+    }
   }
 
   #[inline(always)]
