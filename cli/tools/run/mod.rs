@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::io::Read;
+use std::io::BufRead;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -21,8 +22,35 @@ use crate::factory::CliFactory;
 use crate::npm::installer::PackageCaching;
 use crate::util;
 use crate::util::file_watcher::WatcherRestartMode;
+use deno_core::anyhow::bail;
+use deno_path_util::url_to_file_path;
 
 pub mod hmr;
+
+/// Heuristically determine if the provided npm binary entrypoint should be
+/// executed as a Node/JS script within the Deno runtime or spawned as an
+/// external process. Returns `Ok(true)` if the binary appears to be a JS file.
+/// At minimum, this checks known script extensions as well as a shebang with
+/// `node` in its path. Binaries that don't match this heuristic are assumed to
+/// be non-JS executables (for example, compiled binaries or shell scripts).
+fn is_node_cli_like(path: &std::path::Path) -> std::io::Result<bool> {
+  let ext = path.extension().and_then(|p| p.to_str()).unwrap_or("");
+  // if we have a known JS/TS extension, assume it's a script.
+  if matches!(ext, "js" | "cjs" | "mjs" | "ts" | "cts" | "mts") {
+    return Ok(true);
+  }
+  // Otherwise try to read the first line to look for a node shebang.
+  let file = std::fs::File::open(path)?;
+  let mut reader = std::io::BufReader::new(file);
+  let mut first_line = String::new();
+  if reader.read_line(&mut first_line)? == 0 {
+    return Ok(false);
+  }
+  if first_line.starts_with("#!") && first_line.contains("node") {
+    return Ok(true);
+  }
+  Ok(false)
+}
 
 pub fn check_permission_before_script(flags: &Flags) {
   if !flags.has_permission() && flags.has_permission_in_argv() {
@@ -60,7 +88,7 @@ pub async fn run_script(
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
-  let factory = CliFactory::from_flags(flags);
+  let factory = CliFactory::from_flags(flags.clone());
   let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
@@ -82,11 +110,51 @@ pub async fn run_script(
   maybe_npm_install(&factory).await?;
 
   let worker_factory = factory.create_cli_main_worker_factory().await?;
-  let mut worker = worker_factory
-    .create_main_worker(mode, main_module.clone())
-    .await?;
-
-  let exit_code = worker.run().await?;
+  // If this is an npm: package, then check if this refers to an npm "binary".
+  // If the binary entrypoint appears to be some non-JavaScript executable
+  // (for example, a compiled binary), then we need to spawn it as an external
+  // process rather than executing within Deno's JS runtime.
+  let exit_code = if let Ok(pkg_ref) = deno_semver::npm::NpmPackageReqReference::from_specifier(&main_module) {
+    // use a fake referrer to locate the package folder
+    let referrer = deno_core::ModuleSpecifier::from_directory_path(
+      factory.cli_options()?.initial_cwd(),
+    )
+    .unwrap()
+    .join("package.json")?;
+    let pkg_folder = factory
+      .npm_resolver()
+      .await?
+      .resolve_pkg_folder_from_deno_module_req(pkg_ref.req(), &referrer)?;
+    // use the same logic as worker factory to resolve the binary entrypoint
+    let entrypoint_url = worker_factory
+      .resolve_npm_binary_entrypoint(&pkg_folder, pkg_ref.sub_path())?;
+    let entrypoint_path = url_to_file_path(&entrypoint_url)?;
+    if !is_node_cli_like(&entrypoint_path)? {
+      // Ensure the user allowed executing arbitrary binaries
+      if !flags.permissions.allow_all && flags.permissions.allow_run.is_none() {
+        bail!("--allow-run must be provided to execute non-JavaScript npm binaries");
+      }
+      use std::process::Command;
+      // spawn and block on completion
+      let mut cmd = Command::new(&entrypoint_path);
+      cmd.args(&flags.argv);
+      cmd.stdin(std::process::Stdio::inherit());
+      cmd.stdout(std::process::Stdio::inherit());
+      cmd.stderr(std::process::Stdio::inherit());
+      let status = cmd.status()?;
+      status.code().unwrap_or(1)
+    } else {
+      let mut worker = worker_factory
+        .create_main_worker(mode, main_module.clone())
+        .await?;
+      worker.run().await?
+    }
+  } else {
+    let mut worker = worker_factory
+      .create_main_worker(mode, main_module.clone())
+      .await?;
+    worker.run().await?
+  };
   Ok(exit_code)
 }
 
