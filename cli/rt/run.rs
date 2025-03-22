@@ -964,6 +964,7 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
+    no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
   };
   let worker_factory = LibMainWorkerFactory::new(

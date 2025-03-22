@@ -131,6 +131,9 @@ pub struct Options {
   /// If `None`, the default configuration provided by hyper will be used. Note
   /// that the default configuration is subject to change in future versions.
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+
+  /// If `false`, the server will abort the request when the response is dropped.
+  pub no_legacy_abort: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
