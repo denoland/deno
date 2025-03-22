@@ -183,6 +183,36 @@ Deno.test(
   },
 );
 
+// If `upgradeHttpRaw` is invoked on a request that doesn't contain
+// upgrade headers, it should throw an `upgrade unavailable` error and
+// not flag the request as upgraded. Regression test for #27106.
+Deno.test(
+  { permissions: { net: true } },
+  async function httpUpgradeRawUnavailable() {
+    // Spin up a basic HTTP server using `Deno.serve` and immediately invoke
+    // `upgradeHttpRaw` on an incoming request that has no upgrade headers,
+    // expecting an `upgrade unavailable` error.
+    // deno-lint-ignore no-explicit-any
+    const internals = (Deno as any)[(Deno as any).internal];
+    const server = Deno.serve({ port: 0 }, (req) => {
+      assertThrows(
+        () => {
+          internals.upgradeHttpRaw(req);
+        },
+        Error,
+        "upgrade unavailable",
+      );
+      return new Response("ok");
+    });
+    // Trigger the server once.
+    const { port } = server.addr as Deno.NetAddr;
+    const resp = await fetch(`http://127.0.0.1:${port}/`);
+    await resp.text();
+    server.shutdown();
+    await server.finished;
+  },
+);
+
 Deno.test(
   { permissions: { net: true } },
   async function httpServerStreamResponse() {
