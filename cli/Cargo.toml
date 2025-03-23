@@ -152,7 +152,7 @@ rand = { workspace = true, features = ["small_rng"] }
 regex.workspace = true
 ring.workspace = true
 rustc-hash.workspace = true
-rustyline.workspace = true
+rustyline = { workspace = true, features = ["signal-hook"] }
 rustyline-derive.workspace = true
 serde.workspace = true
 serde_repr.workspace = true

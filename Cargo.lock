@@ -5265,9 +5265,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.21"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 dependencies = [
  "serde",
 ]
@@ -7137,6 +7137,7 @@ dependencies = [
  "memchr",
  "nix",
  "radix_trie",
+ "signal-hook",
  "unicode-segmentation",
  "unicode-width 0.1.13",
  "utf8parse",
