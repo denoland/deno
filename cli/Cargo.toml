@@ -2,7 +2,7 @@
 
 [package]
 name = "deno"
-version = "2.2.3"
+version = "2.2.5"
 authors.workspace = true
 default-run = "deno"
 edition.workspace = true
@@ -135,7 +135,7 @@ log = { workspace = true, features = ["serde"] }
 lsp-types.workspace = true
 malva.workspace = true
 markup_fmt.workspace = true
-memmem.workspace = true
+memchr.workspace = true
 notify.workspace = true
 once_cell.workspace = true
 open.workspace = true

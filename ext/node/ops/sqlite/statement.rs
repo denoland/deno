@@ -8,7 +8,7 @@ use deno_core::op2;
 use deno_core::v8;
 use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::GarbageCollected;
-use libsqlite3_sys as ffi;
+use rusqlite::ffi;
 use serde::Serialize;
 
 use super::SqliteError;
@@ -142,7 +142,17 @@ impl StatementSync {
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
             v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            let db = self.db.borrow();
+            let db = db.as_ref().ok_or(SqliteError::InUse)?;
+            let handle = db.handle();
+
+            return SqliteError::create_enhanced_error::<
+              v8::Local<'a, v8::Value>,
+            >(
+              ffi::SQLITE_TOOBIG,
+              &SqliteError::NumberTooLarge(index, value).to_string(),
+              Some(handle),
+            );
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -265,16 +275,33 @@ impl StatementSync {
       let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
       let (as_int, lossless) = value.i64_value();
       if !lossless {
-        return Err(SqliteError::FailedBind(
-          "BigInt value is too large to bind",
-        ));
+        let db = self.db.borrow();
+        let db = db.as_ref().ok_or(SqliteError::InUse)?;
+        // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+        let handle = unsafe { db.handle() };
+
+        return SqliteError::create_enhanced_error(
+          ffi::SQLITE_TOOBIG,
+          &SqliteError::FailedBind("BigInt value is too large to bind")
+            .to_string(),
+          Some(handle),
+        );
       }
 
       // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
       // as it lives as long as the StatementSync instance.
       unsafe { ffi::sqlite3_bind_int64(raw, index, as_int) }
     } else {
-      return Err(SqliteError::FailedBind("Unsupported type"));
+      let db = self.db.borrow();
+      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+      let handle = unsafe { db.handle() };
+
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISMATCH,
+        &SqliteError::FailedBind("Unsupported type").to_string(),
+        Some(handle),
+      );
     };
 
     self.check_error_code(r)
@@ -284,6 +311,8 @@ impl StatementSync {
     if r != ffi::SQLITE_OK {
       let db = self.db.borrow();
       let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+      let handle = unsafe { db.handle() };
 
       // SAFETY: lifetime of the connection is guaranteed by reference
       // counting.
@@ -294,7 +323,7 @@ impl StatementSync {
         let err_str = unsafe { std::ffi::CStr::from_ptr(err_str) }
           .to_string_lossy()
           .into_owned();
-        return Err(SqliteError::SqliteSysError(err_str));
+        return SqliteError::create_enhanced_error(r, &err_str, Some(handle));
       }
     }
 
@@ -337,7 +366,17 @@ impl StatementSync {
 
             let e = bare_named_params.insert(bare_name, i);
             if e.is_some() {
-              return Err(SqliteError::FailedBind("Duplicate named parameter"));
+              let db = self.db.borrow();
+              let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+              let handle = unsafe { db.handle() };
+
+              return SqliteError::create_enhanced_error(
+                ffi::SQLITE_ERROR,
+                &SqliteError::FailedBind("Duplicate named parameter")
+                  .to_string(),
+                Some(handle),
+              );
             }
           }
         }
@@ -359,7 +398,17 @@ impl StatementSync {
             }
 
             if r == 0 {
-              return Err(SqliteError::FailedBind("Named parameter not found"));
+              let db = self.db.borrow();
+              let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+              let handle = unsafe { db.handle() };
+
+              return SqliteError::create_enhanced_error(
+                ffi::SQLITE_RANGE,
+                &SqliteError::FailedBind("Named parameter not found")
+                  .to_string(),
+                Some(handle),
+              );
             }
           }
 
@@ -449,9 +498,11 @@ impl StatementSync {
 
     self.bind_params(scope, params)?;
 
-    let _reset = ResetGuard(self);
+    let reset = ResetGuard(self);
 
     self.step()?;
+    // Reset to return correct change metadata.
+    drop(reset);
 
     Ok(RunStatementResult {
       last_insert_rowid: db.last_insert_rowid(),
@@ -651,7 +702,15 @@ impl StatementSync {
     unsafe {
       let raw = ffi::sqlite3_expanded_sql(self.inner);
       if raw.is_null() {
-        return Err(SqliteError::InvalidExpandedSql);
+        let db = self.db.borrow();
+        let db = db.as_ref().ok_or(SqliteError::InUse)?;
+        let handle = db.handle();
+
+        return SqliteError::create_enhanced_error(
+          ffi::SQLITE_ERROR,
+          &SqliteError::InvalidExpandedSql.to_string(),
+          Some(handle),
+        );
       }
       let sql = std::ffi::CStr::from_ptr(raw as _)
         .to_string_lossy()

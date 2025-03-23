@@ -597,6 +597,8 @@ pub fn cover_files(
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Css
+      | MediaType::Html
+      | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs

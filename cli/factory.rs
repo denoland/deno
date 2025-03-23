@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -49,6 +51,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
@@ -94,6 +97,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmResolutionInitializer;
+use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
@@ -341,6 +345,7 @@ struct CliFactoryServices {
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
   workspace_external_import_map_loader:
     Deferred<Arc<WorkspaceExternalImportMapLoader>>,
+  workspace_npm_patch_packages: Deferred<Arc<WorkspaceNpmPatchPackages>>,
 }
 
 #[derive(Debug, Default)]
@@ -640,6 +645,7 @@ impl CliFactory {
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
+          self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -666,8 +672,28 @@ impl CliFactory {
         self.npm_registry_info_provider()?.clone(),
         self.npm_resolution()?.clone(),
         cli_options.maybe_lockfile().cloned(),
+        self.workspace_npm_patch_packages()?.clone(),
       )))
     })
+  }
+
+  fn workspace_npm_patch_packages(
+    &self,
+  ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
+    self
+      .services
+      .workspace_npm_patch_packages
+      .get_or_try_init(|| {
+        let cli_options = self.cli_options()?;
+        let npm_packages = Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          cli_options.workspace().as_ref(),
+        ));
+        if !npm_packages.0.is_empty() && !matches!(self.workspace_factory()?.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
+          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+        } else {
+          Ok(npm_packages)
+        }
+      })
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
@@ -697,7 +723,15 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
-          conditions_from_resolution_mode: Default::default(),
+          node_resolver_options: NodeResolverOptions {
+            conditions_from_resolution_mode: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
@@ -1272,7 +1306,8 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      otel_config: self.cli_options()?.otel_config(),
+      otel_config: cli_options.otel_config(),
+      no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     })
   }

@@ -4,7 +4,9 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::error::Error;
+use std::future::pending;
 use std::future::Future;
+use std::future::Pending;
 use std::io;
 use std::io::Write;
 use std::mem::replace;
@@ -13,6 +15,7 @@ use std::pin::pin;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 
@@ -24,14 +27,11 @@ use base64::Engine;
 use cache_control::CacheControl;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::channel::oneshot;
-use deno_core::futures::future::pending;
 use deno_core::futures::future::select;
 use deno_core::futures::future::Either;
-use deno_core::futures::future::Pending;
 use deno_core::futures::future::RemoteHandle;
 use deno_core::futures::future::Shared;
 use deno_core::futures::never::Never;
-use deno_core::futures::ready;
 use deno_core::futures::stream::Peekable;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
@@ -131,6 +131,9 @@ pub struct Options {
   /// If `None`, the default configuration provided by hyper will be used. Note
   /// that the default configuration is subject to change in future versions.
   pub http1_builder_hook: Option<fn(http1::Builder) -> http1::Builder>,
+
+  /// If `false`, the server will abort the request when the response is dropped.
+  pub no_legacy_abort: bool,
 }
 
 #[cfg(not(feature = "default_property_extractor"))]
