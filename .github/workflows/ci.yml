@@ -437,6 +437,16 @@ jobs:
       - name: Check deno binary (in sysroot)
         if: '!(matrix.skip) && (matrix.job == ''test'' && matrix.use_sysroot)'
         run: 'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version'
+      - name: Generate symcache
+        if: |-
+          !(matrix.skip) && ((matrix.job == 'test' || matrix.job == 'bench') &&
+          matrix.profile == 'release' && (matrix.use_sysroot ||
+          github.repository == 'denoland/deno'))
+        run: |-
+          target/release/deno -A tools/release/create_symcache.ts ./deno.symcache
+          du -h target/release/deno.symcache
+        env:
+          NO_COLOR: 1
       - name: Upload PR artifact (linux)
         if: |-
           !(matrix.skip) && (matrix.job == 'test' &&

@@ -753,6 +753,21 @@ const ci = {
             'sudo chroot /sysroot "$(pwd)/target/${{ matrix.profile }}/deno" --version',
         },
         {
+          name: "Generate symcache",
+          if: [
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "github.repository == 'denoland/deno')",
+          ].join("\n"),
+          run: [
+            "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
+            "du -h target/release/deno.symcache",
+          ].join("\n"),
+          env: {
+            NO_COLOR: 1,
+          },
+        },
+        {
           name: "Upload PR artifact (linux)",
           if: [
             "matrix.job == 'test' &&",
