@@ -275,8 +275,8 @@ rustls = { version = "0.23.11", default-features = false, features = ["logging",
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.3.0"
 rustls-webpki = "0.102"
-rustyline = "=13.0.0"
-rustyline-derive = "=0.7.0"
+rustyline = { version = "=15.0.0", features = ["buffer-redux", "signal-hook"] }
+rustyline-derive = "=0.9.0"
 saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
@@ -358,7 +358,7 @@ quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix
-nix = "=0.27.1"
+nix = "=0.29.0"
 
 # windows deps
 junction = "=1.2.0"

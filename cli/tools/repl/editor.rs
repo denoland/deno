@@ -17,6 +17,7 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use rustyline::completion::Completer;
 use rustyline::error::ReadlineError;
+use rustyline::highlight::CmdKind;
 use rustyline::highlight::Highlighter;
 use rustyline::validate::ValidationContext;
 use rustyline::validate::ValidationResult;
@@ -342,7 +343,7 @@ impl Highlighter for EditorHelper {
     }
   }
 
-  fn highlight_char(&self, line: &str, _: usize, _: bool) -> bool {
+  fn highlight_char(&self, line: &str, _: usize, _: CmdKind) -> bool {
     !line.is_empty()
   }
 
