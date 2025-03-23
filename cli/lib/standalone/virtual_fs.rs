@@ -724,16 +724,13 @@ impl VfsBuilder {
 
     #[allow(clippy::disallowed_methods)]
     let file_metadata = path.metadata().ok();
-    let file_mtime = match file_metadata {
-      Some(metadata) => match metadata.modified().ok() {
-        Some(mtime) => Some(match mtime.duration_since(std::time::UNIX_EPOCH) {
-          Ok(duration) => duration.as_millis(),
-          Err(_) => 0,
-        }),
-        None => None,
-      },
-      None => None,
-    };
+    let file_mtime = file_metadata.and_then(|metadata| {
+      metadata.modified().ok().map(|mtime| {
+        mtime
+          .duration_since(std::time::UNIX_EPOCH)
+          .map_or(0, |duration| duration.as_millis())
+      })
+    });
 
     dir.entries.insert_or_modify(
       &name,
