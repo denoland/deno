@@ -8,7 +8,6 @@ mod timers;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use blob::BlobError;
@@ -113,6 +112,7 @@ deno_core::extension!(deno_web,
     "15_performance.js",
     "16_image_data.js",
   ],
+  lazy_loaded_esm = [ "webtransport.js" ],
   options = {
     blob_store: Arc<BlobStore>,
     maybe_location: Option<Url>,
@@ -192,7 +192,7 @@ fn op_base64_btoa(#[serde] s: ByteString) -> String {
 
 /// See <https://infra.spec.whatwg.org/#forgiving-base64>
 #[inline]
-fn forgiving_base64_encode(s: &[u8]) -> String {
+pub fn forgiving_base64_encode(s: &[u8]) -> String {
   base64_simd::STANDARD.encode_to_string(s)
 }
 
@@ -356,6 +356,7 @@ struct TextDecoderResource {
 impl deno_core::GarbageCollected for TextDecoderResource {}
 
 #[op2(fast(op_encoding_encode_into_fast))]
+#[allow(deprecated)]
 fn op_encoding_encode_into(
   scope: &mut v8::HandleScope,
   input: v8::Local<v8::Value>,
@@ -413,10 +414,6 @@ fn op_encoding_encode_into_fast(
     Cow::Owned(v) => v[..boundary].encode_utf16().count() as u32,
   };
   out_buf[1] = boundary as u32;
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_web.d.ts")
 }
 
 pub struct Location(pub Url);

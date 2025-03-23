@@ -1,9 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::serde_json;
-use deno_core::serde_json::json;
-use deno_core::serde_json::Value;
 use pretty_assertions::assert_eq;
+use serde_json::json;
+use serde_json::Value;
 use test_util as util;
 use test_util::itest;
 use url::Url;
@@ -42,6 +41,7 @@ itest!(require_resolve_url_paths {
   cwd: Some("npm/require_resolve_url/"),
   copy_temp_dir: Some("npm/require_resolve_url/"),
 });
+
 #[test]
 fn parallel_downloading() {
   let (out, _err) = util::run_and_collect_output_with_args(
@@ -395,22 +395,24 @@ fn node_modules_dir_cache() {
 fn ensure_registry_files_local() {
   // ensures the registry files all point at local tarballs
   let registry_dir_path = util::tests_path().join("registry").join("npm");
-  for entry in std::fs::read_dir(&registry_dir_path).unwrap() {
+  for entry in walkdir::WalkDir::new(&registry_dir_path).max_depth(2) {
     let entry = entry.unwrap();
     if entry.metadata().unwrap().is_dir() {
-      let registry_json_path = registry_dir_path
-        .join(entry.file_name())
-        .join("registry.json");
+      let registry_json_path = entry.path().join("registry.json");
 
       if registry_json_path.exists() {
         let file_text = std::fs::read_to_string(&registry_json_path).unwrap();
         if file_text.contains(&format!(
           "https://registry.npmjs.org/{}/-/",
-          entry.file_name().to_string_lossy()
+          entry
+            .path()
+            .strip_prefix(&registry_dir_path)
+            .unwrap()
+            .to_string_lossy()
         )) {
           panic!(
             "file {} contained a reference to the npm registry",
-            registry_json_path
+            registry_json_path.display()
           );
         }
       }

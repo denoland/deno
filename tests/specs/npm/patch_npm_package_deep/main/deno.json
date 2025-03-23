@@ -1,0 +1,6 @@
+{
+  "unstable": ["npm-patch"],
+  "patch": [
+    "../patched"
+  ]
+}

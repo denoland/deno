@@ -158,7 +158,7 @@ Deno.test(function addTest() {
         "version": "0.1.0",
         "exports": "./mod.ts",
         "tasks": {
-          "dev": "deno test --watch mod.ts"
+          "dev": "deno test --watch"
         },
         "license": "MIT",
         "imports": {
@@ -334,6 +334,7 @@ async fn init_npm(name: &str, args: Vec<String>) -> Result<i32, AnyError> {
       script: script_name,
       ..Default::default()
     }),
+    reload: true,
     ..Default::default()
   };
   crate::tools::run::run_script(

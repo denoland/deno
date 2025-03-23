@@ -96,10 +96,6 @@ fn check_unstable(state: &OpState, api_name: &str) {
     .check_or_exit(UNSTABLE_FEATURE_NAME, api_name);
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_net.d.ts")
-}
-
 #[derive(Clone)]
 pub struct DefaultTlsOptions {
   pub root_cert_store_provider: Option<Arc<dyn RootCertStoreProvider>>,
@@ -196,6 +192,8 @@ deno_core::extension!(deno_net,
     quic::op_quic_send_stream_get_id,
     quic::op_quic_send_stream_get_priority,
     quic::op_quic_send_stream_set_priority,
+    quic::webtransport::op_webtransport_accept,
+    quic::webtransport::op_webtransport_connect,
   ],
   esm = [ "01_net.js", "02_tls.js" ],
   lazy_loaded_esm = [ "03_quic.js" ],

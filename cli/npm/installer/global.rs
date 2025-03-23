@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_error::JsErrorBox;
+use deno_lib::util::hash::FastInsecureHasher;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
@@ -17,7 +18,6 @@ use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
 use super::common::NpmPackageFsInstaller;
 use super::PackageCaching;
 use crate::args::LifecycleScriptsConfig;
-use crate::cache::FastInsecureHasher;
 use crate::colors;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
@@ -101,11 +101,11 @@ async fn cache_packages(
 ) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
+    if let Some(dist) = &package.dist {
+      futures_unordered.push(async move {
+        tarball_cache.ensure_package(&package.id.nv, dist).await
+      });
+    }
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error
@@ -137,8 +137,8 @@ impl<'a> GlobalLifecycleScripts<'a> {
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for GlobalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for GlobalLifecycleScripts<'_>
 {
   fn can_run_scripts(&self) -> bool {
     false

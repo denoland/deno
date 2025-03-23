@@ -150,6 +150,7 @@ fn to_narrow_lsp_range(
 /// completion response, which will be valid import completions for the specific
 /// context.
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
 pub async fn get_import_completions(
   specifier: &ModuleSpecifier,
   position: &lsp::Position,

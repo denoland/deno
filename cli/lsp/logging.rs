@@ -162,6 +162,32 @@ macro_rules! lsp_debug {
   )
 }
 
+macro_rules! lsp_tracing_info_span {
+  ($($arg:tt)*) => {{
+    #[cfg(feature = "lsp-tracing")]
+    {
+      ::tracing::info_span!($($arg)*)
+    }
+    #[cfg(not(feature = "lsp-tracing"))]
+    {
+      $crate::lsp::trace::Span {}
+    }
+  }};
+}
+
+macro_rules! lsp_tracing_info {
+    ($($arg:tt)*) => {
+      #[cfg(feature = "lsp-tracing")]
+      {
+        ::tracing::info!($($arg)*);
+      }
+      #[cfg(not(feature = "lsp-tracing"))]
+      {}
+    };
+}
+
 pub(super) use lsp_debug;
 pub(super) use lsp_log;
+pub(super) use lsp_tracing_info;
+pub(super) use lsp_tracing_info_span;
 pub(super) use lsp_warn;

@@ -186,6 +186,17 @@ impl TestNpmRegistry {
       return Some((DENOTEST3_SCOPE_NAME, package_name_with_path));
     }
 
+    let prefix1 = format!("/{}/", "@types");
+    let prefix2 = format!("/{}%2f", "@types");
+    let maybe_package_name_with_path = uri_path
+      .strip_prefix(&prefix1)
+      .or_else(|| uri_path.strip_prefix(&prefix2));
+    if let Some(package_name_with_path) = maybe_package_name_with_path {
+      if package_name_with_path.starts_with("denotest") {
+        return Some(("@types", package_name_with_path));
+      }
+    }
+
     None
   }
 }

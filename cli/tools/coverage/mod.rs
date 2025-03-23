@@ -18,10 +18,12 @@ use deno_config::glob::PathOrPatternSet;
 use deno_core::anyhow::anyhow;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::error::CoreError;
 use deno_core::serde_json;
 use deno_core::sourcemap::SourceMap;
 use deno_core::url::Url;
 use deno_core::LocalInspectorSession;
+use deno_error::JsErrorBox;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use node_resolver::InNpmPackageChecker;
 use regex::Regex;
@@ -53,7 +55,7 @@ pub struct CoverageCollector {
 
 #[async_trait::async_trait(?Send)]
 impl crate::worker::CoverageCollector for CoverageCollector {
-  async fn start_collecting(&mut self) -> Result<(), AnyError> {
+  async fn start_collecting(&mut self) -> Result<(), CoreError> {
     self.enable_debugger().await?;
     self.enable_profiler().await?;
     self
@@ -67,19 +69,20 @@ impl crate::worker::CoverageCollector for CoverageCollector {
     Ok(())
   }
 
-  async fn stop_collecting(&mut self) -> Result<(), AnyError> {
+  async fn stop_collecting(&mut self) -> Result<(), CoreError> {
     fs::create_dir_all(&self.dir)?;
 
     let script_coverages = self.take_precise_coverage().await?.result;
     for script_coverage in script_coverages {
-      // Filter out internal and http/https JS files and eval'd scripts
-      // from being included in coverage reports
-      if script_coverage.url.starts_with("ext:")
+      // Filter out internal and http/https JS files, eval'd scripts,
+      // and scripts with invalid urls from being included in coverage reports
+      if script_coverage.url.is_empty()
+        || script_coverage.url.starts_with("ext:")
         || script_coverage.url.starts_with("[ext:")
         || script_coverage.url.starts_with("http:")
         || script_coverage.url.starts_with("https:")
         || script_coverage.url.starts_with("node:")
-        || script_coverage.url.is_empty()
+        || Url::parse(&script_coverage.url).is_err()
       {
         continue;
       }
@@ -88,7 +91,8 @@ impl crate::worker::CoverageCollector for CoverageCollector {
       let filepath = self.dir.join(filename);
 
       let mut out = BufWriter::new(File::create(&filepath)?);
-      let coverage = serde_json::to_string(&script_coverage)?;
+      let coverage = serde_json::to_string(&script_coverage)
+        .map_err(JsErrorBox::from_err)?;
       let formatted_coverage =
         format_json(&filepath, &coverage, &Default::default())
           .ok()
@@ -111,7 +115,7 @@ impl CoverageCollector {
     Self { dir, session }
   }
 
-  async fn enable_debugger(&mut self) -> Result<(), AnyError> {
+  async fn enable_debugger(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Debugger.enable", None)
@@ -119,7 +123,7 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn enable_profiler(&mut self) -> Result<(), AnyError> {
+  async fn enable_profiler(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Profiler.enable", None)
@@ -127,7 +131,7 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn disable_debugger(&mut self) -> Result<(), AnyError> {
+  async fn disable_debugger(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Debugger.disable", None)
@@ -135,7 +139,7 @@ impl CoverageCollector {
     Ok(())
   }
 
-  async fn disable_profiler(&mut self) -> Result<(), AnyError> {
+  async fn disable_profiler(&mut self) -> Result<(), CoreError> {
     self
       .session
       .post_message::<()>("Profiler.disable", None)
@@ -146,26 +150,28 @@ impl CoverageCollector {
   async fn start_precise_coverage(
     &mut self,
     parameters: cdp::StartPreciseCoverageArgs,
-  ) -> Result<cdp::StartPreciseCoverageResponse, AnyError> {
+  ) -> Result<cdp::StartPreciseCoverageResponse, CoreError> {
     let return_value = self
       .session
       .post_message("Profiler.startPreciseCoverage", Some(parameters))
       .await?;
 
-    let return_object = serde_json::from_value(return_value)?;
+    let return_object =
+      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
 
     Ok(return_object)
   }
 
   async fn take_precise_coverage(
     &mut self,
-  ) -> Result<cdp::TakePreciseCoverageResponse, AnyError> {
+  ) -> Result<cdp::TakePreciseCoverageResponse, CoreError> {
     let return_value = self
       .session
       .post_message::<()>("Profiler.takePreciseCoverage", None)
       .await?;
 
-    let return_object = serde_json::from_value(return_value)?;
+    let return_object =
+      serde_json::from_value(return_value).map_err(JsErrorBox::from_err)?;
 
     Ok(return_object)
   }
@@ -569,15 +575,16 @@ pub fn cover_files(
     )
   };
 
+  let mut file_reports = Vec::with_capacity(script_coverages.len());
+
   for script_coverage in script_coverages {
     let module_specifier = deno_core::resolve_url_or_path(
       &script_coverage.url,
       cli_options.initial_cwd(),
     )?;
 
-    let maybe_file_result = file_fetcher
-      .get_cached_source_or_local(&module_specifier)
-      .map_err(AnyError::from);
+    let maybe_file_result =
+      file_fetcher.get_cached_source_or_local(&module_specifier);
     let file = match maybe_file_result {
       Ok(Some(file)) => TextDecodedFile::decode(file)?,
       Ok(None) => return Err(anyhow!("{}", get_message(&module_specifier))),
@@ -590,6 +597,8 @@ pub fn cover_files(
       MediaType::JavaScript
       | MediaType::Unknown
       | MediaType::Css
+      | MediaType::Html
+      | MediaType::Sql
       | MediaType::Wasm
       | MediaType::Cjs
       | MediaType::Mjs
@@ -603,7 +612,7 @@ pub fn cover_files(
         let module_kind = ModuleKind::from_is_cjs(
           cjs_tracker.is_maybe_cjs(&file.specifier, file.media_type)?,
         );
-        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source) {
+        Some(match emitter.maybe_cached_emit(&file.specifier, module_kind, &file.source)? {
           Some(code) => code,
           None => {
             return Err(anyhow!(
@@ -632,11 +641,11 @@ pub fn cover_files(
     );
 
     if !coverage_report.found_lines.is_empty() {
-      reporter.report(&coverage_report, &original_source)?;
+      file_reports.push((coverage_report, original_source.to_string()));
     }
   }
 
-  reporter.done(&coverage_root);
+  reporter.done(&coverage_root, &file_reports);
 
   Ok(())
 }

@@ -220,7 +220,7 @@ impl<'a> LifecycleScripts<'a> {
         get_package_path,
       );
       let init_cwd = &self.config.initial_cwd;
-      let process_state = crate::npm::managed::npm_process_state(
+      let process_state = deno_lib::npm::npm_process_state(
         snapshot.as_valid_serialized(),
         Some(root_node_modules_dir_path),
       );
@@ -240,7 +240,7 @@ impl<'a> LifecycleScripts<'a> {
       // However, if we concurrently run scripts in the future we will
       // have to have multiple temp files.
       let temp_file_fd =
-        deno_runtime::ops::process::npm_process_state_tempfile(
+        deno_runtime::deno_process::npm_process_state_tempfile(
           process_state.as_bytes(),
         )
         .map_err(LifecycleScriptsError::CreateNpmProcessState)?;
@@ -248,7 +248,7 @@ impl<'a> LifecycleScripts<'a> {
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
       env_vars.insert(
-        deno_runtime::ops::process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
+        deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
           .to_string(),
         (temp_file_fd as usize).to_string(),
       );

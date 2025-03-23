@@ -8,7 +8,6 @@ use deno_ast::MediaType;
 use deno_cache_dir::file_fetcher::CacheSetting;
 use deno_cache_dir::file_fetcher::FetchNoFollowErrorKind;
 use deno_cache_dir::file_fetcher::FileOrRedirect;
-use deno_core::futures;
 use deno_core::futures::FutureExt;
 use deno_core::ModuleSpecifier;
 use deno_graph::source::CacheInfo;
@@ -30,7 +29,6 @@ mod cache_db;
 mod caches;
 mod check;
 mod code_cache;
-mod common;
 mod deno_dir;
 mod disk_cache;
 mod emit;
@@ -44,7 +42,6 @@ pub use cache_db::CacheDBHash;
 pub use caches::Caches;
 pub use check::TypeCheckCache;
 pub use code_cache::CodeCache;
-pub use common::FastInsecureHasher;
 /// Permissions used to save a file in the disk caches.
 pub use deno_cache_dir::CACHE_PERM;
 pub use deno_dir::DenoDir;
@@ -59,7 +56,6 @@ pub use parsed_source::LazyGraphSourceParser;
 pub use parsed_source::ParsedSourceCache;
 
 pub type GlobalHttpCache = deno_cache_dir::GlobalHttpCache<CliSys>;
-pub type LocalHttpCache = deno_cache_dir::LocalHttpCache<CliSys>;
 pub type LocalLspHttpCache = deno_cache_dir::LocalLspHttpCache<CliSys>;
 pub use deno_cache_dir::HttpCache;
 use deno_error::JsErrorBox;
@@ -122,11 +118,7 @@ impl FetchCacher {
     } else if specifier.scheme() == "file" {
       specifier.to_file_path().ok()
     } else {
-      #[allow(deprecated)]
-      self
-        .global_http_cache
-        .get_global_cache_filepath(specifier)
-        .ok()
+      self.global_http_cache.local_path_for_url(specifier).ok()
     }
   }
 }
@@ -165,7 +157,7 @@ impl Loader for FetchCacher {
         &self.sys, specifier,
       );
       if self.in_npm_pkg_checker.in_npm_package(&specifier) {
-        return Box::pin(futures::future::ready(Ok(Some(
+        return Box::pin(std::future::ready(Ok(Some(
           LoadResponse::External { specifier },
         ))));
       }
@@ -177,11 +169,9 @@ impl Loader for FetchCacher {
     {
       // mark non-JSR remote modules as external so we don't need --allow-import
       // permissions as these will error out later when publishing
-      return Box::pin(futures::future::ready(Ok(Some(
-        LoadResponse::External {
-          specifier: specifier.clone(),
-        },
-      ))));
+      return Box::pin(std::future::ready(Ok(Some(LoadResponse::External {
+        specifier: specifier.clone(),
+      }))));
     }
 
     let file_fetcher = self.file_fetcher.clone();

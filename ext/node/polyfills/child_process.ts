@@ -53,7 +53,7 @@ import {
   convertToValidSignal,
   kEmptyObject,
 } from "ext:deno_node/internal/util.mjs";
-import { kNeedsNpmProcessState } from "ext:runtime/40_process.js";
+import { kNeedsNpmProcessState } from "ext:deno_process/40_process.js";
 
 const MAX_BUFFER = 1024 * 1024;
 

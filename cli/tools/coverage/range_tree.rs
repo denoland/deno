@@ -35,7 +35,7 @@ pub struct RangeTree<'a> {
   pub children: Vec<&'a mut RangeTree<'a>>,
 }
 
-impl<'rt> RangeTree<'rt> {
+impl RangeTree<'_> {
   pub fn new<'a>(
     start: usize,
     end: usize,

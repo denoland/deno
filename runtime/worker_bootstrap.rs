@@ -102,10 +102,6 @@ pub struct BootstrapOptions {
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
-  pub is_stdout_tty: bool,
-  pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
@@ -116,6 +112,7 @@ pub struct BootstrapOptions {
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub mode: WorkerExecutionMode,
+  pub no_legacy_abort: bool,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
@@ -129,6 +126,8 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
+    // this version is not correct as its the version of deno_runtime
+    // and the implementor should supply a user agent that makes sense
     let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
@@ -136,9 +135,6 @@ impl Default for BootstrapOptions {
       deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
-      no_color: !colors::use_color(),
-      is_stdout_tty: deno_terminal::is_stdout_tty(),
-      is_stderr_tty: deno_terminal::is_stderr_tty(),
       color_level: colors::get_color_level(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
@@ -153,6 +149,7 @@ impl Default for BootstrapOptions {
       node_debug: None,
       node_ipc_fd: None,
       mode: WorkerExecutionMode::None,
+      no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
       otel_config: Default::default(),

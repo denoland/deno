@@ -4,7 +4,7 @@
 /// <reference path="../../core/internal.d.ts" />
 /// <reference path="../../core/lib.deno_core.d.ts" />
 /// <reference path="../web/internal.d.ts" />
-/// <reference path="../web/lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -395,6 +395,10 @@ const ImageTypePatternTable = [
 
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#image-type-pattern-matching-algorithm
+ * NOTE: Some browsers have implementation-defined image formats.
+ * For example, The AVIF image format is supported by all browsers today.
+ * However, the standardization seems to have hard going.
+ * See: https://github.com/whatwg/mimesniff/issues/143
  * @param {Uint8Array} input
  * @returns {string | undefined}
  */

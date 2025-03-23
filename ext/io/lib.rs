@@ -884,7 +884,7 @@ impl crate::fs::File for StdFileResourceInner {
       if exclusive {
         file.lock_exclusive()?;
       } else {
-        file.lock_shared()?;
+        fs3::FileExt::lock_shared(file)?;
       }
       Ok(())
     })
@@ -895,7 +895,7 @@ impl crate::fs::File for StdFileResourceInner {
         if exclusive {
           file.lock_exclusive()?;
         } else {
-          file.lock_shared()?;
+          fs3::FileExt::lock_shared(file)?;
         }
         Ok(())
       })
@@ -903,11 +903,11 @@ impl crate::fs::File for StdFileResourceInner {
   }
 
   fn unlock_sync(self: Rc<Self>) -> FsResult<()> {
-    self.with_sync(|file| Ok(file.unlock()?))
+    self.with_sync(|file| Ok(fs3::FileExt::unlock(file)?))
   }
   async fn unlock_async(self: Rc<Self>) -> FsResult<()> {
     self
-      .with_inner_blocking_task(|file| Ok(file.unlock()?))
+      .with_inner_blocking_task(|file| Ok(fs3::FileExt::unlock(file)?))
       .await
   }
 

@@ -1,6 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::convert::Infallible;
+use std::future::Future;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV6;
@@ -8,7 +9,6 @@ use std::path::PathBuf;
 
 use bytes::Bytes;
 use futures::future::LocalBoxFuture;
-use futures::Future;
 use futures::FutureExt;
 use http_body_util::combinators::UnsyncBoxBody;
 use hyper::body::Incoming;
@@ -69,7 +69,7 @@ fn run_npm_server<F, S>(
   port: u16,
   error_msg: &'static str,
   handler: F,
-) -> Vec<LocalBoxFuture<()>>
+) -> Vec<LocalBoxFuture<'static, ()>>
 where
   F: Fn(Request<hyper::body::Incoming>) -> S + Copy + 'static,
   S: Future<Output = HandlerOutput> + 'static,
@@ -301,9 +301,12 @@ fn replace_default_npm_registry_url_with_test_npm_registry_url(
   npm_registry: &npm::TestNpmRegistry,
   package_name: &str,
 ) -> String {
+  let package_name = percent_encoding::percent_decode_str(package_name)
+    .decode_utf8()
+    .unwrap();
   text.replace(
     &format!("https://registry.npmjs.org/{}/-/", package_name),
-    &npm_registry.package_url(package_name),
+    &npm_registry.package_url(&package_name),
   )
 }
 

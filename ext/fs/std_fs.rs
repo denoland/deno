@@ -161,17 +161,17 @@ impl FileSystem for RealFs {
   }
 
   fn stat_sync(&self, path: &Path) -> FsResult<FsStat> {
-    stat(path).map(Into::into)
+    stat(path)
   }
   async fn stat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || stat(&path)).await?.map(Into::into)
+    spawn_blocking(move || stat(&path)).await?
   }
 
   fn lstat_sync(&self, path: &Path) -> FsResult<FsStat> {
-    lstat(path).map(Into::into)
+    lstat(path)
   }
   async fn lstat_async(&self, path: PathBuf) -> FsResult<FsStat> {
-    spawn_blocking(move || lstat(&path)).await?.map(Into::into)
+    spawn_blocking(move || lstat(&path)).await?
   }
 
   fn exists_sync(&self, path: &Path) -> bool {
@@ -404,7 +404,6 @@ impl FileSystem for RealFs {
       Ok::<_, FsError>(Cow::Owned(buf))
     })
     .await?
-    .map_err(Into::into)
   }
 }
 
@@ -1063,11 +1062,22 @@ fn open_options(options: OpenOptions) -> fs::OpenOptions {
 }
 
 #[inline(always)]
-fn open_with_access_check(
+pub fn open_with_access_check(
   options: OpenOptions,
   path: &Path,
   access_check: Option<AccessCheckCb>,
 ) -> FsResult<std::fs::File> {
+  let (path, opts) =
+    open_options_with_access_check(options, path, access_check)?;
+  Ok(opts.open(path)?)
+}
+
+#[inline(always)]
+pub fn open_options_with_access_check(
+  options: OpenOptions,
+  path: &Path,
+  access_check: Option<AccessCheckCb>,
+) -> FsResult<(PathBuf, fs::OpenOptions)> {
   if let Some(access_check) = access_check {
     let path_bytes = path.as_os_str().as_encoded_bytes();
     let is_windows_device_path = cfg!(windows)
@@ -1126,7 +1136,7 @@ fn open_with_access_check(
       }
     }
 
-    Ok(opts.open(&path)?)
+    Ok((path, opts))
   } else {
     // for unix
     #[allow(unused_mut)]
@@ -1137,6 +1147,6 @@ fn open_with_access_check(
       use std::os::windows::fs::OpenOptionsExt;
       opts.custom_flags(winapi::um::winbase::FILE_FLAG_BACKUP_SEMANTICS);
     }
-    Ok(opts.open(path)?)
+    Ok((path.to_path_buf(), opts))
   }
 }

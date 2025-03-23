@@ -59,7 +59,8 @@ pub async fn format(
   fmt_flags: FmtFlags,
 ) -> Result<(), AnyError> {
   if fmt_flags.is_stdin() {
-    let cli_options = CliOptions::from_flags(&CliSys::default(), flags)?;
+    let factory = CliFactory::from_flags(flags);
+    let cli_options = factory.cli_options()?;
     let start_dir = &cli_options.start_dir;
     let fmt_config = start_dir
       .to_fmt_config(FilePatterns::new_with_base(start_dir.dir_path()))?;
@@ -1179,10 +1180,13 @@ fn read_file_contents(file_path: &Path) -> Result<FileContents, AnyError> {
     .with_context(|| format!("Error reading {}", file_path.display()))?;
   let had_bom = file_bytes.starts_with(&[0xEF, 0xBB, 0xBF]);
   // will have the BOM stripped
-  let text = deno_graph::source::decode_owned_file_source(file_bytes)
-    .with_context(|| {
-      anyhow!("{} is not a valid UTF-8 file", file_path.display())
-    })?;
+  let charset =
+    deno_media_type::encoding::detect_charset_local_file(&file_bytes);
+  let text =
+    deno_media_type::encoding::decode_owned_source(charset, file_bytes)
+      .with_context(|| {
+        anyhow!("{} is not a valid UTF-8 file", file_path.display())
+      })?;
 
   Ok(FileContents { text, had_bom })
 }

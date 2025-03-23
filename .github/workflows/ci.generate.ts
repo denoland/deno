@@ -5,7 +5,7 @@ import { stringify } from "jsr:@std/yaml@^0.221/stringify";
 // Bump this number when you want to purge the cache.
 // Note: the tools/release/01_bump_crate_versions.ts script will update this version
 // automatically via regex, so ensure that this line maintains this format.
-const cacheVersion = 33;
+const cacheVersion = 46;
 
 const ubuntuX86Runner = "ubuntu-24.04";
 const ubuntuX86XlRunner = "ubuntu-24.04-xl";
@@ -14,7 +14,7 @@ const windowsX86Runner = "windows-2022";
 const windowsX86XlRunner = "windows-2022-xl";
 const macosX86Runner = "macos-13";
 const macosArmRunner = "macos-14";
-const selfHostedMacosArmRunner = "self-hosted";
+const selfHostedMacosArmRunner = "ghcr.io/cirruslabs/macos-runner:sonoma";
 
 const Runners = {
   linuxX86: {
@@ -41,8 +41,14 @@ const Runners = {
   macosArm: {
     os: "macos",
     arch: "aarch64",
+    runner: macosArmRunner,
+  },
+  macosArmSelfHosted: {
+    os: "macos",
+    arch: "aarch64",
+    // Actually use self-hosted runner only in denoland/deno on `main` branch and for tags (release) builds.
     runner:
-      `\${{ github.repository == 'denoland/deno' && startsWith(github.ref, 'refs/tags/') && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
+      `\${{ github.repository == 'denoland/deno' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')) && '${selfHostedMacosArmRunner}' || '${macosArmRunner}' }}`,
   },
   windowsX86: {
     os: "windows",
@@ -96,6 +102,8 @@ ${installPkgsCommand} || echo 'Failed. Trying again.' && sudo apt-get clean && s
 # Fix alternatives
 (yes '' | sudo update-alternatives --force --all) > /dev/null 2> /dev/null || true
 
+clang-${llvmVersion} -c -o /tmp/memfd_create_shim.o tools/memfd_create_shim.c -fPIC
+
 echo "Decompressing sysroot..."
 wget -q https://github.com/denoland/deno_sysroot_build/releases/download/sysroot-20241030/sysroot-\`uname -m\`.tar.xz -O /tmp/sysroot.tar.xz
 cd /
@@ -124,9 +132,7 @@ cat /sysroot/.env
 #      to build because the object formats are not compatible.
 echo "
 CARGO_PROFILE_BENCH_INCREMENTAL=false
-CARGO_PROFILE_BENCH_LTO=false
 CARGO_PROFILE_RELEASE_INCREMENTAL=false
-CARGO_PROFILE_RELEASE_LTO=false
 RUSTFLAGS<<__1
   -C linker-plugin-lto=true
   -C linker=clang-${llvmVersion}
@@ -135,6 +141,7 @@ RUSTFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  -C link-arg=/tmp/memfd_create_shim.o
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
@@ -146,11 +153,12 @@ RUSTDOCFLAGS<<__1
   -C link-arg=-Wl,--allow-shlib-undefined
   -C link-arg=-Wl,--thinlto-cache-dir=$(pwd)/target/release/lto-cache
   -C link-arg=-Wl,--thinlto-cache-policy,cache_size_bytes=700m
+  -C link-arg=/tmp/memfd_create_shim.o
   --cfg tokio_unstable
   $RUSTFLAGS
 __1
 CC=/usr/bin/clang-${llvmVersion}
-CFLAGS=-flto=thin $CFLAGS
+CFLAGS=$CFLAGS
 " > $GITHUB_ENV`,
 };
 
@@ -384,7 +392,7 @@ const ci = {
             job: "test",
             profile: "debug",
           }, {
-            ...Runners.macosArm,
+            ...Runners.macosArmSelfHosted,
             job: "test",
             profile: "release",
             skip_pr: true,
@@ -486,7 +494,7 @@ const ci = {
         },
         {
           name: "Cache Cargo home",
-          uses: "actions/cache@v4",
+          uses: "cirruslabs/cache@v4",
           with: {
             // See https://doc.rust-lang.org/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
             // Note that with the new sparse registry format, we no longer have to cache a `.git` dir
@@ -649,6 +657,14 @@ const ci = {
           },
         },
         {
+          name: "Set up playwright cache",
+          uses: "actions/cache@v4",
+          with: {
+            path: "./.ms-playwright",
+            key: "playwright-${{ runner.os }}-${{ runner.arch }}",
+          },
+        },
+        {
           name: "test_format.js",
           if: "matrix.job == 'lint' && matrix.os == 'linux'",
           run:
@@ -682,14 +698,16 @@ const ci = {
             "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
+          name: "Check tracing build",
+          if:
+            "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
+          run: "cargo check -p deno --features=lsp-tracing ",
+          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
+        },
+        {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
-          run: [
-            // output fs space before and after building
-            "df -h",
-            "cargo build --locked --all-targets",
-            "df -h",
-          ].join("\n"),
+          run: "cargo build --locked --all-targets",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         // Uncomment for remote debugging
@@ -1090,6 +1108,26 @@ const ci = {
             path: prCachePath,
             key: prCacheKey,
           },
+        },
+      ]),
+    },
+    wasm: {
+      name: "build wasm32",
+      needs: ["pre_build"],
+      if: "${{ needs.pre_build.outputs.skip_build != 'true' }}",
+      "runs-on": ubuntuX86Runner,
+      "timeout-minutes": 30,
+      steps: skipJobsIfPrAndMarkedSkip([
+        ...cloneRepoStep,
+        installRustStep,
+        {
+          name: "Install wasm target",
+          run: "rustup target add wasm32-unknown-unknown",
+        },
+        {
+          name: "Cargo build",
+          // we want this crate to be wasm compatible
+          run: "cargo build --target wasm32-unknown-unknown -p deno_resolver",
         },
       ]),
     },

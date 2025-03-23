@@ -17,6 +17,7 @@ use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
 use deno_runtime::deno_node::PackageJson;
 use deno_semver::jsr::JsrDepPackageReq;
+use indexmap::IndexMap;
 
 use crate::args::deno_json::import_map_deps;
 use crate::args::DenoSubcommand;
@@ -46,7 +47,7 @@ pub struct Guard<'a, T> {
   guard: MutexGuard<'a, T>,
 }
 
-impl<'a, T> std::ops::Deref for Guard<'a, T> {
+impl<T> std::ops::Deref for Guard<'_, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
@@ -54,18 +55,20 @@ impl<'a, T> std::ops::Deref for Guard<'a, T> {
   }
 }
 
-impl<'a, T> std::ops::DerefMut for Guard<'a, T> {
+impl<T> std::ops::DerefMut for Guard<'_, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.guard
   }
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[error("Failed writing lockfile")]
-#[class(inherit)]
-struct AtomicWriteFileWithRetriesError {
-  #[source]
-  source: std::io::Error,
+pub enum AtomicWriteFileWithRetriesError {
+  #[class(inherit)]
+  #[error(transparent)]
+  Changed(JsErrorBox),
+  #[class(inherit)]
+  #[error("Failed writing lockfile")]
+  Io(#[source] std::io::Error),
 }
 
 impl CliLockfile {
@@ -87,12 +90,16 @@ impl CliLockfile {
     self.lockfile.lock().overwrite
   }
 
-  pub fn write_if_changed(&self) -> Result<(), JsErrorBox> {
+  pub fn write_if_changed(
+    &self,
+  ) -> Result<(), AtomicWriteFileWithRetriesError> {
     if self.skip_write {
       return Ok(());
     }
 
-    self.error_if_changed()?;
+    self
+      .error_if_changed()
+      .map_err(AtomicWriteFileWithRetriesError::Changed)?;
     let mut lockfile = self.lockfile.lock();
     let Some(bytes) = lockfile.resolve_write_bytes() else {
       return Ok(()); // nothing to do
@@ -105,9 +112,7 @@ impl CliLockfile {
       &bytes,
       cache::CACHE_PERM,
     )
-    .map_err(|source| {
-      JsErrorBox::from_err(AtomicWriteFileWithRetriesError { source })
-    })?;
+    .map_err(AtomicWriteFileWithRetriesError::Io)?;
     lockfile.has_content_changed = false;
     Ok(())
   }
@@ -132,6 +137,10 @@ impl CliLockfile {
         .chain(deps.dev_dependencies.values())
         .filter_map(|dep| dep.as_ref().ok())
         .filter_map(|dep| match dep {
+          PackageJsonDepValue::File(_) => {
+            // ignored because this will have its own separate lockfile
+            None
+          }
           PackageJsonDepValue::Req(req) => {
             Some(JsrDepPackageReq::npm(req.clone()))
           }
@@ -228,6 +237,54 @@ impl CliLockfile {
           ))
         })
         .collect(),
+      patches: if workspace.has_unstable("npm-patch") {
+        workspace
+          .patch_pkg_jsons()
+          .filter_map(|pkg_json| {
+            fn collect_deps(
+              deps: Option<&IndexMap<String, String>>,
+            ) -> HashSet<JsrDepPackageReq> {
+              deps
+                .map(|i| {
+                  i.iter()
+                    .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
+                    .filter_map(|dep| match dep {
+                      PackageJsonDepValue::Req(req) => {
+                        Some(JsrDepPackageReq::npm(req.clone()))
+                      }
+                      // not supported
+                      PackageJsonDepValue::File(_)
+                      | PackageJsonDepValue::Workspace(_) => None,
+                    })
+                    .collect()
+                })
+                .unwrap_or_default()
+            }
+
+            let key = format!(
+              "npm:{}@{}",
+              pkg_json.name.as_ref()?,
+              pkg_json.version.as_ref()?
+            );
+            // anything that affects npm resolution should go here in order to bust
+            // the npm resolution when it changes
+            let value = deno_lockfile::LockfilePatchContent {
+              dependencies: collect_deps(pkg_json.dependencies.as_ref()),
+              peer_dependencies: collect_deps(
+                pkg_json.peer_dependencies.as_ref(),
+              ),
+              peer_dependencies_meta: pkg_json
+                .peer_dependencies_meta
+                .clone()
+                .and_then(|v| serde_json::from_value(v).ok())
+                .unwrap_or_default(),
+            };
+            Some((key, value))
+          })
+          .collect()
+      } else {
+        Default::default()
+      },
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,

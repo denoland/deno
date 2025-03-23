@@ -61,7 +61,7 @@ import {
   kExtraStdio,
   kIpc,
   kNeedsNpmProcessState,
-} from "ext:runtime/40_process.js";
+} from "ext:deno_process/40_process.js";
 
 export function mapValues<T, O>(
   record: Readonly<Record<string, T>>,

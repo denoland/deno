@@ -18,6 +18,8 @@ pub use deno_net;
 pub use deno_node;
 pub use deno_os;
 pub use deno_permissions;
+pub use deno_process;
+pub use deno_telemetry;
 pub use deno_terminal::colors;
 pub use deno_tls;
 pub use deno_url;
@@ -34,8 +36,12 @@ pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
+#[cfg(feature = "snapshot")]
 pub mod snapshot;
+pub mod snapshot_info;
 pub mod tokio_util;
+#[cfg(feature = "transpile")]
+pub mod transpile;
 pub mod web_worker;
 pub mod worker;
 
@@ -101,6 +107,12 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     id: 7,
   },
   UnstableGranularFlag {
+    name: "no-legacy-abort",
+    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    show_in_help: true,
+    id: 13,
+  },
+  UnstableGranularFlag {
     name: "node-globals",
     help_text: "Expose Node globals everywhere",
     show_in_help: true,
@@ -114,7 +126,7 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
   },
   // TODO(bartlomieju): consider removing it
   UnstableGranularFlag {
-    name: ops::process::UNSTABLE_FEATURE_NAME,
+    name: deno_process::UNSTABLE_FEATURE_NAME,
     help_text: "Enable unstable process APIs",
     show_in_help: false,
     id: 10,

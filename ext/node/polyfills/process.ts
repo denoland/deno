@@ -376,139 +376,6 @@ function Process(this: any) {
 }
 Process.prototype = Object.create(EventEmitter.prototype);
 
-/** https://nodejs.org/api/process.html#processrelease */
-Object.defineProperty(Process.prototype, "release", {
-  get() {
-    return {
-      name: "node",
-      sourceUrl:
-        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
-      headersUrl:
-        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
-    };
-  },
-});
-
-/** https://nodejs.org/api/process.html#process_process_arch */
-Object.defineProperty(Process.prototype, "arch", {
-  get() {
-    return arch;
-  },
-});
-
-Object.defineProperty(Process.prototype, "report", {
-  get() {
-    return report;
-  },
-});
-
-Object.defineProperty(Process.prototype, "title", {
-  get() {
-    return "deno";
-  },
-  set(_value) {
-    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
-    // process name will be properly set and visible from other tools anyway.
-    // Might revisit in the future.
-  },
-});
-
-/**
- * https://nodejs.org/api/process.html#process_process_argv
- * Read permissions are required in order to get the executable route
- */
-Process.prototype.argv = argv;
-
-Object.defineProperty(Process.prototype, "argv0", {
-  get() {
-    return argv0;
-  },
-  set(_val) {},
-});
-
-/** https://nodejs.org/api/process.html#process_process_chdir_directory */
-Process.prototype.chdir = chdir;
-
-/** https://nodejs.org/api/process.html#processconfig */
-Process.prototype.config = {
-  target_defaults: {
-    default_configuration: "Release",
-  },
-  variables: {
-    llvm_version: "0.0",
-    enable_lto: "false",
-  },
-};
-
-Process.prototype.cpuUsage = function () {
-  warnNotImplemented("process.cpuUsage()");
-  return {
-    user: 0,
-    system: 0,
-  };
-};
-
-/** https://nodejs.org/api/process.html#process_process_cwd */
-Process.prototype.cwd = cwd;
-
-/**
- * https://nodejs.org/api/process.html#process_process_env
- * Requires env permissions
- */
-Process.prototype.env = env;
-
-/** https://nodejs.org/api/process.html#process_process_execargv */
-Process.prototype.execArgv = execArgv;
-
-/** https://nodejs.org/api/process.html#process_process_exit_code */
-Process.prototype.exit = exit;
-
-/** https://nodejs.org/api/process.html#processabort */
-Process.prototype.abort = abort;
-
-// Undocumented Node API that is used by `signal-exit` which in turn
-// is used by `node-tap`. It was marked for removal a couple of years
-// ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
-Process.prototype.reallyExit = (code: number) => {
-  return Deno.exit(code || 0);
-};
-
-Process.prototype._exiting = _exiting;
-
-/** https://nodejs.org/api/process.html#processexitcode_1 */
-Object.defineProperty(Process.prototype, "exitCode", {
-  get() {
-    return ProcessExitCode;
-  },
-  set(code: number | string | null | undefined) {
-    let parsedCode: number;
-    if (code == null) {
-      parsedCode = 0;
-    } else if (typeof code === "number") {
-      parsedCode = code;
-    } else if (typeof code === "string") {
-      parsedCode = Number(code);
-    } else {
-      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
-    }
-
-    if (!Number.isInteger(parsedCode)) {
-      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
-    }
-
-    denoOs.setExitCode(parsedCode);
-    ProcessExitCode = code;
-  },
-});
-
-// Typed as any to avoid importing "module" module for types
-Process.prototype.mainModule = undefined;
-
-/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
-Process.prototype.nextTick = _nextTick;
-
-Process.prototype.dlopen = dlopen;
-
 /** https://nodejs.org/api/process.html#process_process_events */
 Process.prototype.on = function (
   // deno-lint-ignore no-explicit-any
@@ -612,33 +479,6 @@ Process.prototype.prependListener = function (
   return this;
 };
 
-/** https://nodejs.org/api/process.html#process_process_pid */
-Object.defineProperty(Process.prototype, "pid", {
-  get() {
-    return pid;
-  },
-});
-
-/** https://nodejs.org/api/process.html#processppid */
-Object.defineProperty(Process.prototype, "ppid", {
-  get() {
-    return Deno.ppid;
-  },
-});
-
-/** https://nodejs.org/api/process.html#process_process_platform */
-Object.defineProperty(Process.prototype, "platform", {
-  get() {
-    return platform;
-  },
-});
-
-// https://nodejs.org/api/process.html#processsetsourcemapsenabledval
-Process.prototype.setSourceMapsEnabled = (_val: boolean) => {
-  // This is a no-op in Deno. Source maps are always enabled.
-  // TODO(@satyarohith): support disabling source maps if needed.
-};
-
 Process.prototype.addListener = function (
   // deno-lint-ignore no-explicit-any
   this: any,
@@ -666,6 +506,166 @@ Process.prototype.removeListener = function (
   return this.off(event, listener);
 };
 
+/** https://nodejs.org/api/process.html#process_process */
+// @ts-ignore TS doesn't work well with ES5 classes
+const process = new Process();
+
+/** https://nodejs.org/api/process.html#processrelease */
+Object.defineProperty(process, "release", {
+  get() {
+    return {
+      name: "node",
+      sourceUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}.tar.gz`,
+      headersUrl:
+        `https://nodejs.org/download/release/${version}/node-${version}-headers.tar.gz`,
+    };
+  },
+});
+
+/** https://nodejs.org/api/process.html#process_process_arch */
+Object.defineProperty(process, "arch", {
+  get() {
+    return arch;
+  },
+});
+
+Object.defineProperty(process, "report", {
+  get() {
+    return report;
+  },
+});
+
+Object.defineProperty(process, "title", {
+  get() {
+    return "deno";
+  },
+  set(_value) {
+    // NOTE(bartlomieju): this is a noop. Node.js doesn't guarantee that the
+    // process name will be properly set and visible from other tools anyway.
+    // Might revisit in the future.
+  },
+});
+
+/**
+ * https://nodejs.org/api/process.html#process_process_argv
+ * Read permissions are required in order to get the executable route
+ */
+process.argv = argv;
+
+Object.defineProperty(process, "argv0", {
+  get() {
+    return argv0;
+  },
+  set(_val) {},
+});
+
+/** https://nodejs.org/api/process.html#process_process_chdir_directory */
+process.chdir = chdir;
+
+/** https://nodejs.org/api/process.html#processconfig */
+process.config = {
+  target_defaults: {
+    default_configuration: "Release",
+  },
+  variables: {
+    llvm_version: "0.0",
+    enable_lto: "false",
+  },
+};
+
+process.cpuUsage = function () {
+  return Deno.cpuUsage();
+};
+
+/** https://nodejs.org/api/process.html#process_process_cwd */
+process.cwd = cwd;
+
+/**
+ * https://nodejs.org/api/process.html#process_process_env
+ * Requires env permissions
+ */
+process.env = env;
+
+/** https://nodejs.org/api/process.html#process_process_execargv */
+process.execArgv = execArgv;
+
+/** https://nodejs.org/api/process.html#process_process_exit_code */
+process.exit = exit;
+
+/** https://nodejs.org/api/process.html#processabort */
+process.abort = abort;
+
+// Undocumented Node API that is used by `signal-exit` which in turn
+// is used by `node-tap`. It was marked for removal a couple of years
+// ago. See https://github.com/nodejs/node/blob/6a6b3c54022104cc110ab09044a2a0cecb8988e7/lib/internal/bootstrap/node.js#L172
+process.reallyExit = (code: number) => {
+  return Deno.exit(code || 0);
+};
+
+process._exiting = _exiting;
+
+/** https://nodejs.org/api/process.html#processexitcode_1 */
+Object.defineProperty(process, "exitCode", {
+  get() {
+    return ProcessExitCode;
+  },
+  set(code: number | string | null | undefined) {
+    let parsedCode: number;
+    if (code == null) {
+      parsedCode = 0;
+    } else if (typeof code === "number") {
+      parsedCode = code;
+    } else if (typeof code === "string") {
+      parsedCode = Number(code);
+    } else {
+      throw new ERR_INVALID_ARG_TYPE("code", "number", code);
+    }
+
+    if (!Number.isInteger(parsedCode)) {
+      throw new ERR_OUT_OF_RANGE("code", "an integer", parsedCode);
+    }
+
+    denoOs.setExitCode(parsedCode);
+    ProcessExitCode = code;
+  },
+});
+
+// Typed as any to avoid importing "module" module for types
+process.mainModule = undefined;
+
+/** https://nodejs.org/api/process.html#process_process_nexttick_callback_args */
+process.nextTick = _nextTick;
+
+process.dlopen = dlopen;
+
+/** https://nodejs.org/api/process.html#process_process_pid */
+Object.defineProperty(process, "pid", {
+  get() {
+    return pid;
+  },
+});
+
+/** https://nodejs.org/api/process.html#processppid */
+Object.defineProperty(process, "ppid", {
+  get() {
+    return Deno.ppid;
+  },
+});
+
+/** https://nodejs.org/api/process.html#process_process_platform */
+Object.defineProperty(process, "platform", {
+  get() {
+    return platform;
+  },
+});
+
+// https://nodejs.org/api/process.html#processsetsourcemapsenabledval
+process.setSourceMapsEnabled = (_val: boolean) => {
+  // This is a no-op in Deno. Source maps are always enabled.
+  // TODO(@satyarohith): support disabling source maps if needed.
+};
+
 /**
  * Returns the current high-resolution real time in a [seconds, nanoseconds]
  * tuple.
@@ -679,44 +679,44 @@ Process.prototype.removeListener = function (
  * These times are relative to an arbitrary time in the past, and not related to the time of day and therefore not subject to clock drift. The primary use is for measuring performance between intervals.
  * https://nodejs.org/api/process.html#process_process_hrtime_time
  */
-Process.prototype.hrtime = hrtime;
+process.hrtime = hrtime;
 
 /**
  * @private
  *
  * NodeJS internal, use process.kill instead
  */
-Process.prototype._kill = _kill;
+process._kill = _kill;
 
 /** https://nodejs.org/api/process.html#processkillpid-signal */
-Process.prototype.kill = kill;
+process.kill = kill;
 
-Process.prototype.memoryUsage = memoryUsage;
+process.memoryUsage = memoryUsage;
 
 /** https://nodejs.org/api/process.html#process_process_stderr */
-Process.prototype.stderr = stderr;
+process.stderr = stderr;
 
 /** https://nodejs.org/api/process.html#process_process_stdin */
-Process.prototype.stdin = stdin;
+process.stdin = stdin;
 
 /** https://nodejs.org/api/process.html#process_process_stdout */
-Process.prototype.stdout = stdout;
+process.stdout = stdout;
 
 /** https://nodejs.org/api/process.html#process_process_version */
-Process.prototype.version = version;
+process.version = version;
 
 /** https://nodejs.org/api/process.html#process_process_versions */
-Process.prototype.versions = versions;
+process.versions = versions;
 
 /** https://nodejs.org/api/process.html#process_process_emitwarning_warning_options */
-Process.prototype.emitWarning = emitWarning;
+process.emitWarning = emitWarning;
 
-Process.prototype.binding = (name: BindingName) => {
+process.binding = (name: BindingName) => {
   return getBinding(name);
 };
 
 /** https://nodejs.org/api/process.html#processumaskmask */
-Process.prototype.umask = () => {
+process.umask = () => {
   // Always return the system default umask value.
   // We don't use Deno.umask here because it has a race
   // condition bug.
@@ -725,25 +725,25 @@ Process.prototype.umask = () => {
 };
 
 /** This method is removed on Windows */
-Process.prototype.getgid = getgid;
+process.getgid = getgid;
 
 /** This method is removed on Windows */
-Process.prototype.getuid = getuid;
+process.getuid = getuid;
 
 /** This method is removed on Windows */
-Process.prototype.getegid = getegid;
+process.getegid = getegid;
 
 /** This method is removed on Windows */
-Process.prototype.geteuid = geteuid;
+process.geteuid = geteuid;
 
-Process.prototype.getBuiltinModule = getBuiltinModule;
+process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
-Process.prototype._eval = undefined;
+process._eval = undefined;
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
-Object.defineProperty(Process.prototype, "execPath", {
+Object.defineProperty(process, "execPath", {
   get() {
     return String(execPath);
   },
@@ -753,12 +753,12 @@ Object.defineProperty(Process.prototype, "execPath", {
 });
 
 /** https://nodejs.org/api/process.html#processuptime */
-Process.prototype.uptime = () => {
+process.uptime = () => {
   return Number((performance.now() / 1000).toFixed(9));
 };
 
 /** https://nodejs.org/api/process.html#processallowednodeenvironmentflags */
-Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
+Object.defineProperty(process, "allowedNodeEnvironmentFlags", {
   get() {
     return ALLOWED_FLAGS;
   },
@@ -766,24 +766,17 @@ Object.defineProperty(Process.prototype, "allowedNodeEnvironmentFlags", {
 
 export const allowedNodeEnvironmentFlags = ALLOWED_FLAGS;
 
-Process.prototype.features = { inspector: false };
+process.features = { inspector: false };
 
 // TODO(kt3k): Get the value from --no-deprecation flag.
-Process.prototype.noDeprecation = false;
+process.noDeprecation = false;
 
 if (isWindows) {
-  delete Process.prototype.getgid;
-  delete Process.prototype.getuid;
-  delete Process.prototype.getegid;
-  delete Process.prototype.geteuid;
+  delete process.getgid;
+  delete process.getuid;
+  delete process.getegid;
+  delete process.geteuid;
 }
-
-/** https://nodejs.org/api/process.html#process_process */
-// @ts-ignore TS doesn't work well with ES5 classes
-const process = new Process();
-
-/* Set owned property */
-process.versions = versions;
 
 Object.defineProperty(process, Symbol.toStringTag, {
   enumerable: false,
