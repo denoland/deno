@@ -95,7 +95,6 @@ pub struct Metadata {
   pub unstable_config: UnstableConfig,
   pub otel_config: OtelConfig,
   pub vfs_case_sensitivity: FileSystemCaseSensitivity,
-  pub build_time: Option<u128>, // unit: mill
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

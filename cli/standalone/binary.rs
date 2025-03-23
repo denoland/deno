@@ -702,11 +702,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         npm_lazy_caching: self.cli_options.unstable_npm_lazy_caching(),
       },
       otel_config: self.cli_options.otel_config(),
-      vfs_case_sensitivity: vfs.case_sensitivity,
-      build_time: std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .ok()
-        .map(|x| x.as_millis()),
+      vfs_case_sensitivity: vfs.case_sensitivity
     };
 
     let (data_section_bytes, section_sizes) = serialize_binary_data_section(

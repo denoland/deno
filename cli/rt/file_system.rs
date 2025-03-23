@@ -16,7 +16,6 @@ use std::time::SystemTime;
 use deno_core::BufMutView;
 use deno_core::BufView;
 use deno_core::ResourceHandleFd;
-use deno_lib::standalone::binary::METADATA;
 use deno_lib::standalone::virtual_fs::FileSystemCaseSensitivity;
 use deno_lib::standalone::virtual_fs::OffsetWithLength;
 use deno_lib::standalone::virtual_fs::VfsEntry;
@@ -1232,6 +1231,7 @@ pub struct FileBackedVfsMetadata {
   pub name: String,
   pub file_type: sys_traits::FileType,
   pub len: u64,
+  pub mtime: Option<u128>
 }
 
 impl FileBackedVfsMetadata {
@@ -1248,17 +1248,23 @@ impl FileBackedVfsMetadata {
         VfsEntryRef::File(file) => file.offset.len,
         VfsEntryRef::Symlink(_) => 0,
       },
+      mtime: match vfs_entry {
+        VfsEntryRef::Dir(_) => None,
+        VfsEntryRef::File(file) => file.mtime,
+        VfsEntryRef::Symlink(_) => None,
+      },
     }
   }
   pub fn as_fs_stat(&self) -> FsStat {
+    // to use lower overhead, use mtime instead of all time params
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
       is_symlink: self.file_type == sys_traits::FileType::Symlink,
-      atime: Some(self.get_build_time()),
-      birthtime: Some(self.get_build_time()),
-      mtime: Some(self.get_build_time()),
-      ctime: Some(self.get_build_time()),
+      atime: Some(self.get_mtime()),
+      birthtime: Some(self.get_mtime()),
+      mtime: Some(self.get_mtime()),
+      ctime: Some(self.get_mtime()),
       blksize: 0,
       size: self.len,
       dev: 0,
@@ -1276,13 +1282,11 @@ impl FileBackedVfsMetadata {
     }
   }
 
-  fn get_build_time(&self) -> u64 {
-    let time = match METADATA.get() {
-      Some(metadata) => metadata.build_time.unwrap_or(0),
-      None => 0,
-    };
-
-    time.try_into().unwrap_or_default()
+  /// if `mtime` is `None`, return `0`.
+  /// 
+  /// if `mtime` is greater than `u64::MAX`, return `u64::MAX`.
+  fn get_mtime(&self) -> u64 {
+    self.mtime.unwrap_or(0).try_into().unwrap_or(u64::MAX)
   }
 }
 
