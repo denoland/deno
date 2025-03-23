@@ -261,7 +261,7 @@ pub struct VirtualFile {
   #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
   pub source_map_offset: Option<OffsetWithLength>,
   #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
-  pub mtime: Option<u128>,   // mtime in milliseconds
+  pub mtime: Option<u128>, // mtime in milliseconds
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -721,7 +721,12 @@ impl VfsBuilder {
       .map(|data| self.files.add_data(data));
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
-    let file_mtime = path.metadata()?.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_millis();
+    #[allow(clippy::disallowed_methods)]
+    let file_mtime = path
+      .metadata()?
+      .modified()?
+      .duration_since(std::time::UNIX_EPOCH)?
+      .as_millis();
 
     dir.entries.insert_or_modify(
       &name,
