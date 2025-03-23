@@ -374,6 +374,7 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
+debug = true
 
 [profile.dev]
 split-debuginfo = "packed"
