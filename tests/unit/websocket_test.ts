@@ -822,3 +822,15 @@ Deno.test("send to a closed socket", async () => {
   };
   await promise;
 });
+
+// https://github.com/denoland/deno/issues/25126
+Deno.test("websocket close ongoing handshake", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const ws = new WebSocket("ws://localhost:4264");
+  ws.onopen = () => fail();
+  ws.onclose = () => {
+    resolve();
+  };
+  ws.close();
+  await promise;
+});
