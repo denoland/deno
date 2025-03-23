@@ -81,7 +81,7 @@ deno_media_type = { workspace = true, features = ["data_url", "decoding", "modul
 deno_npm.workspace = true
 deno_npm_cache.workspace = true
 deno_package_json = { workspace = true, features = ["sync"] }
-deno_panic = { path = "../../panic/" }
+deno_panic = "0.1.0"
 deno_path_util.workspace = true
 deno_resolver = { workspace = true, features = ["sync"] }
 deno_runtime = { workspace = true, features = ["include_js_files_for_snapshotting"] }
