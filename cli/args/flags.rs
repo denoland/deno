@@ -399,6 +399,7 @@ pub struct TestFlags {
   pub doc: bool,
   pub no_run: bool,
   pub coverage_dir: Option<String>,
+  pub coverage_raw_data_only: bool,
   pub clean: bool,
   pub fail_fast: Option<NonZeroUsize>,
   pub files: FileFlags,
@@ -3211,6 +3212,13 @@ or <c>**/__tests__/**</>:
           .help_heading(TEST_HEADING),
       )
       .arg(
+        Arg::new("coverage-raw-data-only")
+          .long("coverage-raw-data-only")
+          .help("Only collect raw coverage data, without generating a report")
+          .action(ArgAction::SetTrue)
+          .help_heading(TEST_HEADING),
+      )
+      .arg(
         Arg::new("clean")
           .long("clean")
           .help(cstr!("Empty the temporary coverage profile data directory before running tests.
@@ -5457,6 +5465,7 @@ fn test_parse(
     no_run,
     doc,
     coverage_dir: matches.remove_one::<String>("coverage"),
+    coverage_raw_data_only: matches.get_flag("coverage-raw-data-only"),
     clean,
     fail_fast,
     files: FileFlags { include, ignore },
@@ -9355,6 +9364,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: true,
           coverage_dir: Some("cov".to_string()),
+          coverage_raw_data_only: false,
           clean: true,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9439,6 +9449,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9482,6 +9493,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9619,6 +9631,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Default::default(),
           reporter: Default::default(),
@@ -9655,6 +9668,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9690,6 +9704,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(Default::default()),
           reporter: Default::default(),
@@ -9727,6 +9742,7 @@ mod tests {
           concurrent_jobs: None,
           trace_leaks: false,
           coverage_dir: None,
+          coverage_raw_data_only: false,
           clean: false,
           watch: Some(WatchFlagsWithPaths {
             hmr: false,
