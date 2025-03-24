@@ -1960,3 +1960,42 @@ Deno.test("[node/http] 'close' event is emitted when request finished", async ()
   await promise;
   assert(socketCloseEmitted);
 });
+
+Deno.test("[node/http] 'close' event is emitted on ServerResponse object when the client aborted the request in the middle", async () => {
+  let responseCloseEmitted = false;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    res.on("close", () => {
+      responseCloseEmitted = true;
+      res.end();
+    });
+
+    // Streams thre response body
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    const interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+
+    req.on("error", (err) => {
+      clearInterval(interval);
+      resolve();
+    });
+  });
+
+  server.listen(0, async () => {
+    const { port } = server.address() as { port: number };
+    const client = net.createConnection({ port });
+    client.write("GET / HTTP/1.1\r\n");
+    client.write("Host: localhost\r\n");
+    client.write("Connection: close\r\n");
+    client.write("\r\n");
+    client.on("data", () => {
+      // Client aborts the request in the middle
+      client.end();
+    });
+  });
+
+  await promise;
+  assert(responseCloseEmitted);
+  await new Promise((resolve) => server.close(resolve));
+});

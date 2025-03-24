@@ -132,12 +132,15 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 
 class FakeSocket extends EventEmitter {
+  #abortHandler: () => void;
+  #signal?: AbortSignal;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
+      signal?: AbortSignal | undefined;
     } = {},
   ) {
     super();
@@ -147,11 +150,19 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
+    this.#abortHandler = () => {
+      this.emit("error", this.#signal?.reason ?? new Error("aborted"));
+      this.emit("close");
+    };
+    this.#signal = opts.signal;
+    this.#signal?.addEventListener("abort", this.#abortHandler, { once: true });
   }
 
   setKeepAlive() {}
 
-  end() {}
+  end() {
+    this.#signal?.removeEventListener("abort", this.#abortHandler);
+  }
 
   destroy() {}
 
@@ -1494,6 +1505,9 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
+  this.socket.on("close", () => {
+    this.emit("close");
+  });
 
   this._header = "";
 } as unknown as ServerResponseStatic;
@@ -1798,6 +1812,9 @@ export class IncomingMessageForServer extends NodeReadable {
     this.socket = socket;
     this.upgrade = null;
     this.rawHeaders = [];
+    socket.on("error", (e) => {
+      this.emit("error", e);
+    });
   }
 
   get aborted() {
@@ -1922,6 +1939,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
+        signal: request.signal,
       });
 
       const req = new IncomingMessageForServer(socket);
