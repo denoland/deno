@@ -1982,7 +1982,7 @@ Deno.test("[node/http] 'close' event is emitted on ServerResponse object when th
     });
   });
 
-  server.listen(0, async () => {
+  server.listen(0, () => {
     const { port } = server.address() as { port: number };
     const client = net.createConnection({ port });
     client.write("GET / HTTP/1.1\r\n");
