@@ -1976,7 +1976,7 @@ Deno.test("[node/http] 'close' event is emitted on ServerResponse object when th
       res.write("Hello, world!\n");
     }, 100);
 
-    req.on("error", (err) => {
+    req.on("error", () => {
       clearInterval(interval);
       resolve();
     });
