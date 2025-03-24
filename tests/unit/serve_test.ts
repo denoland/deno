@@ -4359,3 +4359,96 @@ Deno.test({
     "Cannot read request body as underlying resource unavailable",
   );
 });
+
+Deno.test({
+  name: "HTTP server preserves authority and scheme from absolute URLs",
+  permissions: { net: true },
+}, async () => {
+  const ac = new AbortController();
+  const { promise: absoluteUrlPromise, resolve: resolveAbsoluteUrl } = Promise
+    .withResolvers<string>();
+  const { promise: optionsStarPromise, resolve: resolveOptionsStar } = Promise
+    .withResolvers<string>();
+  const { promise: connectPromise, resolve: resolveConnect } = Promise
+    .withResolvers<string>();
+  const requestsReceived = {
+    absolute: false,
+    optionsStar: false,
+    connect: false,
+  };
+
+  const server = Deno.serve({
+    handler: (req) => {
+      // Check which kind of request this is and store the URL
+      if (req.method === "OPTIONS" && req.url === "*") {
+        resolveOptionsStar(req.url);
+        requestsReceived.optionsStar = true;
+      } else if (req.method === "CONNECT") {
+        resolveConnect(req.url);
+        requestsReceived.connect = true;
+      } else if (req.url.startsWith("http://example.com/")) {
+        resolveAbsoluteUrl(req.url);
+        requestsReceived.absolute = true;
+      }
+      return new Response("ok");
+    },
+    port: servePort,
+    signal: ac.signal,
+    onListen: onListen(() => {}),
+  });
+
+  // First, send a request with an absolute URL
+  const conn1 = await Deno.connect({ hostname: "127.0.0.1", port: servePort });
+  const requestWithAbsoluteUrl =
+    "GET http://example.com/path?query=value HTTP/1.1\r\n" +
+    `Host: 127.0.0.1:${servePort}\r\n` +
+    "Connection: close\r\n\r\n";
+
+  await conn1.write(new TextEncoder().encode(requestWithAbsoluteUrl));
+
+  // Read response to ensure request is processed
+  const buf1 = new Uint8Array(1024);
+  await conn1.read(buf1);
+  conn1.close();
+
+  // Then, send an OPTIONS * request
+  const conn2 = await Deno.connect({ hostname: "127.0.0.1", port: servePort });
+  const optionsStarRequest = "OPTIONS * HTTP/1.1\r\n" +
+    `Host: 127.0.0.1:${servePort}\r\n` +
+    "Connection: close\r\n\r\n";
+
+  await conn2.write(new TextEncoder().encode(optionsStarRequest));
+
+  // Read response to ensure request is processed
+  const buf2 = new Uint8Array(1024);
+  await conn2.read(buf2);
+  conn2.close();
+
+  // Finally, send a CONNECT request
+  const conn3 = await Deno.connect({ hostname: "127.0.0.1", port: servePort });
+  const connectRequest = "CONNECT example.com:443 HTTP/1.1\r\n" +
+    `Host: 127.0.0.1:${servePort}\r\n` +
+    "Connection: close\r\n\r\n";
+
+  await conn3.write(new TextEncoder().encode(connectRequest));
+
+  // Read response to ensure request is processed
+  const buf3 = new Uint8Array(1024);
+  await conn3.read(buf3);
+  conn3.close();
+
+  // Check that the URL preserved the authority and scheme
+  const absoluteUrl = await absoluteUrlPromise;
+  assertEquals(absoluteUrl, "http://example.com/path?query=value");
+
+  // Check that OPTIONS * is still preserved as "*"
+  const optionsStarUrl = await optionsStarPromise;
+  assertEquals(optionsStarUrl, "*");
+
+  // Check that CONNECT request preserves the authority
+  const connectUrl = await connectPromise;
+  assertEquals(connectUrl, "example.com:443");
+
+  ac.abort();
+  await server.finished;
+});
