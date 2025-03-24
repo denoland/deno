@@ -213,8 +213,12 @@ fn serialize_module_decl(
         ctx.write_export_all_decl(
           &node.span,
           node.type_only,
-          exported,
-          source,
+          // Namespaced export must always have a source, so this
+          // scenario where it's optional can't happen. I think
+          // it's just the way SWC stores things internally, since they
+          // don't have a dedicated node for namespace exports.
+          source.unwrap_or(NodeRef(0)),
+          Some(exported),
           attrs,
         )
       } else {
@@ -712,7 +716,7 @@ fn serialize_expr(ctx: &mut TsEsTreeBuilder, expr: &Expr) -> NodeRef {
         BinaryOp::EqEq => (AstNode::BinaryExpression, "=="),
         BinaryOp::NotEq => (AstNode::BinaryExpression, "!="),
         BinaryOp::EqEqEq => (AstNode::BinaryExpression, "==="),
-        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!="),
+        BinaryOp::NotEqEq => (AstNode::BinaryExpression, "!=="),
         BinaryOp::Lt => (AstNode::BinaryExpression, "<"),
         BinaryOp::LtEq => (AstNode::BinaryExpression, "<="),
         BinaryOp::Gt => (AstNode::BinaryExpression, ">"),
@@ -1894,20 +1898,23 @@ fn serialize_pat(ctx: &mut TsEsTreeBuilder, pat: &Pat) -> NodeRef {
             )
           }
           ObjectPatProp::Assign(assign_pat_prop) => {
-            let ident = serialize_binding_ident(ctx, &assign_pat_prop.key);
+            let key = serialize_binding_ident(ctx, &assign_pat_prop.key);
+            let mut value = serialize_binding_ident(ctx, &assign_pat_prop.key);
 
-            let value = assign_pat_prop
-              .value
-              .as_ref()
-              .map_or(NodeRef(0), |value| serialize_expr(ctx, value));
+            let shorthand = assign_pat_prop.value.is_none();
+
+            if let Some(assign) = &assign_pat_prop.value {
+              let expr = serialize_expr(ctx, assign);
+              value = ctx.write_assign_pat(&assign_pat_prop.span, value, expr);
+            }
 
             ctx.write_property(
-              &assign_pat_prop.span,
-              false,
+              &node.span,
+              shorthand,
               false,
               false,
               PropertyKind::Init,
-              ident,
+              key,
               value,
             )
           }

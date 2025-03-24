@@ -9883,7 +9883,7 @@ fn lsp_completions_npm() {
 
 #[test]
 #[timeout(300_000)]
-fn lsp_auto_imports_npm_auto() {
+fn lsp_auto_import_npm_export_node_modules_dir_auto() {
   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
   let temp_dir_path = context.temp_dir().path();
   temp_dir_path.join("deno.json").write_json(&json!({
@@ -9941,6 +9941,79 @@ fn lsp_auto_imports_npm_auto() {
       .as_str()
       .unwrap(),
     "Add import from \"preact/hooks\""
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
+fn lsp_auto_import_npm_export_node_modules_dir_manual() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+  let temp_dir = context.temp_dir();
+  temp_dir.write(
+    "deno.json",
+    json!({
+      "nodeModulesDir": "manual",
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "package.json",
+    json!({
+      "dependencies": {
+        "preact": "*",
+      },
+    })
+    .to_string(),
+  );
+  temp_dir.write(
+    "mod.ts",
+    "import { useEffect } from 'preact/hooks'; console.log(useEffect);",
+  );
+  context.run_npm("install");
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  let diagnostics = client
+    .did_open(json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+        "languageId": "typescript",
+        "version": 1,
+        "text": "useEffect",
+      }
+    }))
+    .all();
+  assert_eq!(diagnostics.len(), 1);
+  let diagnostic = diagnostics.first().unwrap();
+  let res = client.write_request(
+    "textDocument/codeAction",
+    json!({
+      "textDocument": {
+        "uri": temp_dir.url().join("file.ts").unwrap(),
+      },
+      "range": {
+        "start": { "line": 0, "character": 0 },
+        "end": { "line": 0, "character": 9 },
+      },
+      "context": {
+        "diagnostics": [diagnostic],
+        "only": ["quickfix"],
+      },
+    }),
+  );
+  assert_eq!(
+    res
+      .as_array()
+      .unwrap()
+      .first()
+      .unwrap()
+      .as_object()
+      .unwrap()
+      .get("title")
+      .unwrap()
+      .as_str()
+      .unwrap(),
+    "Add import from \"preact/hooks\"",
   );
   client.shutdown();
 }
@@ -11488,13 +11561,11 @@ fn lsp_performance() {
       "lsp.update_diagnostics_ts",
       "lsp.update_global_cache",
       "tsc.host.$getDiagnostics",
-      "tsc.host.$getSupportedCodeFixes",
       "tsc.host.getQuickInfoAtPosition",
       "tsc.op.op_is_node_file",
       "tsc.op.op_load",
       "tsc.op.op_script_names",
       "tsc.request.$getDiagnostics",
-      "tsc.request.$getSupportedCodeFixes",
       "tsc.request.getQuickInfoAtPosition",
     ]
   );
@@ -15135,6 +15206,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res = client.write_request(
     "workspace/willRenameFiles",
     json!({
@@ -15395,6 +15467,7 @@ fn lsp_deno_json_scopes_search_symbol() {
   );
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
+  client.did_open_file(&file1);
   let res =
     client.write_request("workspace/symbol", json!({ "query": "someSymbol" }));
   assert_eq!(

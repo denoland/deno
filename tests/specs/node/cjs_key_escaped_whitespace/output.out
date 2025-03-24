@@ -3,5 +3,6 @@ imported: [Module: null prototype] {
   "\nx": "test",
   "\rz": "test",
   '"a': "test",
-  default: { "\nx": "test", "\ty": "test", "\rz": "test", '"a': "test" }
+  default: { "\nx": "test", "\ty": "test", "\rz": "test", '"a': "test" },
+  "module.exports": { "\nx": "test", "\ty": "test", "\rz": "test", '"a': "test" }
 }

@@ -210,7 +210,7 @@ pub enum CopyDirRecursiveError {
     source: Error,
   },
   #[class(inherit)]
-  #[error("Creating {path}")]
+  #[error("Reading {path}")]
   Reading {
     path: PathBuf,
     #[source]

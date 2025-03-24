@@ -25,7 +25,7 @@ export interface LintState {
 export type VisitorFn = (node: unknown) => void;
 
 export interface CompiledVisitor {
-  matcher: (ctx: MatchContext, offset: number) => boolean;
+  matcher: MatcherFn;
   info: { enter: VisitorFn; exit: VisitorFn };
 }
 
@@ -50,6 +50,11 @@ export interface ElemSelector {
   elem: number;
 }
 
+export interface FieldSelector {
+  type: 10;
+  props: number[];
+}
+
 export interface PseudoNthChild {
   type: 5;
   op: string | null;
@@ -61,6 +66,10 @@ export interface PseudoNthChild {
 
 export interface PseudoHas {
   type: 6;
+  selectors: Selector[];
+}
+export interface PseudoIs {
+  type: 11;
   selectors: Selector[];
 }
 export interface PseudoNot {
@@ -81,12 +90,14 @@ export interface Relation {
 
 export type Selector = Array<
   | ElemSelector
+  | FieldSelector
   | Relation
   | AttrExists
   | AttrBin
   | PseudoNthChild
   | PseudoNot
   | PseudoHas
+  | PseudoIs
   | PseudoFirstChild
   | PseudoLastChild
 >;
@@ -97,15 +108,17 @@ export interface SelectorParseCtx {
 }
 
 export interface MatchContext {
+  /** Used for `:has()` and `:not()` */
+  subSelect(selectors: MatcherFn[], idx: number): boolean;
   getFirstChild(id: number): number;
   getLastChild(id: number): number;
   getSiblings(id: number): number[];
   getParent(id: number): number;
+  getField(id: number, prop: number): number;
   getType(id: number): number;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 
-export type NextFn = (ctx: MatchContext, id: number) => boolean;
 export type MatcherFn = (ctx: MatchContext, id: number) => boolean;
 export type TransformFn = (value: string) => number;
 
