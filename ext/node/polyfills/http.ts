@@ -132,6 +132,8 @@ const INVALID_PATH_REGEX = /[^\u0021-\u00ff]/;
 const kError = Symbol("kError");
 
 class FakeSocket extends EventEmitter {
+  #abortHandler: () => void;
+  #signal?: AbortSignal;
   constructor(
     opts: {
       encrypted?: boolean | undefined;
@@ -148,15 +150,19 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
-    opts.signal?.addEventListener("abort", () => {
-      this.emit("error", opts.signal?.reason ?? new Error("aborted"));
+    this.#abortHandler = () => {
+      this.emit("error", this.#signal?.reason ?? new Error("aborted"));
       this.emit("close");
-    }, { once: true });
+    };
+    this.#signal = opts.signal;
+    this.#signal?.addEventListener("abort", this.#abortHandler, { once: true });
   }
 
   setKeepAlive() {}
 
-  end() {}
+  end() {
+    this.#signal?.removeEventListener("abort", this.#abortHandler);
+  }
 
   destroy() {}
 
