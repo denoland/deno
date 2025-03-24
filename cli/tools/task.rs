@@ -55,7 +55,7 @@ pub async fn execute_script(
   task_flags: TaskFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let start_dir = &cli_options.start_dir;
   if !start_dir.has_deno_or_pkg_json() && !task_flags.eval {
     bail!("deno task couldn't find deno.json(c). See https://docs.deno.com/go/config")
@@ -163,7 +163,7 @@ pub async fn execute_script(
     )
   };
 
-  let npm_installer = factory.npm_installer_if_managed().await?;
+  let npm_installer = factory.npm_installer_if_managed()?;
   let npm_resolver = factory.npm_resolver().await?;
   let node_resolver = factory.node_resolver().await?;
   let env_vars = task_runner::real_env_vars();

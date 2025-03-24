@@ -167,13 +167,13 @@ pub async fn run(
   repl_flags: ReplFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
-  let permissions = factory.root_permissions_container().await?;
-  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
+  let permissions = factory.root_permissions_container()?;
+  let npm_installer = factory.npm_installer_if_managed()?.cloned();
   let resolver = factory.resolver().await?.clone();
-  let file_fetcher = factory.file_fetcher().await?;
-  let tsconfig_resolver = factory.tsconfig_resolver().await?;
+  let file_fetcher = factory.file_fetcher()?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let history_file_path = factory
     .deno_dir()
@@ -200,12 +200,7 @@ pub async fn run(
     worker,
     main_module.clone(),
     test_event_receiver,
-    Arc::new(
-      factory
-        .npm_registry_info_provider()
-        .await?
-        .as_npm_registry_api(),
-    ),
+    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api()),
   )
   .await?;
   let rustyline_channel = rustyline_channel();

@@ -277,7 +277,7 @@ pub(crate) async fn install_from_entrypoints(
   entrypoints: &[String],
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags.clone());
-  let emitter = factory.emitter().await?;
+  let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
   let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
   main_graph_container
@@ -308,13 +308,10 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      factory
-        .npm_installer()
-        .await?
-        .ensure_no_pkg_json_dep_errors()?;
+      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
       crate::tools::pm::cache_top_level_deps(&factory, None).await?;
 
-      if let Some(lockfile) = factory.cli_options().await?.maybe_lockfile() {
+      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
         lockfile.write_if_changed()?;
       }
 
@@ -365,9 +362,9 @@ async fn install_global(
   // ensure the module is cached
   let factory = CliFactory::from_flags(flags.clone());
 
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let http_client = factory.http_client_provider();
-  let deps_http_cache = factory.global_http_cache().await?;
+  let deps_http_cache = factory.global_http_cache()?;
   let deps_file_fetcher = CliFileFetcher::new(
     deps_http_cache.clone(),
     http_client.clone(),
@@ -379,7 +376,7 @@ async fn install_global(
     log::Level::Trace,
   );
 
-  let npmrc = factory.npmrc().await?;
+  let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));

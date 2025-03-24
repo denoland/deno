@@ -88,10 +88,10 @@ pub async fn lint(
   }
 
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let lint_rule_provider = factory.lint_rule_provider().await?;
   let is_stdin = lint_flags.is_stdin();
-  let tsconfig_resolver = factory.tsconfig_resolver().await?;
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let workspace_lint_options =
     cli_options.resolve_workspace_lint_options(&lint_flags)?;
   let success = if is_stdin {
@@ -104,7 +104,7 @@ pub async fn lint(
     )?
   } else {
     let mut linter = WorkspaceLinter::new(
-      factory.caches().await?.clone(),
+      factory.caches()?.clone(),
       lint_rule_provider,
       factory.module_graph_creator().await?.clone(),
       tsconfig_resolver.clone(),
@@ -139,7 +139,7 @@ async fn lint_with_watch_inner(
   changed_paths: Option<Vec<PathBuf>>,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let mut paths_with_options_batches =
     resolve_paths_with_options_batches(cli_options, &lint_flags)?;
   for paths_with_options in &mut paths_with_options_batches {
@@ -163,10 +163,10 @@ async fn lint_with_watch_inner(
   }
 
   let mut linter = WorkspaceLinter::new(
-    factory.caches().await?.clone(),
+    factory.caches()?.clone(),
     factory.lint_rule_provider().await?,
     factory.module_graph_creator().await?.clone(),
-    factory.tsconfig_resolver().await?.clone(),
+    factory.tsconfig_resolver()?.clone(),
     cli_options.start_dir.clone(),
     &cli_options.resolve_workspace_lint_options(&lint_flags)?,
   );

@@ -62,7 +62,7 @@ pub async fn run_script(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
 
@@ -93,12 +93,12 @@ pub async fn run_script(
 
 pub async fn run_from_stdin(flags: Arc<Flags>) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let main_module = cli_options.resolve_main_module()?;
 
   maybe_npm_install(&factory).await?;
 
-  let file_fetcher = factory.file_fetcher().await?;
+  let file_fetcher = factory.file_fetcher()?;
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let mut source = Vec::new();
   std::io::stdin().read_to_end(&mut source)?;
@@ -139,7 +139,7 @@ async fn run_with_watch(
           flags,
           watcher_communicator.clone(),
         );
-        let cli_options = factory.cli_options().await?;
+        let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
 
         if main_module.scheme() == "npm" {
@@ -177,8 +177,8 @@ pub async fn eval_command(
   eval_flags: EvalFlags,
 ) -> Result<i32, AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
-  let file_fetcher = factory.file_fetcher().await?;
+  let cli_options = factory.cli_options()?;
+  let file_fetcher = factory.file_fetcher()?;
   let main_module = cli_options.resolve_main_module()?;
 
   maybe_npm_install(&factory).await?;
@@ -207,12 +207,12 @@ pub async fn eval_command(
 }
 
 pub async fn maybe_npm_install(factory: &CliFactory) -> Result<(), AnyError> {
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   // ensure an "npm install" is done if the user has explicitly
   // opted into using a managed node_modules directory
   if cli_options.specified_node_modules_dir()? == Some(NodeModulesDirMode::Auto)
   {
-    if let Some(npm_installer) = factory.npm_installer_if_managed().await? {
+    if let Some(npm_installer) = factory.npm_installer_if_managed()? {
       let already_done = npm_installer
         .ensure_top_level_package_json_install()
         .await?;
@@ -236,7 +236,7 @@ pub async fn run_eszip(
   // TODO(bartlomieju): actually I think it will also fail if there's an import
   // map specified and bare specifier is used on the command line
   let factory = CliFactory::from_flags(flags.clone());
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
 
   // entrypoint#path1,path2,...
   let (entrypoint, _files) = run_flags

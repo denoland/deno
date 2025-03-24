@@ -25,8 +25,8 @@ pub async fn check(
   }
 
   let specifiers_for_typecheck = if check_flags.doc || check_flags.doc_only {
-    let file_fetcher = factory.file_fetcher().await?;
-    let root_permissions = factory.root_permissions_container().await?;
+    let file_fetcher = factory.file_fetcher()?;
+    let root_permissions = factory.root_permissions_container()?;
 
     let mut specifiers_for_typecheck = if check_flags.doc {
       specifiers.clone()

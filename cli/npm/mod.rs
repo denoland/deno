@@ -54,7 +54,7 @@ pub type CliNpmResolverCreateOptions =
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
 
-pub struct NpmPackageInfoApiAdapter(pub Arc<dyn NpmRegistryApi>);
+pub struct NpmPackageInfoApiAdapter(pub Arc<dyn NpmRegistryApi + Send + Sync>);
 
 #[async_trait::async_trait(?Send)]
 impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {

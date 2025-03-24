@@ -63,7 +63,7 @@ pub struct ReplLanguageServer {
 
 impl ReplLanguageServer {
   pub async fn new_initialized(
-    registry_provider: Arc<dyn NpmRegistryApi>,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Result<ReplLanguageServer, AnyError> {
     // downgrade info and warn lsp logging to debug
     super::logging::set_lsp_log_level(log::Level::Debug);
