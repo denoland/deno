@@ -1505,7 +1505,7 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-  this.socket.on("close", () => {
+  this.socket?.on("close", () => {
     this.emit("close");
   });
 
@@ -1813,7 +1813,9 @@ export class IncomingMessageForServer extends NodeReadable {
     this.upgrade = null;
     this.rawHeaders = [];
     socket.on("error", (e) => {
-      this.emit("error", e);
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", e);
+      }
     });
   }
 
