@@ -392,17 +392,19 @@ pub async fn op_net_set_multi_ttl_udp(
 pub async fn op_net_connect_tcp<NP>(
   state: Rc<RefCell<OpState>>,
   #[serde] addr: IpAddr,
+  #[smi] resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
 {
-  op_net_connect_tcp_inner::<NP>(state, addr).await
+  op_net_connect_tcp_inner::<NP>(state, addr, resource_abort_id).await
 }
 
 #[inline]
 pub async fn op_net_connect_tcp_inner<NP>(
   state: Rc<RefCell<OpState>>,
   addr: IpAddr,
+  resource_abort_id: Option<ResourceId>,
 ) -> Result<(ResourceId, IpAddr, IpAddr), NetError>
 where
   NP: NetPermissions + 'static,
@@ -418,7 +420,32 @@ where
     .await?
     .next()
     .ok_or_else(|| NetError::NoResolvedAddress)?;
-  let tcp_stream = TcpStream::connect(&addr).await?;
+
+  let cancel_handle = resource_abort_id.and_then(|rid| {
+    state
+      .borrow_mut()
+      .resource_table
+      .get::<CancelHandle>(rid)
+      .ok()
+  });
+
+  let tcp_stream_result = if let Some(cancel_handle) = &cancel_handle {
+    TcpStream::connect(&addr).or_cancel(cancel_handle).await?
+  } else {
+    TcpStream::connect(&addr).await
+  };
+
+  if let Some(cancel_rid) = resource_abort_id {
+    if let Ok(res) = state.borrow_mut().resource_table.take_any(cancel_rid) {
+      res.close();
+    }
+  }
+
+  let tcp_stream = match tcp_stream_result {
+    Ok(tcp_stream) => tcp_stream,
+    Err(e) => return Err(NetError::Io(e)),
+  };
+
   let local_addr = tcp_stream.local_addr()?;
   let remote_addr = tcp_stream.peer_addr()?;
 
@@ -1179,7 +1206,7 @@ mod tests {
     };
 
     let mut connect_fut =
-      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr)
+      op_net_connect_tcp_inner::<TestPermission>(conn_state, ip_addr, None)
         .boxed_local();
     let mut rid = None;
 
