@@ -42,7 +42,7 @@ mod tsc;
 mod urls;
 
 pub async fn start(
-  registry_provider: Arc<dyn NpmRegistryApi>,
+  registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
 ) -> Result<(), AnyError> {
   let stdin = tokio::io::stdin();
   let stdout = tokio::io::stdout();

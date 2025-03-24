@@ -515,11 +515,11 @@ pub async fn cover_files(
   }
 
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
-  let in_npm_pkg_checker = factory.in_npm_pkg_checker().await?;
-  let file_fetcher = factory.file_fetcher().await?;
-  let emitter = factory.emitter().await?;
-  let cjs_tracker = factory.cjs_tracker().await?;
+  let cli_options = factory.cli_options()?;
+  let in_npm_pkg_checker = factory.in_npm_pkg_checker()?;
+  let file_fetcher = factory.file_fetcher()?;
+  let emitter = factory.emitter()?;
+  let cjs_tracker = factory.cjs_tracker()?;
 
   assert!(!coverage_flags.files.include.is_empty());
 

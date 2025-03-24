@@ -44,14 +44,14 @@ pub async fn info(
   info_flags: InfoFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   if let Some(specifier) = info_flags.file {
     let module_graph_builder = factory.module_graph_builder().await?;
     let module_graph_creator = factory.module_graph_creator().await?;
     let npm_resolver = factory.npm_resolver().await?;
     let maybe_lockfile = cli_options.maybe_lockfile();
     let resolver = factory.workspace_resolver().await?.clone();
-    let npmrc = factory.npmrc().await?;
+    let npmrc = factory.npmrc()?;
     let node_resolver = factory.node_resolver().await?;
 
     let cwd_url =
@@ -187,7 +187,8 @@ pub async fn info(
       &factory,
       info_flags.json,
       cli_options.location_flag().as_ref(),
-    ).await?;
+    )
+    .await?;
   }
   Ok(())
 }
@@ -200,7 +201,7 @@ async fn print_cache_info(
 ) -> Result<(), AnyError> {
   let dir = factory.deno_dir()?;
   #[allow(deprecated)]
-  let modules_cache = factory.global_http_cache().await?.dir_path();
+  let modules_cache = factory.global_http_cache()?.dir_path();
   let npm_cache = factory.deno_dir()?.npm_folder_path();
   let typescript_cache = &dir.gen_cache.location;
   let registry_cache = dir.registries_folder_path();

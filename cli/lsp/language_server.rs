@@ -221,7 +221,7 @@ pub struct Inner {
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
-  registry_provider: Arc<dyn NpmRegistryApi>,
+  registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   _tracing: Option<super::trace::TracingGuard>,
 }
 
@@ -261,7 +261,7 @@ impl std::fmt::Debug for Inner {
 impl LanguageServer {
   pub fn new(
     client: Client,
-    registry_provider: Arc<dyn NpmRegistryApi>,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Self {
     let performance = Arc::new(Performance::default());
     Self {
@@ -323,7 +323,7 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(cli_options) = factory.cli_options().await {
+      if let Ok(cli_options) = factory.cli_options() {
         if let Some(lockfile) = cli_options.maybe_lockfile() {
           if let Err(err) = &lockfile.write_if_changed() {
             lsp_warn!("{:#}", err);
@@ -511,7 +511,7 @@ impl Inner {
   fn new(
     client: Client,
     performance: Arc<Performance>,
-    registry_provider: Arc<dyn NpmRegistryApi>,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Self {
     let cache = LspCache::default();
     let http_client_provider = Arc::new(HttpClientProvider::new(None, None));

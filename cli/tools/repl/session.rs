@@ -209,9 +209,10 @@ impl ReplSession {
     mut worker: MainWorker,
     main_module: ModuleSpecifier,
     test_event_receiver: TestEventReceiver,
-    registry_provider: Arc<dyn NpmRegistryApi>,
+    registry_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Result<Self, AnyError> {
-    let language_server = ReplLanguageServer::new_initialized(registry_provider).await?;
+    let language_server =
+      ReplLanguageServer::new_initialized(registry_provider).await?;
     let mut session = worker.create_inspector_session();
 
     worker

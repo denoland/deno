@@ -61,21 +61,17 @@ pub async fn kernel(
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   let factory = CliFactory::from_flags(flags);
-  let registry_provider = Arc::new(
-    factory
-      .npm_registry_info_provider()
-      .await?
-      .as_npm_registry_api(),
-  );
-  let cli_options = factory.cli_options().await?;
+  let registry_provider =
+    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api());
+  let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
       .unwrap();
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
-  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
-  let tsconfig_resolver = factory.tsconfig_resolver().await?;
+  let npm_installer = factory.npm_installer_if_managed()?.cloned();
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;
   let (stdio_tx, stdio_rx) = mpsc::unbounded_channel();

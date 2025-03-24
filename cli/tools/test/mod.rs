@@ -1563,10 +1563,10 @@ pub async fn run_tests(
   test_flags: TestFlags,
 ) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let workspace_test_options =
     cli_options.resolve_workspace_test_options(&test_flags);
-  let file_fetcher = factory.file_fetcher().await?;
+  let file_fetcher = factory.file_fetcher()?;
   // Various test files should not share the same permissions in terms of
   // `PermissionsContainer` - otherwise granting/revoking permissions in one
   // file would have impact on other files, which is undesirable.
@@ -1689,7 +1689,7 @@ pub async fn run_tests_with_watch(
           flags,
           watcher_communicator.clone(),
         );
-        let cli_options = factory.cli_options().await?;
+        let cli_options = factory.cli_options()?;
         let workspace_test_options =
           cli_options.resolve_workspace_test_options(&test_flags);
 
@@ -1698,7 +1698,7 @@ pub async fn run_tests_with_watch(
         let log_level = cli_options.log_level();
         let cli_options = cli_options.clone();
         let module_graph_creator = factory.module_graph_creator().await?;
-        let file_fetcher = factory.file_fetcher().await?;
+        let file_fetcher = factory.file_fetcher()?;
         let members_with_test_options =
           cli_options.resolve_test_options_for_members(&test_flags)?;
         let watch_paths = members_with_test_options

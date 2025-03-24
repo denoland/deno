@@ -28,7 +28,7 @@ pub async fn serve(
   }
 
   let factory = CliFactory::from_flags(flags);
-  let cli_options = factory.cli_options().await?;
+  let cli_options = factory.cli_options()?;
   let deno_dir = factory.deno_dir()?;
   let http_client = factory.http_client_provider();
 
@@ -160,7 +160,7 @@ async fn serve_with_watch(
           flags,
           watcher_communicator.clone(),
         );
-        let cli_options = factory.cli_options().await?;
+        let cli_options = factory.cli_options()?;
         let main_module = cli_options.resolve_main_module()?;
 
         maybe_npm_install(&factory).await?;

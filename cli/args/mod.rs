@@ -58,6 +58,7 @@ pub use flags::*;
 pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
+pub use lockfile::ReadCurrentVersionError;
 use once_cell::sync::Lazy;
 pub use package_json::NpmInstallDepsProvider;
 pub use package_json::PackageJsonDepValueParseWithLocationError;
@@ -498,7 +499,9 @@ impl CliOptions {
     initial_cwd: PathBuf,
     maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
-    registry_info_provider: &dyn deno_lockfile::NpmPackageInfoProvider,
+    registry_info_provider: &(dyn deno_lockfile::NpmPackageInfoProvider
+        + Send
+        + Sync),
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
@@ -516,6 +519,30 @@ impl CliOptions {
     log::debug!("Finished config loading.");
 
     Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+  }
+
+  pub fn from_flags_current_version(
+    sys: &CliSys,
+    flags: Arc<Flags>,
+    initial_cwd: PathBuf,
+    maybe_external_import_map: Option<&ExternalImportMap>,
+    start_dir: Arc<WorkspaceDirectory>,
+  ) -> Result<Self, crate::args::lockfile::ReadCurrentVersionError> {
+    for diagnostic in start_dir.workspace.diagnostics() {
+      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
+    }
+
+    let maybe_lock_file = CliLockfile::discover_current_version(
+      sys,
+      &flags,
+      &start_dir.workspace,
+      maybe_external_import_map.as_ref().map(|v| &v.value),
+    )?;
+
+    log::debug!("Finished config loading.");
+
+    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+      .map_err(crate::args::lockfile::ReadCurrentVersionError::Other)
   }
 
   #[inline(always)]

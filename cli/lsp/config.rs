@@ -1230,7 +1230,7 @@ impl ConfigData {
     deno_json_cache: &(dyn DenoJsonCache + Sync),
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Self {
     let scope = Arc::new(scope.clone());
     let discover_result = match scope.to_file_path() {
@@ -1328,7 +1328,7 @@ impl ConfigData {
     scope: Arc<ModuleSpecifier>,
     settings: &Settings,
     file_fetcher: Option<&Arc<CliFileFetcher>>,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Self {
     let (settings, workspace_folder) = settings.get_for_specifier(&scope);
     let mut watched_files = HashMap::with_capacity(10);
@@ -1879,7 +1879,7 @@ impl ConfigTree {
     settings: &Settings,
     workspace_files: &IndexSet<ModuleSpecifier>,
     file_fetcher: &Arc<CliFileFetcher>,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1974,7 +1974,7 @@ impl ConfigTree {
   pub async fn inject_config_file(
     &mut self,
     config_file: ConfigFile,
-    npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+    npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
   ) {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
@@ -2016,7 +2016,7 @@ impl ConfigTree {
 
 async fn resolve_lockfile_from_workspace(
   workspace: &WorkspaceDirectory,
-  npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+  npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
 ) -> Option<CliLockfile> {
   let lockfile_path = match workspace.workspace.resolve_lockfile_path() {
     Ok(Some(value)) => value,
@@ -2068,7 +2068,7 @@ fn resolve_node_modules_dir(
 async fn resolve_lockfile_from_path(
   lockfile_path: PathBuf,
   frozen: bool,
-  npm_package_info_provider: &Arc<dyn NpmRegistryApi>,
+  npm_package_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
 ) -> Option<CliLockfile> {
   match CliLockfile::read_from_path(
     &CliSys::default(),
