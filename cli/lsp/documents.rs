@@ -784,8 +784,41 @@ impl DocumentModules {
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
   ) -> Option<(Url, MediaType)> {
-    // TODO(nayeemrmn): Implement!
-    None
+    let file_referrer = 1;
+    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
+      if deno_node::is_builtin_node_module(module_name) {
+        // return itself for node: specifiers because during type checking
+        // we resolve to the ambient modules in the @types/node package
+        // rather than deno_std/node
+        return Some((specifier.clone(), MediaType::Dts));
+      }
+    }
+    let mut specifier = specifier.clone();
+    let mut media_type = None;
+    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
+      let (s, mt) = self.resolver.npm_to_file_url(
+        &npm_ref,
+        referrer,
+        resolution_mode,
+        scope,
+      )?;
+      specifier = s;
+      media_type = Some(mt);
+    }
+    let Some(module) = self.module_from_specifier(&specifier, scope) else {
+      let media_type =
+        media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
+      return Some((specifier, media_type));
+    };
+    if let Some(types) = module
+      .types_dependency
+      .as_ref()
+      .and_then(|d| d.dependency.maybe_specifier())
+    {
+      self.resolve_dependency(types, &specifier, module.resolution_mode, scope)
+    } else {
+      Some((module.specifier.as_ref().clone(), module.media_type))
+    }
   }
 
   /// This will not create any module entries, only retrieve existing entries.
@@ -2202,78 +2235,6 @@ impl Documents {
     }
   }
 
-  /// For a given set of string specifiers, resolve each one from the graph,
-  /// for a given referrer. This is used to provide resolution information to
-  /// tsc when type checking.
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub fn resolve(
-    &self,
-    // (is_cjs: bool, raw_specifier: String)
-    raw_specifiers: &[(bool, String)],
-    referrer: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
-    let referrer_doc = self.get(referrer);
-    let file_referrer = referrer_doc
-      .as_ref()
-      .and_then(|d| d.file_referrer())
-      .or(file_referrer);
-    let dependencies = referrer_doc.as_ref().map(|d| d.dependencies());
-    let mut results = Vec::new();
-    for (is_cjs, raw_specifier) in raw_specifiers {
-      let resolution_mode = match is_cjs {
-        true => ResolutionMode::Require,
-        false => ResolutionMode::Import,
-      };
-      if raw_specifier.starts_with("asset:") {
-        if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
-          let media_type = MediaType::from_specifier(&specifier);
-          results.push(Some((specifier, media_type)));
-        } else {
-          results.push(None);
-        }
-      } else if let Some(dep) =
-        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
-      {
-        if let Some(specifier) = dep.maybe_type.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            file_referrer,
-          ));
-        } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
-          results.push(self.resolve_dependency(
-            specifier,
-            referrer,
-            resolution_mode,
-            file_referrer,
-          ));
-        } else {
-          results.push(None);
-        }
-      } else if let Ok(specifier) =
-        self.resolver.as_cli_resolver(file_referrer).resolve(
-          raw_specifier,
-          referrer,
-          deno_graph::Position::zeroed(),
-          resolution_mode,
-          NodeResolutionKind::Types,
-        )
-      {
-        results.push(self.resolve_dependency(
-          &specifier,
-          referrer,
-          resolution_mode,
-          file_referrer,
-        ));
-      } else {
-        results.push(None);
-      }
-    }
-    results
-  }
-
   pub fn update_config(
     &mut self,
     config: &Config,
@@ -2465,51 +2426,6 @@ impl Documents {
         .collect(),
     );
     self.dirty = false;
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  pub fn resolve_dependency(
-    &self,
-    specifier: &ModuleSpecifier,
-    referrer: &ModuleSpecifier,
-    resolution_mode: ResolutionMode,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> Option<(ModuleSpecifier, MediaType)> {
-    if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
-      if deno_node::is_builtin_node_module(module_name) {
-        // return itself for node: specifiers because during type checking
-        // we resolve to the ambient modules in the @types/node package
-        // rather than deno_std/node
-        return Some((specifier.clone(), MediaType::Dts));
-      }
-    }
-    let mut specifier = specifier.clone();
-    let mut media_type = None;
-    if let Ok(npm_ref) = NpmPackageReqReference::from_specifier(&specifier) {
-      let (s, mt) = self.resolver.npm_to_file_url(
-        &npm_ref,
-        referrer,
-        resolution_mode,
-        file_referrer,
-      )?;
-      specifier = s;
-      media_type = Some(mt);
-    }
-    let Some(doc) = self.get_or_load(&specifier, file_referrer) else {
-      let media_type =
-        media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
-      return Some((specifier, media_type));
-    };
-    if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      self.resolve_dependency(
-        types,
-        &specifier,
-        doc.resolution_mode(),
-        file_referrer,
-      )
-    } else {
-      Some((doc.specifier().clone(), doc.media_type()))
-    }
   }
 }
 

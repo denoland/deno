@@ -4588,7 +4588,7 @@ fn op_resolve_inner(
   let referrer = state.specifier_map.normalize(&args.base)?;
   let specifiers = state
     .state_snapshot
-    .documents
+    .document_modules
     .resolve(&args.specifiers, &referrer, state.last_scope.as_ref())
     .into_iter()
     .map(|o| {
