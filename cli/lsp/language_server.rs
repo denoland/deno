@@ -1344,7 +1344,7 @@ impl Inner {
         params.text_document.uri.as_str()
       );
     }
-    let document = self.document_modules.documents.open(
+    let document = self.document_modules.open_document(
       params.text_document.uri.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
@@ -1377,7 +1377,7 @@ impl Inner {
     if scheme.eq_lowercase("deno") {
       return;
     }
-    let document = match self.document_modules.documents.change(
+    let document = match self.document_modules.change_document(
       &params.text_document.uri,
       params.text_document.version,
       params.content_changes,
@@ -1487,8 +1487,7 @@ impl Inner {
     self.diagnostics_state.clear2(&params.text_document.uri);
     let document = match self
       .document_modules
-      .documents
-      .close(&params.text_document.uri)
+      .close_document(&params.text_document.uri)
     {
       Ok(doc) => doc,
       Err(err) => {

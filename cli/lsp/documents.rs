@@ -655,6 +655,7 @@ pub struct DocumentModules {
   pub documents: Documents2,
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
+  cache: Arc<LspCache>,
   dep_info_by_scope: Arc<BTreeMap<Option<Url>, Arc<ScopeDepInfo>>>,
   dep_info_by_scope_dirty: Arc<AtomicBool>,
 }
@@ -668,7 +669,39 @@ impl DocumentModules {
     workspace_files: &IndexSet<Url>,
   ) {
     self.config = Arc::new(config.clone());
+    self.cache = Arc::new(cache.clone());
+    self.resolver = resolver.clone();
+    self.dep_info_by_scope_dirty = Arc::new(AtomicBool::new(true));
     // TODO(nayeemrmn): Implement!
+  }
+
+  pub fn open_document(
+    &mut self,
+    uri: Uri,
+    version: i32,
+    language_id: LanguageId,
+    text: Arc<str>,
+  ) -> Arc<OpenDocument> {
+    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.documents.open(uri, version, language_id, text)
+  }
+
+  pub fn change_document(
+    &mut self,
+    uri: &Uri,
+    version: i32,
+    changes: Vec<lsp::TextDocumentContentChangeEvent>,
+  ) -> Result<Arc<OpenDocument>, AnyError> {
+    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.documents.change(uri, version, changes)
+  }
+
+  pub fn close_document(
+    &mut self,
+    uri: &Uri,
+  ) -> Result<Arc<OpenDocument>, AnyError> {
+    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.documents.close(uri)
   }
 
   pub fn module(

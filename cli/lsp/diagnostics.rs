@@ -2067,7 +2067,7 @@ mod tests {
     );
     for (relative_path, source, version, language_id) in sources {
       let specifier = root_uri.join(relative_path).unwrap();
-      document_modules.documents.open(
+      document_modules.open_document(
         specifier.clone(),
         *version,
         *language_id,
