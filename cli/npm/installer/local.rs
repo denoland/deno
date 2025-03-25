@@ -319,7 +319,6 @@ async fn sync_resolution_with_fs(
         setup_cache.remove_dep(&package_folder_name);
 
         let folder_path = folder_path.clone();
-        let bin_entries_to_setup = bin_entries.clone();
         let packages_with_deprecation_warnings =
           packages_with_deprecation_warnings.clone();
 
@@ -355,10 +354,6 @@ async fn sync_resolution_with_fs(
             .map_err(JsErrorBox::from_err)?
             .map_err(JsErrorBox::from_err)?;
 
-            if package.bin.is_some() {
-              bin_entries_to_setup.borrow_mut().add(package, package_path);
-            }
-
             if let Some(deprecated) = &package.deprecated {
               packages_with_deprecation_warnings
                 .lock()
@@ -379,6 +374,9 @@ async fn sync_resolution_with_fs(
     let sub_node_modules = folder_path.join("node_modules");
     let package_path =
       join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
+    if package.bin.is_some() {
+      bin_entries.borrow_mut().add(package, package_path.clone());
+    }
     lifecycle_scripts.add(package, package_path.into());
   }
 
