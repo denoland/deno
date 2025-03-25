@@ -6,20 +6,23 @@
   }, {
     "commandName": "./node_modules/.bin/print-version",
     "args": "",
-    "output": "2.0.0\n"
+    "output": "2.0.0\n",
+    "if": "unix"
   }, {
     "args": "outdated --update @denotest/print-version@1.0.0",
     "output": "[WILDCARD]"
   }, {
     "commandName": "./node_modules/.bin/print-version",
     "args": "",
-    "output": "1.0.0\n"
+    "output": "1.0.0\n",
+    "if": "unix"
   }, {
     "args": "outdated --update @denotest/print-version@2.0.0",
     "output": "[WILDCARD]"
   }, {
     "commandName": "./node_modules/.bin/print-version",
     "args": "",
-    "output": "2.0.0\n"
+    "output": "2.0.0\n",
+    "if": "unix"
   }]
 }
