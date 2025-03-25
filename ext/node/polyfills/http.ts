@@ -1812,7 +1812,7 @@ export class IncomingMessageForServer extends NodeReadable {
     this.socket = socket;
     this.upgrade = null;
     this.rawHeaders = [];
-    socket.on("error", (e) => {
+    socket?.on("error", (e) => {
       if (this.listenerCount("error") > 0) {
         this.emit("error", e);
       }
