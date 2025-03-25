@@ -273,7 +273,7 @@ rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "sessio
 rustc-hash = "2.1.1"
 rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
-rustls-tokio-stream = "=0.3.0"
+rustls-tokio-stream = "=0.5.0"
 rustls-webpki = "0.102"
 rustyline = "=13.0.0"
 rustyline-derive = "=0.7.0"
