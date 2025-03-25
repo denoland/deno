@@ -4392,16 +4392,11 @@ impl State {
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    if specifier.scheme() == "asset" {
-      if ASSET_DOCUMENTS.contains_key(specifier) {
-        Some("1".to_string())
-      } else {
-        None
-      }
-    } else {
-      let document = self.get_document(specifier);
-      document.map(|d| d.script_version())
-    }
+    let module = self
+      .state_snapshot
+      .document_modules
+      .module_from_specifier(specifier, self.last_scope.as_ref())?;
+    module.script_version.clone()
   }
 }
 

@@ -20,6 +20,7 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
+use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
@@ -62,6 +63,7 @@ use super::tsc::NavigationTree;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
+use super::urls::url_to_uri;
 use crate::graph_util::CliJsrUrlProvider;
 
 #[derive(Debug)]
@@ -168,9 +170,6 @@ fn asset_url_to_uri(url: &Url) -> Option<Uri> {
 }
 
 fn data_url_to_uri(url: &Url) -> Option<Uri> {
-  if url.scheme() != "data" {
-    return None;
-  }
   let data_url = deno_media_type::data_url::RawDataUrl::parse(url).ok()?;
   let media_type = data_url.media_type();
   let extension = if media_type == MediaType::Unknown {
@@ -508,13 +507,34 @@ impl Documents2 {
     Some(Document2::Server(doc))
   }
 
-  pub fn get_for_data_url(&self, url: &Url) -> Option<Document2> {
-    let uri = data_url_to_uri(&url)?;
-    let url = Arc::new(url.clone());
-    self.data_urls_by_uri.insert(uri.clone(), url.clone());
-    let doc = Arc::new(ServerDocument::data_url(&uri, url)?);
-    self.server.insert(uri, doc.clone());
-    Some(Document2::Server(doc))
+  pub fn get_for_specifier(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+    cache: &LspCache,
+  ) -> Option<Document2> {
+    let scheme = specifier.scheme();
+    if scheme == "file" || scheme == "asset" {
+      let uri = url_to_uri(specifier).ok()?;
+      self.get(&uri)
+    } else if scheme == "http" || scheme == "https" {
+      let cache_file_url =
+        cache.vendored_specifier(specifier, scope).or_else(|| {
+          let path = cache.global().local_path_for_url(specifier).ok()?;
+          Url::from_file_path(&path).ok()
+        })?;
+      let uri = url_to_uri(&cache_file_url).ok()?;
+      self.get(&uri)
+    } else if scheme == "data" {
+      let uri = data_url_to_uri(&specifier)?;
+      let url = Arc::new(specifier.clone());
+      self.data_urls_by_uri.insert(uri.clone(), url.clone());
+      let doc = Arc::new(ServerDocument::data_url(&uri, url)?);
+      self.server.insert(uri, doc.clone());
+      Some(Document2::Server(doc))
+    } else {
+      None
+    }
   }
 
   pub fn open_docs(&self) -> impl Iterator<Item = &Arc<OpenDocument>> {
@@ -568,6 +588,7 @@ pub struct DocumentModuleOpenData {
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
   pub open_data: Option<DocumentModuleOpenData>,
+  pub script_version: Option<String>,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,
@@ -656,6 +677,15 @@ impl DocumentModules {
   pub fn module(
     &self,
     document: &Document2,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  pub fn module_from_specifier(
+    &self,
+    specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     // TODO(nayeemrmn): Implement!
