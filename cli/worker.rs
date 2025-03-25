@@ -5,6 +5,7 @@ use std::sync::Arc;
 use deno_ast::ModuleSpecifier;
 use deno_core::error::CoreError;
 use deno_core::futures::FutureExt;
+use deno_core::url::Url;
 use deno_core::v8;
 use deno_core::Extension;
 use deno_core::PollEventLoopOptions;
@@ -18,7 +19,6 @@ use deno_runtime::WorkerExecutionMode;
 use deno_semver::npm::NpmPackageReqReference;
 use sys_traits::EnvCurrentDir;
 use tokio::select;
-use deno_core::url::Url;
 
 use crate::args::CliLockfile;
 use crate::args::NpmCachingStrategy;

@@ -1,7 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::io::Read;
 use std::io::BufRead;
+use std::io::Read;
 use std::sync::Arc;
 
 use deno_cache_dir::file_fetcher::File;
@@ -39,17 +39,23 @@ fn is_node_cli_like(path: &std::path::Path) -> std::io::Result<bool> {
   if matches!(ext, "js" | "cjs" | "mjs" | "ts" | "cts" | "mts") {
     return Ok(true);
   }
-  // Otherwise try to read the first line to look for a node shebang.
+  // Otherwise try to read the first line to look for a node shebang (if it's
+  // a text file).
   let file = std::fs::File::open(path)?;
   let mut reader = std::io::BufReader::new(file);
   let mut first_line = String::new();
-  if reader.read_line(&mut first_line)? == 0 {
-    return Ok(false);
+  match reader.read_line(&mut first_line) {
+    Ok(0) => Ok(false),
+    Ok(_) => Ok(first_line.starts_with("#!") && first_line.contains("node")),
+    Err(err) => {
+      // If the file isn't valid UTF-8 text, assume it's a binary and return false.
+      if err.kind() == std::io::ErrorKind::InvalidData {
+        Ok(false)
+      } else {
+        Err(err)
+      }
+    }
   }
-  if first_line.starts_with("#!") && first_line.contains("node") {
-    return Ok(true);
-  }
-  Ok(false)
 }
 
 pub fn check_permission_before_script(flags: &Flags) {
@@ -114,7 +120,9 @@ pub async fn run_script(
   // If the binary entrypoint appears to be some non-JavaScript executable
   // (for example, a compiled binary), then we need to spawn it as an external
   // process rather than executing within Deno's JS runtime.
-  let exit_code = if let Ok(pkg_ref) = deno_semver::npm::NpmPackageReqReference::from_specifier(&main_module) {
+  let exit_code = if let Ok(pkg_ref) =
+    deno_semver::npm::NpmPackageReqReference::from_specifier(&main_module)
+  {
     // use a fake referrer to locate the package folder
     let referrer = deno_core::ModuleSpecifier::from_directory_path(
       factory.cli_options()?.initial_cwd(),
@@ -132,7 +140,9 @@ pub async fn run_script(
     if !is_node_cli_like(&entrypoint_path)? {
       // Ensure the user allowed executing arbitrary binaries
       if !flags.permissions.allow_all && flags.permissions.allow_run.is_none() {
-        bail!("--allow-run must be provided to execute non-JavaScript npm binaries");
+        bail!(
+          "--allow-run must be provided to execute non-JavaScript npm binaries"
+        );
       }
       use std::process::Command;
       // spawn and block on completion
