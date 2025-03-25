@@ -4524,7 +4524,12 @@ impl Inner {
 
     if byonm {
       roots.retain(|s| s.scheme() != "npm");
-    } else if let Some(dep_info) = self.document_modules.dep_info(scope) {
+    } else if let Some(dep_info) = self
+      .document_modules
+      .dep_info_by_scope()
+      .get(&scope.cloned())
+      .cloned()
+    {
       // always include the npm packages since resolution of one npm package
       // might affect the resolution of other npm packages
       roots.extend(

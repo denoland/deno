@@ -650,14 +650,15 @@ impl DocumentModule {
   }
 }
 
+type DepInfoByScope = BTreeMap<Option<Url>, Arc<ScopeDepInfo>>;
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents2,
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
-  dep_info_by_scope: Arc<BTreeMap<Option<Url>, Arc<ScopeDepInfo>>>,
-  dep_info_by_scope_dirty: Arc<AtomicBool>,
+  dep_info_by_scope: Arc<once_cell::sync::OnceCell<Arc<DepInfoByScope>>>,
 }
 
 impl DocumentModules {
@@ -671,7 +672,6 @@ impl DocumentModules {
     self.config = Arc::new(config.clone());
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
-    self.dep_info_by_scope_dirty = Arc::new(AtomicBool::new(true));
     // TODO(nayeemrmn): Implement!
   }
 
@@ -682,7 +682,7 @@ impl DocumentModules {
     language_id: LanguageId,
     text: Arc<str>,
   ) -> Arc<OpenDocument> {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.dep_info_by_scope = Default::default();
     self.documents.open(uri, version, language_id, text)
   }
 
@@ -692,7 +692,7 @@ impl DocumentModules {
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.dep_info_by_scope = Default::default();
     self.documents.change(uri, version, changes)
   }
 
@@ -700,7 +700,7 @@ impl DocumentModules {
     &mut self,
     uri: &Uri,
   ) -> Result<Arc<OpenDocument>, AnyError> {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
+    self.dep_info_by_scope = Default::default();
     self.documents.close(uri)
   }
 
@@ -876,22 +876,16 @@ impl DocumentModules {
     false
   }
 
-  pub fn dep_info(&self, scope: Option<&Url>) -> Option<Arc<ScopeDepInfo>> {
-    if self.dep_info_by_scope_dirty.load(Ordering::Relaxed) {
-      // TODO(nayeemrmn): Implement!
-      self.dep_info_by_scope_dirty.store(false, Ordering::Relaxed);
-    }
-    self.dep_info_by_scope.get(&scope.cloned()).cloned()
-  }
-
   pub fn dep_info_by_scope(
     &mut self,
   ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
-    if self.dep_info_by_scope_dirty.load(Ordering::Relaxed) {
-      // TODO(nayeemrmn): Implement!
-      self.dep_info_by_scope_dirty.store(false, Ordering::Relaxed);
-    }
-    self.dep_info_by_scope.clone()
+    self
+      .dep_info_by_scope
+      .get_or_init(|| {
+        // TODO(nayeemrmn): Implement!
+        Default::default()
+      })
+      .clone()
   }
 
   pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
