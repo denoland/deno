@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
@@ -15,6 +16,7 @@ use deno_semver::Version;
 use deno_task_shell::KillSignal;
 
 use super::bin_entries::BinEntries;
+use super::NpmPackageExtraInfoProvider;
 use crate::args::LifecycleScriptsConfig;
 use crate::task_runner::TaskStdio;
 use crate::util::progress_bar::ProgressBar;
@@ -63,28 +65,19 @@ impl<'a> LifecycleScripts<'a> {
 }
 
 pub fn has_lifecycle_scripts(
-  package: &NpmResolutionPackage,
+  extra: &NpmPackageExtraInfo,
   package_path: &Path,
 ) -> bool {
-  if let Some(install) = package.extra.as_ref().unwrap().scripts.get("install")
-  {
-    // default script
-    if !is_broken_default_install_script(install, package_path) {
-      return true;
+  if let Some(install) = extra.scripts.get("install") {
+    {
+      // default script
+      if !is_broken_default_install_script(install, package_path) {
+        return true;
+      }
     }
   }
-  package
-    .extra
-    .as_ref()
-    .unwrap()
-    .scripts
-    .contains_key("preinstall")
-    || package
-      .extra
-      .as_ref()
-      .unwrap()
-      .scripts
-      .contains_key("postinstall")
+  extra.scripts.contains_key("preinstall")
+    || extra.scripts.contains_key("postinstall")
 }
 
 // npm defaults to running `node-gyp rebuild` if there is a `binding.gyp` file
@@ -142,9 +135,10 @@ impl<'a> LifecycleScripts<'a> {
   pub fn add(
     &mut self,
     package: &'a NpmResolutionPackage,
+    extra: &NpmPackageExtraInfo,
     package_path: Cow<Path>,
   ) {
-    if has_lifecycle_scripts(package, &package_path) {
+    if has_lifecycle_scripts(extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
         if !self.has_run_scripts(package) {
           self
@@ -187,6 +181,7 @@ impl<'a> LifecycleScripts<'a> {
     packages: &[NpmResolutionPackage],
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
+    provider: impl NpmPackageExtraInfoProvider + Clone,
   ) -> Result<(), LifecycleScriptsError> {
     let kill_signal = KillSignal::default();
     let _drop_signal = kill_signal.clone().drop_guard();
@@ -199,6 +194,7 @@ impl<'a> LifecycleScripts<'a> {
         root_node_modules_dir_path,
         progress_bar,
         kill_signal,
+        provider,
       )
       .await
   }
@@ -210,6 +206,7 @@ impl<'a> LifecycleScripts<'a> {
     root_node_modules_dir_path: &Path,
     progress_bar: &ProgressBar,
     kill_signal: KillSignal,
+    provider: impl NpmPackageExtraInfoProvider + Clone,
   ) -> Result<(), LifecycleScriptsError> {
     self.warn_not_run_scripts()?;
     let get_package_path =
@@ -229,7 +226,9 @@ impl<'a> LifecycleScripts<'a> {
         snapshot,
         packages,
         get_package_path,
-      );
+        provider.clone(),
+      )
+      .await;
       let init_cwd = &self.config.initial_cwd;
       let process_state = deno_lib::npm::npm_process_state(
         snapshot.as_valid_serialized(),
@@ -272,7 +271,9 @@ impl<'a> LifecycleScripts<'a> {
           package,
           snapshot,
           get_package_path,
-        );
+          provider.clone(),
+        )
+        .await;
         for script_name in ["preinstall", "install", "postinstall"] {
           if let Some(script) =
             package.extra.as_ref().unwrap().scripts.get(script_name)
@@ -377,11 +378,12 @@ pub fn is_running_lifecycle_script() -> bool {
 // take in all (non copy) packages from snapshot,
 // and resolve the set of available binaries to create
 // custom commands available to the task runner
-fn resolve_baseline_custom_commands<'a>(
+async fn resolve_baseline_custom_commands<'a>(
   bin_entries: &mut BinEntries<'a>,
   snapshot: &'a NpmResolutionSnapshot,
   packages: &'a [NpmResolutionPackage],
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   let mut custom_commands = crate::task_runner::TaskCustomCommands::new();
   custom_commands
@@ -408,13 +410,15 @@ fn resolve_baseline_custom_commands<'a>(
     snapshot,
     packages,
     get_package_path,
+    provider,
   )
+  .await
 }
 
 // resolves the custom commands from an iterator of packages
 // and adds them to the existing custom commands.
 // note that this will overwrite any existing custom commands
-fn resolve_custom_commands_from_packages<
+async fn resolve_custom_commands_from_packages<
   'a,
   P: IntoIterator<Item = &'a NpmResolutionPackage>,
 >(
@@ -423,12 +427,18 @@ fn resolve_custom_commands_from_packages<
   snapshot: &'a NpmResolutionSnapshot,
   packages: P,
   get_package_path: impl Fn(&'a NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   for package in packages {
     let package_path = get_package_path(package);
-
-    if package.extra.as_ref().unwrap().bin.is_some() {
-      bin_entries.add(package, package_path);
+    let Ok(extra) = provider
+      .get_package_extra_info(&package.id.nv, package.is_deprecated)
+      .await
+    else {
+      continue;
+    };
+    if extra.bin.is_some() {
+      bin_entries.add(package, &extra, package_path);
     }
   }
   let bins: Vec<(String, PathBuf)> = bin_entries.collect_bin_files(snapshot);
@@ -448,11 +458,12 @@ fn resolve_custom_commands_from_packages<
 // resolves the custom commands from the dependencies of a package
 // and adds them to the existing custom commands.
 // note that this will overwrite any existing custom commands.
-fn resolve_custom_commands_from_deps(
+async fn resolve_custom_commands_from_deps(
   baseline: crate::task_runner::TaskCustomCommands,
   package: &NpmResolutionPackage,
   snapshot: &NpmResolutionSnapshot,
   get_package_path: impl Fn(&NpmResolutionPackage) -> PathBuf,
+  provider: impl NpmPackageExtraInfoProvider,
 ) -> crate::task_runner::TaskCustomCommands {
   let mut bin_entries = BinEntries::new();
   resolve_custom_commands_from_packages(
@@ -464,5 +475,7 @@ fn resolve_custom_commands_from_deps(
       .values()
       .map(|id| snapshot.package_from_id(id).unwrap()),
     get_package_path,
+    provider,
   )
+  .await
 }

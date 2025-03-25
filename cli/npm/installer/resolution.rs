@@ -297,6 +297,7 @@ fn populate_lockfile_from_snapshot(
         .dist
         .as_ref()
         .map(|dist| StackString::from_str(&dist.tarball)),
+      deprecated: pkg.is_deprecated,
     }
   }
 

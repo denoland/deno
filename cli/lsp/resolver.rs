@@ -863,6 +863,7 @@ impl<'a> ResolverFactory<'a> {
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
+        todo!(),
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,

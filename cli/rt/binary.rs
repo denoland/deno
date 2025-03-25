@@ -558,6 +558,7 @@ fn deserialize_npm_snapshot(
         has_scripts: Default::default(),
         is_deprecated: Default::default(),
         extra: Default::default(),
+        is_deprecated: false,
       },
     ))
   }
