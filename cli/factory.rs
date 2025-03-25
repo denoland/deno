@@ -639,6 +639,7 @@ impl CliFactory {
         Arc::new(NpmInstallDepsProvider::from_workspace(
           cli_options.workspace(),
         )),
+        Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
         self.npm_resolution()?.clone(),
         self.npm_resolution_initializer()?.clone(),
         self.npm_resolution_installer()?.clone(),

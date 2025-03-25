@@ -82,6 +82,7 @@ impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
               .collect::<std::collections::BTreeMap<_, _>>(),
             cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
             os: version_info.os.iter().map(|s| s.to_string()).collect(),
+            deprecated: version_info.deprecated.is_some(),
           },
         )
       })

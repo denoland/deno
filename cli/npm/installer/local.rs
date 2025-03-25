@@ -19,8 +19,13 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::FutureExt;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
+use deno_core::serde_json;
 use deno_error::JsErrorBox;
+use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageExtraInfo;
+use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::hard_link_file;
@@ -42,6 +47,7 @@ use crate::args::LifecycleScriptsConfig;
 use crate::args::NpmInstallDepsProvider;
 use crate::cache::CACHE_PERM;
 use crate::colors;
+use crate::npm::installer::common::NpmPackageExtraInfoProvider;
 use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 use crate::sys::CliSys;
@@ -53,7 +59,6 @@ use crate::util::progress_bar::ProgressMessagePrompt;
 
 /// Resolver that creates a local node_modules directory
 /// and resolves packages from it.
-#[derive(Debug)]
 pub struct LocalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   npm_install_deps_provider: Arc<NpmInstallDepsProvider>,
@@ -64,6 +69,24 @@ pub struct LocalNpmPackageInstaller {
   lifecycle_scripts: LifecycleScriptsConfig,
   root_node_modules_path: PathBuf,
   system_info: NpmSystemInfo,
+  npm_registry_info_provider:
+    Arc<dyn deno_npm::registry::NpmRegistryApi + Send + Sync>,
+}
+
+impl std::fmt::Debug for LocalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("LocalNpmPackageInstaller")
+      .field("cache", &self.cache)
+      .field("npm_install_deps_provider", &self.npm_install_deps_provider)
+      .field("progress_bar", &self.progress_bar)
+      .field("resolution", &self.resolution)
+      .field("sys", &self.sys)
+      .field("tarball_cache", &self.tarball_cache)
+      .field("lifecycle_scripts", &self.lifecycle_scripts)
+      .field("root_node_modules_path", &self.root_node_modules_path)
+      .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl LocalNpmPackageInstaller {
@@ -78,6 +101,9 @@ impl LocalNpmPackageInstaller {
     node_modules_folder: PathBuf,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    npm_registry_info_provider: Arc<
+      dyn deno_npm::registry::NpmRegistryApi + Send + Sync,
+    >,
   ) -> Self {
     Self {
       cache,
@@ -89,6 +115,7 @@ impl LocalNpmPackageInstaller {
       lifecycle_scripts,
       root_node_modules_path: node_modules_folder,
       system_info,
+      npm_registry_info_provider,
     }
   }
 }
@@ -107,6 +134,7 @@ impl NpmPackageFsInstaller for LocalNpmPackageInstaller {
       &snapshot,
       &self.cache,
       &self.npm_install_deps_provider,
+      &self.npm_registry_info_provider,
       &self.progress_bar,
       &self.tarball_cache,
       &self.root_node_modules_path,
@@ -181,12 +209,13 @@ async fn sync_resolution_with_fs(
   snapshot: &NpmResolutionSnapshot,
   cache: &Arc<CliNpmCache>,
   npm_install_deps_provider: &NpmInstallDepsProvider,
+  npm_registry_info_provider: &Arc<dyn NpmRegistryApi + Send + Sync>,
   progress_bar: &ProgressBar,
   tarball_cache: &Arc<CliNpmTarballCache>,
   root_node_modules_dir_path: &Path,
   sys: &CliSys,
   system_info: &NpmSystemInfo,
-  lifecycle_scripts: &LifecycleScriptsConfig,
+  lifecycle_scripts_config: &LifecycleScriptsConfig,
 ) -> Result<(), SyncResolutionWithFsError> {
   if snapshot.is_empty() && npm_install_deps_provider.local_pkgs().is_empty() {
     return Ok(()); // don't create the directory
@@ -238,14 +267,15 @@ async fn sync_resolution_with_fs(
     &StackString,
     &NpmResolutionPackage,
   > = HashMap::with_capacity(package_partitions.packages.len());
-  let mut bin_entries = bin_entries::BinEntries::new();
-  let mut lifecycle_scripts =
+  let bin_entries = Rc::new(RefCell::new(bin_entries::BinEntries::new()));
+  let lifecycle_scripts = Rc::new(RefCell::new(
     super::common::lifecycle_scripts::LifecycleScripts::new(
-      lifecycle_scripts,
+      lifecycle_scripts_config,
       LocalLifecycleScripts {
         deno_local_registry_dir: &deno_local_registry_dir,
       },
-    );
+    ),
+  ));
   let packages_with_deprecation_warnings = Arc::new(Mutex::new(Vec::new()));
 
   let mut package_tags: HashMap<&PackageNv, BTreeSet<&str>> = HashMap::new();
@@ -255,6 +285,14 @@ async fn sync_resolution_with_fs(
     }
   }
 
+  // tokio_util::task::LocalPoolHandle::new(
+  //   std::thread::available_parallelism().unwrap_or(8),
+  // );
+
+  let extra_info_provider = Arc::new(super::common::ExtraInfoProvider::new(
+    cache.clone(),
+    npm_registry_info_provider.clone(),
+  ));
   for package in &package_partitions.packages {
     if let Some(current_pkg) =
       newest_packages_by_name.get_mut(&package.id.nv.name)
@@ -319,7 +357,8 @@ async fn sync_resolution_with_fs(
         let folder_path = folder_path.clone();
         let packages_with_deprecation_warnings =
           packages_with_deprecation_warnings.clone();
-
+        let extra_info_provider = extra_info_provider.clone();
+        let lifecycle_scripts = lifecycle_scripts.clone();
         cache_futures.push(
           async move {
             tarball_cache
@@ -337,7 +376,7 @@ async fn sync_resolution_with_fs(
             );
             let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
-            deno_core::unsync::spawn_blocking({
+            let handle = deno_core::unsync::spawn_blocking({
               let package_path = package_path.clone();
               let sys = sys.clone();
               move || {
@@ -347,16 +386,39 @@ async fn sync_resolution_with_fs(
 
                 Ok::<_, SyncResolutionWithFsError>(())
               }
-            })
-            .await
-            .map_err(JsErrorBox::from_err)?
-            .map_err(JsErrorBox::from_err)?;
+            });
+            let extra = extra_info_provider
+              .get_package_extra_info(&package.id.nv, package.is_deprecated);
+            let (result, extra) = tokio::join!(handle, extra);
+            result
+              .map_err(JsErrorBox::from_err)?
+              .map_err(JsErrorBox::from_err)?;
+            let extra = extra.map_err(JsErrorBox::from_err)?;
 
-            if let Some(deprecated) = &package.deprecated {
+            if extra.bin.is_some() {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path,
+              );
+            }
+
+            if let Some(deprecated) = &extra.deprecated {
               packages_with_deprecation_warnings
                 .lock()
                 .push((package.id.clone(), deprecated.clone()));
             }
+
+            let sub_node_modules = folder_path.join("node_modules");
+            let package_path = join_package_name(
+              Cow::Owned(sub_node_modules),
+              &package.id.nv.name,
+            );
+            lifecycle_scripts.borrow_mut().add(
+              package,
+              &extra,
+              package_path.into(),
+            );
 
             // finally stop showing the progress bar
             drop(pb_guard); // explicit for clarity
@@ -682,12 +744,15 @@ async fn sync_resolution_with_fs(
           bin_entries::EntrySetupOutcome::MissingEntrypoint {
             package,
             package_path,
+            extra,
             ..
           } if super::common::lifecycle_scripts::has_lifecycle_scripts(
-            package,
+            extra,
             package_path,
-          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
-            && !lifecycle_scripts.has_run_scripts(package) =>
+          ) && lifecycle_scripts
+            .borrow()
+            .can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.borrow().has_run_scripts(package) =>
           {
             // ignore, it might get fixed when the lifecycle scripts run.
             // if not, we'll warn then
@@ -741,12 +806,22 @@ async fn sync_resolution_with_fs(
     }
   }
 
+  let lifecycle_scripts = std::mem::replace(
+    &mut *lifecycle_scripts.borrow_mut(),
+    super::common::lifecycle_scripts::LifecycleScripts::new(
+      lifecycle_scripts_config,
+      LocalLifecycleScripts {
+        deno_local_registry_dir: &deno_local_registry_dir,
+      },
+    ),
+  );
   lifecycle_scripts
     .finish(
       snapshot,
       &package_partitions.packages,
       root_node_modules_dir_path,
       progress_bar,
+      extra_info_provider,
     )
     .await?;
 

@@ -10,11 +10,13 @@ use deno_core::futures::stream::FuturesUnordered;
 use deno_core::futures::StreamExt;
 use deno_error::JsErrorBox;
 use deno_lib::util::hash::FastInsecureHasher;
+use deno_npm::registry::NpmRegistryApi;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_resolver::npm::managed::NpmResolutionCell;
 
 use super::common::lifecycle_scripts::LifecycleScriptsStrategy;
+use super::common::NpmPackageExtraInfoProvider;
 use super::common::NpmPackageFsInstaller;
 use super::PackageCaching;
 use crate::args::LifecycleScriptsConfig;
@@ -23,13 +25,25 @@ use crate::npm::CliNpmCache;
 use crate::npm::CliNpmTarballCache;
 
 /// Resolves packages from the global npm cache.
-#[derive(Debug)]
 pub struct GlobalNpmPackageInstaller {
   cache: Arc<CliNpmCache>,
   tarball_cache: Arc<CliNpmTarballCache>,
   resolution: Arc<NpmResolutionCell>,
   lifecycle_scripts: LifecycleScriptsConfig,
   system_info: NpmSystemInfo,
+  npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
+}
+
+impl std::fmt::Debug for GlobalNpmPackageInstaller {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("GlobalNpmPackageInstaller")
+      .field("cache", &self.cache)
+      .field("tarball_cache", &self.tarball_cache)
+      .field("resolution", &self.resolution)
+      .field("lifecycle_scripts", &self.lifecycle_scripts)
+      .field("system_info", &self.system_info)
+      .finish()
+  }
 }
 
 impl GlobalNpmPackageInstaller {
@@ -39,6 +53,7 @@ impl GlobalNpmPackageInstaller {
     resolution: Arc<NpmResolutionCell>,
     lifecycle_scripts: LifecycleScriptsConfig,
     system_info: NpmSystemInfo,
+    npm_registry_info_provider: Arc<dyn NpmRegistryApi + Send + Sync>,
   ) -> Self {
     Self {
       cache,
@@ -46,6 +61,7 @@ impl GlobalNpmPackageInstaller {
       resolution,
       lifecycle_scripts,
       system_info,
+      npm_registry_info_provider,
     }
   }
 }
@@ -82,9 +98,17 @@ impl NpmPackageFsInstaller for GlobalNpmPackageInstaller {
         &self.lifecycle_scripts,
         GlobalLifecycleScripts::new(self, &self.lifecycle_scripts.root_dir),
       );
+    let extra_info_provider = super::common::ExtraInfoProvider::new(
+      self.cache.clone(),
+      self.npm_registry_info_provider.clone(),
+    );
     for package in &package_partitions.packages {
+      // TODO(nathanwhit): probably very inefficient
+      let extra = extra_info_provider
+        .get_package_extra_info(&package.id.nv, package.is_deprecated)
+        .await?;
       let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(package, Cow::Borrowed(&package_folder));
+      lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
     }
 
     lifecycle_scripts
