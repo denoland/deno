@@ -173,7 +173,7 @@ ecdsa = "0.16.9"
 ed25519-dalek = "2.1.1"
 ed448-goldilocks = "0.8.3"
 elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
-encoding_rs = "=0.8.33"
+encoding_rs = "=0.8.35"
 env_logger = "=0.11.6"
 error_reporter = "1"
 fancy-regex = "=0.14.0"
