@@ -175,7 +175,6 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
-  pub documents2: Arc<Documents2>,
   pub document_modules: Arc<DocumentModules>,
   pub resolver: Arc<LspResolver>,
 }
@@ -229,7 +228,6 @@ pub struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
-  pub documents2: Documents2,
   // TODO(nayeemrmn): Remove!
   pub documents: Documents,
   pub document_modules: DocumentModules,
@@ -538,7 +536,6 @@ impl Inner {
       config,
       diagnostics_state,
       diagnostics_server,
-      documents2: Default::default(),
       documents,
       document_modules: Default::default(),
       http_client_provider,
@@ -578,7 +575,7 @@ impl Inner {
       }
       Enabled::Ignore => {}
     }
-    let Some(document) = self.documents2.get(uri) else {
+    let Some(document) = self.document_modules.documents.get(uri) else {
       match exists {
         Exists::Enforce => {
           return Err(LspError::invalid_params(format!(
@@ -671,7 +668,6 @@ impl Inner {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       documents: Arc::new(self.documents.clone()),
-      documents2: Arc::new(self.documents2.clone()),
       document_modules: Arc::new(self.document_modules.clone()),
       resolver: self.resolver.snapshot(),
     })
@@ -810,7 +806,8 @@ impl Inner {
       return;
     }
     let exists_enabled_document = self
-      .documents2
+      .document_modules
+      .documents
       .open_docs()
       .any(|doc| doc.is_diagnosable() && self.config.uri_enabled(&doc.uri));
     if !exists_enabled_document {
@@ -1347,7 +1344,7 @@ impl Inner {
         params.text_document.uri.as_str()
       );
     }
-    let document = self.documents2.open(
+    let document = self.document_modules.documents.open(
       params.text_document.uri.clone(),
       params.text_document.version,
       params.text_document.language_id.parse().unwrap(),
@@ -1355,7 +1352,6 @@ impl Inner {
     );
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
-      self.document_modules.did_open(&document);
       self.refresh_dep_info().await;
       self.project_changed2(
         [(&params.text_document.uri, ChangeKind::Opened)],
@@ -1381,7 +1377,7 @@ impl Inner {
     if scheme.eq_lowercase("deno") {
       return;
     }
-    let document = match self.documents2.change(
+    let document = match self.document_modules.documents.change(
       &params.text_document.uri,
       params.text_document.version,
       params.content_changes,
@@ -1395,7 +1391,6 @@ impl Inner {
     if document.is_diagnosable() {
       let old_scopes_with_node_specifier =
         self.document_modules.scopes_with_node_specifier();
-      self.document_modules.did_change(&document);
       self.refresh_dep_info().await;
       let mut config_changed = false;
       if !self
@@ -1490,7 +1485,11 @@ impl Inner {
       return;
     }
     self.diagnostics_state.clear2(&params.text_document.uri);
-    let document = match self.documents2.close(&params.text_document.uri) {
+    let document = match self
+      .document_modules
+      .documents
+      .close(&params.text_document.uri)
+    {
       Ok(doc) => doc,
       Err(err) => {
         error!("{:#}", err);
@@ -1498,7 +1497,6 @@ impl Inner {
       }
     };
     if document.is_diagnosable() {
-      self.document_modules.did_close(&params.text_document.uri);
       self.refresh_dep_info().await;
       self.project_changed2(
         [(&params.text_document.uri, ChangeKind::Closed)],
@@ -4578,7 +4576,8 @@ impl Inner {
     };
 
     let open_modules = self
-      .documents2
+      .document_modules
+      .documents
       .open_docs()
       .filter(|d| d.is_diagnosable())
       .flat_map(|d| {
@@ -4813,9 +4812,13 @@ impl Inner {
       && params.text_document.uri.path().as_str() == "/status.md"
     {
       let mut contents = String::new();
-      let mut open_docs = self.documents2.open_docs().collect::<Vec<_>>();
+      let mut open_docs = self
+        .document_modules
+        .documents
+        .open_docs()
+        .collect::<Vec<_>>();
       open_docs.sort_by_cached_key(|d| d.uri.to_string());
-      let mut server_docs = self.documents2.server_docs();
+      let mut server_docs = self.document_modules.documents.server_docs();
       server_docs.sort_by_cached_key(|d| d.uri.to_string());
       let measures = self.performance.to_vec();
 

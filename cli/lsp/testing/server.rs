@@ -98,7 +98,8 @@ impl TestServer {
               let mut keys: HashSet<ModuleSpecifier> =
                 tests.keys().cloned().collect();
               for document in snapshot
-                .documents2
+                .document_modules
+                .documents
                 .filtered_docs(|d| d.is_file_like() && d.is_diagnosable())
               {
                 let Some(module) =

@@ -5665,11 +5665,6 @@ mod tests {
       .await;
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let mut documents2 = Documents2::default();
-    for (relative_specifier, source, version, language_id) in sources {
-      let specifier = temp_dir.url().join(relative_specifier).unwrap();
-      documents2.open(specifier, *version, *language_id, (*source).into());
-    }
     let mut document_modules = DocumentModules::default();
     document_modules.update_config(
       &config,
@@ -5677,6 +5672,15 @@ mod tests {
       &cache,
       &Default::default(),
     );
+    for (relative_specifier, source, version, language_id) in sources {
+      let specifier = temp_dir.url().join(relative_specifier).unwrap();
+      document_modules.documents.open(
+        specifier,
+        *version,
+        *language_id,
+        (*source).into(),
+      );
+    }
     let mut documents = Documents::default();
     documents.update_config(&config, &resolver, &cache, &Default::default());
     for (relative_specifier, source, version, language_id) in sources {
@@ -5686,7 +5690,6 @@ mod tests {
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
       documents: Arc::new(documents),
-      documents2: Arc::new(documents2),
       document_modules: Arc::new(document_modules),
       config: Arc::new(config),
       resolver,

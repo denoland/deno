@@ -437,11 +437,11 @@ impl Document2 {
 #[derive(Debug, Default, Clone)]
 pub struct Documents2 {
   open: IndexMap<Uri, Arc<OpenDocument>>,
-  server: DashMap<Uri, Arc<ServerDocument>>,
+  server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
   /// Data URLs can not be recovered from the URIs we assign them without this
   /// map. We want to be able to discard old data URL documents but keep this
   /// mapping.
-  data_urls_by_uri: DashMap<Uri, Arc<Url>>,
+  data_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
 }
 
 impl Documents2 {
@@ -652,6 +652,7 @@ impl DocumentModule {
 
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
+  pub documents: Documents2,
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
   dep_info_by_scope: Arc<BTreeMap<Option<Url>, Arc<ScopeDepInfo>>>,
@@ -667,21 +668,6 @@ impl DocumentModules {
     workspace_files: &IndexSet<Url>,
   ) {
     self.config = Arc::new(config.clone());
-    // TODO(nayeemrmn): Implement!
-  }
-
-  pub fn did_open(&mut self, doc: &Arc<OpenDocument>) {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
-    // TODO(nayeemrmn): Implement!
-  }
-
-  pub fn did_change(&mut self, doc: &Arc<OpenDocument>) {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
-    // TODO(nayeemrmn): Implement!
-  }
-
-  pub fn did_close(&mut self, uri: &Uri) {
-    self.dep_info_by_scope_dirty.store(true, Ordering::Relaxed);
     // TODO(nayeemrmn): Implement!
   }
 
