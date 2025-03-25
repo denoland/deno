@@ -653,6 +653,7 @@ impl DocumentModule {
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   config: Arc<Config>,
+  resolver: Arc<LspResolver>,
   dep_info_by_scope: Arc<BTreeMap<Option<Url>, Arc<ScopeDepInfo>>>,
   dep_info_by_scope_dirty: Arc<AtomicBool>,
 }
@@ -711,12 +712,78 @@ impl DocumentModules {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub fn resolve(
+    &self,
+    // (is_cjs: bool, raw_specifier: String)
+    raw_specifiers: &[(bool, String)],
+    referrer: &Url,
+    scope: Option<&Url>,
+  ) -> Vec<Option<(Url, MediaType)>> {
+    let referrer_module = self.module_from_specifier(referrer, scope);
+    let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
+    let mut results = Vec::new();
+    for (is_cjs, raw_specifier) in raw_specifiers {
+      let resolution_mode = match is_cjs {
+        true => ResolutionMode::Require,
+        false => ResolutionMode::Import,
+      };
+      if raw_specifier.starts_with("asset:") {
+        if let Ok(specifier) = resolve_url(raw_specifier) {
+          let media_type = MediaType::from_specifier(&specifier);
+          results.push(Some((specifier, media_type)));
+        } else {
+          results.push(None);
+        }
+      } else if let Some(dep) =
+        dependencies.as_ref().and_then(|d| d.get(raw_specifier))
+      {
+        if let Some(specifier) = dep.maybe_type.maybe_specifier() {
+          results.push(self.resolve_dependency(
+            specifier,
+            referrer,
+            resolution_mode,
+            scope,
+          ));
+        } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
+          results.push(self.resolve_dependency(
+            specifier,
+            referrer,
+            resolution_mode,
+            scope,
+          ));
+        } else {
+          results.push(None);
+        }
+      } else if let Ok(specifier) =
+        self.resolver.as_cli_resolver(scope).resolve(
+          raw_specifier,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
+        )
+      {
+        results.push(self.resolve_dependency(
+          &specifier,
+          referrer,
+          resolution_mode,
+          scope,
+        ));
+      } else {
+        results.push(None);
+      }
+    }
+    results
+  }
+
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve_dependency(
     &self,
     specifier: &Url,
     referrer: &Url,
+    resolution_mode: ResolutionMode,
     scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
+  ) -> Option<(Url, MediaType)> {
     // TODO(nayeemrmn): Implement!
     None
   }

@@ -4779,24 +4779,31 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
       .unwrap_or(&mut result.unscoped);
     for module in modules {
       let is_open = module.open_data.is_some();
-      let types_module = (|| {
+      let types_specifier = (|| {
         let types_specifier = module
           .types_dependency
           .as_ref()?
           .dependency
           .maybe_specifier()?;
-        state.state_snapshot.document_modules.resolve_dependency(
-          types_specifier,
-          &module.specifier,
-          module.scope.as_deref(),
+        Some(
+          state
+            .state_snapshot
+            .document_modules
+            .resolve_dependency(
+              types_specifier,
+              &module.specifier,
+              module.resolution_mode,
+              module.scope.as_deref(),
+            )?
+            .0,
         )
       })();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
-      if let Some(types_module) = &types_module {
-        script_names.insert(types_module.specifier.to_string());
+      if let Some(types_specifier) = &types_specifier {
+        script_names.insert(types_specifier.to_string());
       }
-      if types_module.is_none() || is_open {
+      if types_specifier.is_none() || is_open {
         script_names.insert(module.specifier.to_string());
       }
     }
