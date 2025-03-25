@@ -1,4 +1,4 @@
 {
-  "args": "run error_bad_wasm_import_specifier.js",
+  "args": "run main.js",
   "output": "main.out"
 }
