@@ -77,6 +77,7 @@ use super::config::LspTsConfig;
 use super::documents::AssetOrDocument;
 use super::documents::Document;
 use super::documents::DocumentModule;
+use super::documents::DocumentText;
 use super::documents::DocumentsFilter;
 use super::documents::ASSET_DOCUMENTS;
 use super::language_server;
@@ -4372,31 +4373,18 @@ impl State {
       .load(std::sync::atomic::Ordering::Relaxed)
   }
 
-  fn get_document(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    self
-      .state_snapshot
-      .documents
-      .get_or_load(specifier, self.last_scope.as_ref())
-  }
-
-  fn get_asset_or_document(
+  fn get_module(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> Option<AssetOrDocument> {
-    if specifier.scheme() == "asset" {
-      ASSET_DOCUMENTS.get(specifier).map(AssetOrDocument::Asset)
-    } else {
-      let document = self.get_document(specifier);
-      document.map(AssetOrDocument::Document)
-    }
+  ) -> Option<Arc<DocumentModule>> {
+    self
+      .state_snapshot
+      .document_modules
+      .module_from_specifier(specifier, self.last_scope.as_ref())
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
-    let module = self
-      .state_snapshot
-      .document_modules
-      .module_from_specifier(specifier, self.last_scope.as_ref())?;
-    module.script_version.clone()
+    self.get_module(specifier).map(|m| m.script_version.clone())
   }
 }
 
@@ -4446,7 +4434,7 @@ enum LoadError {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct LoadResponse {
-  data: deno_core::FastString,
+  data: DocumentText,
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
@@ -4464,23 +4452,17 @@ fn op_load<'s>(
     .performance
     .mark_with_args("tsc.op.op_load", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  let asset_or_document = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER
-  {
+  let module = if specifier.as_str() == MISSING_DEPENDENCY_SPECIFIER {
     None
   } else {
-    state.get_asset_or_document(&specifier)
+    state.get_module(&specifier)
   };
-  let maybe_load_response =
-    asset_or_document.as_ref().map(|doc| LoadResponse {
-      data: doc.text_fast_string(),
-      script_kind: crate::tsc::as_ts_script_kind(doc.media_type()),
-      version: state.script_version(&specifier),
-      is_cjs: doc
-        .document()
-        .map(|d| d.resolution_mode())
-        .unwrap_or(ResolutionMode::Import)
-        == ResolutionMode::Require,
-    });
+  let maybe_load_response = module.as_ref().map(|m| LoadResponse {
+    data: m.text.clone(),
+    script_kind: crate::tsc::as_ts_script_kind(m.media_type),
+    version: state.script_version(&specifier),
+    is_cjs: m.resolution_mode == ResolutionMode::Require,
+  });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
   Ok(serialized)

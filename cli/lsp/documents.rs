@@ -44,6 +44,7 @@ use node_resolver::cache::NodeResolutionThreadLocalCache;
 use node_resolver::NodeResolutionKind;
 use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
+use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
 
 use super::cache::calculate_fs_version;
@@ -214,6 +215,15 @@ impl std::ops::Deref for DocumentText {
       Self::Static(s) => *s,
       Self::Arc(s) => s,
     }
+  }
+}
+
+impl Serialize for DocumentText {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: serde::Serializer,
+  {
+    (self as &str).serialize(serializer)
   }
 }
 
@@ -588,7 +598,7 @@ pub struct DocumentModuleOpenData {
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
   pub open_data: Option<DocumentModuleOpenData>,
-  pub script_version: Option<String>,
+  pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,
