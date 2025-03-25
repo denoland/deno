@@ -282,7 +282,7 @@ same-file = "1.0.6"
 scopeguard = "1.2.0"
 scrypt = "0.11.0"
 sec1 = "0.7"
-semver = "=1.0.14"
+semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
 serde-value = "0.7"
 serde_bytes = "0.11"
