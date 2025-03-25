@@ -3602,8 +3602,7 @@ impl CompletionInfo {
     &self,
     line_index: Arc<LineIndex>,
     settings: &config::CompletionSettings,
-    uri: &Uri,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     position: u32,
     language_server: &language_server::Inner,
     token: &CancellationToken,
@@ -3621,8 +3620,7 @@ impl CompletionInfo {
         line_index.clone(),
         self,
         settings,
-        uri,
-        specifier,
+        module,
         position,
         language_server,
         &mut cache,
@@ -3837,11 +3835,13 @@ impl CompletionEntry {
     line_index: Arc<LineIndex>,
     info: &CompletionInfo,
     settings: &config::CompletionSettings,
-    uri: &Uri,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     position: u32,
     language_server: &language_server::Inner,
-    resolution_cache: &mut HashMap<(ModuleSpecifier, ModuleSpecifier), String>,
+    resolution_cache: &mut HashMap<
+      (ModuleSpecifier, Arc<ModuleSpecifier>),
+      String,
+    >,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
     let mut label_details: Option<lsp::CompletionItemLabelDetails> = None;
@@ -3904,15 +3904,18 @@ impl CompletionEntry {
       let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
         let import_mapper =
-          language_server.get_ts_response_import_mapper(specifier);
+          language_server.get_ts_response_import_mapper(module);
         let maybe_cached = resolution_cache
-          .get(&(import_data.normalized.clone(), specifier.clone()))
+          .get(&(import_data.normalized.clone(), module.specifier.clone()))
           .cloned();
         if let Some(mut new_specifier) = maybe_cached
           .or_else(|| {
-            import_mapper.check_specifier(&import_data.normalized, specifier)
+            import_mapper
+              .check_specifier(&import_data.normalized, &module.specifier)
           })
-          .or_else(|| relative_specifier(specifier, &import_data.normalized))
+          .or_else(|| {
+            relative_specifier(&module.specifier, &import_data.normalized)
+          })
           .or_else(|| {
             ModuleSpecifier::parse(&import_data.raw.module_specifier)
               .is_ok()
@@ -3920,7 +3923,7 @@ impl CompletionEntry {
           })
         {
           resolution_cache.insert(
-            (import_data.normalized.clone(), specifier.clone()),
+            (import_data.normalized.clone(), module.specifier.clone()),
             new_specifier.clone(),
           );
           if new_specifier.contains("/node_modules/") {
@@ -3931,12 +3934,12 @@ impl CompletionEntry {
             .resolver
             .deno_types_to_code_resolution(
               &import_data.normalized,
-              Some(specifier),
+              module.scope.as_deref(),
             )
             .and_then(|s| {
               import_mapper
-                .check_specifier(&s, specifier)
-                .or_else(|| relative_specifier(specifier, &s))
+                .check_specifier(&s, &module.specifier)
+                .or_else(|| relative_specifier(&module.specifier, &s))
             })
           {
             new_deno_types_specifier =
@@ -3982,7 +3985,7 @@ impl CompletionEntry {
       };
 
     let tsc = CompletionItemData {
-      uri: uri.clone(),
+      uri: module.uri.as_ref().clone(),
       position,
       name: self.name.clone(),
       source: self.source.clone(),

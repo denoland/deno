@@ -1789,6 +1789,7 @@ pub enum DocumentsFilter {
   OpenDiagnosable,
 }
 
+// TODO(nayeemrmm): Remove!
 #[derive(Debug, Default, Clone)]
 pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.

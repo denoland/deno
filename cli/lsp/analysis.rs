@@ -5,6 +5,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::Arc;
 
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
@@ -48,6 +49,7 @@ use tower_lsp::lsp_types::Range;
 use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentModule;
+use super::documents::DocumentModules;
 use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
@@ -234,27 +236,27 @@ fn code_as_string(code: &Option<lsp::NumberOrString>) -> String {
 
 /// Rewrites imports in quick fixes and code changes to be Deno specific.
 pub struct TsResponseImportMapper<'a> {
-  documents: &'a Documents,
+  document_modules: &'a DocumentModules,
+  scope: Option<Arc<ModuleSpecifier>>,
   maybe_import_map: Option<&'a ImportMap>,
   resolver: &'a LspResolver,
   tsc_specifier_map: &'a tsc::TscSpecifierMap,
-  file_referrer: ModuleSpecifier,
 }
 
 impl<'a> TsResponseImportMapper<'a> {
   pub fn new(
-    documents: &'a Documents,
+    document_modules: &'a DocumentModules,
+    scope: Option<Arc<ModuleSpecifier>>,
     maybe_import_map: Option<&'a ImportMap>,
     resolver: &'a LspResolver,
     tsc_specifier_map: &'a tsc::TscSpecifierMap,
-    file_referrer: &ModuleSpecifier,
   ) -> Self {
     Self {
-      documents,
+      document_modules,
+      scope,
       maybe_import_map,
       resolver,
       tsc_specifier_map,
-      file_referrer: file_referrer.clone(),
     }
   }
 
@@ -300,7 +302,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let export = self.resolver.jsr_lookup_export_for_path(
         &nv,
         &path,
-        Some(&self.file_referrer),
+        self.scope.as_deref(),
       )?;
       let sub_path = (export != ".")
         .then_some(export)
@@ -328,7 +330,7 @@ impl<'a> TsResponseImportMapper<'a> {
       req = req.or_else(|| {
         self
           .resolver
-          .jsr_lookup_req_for_nv(&nv, Some(&self.file_referrer))
+          .jsr_lookup_req_for_nv(&nv, self.scope.as_deref())
       });
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
@@ -358,11 +360,11 @@ impl<'a> TsResponseImportMapper<'a> {
 
     if let Some(npm_resolver) = self
       .resolver
-      .maybe_managed_npm_resolver(Some(&self.file_referrer))
+      .maybe_managed_npm_resolver(self.scope.as_deref())
     {
       let in_npm_pkg = self
         .resolver
-        .in_npm_pkg_checker(Some(&self.file_referrer))
+        .in_npm_pkg_checker(self.scope.as_deref())
         .in_npm_package(specifier);
       if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
@@ -429,7 +431,7 @@ impl<'a> TsResponseImportMapper<'a> {
       }
     } else if let Some(dep_name) = self
       .resolver
-      .file_url_to_package_json_dep(specifier, Some(&self.file_referrer))
+      .file_url_to_package_json_dep(specifier, self.scope.as_deref())
     {
       return Some(dep_name);
     }
@@ -516,7 +518,7 @@ impl<'a> TsResponseImportMapper<'a> {
     for specifier in specifiers {
       if let Some(specifier) = self
         .resolver
-        .as_cli_resolver(Some(&self.file_referrer))
+        .as_cli_resolver(self.scope.as_deref())
         .resolve(
           &specifier,
           referrer,
@@ -526,7 +528,11 @@ impl<'a> TsResponseImportMapper<'a> {
         )
         .ok()
         .and_then(|s| self.tsc_specifier_map.normalize(s.as_str()).ok())
-        .filter(|s| self.documents.exists(s, Some(&self.file_referrer)))
+        .filter(|s| {
+          self
+            .document_modules
+            .specifier_exists(s, self.scope.as_deref())
+        })
       {
         if let Some(specifier) = self
           .check_specifier(&specifier, referrer)
@@ -548,7 +554,7 @@ impl<'a> TsResponseImportMapper<'a> {
   ) -> bool {
     self
       .resolver
-      .as_cli_resolver(Some(&self.file_referrer))
+      .as_cli_resolver(self.scope.as_deref())
       .resolve(
         specifier_text,
         referrer,
@@ -677,9 +683,7 @@ pub fn fix_ts_import_changes(
       .as_ref()
       .map(|m| m.resolution_mode)
       .unwrap_or(ResolutionMode::Import);
-    let import_mapper = language_server.get_ts_response_import_mapper(
-      module.scope.as_deref().unwrap_or(&target_specifier),
-    );
+    let import_mapper = language_server.get_ts_response_import_mapper(module);
     let mut text_changes = Vec::new();
     for text_change in &change.text_changes {
       let lines = text_change.new_text.split('\n');
@@ -723,9 +727,8 @@ pub fn fix_ts_import_changes(
 /// Fix tsc import code actions so that the module specifier is correct for
 /// resolution by Deno (includes the extension).
 fn fix_ts_import_action<'a>(
-  referrer: &ModuleSpecifier,
-  resolution_mode: ResolutionMode,
   action: &'a tsc::CodeFixAction,
+  module: &DocumentModule,
   language_server: &language_server::Inner,
 ) -> Option<Cow<'a, tsc::CodeFixAction>> {
   if !matches!(
@@ -742,11 +745,11 @@ fn fix_ts_import_action<'a>(
   let Some(specifier) = specifier else {
     return Some(Cow::Borrowed(action));
   };
-  let import_mapper = language_server.get_ts_response_import_mapper(referrer);
+  let import_mapper = language_server.get_ts_response_import_mapper(module);
   if let Some(new_specifier) = import_mapper.check_unresolved_specifier(
     specifier,
-    referrer,
-    resolution_mode,
+    &module.specifier,
+    module.resolution_mode,
   ) {
     let description = action.description.replace(specifier, &new_specifier);
     let changes = action
@@ -777,8 +780,11 @@ fn fix_ts_import_action<'a>(
       fix_id: None,
       fix_all_description: None,
     }))
-  } else if !import_mapper.is_valid_import(specifier, referrer, resolution_mode)
-  {
+  } else if !import_mapper.is_valid_import(
+    specifier,
+    &module.specifier,
+    module.resolution_mode,
+  ) {
     None
   } else {
     Some(Cow::Borrowed(action))
@@ -1101,10 +1107,9 @@ impl CodeActionCollection {
   /// Add a TypeScript code fix action to the code actions collection.
   pub fn add_ts_fix_action(
     &mut self,
-    module: &DocumentModule,
-    resolution_mode: ResolutionMode,
     action: &tsc::CodeFixAction,
     diagnostic: &lsp::Diagnostic,
+    module: &DocumentModule,
     language_server: &language_server::Inner,
   ) -> Result<(), AnyError> {
     if action.commands.is_some() {
@@ -1123,12 +1128,8 @@ impl CodeActionCollection {
         .into(),
       );
     }
-    let Some(action) = fix_ts_import_action(
-      &module.specifier,
-      resolution_mode,
-      action,
-      language_server,
-    ) else {
+    let Some(action) = fix_ts_import_action(action, module, language_server)
+    else {
       return Ok(());
     };
     let edit = ts_changes_to_edit(&action.changes, module, language_server)?;

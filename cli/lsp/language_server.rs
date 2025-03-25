@@ -2027,13 +2027,7 @@ impl Inner {
                 return Err(LspError::request_cancelled());
               }
               code_actions
-                .add_ts_fix_action(
-                  &module,
-                  module.resolution_mode,
-                  &action,
-                  diagnostic,
-                  self,
-                )
+                .add_ts_fix_action(&action, diagnostic, &module, self)
                 .map_err(|err| {
                   error!("Unable to convert fix: {:#}", err);
                   LspError::internal_error()
@@ -2373,20 +2367,20 @@ impl Inner {
 
   pub fn get_ts_response_import_mapper(
     &self,
-    file_referrer: &ModuleSpecifier,
+    module: &DocumentModule,
   ) -> TsResponseImportMapper {
     TsResponseImportMapper::new(
-      &self.documents,
+      &self.document_modules,
+      module.scope.clone(),
       self
         .config
         .tree
-        .data_for_specifier(file_referrer)
+        .data_for_specifier(&module.specifier)
         // todo(dsherret): this should probably just take the resolver itself
         // as the import map is an implementation detail
         .and_then(|d| d.resolver.maybe_import_map()),
       &self.resolver,
       &self.ts_server.specifier_map,
-      file_referrer,
     )
   }
 
@@ -2866,8 +2860,7 @@ impl Inner {
                 .cloned()
                 .unwrap_or_default()
                 .suggest,
-              document.uri(),
-              &module.specifier,
+              &module,
               position,
               self,
               token,
