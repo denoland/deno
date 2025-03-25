@@ -924,6 +924,13 @@ impl Flags {
     args
   }
 
+  pub fn no_legacy_abort(&self) -> bool {
+    self
+      .unstable_config
+      .features
+      .contains(&String::from("no-legacy-abort"))
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     let has_unstable_flag = self
       .unstable_config
