@@ -658,7 +658,7 @@ pub struct DocumentModules {
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
-  dep_info_by_scope: Arc<once_cell::sync::OnceCell<Arc<DepInfoByScope>>>,
+  dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
 }
 
 impl DocumentModules {
