@@ -1004,21 +1004,25 @@ impl CodeActionCollection {
       .push(CodeActionKind::DenoLint(ignore_error_action));
 
     // Disable a lint error for the entire file.
-    let maybe_ignore_comment = module.parsed_source.as_ref().and_then(|ps| {
-      let ps = ps.as_ref().ok()?;
-      // Note: we can use ps.get_leading_comments() but it doesn't
-      // work when shebang is present at the top of the file.
-      ps.comments().get_vec().iter().find_map(|c| {
-        let comment_text = c.text.trim();
-        comment_text.split_whitespace().next().and_then(|prefix| {
-          if prefix == "deno-lint-ignore-file" {
-            Some(c.clone())
-          } else {
-            None
-          }
+    let maybe_ignore_comment = module
+      .open_data
+      .as_ref()
+      .and_then(|d| d.parsed_source.as_ref())
+      .and_then(|ps| {
+        let ps = ps.as_ref().ok()?;
+        // Note: we can use ps.get_leading_comments() but it doesn't
+        // work when shebang is present at the top of the file.
+        ps.comments().get_vec().iter().find_map(|c| {
+          let comment_text = c.text.trim();
+          comment_text.split_whitespace().next().and_then(|prefix| {
+            if prefix == "deno-lint-ignore-file" {
+              Some(c.clone())
+            } else {
+              None
+            }
+          })
         })
-      })
-    });
+      });
 
     let mut new_text = format!("// deno-lint-ignore-file {code}\n");
     let mut range = lsp::Range {

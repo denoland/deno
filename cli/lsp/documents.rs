@@ -559,17 +559,21 @@ impl Documents2 {
 }
 
 #[derive(Debug)]
+pub struct DocumentModuleOpenData {
+  pub version: i32,
+  pub parsed_source: Option<ParsedSourceResult>,
+}
+
+#[derive(Debug)]
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
-  pub version_if_open: Option<i32>,
+  pub open_data: Option<DocumentModuleOpenData>,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,
   pub text: DocumentText,
   pub line_index: Arc<LineIndex>,
   pub resolution_mode: ResolutionMode,
-  pub parsed_source:
-    Option<Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>>,
   pub dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
   pub types_dependency: Option<TypesDependency>,
   pub is_remote_or_node_modules: bool,
@@ -598,8 +602,9 @@ impl DocumentModule {
     // try to get the text info from the parsed source and if
     // not then create one in the cell
     self
-      .parsed_source
+      .open_data
       .as_ref()
+      .and_then(|d| d.parsed_source.as_ref())
       .and_then(|p| p.as_ref().ok())
       .map(|p| p.text_info_lazy())
       .unwrap_or_else(|| {
@@ -665,6 +670,17 @@ impl DocumentModules {
     None
   }
 
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  pub fn resolve_dependency(
+    &self,
+    specifier: &Url,
+    referrer: &Url,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
   /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_module_from_specifier(
     &self,
@@ -680,6 +696,13 @@ impl DocumentModules {
     &self,
     document: &Document2,
   ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn workspace_file_modules_by_scope(
+    &self,
+  ) -> BTreeMap<Option<Arc<Url>>, Vec<Arc<DocumentModule>>> {
     // TODO(nayeemrmn): Implement!
     Default::default()
   }
@@ -712,7 +735,7 @@ impl DocumentModules {
     self.dep_info_by_scope.clone()
   }
 
-  pub fn scopes_with_node_specifier(&self) -> HashSet<Arc<Url>> {
+  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
     // TODO(nayeemrmn): Implement!
     Default::default()
   }

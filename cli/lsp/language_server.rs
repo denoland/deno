@@ -1723,7 +1723,11 @@ impl Inner {
           .unwrap_or(false),
       };
       move || {
-        let format_result = match &module.parsed_source {
+        let format_result = match &module
+          .open_data
+          .as_ref()
+          .and_then(|d| d.parsed_source.as_ref())
+        {
           Some(Ok(parsed_source)) => {
             format_parsed_source(parsed_source, &fmt_options)
           }
@@ -2410,7 +2414,11 @@ impl Inner {
     if settings.code_lens.test
       && self.config.specifier_enabled_for_test(&module.specifier)
     {
-      if let Some(Ok(parsed_source)) = &module.parsed_source {
+      if let Some(Ok(parsed_source)) = &module
+        .open_data
+        .as_ref()
+        .and_then(|d| d.parsed_source.as_ref())
+      {
         code_lenses.extend(
           code_lens::collect_test(&module.specifier, parsed_source, token)
             .map_err(|err| {

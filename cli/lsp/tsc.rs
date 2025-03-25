@@ -2362,7 +2362,7 @@ impl RenameLocation {
         .or_insert_with(|| lsp::TextDocumentEdit {
           text_document: lsp::OptionalVersionedTextDocumentIdentifier {
             uri: target_module.uri.as_ref().clone(),
-            version: target_module.version_if_open,
+            version: target_module.open_data.as_ref().map(|d| d.version),
           },
           edits: Vec::<lsp::OneOf<lsp::TextEdit, lsp::AnnotatedTextEdit>>::new(
           ),
@@ -2594,7 +2594,10 @@ impl FileTextChanges {
     Some(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: target_uri.as_ref().clone(),
-        version: target_module.and_then(|m| m.version_if_open),
+        version: target_module
+          .as_ref()
+          .and_then(|m| m.open_data.as_ref())
+          .map(|d| d.version),
       },
       edits,
     })
@@ -2650,7 +2653,10 @@ impl FileTextChanges {
     ops.push(lsp::DocumentChangeOperation::Edit(lsp::TextDocumentEdit {
       text_document: lsp::OptionalVersionedTextDocumentIdentifier {
         uri: target_uri.as_ref().clone(),
-        version: target_module.and_then(|m| m.version_if_open),
+        version: target_module
+          .as_ref()
+          .and_then(|m| m.open_data.as_ref())
+          .map(|d| d.version),
       },
       edits,
     }));
@@ -4717,7 +4723,7 @@ fn op_exit_span(op_state: &mut OpState, span: *const c_void, root: bool) {
 #[serde(rename_all = "camelCase")]
 struct ScriptNames {
   unscoped: IndexSet<String>,
-  by_scope: BTreeMap<ModuleSpecifier, IndexSet<String>>,
+  by_scope: BTreeMap<Arc<Url>, IndexSet<String>>,
 }
 
 #[op2]
@@ -4732,16 +4738,17 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     by_scope: BTreeMap::from_iter(
       state
         .state_snapshot
-        .config
-        .tree
-        .data_by_scope()
-        .keys()
-        .map(|s| (s.clone(), IndexSet::new())),
+        .document_modules
+        .scopes()
+        .into_iter()
+        .filter_map(|s| Some((s?, IndexSet::new()))),
     ),
   };
 
-  let scopes_with_node_specifier =
-    state.state_snapshot.documents.scopes_with_node_specifier();
+  let scopes_with_node_specifier = state
+    .state_snapshot
+    .document_modules
+    .scopes_with_node_specifier();
   if scopes_with_node_specifier.contains(&None) {
     result
       .unscoped
@@ -4784,40 +4791,36 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
   }
 
   // finally include the documents
-  let docs = state
+  for (scope, modules) in state
     .state_snapshot
-    .documents
-    .documents(DocumentsFilter::AllDiagnosable);
-  for doc in &docs {
-    let specifier = doc.specifier();
-    let is_open = doc.is_open();
-    if is_open
-      || (specifier.scheme() == "file"
-        && !state.state_snapshot.resolver.in_node_modules(specifier))
-    {
-      let script_names = doc
-        .scope()
-        .and_then(|s| result.by_scope.get_mut(s))
-        .unwrap_or(&mut result.unscoped);
-      let types_specifier = (|| {
-        let documents = &state.state_snapshot.documents;
-        let types = doc.maybe_types_dependency().maybe_specifier()?;
-        let (types, _) = documents.resolve_dependency(
-          types,
-          specifier,
-          doc.resolution_mode(),
-          doc.file_referrer(),
-        )?;
-        let types_doc = documents.get_or_load(&types, doc.file_referrer())?;
-        Some(types_doc.specifier().clone())
+    .document_modules
+    .workspace_file_modules_by_scope()
+  {
+    let script_names = scope
+      .as_deref()
+      .and_then(|s| result.by_scope.get_mut(s))
+      .unwrap_or(&mut result.unscoped);
+    for module in modules {
+      let is_open = module.open_data.is_some();
+      let types_module = (|| {
+        let types_specifier = module
+          .types_dependency
+          .as_ref()?
+          .dependency
+          .maybe_specifier()?;
+        state.state_snapshot.document_modules.resolve_dependency(
+          types_specifier,
+          &module.specifier,
+          module.scope.as_deref(),
+        )
       })();
       // If there is a types dep, use that as the root instead. But if the doc
       // is open, include both as roots.
-      if let Some(types_specifier) = &types_specifier {
-        script_names.insert(types_specifier.to_string());
+      if let Some(types_module) = &types_module {
+        script_names.insert(types_module.specifier.to_string());
       }
-      if types_specifier.is_none() || is_open {
-        script_names.insert(specifier.to_string());
+      if types_module.is_none() || is_open {
+        script_names.insert(module.specifier.to_string());
       }
     }
   }
