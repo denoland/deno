@@ -32,4 +32,4 @@ ntapi = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3.17"
-signal-hook-registry = "1.4.0"
+signal-hook-registry = "1.4.2"
