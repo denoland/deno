@@ -298,7 +298,7 @@ sm3 = "0.4.2"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
 spki = "0.7.2"
-sqlformat = "=0.3.2"
+sqlformat = "=0.3.5"
 strsim = "0.11.1"
 sys_traits = "=0.1.8"
 tar = "=0.4.43"
