@@ -73,6 +73,7 @@ async fn generate_doc_nodes_for_builtin_types(
       deno_graph::BuildOptions {
         imports: Vec::new(),
         is_dynamic: false,
+        skip_dynamic_deps: false,
         passthrough_jsr_specifiers: false,
         executor: Default::default(),
         file_system: &NullFileSystem,
