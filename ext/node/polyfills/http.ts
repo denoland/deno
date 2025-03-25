@@ -1505,10 +1505,7 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-  this.socket?.on("close", () => {
-    this.emit("close");
-  });
-
+  this.socket?.on("close", () => this.end());
   this._header = "";
 } as unknown as ServerResponseStatic;
 

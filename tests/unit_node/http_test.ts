@@ -1996,6 +1996,6 @@ Deno.test("[node/http] 'close' event is emitted on ServerResponse object when th
   });
 
   await promise;
-  assert(responseCloseEmitted);
   await new Promise((resolve) => server.close(resolve));
+  assert(responseCloseEmitted);
 });
