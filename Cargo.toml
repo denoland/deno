@@ -257,7 +257,7 @@ phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
 pkcs8 = "0.10.2"
-pretty_assertions = "=1.4.0"
+pretty_assertions = "=1.4.1"
 pretty_yaml = "=0.5.0"
 prost = "0.13"
 prost-build = "0.13"
