@@ -792,7 +792,9 @@ pub fn handle_log(record: &log::Record) {
 
   let mut log_record = LogRecord::default();
 
-  log_record.set_observed_timestamp(SystemTime::now());
+  let now = SystemTime::now();
+  log_record.set_timestamp(now.clone());
+  log_record.set_observed_timestamp(now);
   log_record.set_severity_number(match record.level() {
     Level::Error => Severity::Error,
     Level::Warn => Severity::Warn,
