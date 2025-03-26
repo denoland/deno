@@ -373,7 +373,7 @@ incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
 split-debuginfo = "packed"
-debug = true
+debug = "line-tables-only"
 
 [profile.dev]
 split-debuginfo = "packed"
