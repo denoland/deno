@@ -16,6 +16,7 @@ use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_resolver::npm::managed::NpmResolutionCell;
+use deno_runtime::colors;
 use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
@@ -25,6 +26,7 @@ use deno_semver::VersionReq;
 use crate::args::CliLockfile;
 use crate::npm::CliNpmRegistryInfoProvider;
 use crate::npm::WorkspaceNpmPatchPackages;
+use crate::util::display::DisplayTreeNode;
 use crate::util::sync::TaskQueue;
 
 pub struct AddPkgReqsResult {
@@ -159,6 +161,7 @@ async fn add_package_reqs_to_snapshot(
         .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
         .collect(),
       dep_graph_result: Ok(snapshot),
+      unmet_peer_diagnostics: Default::default(),
     };
   }
   log::debug!(
@@ -200,6 +203,40 @@ async fn add_package_reqs_to_snapshot(
   };
 
   registry_info_provider.clear_memory_cache();
+
+  if !result.unmet_peer_diagnostics.is_empty()
+    && log::log_enabled!(log::Level::Warn)
+  {
+    let root_node = DisplayTreeNode {
+      text: format!(
+        "{} The following peer dependency issues were found:",
+        colors::yellow("Warning")
+      ),
+      children: result
+        .unmet_peer_diagnostics
+        .iter()
+        .map(|diagnostic| {
+          let mut node = DisplayTreeNode {
+            text: format!(
+              "peer {}: resolved to {}",
+              diagnostic.dependency, diagnostic.resolved
+            ),
+            children: Vec::new(),
+          };
+          for ancestor in &diagnostic.ancestors {
+            node = DisplayTreeNode {
+              text: ancestor.to_string(),
+              children: vec![node],
+            };
+          }
+          node
+        })
+        .collect(),
+    };
+    let mut text = String::new();
+    _ = root_node.print(&mut text);
+    log::warn!("{}", text);
+  }
 
   if let Ok(snapshot) = &result.dep_graph_result {
     if let Some(lockfile) = maybe_lockfile {
