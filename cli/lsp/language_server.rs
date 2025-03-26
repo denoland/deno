@@ -71,14 +71,11 @@ use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
 use super::documents::to_lsp_range;
-use super::documents::AssetOrDocument;
 use super::documents::Document2;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
 use super::documents::Documents;
-use super::documents::Documents2;
 use super::documents::LanguageId;
-use super::documents::ASSET_DOCUMENTS;
 use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
 use super::logging::lsp_warn;
@@ -1900,12 +1897,8 @@ impl Inner {
                 diagnostic,
                 &file_diagnostics,
               ) {
-                code_actions.add_ts_fix_all_action(
-                  &action,
-                  document.uri(),
-                  &module.specifier,
-                  diagnostic,
-                );
+                code_actions
+                  .add_ts_fix_all_action(&action, &module, diagnostic);
               }
             }
           }

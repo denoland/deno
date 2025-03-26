@@ -20,7 +20,6 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
-use deno_cache_dir::HttpCache;
 use deno_core::error::AnyError;
 use deno_core::futures::future;
 use deno_core::futures::future::Shared;
@@ -358,7 +357,7 @@ impl AssetDocuments2 {
   }
 }
 
-pub static ASSET_DOCUMENTS2: Lazy<AssetDocuments2> =
+pub static ASSET_DOCUMENTS: Lazy<AssetDocuments2> =
   Lazy::new(|| AssetDocuments2 {
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
@@ -483,7 +482,7 @@ impl Documents2 {
   }
 
   pub fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
-    self.open.remove(uri).ok_or_else(|| {
+    self.open.shift_remove(uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -499,7 +498,7 @@ impl Documents2 {
     if let Some(doc) = self.open.get(uri) {
       return Some(Document2::Open(doc.clone()));
     }
-    if let Some(doc) = ASSET_DOCUMENTS2.get(uri) {
+    if let Some(doc) = ASSET_DOCUMENTS.get(uri) {
       return Some(Document2::Server(doc.clone()));
     }
     if let Some(doc) = self.server.get(uri) {
@@ -1114,189 +1113,6 @@ impl IndexValid {
     match *self {
       IndexValid::UpTo(to) => to > line,
       IndexValid::All => true,
-    }
-  }
-}
-
-/// An lsp representation of an asset in memory, that has either been retrieved
-/// from static assets built into Rust, or static assets built into tsc.
-#[derive(Debug)]
-pub struct AssetDocument {
-  specifier: ModuleSpecifier,
-  text: &'static str,
-  line_index: Arc<LineIndex>,
-  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
-}
-
-impl AssetDocument {
-  pub fn new(specifier: ModuleSpecifier, text: &'static str) -> Self {
-    let line_index = Arc::new(LineIndex::new(text));
-    Self {
-      specifier,
-      text,
-      line_index,
-      maybe_navigation_tree: Default::default(),
-    }
-  }
-
-  pub fn specifier(&self) -> &ModuleSpecifier {
-    &self.specifier
-  }
-
-  pub fn cache_navigation_tree(
-    &self,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) {
-    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
-  }
-
-  pub fn text(&self) -> &'static str {
-    self.text
-  }
-
-  pub fn line_index(&self) -> Arc<LineIndex> {
-    self.line_index.clone()
-  }
-
-  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
-    self.maybe_navigation_tree.lock().clone()
-  }
-}
-
-#[derive(Debug)]
-pub struct AssetDocuments {
-  inner: HashMap<ModuleSpecifier, Arc<AssetDocument>>,
-}
-
-impl AssetDocuments {
-  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
-    self.inner.contains_key(k)
-  }
-
-  pub fn get(&self, k: &ModuleSpecifier) -> Option<Arc<AssetDocument>> {
-    self.inner.get(k).cloned()
-  }
-}
-
-pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
-  Lazy::new(|| AssetDocuments {
-    inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
-      .iter()
-      .map(|(k, v)| {
-        let url_str = format!("asset:///{k}");
-        let specifier = resolve_url(&url_str).unwrap();
-        let asset = Arc::new(AssetDocument::new(specifier.clone(), v.as_str()));
-        (specifier, asset)
-      })
-      .collect(),
-  });
-
-#[derive(Debug, Clone)]
-pub enum AssetOrDocument {
-  Document(Arc<Document>),
-  Asset(Arc<AssetDocument>),
-}
-
-impl AssetOrDocument {
-  pub fn document(&self) -> Option<&Arc<Document>> {
-    match self {
-      AssetOrDocument::Asset(_) => None,
-      AssetOrDocument::Document(doc) => Some(doc),
-    }
-  }
-
-  pub fn file_referrer(&self) -> Option<&ModuleSpecifier> {
-    match self {
-      AssetOrDocument::Asset(_) => None,
-      AssetOrDocument::Document(doc) => doc.file_referrer(),
-    }
-  }
-
-  pub fn scope(&self) -> Option<&ModuleSpecifier> {
-    match self {
-      AssetOrDocument::Asset(asset_doc) => Some(asset_doc.specifier()),
-      AssetOrDocument::Document(doc) => doc.scope(),
-    }
-  }
-
-  pub fn maybe_semantic_tokens(&self) -> Option<lsp::SemanticTokens> {
-    match self {
-      AssetOrDocument::Asset(_) => None,
-      AssetOrDocument::Document(d) => d
-        .open_data
-        .as_ref()
-        .and_then(|d| d.maybe_semantic_tokens.lock().clone()),
-    }
-  }
-
-  pub fn text_str(&self) -> &str {
-    match self {
-      AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text.as_ref(),
-    }
-  }
-
-  pub fn text_fast_string(&self) -> deno_core::FastString {
-    match self {
-      AssetOrDocument::Asset(a) => deno_core::FastString::from_static(a.text()),
-      AssetOrDocument::Document(d) => d.text.clone().into(),
-    }
-  }
-
-  pub fn line_index(&self) -> Arc<LineIndex> {
-    match self {
-      AssetOrDocument::Asset(a) => a.line_index(),
-      AssetOrDocument::Document(d) => d.line_index(),
-    }
-  }
-
-  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
-    match self {
-      AssetOrDocument::Asset(a) => a.maybe_navigation_tree(),
-      AssetOrDocument::Document(d) => d.maybe_navigation_tree(),
-    }
-  }
-
-  pub fn media_type(&self) -> MediaType {
-    match self {
-      AssetOrDocument::Asset(_) => MediaType::TypeScript, // assets are always TypeScript
-      AssetOrDocument::Document(d) => d.media_type(),
-    }
-  }
-
-  pub fn get_maybe_dependency(
-    &self,
-    position: &lsp::Position,
-  ) -> Option<(String, deno_graph::Dependency, deno_graph::Range)> {
-    self
-      .document()
-      .and_then(|d| d.get_maybe_dependency(position))
-  }
-
-  pub fn maybe_parsed_source(
-    &self,
-  ) -> Option<&Result<deno_ast::ParsedSource, deno_ast::ParseDiagnostic>> {
-    self.document().and_then(|d| d.maybe_parsed_source())
-  }
-
-  pub fn document_lsp_version(&self) -> Option<i32> {
-    self.document().and_then(|d| d.maybe_lsp_version())
-  }
-
-  pub fn resolution_mode(&self) -> ResolutionMode {
-    match self {
-      AssetOrDocument::Asset(_) => ResolutionMode::Import,
-      AssetOrDocument::Document(d) => d.resolution_mode(),
-    }
-  }
-
-  pub fn cache_navigation_tree(
-    &self,
-    navigation_tree: Arc<tsc::NavigationTree>,
-  ) {
-    match self {
-      AssetOrDocument::Asset(a) => a.cache_navigation_tree(navigation_tree),
-      AssetOrDocument::Document(d) => d.cache_navigation_tree(navigation_tree),
     }
   }
 }

@@ -50,7 +50,6 @@ use super::diagnostics::DenoDiagnostic;
 use super::diagnostics::DiagnosticSource;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
-use super::documents::Documents;
 use super::language_server;
 use super::resolver::LspResolver;
 use super::tsc;
@@ -1179,13 +1178,12 @@ impl CodeActionCollection {
   pub fn add_ts_fix_all_action(
     &mut self,
     action: &tsc::CodeFixAction,
-    uri: &Uri,
-    specifier: &ModuleSpecifier,
+    module: &DocumentModule,
     diagnostic: &lsp::Diagnostic,
   ) {
     let data = action.fix_id.as_ref().map(|fix_id| {
       json!(CodeActionData {
-        uri: uri.clone(),
+        uri: module.uri.as_ref().clone(),
         fix_id: fix_id.clone(),
       })
     });
