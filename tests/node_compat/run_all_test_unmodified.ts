@@ -42,7 +42,6 @@ const multiWordsCategoryNames = [
   "async-local-storage",
   "async-wrap",
   "child-process",
-  "compile-cache",
   "cpu-prof",
   "double-tls",
   "diagnostics-channel",
@@ -51,30 +50,74 @@ const multiWordsCategoryNames = [
   "memory-usage",
   "next-tick",
   "outgoing-message",
-  "queue-microtask",
   "shadow-realm",
   "single-executable",
-  "source-map",
   "string-decoder",
-  "tcp-wrap",
-  "tick-processor",
-  "unhandled-exception",
-  "wrap-js-stream",
 ];
 
 const categoryMap = {
-  error: "errors",
+  cjs: "module",
+  cwd: "process",
   diagnostic: "diagnostics-channel",
-  no: "others",
+  "double-tls": "net",
+  event: "events",
+  eventsource: "events",
+  eventtarget: "events",
+  esm: "module",
+  file: "fs",
+  filehandle: "fs",
+  "force-repl": "repl",
+  inspect: "util",
+  "listen-fd": "net",
+  "next-tick": "process",
+  "outgoing-message": "http",
   promises: "promise",
-  set: "others",
-  startup: "others",
+  readable: "stream",
+  require: "module",
+  socket: "net",
+  stdin: "stdio",
+  stdout: "stdio",
   stream2: "stream",
   stream3: "stream",
-  sync: "others",
+  tcp: "net",
+  ttywrap: "tty",
   webstream: "webstreams",
-  warn: "others",
 } as Record<string, string>;
+
+// These name could appear as category name, but they are actually not.
+// If the category name is one of these, it should be categorized as "others".
+const otherCategories = [
+  "common",
+  "compile",
+  "corepack",
+  "disable",
+  "env",
+  "error",
+  "errors",
+  "eslint",
+  "eval",
+  "exception",
+  "handle",
+  "heap",
+  "heapdump",
+  "heapsnapshot",
+  "internal",
+  "memory",
+  "no",
+  "queue",
+  "release",
+  "set",
+  "source",
+  "startup",
+  "sync",
+  "trace",
+  "tick",
+  "unhandled",
+  "uv",
+  "warn",
+  "windows",
+  "wrap",
+]
 
 /**
  * The test files in these dirs seem categorized in the form
@@ -107,16 +150,20 @@ function getCategoryFromPath(str: string) {
   if (group === "pseudo-tty") {
     return "tty";
   } else if (group === "module-hooks") {
-    return "module-hooks";
+    return "module";
   } else if (categorizedTestGroups.includes(group)) {
     const name = basename(str).replace(/\.js/, "");
+    let category = name.split("-")[1];
     for (const multiWord of multiWordsCategoryNames) {
       if (name.startsWith("test-" + multiWord)) {
-        return multiWord;
+        category = multiWord;
       }
     }
-    const category = name.split("-")[1];
-    return categoryMap[category] ?? category;
+    category = categoryMap[category] ?? category;
+    if (otherCategories.includes(category)) {
+      return "others";
+    }
+    return category;
   } else {
     return "others";
   }
