@@ -72,7 +72,7 @@ fn calculate_fs_version_in_cache(
 pub struct LspCache {
   deno_dir: DenoDir,
   global: Arc<GlobalHttpCache>,
-  vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
+  vendors_by_scope: BTreeMap<Arc<Url>, Option<Arc<LocalLspHttpCache>>>,
 }
 
 impl Default for LspCache {

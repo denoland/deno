@@ -823,9 +823,8 @@ impl WorkspaceSettings {
 #[derive(Debug, Default, Clone)]
 pub struct Settings {
   pub unscoped: Arc<WorkspaceSettings>,
-  pub by_workspace_folder:
-    BTreeMap<ModuleSpecifier, Option<Arc<WorkspaceSettings>>>,
-  pub first_folder: Option<ModuleSpecifier>,
+  pub by_workspace_folder: BTreeMap<Arc<Url>, Option<Arc<WorkspaceSettings>>>,
+  pub first_folder: Option<Arc<Url>>,
 }
 
 impl Settings {
@@ -882,7 +881,7 @@ impl Settings {
   pub fn get_for_path(
     &self,
     path: &Path,
-  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
     for (folder_uri, settings) in self.by_workspace_folder.iter().rev() {
       if let Some(settings) = settings {
         let Ok(folder_path) = url_to_file_path(folder_uri) else {
@@ -899,14 +898,14 @@ impl Settings {
   pub fn get_for_uri(
     &self,
     uri: &Uri,
-  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
     self.get_for_specifier(&uri_to_url(uri))
   }
 
   pub fn get_for_specifier(
     &self,
     specifier: &ModuleSpecifier,
-  ) -> (&WorkspaceSettings, Option<&ModuleSpecifier>) {
+  ) -> (&WorkspaceSettings, Option<&Arc<Url>>) {
     let Ok(path) = url_to_file_path(specifier) else {
       return (&self.unscoped, self.first_folder.as_ref());
     };
@@ -937,7 +936,7 @@ impl Settings {
 pub struct Config {
   pub client_capabilities: Arc<ClientCapabilities>,
   pub settings: Arc<Settings>,
-  pub workspace_folders: Arc<Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>>,
+  pub workspace_folders: Arc<Vec<(Arc<Url>, lsp::WorkspaceFolder)>>,
   pub tree: ConfigTree,
 }
 
@@ -966,7 +965,7 @@ impl Config {
 
   pub fn set_workspace_folders(
     &mut self,
-    folders: Vec<(ModuleSpecifier, lsp::WorkspaceFolder)>,
+    folders: Vec<(Arc<Url>, lsp::WorkspaceFolder)>,
   ) {
     self.settings = Arc::new(Settings {
       unscoped: self.settings.unscoped.clone(),
@@ -982,7 +981,7 @@ impl Config {
   pub fn set_workspace_settings(
     &mut self,
     unscoped: WorkspaceSettings,
-    folder_settings: Vec<(ModuleSpecifier, WorkspaceSettings)>,
+    folder_settings: Vec<(Arc<Url>, WorkspaceSettings)>,
   ) {
     let mut by_folder = folder_settings.into_iter().collect::<HashMap<_, _>>();
     self.settings = Arc::new(Settings {
@@ -1058,7 +1057,7 @@ impl Config {
       || settings.inlay_hints.enum_member_values.enabled
   }
 
-  pub fn root_uri(&self) -> Option<&Url> {
+  pub fn root_url(&self) -> Option<&Arc<Url>> {
     self.workspace_folders.first().map(|p| &p.0)
   }
 
@@ -1249,7 +1248,7 @@ impl ConfigData {
   #[allow(clippy::too_many_arguments)]
   async fn load(
     specified_config: Option<&Path>,
-    scope: &ModuleSpecifier,
+    scope: &Arc<Url>,
     settings: &Settings,
     file_fetcher: &Arc<CliFileFetcher>,
     // sync requirement is because the lsp requires sync
@@ -1257,7 +1256,7 @@ impl ConfigData {
     pkg_json_cache: &(dyn PackageJsonCache + Sync),
     workspace_cache: &(dyn WorkspaceCache + Sync),
   ) -> Self {
-    let scope = Arc::new(scope.clone());
+    let scope = scope.clone();
     let discover_result = match scope.to_file_path() {
       Ok(scope_dir_path) => {
         let paths = [scope_dir_path];
@@ -1751,14 +1750,11 @@ impl ConfigData {
 
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
-  scopes: Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>>,
+  scopes: Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>>,
 }
 
 impl ConfigTree {
-  pub fn scope_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<&ModuleSpecifier> {
+  pub fn scope_for_specifier(&self, specifier: &Url) -> Option<&Arc<Url>> {
     self
       .scopes
       .iter()
@@ -1775,15 +1771,13 @@ impl ConfigTree {
       .and_then(|s| self.scopes.get(s))
   }
 
-  pub fn data_by_scope(
-    &self,
-  ) -> &Arc<BTreeMap<ModuleSpecifier, Arc<ConfigData>>> {
+  pub fn data_by_scope(&self) -> &Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>> {
     &self.scopes
   }
 
   pub fn workspace_dir_for_specifier(
     &self,
-    specifier: &ModuleSpecifier,
+    specifier: &Url,
   ) -> Option<&WorkspaceDirectory> {
     self
       .data_for_specifier(specifier)
@@ -1806,10 +1800,7 @@ impl ConfigTree {
       .collect()
   }
 
-  pub fn fmt_config_for_specifier(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Arc<FmtConfig> {
+  pub fn fmt_config_for_specifier(&self, specifier: &Url) -> Arc<FmtConfig> {
     self
       .data_for_specifier(specifier)
       .map(|d| d.fmt_config.clone())
@@ -1819,8 +1810,8 @@ impl ConfigTree {
   /// Returns (scope_url, type).
   pub fn watched_file_type(
     &self,
-    specifier: &ModuleSpecifier,
-  ) -> Option<(&ModuleSpecifier, ConfigWatchedFileType)> {
+    specifier: &Url,
+  ) -> Option<(&Arc<Url>, ConfigWatchedFileType)> {
     for (scope_url, data) in self.scopes.iter() {
       if let Some(typ) = data.watched_files.get(specifier) {
         return Some((scope_url, *typ));
@@ -1829,7 +1820,7 @@ impl ConfigTree {
     None
   }
 
-  pub fn is_watched_file(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn is_watched_file(&self, specifier: &Url) -> bool {
     let path = specifier.path();
     if path.ends_with("/deno.json")
       || path.ends_with("/deno.jsonc")
@@ -1901,24 +1892,24 @@ impl ConfigTree {
     let pkg_json_cache = PackageJsonMemCache::default();
     let workspace_cache = WorkspaceMemCache::default();
     let mut scopes = BTreeMap::new();
-    for (folder_uri, ws_settings) in &settings.by_workspace_folder {
+    for (folder_url, ws_settings) in &settings.by_workspace_folder {
       let mut ws_settings = ws_settings.as_ref();
-      if Some(folder_uri) == settings.first_folder.as_ref() {
+      if Some(folder_url) == settings.first_folder.as_ref() {
         ws_settings = ws_settings.or(Some(&settings.unscoped));
       }
       if let Some(ws_settings) = ws_settings {
         let config_file_path = (|| {
           let config_setting = ws_settings.config.as_ref()?;
-          let config_uri = folder_uri.join(config_setting).ok()?;
+          let config_uri = folder_url.join(config_setting).ok()?;
           url_to_file_path(&config_uri).ok()
         })();
         if config_file_path.is_some() || ws_settings.import_map.is_some() {
           scopes.insert(
-            folder_uri.clone(),
+            folder_url.clone(),
             Arc::new(
               ConfigData::load(
                 config_file_path.as_deref(),
-                folder_uri,
+                folder_url,
                 settings,
                 file_fetcher,
                 &deno_json_cache,
@@ -1939,7 +1930,7 @@ impl ConfigTree {
       {
         continue;
       }
-      let Ok(scope) = specifier.join(".") else {
+      let Ok(scope) = specifier.join(".").map(Arc::new) else {
         continue;
       };
       if scopes.contains_key(&scope) {
@@ -1972,7 +1963,7 @@ impl ConfigTree {
           &workspace_cache,
         )
         .await;
-        scopes.insert(member_scope.as_ref().clone(), Arc::new(member_data));
+        scopes.insert(member_scope.clone(), Arc::new(member_data));
       }
     }
 

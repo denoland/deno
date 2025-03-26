@@ -9,6 +9,7 @@ use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;
+use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_runtime::tokio_util::create_basic_runtime;
 use tokio::sync::mpsc;
@@ -62,7 +63,7 @@ impl TestServer {
   pub fn new(
     client: Client,
     performance: Arc<Performance>,
-    maybe_root_uri: Option<ModuleSpecifier>,
+    maybe_root_url: Option<Arc<Url>>,
   ) -> Self {
     let tests = Default::default();
 
@@ -82,7 +83,7 @@ impl TestServer {
     let tests = server.tests.clone();
     let client = server.client.clone();
     let performance = server.performance.clone();
-    let mru = maybe_root_uri.clone();
+    let mru = maybe_root_url.clone();
     let _update_join_handle = thread::spawn(move || {
       let runtime = create_basic_runtime();
 
@@ -139,7 +140,7 @@ impl TestServer {
                     });
                   if !test_module.is_empty() {
                     if let Ok(params) =
-                      test_module.as_replace_notification(mru.as_ref())
+                      test_module.as_replace_notification(mru.as_deref())
                     {
                       client.send_test_notification(params);
                     }
@@ -183,7 +184,7 @@ impl TestServer {
                 runs.get(&id).cloned()
               };
               if let Some(run) = maybe_run {
-                match run.exec(&client, maybe_root_uri.as_ref()).await {
+                match run.exec(&client, maybe_root_url.as_deref()).await {
                   Ok(_) => (),
                   Err(err) => {
                     client.show_message(lsp::MessageType::ERROR, err);

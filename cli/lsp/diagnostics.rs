@@ -423,7 +423,7 @@ struct AmbientModules {
 #[derive(Debug, Default)]
 struct DeferredDiagnostics {
   diagnostics: Option<Vec<DeferredDiagnosticRecord>>,
-  ambient_modules_by_scope: HashMap<Option<Url>, AmbientModules>,
+  ambient_modules_by_scope: HashMap<Option<Arc<Url>>, AmbientModules>,
 }
 
 impl DeferredDiagnostics {
@@ -1937,7 +1937,7 @@ fn diagnose_dependency(
 struct DeferredDiagnosticRecord {
   document_specifier: Url,
   version: Option<i32>,
-  scope: Option<Url>,
+  scope: Option<Arc<Url>>,
   diagnostics: Vec<(String, lsp::Diagnostic)>,
 }
 
@@ -1988,7 +1988,7 @@ fn generate_deno_diagnostics(
         snapshot
           .documents
           .get(specifier)
-          .and_then(|d| d.scope().cloned())
+          .and_then(|d| d.scope().cloned().map(Arc::new))
       },
       version: document.maybe_lsp_version(),
       diagnostics: deferred,

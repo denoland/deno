@@ -726,7 +726,7 @@ impl Inner {
     let global_cache_url = maybe_cache.and_then(|cache_str| {
       if let Ok(url) = Url::from_file_path(cache_str) {
         Some(url)
-      } else if let Some(root_uri) = self.config.root_uri() {
+      } else if let Some(root_uri) = self.config.root_url() {
         root_uri.join(cache_str).inspect_err(|err| lsp_warn!("Failed to resolve custom cache path: {err}")).ok()
       } else {
         lsp_warn!(
@@ -740,7 +740,7 @@ impl Inner {
     let workspace_settings = self.config.workspace_settings();
     let maybe_root_path = self
       .config
-      .root_uri()
+      .root_url()
       .and_then(|uri| url_to_file_path(uri).ok());
     let root_cert_store = get_root_cert_store(
       maybe_root_path,
@@ -877,9 +877,11 @@ impl Inner {
           .into_iter()
           .map(|folder| {
             (
-              self
-                .url_map
-                .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
+              Arc::new(
+                self
+                  .url_map
+                  .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
+              ),
               folder,
             )
           })
@@ -890,8 +892,9 @@ impl Inner {
       #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let root_url =
-            self.url_map.uri_to_specifier(&root_uri, LspUrlKind::Folder);
+          let root_url = Arc::new(
+            self.url_map.uri_to_specifier(&root_uri, LspUrlKind::Folder),
+          );
           let name = root_url.path_segments().and_then(|s| s.last());
           let name = name.unwrap_or_default().to_string();
           workspace_folders.insert(
@@ -3175,7 +3178,7 @@ impl Inner {
     }
     let root_path = self
       .config
-      .root_uri()
+      .root_url()
       .and_then(|s| url_to_file_path(s).ok());
     let resolved_items = incoming_calls_with_modules
       .iter()
@@ -3237,7 +3240,7 @@ impl Inner {
       })?;
     let root_path = self
       .config
-      .root_uri()
+      .root_url()
       .and_then(|s| url_to_file_path(s).ok());
     let resolved_items = outgoing_calls
       .iter()
@@ -3301,7 +3304,7 @@ impl Inner {
     let response = if let Some(one_or_many) = maybe_one_or_many {
       let root_path = self
         .config
-        .root_uri()
+        .root_url()
         .and_then(|s| url_to_file_path(s).ok());
       let mut resolved_items = Vec::<CallHierarchyItem>::new();
       match one_or_many {
@@ -3372,6 +3375,7 @@ impl Inner {
             &self.config,
             &module.specifier,
           ),
+          scope.as_deref().cloned(),
           token,
         )
         .await
@@ -4464,7 +4468,7 @@ impl Inner {
       let test_server = testing::TestServer::new(
         self.client.clone(),
         self.performance.clone(),
-        self.config.root_uri().cloned(),
+        self.config.root_url().cloned(),
       );
       self.maybe_testing_server = Some(test_server);
     }
@@ -4514,7 +4518,7 @@ impl Inner {
     force_global_cache: bool,
   ) -> Result<PrepareCacheResult, AnyError> {
     let config_data = self.config.tree.data_for_specifier(&referrer);
-    let scope = config_data.map(|d| d.scope.as_ref());
+    let scope = config_data.map(|d| d.scope.clone());
     let byonm = config_data.map(|d| d.byonm).unwrap_or(false);
     let mut roots = if !specifiers.is_empty() {
       specifiers
@@ -4527,7 +4531,7 @@ impl Inner {
     } else if let Some(dep_info) = self
       .document_modules
       .dep_info_by_scope()
-      .get(&scope.cloned())
+      .get(&scope)
       .cloned()
     {
       // always include the npm packages since resolution of one npm package
@@ -4587,7 +4591,7 @@ impl Inner {
       .flat_map(|d| {
         self
           .document_modules
-          .module(&Document2::Open(d.clone()), scope)
+          .module(&Document2::Open(d.clone()), scope.as_deref())
       })
       .collect();
     Ok(PrepareCacheResult {
@@ -4620,13 +4624,15 @@ impl Inner {
       .into_iter()
       .map(|folder| {
         (
-          self
-            .url_map
-            .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
+          Arc::new(
+            self
+              .url_map
+              .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
+          ),
           folder,
         )
       })
-      .collect::<Vec<(ModuleSpecifier, WorkspaceFolder)>>();
+      .collect::<Vec<_>>();
     for (specifier, folder) in self.config.workspace_folders.as_ref() {
       if !params.event.removed.is_empty()
         && params.event.removed.iter().any(|f| f.uri == folder.uri)

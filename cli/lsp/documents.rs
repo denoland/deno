@@ -650,7 +650,7 @@ impl DocumentModule {
   }
 }
 
-type DepInfoByScope = BTreeMap<Option<Url>, Arc<ScopeDepInfo>>;
+type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
@@ -781,12 +781,7 @@ impl DocumentModules {
       {
         continue;
       }
-      let scope = self
-        .config
-        .tree
-        .scope_for_specifier(&url)
-        .cloned()
-        .map(Arc::new);
+      let scope = self.config.tree.scope_for_specifier(&url).cloned();
       let Some(document) =
         self
           .documents
@@ -813,12 +808,7 @@ impl DocumentModules {
       {
         continue;
       }
-      let scope = self
-        .config
-        .tree
-        .scope_for_specifier(&url)
-        .cloned()
-        .map(Arc::new);
+      let scope = self.config.tree.scope_for_specifier(&url).cloned();
       let Some(module) = self.module(&document, scope.as_deref()) else {
         continue;
       };
@@ -861,7 +851,7 @@ impl DocumentModules {
 
   pub fn dep_info_by_scope(
     &mut self,
-  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
+  ) -> Arc<BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>> {
     self
       .dep_info_by_scope
       .get_or_init(|| {
@@ -1744,7 +1734,7 @@ impl Document {
     self
       .file_referrer
       .as_ref()
-      .and_then(|r| self.config.tree.scope_for_specifier(r))
+      .and_then(|r| self.config.tree.scope_for_specifier(r).map(|s| s.as_ref()))
   }
 
   pub fn content(&self) -> &Arc<str> {
@@ -2468,7 +2458,9 @@ impl Documents {
     }
 
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
-      let dep_info = dep_info_by_scope.entry(Some(scope.clone())).or_default();
+      let dep_info = dep_info_by_scope
+        .entry(Some(scope.as_ref().clone()))
+        .or_default();
       (|| {
         let member_dir = &config_data.member_dir;
         let jsx_config =
@@ -2862,7 +2854,7 @@ console.log(b, "hello deno");
               },
             })
             .to_string(),
-            config.root_uri().unwrap().join("deno.json").unwrap(),
+            config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
         )
@@ -2905,7 +2897,7 @@ console.log(b, "hello deno");
               },
             })
             .to_string(),
-            config.root_uri().unwrap().join("deno.json").unwrap(),
+            config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
         )

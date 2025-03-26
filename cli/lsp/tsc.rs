@@ -299,7 +299,7 @@ impl Serialize for ChangeKind {
 pub struct PendingChange {
   pub modified_scripts: Vec<(String, ChangeKind)>,
   pub project_version: usize,
-  pub new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+  pub new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
 }
 
 impl<'a> ToV8<'a> for PendingChange {
@@ -351,7 +351,7 @@ impl PendingChange {
     &mut self,
     new_version: usize,
     modified_scripts: Vec<(String, ChangeKind)>,
-    new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
   ) {
     use ChangeKind::*;
     self.project_version = self.project_version.max(new_version);
@@ -397,8 +397,7 @@ impl PendingChange {
 }
 
 pub type DiagnosticsMap = IndexMap<String, Vec<crate::tsc::Diagnostic>>;
-pub type ScopedAmbientModules =
-  HashMap<Option<ModuleSpecifier>, MaybeAmbientModules>;
+pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
 pub type MaybeAmbientModules = Option<Vec<String>>;
 
 impl TsServer {
@@ -476,7 +475,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     changed_specifiers_by_scope: BTreeMap<&Arc<Url>, Vec<Url>>,
-    new_configs_by_scope: Option<BTreeMap<Url, Arc<LspTsConfig>>>,
+    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
   ) {
     // TODO(nayeemrmn): Implement!
   }
@@ -484,8 +483,8 @@ impl TsServer {
   pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,
-    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
-    new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+    modified_scripts: impl IntoIterator<Item = (&'a Url, ChangeKind)>,
+    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
   ) {
     let modified_scripts = modified_scripts
       .into_iter()
@@ -530,7 +529,7 @@ impl TsServer {
         snapshot
           .documents
           .get(&specifier)
-          .and_then(|d| d.scope().cloned())
+          .and_then(|d| d.scope().cloned().map(Arc::new))
       };
       let specifiers = specifiers_by_scope.entry(scope).or_insert(vec![]);
       specifiers.push(self.specifier_map.denormalize(&specifier));
@@ -544,7 +543,7 @@ impl TsServer {
           .request::<(DiagnosticsMap, MaybeAmbientModules)>(
             snapshot.clone(),
             req,
-            scope.clone(),
+            scope.as_deref().cloned(),
             token,
           )
           .map(|res| (scope, res)),
@@ -594,7 +593,7 @@ impl TsServer {
         .request::<()>(
           snapshot.clone(),
           req,
-          scope.cloned(),
+          scope.map(|s| s.as_ref().clone()),
           &Default::default(),
         )
         .await
@@ -1105,6 +1104,7 @@ impl TsServer {
     specifier: ModuleSpecifier,
     position: u32,
     user_preferences: UserPreferences,
+    scope: Option<Url>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
@@ -1114,50 +1114,18 @@ impl TsServer {
       false,
       user_preferences,
     ));
-    let mut results = FuturesOrdered::new();
-    for scope in snapshot
-      .config
-      .tree
-      .data_by_scope()
-      .keys()
-      .map(Some)
-      .chain(std::iter::once(None))
-    {
-      results.push_back(self.request::<Option<Vec<RenameLocation>>>(
-        snapshot.clone(),
-        req.clone(),
-        scope.cloned(),
-        token,
-      ));
-    }
-    let mut all_locations = IndexSet::new();
-    while let Some(locations) = results.next().await {
-      if let Some(err) = locations.as_ref().err() {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        } else {
-          let err = err.to_string();
-          if !err.contains("Could not find source file") {
-            lsp_warn!("Unable to get rename locations from TypeScript: {err}");
+    self
+      .request::<Option<Vec<RenameLocation>>>(snapshot, req, scope, token)
+      .await
+      .and_then(|mut locations| {
+        for location in locations.iter_mut().flatten() {
+          if token.is_cancelled() {
+            return Err(anyhow!("request cancelled"));
           }
+          location.normalize(&self.specifier_map)?;
         }
-      }
-      let locations = locations.unwrap_or_default();
-      let Some(mut locations) = locations else {
-        continue;
-      };
-      for symbol in &mut locations {
-        if token.is_cancelled() {
-          return Err(anyhow!("request cancelled"));
-        }
-        symbol.normalize(&self.specifier_map)?;
-      }
-      all_locations.extend(locations);
-    }
-    if all_locations.is_empty() {
-      return Ok(None);
-    }
-    Ok(Some(all_locations.into_iter().collect()))
+        Ok(locations)
+      })
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -6575,7 +6543,7 @@ mod tests {
     fn change<S: AsRef<str>>(
       project_version: usize,
       scripts: impl IntoIterator<Item = (S, ChangeKind)>,
-      new_configs_by_scope: Option<BTreeMap<ModuleSpecifier, Arc<LspTsConfig>>>,
+      new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
     ) -> PendingChange {
       PendingChange {
         project_version,
