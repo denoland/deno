@@ -70,6 +70,12 @@ impl MemoryCache {
   }
 
   #[inline(always)]
+  pub fn clear_all(&mut self) {
+    self.clear_id += 1;
+    self.items.clear();
+  }
+
+  #[inline(always)]
   pub fn get(&self, key: &str) -> Option<&MemoryCacheItem> {
     self.items.get(key)
   }
@@ -189,7 +195,7 @@ impl<
       return false;
     }
     if self.force_reload_flag.raise() {
-      self.clear_memory_cache();
+      self.memory_cache.lock().clear_all();
       true
     } else {
       false
