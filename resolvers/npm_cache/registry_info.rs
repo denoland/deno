@@ -48,7 +48,7 @@ enum MemoryCacheItem {
   /// The item has loaded in the past and was stored in the file system cache.
   /// There is no reason to request this package from the npm registry again
   /// for the duration of execution.
-  FsCached,
+  FsCached(Arc<NpmPackageInfo>),
   /// An item is memory cached when it fails saving to the file system cache
   /// or the package does not exist.
   MemoryCached(Result<Option<Arc<NpmPackageInfo>>, Arc<JsErrorBox>>),
@@ -97,18 +97,6 @@ impl MemoryCache {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-pub enum LoadFileCachedPackageInfoError {
-  #[error("Previously saved '{name}' from the npm cache, but now it fails to load: {err}")]
-  LoadPackageInfo {
-    err: serde_json::Error,
-    name: String,
-  },
-  #[error("The package '{0}' previously saved its registry information to the file system cache, but that file no longer exists.")]
-  FileMissing(String),
-}
-
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
 #[class(inherit)]
 #[error("Failed loading {url} for package \"{name}\"")]
 pub struct LoadPackageInfoError {
@@ -120,15 +108,9 @@ pub struct LoadPackageInfoError {
 }
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum LoadPackageInfoInnerError {
-  #[class(inherit)]
-  #[error("{0}")]
-  LoadFileCachedPackageInfo(LoadFileCachedPackageInfoError),
-  #[class(inherit)]
-  #[error("{0}")]
-  Other(Arc<JsErrorBox>),
-}
-
+#[class(inherit)]
+#[error("{0}")]
+pub struct LoadPackageInfoInnerError(pub Arc<JsErrorBox>);
 // todo(#27198): refactor to store this only in the http cache
 
 /// Downloads packuments from the npm registry.
@@ -268,16 +250,9 @@ impl<
     };
 
     match cache_item {
-      MemoryCacheItem::FsCached => {
-        // this struct previously loaded from the registry, so we can load it from the file system cache
-        self
-          .load_file_cached_package_info(name)
-          .await
-          .map(|info| Some(Arc::new(info)))
-          .map_err(LoadPackageInfoInnerError::LoadFileCachedPackageInfo)
-      }
+      MemoryCacheItem::FsCached(info) => Ok(Some(info)),
       MemoryCacheItem::MemoryCached(maybe_info) => {
-        maybe_info.clone().map_err(LoadPackageInfoInnerError::Other)
+        maybe_info.clone().map_err(LoadPackageInfoInnerError)
       }
       MemoryCacheItem::Pending(value_creator) => {
         match value_creator.get().await {
@@ -287,7 +262,7 @@ impl<
             self.memory_cache.lock().try_insert(
               clear_id,
               name,
-              MemoryCacheItem::FsCached,
+              MemoryCacheItem::FsCached(info.clone()),
             );
             Ok(Some(info))
           }
@@ -315,35 +290,10 @@ impl<
               name,
               MemoryCacheItem::MemoryCached(Err(err)),
             );
-            Err(LoadPackageInfoInnerError::Other(return_err))
+            Err(LoadPackageInfoInnerError(return_err))
           }
         }
       }
-    }
-  }
-
-  async fn load_file_cached_package_info(
-    &self,
-    name: &str,
-  ) -> Result<NpmPackageInfo, LoadFileCachedPackageInfoError> {
-    // this scenario failing should be exceptionally rare so let's
-    // deal with improving it only when anyone runs into an issue
-    let maybe_package_info = deno_unsync::spawn_blocking({
-      let cache = self.cache.clone();
-      let name = name.to_string();
-      move || cache.load_package_info(&name)
-    })
-    .await
-    .unwrap()
-    .map_err(|err| LoadFileCachedPackageInfoError::LoadPackageInfo {
-      err,
-      name: name.to_string(),
-    })?;
-    match maybe_package_info {
-      Some(package_info) => Ok(package_info),
-      None => Err(LoadFileCachedPackageInfoError::FileMissing(
-        name.to_string(),
-      )),
     }
   }
 
