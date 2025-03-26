@@ -5745,6 +5745,9 @@ impl TscRequest {
 
 #[cfg(test)]
 mod tests {
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -5757,9 +5760,6 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
-  use deno_npm::registry::NpmPackageInfo;
-  use deno_npm::registry::NpmRegistryApi;
-  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 
   struct DefaultRegistry;
 
