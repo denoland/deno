@@ -94,7 +94,6 @@ use super::testing;
 use super::text;
 use super::tsc;
 use super::tsc::ChangeKind;
-use super::tsc::GetCompletionDetailsArgs;
 use super::tsc::TsServer;
 use super::urls;
 use super::urls::uri_to_file_path;
@@ -2922,27 +2921,23 @@ impl Inner {
           .ts_server
           .get_completion_details(
             self.snapshot(),
-            GetCompletionDetailsArgs {
-              specifier: module.specifier.as_ref().clone(),
-              position: data.position,
-              name: data.name.clone(),
-              format_code_settings: Some(
-                (&self
-                  .config
-                  .tree
-                  .fmt_config_for_specifier(&module.specifier)
-                  .options)
-                  .into(),
-              ),
-              source: data.source.clone(),
-              preferences: Some(
-                tsc::UserPreferences::from_config_for_specifier(
-                  &self.config,
-                  &module.specifier,
-                ),
-              ),
-              data: data.data.clone(),
-            },
+            &module.specifier,
+            data.position,
+            data.name.clone(),
+            Some(
+              (&self
+                .config
+                .tree
+                .fmt_config_for_specifier(&module.specifier)
+                .options)
+                .into(),
+            ),
+            data.source.clone(),
+            Some(tsc::UserPreferences::from_config_for_specifier(
+              &self.config,
+              &module.specifier,
+            )),
+            data.data.clone(),
             module.scope.as_ref(),
             token,
           )
@@ -3771,12 +3766,10 @@ impl Inner {
         .ts_server
         .get_navigate_to_items(
           self.snapshot(),
-          tsc::GetNavigateToItemsArgs {
-            search: params.query.clone(),
-            // this matches vscode's hard coded result count
-            max_result_count: Some(256),
-            file: None,
-          },
+          params.query.clone(),
+          // this matches vscode's hard coded result count
+          Some(256),
+          None,
           scope.as_ref(),
           token,
         )

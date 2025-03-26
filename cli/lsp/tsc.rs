@@ -939,18 +939,24 @@ impl TsServer {
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
-    args: GetCompletionDetailsArgs,
+    specifier: &Url,
+    position: u32,
+    name: String,
+    format_code_settings: Option<FormatCodeSettings>,
+    source: Option<String>,
+    preferences: Option<UserPreferences>,
+    data: Option<Value>,
     scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
-      self.specifier_map.denormalize(&args.specifier),
-      args.position,
-      args.name,
-      args.format_code_settings.unwrap_or_default(),
-      args.source,
-      args.preferences,
-      args.data,
+      self.specifier_map.denormalize(specifier),
+      position,
+      name,
+      format_code_settings.unwrap_or_default(),
+      source,
+      preferences,
+      data,
     )));
     self
       .request::<Option<CompletionEntryDetails>>(snapshot, req, scope, token)
@@ -1180,14 +1186,16 @@ impl TsServer {
   pub async fn get_navigate_to_items(
     &self,
     snapshot: Arc<StateSnapshot>,
-    args: GetNavigateToItemsArgs,
+    search: String,
+    max_result_count: Option<u32>,
+    file: Option<String>,
     scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
-      args.search,
-      args.max_result_count,
-      args.file.map(|f| match resolve_url(&f) {
+      search,
+      max_result_count,
+      file.map(|f| match resolve_url(&f) {
         Ok(s) => self.specifier_map.denormalize(&s),
         Err(_) => f,
       }),
@@ -5285,29 +5293,6 @@ pub struct SignatureHelpTriggerReason {
   pub trigger_character: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetCompletionDetailsArgs {
-  pub specifier: ModuleSpecifier,
-  pub position: u32,
-  pub name: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub format_code_settings: Option<FormatCodeSettings>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub source: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub preferences: Option<UserPreferences>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub data: Option<Value>,
-}
-
-#[derive(Debug)]
-pub struct GetNavigateToItemsArgs {
-  pub search: String,
-  pub max_result_count: Option<u32>,
-  pub file: Option<String>,
-}
-
 #[derive(Debug, Serialize, Clone, Copy)]
 pub struct TscTextRange {
   pos: u32,
@@ -6168,15 +6153,13 @@ mod tests {
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
-        GetCompletionDetailsArgs {
-          specifier,
-          position,
-          name: "log".to_string(),
-          format_code_settings: None,
-          source: None,
-          preferences: None,
-          data: None,
-        },
+        &specifier,
+        position,
+        "log".to_string(),
+        None,
+        None,
+        None,
+        None,
         Some(temp_dir.url()),
         &Default::default(),
       )
@@ -6367,20 +6350,16 @@ mod tests {
     let details = ts_server
       .get_completion_details(
         snapshot.clone(),
-        GetCompletionDetailsArgs {
-          specifier,
-          position,
-          name: entry.name.clone(),
-          format_code_settings: Some(FormatCodeSettings::from(
-            &fmt_options_config,
-          )),
-          source: entry.source.clone(),
-          preferences: Some(UserPreferences {
-            quote_preference: Some((&fmt_options_config).into()),
-            ..Default::default()
-          }),
-          data: entry.data.clone(),
-        },
+        &specifier,
+        position,
+        entry.name.clone(),
+        Some(FormatCodeSettings::from(&fmt_options_config)),
+        entry.source.clone(),
+        Some(UserPreferences {
+          quote_preference: Some((&fmt_options_config).into()),
+          ..Default::default()
+        }),
+        entry.data.clone(),
         Some(temp_dir.url()),
         &Default::default(),
       )
