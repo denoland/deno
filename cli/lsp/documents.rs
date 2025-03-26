@@ -1867,11 +1867,30 @@ mod tests {
   use deno_config::deno_json::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   use super::*;
   use crate::lsp::cache::LspCache;
+
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -2010,22 +2029,22 @@ console.log(b, "hello deno");
 
     // set the initial import map and point to file 2
     {
-      // config
-      //   .tree
-      //   .inject_config_file(
-      //     ConfigFile::new(
-      //       &json!({
-      //         "imports": {
-      //           "test": "./file2.ts",
-      //         },
-      //       })
-      //       .to_string(),
-      //       config.root_uri().unwrap().join("deno.json").unwrap(),
-      //     )
-      //     .unwrap(),
-      //   )
-      //   .await;
-      todo!();
+      config
+        .tree
+        .inject_config_file(
+          ConfigFile::new(
+            &json!({
+              "imports": {
+                "test": "./file2.ts",
+              },
+            })
+            .to_string(),
+            config.root_uri().unwrap().join("deno.json").unwrap(),
+          )
+          .unwrap(),
+          &default_registry(),
+        )
+        .await;
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
@@ -2067,7 +2086,7 @@ console.log(b, "hello deno");
             config.root_uri().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
-          todo!(),
+          &default_registry(),
         )
         .await;
 

@@ -387,38 +387,47 @@ async fn sync_resolution_with_fs(
                 Ok::<_, SyncResolutionWithFsError>(())
               }
             });
-            let extra = extra_info_provider
-              .get_package_extra_info(&package.id.nv, package.is_deprecated);
-            let (result, extra) = tokio::join!(handle, extra);
+            let extra_fut = if package.has_bin
+              || package.has_scripts
+              || package.is_deprecated
+            {
+              extra_info_provider
+                .get_package_extra_info(&package.id.nv, package.is_deprecated)
+                .boxed_local()
+            } else {
+              std::future::ready(Ok(NpmPackageExtraInfo::default()))
+                .boxed_local()
+            };
+
+            let (result, extra) = tokio::join!(handle, extra_fut);
             result
               .map_err(JsErrorBox::from_err)?
               .map_err(JsErrorBox::from_err)?;
             let extra = extra.map_err(JsErrorBox::from_err)?;
 
-            if extra.bin.is_some() {
+            if package.has_bin {
               bin_entries_to_setup.borrow_mut().add(
                 package,
                 &extra,
-                package_path,
+                package_path.clone(),
               );
             }
 
-            if let Some(deprecated) = &extra.deprecated {
-              packages_with_deprecation_warnings
-                .lock()
-                .push((package.id.clone(), deprecated.clone()));
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
             }
 
-            let sub_node_modules = folder_path.join("node_modules");
-            let package_path = join_package_name(
-              Cow::Owned(sub_node_modules),
-              &package.id.nv.name,
-            );
-            lifecycle_scripts.borrow_mut().add(
-              package,
-              &extra,
-              package_path.into(),
-            );
+            if package.is_deprecated {
+              if let Some(deprecated) = &extra.deprecated {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.clone(), deprecated.clone()));
+              }
+            }
 
             // finally stop showing the progress bar
             drop(pb_guard); // explicit for clarity
@@ -427,8 +436,56 @@ async fn sync_resolution_with_fs(
           .boxed_local(),
         );
       }
-    } else if matches!(package_state, PackageFolderState::TagsOutdated) {
-      write_initialized_file(&initialized_file, &tags)?;
+    } else {
+      if matches!(package_state, PackageFolderState::TagsOutdated) {
+        write_initialized_file(&initialized_file, &tags)?;
+      }
+
+      if package.has_bin || package.has_scripts || package.is_deprecated {
+        let bin_entries_to_setup = bin_entries.clone();
+        let lifecycle_scripts = lifecycle_scripts.clone();
+        let extra_info_provider = extra_info_provider.clone();
+        let packages_with_deprecation_warnings =
+          packages_with_deprecation_warnings.clone();
+        let sub_node_modules = folder_path.join("node_modules");
+        let package_path =
+          join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
+        cache_futures.push(
+          async move {
+            let extra = extra_info_provider
+              .get_package_extra_info(&package.id.nv, package.is_deprecated)
+              .await
+              .map_err(JsErrorBox::from_err)?;
+
+            if package.has_bin {
+              bin_entries_to_setup.borrow_mut().add(
+                package,
+                &extra,
+                package_path.clone(),
+              );
+            }
+
+            if package.has_scripts {
+              lifecycle_scripts.borrow_mut().add(
+                package,
+                &extra,
+                package_path.into(),
+              );
+            }
+
+            if package.is_deprecated {
+              if let Some(deprecated) = &extra.deprecated {
+                packages_with_deprecation_warnings
+                  .lock()
+                  .push((package.id.clone(), deprecated.clone()));
+              }
+            }
+
+            Ok(())
+          }
+          .boxed_local(),
+        );
+      }
     }
 
     let sub_node_modules = folder_path.join("node_modules");

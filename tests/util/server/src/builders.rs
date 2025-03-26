@@ -359,16 +359,22 @@ impl TestContext {
 }
 
 fn sync_fetch(url: url::Url) -> bytes::Bytes {
-  let runtime = tokio::runtime::Builder::new_current_thread()
-    .enable_io()
-    .enable_time()
-    .build()
-    .unwrap();
-  runtime.block_on(async move {
-    let client = reqwest::Client::new();
-    let response = client.get(url).send().await.unwrap();
-    assert!(response.status().is_success());
-    response.bytes().await.unwrap()
+  std::thread::scope(move |s| {
+    s.spawn(move || {
+      let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap();
+      runtime.block_on(async move {
+        let client = reqwest::Client::new();
+        let response = client.get(url).send().await.unwrap();
+        assert!(response.status().is_success());
+        response.bytes().await.unwrap()
+      })
+    })
+    .join()
+    .unwrap()
   })
 }
 

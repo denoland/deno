@@ -555,6 +555,8 @@ fn deserialize_npm_snapshot(
         optional_dependencies: Default::default(),
         extra: Default::default(),
         is_deprecated: false,
+        has_bin: false,
+        has_scripts: false,
       },
     ))
   }
