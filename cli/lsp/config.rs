@@ -70,7 +70,6 @@ use crate::args::LintOptions;
 use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::npm::CliNpmRegistryInfoProvider;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
