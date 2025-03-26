@@ -1,0 +1,26 @@
+{
+  "version": "4",
+  "specifiers": {
+    "npm:@denotest/add@1": "1.0.0",
+    "npm:@denotest/peer-dep-specific-constraint@*": "1.0.0_@denotest+add@1.0.0"
+  },
+  "npm": {
+    "@denotest/add@1.0.0": {
+      "integrity": "[WILDLINE]"
+    },
+    "@denotest/peer-dep-specific-constraint@1.0.0_@denotest+add@1.0.0": {
+      "integrity": "[WILDLINE]",
+      "dependencies": [
+        "@denotest/add"
+      ]
+    }
+  },
+  "workspace": {
+    "packageJson": {
+      "dependencies": [
+        "npm:@denotest/add@1",
+        "npm:@denotest/peer-dep-specific-constraint@*"
+      ]
+    }
+  }
+}
