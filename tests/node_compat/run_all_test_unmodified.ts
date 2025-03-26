@@ -7,6 +7,7 @@ import { toFileUrl } from "@std/path/to-file-url";
 import { basename } from "@std/path/basename";
 import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
+import { stripAnsiCode } from "@std/fmt/colors";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure */
 const TIMEOUT = 2000;
@@ -143,7 +144,7 @@ function getGroupRelUrl(str: string) {
  * - sequential/test-child-process-exec-stderr.js -> child-process
  * - internet/test-http-keep-alive.js -> http
  * - pseudo-tty/test-stdin.js -> tty
- * - module-hooks/test-require.js -> module-hooks
+ * - module-hooks/test-require.js -> module
  */
 function getCategoryFromPath(str: string) {
   const group = getGroupRelUrl(str);
@@ -181,13 +182,20 @@ function collectNonCategorizedItems(categories: Record<string, string[]>) {
   (categories["others"] ??= []).push(...others);
 }
 
-type SingleResult = {
-  pass: boolean;
-  error?: ErrorExit | ErrorTimeout | ErrorUnexpected;
-};
+function truncateTestOutput(output: string): string {
+  output = stripAnsiCode(output);
+  if (output.length > 2000) {
+    return output.slice(0, 2000) + " ...";
+  }
+  return output;
+}
+
+type SingleResult = [
+  pass: boolean,
+  error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
+];
 type ErrorExit = {
   code: number;
-  stdout: string;
   stderr: string;
 };
 type ErrorTimeout = {
@@ -197,17 +205,24 @@ type ErrorUnexpected = {
   message: string;
 };
 
+/**
+ * Run a single node test file. Retries 3 times on WouldBlock error.
+ *
+ * @param testPath Relative path to the test file
+ */
 async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
   try {
     const cmd = new Deno.Command(Deno.execPath(), {
       args: [
         "-A",
+        "--quiet",
         "--unstable-bare-node-builtins",
         "--unstable-node-globals",
         "tests/node_compat/runner/suite/test/" + testPath,
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
+        NO_COLOR: "1",
       },
       stdout: "piped",
       stderr: "piped",
@@ -215,31 +230,21 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
     });
     const result = await deadline(cmd.output(), TIMEOUT + 1000);
     if (result.code === 0) {
-      return { pass: true };
+      return [true];
     } else {
-      return {
-        pass: false,
-        error: {
-          code: result.code,
-          stdout: new TextDecoder().decode(result.stdout),
-          stderr: new TextDecoder().decode(result.stderr),
-        },
-      };
+      return [false, {
+        code: result.code,
+        stderr: truncateTestOutput(new TextDecoder().decode(result.stderr)),
+      }];
     }
   } catch (e) {
     if (e instanceof DOMException && e.name === "TimeoutError") {
-      return {
-        pass: false,
-        error: { timeout: TIMEOUT },
-      };
+      return [false, { timeout: TIMEOUT }];
     } else if (e instanceof Deno.errors.WouldBlock && retry < 3) {
       // retry 2 times on WouldBlock error (Resource temporarily unavailable)
       return runSingle(testPath, retry + 1);
     } else {
-      return {
-        pass: false,
-        error: { message: (e as Error).message },
-      };
+      return [false, { message: (e as Error).message }];
     }
   }
 }
@@ -268,7 +273,7 @@ async function main() {
     const num = String(++i).padStart(4, " ");
     const result = await runSingle(testPath);
     results[testPath] = result;
-    if (result.pass) {
+    if (result[0]) {
       console.log(`${num} %cPASS`, "color: green", testPath);
     } else {
       console.log(`${num} %cFAIL`, "color: red", testPath);
@@ -292,25 +297,26 @@ async function main() {
   // Reporting to stdout
   console.log(`Result by categories (${categoryList.length}):`);
   for (const [category, tests] of categoryList) {
-    const s = tests.filter((test) => results[test].pass).length;
+    const s = tests.filter((test) => results[test][0]).length;
     const all = tests.length;
     console.log(`  ${category} ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
     for (const testPath of tests) {
-      if (results[testPath].pass) {
+      if (results[testPath][0]) {
         console.log(`    %cPASS`, "color: green", testPath);
       } else {
         console.log(`    %cFAIL`, "color: red", testPath);
       }
     }
   }
+
   // Summary
   const all = tests.length;
-  const s = tests.filter((test) => results[test].pass).length;
+  const s = tests.filter((test) => results[test][0]).length;
   console.log(`All tests: ${s}/${all} (${(s / all * 100).toFixed(2)}%)`);
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   Deno.writeTextFile(
     "tests/node_compat/report.json",
-    JSON.stringify(results, null, 2),
+    JSON.stringify(results),
   );
   Deno.exit(0);
 }
