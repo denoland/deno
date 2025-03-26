@@ -1,19 +1,20 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
-
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_runtime::deno_io::FromRawIoHandle;
 use deno_semver::package::PackageNv;
+use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_task_shell::KillSignal;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 use super::bin_entries::BinEntries;
 use super::NpmPackageExtraInfoProvider;
@@ -43,7 +44,11 @@ pub trait LifecycleScriptsStrategy {
 }
 
 pub struct LifecycleScripts<'a> {
-  packages_with_scripts: Vec<(&'a NpmResolutionPackage, PathBuf)>,
+  packages_with_scripts: Vec<(
+    &'a NpmResolutionPackage,
+    HashMap<SmallStackString, String>,
+    PathBuf,
+  )>,
   packages_with_scripts_not_run: Vec<(&'a NpmResolutionPackage, PathBuf)>,
 
   config: &'a LifecycleScriptsConfig,
@@ -141,9 +146,11 @@ impl<'a> LifecycleScripts<'a> {
     if has_lifecycle_scripts(extra, &package_path) {
       if self.can_run_scripts(&package.id.nv) {
         if !self.has_run_scripts(package) {
-          self
-            .packages_with_scripts
-            .push((package, package_path.into_owned()));
+          self.packages_with_scripts.push((
+            package,
+            extra.scripts.clone(),
+            package_path.into_owned(),
+          ));
         }
       } else if !self.has_run_scripts(package)
         && (self.config.explicit_install || !self.strategy.has_warned(package))
@@ -217,7 +224,7 @@ impl<'a> LifecycleScripts<'a> {
       let package_ids = self
         .packages_with_scripts
         .iter()
-        .map(|(p, _)| &p.id)
+        .map(|(p, _, _)| &p.id)
         .collect::<HashSet<_>>();
       // get custom commands for each bin available in the node_modules dir (essentially
       // the scripts that are in `node_modules/.bin`)
@@ -262,7 +269,7 @@ impl<'a> LifecycleScripts<'a> {
           .to_string(),
         (temp_file_fd as usize).to_string(),
       );
-      for (package, package_path) in self.packages_with_scripts {
+      for (package, scripts, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the
         // baseline commands, so if the package relies on a bin that conflicts with one higher in the dependency tree, the
         // correct bin will be used.
@@ -275,9 +282,7 @@ impl<'a> LifecycleScripts<'a> {
         )
         .await;
         for script_name in ["preinstall", "install", "postinstall"] {
-          if let Some(script) =
-            package.extra.as_ref().unwrap().scripts.get(script_name)
-          {
+          if let Some(script) = scripts.get(script_name) {
             if script_name == "install"
               && is_broken_default_install_script(script, &package_path)
             {

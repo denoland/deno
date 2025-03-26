@@ -1,5 +1,5 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:@denotest/bin@0.6": "0.6.0",
     "npm:@denotest/breaking-change-between-versions@1.0.0": "1.0.0",
@@ -7,13 +7,16 @@
   },
   "npm": {
     "@denotest/bin@0.6.0": {
-      "integrity": "sha512-vCNpxFgQN4fw4ZOp63nbTX1ilcDqNpvXCvYyC8nmfxQQAezsEt095I/YXwMIoMGzWtjCvlMf9kVEYfLuT5oEGQ=="
+      "integrity": "sha512-vCNpxFgQN4fw4ZOp63nbTX1ilcDqNpvXCvYyC8nmfxQQAezsEt095I/YXwMIoMGzWtjCvlMf9kVEYfLuT5oEGQ==",
+      "tarball": "http://localhost:4260/@denotest/bin/0.6.0.tgz"
     },
     "@denotest/breaking-change-between-versions@1.0.0": {
-      "integrity": "sha512-bzMGYx+DxxPlI74n/VsDAN7Db1BY7Sz2XqxXruMo9dEznsBZu7Ez3i8YQ8n0leTxAiiMk1RCG4zQHPG1aj3xRw=="
+      "integrity": "sha512-bzMGYx+DxxPlI74n/VsDAN7Db1BY7Sz2XqxXruMo9dEznsBZu7Ez3i8YQ8n0leTxAiiMk1RCG4zQHPG1aj3xRw==",
+      "tarball": "http://localhost:4260/@denotest/breaking-change-between-versions/1.0.0.tgz"
     },
     "@denotest/has-patch-versions@0.1.1": {
-      "integrity": "sha512-slUqYhu6DrPiSdNzmW5aMdW2/osIYnDP0yY3CwgLzAiyK0/cwb0epSpTSyZEmTKXA3rezxxC7ASSsnD34uH1/w=="
+      "integrity": "sha512-slUqYhu6DrPiSdNzmW5aMdW2/osIYnDP0yY3CwgLzAiyK0/cwb0epSpTSyZEmTKXA3rezxxC7ASSsnD34uH1/w==",
+      "tarball": "http://localhost:4260/@denotest/has-patch-versions/0.1.1.tgz"
     }
   },
   "workspace": {
