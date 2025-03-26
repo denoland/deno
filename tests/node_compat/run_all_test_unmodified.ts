@@ -9,7 +9,7 @@ import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
 
-// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure */
+// The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 
