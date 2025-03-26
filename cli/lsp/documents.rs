@@ -952,7 +952,6 @@ impl DocumentModules {
     resolution_mode: ResolutionMode,
     scope: Option<&Url>,
   ) -> Option<(Url, MediaType)> {
-    let file_referrer = 1;
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
       if deno_node::is_builtin_node_module(module_name) {
         // return itself for node: specifiers because during type checking

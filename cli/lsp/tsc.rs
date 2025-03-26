@@ -123,7 +123,7 @@ const FILE_EXTENSION_KIND_MODIFIERS: &[&str] =
 
 type Request = (
   TscRequest,
-  Option<ModuleSpecifier>,
+  Option<Arc<Url>>,
   Arc<StateSnapshot>,
   oneshot::Sender<Result<String, AnyError>>,
   CancellationToken,
@@ -518,36 +518,35 @@ impl TsServer {
   ) -> Result<(DiagnosticsMap, ScopedAmbientModules), AnyError> {
     let mut diagnostics_map = IndexMap::with_capacity(specifiers.len());
     let mut specifiers_by_scope = BTreeMap::new();
-    for specifier in specifiers {
-      let scope = if snapshot.documents.is_valid_file_referrer(&specifier) {
-        snapshot
-          .config
-          .tree
-          .scope_for_specifier(&specifier)
-          .cloned()
+    for specifier in &specifiers {
+      let scope = if snapshot.documents.is_valid_file_referrer(specifier) {
+        snapshot.config.tree.scope_for_specifier(specifier).cloned()
       } else {
         snapshot
           .documents
-          .get(&specifier)
+          .get(specifier)
           .and_then(|d| d.scope().cloned().map(Arc::new))
       };
       let specifiers = specifiers_by_scope.entry(scope).or_insert(vec![]);
-      specifiers.push(self.specifier_map.denormalize(&specifier));
+      specifiers.push(self.specifier_map.denormalize(specifier));
     }
     let mut results = FuturesOrdered::new();
     for (scope, specifiers) in specifiers_by_scope {
       let req =
         TscRequest::GetDiagnostics((specifiers, snapshot.project_version));
-      results.push_back(
+      let snapshot = snapshot.clone();
+      let scope = scope.clone();
+      results.push_back(async move {
         self
           .request::<(DiagnosticsMap, MaybeAmbientModules)>(
-            snapshot.clone(),
+            snapshot,
             req,
-            scope.as_deref().cloned(),
+            scope.as_ref(),
             token,
           )
-          .map(|res| (scope, res)),
-      );
+          .map(|res| (scope.clone(), res))
+          .await
+      });
     }
     let mut ambient_modules_by_scope = HashMap::with_capacity(2);
     while let Some((scope, raw_diagnostics)) = results.next().await {
@@ -590,12 +589,7 @@ impl TsServer {
     {
       let req = TscRequest::CleanupSemanticCache;
       self
-        .request::<()>(
-          snapshot.clone(),
-          req,
-          scope.map(|s| s.as_ref().clone()),
-          &Default::default(),
-        )
+        .request::<()>(snapshot.clone(), req, scope, &Default::default())
         .await
         .map_err(|err| {
           log::error!("Failed to request to tsserver {}", err);
@@ -609,13 +603,13 @@ impl TsServer {
   pub async fn find_references(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: Url,
+    specifier: &Url,
     position: u32,
-    scope: Option<Url>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ReferencedSymbol>>, AnyError> {
     let req = TscRequest::FindReferences((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -636,13 +630,13 @@ impl TsServer {
   pub async fn get_navigation_tree(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    scope: Option<ModuleSpecifier>,
+    specifier: &Url,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<NavigationTree, AnyError> {
     let req = TscRequest::GetNavigationTree((self
       .specifier_map
-      .denormalize(&specifier),));
+      .denormalize(specifier),));
     self.request(snapshot, req, scope, token).await
   }
 
@@ -665,13 +659,13 @@ impl TsServer {
   pub async fn get_quick_info(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<QuickInfo>, AnyError> {
     let req = TscRequest::GetQuickInfoAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self.request(snapshot, req, scope, token).await
@@ -682,16 +676,16 @@ impl TsServer {
   pub async fn get_code_fixes(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
     codes: Vec<i32>,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<CodeFixAction>, AnyError> {
     let req = TscRequest::GetCodeFixesAtPosition(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       range.start,
       range.end,
       codes,
@@ -714,12 +708,12 @@ impl TsServer {
   pub async fn get_applicable_refactors(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
     preferences: Option<UserPreferences>,
     trigger_kind: Option<lsp::CodeActionTriggerKind>,
     only: String,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<ApplicableRefactorInfo>, LspError> {
     let trigger_kind = trigger_kind.map(|reason| match reason {
@@ -728,7 +722,7 @@ impl TsServer {
       _ => unreachable!(),
     });
     let req = TscRequest::GetApplicableRefactors(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       range.into(),
       preferences.unwrap_or_default(),
       trigger_kind,
@@ -751,7 +745,7 @@ impl TsServer {
     fix_id: &str,
     format_code_settings: FormatCodeSettings,
     preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<CombinedCodeActions, AnyError> {
     let req = TscRequest::GetCombinedCodeFix(Box::new((
@@ -777,17 +771,17 @@ impl TsServer {
   pub async fn get_edits_for_refactor(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     format_code_settings: FormatCodeSettings,
     range: Range<u32>,
     refactor_name: String,
     action_name: String,
     preferences: Option<UserPreferences>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<RefactorEditInfo, AnyError> {
     let req = TscRequest::GetEditsForRefactor(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       format_code_settings,
       range.into(),
       refactor_name,
@@ -807,11 +801,11 @@ impl TsServer {
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
-    old_specifier: ModuleSpecifier,
-    new_specifier: ModuleSpecifier,
+    old_specifier: &Url,
+    new_specifier: &Url,
     format_code_settings: FormatCodeSettings,
     user_preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
@@ -842,14 +836,14 @@ impl TsServer {
   pub async fn get_document_highlights(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     files_to_search: Vec<ModuleSpecifier>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DocumentHighlights>>, AnyError> {
     let req = TscRequest::GetDocumentHighlights(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       files_to_search
         .into_iter()
@@ -863,13 +857,13 @@ impl TsServer {
   pub async fn get_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<DefinitionInfoAndBoundSpan>, AnyError> {
     let req = TscRequest::GetDefinitionAndBoundSpan((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -889,13 +883,13 @@ impl TsServer {
   pub async fn get_type_definition(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<DefinitionInfo>>, AnyError> {
     let req = TscRequest::GetTypeDefinitionAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -917,15 +911,15 @@ impl TsServer {
   pub async fn get_completions(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     options: GetCompletionsAtPositionOptions,
     format_code_settings: FormatCodeSettings,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionInfo>, AnyError> {
     let req = TscRequest::GetCompletionsAtPosition(Box::new((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       options,
       format_code_settings,
@@ -946,7 +940,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     args: GetCompletionDetailsArgs,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<CompletionEntryDetails>, AnyError> {
     let req = TscRequest::GetCompletionEntryDetails(Box::new((
@@ -973,13 +967,13 @@ impl TsServer {
   pub async fn get_implementations(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<Url>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<ImplementationLocation>>, AnyError> {
     let req = TscRequest::GetImplementationAtPosition((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -1002,13 +996,13 @@ impl TsServer {
   pub async fn get_outlining_spans(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
-    scope: Option<ModuleSpecifier>,
+    specifier: &Url,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<OutliningSpan>, AnyError> {
     let req = TscRequest::GetOutliningSpans((self
       .specifier_map
-      .denormalize(&specifier),));
+      .denormalize(specifier),));
     self.request(snapshot, req, scope, token).await
   }
 
@@ -1016,13 +1010,13 @@ impl TsServer {
   pub async fn provide_call_hierarchy_incoming_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyIncomingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyIncomingCalls((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -1040,13 +1034,13 @@ impl TsServer {
   pub async fn provide_call_hierarchy_outgoing_calls(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<CallHierarchyOutgoingCall>, AnyError> {
     let req = TscRequest::ProvideCallHierarchyOutgoingCalls((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -1067,13 +1061,13 @@ impl TsServer {
   pub async fn prepare_call_hierarchy(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<OneOrMany<CallHierarchyItem>>, AnyError> {
     let req = TscRequest::PrepareCallHierarchy((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self
@@ -1101,14 +1095,14 @@ impl TsServer {
   pub async fn find_rename_locations(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     user_preferences: UserPreferences,
-    scope: Option<Url>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<RenameLocation>>, AnyError> {
     let req = TscRequest::FindRenameLocations((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       false,
       false,
@@ -1132,13 +1126,13 @@ impl TsServer {
   pub async fn get_smart_selection_range(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<SelectionRange, AnyError> {
     let req = TscRequest::GetSmartSelectionRange((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
     ));
     self.request(snapshot, req, scope, token).await
@@ -1148,13 +1142,13 @@ impl TsServer {
   pub async fn get_encoded_semantic_classifications(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     range: Range<u32>,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Classifications, AnyError> {
     let req = TscRequest::GetEncodedSemanticClassifications((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       TextSpan {
         start: range.start,
         length: range.end - range.start,
@@ -1168,14 +1162,14 @@ impl TsServer {
   pub async fn get_signature_help_items(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     position: u32,
     options: SignatureHelpItemsOptions,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<SignatureHelpItems>, AnyError> {
     let req = TscRequest::GetSignatureHelpItems((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       position,
       options,
     ));
@@ -1187,7 +1181,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     args: GetNavigateToItemsArgs,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Vec<NavigateToItem>, AnyError> {
     let req = TscRequest::GetNavigateToItems((
@@ -1216,14 +1210,14 @@ impl TsServer {
   pub async fn provide_inlay_hints(
     &self,
     snapshot: Arc<StateSnapshot>,
-    specifier: ModuleSpecifier,
+    specifier: &Url,
     text_span: TextSpan,
     user_preferences: UserPreferences,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<Option<Vec<InlayHint>>, AnyError> {
     let req = TscRequest::ProvideInlayHints((
-      self.specifier_map.denormalize(&specifier),
+      self.specifier_map.denormalize(specifier),
       text_span,
       user_preferences,
     ));
@@ -1234,7 +1228,7 @@ impl TsServer {
     &self,
     snapshot: Arc<StateSnapshot>,
     req: TscRequest,
-    scope: Option<ModuleSpecifier>,
+    scope: Option<&Arc<Url>>,
     token: &CancellationToken,
   ) -> Result<R, AnyError>
   where
@@ -1253,7 +1247,7 @@ impl TsServer {
       .sender
       .send((
         req,
-        scope,
+        scope.cloned(),
         snapshot,
         tx,
         token.clone(),
@@ -4304,7 +4298,7 @@ struct State {
   response_tx: Option<oneshot::Sender<Result<String, AnyError>>>,
   state_snapshot: Arc<StateSnapshot>,
   specifier_map: Arc<TscSpecifierMap>,
-  last_scope: Option<ModuleSpecifier>,
+  last_scope: Option<Arc<Url>>,
   token: CancellationToken,
   pending_requests: Option<UnboundedReceiver<Request>>,
   mark: Option<PerformanceMark>,
@@ -4348,7 +4342,7 @@ impl State {
     self
       .state_snapshot
       .document_modules
-      .module_from_specifier(specifier, self.last_scope.as_ref())
+      .module_from_specifier(specifier, self.last_scope.as_deref())
   }
 
   fn script_version(&self, specifier: &ModuleSpecifier) -> Option<String> {
@@ -4466,7 +4460,7 @@ fn op_resolve(
 
 struct TscRequestArray {
   request: TscRequest,
-  scope: Option<String>,
+  scope: Option<Arc<Url>>,
   id: Smi<usize>,
   change: convert::OptionNull<PendingChange>,
 }
@@ -4538,7 +4532,7 @@ async fn op_poll_requests(
 
   Some(TscRequestArray {
     request,
-    scope: scope.map(|s| s.into()),
+    scope,
     id: Smi(id),
     change: change.into(),
   })
@@ -4557,7 +4551,7 @@ fn op_resolve_inner(
   let specifiers = state
     .state_snapshot
     .document_modules
-    .resolve(&args.specifiers, &referrer, state.last_scope.as_ref())
+    .resolve(&args.specifiers, &referrer, state.last_scope.as_deref())
     .into_iter()
     .map(|o| {
       o.map(|(s, mt)| {
@@ -6153,7 +6147,7 @@ mod tests {
     let info = ts_server
       .get_completions(
         snapshot.clone(),
-        specifier.clone(),
+        &specifier,
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
@@ -6347,7 +6341,7 @@ mod tests {
     let info = ts_server
       .get_completions(
         snapshot.clone(),
-        specifier.clone(),
+        &specifier,
         position,
         GetCompletionsAtPositionOptions {
           user_preferences: UserPreferences {
@@ -6453,8 +6447,8 @@ mod tests {
     let changes = ts_server
       .get_edits_for_file_rename(
         snapshot,
-        temp_dir.url().join("b.ts").unwrap(),
-        temp_dir.url().join("🦕.ts").unwrap(),
+        &temp_dir.url().join("b.ts").unwrap(),
+        &temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
         None,

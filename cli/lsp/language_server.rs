@@ -638,8 +638,8 @@ impl Inner {
           .ts_server
           .get_navigation_tree(
             self.snapshot(),
-            module.specifier.as_ref().clone(),
-            module.scope.as_deref().cloned(),
+            &module.specifier,
+            module.scope.as_ref(),
             token,
           )
           .await
@@ -1860,9 +1860,9 @@ impl Inner {
         .ts_server
         .get_quick_info(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           position,
-          module.scope.as_deref().cloned(),
+          module.scope.as_ref(),
           token,
         )
         .await
@@ -1995,7 +1995,7 @@ impl Inner {
               .ts_server
               .get_code_fixes(
                 self.snapshot(),
-                module.specifier.as_ref().clone(),
+                &module.specifier,
                 module.line_index.offset_tsc(diagnostic.range.start)?
                   ..module.line_index.offset_tsc(diagnostic.range.end)?,
                 codes,
@@ -2009,7 +2009,7 @@ impl Inner {
                   &self.config,
                   &module.specifier,
                 ),
-                module.scope.as_deref().cloned(),
+                module.scope.as_ref(),
                 token,
               )
               .await
@@ -2116,7 +2116,7 @@ impl Inner {
       .ts_server
       .get_applicable_refactors(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
         Some(tsc::UserPreferences::from_config_for_specifier(
@@ -2125,7 +2125,7 @@ impl Inner {
         )),
         params.context.trigger_kind,
         only,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -2230,7 +2230,7 @@ impl Inner {
             &self.config,
             &module.specifier,
           ),
-          module.scope.as_deref().cloned(),
+          module.scope.as_ref(),
           token,
         )
         .await
@@ -2298,7 +2298,7 @@ impl Inner {
         .ts_server
         .get_edits_for_refactor(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           (&self
             .config
             .tree
@@ -2313,7 +2313,7 @@ impl Inner {
             &self.config,
             &module.specifier,
           )),
-          module.scope.as_deref().cloned(),
+          module.scope.as_ref(),
           token,
         )
         .await
@@ -2520,12 +2520,12 @@ impl Inner {
       .ts_server
       .get_document_highlights(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         vec![module.specifier.as_ref().clone()],
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -2591,11 +2591,11 @@ impl Inner {
         .ts_server
         .find_references(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           module
             .line_index
             .offset_tsc(params.text_document_position.position)?,
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -2657,11 +2657,11 @@ impl Inner {
       .ts_server
       .get_definition(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -2719,11 +2719,11 @@ impl Inner {
       .ts_server
       .get_type_definition(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -2830,7 +2830,7 @@ impl Inner {
         .ts_server
         .get_completions(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           position,
           tsc::GetCompletionsAtPositionOptions {
             user_preferences: tsc::UserPreferences::from_config_for_specifier(
@@ -2846,7 +2846,7 @@ impl Inner {
             .fmt_config_for_specifier(&module.specifier)
             .options)
             .into(),
-          module.scope.as_deref().cloned(),
+          module.scope.as_ref(),
           token,
         )
         .await
@@ -2943,7 +2943,7 @@ impl Inner {
               ),
               data: data.data.clone(),
             },
-            module.scope.as_deref().cloned(),
+            module.scope.as_ref(),
             token,
           )
           .await;
@@ -3021,11 +3021,11 @@ impl Inner {
         .ts_server
         .get_implementations(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           module
             .line_index
             .offset_tsc(params.text_document_position_params.position)?,
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -3090,8 +3090,8 @@ impl Inner {
       .ts_server
       .get_outlining_spans(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
-        module.scope.as_deref().cloned(),
+        &module.specifier,
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -3155,11 +3155,11 @@ impl Inner {
         .ts_server
         .provide_call_hierarchy_incoming_calls(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           module
             .line_index
             .offset_tsc(params.item.selection_range.start)?,
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -3222,11 +3222,11 @@ impl Inner {
       .ts_server
       .provide_call_hierarchy_outgoing_calls(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.item.selection_range.start)?,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -3284,11 +3284,11 @@ impl Inner {
       .ts_server
       .prepare_call_hierarchy(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -3367,7 +3367,7 @@ impl Inner {
         .ts_server
         .find_rename_locations(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           module
             .line_index
             .offset_tsc(params.text_document_position.position)?,
@@ -3375,7 +3375,7 @@ impl Inner {
             &self.config,
             &module.specifier,
           ),
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -3449,9 +3449,9 @@ impl Inner {
         .ts_server
         .get_smart_selection_range(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
+          &module.specifier,
           module.line_index.offset_tsc(position)?,
-          module.scope.as_deref().cloned(),
+          module.scope.as_ref(),
           token,
         )
         .await
@@ -3502,9 +3502,9 @@ impl Inner {
           .ts_server
           .get_encoded_semantic_classifications(
             self.snapshot(),
-            module.specifier.as_ref().clone(),
+            &module.specifier,
             0..module.line_index.text_content_length_utf16().into(),
-            module.scope.as_deref().cloned(),
+            module.scope.as_ref(),
             token,
           )
           .await
@@ -3569,10 +3569,10 @@ impl Inner {
       .ts_server
       .get_encoded_semantic_classifications(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -3635,12 +3635,12 @@ impl Inner {
       .ts_server
       .get_signature_help_items(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         module
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         options,
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
@@ -3721,14 +3721,14 @@ impl Inner {
         .ts_server
         .get_edits_for_file_rename(
           self.snapshot(),
-          module.specifier.as_ref().clone(),
-          uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
+          &module.specifier,
+          &uri_to_url(&Uri::from_str(&rename.new_uri).unwrap()),
           format_code_settings,
           tsc::UserPreferences {
             allow_text_changes_in_new_files: Some(true),
             ..Default::default()
           },
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -3777,7 +3777,7 @@ impl Inner {
             max_result_count: Some(256),
             file: None,
           },
-          scope.as_deref().cloned(),
+          scope.as_ref(),
           token,
         )
         .await
@@ -4759,13 +4759,13 @@ impl Inner {
       .ts_server
       .provide_inlay_hints(
         self.snapshot(),
-        module.specifier.as_ref().clone(),
+        &module.specifier,
         text_span,
         tsc::UserPreferences::from_config_for_specifier(
           &self.config,
           &module.specifier,
         ),
-        module.scope.as_deref().cloned(),
+        module.scope.as_ref(),
         token,
       )
       .await
