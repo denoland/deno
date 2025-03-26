@@ -64,7 +64,9 @@ impl MemoryCache {
   #[inline(always)]
   pub fn clear(&mut self) {
     self.clear_id += 1;
-    self.items.clear();
+    self
+      .items
+      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(_)));
   }
 
   #[inline(always)]
