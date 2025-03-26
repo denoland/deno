@@ -64,9 +64,12 @@ impl MemoryCache {
   #[inline(always)]
   pub fn clear(&mut self) {
     self.clear_id += 1;
+
+    // if the item couldn't be saved to the fs cache, then we want to continue to hold it in memory
+    // to avoid re-downloading it from the registry
     self
       .items
-      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(_)));
+      .retain(|_, item| matches!(item, MemoryCacheItem::MemoryCached(Ok(_))));
   }
 
   #[inline(always)]
