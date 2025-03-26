@@ -248,9 +248,7 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
-  workspace_files2: Arc<IndexSet<PathBuf>>,
-  // TODO(nayeemrmn): Remove!
-  workspace_files: IndexSet<ModuleSpecifier>,
+  workspace_files: Arc<IndexSet<PathBuf>>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
   workspace_files_hash: u64,
@@ -552,7 +550,6 @@ impl Inner {
       ts_server,
       url_map: Default::default(),
       workspace_files: Default::default(),
-      workspace_files2: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
     }
@@ -939,7 +936,7 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn walk_workspace2(config: &Config) -> (IndexSet<PathBuf>, bool) {
+  fn walk_workspace(config: &Config) -> (IndexSet<PathBuf>, bool) {
     if !config.workspace_capable() {
       log::debug!("Skipped workspace walk due to client incapability.");
       return (Default::default(), false);
@@ -1068,148 +1065,12 @@ impl Inner {
     (workspace_files, false)
   }
 
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn walk_workspace(config: &Config) -> (IndexSet<ModuleSpecifier>, bool) {
-    if !config.workspace_capable() {
-      log::debug!("Skipped workspace walk due to client incapability.");
-      return (Default::default(), false);
-    }
-    let mut workspace_files = IndexSet::default();
-    let entry_limit = 1000;
-    let mut pending = VecDeque::new();
-    let mut entry_count = 0;
-    let mut roots = config
-      .workspace_folders
-      .iter()
-      .filter_map(|p| url_to_file_path(&p.0).ok())
-      .collect::<Vec<_>>();
-    roots.sort();
-    let roots = roots
-      .iter()
-      .enumerate()
-      .filter(|(i, root)| *i == 0 || !root.starts_with(&roots[i - 1]))
-      .map(|(_, r)| r.clone())
-      .collect::<Vec<_>>();
-    let mut root_ancestors = BTreeSet::new();
-    for root in roots {
-      for ancestor in root.ancestors().skip(1) {
-        if root_ancestors.insert(ancestor.to_path_buf()) {
-          break;
-        }
-      }
-      if let Ok(read_dir) = std::fs::read_dir(&root) {
-        pending.push_back((root, read_dir));
-      }
-    }
-    for root_ancestor in root_ancestors {
-      for deno_json in ["deno.json", "deno.jsonc"] {
-        let path = root_ancestor.join(deno_json);
-        if path.exists() {
-          if let Ok(specifier) = ModuleSpecifier::from_file_path(path) {
-            workspace_files.insert(specifier);
-          }
-        }
-      }
-    }
-    while let Some((parent_path, read_dir)) = pending.pop_front() {
-      // Sort entries from each dir for consistency across operating systems.
-      let mut dir_files = BTreeSet::new();
-      let mut dir_subdirs = BTreeMap::new();
-      for entry in read_dir {
-        let Ok(entry) = entry else {
-          continue;
-        };
-        if entry_count >= entry_limit {
-          return (workspace_files, true);
-        }
-        entry_count += 1;
-        let path = parent_path.join(entry.path());
-        let Ok(specifier) = ModuleSpecifier::from_file_path(&path) else {
-          continue;
-        };
-        let Ok(file_type) = entry.file_type() else {
-          continue;
-        };
-        let Some(file_name) = path.file_name() else {
-          continue;
-        };
-        if config.settings.specifier_enabled(&specifier) == Some(false) {
-          continue;
-        }
-        if file_type.is_dir() {
-          let dir_name = file_name.to_string_lossy().to_lowercase();
-          // We ignore these directories by default because there is a
-          // high likelihood they aren't relevant. Someone can opt-into
-          // them by specifying one of them as an enabled path.
-          if matches!(
-            dir_name.as_str(),
-            "vendor" | "coverage" | "node_modules" | ".git"
-          ) {
-            continue;
-          }
-          // ignore cargo target directories for anyone using Deno with Rust
-          if dir_name == "target"
-            && path
-              .parent()
-              .map(|p| p.join("Cargo.toml").exists())
-              .unwrap_or(false)
-          {
-            continue;
-          }
-          if let Ok(read_dir) = std::fs::read_dir(&path) {
-            dir_subdirs.insert(specifier, (path, read_dir));
-          }
-        } else if file_type.is_file()
-          || file_type.is_symlink()
-            && std::fs::metadata(&path)
-              .ok()
-              .map(|m| m.is_file())
-              .unwrap_or(false)
-        {
-          if file_name.to_string_lossy().contains(".min.") {
-            continue;
-          }
-          let media_type = MediaType::from_specifier(&specifier);
-          match media_type {
-            MediaType::JavaScript
-            | MediaType::Jsx
-            | MediaType::Mjs
-            | MediaType::Cjs
-            | MediaType::TypeScript
-            | MediaType::Mts
-            | MediaType::Cts
-            | MediaType::Dts
-            | MediaType::Dmts
-            | MediaType::Dcts
-            | MediaType::Json
-            | MediaType::Tsx => {}
-            MediaType::Wasm
-            | MediaType::SourceMap
-            | MediaType::Css
-            | MediaType::Html
-            | MediaType::Sql
-            | MediaType::Unknown => {
-              if path.extension().and_then(|s| s.to_str()) != Some("jsonc") {
-                continue;
-              }
-            }
-          }
-          dir_files.insert(specifier);
-        }
-      }
-      workspace_files.extend(dir_files);
-      pending.extend(dir_subdirs.into_values());
-    }
-    (workspace_files, false)
-  }
-
   fn refresh_workspace_files(&mut self) {
     let enable_settings_hash = self.config.settings.enable_settings_hash();
     if self.workspace_files_hash == enable_settings_hash {
       return;
     }
-    let (workspace_files2, hit_limit) = Self::walk_workspace2(&self.config);
-    let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
+    let (workspace_files2, hit_limit) = Self::walk_workspace(&self.config);
     if hit_limit {
       let document_preload_limit =
         self.config.workspace_settings().document_preload_limit;
@@ -1227,8 +1088,7 @@ impl Inner {
         );
       }
     }
-    self.workspace_files2 = Arc::new(workspace_files2);
-    self.workspace_files = workspace_files;
+    self.workspace_files = Arc::new(workspace_files2);
     self.workspace_files_hash = enable_settings_hash;
   }
 
@@ -1306,7 +1166,7 @@ impl Inner {
       &self.config,
       &self.resolver,
       &self.cache,
-      &self.workspace_files2,
+      &self.workspace_files,
     );
 
     // refresh the npm specifiers because it might have discovered
@@ -5040,6 +4900,10 @@ mod tests {
     );
 
     let (workspace_files, hit_limit) = Inner::walk_workspace(&config);
+    let workspace_files = workspace_files
+      .into_iter()
+      .map(|p| Url::from_file_path(p).unwrap())
+      .collect::<IndexSet<_>>();
     assert!(!hit_limit);
     assert_eq!(
       json!(workspace_files),

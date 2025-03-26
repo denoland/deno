@@ -1881,7 +1881,7 @@ impl ConfigTree {
   pub async fn refresh(
     &mut self,
     settings: &Settings,
-    workspace_files: &IndexSet<ModuleSpecifier>,
+    workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
   ) {
     lsp_log!("Refreshing configuration tree...");
@@ -1923,14 +1923,17 @@ impl ConfigTree {
       }
     }
 
-    for specifier in workspace_files {
-      if !(specifier.path().ends_with("/deno.json")
-        || specifier.path().ends_with("/deno.jsonc")
-        || specifier.path().ends_with("/package.json"))
+    for path in workspace_files {
+      let Ok(file_url) = Url::from_file_path(path) else {
+        continue;
+      };
+      if !(file_url.path().ends_with("/deno.json")
+        || file_url.path().ends_with("/deno.jsonc")
+        || file_url.path().ends_with("/package.json"))
       {
         continue;
       }
-      let Ok(scope) = specifier.join(".").map(Arc::new) else {
+      let Ok(scope) = file_url.join(".").map(Arc::new) else {
         continue;
       };
       if scopes.contains_key(&scope) {
