@@ -1,5 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::path::Path;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use deno_core::error::AnyError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmPackageExtraInfo;
@@ -9,12 +16,6 @@ use deno_semver::package::PackageNv;
 use deno_semver::SmallStackString;
 use deno_semver::Version;
 use deno_task_shell::KillSignal;
-use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
-use std::rc::Rc;
 
 use super::bin_entries::BinEntries;
 use super::NpmPackageExtraInfoProvider;

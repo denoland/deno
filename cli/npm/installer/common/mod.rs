@@ -1,18 +1,17 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use deno_core::parking_lot::RwLock;
-use deno_npm::registry::NpmRegistryApi;
-use deno_npm::NpmPackageExtraInfo;
-use deno_semver::package::PackageNv;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use deno_core::parking_lot::RwLock;
 use deno_error::JsErrorBox;
-
-use crate::npm::CliNpmCache;
+use deno_npm::registry::NpmRegistryApi;
+use deno_npm::NpmPackageExtraInfo;
+use deno_semver::package::PackageNv;
 
 use super::PackageCaching;
+use crate::npm::CliNpmCache;
 
 pub mod bin_entries;
 pub mod lifecycle_scripts;
