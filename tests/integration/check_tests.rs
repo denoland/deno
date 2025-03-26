@@ -205,16 +205,13 @@ async fn npm_module_check_then_error() {
     .run()
     .skip_output_check();
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = deno_lockfile::Lockfile::new(
-    NewLockfileOptions {
+  let mut lockfile =
+    deno_lockfile::Lockfile::new_current_version(NewLockfileOptions {
       file_path: lockfile_path.to_path_buf(),
       content: &lockfile_path.read_to_string(),
       overwrite: false,
-    },
-    todo!(),
-  )
-  .await
-  .unwrap();
+    })
+    .unwrap();
 
   // make the specifier resolve to version 1
   lockfile.content.packages.specifiers.insert(

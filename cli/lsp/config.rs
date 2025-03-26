@@ -2198,6 +2198,8 @@ mod tests {
   use deno_core::resolve_url;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
 
   use super::*;
@@ -2460,19 +2462,35 @@ mod tests {
     );
   }
 
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
+
   #[tokio::test]
   async fn config_enable_via_config_file_detection() {
     let root_uri = root_dir();
     let mut config = Config::new_with_roots(vec![root_uri.clone()]);
     assert!(!config.specifier_enabled(&root_uri));
 
-    // config
-    //   .tree
-    //   .inject_config_file(
-    //     ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
-    //   )
-    //   .await;
-    todo!();
+    config
+      .tree
+      .inject_config_file(
+        ConfigFile::new("{}", root_uri.join("deno.json").unwrap()).unwrap(),
+        &default_registry(),
+      )
+      .await;
     assert!(config.specifier_enabled(&root_uri));
   }
 
@@ -2514,23 +2532,23 @@ mod tests {
     settings.enable_paths = None;
     config.set_workspace_settings(settings, vec![]);
 
-    // config
-    //   .tree
-    //   .inject_config_file(
-    //     ConfigFile::new(
-    //       &json!({
-    //         "exclude": ["mod2.ts"],
-    //         "test": {
-    //           "exclude": ["mod3.ts"],
-    //         },
-    //       })
-    //       .to_string(),
-    //       root_uri.join("deno.json").unwrap(),
-    //     )
-    //     .unwrap(),
-    //   )
-    //   .await;
-    todo!();
+    config
+      .tree
+      .inject_config_file(
+        ConfigFile::new(
+          &json!({
+            "exclude": ["mod2.ts"],
+            "test": {
+              "exclude": ["mod3.ts"],
+            },
+          })
+          .to_string(),
+          root_uri.join("deno.json").unwrap(),
+        )
+        .unwrap(),
+        &default_registry(),
+      )
+      .await;
     assert!(
       config.specifier_enabled_for_test(&root_uri.join("mod1.ts").unwrap())
     );
@@ -2541,22 +2559,22 @@ mod tests {
       !config.specifier_enabled_for_test(&root_uri.join("mod3.ts").unwrap())
     );
 
-    // config
-    //   .tree
-    //   .inject_config_file(
-    //     ConfigFile::new(
-    //       &json!({
-    //         "test": {
-    //           "include": ["mod1.ts"],
-    //         },
-    //       })
-    //       .to_string(),
-    //       root_uri.join("deno.json").unwrap(),
-    //     )
-    //     .unwrap(),
-    //   )
-    //   .await;
-    todo!();
+    config
+      .tree
+      .inject_config_file(
+        ConfigFile::new(
+          &json!({
+            "test": {
+              "include": ["mod1.ts"],
+            },
+          })
+          .to_string(),
+          root_uri.join("deno.json").unwrap(),
+        )
+        .unwrap(),
+        &default_registry(),
+      )
+      .await;
 
     config
       .tree
@@ -2572,7 +2590,7 @@ mod tests {
           root_uri.join("deno.json").unwrap(),
         )
         .unwrap(),
-        todo!(),
+        &default_registry(),
       )
       .await;
     assert!(

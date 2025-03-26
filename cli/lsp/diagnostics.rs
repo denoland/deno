@@ -1937,6 +1937,9 @@ mod tests {
 
   use deno_config::deno_json::ConfigFile;
   use deno_core::resolve_url;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -1975,6 +1978,22 @@ mod tests {
     }
   }
 
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
+
   async fn setup(
     sources: &[(&str, &str, i32, LanguageId)],
     maybe_import_map: Option<(&str, &str)>,
@@ -1986,7 +2005,10 @@ mod tests {
     if let Some((relative_path, json_string)) = maybe_import_map {
       let base_url = root_url.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
-      config.tree.inject_config_file(config_file, todo!()).await;
+      config
+        .tree
+        .inject_config_file(config_file, &default_registry())
+        .await;
     }
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);

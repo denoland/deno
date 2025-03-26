@@ -146,15 +146,11 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(
-    NewLockfileOptions {
-      file_path: lockfile_path.to_path_buf(),
-      content: &lockfile_path.read_to_string(),
-      overwrite: false,
-    },
-    todo!(),
-  )
-  .await
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+  })
   .unwrap();
   *lockfile
     .content
@@ -278,15 +274,11 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(
-    NewLockfileOptions {
-      file_path: lockfile_path.to_path_buf(),
-      content: &lockfile_path.read_to_string(),
-      overwrite: false,
-    },
-    todo!(),
-  )
-  .await
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
+    file_path: lockfile_path.to_path_buf(),
+    content: &lockfile_path.read_to_string(),
+    overwrite: false,
+  })
   .unwrap();
   let pkg_nv = "@denotest/no-module-graph@0.1.1";
   let original_integrity = get_lockfile_pkg_integrity(&lockfile, pkg_nv);

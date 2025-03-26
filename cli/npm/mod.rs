@@ -9,7 +9,7 @@ use std::sync::Arc;
 use dashmap::DashMap;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::anyhow;
-use deno_core::futures::stream::FuturesUnordered;
+use deno_core::futures::stream::FuturesOrdered;
 use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
@@ -19,7 +19,6 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
-use deno_npm_cache::NpmCacheHttpClient;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -83,10 +82,14 @@ impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
             cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
             os: version_info.os.iter().map(|s| s.to_string()).collect(),
             deprecated: version_info.deprecated.is_some(),
+            bin: version_info.bin.is_some(),
+            scripts: version_info.scripts.contains_key("preinstall")
+              || version_info.scripts.contains_key("install")
+              || version_info.scripts.contains_key("postinstall"),
           },
         )
       })
-      .collect::<FuturesUnordered<_>>();
+      .collect::<FuturesOrdered<_>>();
     let package_infos = futs.try_collect::<Vec<_>>().await?;
     Ok(package_infos)
   }

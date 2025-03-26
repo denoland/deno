@@ -103,12 +103,13 @@ impl NpmPackageFsInstaller for GlobalNpmPackageInstaller {
       self.npm_registry_info_provider.clone(),
     );
     for package in &package_partitions.packages {
-      // TODO(nathanwhit): probably very inefficient
-      let extra = extra_info_provider
-        .get_package_extra_info(&package.id.nv, package.is_deprecated)
-        .await?;
-      let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
-      lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
+      if package.has_scripts {
+        let extra = extra_info_provider
+          .get_package_extra_info(&package.id.nv, package.is_deprecated)
+          .await?;
+        let package_folder = self.cache.package_folder_for_nv(&package.id.nv);
+        lifecycle_scripts.add(package, &extra, Cow::Borrowed(&package_folder));
+      }
     }
 
     lifecycle_scripts

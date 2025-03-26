@@ -491,3 +491,12 @@ opt-level = 3
 opt-level = 3
 [profile.release.package.deno_unsync]
 opt-level = 3
+[profile.release.package.deno_semver]
+opt-level = 3
+[profile.release.package.deno_npm]
+opt-level = 3
+[profile.release.package.deno_lockfile]
+opt-level = 3
+[profile.release.package.deno_npm_cache]
+opt-level = 3
+

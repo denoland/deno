@@ -5563,6 +5563,25 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
+
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
 
   async fn setup(
     ts_config: Value,
@@ -5582,7 +5601,7 @@ mod tests {
           temp_dir.url().join("deno.json").unwrap(),
         )
         .unwrap(),
-        todo!(),
+        &default_registry(),
       )
       .await;
     let resolver =
