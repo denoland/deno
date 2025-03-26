@@ -249,7 +249,7 @@ pub struct Inner {
   pub ts_server: Arc<TsServer>,
   /// A map of specifiers and URLs used to translate over the LSP.
   pub url_map: urls::LspUrlMap,
-  workspace_files2: IndexSet<PathBuf>,
+  workspace_files2: Arc<IndexSet<PathBuf>>,
   // TODO(nayeemrmn): Remove!
   workspace_files: IndexSet<ModuleSpecifier>,
   /// Set to `self.config.settings.enable_settings_hash()` after
@@ -1225,7 +1225,7 @@ impl Inner {
         );
       }
     }
-    self.workspace_files2 = workspace_files2;
+    self.workspace_files2 = Arc::new(workspace_files2);
     self.workspace_files = workspace_files;
     self.workspace_files_hash = enable_settings_hash;
   }
@@ -1304,7 +1304,7 @@ impl Inner {
       &self.config,
       &self.resolver,
       &self.cache,
-      &self.workspace_files,
+      &self.workspace_files2,
     );
 
     // refresh the npm specifiers because it might have discovered

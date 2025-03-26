@@ -186,4 +186,22 @@ impl LspCache {
     }
     false
   }
+
+  pub fn in_cache_directory(&self, specifier: &Url) -> bool {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return false;
+    };
+    if path.starts_with(&self.deno_dir().root) {
+      return true;
+    }
+    let Some(vendor) = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
+      .and_then(|(_, c)| c.as_ref())
+    else {
+      return false;
+    };
+    vendor.get_remote_url(&path).is_some()
+  }
 }

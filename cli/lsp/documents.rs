@@ -658,6 +658,7 @@ pub struct DocumentModules {
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
+  workspace_files: Arc<IndexSet<PathBuf>>,
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
 }
 
@@ -667,12 +668,34 @@ impl DocumentModules {
     config: &Config,
     resolver: &Arc<LspResolver>,
     cache: &LspCache,
-    workspace_files: &IndexSet<Url>,
+    workspace_files: &Arc<IndexSet<PathBuf>>,
   ) {
     self.config = Arc::new(config.clone());
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
-    // TODO(nayeemrmn): Implement!
+    self.workspace_files = workspace_files.clone();
+    self.dep_info_by_scope = Default::default();
+
+    node_resolver::PackageJsonThreadLocalCache::clear();
+    NodeResolutionThreadLocalCache::clear();
+
+    // Clean up non-existent documents.
+    self.documents.server.retain(|u, d| {
+      let Some(module) =
+        self.inspect_primary_module(&Document2::Server(d.clone()))
+      else {
+        return false;
+      };
+      let Ok(path) = url_to_file_path(&module.specifier) else {
+        // Remove non-file schemed docs (deps). They may not be dependencies
+        // anymore after updating resolvers.
+        return false;
+      };
+      if !config.specifier_enabled(&module.specifier) {
+        return false;
+      }
+      path.is_file()
+    });
   }
 
   pub fn open_document(
@@ -728,6 +751,142 @@ impl DocumentModules {
   ) -> Option<Arc<DocumentModule>> {
     // TODO(nayeemrmn): Implement!
     None
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_module_from_specifier(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  pub fn workspace_file_modules_by_scope(
+    &self,
+  ) -> BTreeMap<Option<Arc<Url>>, Vec<Arc<DocumentModule>>> {
+    let mut modules_with_scopes = BTreeMap::new();
+    for path in self
+      .workspace_files
+      .iter()
+      .take(self.config.settings.unscoped.document_preload_limit)
+    {
+      let Ok(url) = Url::from_file_path(path) else {
+        continue;
+      };
+      if !self.config.specifier_enabled(&url)
+        || self.resolver.in_node_modules(&url)
+        || self.cache.in_cache_directory(&url)
+      {
+        continue;
+      }
+      let scope = self
+        .config
+        .tree
+        .scope_for_specifier(&url)
+        .cloned()
+        .map(Arc::new);
+      let Some(document) =
+        self
+          .documents
+          .get_for_specifier(&url, scope.as_deref(), &self.cache)
+      else {
+        continue;
+      };
+      let Some(module) = self.module(&document, scope.as_deref()) else {
+        continue;
+      };
+      modules_with_scopes.insert(document.uri().clone(), (module, scope));
+    }
+    // Include files that aren't in `self.workspace_files` for whatever reason.
+    for document in self.documents.docs() {
+      let uri = document.uri();
+      if modules_with_scopes.contains_key(uri) {
+        continue;
+      }
+      let url = uri_to_url(uri);
+      if url.scheme() != "file"
+        || !self.config.specifier_enabled(&url)
+        || self.resolver.in_node_modules(&url)
+        || self.cache.in_cache_directory(&url)
+      {
+        continue;
+      }
+      let scope = self
+        .config
+        .tree
+        .scope_for_specifier(&url)
+        .cloned()
+        .map(Arc::new);
+      let Some(module) = self.module(&document, scope.as_deref()) else {
+        continue;
+      };
+      modules_with_scopes.insert(document.uri().clone(), (module, scope));
+    }
+    let mut result = BTreeMap::new();
+    for (module, scope) in modules_with_scopes.into_values() {
+      (result.entry(scope).or_default() as &mut Vec<_>).push(module);
+    }
+    result
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_primary_module(
+    &self,
+    document: &Document2,
+  ) -> Option<Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    None
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_modules_by_scope(
+    &self,
+    document: &Document2,
+  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
+    // TODO(nayeemrmn): Implement!
+    false
+  }
+
+  pub fn dep_info_by_scope(
+    &mut self,
+  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
+    self
+      .dep_info_by_scope
+      .get_or_init(|| {
+        // TODO(nayeemrmn): Implement!
+        Default::default()
+      })
+      .clone()
+  }
+
+  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn changed_docs_to_specifiers_by_scope<'a>(
+    &self,
+    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
+  ) -> BTreeMap<&Arc<Url>, Vec<Url>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
+  }
+
+  pub fn cached_remote_specifiers(&self, scope: Option<&Url>) -> Vec<Arc<Url>> {
+    // TODO(nayeemrmn): Implement!
+    Default::default()
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -838,72 +997,6 @@ impl DocumentModules {
     } else {
       Some((module.specifier.as_ref().clone(), module.media_type))
     }
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_from_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
-  ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    None
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_modules_by_scope(
-    &self,
-    document: &Document2,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn workspace_file_modules_by_scope(
-    &self,
-  ) -> BTreeMap<Option<Arc<Url>>, Vec<Arc<DocumentModule>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
-    // TODO(nayeemrmn): Implement!
-    false
-  }
-
-  pub fn dep_info_by_scope(
-    &mut self,
-  ) -> Arc<BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>> {
-    self
-      .dep_info_by_scope
-      .get_or_init(|| {
-        // TODO(nayeemrmn): Implement!
-        Default::default()
-      })
-      .clone()
-  }
-
-  pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn changed_docs_to_specifiers_by_scope<'a>(
-    &self,
-    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
-  ) -> BTreeMap<&Arc<Url>, Vec<Url>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn cached_remote_specifiers(&self, scope: Option<&Url>) -> Vec<Arc<Url>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
   }
 }
 
