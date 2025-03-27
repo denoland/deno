@@ -239,7 +239,10 @@ ObjectDefineProperty(GPUSupportedLimitsPrototype, privateCustomInspect, {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(GPUSupportedLimitsPrototype, this),
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          GPUSupportedLimitsPrototype,
+          this,
+        ),
         keys: [
           "maxTextureDimension1D",
           "maxTextureDimension2D",
