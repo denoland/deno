@@ -1062,6 +1062,9 @@ impl Config {
   }
 
   pub fn uri_enabled(&self, uri: &Uri) -> bool {
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) {
+      return true;
+    }
     self.specifier_enabled(&uri_to_url(uri))
   }
 

@@ -570,7 +570,9 @@ impl Inner {
     }
     let Some(document) = self.document_modules.documents.get(uri) else {
       match exists {
-        Exists::Enforce => {
+        Exists::Enforce
+          if !uri.scheme().is_some_and(|s| s.eq_lowercase("deno")) =>
+        {
           return Err(LspError::invalid_params(format!(
             "Unable to find document for: {}",
             uri.as_str()
@@ -579,6 +581,7 @@ impl Inner {
         Exists::Filter => {
           return Ok(None);
         }
+        _ => return Ok(None),
       }
     };
     match diagnosable {
