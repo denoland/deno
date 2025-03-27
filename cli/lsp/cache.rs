@@ -204,4 +204,14 @@ impl LspCache {
     };
     vendor.get_remote_url(&path).is_some()
   }
+
+  pub fn in_global_cache_directory(&self, specifier: &Url) -> bool {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return false;
+    };
+    if path.starts_with(&self.deno_dir().root) {
+      return true;
+    }
+    false
+  }
 }

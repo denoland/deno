@@ -987,8 +987,15 @@ impl DocumentModules {
     &self,
     document: &Document2,
   ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    None
+    if let Some(scope) = self.primary_scope(document.uri()) {
+      return self.module(document, scope.map(|s| s.as_ref()));
+    }
+    for (scope, modules) in self.modules_by_scope.iter() {
+      if let Some(module) = modules.get(document) {
+        return Some(module);
+      }
+    }
+    self.modules_unscoped.get(document)
   }
 
   pub fn workspace_file_modules_by_scope(
@@ -1064,8 +1071,17 @@ impl DocumentModules {
     &self,
     document: &Document2,
   ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    None
+    if let Some(scope) = self.primary_scope(document.uri()) {
+      return self
+        .modules_for_scope(scope.map(|s| s.as_ref()))?
+        .get(document);
+    }
+    for (scope, modules) in self.modules_by_scope.iter() {
+      if let Some(module) = modules.get(document) {
+        return Some(module);
+      }
+    }
+    self.modules_unscoped.get(document)
   }
 
   /// This will not create any module entries, only retrieve existing entries.
@@ -1085,6 +1101,15 @@ impl DocumentModules {
       Some(s) => Some(self.modules_by_scope.get(s)?),
       None => Some(&self.modules_unscoped),
     }
+  }
+
+  fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
+    let url = uri_to_url(uri);
+    if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
+      let scope = self.config.tree.scope_for_specifier(&url);
+      return Some(scope);
+    }
+    None
   }
 
   pub fn remove_expired_modules(&self) {
