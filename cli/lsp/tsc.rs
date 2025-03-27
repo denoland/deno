@@ -467,15 +467,6 @@ impl TsServer {
     self.start_once.is_completed()
   }
 
-  pub fn project_changed2<'a>(
-    &self,
-    snapshot: Arc<StateSnapshot>,
-    changed_specifiers_by_scope: BTreeMap<&Arc<Url>, Vec<Url>>,
-    new_configs_by_scope: Option<BTreeMap<Arc<Url>, Arc<LspTsConfig>>>,
-  ) {
-    // TODO(nayeemrmn): Implement!
-  }
-
   pub fn project_changed<'a>(
     &self,
     snapshot: Arc<StateSnapshot>,

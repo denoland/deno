@@ -1177,10 +1177,7 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed2([], true);
-    // TODO(nayeemrmn): Remove!
     self.project_changed([], true);
-    //
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1219,7 +1216,7 @@ impl Inner {
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
-      self.project_changed2(
+      self.project_changed(
         [(&params.text_document.uri, ChangeKind::Opened)],
         false,
       );
@@ -1266,7 +1263,7 @@ impl Inner {
       {
         config_changed = true;
       }
-      self.project_changed2(
+      self.project_changed(
         [(document.uri.as_ref(), ChangeKind::Modified)],
         config_changed,
       );
@@ -1365,7 +1362,7 @@ impl Inner {
     };
     if is_diagnosable {
       self.refresh_dep_info().await;
-      self.project_changed2(
+      self.project_changed(
         [(&params.text_document.uri, ChangeKind::Closed)],
         false,
       );
@@ -1459,7 +1456,7 @@ impl Inner {
       self.refresh_resolver().await;
       self.refresh_documents_config().await;
       self.project_changed(
-        changes.iter().map(|(s, _)| (s, ChangeKind::Modified)),
+        changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
         false,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -3665,41 +3662,27 @@ impl Inner {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-  fn project_changed2<'a>(
+  fn project_changed<'a>(
     &mut self,
     changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
     config_changed: bool,
   ) {
     self.project_version += 1; // increment before getting the snapshot
-    let changed_specifiers_by_scope = self
-      .document_modules
-      .changed_docs_to_specifiers_by_scope(changed_docs);
-    self.ts_server.project_changed2(
-      self.snapshot(),
-      changed_specifiers_by_scope,
-      config_changed.then(|| {
+    let modified_scripts = changed_docs
+      .into_iter()
+      .filter_map(|(u, k)| Some((self.document_modules.documents.get(u)?, k)))
+      .flat_map(|(d, k)| {
         self
-          .config
-          .tree
-          .data_by_scope()
-          .iter()
-          .map(|(s, d)| (s.clone(), d.ts_config.clone()))
-          .collect()
-      }),
-    );
-  }
-
-  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
-
-  fn project_changed<'a>(
-    &mut self,
-    modified_scripts: impl IntoIterator<Item = (&'a ModuleSpecifier, ChangeKind)>,
-    config_changed: bool,
-  ) {
-    self.project_version += 1; // increment before getting the snapshot
+          .document_modules
+          .inspect_modules_by_scope(&d)
+          .values()
+          .map(|m| (m.specifier.clone(), k))
+          .collect::<Vec<_>>()
+      })
+      .collect::<IndexMap<_, _>>();
     self.ts_server.project_changed(
       self.snapshot(),
-      modified_scripts,
+      modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
       config_changed.then(|| {
         self
           .config
@@ -4461,7 +4444,6 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed2([], true);
     self.project_changed([], true);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
