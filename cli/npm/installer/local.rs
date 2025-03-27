@@ -3,6 +3,7 @@
 //! Code for local node_modules resolution.
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
@@ -12,6 +13,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -356,6 +358,7 @@ async fn sync_resolution_with_fs(
           packages_with_deprecation_warnings.clone();
         let extra_info_provider = extra_info_provider.clone();
         let lifecycle_scripts = lifecycle_scripts.clone();
+        let bin_entries_to_setup = bin_entries.clone();
         cache_futures.push(
           async move {
             tarball_cache
@@ -484,14 +487,6 @@ async fn sync_resolution_with_fs(
         );
       }
     }
-
-    let sub_node_modules = folder_path.join("node_modules");
-    let package_path =
-      join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-    if package.bin.is_some() {
-      bin_entries.add(package, package_path.clone());
-    }
-    lifecycle_scripts.add(package, package_path.into());
   }
 
   // 2. Setup the patch packages
@@ -790,6 +785,7 @@ async fn sync_resolution_with_fs(
 
   // 8. Set up `node_modules/.bin` entries for packages that need it.
   {
+    let bin_entries = std::mem::take(&mut *bin_entries.borrow_mut());
     bin_entries.finish(
       snapshot,
       &bin_node_modules_dir_path,
