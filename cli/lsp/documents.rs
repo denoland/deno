@@ -631,8 +631,7 @@ pub struct DocumentModule {
   pub line_index: Arc<LineIndex>,
   pub resolution_mode: ResolutionMode,
   pub dependencies: Arc<IndexMap<String, deno_graph::Dependency>>,
-  pub types_dependency: Option<TypesDependency>,
-  pub is_remote_or_node_modules: bool,
+  pub types_dependency: Option<Arc<TypesDependency>>,
   pub navigation_tree: tokio::sync::OnceCell<Arc<NavigationTree>>,
   pub semantic_tokens_full: tokio::sync::OnceCell<lsp::SemanticTokens>,
   text_info_cell: once_cell::sync::OnceCell<SourceTextInfo>,
@@ -640,8 +639,72 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
-  pub fn new(specifier: Arc<Url>, document: &Document2) -> Self {
-    todo!()
+  pub fn new(
+    document: &Document2,
+    specifier: Arc<Url>,
+    scope: Option<Arc<Url>>,
+    resolver: &LspResolver,
+    config: &Config,
+    cache: &LspCache,
+  ) -> Self {
+    let text = document.text();
+    let scheme = specifier.scheme();
+    let headers = matches!(scheme, "http" | "https")
+      .then(|| {
+        let http_cache = cache.for_specifier(scope.as_deref());
+        let cache_key = http_cache.cache_item_key(&specifier).ok()?;
+        let cache_entry = http_cache.get(&cache_key, None).ok()??;
+        Some(cache_entry.metadata.headers)
+      })
+      .flatten();
+    let media_type = resolve_media_type(
+      &specifier,
+      headers.as_ref(),
+      document.open().map(|d| d.language_id),
+    );
+    let (parsed_source, maybe_module, resolution_mode) =
+      if scheme == "file" && media_type_is_diagnosable(media_type) {
+        parse_and_analyze_module(
+          specifier.as_ref().clone(),
+          text.to_arc(),
+          headers.as_ref(),
+          media_type,
+          scope.as_deref(),
+          resolver,
+        )
+      } else {
+        (None, None, ResolutionMode::Import)
+      };
+    let maybe_module = maybe_module.and_then(Result::ok);
+    let dependencies = maybe_module
+      .as_ref()
+      .map(|m| Arc::new(m.dependencies.clone()))
+      .unwrap_or_default();
+    let types_dependency = maybe_module
+      .as_ref()
+      .and_then(|m| Some(Arc::new(m.maybe_types_dependency.clone()?)));
+    let test_module_fut =
+      get_maybe_test_module_fut(parsed_source.as_ref(), config);
+    DocumentModule {
+      uri: document.uri().clone(),
+      open_data: document.open().map(|d| DocumentModuleOpenData {
+        version: d.version,
+        parsed_source,
+      }),
+      script_version: document.script_version(),
+      specifier,
+      scope,
+      media_type,
+      text,
+      line_index: document.line_index().clone(),
+      resolution_mode,
+      dependencies,
+      types_dependency,
+      navigation_tree: Default::default(),
+      semantic_tokens_full: Default::default(),
+      text_info_cell: Default::default(),
+      test_module_fut,
+    }
   }
 
   pub fn dependency_at_position(
@@ -879,7 +942,14 @@ impl DocumentModules {
         }
         Some(Arc::new(file_url))
       })?;
-    let module = Arc::new(DocumentModule::new(specifier, document));
+    let module = Arc::new(DocumentModule::new(
+      document,
+      specifier,
+      scope.cloned().map(Arc::new),
+      &self.resolver,
+      &self.config,
+      &self.cache,
+    ));
     modules.insert(document, module.clone());
     Some(module)
   }
@@ -1354,7 +1424,9 @@ fn get_maybe_test_module_fut(
   }
   let parsed_source = maybe_parsed_source?.as_ref().ok()?.clone();
   let specifier = parsed_source.specifier();
-  if specifier.scheme() != "file" {
+  if specifier.scheme() != "file"
+    || specifier.as_str().contains("/node_modules/")
+  {
     return None;
   }
   if !media_type_is_diagnosable(parsed_source.media_type()) {

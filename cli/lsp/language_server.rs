@@ -1311,7 +1311,9 @@ impl Inner {
     else {
       return;
     };
-    if !module.is_remote_or_node_modules {
+    if module.specifier.scheme() != "file"
+      || module.specifier.as_str().contains("/node_modules/")
+    {
       return;
     }
     self.task_queue.queue_task(Box::new(|ls: LanguageServer| {
