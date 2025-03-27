@@ -1,0 +1,33 @@
+{
+  "tempDir": true,
+  "steps": [{
+    "args": "install",
+    "cwd": "package-a",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "install",
+    "cwd": "package-b",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run --allow-read index.mjs",
+    "cwd": "package-a",
+    "output": "output.out"
+  }, {
+    "args": "run --allow-read --node-modules-dir=auto index.mjs",
+    "cwd": "package-a",
+    "exitCode": 1,
+    "output": "node_modules_dir.out"
+  }, {
+    "args": "run --allow-read --node-modules-dir=none index.mjs",
+    "cwd": "package-a",
+    "exitCode": 1,
+    "output": "node_modules_dir.out"
+  }, {
+    "args": "compile --allow-read --output exec package-a/index.mjs",
+    "output": "compile.out"
+  }, {
+    "commandName": "./exec",
+    "args": [],
+    "output": "output.out"
+  }]
+}

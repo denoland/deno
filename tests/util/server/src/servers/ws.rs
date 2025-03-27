@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::future::poll_fn;
+use std::future::Future;
 use std::pin::Pin;
 use std::result::Result;
 
@@ -11,8 +13,6 @@ use fastwebsockets::OpCode;
 use fastwebsockets::Role;
 use fastwebsockets::WebSocket;
 use futures::future::join3;
-use futures::future::poll_fn;
-use futures::Future;
 use futures::StreamExt;
 use h2::server::Handshake;
 use h2::server::SendResponse;

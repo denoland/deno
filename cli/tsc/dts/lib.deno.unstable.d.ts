@@ -1359,7 +1359,7 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface FixData {
+    export interface Fix {
       range: Range;
       text?: string;
     }
@@ -1369,14 +1369,14 @@ declare namespace Deno {
      * @experimental
      */
     export interface Fixer {
-      insertTextAfter(node: Node, text: string): FixData;
-      insertTextAfterRange(range: Range, text: string): FixData;
-      insertTextBefore(node: Node, text: string): FixData;
-      insertTextBeforeRange(range: Range, text: string): FixData;
-      remove(node: Node): FixData;
-      removeRange(range: Range): FixData;
-      replaceText(node: Node, text: string): FixData;
-      replaceTextRange(range: Range, text: string): FixData;
+      insertTextAfter(node: Node, text: string): Fix;
+      insertTextAfterRange(range: Range, text: string): Fix;
+      insertTextBefore(node: Node, text: string): Fix;
+      insertTextBeforeRange(range: Range, text: string): Fix;
+      remove(node: Node): Fix;
+      removeRange(range: Range): Fix;
+      replaceText(node: Node, text: string): Fix;
+      replaceTextRange(range: Range, text: string): Fix;
     }
 
     /**
@@ -1388,7 +1388,7 @@ declare namespace Deno {
       range?: Range;
       message: string;
       hint?: string;
-      fix?(fixer: Fixer): FixData | Iterable<FixData>;
+      fix?(fixer: Fixer): Fix | Iterable<Fix>;
     }
 
     /**
@@ -1502,21 +1502,12 @@ declare namespace Deno {
      * @category Linter
      * @experimental
      */
-    export interface Fix {
-      range: Range;
-      text?: string;
-    }
-
-    /**
-     * @category Linter
-     * @experimental
-     */
     export interface Diagnostic {
       id: string;
       message: string;
       hint?: string;
       range: Range;
-      fix?: Fix;
+      fix?: Fix[];
     }
 
     /**
@@ -1955,7 +1946,12 @@ declare namespace Deno {
       static: boolean;
       accessibility: Accessibility | undefined;
       decorators: Decorator[];
-      key: Expression | Identifier | NumberLiteral | StringLiteral;
+      key:
+        | Expression
+        | Identifier
+        | NumberLiteral
+        | StringLiteral
+        | PrivateIdentifier;
       value: Expression | null;
       typeAnnotation: TSTypeAnnotation | undefined;
     }
@@ -4429,8 +4425,8 @@ declare namespace Temporal {
      * - `ceil`: Always round up, towards the end of time.
      * - `trunc`: Always round down, towards the beginning of time. This mode is
      *   the default.
-     * - `floor`: Also round down, towards the beginning of time. This mode acts
-     *   the same as `trunc`, but it's included for consistency with
+     * - `floor`: Also round down, towards the beginning of time. This mode acts the
+     *   same as `trunc`, but it's included for consistency with
      *   `Temporal.Duration.round()` where negative values are allowed and
      *   `trunc` rounds towards zero, unlike `floor` which rounds towards
      *   negative infinity which is usually unexpected. For this reason, `trunc`
@@ -5638,6 +5634,24 @@ interface Date {
  */
 declare namespace Intl {
   /**
+   * Types that can be formatted using Intl.DateTimeFormat methods.
+   *
+   * This type defines what values can be passed to Intl.DateTimeFormat methods
+   * for internationalized date and time formatting. It includes standard Date objects
+   * and Temporal API date/time types.
+   *
+   * @example
+   * ```ts
+   * // Using with Date object
+   * const date = new Date();
+   * const formatter = new Intl.DateTimeFormat('en-US');
+   * console.log(formatter.format(date));
+   *
+   * // Using with Temporal types (when available)
+   * const instant = Temporal.Now.instant();
+   * console.log(formatter.format(instant));
+   * ```
+   *
    * @category Intl
    * @experimental
    */
@@ -5652,10 +5666,52 @@ declare namespace Intl {
     | Temporal.PlainMonthDay;
 
   /**
+   * Represents a part of a formatted date range produced by Intl.DateTimeFormat.formatRange().
+   *
+   * Each part has a type and value that describes its role within the formatted string.
+   * The source property indicates whether the part comes from the start date, end date, or
+   * is shared between them.
+   *
+   * @example
+   * ```ts
+   * const dtf = new Intl.DateTimeFormat('en', {
+   *   dateStyle: 'long',
+   *   timeStyle: 'short'
+   * });
+   * const parts = dtf.formatRangeToParts(
+   *   new Date(2023, 0, 1, 12, 0),
+   *   new Date(2023, 0, 3, 15, 30)
+   * );
+   * console.log(parts);
+   * // Parts might include elements like:
+   * // { type: 'month', value: 'January', source: 'startRange' }
+   * // { type: 'day', value: '1', source: 'startRange' }
+   * // { type: 'literal', value: ' - ', source: 'shared' }
+   * // { type: 'day', value: '3', source: 'endRange' }
+   * // ...
+   * ```
+   *
    * @category Intl
    * @experimental
    */
   export interface DateTimeFormatRangePart {
+    /**
+     * The type of date or time component this part represents.
+     * Possible values: 'day', 'dayPeriod', 'era', 'fractionalSecond', 'hour',
+     * 'literal', 'minute', 'month', 'relatedYear', 'second', 'timeZoneName',
+     * 'weekday', 'year', etc.
+     */
+    type: string;
+
+    /** The string value of this part. */
+    value: string;
+
+    /**
+     * Indicates which date in the range this part comes from.
+     * - 'startRange': The part is from the start date
+     * - 'endRange': The part is from the end date
+     * - 'shared': The part is shared between both dates (like separators)
+     */
     source: "shared" | "startRange" | "endRange";
   }
 
@@ -5668,7 +5724,12 @@ declare namespace Intl {
      * Format a date into a string according to the locale and formatting
      * options of this `Intl.DateTimeFormat` object.
      *
-     * @param date The date to format.
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'full' });
+     * const date = new Date(2023, 0, 1);
+     * console.log(formatter.format(date)); // Output: "Sunday, January 1, 2023"
+     * ```
      */
     format(date?: Formattable | number): string;
 
@@ -5676,7 +5737,12 @@ declare namespace Intl {
      * Allow locale-aware formatting of strings produced by
      * `Intl.DateTimeFormat` formatters.
      *
-     * @param date The date to format.
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'full' });
+     * const date = new Date(2023, 0, 1);
+     * console.log(formatter.format(date)); // Output: "Sunday, January 1, 2023"
+     * ```
      */
     formatToParts(
       date?: Formattable | number,
@@ -5689,6 +5755,15 @@ declare namespace Intl {
      * @param startDate The start date of the range to format.
      * @param endDate The start date of the range to format. Must be the same
      * type as `startRange`.
+     *
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'long' });
+     * const startDate = new Date(2023, 0, 1);
+     * const endDate = new Date(2023, 0, 5);
+     * console.log(formatter.formatRange(startDate, endDate));
+     * // Output: "January 1 – 5, 2023"
+     * ```
      */
     formatRange<T extends Formattable>(startDate: T, endDate: T): string;
     formatRange(startDate: Date | number, endDate: Date | number): string;
@@ -5700,6 +5775,25 @@ declare namespace Intl {
      * @param startDate The start date of the range to format.
      * @param endDate The start date of the range to format. Must be the same
      * type as `startRange`.
+     *
+     * @example
+     * ```ts
+     * const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'long' });
+     * const startDate = new Date(2023, 0, 1);
+     * const endDate = new Date(2023, 0, 5);
+     * const parts = formatter.formatRangeToParts(startDate, endDate);
+     * console.log(parts);
+     * // Output might include:
+     * // [
+     * //   { type: 'month', value: 'January', source: 'startRange' },
+     * //   { type: 'literal', value: ' ', source: 'shared' },
+     * //   { type: 'day', value: '1', source: 'startRange' },
+     * //   { type: 'literal', value: ' – ', source: 'shared' },
+     * //   { type: 'day', value: '5', source: 'endRange' },
+     * //   { type: 'literal', value: ', ', source: 'shared' },
+     * //   { type: 'year', value: '2023', source: 'shared' }
+     * // ]
+     * ```
      */
     formatRangeToParts<T extends Formattable>(
       startDate: T,

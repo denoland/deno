@@ -767,6 +767,8 @@ impl ModuleGraphBuilder {
         loader.as_mut_loader(),
         deno_graph::BuildOptions {
           imports: maybe_imports,
+          skip_dynamic_deps: self.cli_options.unstable_lazy_dynamic_imports()
+            && graph.graph_kind() == GraphKind::CodeOnly,
           is_dynamic: options.is_dynamic,
           passthrough_jsr_specifiers: false,
           executor: Default::default(),
@@ -795,7 +797,7 @@ impl ModuleGraphBuilder {
     // opted into using a node_modules directory
     if self
       .cli_options
-      .node_modules_dir()?
+      .specified_node_modules_dir()?
       .map(|m| m == NodeModulesDirMode::Auto)
       .unwrap_or(false)
     {

@@ -7,8 +7,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use deno_cache_dir::npm::NpmCacheDir;
+use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceDirectory;
+use deno_core::anyhow::bail;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::FutureExt;
@@ -49,6 +51,7 @@ use deno_runtime::inspector_server::InspectorServer;
 use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use node_resolver::analyze::NodeCodeTranslator;
 use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolverOptions;
 use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
@@ -78,8 +81,10 @@ use crate::graph_util::ModuleGraphBuilder;
 use crate::graph_util::ModuleGraphCreator;
 use crate::http_util::HttpClientProvider;
 use crate::module_loader::CliModuleLoaderFactory;
+use crate::module_loader::EszipModuleLoader;
 use crate::module_loader::ModuleLoadPreparer;
 use crate::node::CliCjsCodeAnalyzer;
+use crate::node::CliCjsModuleExportAnalyzer;
 use crate::node::CliNodeCodeTranslator;
 use crate::node::CliNodeResolver;
 use crate::node::CliPackageJsonResolver;
@@ -92,6 +97,7 @@ use crate::npm::CliNpmResolver;
 use crate::npm::CliNpmResolverManagedSnapshotOption;
 use crate::npm::CliNpmTarballCache;
 use crate::npm::NpmResolutionInitializer;
+use crate::npm::WorkspaceNpmPatchPackages;
 use crate::resolver::CliCjsTracker;
 use crate::resolver::CliDenoResolver;
 use crate::resolver::CliNpmGraphResolver;
@@ -149,9 +155,35 @@ impl RootCertStoreProvider for CliRootCertStoreProvider {
 }
 
 #[derive(Debug)]
+struct EszipModuleLoaderProvider {
+  cli_options: Arc<CliOptions>,
+  deferred: once_cell::sync::OnceCell<Arc<EszipModuleLoader>>,
+}
+
+impl EszipModuleLoaderProvider {
+  pub async fn get(&self) -> Result<Option<&Arc<EszipModuleLoader>>, AnyError> {
+    if self.cli_options.eszip() {
+      if let DenoSubcommand::Run(run_flags) = self.cli_options.sub_command() {
+        if self.deferred.get().is_none() {
+          let eszip_loader = EszipModuleLoader::create(
+            &run_flags.script,
+            self.cli_options.initial_cwd(),
+          )
+          .await?;
+          _ = self.deferred.set(Arc::new(eszip_loader));
+        }
+        return Ok(Some(self.deferred.get().unwrap()));
+      }
+    }
+    Ok(None)
+  }
+}
+
+#[derive(Debug)]
 struct CliSpecifiedImportMapProvider {
   cli_options: Arc<CliOptions>,
   file_fetcher: Arc<CliFileFetcher>,
+  eszip_module_loader_provider: Arc<EszipModuleLoaderProvider>,
   workspace_external_import_map_loader: Arc<WorkspaceExternalImportMapLoader>,
 }
 
@@ -181,14 +213,17 @@ impl SpecifiedImportMapProvider for CliSpecifiedImportMapProvider {
       self.cli_options.resolve_specified_import_map_specifier()?;
     match maybe_import_map_specifier {
       Some(specifier) => {
-        let value = resolve_import_map_value_from_specifier(
-          &specifier,
-          &self.file_fetcher,
-        )
-        .await
-        .with_context(|| {
-          format!("Unable to load '{}' import map", specifier)
-        })?;
+        let value = match self.eszip_module_loader_provider.get().await? {
+          Some(eszip) => eszip.load_import_map_value(&specifier)?,
+          None => resolve_import_map_value_from_specifier(
+            &specifier,
+            &self.file_fetcher,
+          )
+          .await
+          .with_context(|| {
+            format!("Unable to load '{}' import map", specifier)
+          })?,
+        };
         Ok(Some(deno_resolver::workspace::SpecifiedImportMap {
           base_url: specifier,
           value,
@@ -222,6 +257,12 @@ pub struct Deferred<T>(once_cell::unsync::OnceCell<T>);
 impl<T> Default for Deferred<T> {
   fn default() -> Self {
     Self(once_cell::unsync::OnceCell::default())
+  }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for Deferred<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_tuple("Deferred").field(&self.0).finish()
   }
 }
 
@@ -261,6 +302,7 @@ impl<T> Deferred<T> {
 struct CliFactoryServices {
   blob_store: Deferred<Arc<BlobStore>>,
   caches: Deferred<Arc<Caches>>,
+  cjs_module_export_analyzer: Deferred<Arc<CliCjsModuleExportAnalyzer>>,
   cjs_tracker: Deferred<Arc<CliCjsTracker>>,
   cli_options: Deferred<Arc<CliOptions>>,
   code_cache: Deferred<Arc<CodeCache>>,
@@ -268,6 +310,7 @@ struct CliFactoryServices {
   deno_dir_provider: Deferred<Arc<DenoDirProvider>>,
   emit_cache: Deferred<Arc<EmitCache>>,
   emitter: Deferred<Arc<Emitter>>,
+  eszip_module_loader_provider: Deferred<Arc<EszipModuleLoaderProvider>>,
   feature_checker: Deferred<Arc<FeatureChecker>>,
   file_fetcher: Deferred<Arc<CliFileFetcher>>,
   found_pkg_json_dep_flag: Arc<FoundPackageJsonDepFlag>,
@@ -302,6 +345,7 @@ struct CliFactoryServices {
   workspace_factory: Deferred<Arc<CliWorkspaceFactory>>,
   workspace_external_import_map_loader:
     Deferred<Arc<WorkspaceExternalImportMapLoader>>,
+  workspace_npm_patch_packages: Deferred<Arc<WorkspaceNpmPatchPackages>>,
 }
 
 #[derive(Debug, Default)]
@@ -453,6 +497,20 @@ impl CliFactory {
     })
   }
 
+  fn eszip_module_loader_provider(
+    &self,
+  ) -> Result<&Arc<EszipModuleLoaderProvider>, AnyError> {
+    self
+      .services
+      .eszip_module_loader_provider
+      .get_or_try_init(|| {
+        Ok(Arc::new(EszipModuleLoaderProvider {
+          cli_options: self.cli_options()?.clone(),
+          deferred: Default::default(),
+        }))
+      })
+  }
+
   pub fn file_fetcher(&self) -> Result<&Arc<CliFileFetcher>, AnyError> {
     self.services.file_fetcher.get_or_try_init(|| {
       let cli_options = self.cli_options()?;
@@ -587,6 +645,7 @@ impl CliFactory {
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
+          self.workspace_npm_patch_packages()?.clone(),
           match resolve_npm_resolution_snapshot()? {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
@@ -613,8 +672,28 @@ impl CliFactory {
         self.npm_registry_info_provider()?.clone(),
         self.npm_resolution()?.clone(),
         cli_options.maybe_lockfile().cloned(),
+        self.workspace_npm_patch_packages()?.clone(),
       )))
     })
+  }
+
+  fn workspace_npm_patch_packages(
+    &self,
+  ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
+    self
+      .services
+      .workspace_npm_patch_packages
+      .get_or_try_init(|| {
+        let cli_options = self.cli_options()?;
+        let npm_packages = Arc::new(WorkspaceNpmPatchPackages::from_workspace(
+          cli_options.workspace().as_ref(),
+        ));
+        if !npm_packages.0.is_empty() && !matches!(self.workspace_factory()?.node_modules_dir_mode()?, NodeModulesDirMode::Auto | NodeModulesDirMode::Manual) {
+          bail!("Patching npm packages requires using a node_modules directory. Ensure you have a package.json or set the \"nodeModulesDir\" option to \"auto\" or \"manual\" in your workspace root deno.json.")
+        } else {
+          Ok(npm_packages)
+        }
+      })
   }
 
   pub async fn npm_resolver(&self) -> Result<&CliNpmResolver, AnyError> {
@@ -644,11 +723,22 @@ impl CliFactory {
       Ok(Arc::new(CliResolverFactory::new(
         self.workspace_factory()?.clone(),
         ResolverFactoryOptions {
-          conditions_from_resolution_mode: Default::default(),
+          node_resolver_options: NodeResolverOptions {
+            conditions_from_resolution_mode: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
           node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
           npm_system_info: self.flags.subcommand.npm_system_info(),
           specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
             cli_options: self.cli_options()?.clone(),
+            eszip_module_loader_provider: self
+              .eszip_module_loader_provider()?
+              .clone(),
             file_fetcher: self.file_fetcher()?.clone(),
             workspace_external_import_map_loader: self
               .workspace_external_import_map_loader()?
@@ -804,6 +894,28 @@ impl CliFactory {
     Ok(())
   }
 
+  pub async fn cjs_module_export_analyzer(
+    &self,
+  ) -> Result<&Arc<CliCjsModuleExportAnalyzer>, AnyError> {
+    self
+      .services
+      .cjs_module_export_analyzer
+      .get_or_try_init_async(async {
+        let node_resolver = self.node_resolver().await?.clone();
+        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
+
+        Ok(Arc::new(CliCjsModuleExportAnalyzer::new(
+          cjs_code_analyzer,
+          self.in_npm_pkg_checker()?.clone(),
+          node_resolver,
+          self.npm_resolver().await?.clone(),
+          self.pkg_json_resolver()?.clone(),
+          self.sys(),
+        )))
+      })
+      .await
+  }
+
   pub async fn node_code_translator(
     &self,
   ) -> Result<&Arc<CliNodeCodeTranslator>, AnyError> {
@@ -811,16 +923,9 @@ impl CliFactory {
       .services
       .node_code_translator
       .get_or_try_init_async(async {
-        let node_resolver = self.node_resolver().await?.clone();
-        let cjs_code_analyzer = self.create_cjs_code_analyzer()?;
-
+        let module_export_analyzer = self.cjs_module_export_analyzer().await?;
         Ok(Arc::new(NodeCodeTranslator::new(
-          cjs_code_analyzer,
-          self.in_npm_pkg_checker()?.clone(),
-          node_resolver,
-          self.npm_resolver().await?.clone(),
-          self.pkg_json_resolver()?.clone(),
-          self.sys(),
+          module_export_analyzer.clone(),
         )))
       })
       .await
@@ -1025,7 +1130,7 @@ impl CliFactory {
   ) -> Result<DenoCompileBinaryWriter, AnyError> {
     let cli_options = self.cli_options()?;
     Ok(DenoCompileBinaryWriter::new(
-      self.create_cjs_code_analyzer()?,
+      self.cjs_module_export_analyzer().await?,
       self.cjs_tracker()?,
       self.cli_options()?,
       self.deno_dir()?,
@@ -1103,6 +1208,8 @@ impl CliFactory {
       Arc::new(NpmRegistryReadPermissionChecker::new(self.sys(), mode))
     };
 
+    let maybe_eszip_loader =
+      self.eszip_module_loader_provider()?.get().await?.cloned();
     let module_loader_factory = CliModuleLoaderFactory::new(
       cli_options,
       cjs_tracker,
@@ -1128,6 +1235,7 @@ impl CliFactory {
       self.parsed_source_cache().clone(),
       self.resolver().await?.clone(),
       self.sys(),
+      maybe_eszip_loader,
     );
 
     let lib_main_worker_factory = LibMainWorkerFactory::new(
@@ -1198,7 +1306,8 @@ impl CliFactory {
       node_ipc: cli_options.node_ipc_fd(),
       serve_port: cli_options.serve_port(),
       serve_host: cli_options.serve_host(),
-      otel_config: self.cli_options()?.otel_config(),
+      otel_config: cli_options.otel_config(),
+      no_legacy_abort: cli_options.no_legacy_abort(),
       startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
     })
   }

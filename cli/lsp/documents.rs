@@ -14,7 +14,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use dashmap::DashMap;
-use deno_ast::swc::visit::VisitWith;
+use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::MediaType;
 use deno_ast::ParsedSource;
 use deno_ast::SourceTextInfo;
