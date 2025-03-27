@@ -187,8 +187,7 @@ pub async fn info(
       &factory,
       info_flags.json,
       cli_options.location_flag().as_ref(),
-    )
-    ?;
+    )?;
   }
   Ok(())
 }
