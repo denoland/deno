@@ -17,35 +17,39 @@ interface GPUObjectDescriptorBase {
 
 /** @category GPU */
 declare class GPUSupportedLimits {
-  maxTextureDimension1D?: number;
-  maxTextureDimension2D?: number;
-  maxTextureDimension3D?: number;
-  maxTextureArrayLayers?: number;
-  maxBindGroups?: number;
-  maxBindingsPerBindGroup?: number;
-  maxDynamicUniformBuffersPerPipelineLayout?: number;
-  maxDynamicStorageBuffersPerPipelineLayout?: number;
-  maxSampledTexturesPerShaderStage?: number;
-  maxSamplersPerShaderStage?: number;
-  maxStorageBuffersPerShaderStage?: number;
-  maxStorageTexturesPerShaderStage?: number;
-  maxUniformBuffersPerShaderStage?: number;
-  maxUniformBufferBindingSize?: number;
-  maxStorageBufferBindingSize?: number;
-  minUniformBufferOffsetAlignment?: number;
-  minStorageBufferOffsetAlignment?: number;
-  maxVertexBuffers?: number;
-  maxBufferSize?: number;
-  maxVertexAttributes?: number;
-  maxVertexBufferArrayStride?: number;
-  maxColorAttachments?: number;
-  maxColorAttachmentBytesPerSample?: number;
-  maxComputeWorkgroupStorageSize?: number;
-  maxComputeInvocationsPerWorkgroup?: number;
-  maxComputeWorkgroupSizeX?: number;
-  maxComputeWorkgroupSizeY?: number;
-  maxComputeWorkgroupSizeZ?: number;
-  maxComputeWorkgroupsPerDimension?: number;
+  readonly maxTextureDimension1D: number;
+  readonly maxTextureDimension2D: number;
+  readonly maxTextureDimension3D: number;
+  readonly maxTextureArrayLayers: number;
+  readonly maxBindGroups: number;
+  // TODO(@crowlKats): support max_bind_groups_plus_vertex_buffers
+  readonly maxBindGroupsPlusVertexBuffers?: number;
+  readonly maxBindingsPerBindGroup: number;
+  readonly maxDynamicUniformBuffersPerPipelineLayout: number;
+  readonly maxDynamicStorageBuffersPerPipelineLayout: number;
+  readonly maxSampledTexturesPerShaderStage: number;
+  readonly maxSamplersPerShaderStage: number;
+  readonly maxStorageBuffersPerShaderStage: number;
+  readonly maxStorageTexturesPerShaderStage: number;
+  readonly maxUniformBuffersPerShaderStage: number;
+  readonly maxUniformBufferBindingSize: number;
+  readonly maxStorageBufferBindingSize: number;
+  readonly minUniformBufferOffsetAlignment: number;
+  readonly minStorageBufferOffsetAlignment: number;
+  readonly maxVertexBuffers: number;
+  readonly maxBufferSize: number;
+  readonly maxVertexAttributes: number;
+  readonly maxVertexBufferArrayStride: number;
+  // TODO(@crowlKats): support max_inter_stage_shader_variables
+  readonly maxInterStageShaderVariables?: number;
+  readonly maxColorAttachments: number;
+  readonly maxColorAttachmentBytesPerSample: number;
+  readonly maxComputeWorkgroupStorageSize: number;
+  readonly maxComputeInvocationsPerWorkgroup: number;
+  readonly maxComputeWorkgroupSizeX: number;
+  readonly maxComputeWorkgroupSizeY: number;
+  readonly maxComputeWorkgroupSizeZ: number;
+  readonly maxComputeWorkgroupsPerDimension: number;
 }
 
 /** @category GPU */
