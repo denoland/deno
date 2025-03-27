@@ -1,4 +1,4 @@
-name: node-compat-test
+name: node_compat_test
 
 on:
   schedule:
@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
@@ -36,7 +38,7 @@ jobs:
         with:
           project_id: denoland
       - name: Run tests
-        run: deno -A tests/node_compat/run_all_test_unmodified.ts
+        run: deno -A --config tests/config/deno.json tests/node_compat/run_all_test_unmodified.ts
       - name: Gzip the report
         run: gzip tests/node_compat/report.json
       - name: Upload the report to dl.deno.land
