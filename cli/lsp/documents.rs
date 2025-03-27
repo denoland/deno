@@ -1033,11 +1033,18 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
+    let specifier = if let Ok(jsr_req_ref) =
+      JsrPackageReqReference::from_specifier(specifier)
+    {
+      Cow::Owned(self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)?)
+    } else {
+      Cow::Borrowed(specifier)
+    };
     let document =
       self
         .documents
-        .get_for_specifier(specifier, scope, &self.cache)?;
-    self.module_inner(&document, Some(&Arc::new(specifier.clone())), scope)
+        .get_for_specifier(&specifier, scope, &self.cache)?;
+    self.module_inner(&document, Some(&Arc::new(specifier.into_owned())), scope)
   }
 
   pub fn primary_module(
@@ -1067,12 +1074,6 @@ impl DocumentModules {
       let Ok(url) = Url::from_file_path(path) else {
         continue;
       };
-      if !self.config.specifier_enabled(&url)
-        || self.resolver.in_node_modules(&url)
-        || self.cache.in_cache_directory(&url)
-      {
-        continue;
-      }
       let scope = self.config.tree.scope_for_specifier(&url).cloned();
       let Some(document) =
         self
@@ -1081,6 +1082,13 @@ impl DocumentModules {
       else {
         continue;
       };
+      if !document.open().is_some()
+        && (!self.config.specifier_enabled(&url)
+          || self.resolver.in_node_modules(&url)
+          || self.cache.in_cache_directory(&url))
+      {
+        continue;
+      }
       let Some(module) = self.module(&document, scope.as_deref()) else {
         continue;
       };
@@ -1093,10 +1101,11 @@ impl DocumentModules {
         continue;
       }
       let url = uri_to_url(uri);
-      if url.scheme() != "file"
-        || !self.config.specifier_enabled(&url)
-        || self.resolver.in_node_modules(&url)
-        || self.cache.in_cache_directory(&url)
+      if !document.open().is_some()
+        && (url.scheme() != "file"
+          || !self.config.specifier_enabled(&url)
+          || self.resolver.in_node_modules(&url)
+          || self.cache.in_cache_directory(&url))
       {
         continue;
       }
@@ -1119,8 +1128,15 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
+    let specifier = if let Ok(jsr_req_ref) =
+      JsrPackageReqReference::from_specifier(specifier)
+    {
+      Cow::Owned(self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)?)
+    } else {
+      Cow::Borrowed(specifier)
+    };
     let modules = self.modules_for_scope(scope)?;
-    modules.get_for_specifier(specifier)
+    modules.get_for_specifier(&specifier)
   }
 
   /// This will not create any module entries, only retrieve existing entries.
