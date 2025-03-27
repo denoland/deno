@@ -347,7 +347,7 @@ fn sort_by_depth(
 
 pub fn set_up_bin_entry<'a>(
   package: &'a NpmResolutionPackage,
-  extra: &'a NpmPackageExtraInfo,
+  #[allow(unused_variables)] extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
   #[allow(unused_variables)] bin_script: &str,
   #[allow(unused_variables)] package_path: &'a Path,
