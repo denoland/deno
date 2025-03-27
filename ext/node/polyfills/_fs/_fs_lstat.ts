@@ -12,8 +12,12 @@ import {
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { primordials } from "ext:core/mod.js";
 
-const { Error, PromisePrototypeThen, ObjectPrototypeIsPrototypeOf } =
-  primordials;
+const {
+  Error,
+  ErrorPrototype,
+  PromisePrototypeThen,
+  ObjectPrototypeIsPrototypeOf,
+} = primordials;
 
 export function lstat(path: string | URL, callback: statCallback): void;
 export function lstat(
@@ -80,7 +84,7 @@ export function lstatSync(
       return;
     }
 
-    if (ObjectPrototypeIsPrototypeOf(Error.prototype, err)) {
+    if (ObjectPrototypeIsPrototypeOf(ErrorPrototype, err)) {
       throw denoErrorToNodeError(err, { syscall: "stat" });
     } else {
       throw err;
