@@ -788,11 +788,13 @@ fn get_remote_completions(
   range: &lsp::Range,
   document_modules: &DocumentModules,
 ) -> Vec<lsp::CompletionItem> {
-  let remote_specifiers =
-    document_modules.cached_remote_specifiers(module.scope.as_deref());
+  let remote_modules = document_modules
+    .filtered_modules(module.scope.as_deref(), |m| {
+      matches!(m.specifier.scheme(), "http" | "https")
+    });
   let specifier_strings = get_relative_specifiers(
     &module.specifier,
-    remote_specifiers.iter().map(|s| s.as_ref()),
+    remote_modules.iter().map(|m| m.specifier.as_ref()),
   );
   specifier_strings
     .into_iter()

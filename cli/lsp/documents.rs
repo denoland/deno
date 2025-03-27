@@ -769,6 +769,24 @@ impl WeakDocumentModuleMap {
     }
   }
 
+  fn contains_specifier(&self, specifier: &Url) -> bool {
+    self.by_specifier.read().contains_key(specifier)
+  }
+
+  fn filtered_modules(
+    &self,
+    predicate: impl FnMut(&Arc<DocumentModule>) -> bool,
+  ) -> Vec<Arc<DocumentModule>> {
+    self
+      .open
+      .read()
+      .values()
+      .map(|m| m.clone())
+      .chain(self.server.read().values().map(|m| m.clone()))
+      .filter(predicate)
+      .collect()
+  }
+
   fn insert(
     &self,
     document: &Document2,
@@ -1120,17 +1138,37 @@ impl DocumentModules {
   }
 
   pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
+    self
+      .modules_by_scope
+      .keys()
+      .cloned()
+      .map(Some)
+      .chain([None])
+      .collect()
   }
 
   pub fn specifier_exists(&self, specifier: &Url, scope: Option<&Url>) -> bool {
-    // TODO(nayeemrmn): Implement!
+    if let Some(modules) = self.modules_for_scope(scope) {
+      if modules.contains_specifier(specifier) {
+        return true;
+      }
+    }
+    if specifier.scheme() == "file" {
+      return url_to_file_path(&specifier)
+        .map(|p| p.is_file())
+        .unwrap_or(false);
+    }
+    if specifier.scheme() == "data" {
+      return true;
+    }
+    if self.cache.for_specifier(scope).contains(&specifier) {
+      return true;
+    }
     false
   }
 
   pub fn dep_info_by_scope(
-    &mut self,
+    &self,
   ) -> Arc<BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>> {
     self
       .dep_info_by_scope
@@ -1142,13 +1180,23 @@ impl DocumentModules {
   }
 
   pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
+    self
+      .dep_info_by_scope()
+      .iter()
+      .filter(|(_, i)| i.has_node_specifier)
+      .map(|(s, _)| s.clone())
+      .collect::<HashSet<_>>()
   }
 
-  pub fn cached_remote_specifiers(&self, scope: Option<&Url>) -> Vec<Arc<Url>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
+  pub fn filtered_modules(
+    &self,
+    scope: Option<&Url>,
+    predicate: impl FnMut(&Arc<DocumentModule>) -> bool,
+  ) -> Vec<Arc<DocumentModule>> {
+    let Some(modules) = self.modules_for_scope(scope) else {
+      return Vec::new();
+    };
+    modules.filtered_modules(predicate)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
