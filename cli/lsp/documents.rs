@@ -1107,8 +1107,16 @@ impl DocumentModules {
     &self,
     document: &Document2,
   ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
+    let mut result = BTreeMap::new();
+    for (scope, modules) in self.modules_by_scope.iter() {
+      if let Some(module) = modules.get(document) {
+        result.insert(Some(scope.clone()), module);
+      }
+    }
+    if let Some(module) = self.modules_unscoped.get(document) {
+      result.insert(None, module);
+    }
+    result
   }
 
   fn modules_for_scope(
