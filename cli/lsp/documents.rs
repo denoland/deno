@@ -795,15 +795,14 @@ impl WeakDocumentModuleMap {
     document: &Document2,
     module: Arc<DocumentModule>,
   ) -> Option<Arc<DocumentModule>> {
-    let module = match document {
-      Document2::Open(d) => self.open.write().insert(d.clone(), module)?,
-      Document2::Server(d) => self.server.write().insert(d.clone(), module)?,
-    };
+    match document {
+      Document2::Open(d) => { self.open.write().insert(d.clone(), module.clone()); }
+      Document2::Server(d) => { self.server.write().insert(d.clone(), module.clone()); }
+    }
     self
       .by_specifier
       .write()
-      .entry(module.specifier.clone())
-      .or_insert_with(|| module.clone());
+      .insert(module.specifier.clone(), module.clone());
     Some(module)
   }
 
