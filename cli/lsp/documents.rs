@@ -62,7 +62,6 @@ use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
 use super::tsc;
-use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
@@ -1118,14 +1117,6 @@ impl DocumentModules {
   }
 
   pub fn scopes_with_node_specifier(&self) -> HashSet<Option<Arc<Url>>> {
-    // TODO(nayeemrmn): Implement!
-    Default::default()
-  }
-
-  pub fn changed_docs_to_specifiers_by_scope<'a>(
-    &self,
-    changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
-  ) -> BTreeMap<&Arc<Url>, Vec<Url>> {
     // TODO(nayeemrmn): Implement!
     Default::default()
   }
