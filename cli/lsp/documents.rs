@@ -548,8 +548,11 @@ impl Documents2 {
     cache: &LspCache,
   ) -> Option<Document2> {
     let scheme = specifier.scheme();
-    if scheme == "file" || scheme == "asset" {
+    if scheme == "file" {
       let uri = url_to_uri(specifier).ok()?;
+      self.get(&uri)
+    } else if scheme == "asset" {
+      let uri = asset_url_to_uri(specifier)?;
       self.get(&uri)
     } else if scheme == "http" || scheme == "https" {
       let cache_file_url =
@@ -2220,9 +2223,6 @@ impl FileSystemDocuments {
     cache: &Arc<LspCache>,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<Arc<Document>> {
-    if specifier.scheme() == "data" {
-      dbg!(specifier.as_str());
-    }
     let doc = if specifier.scheme() == "file" {
       let path = url_to_file_path(specifier).ok()?;
       let bytes = fs::read(path).ok()?;
@@ -2518,9 +2518,6 @@ impl Documents {
 
   /// Return a document for the specifier.
   pub fn get(&self, specifier: &ModuleSpecifier) -> Option<Arc<Document>> {
-    if specifier.scheme() == "data" {
-      dbg!(specifier.as_str());
-    }
     if let Some(document) = self.open_docs.get(specifier) {
       Some(document.clone())
     } else {
@@ -2623,9 +2620,6 @@ impl Documents {
       let fs_docs = &self.file_system_docs;
       // Clean up non-existent documents.
       fs_docs.docs.retain(|specifier, _| {
-        if specifier.scheme() == "data" {
-          dbg!(specifier.as_str());
-        }
         let Ok(path) = url_to_file_path(specifier) else {
           // Remove non-file schemed docs (deps). They may not be dependencies
           // anymore after updating resolvers.
