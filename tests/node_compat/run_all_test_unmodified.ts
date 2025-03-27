@@ -289,7 +289,7 @@ async function main() {
   }
   // Runs parallel tests
   for await (
-    const _ of pooledMap(navigator.hardwareConcurrency * 2, parallel, run)
+    const _ of pooledMap(navigator.hardwareConcurrency, parallel, run)
   ) {
     // pass
   }
