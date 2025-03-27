@@ -15,7 +15,7 @@ import { op_fs_seek_async, op_fs_seek_sync } from "ext:core/ops";
 import process from "node:process";
 import { primordials } from "ext:core/mod.js";
 
-const { PromisePrototypeThen, ArrayBufferPrototypeGetByteLength } = primordials;
+const { PromisePrototypeThen, TypedArrayPrototypeGetByteLength } = primordials;
 
 type Callback = (
   err: ErrnoException | null,
@@ -70,7 +70,7 @@ export function readv(
         break;
       }
       readInBuf += nread;
-      if (readInBuf === ArrayBufferPrototypeGetByteLength(buf)) {
+      if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
         readTotal += readInBuf;
         readInBuf = 0;
         bufIdx += 1;
@@ -115,7 +115,7 @@ export function readvSync(
       break;
     }
     readInBuf += nread;
-    if (readInBuf === ArrayBufferPrototypeGetByteLength(buf)) {
+    if (readInBuf === TypedArrayPrototypeGetByteLength(buf)) {
       readTotal += readInBuf;
       readInBuf = 0;
       bufIdx += 1;
