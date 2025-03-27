@@ -1,0 +1,25 @@
+# Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+
+[package]
+name = "deno_fetch_base"
+version = "0.202.0"
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+readme = "README.md"
+repository.workspace = true
+description = "Fetch API implementation for Deno"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+bytes.workspace = true
+deno_core.workspace = true
+deno_error.workspace = true
+deno_tls = { workspace = true, optional = true }
+serde.workspace = true
+
+[features]
+default = ["dep:deno_tls"]
+sandbox = []

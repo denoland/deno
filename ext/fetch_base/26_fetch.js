@@ -15,8 +15,6 @@ import {
   op_fetch,
   op_fetch_promise_is_settled,
   op_fetch_send,
-  op_wasm_streaming_feed,
-  op_wasm_streaming_set_url,
 } from "ext:core/ops";
 const {
   ArrayPrototypePush,
@@ -32,8 +30,6 @@ const {
   SafePromisePrototypeFinally,
   String,
   StringPrototypeEndsWith,
-  StringPrototypeStartsWith,
-  StringPrototypeToLowerCase,
   TypeError,
   TypedArrayPrototypeGetSymbolToStringTag,
 } = primordials;
@@ -58,16 +54,16 @@ import {
   toInnerResponse,
 } from "ext:deno_fetch/23_response.js";
 import * as abortSignal from "ext:deno_web/03_abort_signal.js";
-import {
-  builtinTracer,
-  enterSpan,
-  restoreContext,
-  TRACING_ENABLED,
-} from "ext:deno_telemetry/telemetry.ts";
-import {
-  updateSpanFromRequest,
-  updateSpanFromResponse,
-} from "ext:deno_telemetry/util.ts";
+// import {
+//   builtinTracer,
+//   enterSpan,
+//   restoreContext,
+//   TRACING_ENABLED,
+// } from "ext:deno_telemetry/telemetry.ts";
+// import {
+//   updateSpanFromRequest,
+//   updateSpanFromResponse,
+// } from "ext:deno_telemetry/util.ts";
 
 const REQUEST_BODY_HEADER_NAMES = [
   "content-encoding",
@@ -352,11 +348,11 @@ function httpRedirectFetch(request, response, terminator) {
 function fetch(input, init = { __proto__: null }) {
   let span;
   let context;
-  try {
-    if (TRACING_ENABLED) {
-      span = builtinTracer().startSpan("fetch", { kind: 2 });
-      context = enterSpan(span);
-    }
+  // try {
+  //   if (TRACING_ENABLED) {
+  //     span = builtinTracer().startSpan("fetch", { kind: 2 });
+  //     context = enterSpan(span);
+  //   }
 
     // There is an async dispatch later that causes a stack trace disconnect.
     // We reconnect it by assigning the result of that dispatch to `opPromise`,
@@ -370,9 +366,9 @@ function fetch(input, init = { __proto__: null }) {
       // 2.
       const requestObject = new Request(input, init);
 
-      if (span) {
-        updateSpanFromRequest(span, requestObject);
-      }
+      // if (span) {
+      //   updateSpanFromRequest(span, requestObject);
+      // }
 
       // 3.
       const request = toInnerRequest(requestObject);
@@ -432,9 +428,9 @@ function fetch(input, init = { __proto__: null }) {
             }
             responseObject = fromInnerResponse(response, "immutable");
 
-            if (span) {
-              updateSpanFromResponse(span, responseObject);
-            }
+            // if (span) {
+            //   updateSpanFromResponse(span, responseObject);
+            // }
 
             resolve(responseObject);
             requestObject.signal[abortSignal.remove](onabort);
@@ -476,10 +472,11 @@ function fetch(input, init = { __proto__: null }) {
       }
     }
     return result;
-  } finally {
-    if (context) restoreContext(context);
   }
-}
+  // finally {
+  //   // if (context) restoreContext(context);
+  // }
+// }
 
 function abortFetch(request, responseObject, error) {
   if (request.body !== null) {
@@ -511,77 +508,5 @@ function isSubdomain(subdomain, domain) {
   );
 }
 
-/**
- * Handle the Response argument to the WebAssembly streaming APIs, after
- * resolving if it was passed as a promise. This function should be registered
- * through `Deno.core.setWasmStreamingCallback`.
- *
- * @param {any} source The source parameter that the WebAssembly streaming API
- * was called with. If it was called with a Promise, `source` is the resolved
- * value of that promise.
- * @param {number} rid An rid that represents the wasm streaming resource.
- */
-function handleWasmStreaming(source, rid) {
-  // This implements part of
-  // https://webassembly.github.io/spec/web-api/#compile-a-potential-webassembly-response
-  try {
-    const res = webidl.converters["Response"](
-      source,
-      "Failed to execute 'WebAssembly.compileStreaming'",
-      "Argument 1",
-    );
 
-    // 2.3.
-    // The spec is ambiguous here, see
-    // https://github.com/WebAssembly/spec/issues/1138. The WPT tests expect
-    // the raw value of the Content-Type attribute lowercased. We ignore this
-    // for file:// because file fetches don't have a Content-Type.
-    if (!StringPrototypeStartsWith(res.url, "file://")) {
-      const contentType = res.headers.get("Content-Type");
-      if (
-        typeof contentType !== "string" ||
-        StringPrototypeToLowerCase(contentType) !== "application/wasm"
-      ) {
-        throw new TypeError("Invalid WebAssembly content type");
-      }
-    }
-
-    // 2.5.
-    if (!res.ok) {
-      throw new TypeError(
-        `Failed to receive WebAssembly content: HTTP status code ${res.status}`,
-      );
-    }
-
-    // Pass the resolved URL to v8.
-    op_wasm_streaming_set_url(rid, res.url);
-
-    if (res.body !== null) {
-      // 2.6.
-      // Rather than consuming the body as an ArrayBuffer, this passes each
-      // chunk to the feed as soon as it's available.
-      PromisePrototypeThen(
-        (async () => {
-          const reader = res.body.getReader();
-          while (true) {
-            const { value: chunk, done } = await reader.read();
-            if (done) break;
-            op_wasm_streaming_feed(rid, chunk);
-          }
-        })(),
-        // 2.7
-        () => core.close(rid),
-        // 2.8
-        (err) => core.abortWasmStreaming(rid, err),
-      );
-    } else {
-      // 2.7
-      core.close(rid);
-    }
-  } catch (err) {
-    // 2.8
-    core.abortWasmStreaming(rid, err);
-  }
-}
-
-export { fetch, handleWasmStreaming, mainFetch };
+export { fetch, mainFetch };

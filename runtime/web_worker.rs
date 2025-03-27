@@ -37,6 +37,7 @@ use deno_core::PollEventLoopOptions;
 use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_cron::local::LocalCronHandler;
+use deno_fetch::DenoFetchHandler;
 use deno_fs::FileSystem;
 use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
@@ -472,7 +473,7 @@ impl WebWorker {
       ),
       deno_webgpu::deno_webgpu::init_ops_and_esm(),
       deno_canvas::deno_canvas::init_ops_and_esm(),
-      deno_fetch::deno_fetch::init_ops_and_esm::<PermissionsContainer>(
+      deno_fetch::deno_fetch::init_ops_and_esm::<DenoFetchHandler<PermissionsContainer>>(
         deno_fetch::Options {
           user_agent: options.bootstrap.user_agent.clone(),
           root_cert_store_provider: services.root_cert_store_provider.clone(),
