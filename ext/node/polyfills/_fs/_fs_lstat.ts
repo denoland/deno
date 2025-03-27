@@ -75,12 +75,12 @@ export function lstatSync(
   } catch (err) {
     if (
       options?.throwIfNoEntry === false &&
-      ObjectPrototypeIsPrototypeOf(err, Deno.errors.NotFound)
+      ObjectPrototypeIsPrototypeOf(err.prototype, Deno.errors.NotFound)
     ) {
       return;
     }
 
-    if (ObjectPrototypeIsPrototypeOf(err, Error)) {
+    if (ObjectPrototypeIsPrototypeOf(err.prototype, Error)) {
       throw denoErrorToNodeError(err, { syscall: "stat" });
     } else {
       throw err;
