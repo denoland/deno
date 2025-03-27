@@ -1178,11 +1178,120 @@ impl DocumentModules {
   pub fn dep_info_by_scope(
     &self,
   ) -> Arc<BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>> {
+    type ScopeEntry<'a> =
+      (Option<&'a Arc<Url>>, &'a Arc<WeakDocumentModuleMap>);
+    let dep_info_from_scope_entry = |(scope, modules): ScopeEntry<'_>| {
+      let mut dep_info = ScopeDepInfo::default();
+      let mut visit_module = |module: &DocumentModule| {
+        for dependency in module.dependencies.values() {
+          let code_specifier = dependency.get_code();
+          let type_specifier = dependency.get_type();
+          if let Some(dep) = code_specifier {
+            if dep.scheme() == "node" {
+              dep_info.has_node_specifier = true;
+            }
+            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
+              dep_info.npm_reqs.insert(reference.into_inner().req);
+            }
+          }
+          if let Some(dep) = type_specifier {
+            if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
+              dep_info.npm_reqs.insert(reference.into_inner().req);
+            }
+          }
+          if dependency.maybe_deno_types_specifier.is_some() {
+            if let (Some(code_specifier), Some(type_specifier)) =
+              (code_specifier, type_specifier)
+            {
+              if MediaType::from_specifier(type_specifier).is_declaration() {
+                dep_info
+                  .deno_types_to_code_resolutions
+                  .insert(type_specifier.clone(), code_specifier.clone());
+              }
+            }
+          }
+        }
+        if let Some(dep) = module
+          .types_dependency
+          .as_ref()
+          .and_then(|d| d.dependency.maybe_specifier())
+        {
+          if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
+            dep_info.npm_reqs.insert(reference.into_inner().req);
+          }
+        }
+      };
+      for module in modules.filtered_modules(|_| true) {
+        visit_module(&module);
+      }
+      let config_data =
+        scope.and_then(|s| self.config.tree.data_by_scope().get(s));
+      if let Some(config_data) = config_data {
+        (|| {
+          let member_dir = &config_data.member_dir;
+          let jsx_config =
+            member_dir.to_maybe_jsx_import_source_config().ok()??;
+          let import_source_types = jsx_config.import_source_types.as_ref()?;
+          let import_source = jsx_config.import_source.as_ref()?;
+          let cli_resolver =
+            self.resolver.as_cli_resolver(scope.map(|s| s.as_ref()));
+          let type_specifier = cli_resolver
+            .resolve(
+              &import_source_types.specifier,
+              &import_source_types.base,
+              deno_graph::Position::zeroed(),
+              // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+              ResolutionMode::Import,
+              NodeResolutionKind::Types,
+            )
+            .ok()?;
+          let code_specifier = cli_resolver
+            .resolve(
+              &import_source.specifier,
+              &import_source.base,
+              deno_graph::Position::zeroed(),
+              // todo(dsherret): this is wrong because it doesn't consider CJS referrers
+              ResolutionMode::Import,
+              NodeResolutionKind::Execution,
+            )
+            .ok()?;
+          dep_info
+            .deno_types_to_code_resolutions
+            .insert(type_specifier, code_specifier);
+          Some(())
+        })();
+        // fill the reqs from the lockfile
+        if let Some(lockfile) = config_data.lockfile.as_ref() {
+          let lockfile = lockfile.lock();
+          for dep_req in lockfile.content.packages.specifiers.keys() {
+            if dep_req.kind == deno_semver::package::PackageKind::Npm {
+              dep_info.npm_reqs.insert(dep_req.req.clone());
+            }
+          }
+        }
+      }
+      if dep_info.has_node_specifier
+        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
+      {
+        dep_info
+          .npm_reqs
+          .insert(PackageReq::from_str("@types/node").unwrap());
+      }
+      (scope.cloned(), Arc::new(dep_info))
+    };
     self
       .dep_info_by_scope
       .get_or_init(|| {
-        // TODO(nayeemrmn): Implement!
-        Default::default()
+        NodeResolutionThreadLocalCache::clear();
+        Arc::new(
+          self
+            .modules_by_scope
+            .iter()
+            .map(|(s, m)| (Some(s), m))
+            .chain([(None, &self.modules_unscoped)])
+            .map(dep_info_from_scope_entry)
+            .collect(),
+        )
       })
       .clone()
   }
