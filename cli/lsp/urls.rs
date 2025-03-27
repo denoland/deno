@@ -22,7 +22,7 @@ use super::logging::lsp_warn;
 /// the component percent encoding set.
 ///
 /// See: <https://url.spec.whatwg.org/#component-percent-encode-set>
-const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+pub const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
   .add(b' ')
   .add(b'"')
   .add(b'#')

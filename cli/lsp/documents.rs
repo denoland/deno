@@ -28,6 +28,7 @@ use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
+use deno_core::url::Position;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
 use deno_error::JsErrorBox;
@@ -67,6 +68,7 @@ use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
+use super::urls::COMPONENT;
 use crate::graph_util::CliJsrUrlProvider;
 
 #[derive(Debug)]
@@ -161,6 +163,26 @@ impl OpenDocument {
   }
 }
 
+fn remote_url_to_uri(url: &Url) -> Option<Uri> {
+  if !matches!(url.scheme(), "http" | "https") {
+    return None;
+  }
+  let mut string = String::with_capacity(url.as_str().len() + 6);
+  string.push_str("deno:/");
+  string.push_str(url.scheme());
+  for p in url[Position::BeforeHost..].split('/') {
+    string.push('/');
+    string.push_str(
+      &percent_encoding::utf8_percent_encode(p, COMPONENT).to_string(),
+    );
+  }
+  Uri::from_str(&string)
+    .inspect_err(|err| {
+      lsp_warn!("Couldn't convert remote URL \"{url}\" to URI: {err}")
+    })
+    .ok()
+}
+
 fn asset_url_to_uri(url: &Url) -> Option<Uri> {
   if url.scheme() != "asset" {
     return None;
@@ -236,6 +258,10 @@ pub enum ServerDocumentKind {
     fs_version: String,
     text: Arc<str>,
   },
+  RemoteUrl {
+    url: Arc<Url>,
+    text: Arc<str>,
+  },
   DataUrl {
     url: Arc<Url>,
     text: Arc<str>,
@@ -280,6 +306,38 @@ impl ServerDocument {
     None
   }
 
+  fn remote_url(
+    uri: &Uri,
+    url: Arc<Url>,
+    scope: Option<&Url>,
+    cache: &LspCache,
+  ) -> Option<Self> {
+    let media_type = MediaType::from_specifier(&url);
+    let http_cache = cache.for_specifier(scope);
+    let cache_key = http_cache.cache_item_key(&url).ok()?;
+    let cache_entry = http_cache.get(&cache_key, None).ok()??;
+    let (_, maybe_charset) =
+      deno_graph::source::resolve_media_type_and_charset_from_headers(
+        &url,
+        Some(&cache_entry.metadata.headers),
+      );
+    let text: Arc<str> = bytes_to_content(
+      &url,
+      media_type,
+      cache_entry.content.into_owned(),
+      maybe_charset,
+    )
+    .ok()?
+    .into();
+    let line_index = Arc::new(LineIndex::new(&text));
+    Some(Self {
+      uri: Arc::new(uri.clone()),
+      media_type,
+      line_index,
+      kind: ServerDocumentKind::RemoteUrl { url, text },
+    })
+  }
+
   fn asset(name: &str, text: &'static str) -> Self {
     let url = Arc::new(Url::parse(&format!("asset:///{name}")).unwrap());
     let uri = asset_url_to_uri(&url).unwrap();
@@ -310,6 +368,9 @@ impl ServerDocument {
   pub fn text(&self) -> DocumentText {
     match &self.kind {
       ServerDocumentKind::Fs { text, .. } => DocumentText::Arc(text.clone()),
+      ServerDocumentKind::RemoteUrl { text, .. } => {
+        DocumentText::Arc(text.clone())
+      }
       ServerDocumentKind::DataUrl { text, .. } => {
         DocumentText::Arc(text.clone())
       }
@@ -320,6 +381,7 @@ impl ServerDocument {
   pub fn exists(&self) -> bool {
     match &self.kind {
       ServerDocumentKind::Fs { path, .. } => path.is_file(),
+      ServerDocumentKind::RemoteUrl { .. } => true,
       ServerDocumentKind::DataUrl { .. } => true,
       ServerDocumentKind::Asset { .. } => true,
     }
@@ -336,6 +398,7 @@ impl ServerDocument {
   pub fn script_version(&self) -> String {
     match &self.kind {
       ServerDocumentKind::Fs { fs_version, .. } => fs_version.clone(),
+      ServerDocumentKind::RemoteUrl { .. } => "1".to_string(),
       ServerDocumentKind::DataUrl { .. } => "1".to_string(),
       ServerDocumentKind::Asset { .. } => "1".to_string(),
     }
@@ -440,10 +503,11 @@ impl Document2 {
 pub struct Documents2 {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
-  /// Data URLs can not be recovered from the URIs we assign them without this
-  /// map. We want to be able to discard old data URL documents but keep this
+  /// These URLs can not be recovered from the URIs we assign them without these
+  /// maps. We want to be able to discard old documents from here but keep this
   /// mapping.
   data_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
+  remote_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
 }
 
 impl Documents2 {
@@ -533,13 +597,23 @@ impl Documents2 {
       let uri = asset_url_to_uri(specifier)?;
       self.get(&uri)
     } else if scheme == "http" || scheme == "https" {
-      let cache_file_url =
-        cache.vendored_specifier(specifier, scope).or_else(|| {
-          let path = cache.global().local_path_for_url(specifier).ok()?;
-          Url::from_file_path(&path).ok()
-        })?;
-      let uri = url_to_uri(&cache_file_url).ok()?;
-      self.get(&uri)
+      if let Some(vendored_specifier) =
+        cache.vendored_specifier(specifier, scope)
+      {
+        let uri = url_to_uri(&vendored_specifier).ok()?;
+        self.get(&uri)
+      } else {
+        let uri = remote_url_to_uri(&specifier)?;
+        if let Some(doc) = self.server.get(&uri) {
+          return Some(Document2::Server(doc.clone()));
+        }
+        let url = Arc::new(specifier.clone());
+        self.remote_urls_by_uri.insert(uri.clone(), url.clone());
+        let doc =
+          Arc::new(ServerDocument::remote_url(&uri, url, scope, cache)?);
+        self.server.insert(uri, doc.clone());
+        Some(Document2::Server(doc))
+      }
     } else if scheme == "data" {
       let uri = data_url_to_uri(&specifier)?;
       if let Some(doc) = self.server.get(&uri) {
@@ -910,6 +984,9 @@ impl DocumentModules {
         if let Some(document) = document.server() {
           match &document.kind {
             ServerDocumentKind::Fs { .. } => {}
+            ServerDocumentKind::RemoteUrl { url, .. } => {
+              return Some(url.clone())
+            }
             ServerDocumentKind::DataUrl { url, .. } => {
               return Some(url.clone())
             }
