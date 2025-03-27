@@ -147,17 +147,6 @@ impl OpenDocument {
     )
   }
 
-  pub fn is_importable(&self) -> bool {
-    matches!(
-      self.language_id,
-      LanguageId::JavaScript
-        | LanguageId::Jsx
-        | LanguageId::TypeScript
-        | LanguageId::Tsx
-        | LanguageId::Json
-    )
-  }
-
   pub fn is_file_like(&self) -> bool {
     uri_is_file_like(&self.uri)
   }
@@ -197,7 +186,7 @@ fn data_url_to_uri(url: &Url) -> Option<Uri> {
     file_name_str.push_str(query);
   }
   let hash = deno_lib::util::checksum::gen(&[file_name_str.as_bytes()]);
-  Uri::from_str(&format!("deno:/data_url/{hash}.{extension}",))
+  Uri::from_str(&format!("deno:/data_url/{hash}{extension}",))
     .inspect_err(|err| {
       lsp_warn!("Couldn't convert data url \"{url}\" to URI: {err}")
     })
@@ -340,10 +329,6 @@ impl ServerDocument {
     media_type_is_diagnosable(self.media_type)
   }
 
-  pub fn is_importable(&self) -> bool {
-    media_type_is_importable(self.media_type)
-  }
-
   pub fn is_file_like(&self) -> bool {
     uri_is_file_like(&self.uri)
   }
@@ -440,13 +425,6 @@ impl Document2 {
     match self {
       Self::Open(d) => d.is_diagnosable(),
       Self::Server(d) => d.is_diagnosable(),
-    }
-  }
-
-  pub fn is_importable(&self) -> bool {
-    match self {
-      Self::Open(d) => d.is_importable(),
-      Self::Server(d) => d.is_importable(),
     }
   }
 
@@ -564,6 +542,9 @@ impl Documents2 {
       self.get(&uri)
     } else if scheme == "data" {
       let uri = data_url_to_uri(&specifier)?;
+      if let Some(doc) = self.server.get(&uri) {
+        return Some(Document2::Server(doc.clone()));
+      }
       let url = Arc::new(specifier.clone());
       self.data_urls_by_uri.insert(uri.clone(), url.clone());
       let doc = Arc::new(ServerDocument::data_url(&uri, url)?);
@@ -796,8 +777,12 @@ impl WeakDocumentModuleMap {
     module: Arc<DocumentModule>,
   ) -> Option<Arc<DocumentModule>> {
     match document {
-      Document2::Open(d) => { self.open.write().insert(d.clone(), module.clone()); }
-      Document2::Server(d) => { self.server.write().insert(d.clone(), module.clone()); }
+      Document2::Open(d) => {
+        self.open.write().insert(d.clone(), module.clone());
+      }
+      Document2::Server(d) => {
+        self.server.write().insert(d.clone(), module.clone());
+      }
     }
     self
       .by_specifier
@@ -915,9 +900,6 @@ impl DocumentModules {
     specifier: Option<&Arc<Url>>,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    if !document.is_importable() {
-      return None;
-    }
     let modules = self.modules_for_scope(scope)?;
     if let Some(module) = modules.get(document) {
       return Some(module);
