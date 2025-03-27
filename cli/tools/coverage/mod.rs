@@ -506,7 +506,7 @@ fn filter_coverages(
     .collect::<Vec<cdp::ScriptCoverage>>()
 }
 
-pub async fn cover_files(
+pub fn cover_files(
   flags: Arc<Flags>,
   coverage_flags: CoverageFlags,
 ) -> Result<(), AnyError> {

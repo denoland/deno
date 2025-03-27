@@ -201,6 +201,7 @@ pub struct ReplSession {
 }
 
 impl ReplSession {
+  #[allow(clippy::too_many_arguments)]
   pub async fn initialize(
     cli_options: &CliOptions,
     npm_installer: Option<Arc<NpmInstaller>>,

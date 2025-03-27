@@ -103,9 +103,7 @@ impl NpmResolutionInitializer {
       &self.npm_registry_info_provider,
       snapshot_option,
       &self.patch_packages,
-    )
-    .await
-    {
+    ) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -150,7 +148,7 @@ impl ResolveSnapshotError {
   }
 }
 
-async fn resolve_snapshot(
+fn resolve_snapshot(
   registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
   patch_packages: &WorkspaceNpmPatchPackages,
@@ -164,7 +162,6 @@ async fn resolve_snapshot(
           &registry_info_provider.as_npm_registry_api(),
           patch_packages,
         )
-        .await
         .map_err(|source| ResolveSnapshotError {
           lockfile_path: lockfile.filename.clone(),
           source,
@@ -191,7 +188,7 @@ impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
   fn default_tarball_url(&self, id: &deno_npm::NpmPackageId) -> String {
     let scope = id.nv.scope();
     let package_name = if let Some(scope) = scope {
-      format!("{}", id.nv.name.strip_prefix(scope).unwrap())
+      id.nv.name.strip_prefix(scope).unwrap().to_string()
     } else {
       id.nv.name.to_string()
     };
@@ -202,7 +199,7 @@ impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
   }
 }
 
-async fn snapshot_from_lockfile(
+fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   _api: &dyn NpmRegistryApi,
   patch_packages: &WorkspaceNpmPatchPackages,
@@ -210,7 +207,7 @@ async fn snapshot_from_lockfile(
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
       patch_packages: &patch_packages.0,
-      lockfile: &*lockfile.lock(),
+      lockfile: &lockfile.lock(),
       default_tarball_url: &DefaultTarballUrl,
     },
   )?;
