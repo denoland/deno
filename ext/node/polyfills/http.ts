@@ -138,6 +138,7 @@ class FakeSocket extends EventEmitter {
       remotePort?: number | undefined;
       remoteAddress?: string | undefined;
       reader?: ReadableStreamDefaultReader | undefined;
+      signal?: AbortSignal | undefined;
     } = {},
   ) {
     super();
@@ -147,6 +148,10 @@ class FakeSocket extends EventEmitter {
     this.reader = opts.reader;
     this.writable = true;
     this.readable = true;
+    opts.signal?.addEventListener("abort", () => {
+      this.emit("error", opts.signal?.reason ?? new Error("aborted"));
+      this.emit("close");
+    }, { once: true });
   }
 
   setKeepAlive() {}
@@ -1494,7 +1499,7 @@ export const ServerResponse = function (
   this._readable = readable;
   this._resolve = resolve;
   this.socket = socket;
-
+  this.socket?.on("close", () => this.end());
   this._header = "";
 } as unknown as ServerResponseStatic;
 
@@ -1798,6 +1803,11 @@ export class IncomingMessageForServer extends NodeReadable {
     this.socket = socket;
     this.upgrade = null;
     this.rawHeaders = [];
+    socket?.on("error", (e) => {
+      if (this.listenerCount("error") > 0) {
+        this.emit("error", e);
+      }
+    });
   }
 
   get aborted() {
@@ -1922,6 +1932,7 @@ export class ServerImpl extends EventEmitter {
         remotePort: info.remoteAddr.port,
         encrypted: this._encrypted,
         reader: request.body?.getReader(),
+        signal: request.signal,
       });
 
       const req = new IncomingMessageForServer(socket);
