@@ -7,6 +7,7 @@ use deno_cache_dir::file_fetcher::File;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::resolve_url_or_path;
 use deno_lib::standalone::binary::SerializedWorkspaceResolverImportMap;
 use deno_runtime::WorkerExecutionMode;
@@ -55,7 +56,7 @@ pub async fn run_script(
   check_permission_before_script(&flags);
 
   if let Some(watch_flags) = watch {
-    return run_with_watch(mode, flags, watch_flags).await;
+    return run_with_watch(mode, flags, watch_flags).boxed_local().await;
   }
 
   // TODO(bartlomieju): actually I think it will also fail if there's an import
@@ -165,6 +166,7 @@ async fn run_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
 
   Ok(0)

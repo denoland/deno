@@ -61,6 +61,8 @@ pub async fn kernel(
   let connection_filepath = jupyter_flags.conn_file.unwrap();
 
   let factory = CliFactory::from_flags(flags);
+  let registry_provider =
+    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api());
   let cli_options = factory.cli_options()?;
   let main_module =
     resolve_url_or_path("./$deno$jupyter.mts", cli_options.initial_cwd())
@@ -123,6 +125,7 @@ pub async fn kernel(
     worker,
     main_module,
     test_event_receiver,
+    registry_provider,
   )
   .await?;
   struct TestWriter(UnboundedSender<StreamContent>);

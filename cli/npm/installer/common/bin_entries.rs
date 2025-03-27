@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmPackageId;
 use deno_npm::NpmResolutionPackage;
 
@@ -14,9 +15,9 @@ use deno_npm::NpmResolutionPackage;
 pub struct BinEntries<'a> {
   /// Packages that have colliding bin names
   collisions: HashSet<&'a NpmPackageId>,
-  seen_names: HashMap<&'a str, &'a NpmPackageId>,
+  seen_names: HashMap<String, &'a NpmPackageId>,
   /// The bin entries
-  entries: Vec<(&'a NpmResolutionPackage, PathBuf)>,
+  entries: Vec<(&'a NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)>,
   sorted: bool,
 }
 
@@ -95,26 +96,31 @@ impl<'a> BinEntries<'a> {
   }
 
   /// Add a new bin entry (package with a bin field)
-  pub fn add(
+  pub fn add<'b>(
     &mut self,
     package: &'a NpmResolutionPackage,
+    extra: &'b NpmPackageExtraInfo,
     package_path: PathBuf,
   ) {
     self.sorted = false;
     // check for a new collision, if we haven't already
     // found one
-    match package.bin.as_ref().unwrap() {
+    match extra.bin.as_ref().unwrap() {
       deno_npm::registry::NpmPackageVersionBinEntry::String(_) => {
         let bin_name = default_bin_name(package);
 
-        if let Some(other) = self.seen_names.insert(bin_name, &package.id) {
+        if let Some(other) =
+          self.seen_names.insert(bin_name.to_string(), &package.id)
+        {
           self.collisions.insert(&package.id);
           self.collisions.insert(other);
         }
       }
       deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
         for name in entries.keys() {
-          if let Some(other) = self.seen_names.insert(name, &package.id) {
+          if let Some(other) =
+            self.seen_names.insert(name.to_string(), &package.id)
+          {
             self.collisions.insert(&package.id);
             self.collisions.insert(other);
           }
@@ -122,7 +128,7 @@ impl<'a> BinEntries<'a> {
       }
     }
 
-    self.entries.push((package, package_path));
+    self.entries.push((package, package_path, extra.clone()));
   }
 
   fn for_each_entry(
@@ -134,6 +140,7 @@ impl<'a> BinEntries<'a> {
     ) -> Result<(), BinEntriesError>,
     mut new: impl FnMut(
       &NpmResolutionPackage,
+      &NpmPackageExtraInfo,
       &Path,
       &str, // bin name
       &str, // bin script
@@ -149,11 +156,11 @@ impl<'a> BinEntries<'a> {
 
     let mut seen = HashSet::new();
 
-    for (package, package_path) in &self.entries {
+    for (package, package_path, extra) in &self.entries {
       if !filter(package) {
         continue;
       }
-      if let Some(bin_entries) = &package.bin {
+      if let Some(bin_entries) = &extra.bin {
         match bin_entries {
           deno_npm::registry::NpmPackageVersionBinEntry::String(script) => {
             let name = default_bin_name(package);
@@ -162,7 +169,7 @@ impl<'a> BinEntries<'a> {
               // we already set up a bin entry with this name
               continue;
             }
-            new(package, package_path, name, script)?;
+            new(package, extra, package_path, name, script)?;
           }
           deno_npm::registry::NpmPackageVersionBinEntry::Map(entries) => {
             for (name, script) in entries {
@@ -171,7 +178,7 @@ impl<'a> BinEntries<'a> {
                 // we already set up a bin entry with this name
                 continue;
               }
-              new(package, package_path, name, script)?;
+              new(package, extra, package_path, name, script)?;
             }
           }
         }
@@ -191,7 +198,7 @@ impl<'a> BinEntries<'a> {
       .for_each_entry(
         snapshot,
         |_, _| Ok(()),
-        |_, package_path, name, script| {
+        |_, _, package_path, name, script| {
           bins.push((name.to_string(), package_path.join(script)));
           Ok(())
         },
@@ -227,9 +234,10 @@ impl<'a> BinEntries<'a> {
         }
         Ok(())
       },
-      |package, package_path, name, script| {
+      |package, extra, package_path, name, script| {
         let outcome = set_up_bin_entry(
           package,
+          extra,
           name,
           script,
           package_path,
@@ -282,7 +290,7 @@ impl<'a> BinEntries<'a> {
 // that has a bin entry, then sort them by depth
 fn sort_by_depth(
   snapshot: &NpmResolutionSnapshot,
-  bin_entries: &mut [(&NpmResolutionPackage, PathBuf)],
+  bin_entries: &mut [(&NpmResolutionPackage, PathBuf, NpmPackageExtraInfo)],
   collisions: &mut HashSet<&NpmPackageId>,
 ) {
   enum Entry<'a> {
@@ -328,7 +336,7 @@ fn sort_by_depth(
     }
   }
 
-  bin_entries.sort_by(|(a, _), (b, _)| {
+  bin_entries.sort_by(|(a, _, _), (b, _, _)| {
     depths
       .get(&a.id)
       .unwrap_or(&u64::MAX)
@@ -339,6 +347,7 @@ fn sort_by_depth(
 
 pub fn set_up_bin_entry<'a>(
   package: &'a NpmResolutionPackage,
+  #[allow(unused_variables)] extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
   #[allow(unused_variables)] bin_script: &str,
   #[allow(unused_variables)] package_path: &'a Path,
@@ -353,6 +362,7 @@ pub fn set_up_bin_entry<'a>(
   {
     symlink_bin_entry(
       package,
+      extra,
       bin_name,
       bin_script,
       package_path,
@@ -417,6 +427,7 @@ pub enum EntrySetupOutcome<'a> {
     package_path: &'a Path,
     entrypoint: PathBuf,
     package: &'a NpmResolutionPackage,
+    extra: &'a NpmPackageExtraInfo,
   },
   Success,
 }
@@ -438,6 +449,7 @@ impl EntrySetupOutcome<'_> {
 #[cfg(unix)]
 fn symlink_bin_entry<'a>(
   package: &'a NpmResolutionPackage,
+  extra: &'a NpmPackageExtraInfo,
   bin_name: &'a str,
   bin_script: &str,
   package_path: &'a Path,
@@ -461,6 +473,7 @@ fn symlink_bin_entry<'a>(
       package_path,
       entrypoint: original,
       package,
+      extra,
     });
   }
 

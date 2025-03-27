@@ -21,6 +21,7 @@ use deno_semver::jsr::JsrDepPackageReq;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
+use deno_semver::StackString;
 use deno_semver::VersionReq;
 
 use crate::args::CliLockfile;
@@ -257,16 +258,47 @@ fn populate_lockfile_from_snapshot(
     let dependencies = pkg
       .dependencies
       .iter()
-      .map(|(name, id)| NpmPackageDependencyLockfileInfo {
-        name: name.clone(),
-        id: id.as_serialized(),
+      .filter_map(|(name, id)| {
+        if pkg.optional_dependencies.contains(name) {
+          None
+        } else {
+          Some(NpmPackageDependencyLockfileInfo {
+            name: name.clone(),
+            id: id.as_serialized(),
+          })
+        }
+      })
+      .collect();
+
+    let optional_dependencies = pkg
+      .optional_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
       })
       .collect();
 
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg.dist.as_ref().map(|d| d.integrity().for_lockfile()),
+      integrity: pkg
+        .dist
+        .as_ref()
+        .and_then(|dist| dist.integrity().for_lockfile()),
       dependencies,
+      optional_dependencies,
+      os: pkg.system.os.clone(),
+      cpu: pkg.system.cpu.clone(),
+      tarball: pkg
+        .dist
+        .as_ref()
+        .map(|dist| StackString::from_str(&dist.tarball)),
+      deprecated: pkg.is_deprecated,
+      bin: pkg.has_bin,
+      scripts: pkg.has_scripts,
     }
   }
 

@@ -1,18 +1,20 @@
 {
-  "version": "4",
+  "version": "5",
   "specifiers": {
     "npm:@denotest/add@1": "1.0.0",
     "npm:@denotest/peer-dep-specific-constraint@*": "1.0.0_@denotest+add@1.0.0"
   },
   "npm": {
     "@denotest/add@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "[WILDLINE]",
+      "tarball": "http://localhost:4260/@denotest/add/1.0.0.tgz"
     },
     "@denotest/peer-dep-specific-constraint@1.0.0_@denotest+add@1.0.0": {
       "integrity": "[WILDLINE]",
       "dependencies": [
         "@denotest/add"
-      ]
+      ],
+      "tarball": "http://localhost:4260/@denotest/peer-dep-specific-constraint/1.0.0.tgz"
     }
   },
   "workspace": {

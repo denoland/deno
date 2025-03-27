@@ -397,14 +397,46 @@ impl CliFactory {
       let workspace_directory = workspace_factory.workspace_directory()?;
       let maybe_external_import_map =
         self.workspace_external_import_map_loader()?.get_or_load()?;
-      CliOptions::from_flags(
+      match CliOptions::from_flags_current_version(
         &self.sys(),
         self.flags.clone(),
         workspace_factory.initial_cwd().clone(),
         maybe_external_import_map,
         workspace_directory.clone(),
-      )
-      .map(Arc::new)
+      ) {
+        Ok(cli_options) => Ok(Arc::new(cli_options)),
+        Err(crate::args::ReadCurrentVersionError::Other(err)) => Err(err),
+        Err(crate::args::ReadCurrentVersionError::NeedsUpgrade) => {
+          let provider = self.npm_registry_info_provider()?.clone();
+          let initial_cwd = workspace_factory.initial_cwd().clone();
+          let flags = self.flags.clone();
+          let sys = self.sys();
+          let maybe_external_import_map = maybe_external_import_map.cloned();
+          let workspace_directory = workspace_directory.clone();
+          std::thread::spawn(move || {
+            let runtime = deno_runtime::tokio_util::create_basic_runtime();
+            runtime
+              .block_on(async move {
+                let sys = sys;
+                let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
+                  provider.as_npm_registry_api(),
+                ));
+                CliOptions::from_flags(
+                  &sys,
+                  flags,
+                  initial_cwd,
+                  maybe_external_import_map.as_ref(),
+                  workspace_directory,
+                  &adapter,
+                )
+                .await
+              })
+              .map(Arc::new)
+          })
+          .join()
+          .unwrap()
+        }
+      }
     })
   }
 
@@ -543,11 +575,11 @@ impl CliFactory {
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.services.npm_cache.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
+      let cache_setting = self.flags.cache_setting();
       Ok(Arc::new(CliNpmCache::new(
         self.npm_cache_dir()?.clone(),
         self.sys(),
-        NpmCacheSetting::from_cache_setting(&cli_options.cache_setting()),
+        NpmCacheSetting::from_cache_setting(&cache_setting),
         self.npmrc()?.clone(),
       )))
     })
@@ -564,6 +596,14 @@ impl CliFactory {
         self.text_only_progress_bar().clone(),
       ))
     })
+  }
+
+  pub fn npmrc(&self) -> Result<&Arc<ResolvedNpmRc>, AnyError> {
+    Ok(self.workspace_factory()?.npmrc()?)
+  }
+
+  pub fn npm_resolution(&self) -> Result<&Arc<NpmResolutionCell>, AnyError> {
+    Ok(self.resolver_factory()?.npm_resolution())
   }
 
   pub fn npm_graph_resolver(
@@ -599,6 +639,7 @@ impl CliFactory {
         Arc::new(NpmInstallDepsProvider::from_workspace(
           cli_options.workspace(),
         )),
+        Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
         self.npm_resolution()?.clone(),
         self.npm_resolution_initializer()?.clone(),
         self.npm_resolution_installer()?.clone(),
@@ -628,10 +669,6 @@ impl CliFactory {
           self.npmrc()?.clone(),
         )))
       })
-  }
-
-  pub fn npm_resolution(&self) -> Result<&Arc<NpmResolutionCell>, AnyError> {
-    Ok(self.resolver_factory()?.npm_resolution())
   }
 
   pub fn npm_resolution_initializer(
@@ -677,7 +714,7 @@ impl CliFactory {
     })
   }
 
-  fn workspace_npm_patch_packages(
+  pub fn workspace_npm_patch_packages(
     &self,
   ) -> Result<&Arc<WorkspaceNpmPatchPackages>, AnyError> {
     self
@@ -710,53 +747,6 @@ impl CliFactory {
         self.npm_cache_http_client().clone(),
         self.sys(),
         self.npmrc()?.clone(),
-      )))
-    })
-  }
-
-  pub fn npmrc(&self) -> Result<&Arc<ResolvedNpmRc>, AnyError> {
-    Ok(self.workspace_factory()?.npmrc()?)
-  }
-
-  pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
-    self.services.resolver_factory.get_or_try_init(|| {
-      Ok(Arc::new(CliResolverFactory::new(
-        self.workspace_factory()?.clone(),
-        ResolverFactoryOptions {
-          node_resolver_options: NodeResolverOptions {
-            conditions_from_resolution_mode: Default::default(),
-            typescript_version: Some(
-              deno_semver::Version::parse_standard(
-                deno_lib::version::DENO_VERSION_INFO.typescript,
-              )
-              .unwrap(),
-            ),
-          },
-          node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
-          npm_system_info: self.flags.subcommand.npm_system_info(),
-          specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
-            cli_options: self.cli_options()?.clone(),
-            eszip_module_loader_provider: self
-              .eszip_module_loader_provider()?
-              .clone(),
-            file_fetcher: self.file_fetcher()?.clone(),
-            workspace_external_import_map_loader: self
-              .workspace_external_import_map_loader()?
-              .clone(),
-          })),
-          unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
-          package_json_cache: Some(Arc::new(
-            node_resolver::PackageJsonThreadLocalCache,
-          )),
-          package_json_dep_resolution: match &self.flags.subcommand {
-            DenoSubcommand::Publish(_) => {
-              // the node_modules directory is not published to jsr, so resolve
-              // dependencies via the package.json rather than using node resolution
-              Some(deno_resolver::workspace::PackageJsonDepResolution::Enabled)
-            }
-            _ => None,
-          },
-        },
       )))
     })
   }
@@ -963,28 +953,31 @@ impl CliFactory {
     self
       .services
       .type_checker
-      .get_or_try_init_async(async {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(TypeChecker::new(
-          self.caches()?.clone(),
-          Arc::new(TypeCheckingCjsTracker::new(
-            self.cjs_tracker()?.clone(),
-            self.module_info_cache()?.clone(),
-          )),
-          cli_options.clone(),
-          self.module_graph_builder().await?.clone(),
-          self.node_resolver().await?.clone(),
-          self.npm_installer_if_managed()?.cloned(),
-          self.npm_resolver().await?.clone(),
-          self.sys(),
-          self.tsconfig_resolver()?.clone(),
-          if cli_options.code_cache_enabled() {
-            Some(self.code_cache()?.clone())
-          } else {
-            None
-          },
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(TypeChecker::new(
+            self.caches()?.clone(),
+            Arc::new(TypeCheckingCjsTracker::new(
+              self.cjs_tracker()?.clone(),
+              self.module_info_cache()?.clone(),
+            )),
+            cli_options.clone(),
+            self.module_graph_builder().await?.clone(),
+            self.node_resolver().await?.clone(),
+            self.npm_installer_if_managed()?.cloned(),
+            self.npm_resolver().await?.clone(),
+            self.sys(),
+            self.tsconfig_resolver()?.clone(),
+            if cli_options.code_cache_enabled() {
+              Some(self.code_cache()?.clone())
+            } else {
+              None
+            },
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -994,28 +987,31 @@ impl CliFactory {
     self
       .services
       .module_graph_builder
-      .get_or_try_init_async(async {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(ModuleGraphBuilder::new(
-          self.caches()?.clone(),
-          self.cjs_tracker()?.clone(),
-          cli_options.clone(),
-          self.file_fetcher()?.clone(),
-          self.global_http_cache()?.clone(),
-          self.in_npm_pkg_checker()?.clone(),
-          cli_options.maybe_lockfile().cloned(),
-          self.maybe_file_watcher_reporter().clone(),
-          self.module_info_cache()?.clone(),
-          self.npm_graph_resolver()?.clone(),
-          self.npm_installer_if_managed()?.cloned(),
-          self.npm_resolver().await?.clone(),
-          self.parsed_source_cache().clone(),
-          self.resolver().await?.clone(),
-          self.root_permissions_container()?.clone(),
-          self.sys(),
-          self.tsconfig_resolver()?.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(ModuleGraphBuilder::new(
+            self.caches()?.clone(),
+            self.cjs_tracker()?.clone(),
+            cli_options.clone(),
+            self.file_fetcher()?.clone(),
+            self.global_http_cache()?.clone(),
+            self.in_npm_pkg_checker()?.clone(),
+            cli_options.maybe_lockfile().cloned(),
+            self.maybe_file_watcher_reporter().clone(),
+            self.module_info_cache()?.clone(),
+            self.npm_graph_resolver()?.clone(),
+            self.npm_installer_if_managed()?.cloned(),
+            self.npm_resolver().await?.clone(),
+            self.parsed_source_cache().clone(),
+            self.resolver().await?.clone(),
+            self.root_permissions_container()?.clone(),
+            self.sys(),
+            self.tsconfig_resolver()?.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -1025,15 +1021,18 @@ impl CliFactory {
     self
       .services
       .module_graph_creator
-      .get_or_try_init_async(async {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(ModuleGraphCreator::new(
-          cli_options.clone(),
-          self.npm_installer_if_managed()?.cloned(),
-          self.module_graph_builder().await?.clone(),
-          self.type_checker().await?.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(ModuleGraphCreator::new(
+            cli_options.clone(),
+            self.npm_installer_if_managed()?.cloned(),
+            self.module_graph_builder().await?.clone(),
+            self.type_checker().await?.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -1043,13 +1042,16 @@ impl CliFactory {
     self
       .services
       .main_graph_container
-      .get_or_try_init_async(async {
-        Ok(Arc::new(MainModuleGraphContainer::new(
-          self.cli_options()?.clone(),
-          self.module_load_preparer().await?.clone(),
-          self.root_permissions_container()?.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          Ok(Arc::new(MainModuleGraphContainer::new(
+            self.cli_options()?.clone(),
+            self.module_load_preparer().await?.clone(),
+            self.root_permissions_container()?.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -1071,16 +1073,19 @@ impl CliFactory {
     self
       .services
       .module_load_preparer
-      .get_or_try_init_async(async {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(ModuleLoadPreparer::new(
-          cli_options.clone(),
-          cli_options.maybe_lockfile().cloned(),
-          self.module_graph_builder().await?.clone(),
-          self.text_only_progress_bar().clone(),
-          self.type_checker().await?.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(ModuleLoadPreparer::new(
+            cli_options.clone(),
+            cli_options.maybe_lockfile().cloned(),
+            self.module_graph_builder().await?.clone(),
+            self.text_only_progress_bar().clone(),
+            self.type_checker().await?.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -1188,7 +1193,7 @@ impl CliFactory {
     };
     let node_code_translator = self.node_code_translator().await?;
     let cjs_tracker = self.cjs_tracker()?.clone();
-    let pkg_json_resolver = self.pkg_json_resolver()?.clone();
+    let pkg_json_resolver = self.pkg_json_resolver()?;
     let npm_req_resolver = self.npm_req_resolver()?;
     let workspace_factory = self.workspace_factory()?;
     let npm_registry_permission_checker = {
@@ -1251,7 +1256,7 @@ impl CliFactory {
       Box::new(module_loader_factory),
       node_resolver.clone(),
       create_npm_process_state_provider(npm_resolver),
-      pkg_json_resolver,
+      pkg_json_resolver.clone(),
       self.root_cert_store_provider().clone(),
       cli_options.resolve_storage_key_resolver(),
       self.sys(),
@@ -1270,7 +1275,7 @@ impl CliFactory {
     ))
   }
 
-  fn create_lib_main_worker_options(
+  pub fn create_lib_main_worker_options(
     &self,
   ) -> Result<LibMainWorkerOptions, AnyError> {
     let cli_options = self.cli_options()?;
@@ -1347,6 +1352,49 @@ impl CliFactory {
       create_hmr_runner,
       create_coverage_collector,
       default_npm_caching_strategy: cli_options.default_npm_caching_strategy(),
+    })
+  }
+
+  pub fn resolver_factory(&self) -> Result<&Arc<CliResolverFactory>, AnyError> {
+    self.services.resolver_factory.get_or_try_init(|| {
+      Ok(Arc::new(CliResolverFactory::new(
+        self.workspace_factory()?.clone(),
+        ResolverFactoryOptions {
+          node_resolver_options: NodeResolverOptions {
+            conditions_from_resolution_mode: Default::default(),
+            typescript_version: Some(
+              deno_semver::Version::parse_standard(
+                deno_lib::version::DENO_VERSION_INFO.typescript,
+              )
+              .unwrap(),
+            ),
+          },
+          node_resolution_cache: Some(Arc::new(NodeResolutionThreadLocalCache)),
+          npm_system_info: self.flags.subcommand.npm_system_info(),
+          specified_import_map: Some(Box::new(CliSpecifiedImportMapProvider {
+            cli_options: self.cli_options()?.clone(),
+            eszip_module_loader_provider: self
+              .eszip_module_loader_provider()?
+              .clone(),
+            file_fetcher: self.file_fetcher()?.clone(),
+            workspace_external_import_map_loader: self
+              .workspace_external_import_map_loader()?
+              .clone(),
+          })),
+          unstable_sloppy_imports: self.flags.unstable_config.sloppy_imports,
+          package_json_cache: Some(Arc::new(
+            node_resolver::PackageJsonThreadLocalCache,
+          )),
+          package_json_dep_resolution: match &self.flags.subcommand {
+            DenoSubcommand::Publish(_) => {
+              // the node_modules directory is not published to jsr, so resolve
+              // dependencies via the package.json rather than using node resolution
+              Some(deno_resolver::workspace::PackageJsonDepResolution::Enabled)
+            }
+            _ => None,
+          },
+        },
+      )))
     })
   }
 }

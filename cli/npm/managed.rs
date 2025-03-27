@@ -103,9 +103,7 @@ impl NpmResolutionInitializer {
       &self.npm_registry_info_provider,
       snapshot_option,
       &self.patch_packages,
-    )
-    .await
-    {
+    ) {
       Ok(maybe_snapshot) => {
         if let Some(snapshot) = maybe_snapshot {
           self
@@ -150,7 +148,7 @@ impl ResolveSnapshotError {
   }
 }
 
-async fn resolve_snapshot(
+fn resolve_snapshot(
   registry_info_provider: &Arc<CliNpmRegistryInfoProvider>,
   snapshot: CliNpmResolverManagedSnapshotOption,
   patch_packages: &WorkspaceNpmPatchPackages,
@@ -164,7 +162,6 @@ async fn resolve_snapshot(
           &registry_info_provider.as_npm_registry_api(),
           patch_packages,
         )
-        .await
         .map_err(|source| ResolveSnapshotError {
           lockfile_path: lockfile.filename.clone(),
           source,
@@ -182,34 +179,37 @@ async fn resolve_snapshot(
 pub enum SnapshotFromLockfileError {
   #[error(transparent)]
   #[class(inherit)]
-  IncompleteError(
-    #[from] deno_npm::resolution::IncompleteSnapshotFromLockfileError,
-  ),
-  #[error(transparent)]
-  #[class(inherit)]
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
-async fn snapshot_from_lockfile(
+struct DefaultTarballUrl;
+
+impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
+  fn default_tarball_url(&self, id: &deno_npm::NpmPackageId) -> String {
+    let scope = id.nv.scope();
+    let package_name = if let Some(scope) = scope {
+      id.nv.name.strip_prefix(scope).unwrap().to_string()
+    } else {
+      id.nv.name.to_string()
+    };
+    format!(
+      "https://registry.npmjs.org/{}/-/{}-{}.tgz",
+      id.nv.name, package_name, id.nv.version
+    )
+  }
+}
+
+fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
-  api: &dyn NpmRegistryApi,
+  _api: &dyn NpmRegistryApi,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
-  let (incomplete_snapshot, skip_integrity_check) = {
-    let lock = lockfile.lock();
-    (
-      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
-      lock.overwrite,
-    )
-  };
   let snapshot = deno_npm::resolution::snapshot_from_lockfile(
     deno_npm::resolution::SnapshotFromLockfileParams {
-      incomplete_snapshot,
-      api,
       patch_packages: &patch_packages.0,
-      skip_integrity_check,
+      lockfile: &lockfile.lock(),
+      default_tarball_url: &DefaultTarballUrl,
     },
-  )
-  .await?;
+  )?;
   Ok(snapshot)
 }

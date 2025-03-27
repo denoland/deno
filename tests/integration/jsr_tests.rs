@@ -126,8 +126,8 @@ error: Type checking failed.
   );
 }
 
-#[test]
-fn specifiers_in_lockfile() {
+#[tokio::test]
+async fn specifiers_in_lockfile() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -146,7 +146,7 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,
@@ -254,8 +254,8 @@ fn reload_info_not_found_cache_but_exists_remote() {
     .assert_exit_code(0);
 }
 
-#[test]
-fn lockfile_bad_package_integrity() {
+#[tokio::test]
+async fn lockfile_bad_package_integrity() {
   let test_context = TestContextBuilder::for_jsr().use_temp_cwd().build();
   let temp_dir = test_context.temp_dir();
 
@@ -274,7 +274,7 @@ console.log(version);"#,
     .assert_matches_text("0.1.1\n");
 
   let lockfile_path = temp_dir.path().join("deno.lock");
-  let mut lockfile = Lockfile::new(NewLockfileOptions {
+  let mut lockfile = Lockfile::new_current_version(NewLockfileOptions {
     file_path: lockfile_path.to_path_buf(),
     content: &lockfile_path.read_to_string(),
     overwrite: false,

@@ -161,6 +161,9 @@ fn verify_tarball_integrity(
         integrity: integrity.to_string(),
       });
     }
+    NpmPackageVersionDistInfoIntegrity::None => {
+      return Ok(());
+    }
   };
 
   if tarball_checksum != *expected_checksum {
