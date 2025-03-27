@@ -74,6 +74,7 @@ declare class GPUAdapterInfo {
   readonly description: string;
   readonly subgroupMinSize: number;
   readonly subgroupMaxSize: number;
+  readonly isFallbackAdapter: boolean;
 }
 
 /**
@@ -164,7 +165,6 @@ declare class GPUAdapter {
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly info: GPUAdapterInfo;
-  readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
