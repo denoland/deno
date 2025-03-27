@@ -188,13 +188,13 @@ pub async fn info(
       info_flags.json,
       cli_options.location_flag().as_ref(),
     )
-    .await?;
+    ?;
   }
   Ok(())
 }
 
 #[allow(clippy::print_stdout)]
-async fn print_cache_info(
+fn print_cache_info(
   factory: &CliFactory,
   json: bool,
   location: Option<&deno_core::url::Url>,

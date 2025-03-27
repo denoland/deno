@@ -1512,7 +1512,7 @@ impl ConfigData {
     let vendor_dir = member_dir.workspace.vendor_dir_path().cloned();
     // todo(dsherret): add caching so we don't load this so many times
     let lockfile =
-      resolve_lockfile_from_workspace(&member_dir, &npm_package_info_provider)
+      resolve_lockfile_from_workspace(&member_dir, npm_package_info_provider)
         .await
         .map(Arc::new);
     if let Some(lockfile) = &lockfile {

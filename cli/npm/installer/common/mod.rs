@@ -96,7 +96,7 @@ impl super::common::NpmPackageExtraInfoProvider for ExtraInfoProvider {
         .map_err(JsErrorBox::from_err)?;
       let patched_packages = HashMap::new();
       let version_info = package_info
-        .version_info(&package_nv, &patched_packages)
+        .version_info(package_nv, &patched_packages)
         .map_err(JsErrorBox::from_err)?;
       Ok(NpmPackageExtraInfo {
         deprecated: version_info.deprecated.clone(),

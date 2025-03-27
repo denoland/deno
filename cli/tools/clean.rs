@@ -30,7 +30,7 @@ impl CleanState {
   }
 }
 
-pub async fn clean(flags: Arc<Flags>) -> Result<(), AnyError> {
+pub fn clean(flags: Arc<Flags>) -> Result<(), AnyError> {
   let factory = CliFactory::from_flags(flags);
   let deno_dir = factory.deno_dir()?;
   if deno_dir.root.exists() {

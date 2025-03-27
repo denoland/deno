@@ -315,7 +315,7 @@ impl std::fmt::Display for AddCommandName {
   }
 }
 
-async fn load_configs(
+fn load_configs(
   flags: &Arc<Flags>,
   has_jsr_specifiers: impl FnOnce() -> bool,
 ) -> Result<(CliFactory, Option<ConfigUpdater>, Option<ConfigUpdater>), AnyError>
@@ -379,8 +379,7 @@ pub async fn add(
   let (cli_factory, mut npm_config, mut deno_config) =
     load_configs(&flags, || {
       add_flags.packages.iter().any(|s| s.starts_with("jsr:"))
-    })
-    .await?;
+    })?;
 
   if let Some(deno) = &deno_config {
     if deno.obj().get("importMap").is_some() {
@@ -821,7 +820,7 @@ pub async fn remove(
   flags: Arc<Flags>,
   remove_flags: RemoveFlags,
 ) -> Result<(), AnyError> {
-  let (_, npm_config, deno_config) = load_configs(&flags, || false).await?;
+  let (_, npm_config, deno_config) = load_configs(&flags, || false)?;
 
   let mut configs = [npm_config, deno_config];
 

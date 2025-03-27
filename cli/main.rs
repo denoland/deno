@@ -135,7 +135,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::check::check(flags, check_flags).await
     }),
     DenoSubcommand::Clean => spawn_subcommand(async move {
-      tools::clean::clean(flags).await
+      tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
       if compile_flags.eszip {
@@ -145,7 +145,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
-      tools::coverage::cover_files(flags, coverage_flags).await
+      tools::coverage::cover_files(flags, coverage_flags)
     }),
     DenoSubcommand::Fmt(fmt_flags) => {
       spawn_subcommand(
