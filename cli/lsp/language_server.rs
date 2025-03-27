@@ -171,8 +171,15 @@ pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
   pub documents: Arc<Documents>,
-  pub document_modules: Arc<DocumentModules>,
+  pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
+}
+
+impl Drop for StateSnapshot {
+  fn drop(&mut self) {
+    drop(std::mem::take(&mut self.document_modules.documents));
+    self.document_modules.remove_expired_modules();
+  }
 }
 
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
@@ -661,7 +668,7 @@ impl Inner {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
       documents: Arc::new(self.documents.clone()),
-      document_modules: Arc::new(self.document_modules.clone()),
+      document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
     })
   }
@@ -1344,7 +1351,7 @@ impl Inner {
       return;
     }
     self.diagnostics_state.clear2(&params.text_document.uri);
-    let document = match self
+    let is_diagnosable = match self
       .document_modules
       .close_document(&params.text_document.uri)
     {
@@ -1354,7 +1361,7 @@ impl Inner {
         return;
       }
     };
-    if document.is_diagnosable() {
+    if is_diagnosable {
       self.refresh_dep_info().await;
       self.project_changed2(
         [(&params.text_document.uri, ChangeKind::Closed)],
@@ -4452,6 +4459,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
+    self.project_changed2([], true);
     self.project_changed([], true);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();

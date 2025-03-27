@@ -14,6 +14,7 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::Weak;
 
 use dashmap::DashMap;
 use deno_ast::swc::ecma_visit::VisitWith;
@@ -25,6 +26,7 @@ use deno_core::futures::future;
 use deno_core::futures::future::Shared;
 use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
+use deno_core::parking_lot::RwLock;
 use deno_core::resolve_url;
 use deno_core::url::Url;
 use deno_core::ModuleSpecifier;
@@ -45,6 +47,8 @@ use node_resolver::ResolutionMode;
 use once_cell::sync::Lazy;
 use serde::Serialize;
 use tower_lsp::lsp_types as lsp;
+use weak_table::PtrWeakKeyHashMap;
+use weak_table::WeakValueHashMap;
 
 use super::cache::calculate_fs_version;
 use super::cache::calculate_fs_version_at_path;
@@ -141,6 +145,17 @@ impl OpenDocument {
         | LanguageId::Jsx
         | LanguageId::TypeScript
         | LanguageId::Tsx
+    )
+  }
+
+  pub fn is_importable(&self) -> bool {
+    matches!(
+      self.language_id,
+      LanguageId::JavaScript
+        | LanguageId::Jsx
+        | LanguageId::TypeScript
+        | LanguageId::Tsx
+        | LanguageId::Json
     )
   }
 
@@ -326,6 +341,10 @@ impl ServerDocument {
     media_type_is_diagnosable(self.media_type)
   }
 
+  pub fn is_importable(&self) -> bool {
+    media_type_is_importable(self.media_type)
+  }
+
   pub fn is_file_like(&self) -> bool {
     uri_is_file_like(&self.uri)
   }
@@ -422,6 +441,13 @@ impl Document2 {
     match self {
       Self::Open(d) => d.is_diagnosable(),
       Self::Server(d) => d.is_diagnosable(),
+    }
+  }
+
+  pub fn is_importable(&self) -> bool {
+    match self {
+      Self::Open(d) => d.is_importable(),
+      Self::Server(d) => d.is_importable(),
     }
   }
 
@@ -614,6 +640,10 @@ pub struct DocumentModule {
 }
 
 impl DocumentModule {
+  pub fn new(specifier: Arc<Url>, document: &Document2) -> Self {
+    todo!()
+  }
+
   pub fn dependency_at_position(
     &self,
     position: &lsp::Position,
@@ -651,6 +681,70 @@ impl DocumentModule {
 
 type DepInfoByScope = BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>;
 
+#[derive(Debug, Default)]
+struct WeakDocumentModuleMap {
+  open: RwLock<PtrWeakKeyHashMap<Weak<OpenDocument>, Arc<DocumentModule>>>,
+  server: RwLock<PtrWeakKeyHashMap<Weak<ServerDocument>, Arc<DocumentModule>>>,
+  by_specifier: RwLock<WeakValueHashMap<Arc<Url>, Weak<DocumentModule>>>,
+}
+
+impl WeakDocumentModuleMap {
+  fn get(&self, document: &Document2) -> Option<Arc<DocumentModule>> {
+    match document {
+      Document2::Open(d) => self.open.read().get(d).cloned(),
+      Document2::Server(d) => self.server.read().get(d).cloned(),
+    }
+  }
+
+  fn get_for_specifier(&self, specifier: &Url) -> Option<Arc<DocumentModule>> {
+    self.by_specifier.read().get(specifier)
+  }
+
+  fn contains_key(&self, document: &Document2) -> bool {
+    match document {
+      Document2::Open(d) => self.open.read().contains_key(d),
+      Document2::Server(d) => self.server.read().contains_key(d),
+    }
+  }
+
+  fn insert(
+    &self,
+    document: &Document2,
+    module: Arc<DocumentModule>,
+  ) -> Option<Arc<DocumentModule>> {
+    let module = match document {
+      Document2::Open(d) => self.open.write().insert(d.clone(), module)?,
+      Document2::Server(d) => self.server.write().insert(d.clone(), module)?,
+    };
+    self
+      .by_specifier
+      .write()
+      .entry(module.specifier.clone())
+      .or_insert_with(|| module.clone());
+    Some(module)
+  }
+
+  fn insert_for_specifier(&self, specifier: &Url, module: Arc<DocumentModule>) {
+    self
+      .by_specifier
+      .write()
+      .entry(Arc::new(specifier.clone()))
+      .or_insert(module);
+  }
+
+  fn remove_expired(&self) {
+    // IMPORTANT: Maintain this order based on weak ref relations.
+    self.open.write().remove_expired();
+    self.server.write().remove_expired();
+    self.by_specifier.write().remove_expired();
+  }
+}
+
+#[derive(Debug, Default)]
+struct DocumentModuleScopeData {
+  modules_by_document: WeakDocumentModuleMap,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents2,
@@ -659,6 +753,8 @@ pub struct DocumentModules {
   cache: Arc<LspCache>,
   workspace_files: Arc<IndexSet<PathBuf>>,
   dep_info_by_scope: once_cell::sync::OnceCell<Arc<DepInfoByScope>>,
+  modules_unscoped: Arc<WeakDocumentModuleMap>,
+  modules_by_scope: Arc<BTreeMap<Arc<Url>, Arc<WeakDocumentModuleMap>>>,
 }
 
 impl DocumentModules {
@@ -673,6 +769,16 @@ impl DocumentModules {
     self.cache = Arc::new(cache.clone());
     self.resolver = resolver.clone();
     self.workspace_files = workspace_files.clone();
+    self.modules_unscoped = Default::default();
+    self.modules_by_scope = Arc::new(
+      self
+        .config
+        .tree
+        .data_by_scope()
+        .keys()
+        .map(|s| (s.clone(), Default::default()))
+        .collect(),
+    );
     self.dep_info_by_scope = Default::default();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
@@ -695,6 +801,7 @@ impl DocumentModules {
       }
       path.is_file()
     });
+    self.remove_expired_modules();
   }
 
   pub fn open_document(
@@ -705,7 +812,9 @@ impl DocumentModules {
     text: Arc<str>,
   ) -> Arc<OpenDocument> {
     self.dep_info_by_scope = Default::default();
-    self.documents.open(uri, version, language_id, text)
+    let document = self.documents.open(uri, version, language_id, text);
+    self.remove_expired_modules();
+    document
   }
 
   pub fn change_document(
@@ -715,15 +824,64 @@ impl DocumentModules {
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<OpenDocument>, AnyError> {
     self.dep_info_by_scope = Default::default();
-    self.documents.change(uri, version, changes)
+    let document = self.documents.change(uri, version, changes)?;
+    self.remove_expired_modules();
+    Ok(document)
   }
 
-  pub fn close_document(
-    &mut self,
-    uri: &Uri,
-  ) -> Result<Arc<OpenDocument>, AnyError> {
+  /// Returns if the document is diagnosable.
+  pub fn close_document(&mut self, uri: &Uri) -> Result<bool, AnyError> {
     self.dep_info_by_scope = Default::default();
-    self.documents.close(uri)
+    let document = self.documents.close(uri)?;
+    let is_diagnosable = document.is_diagnosable();
+    drop(document);
+    self.remove_expired_modules();
+    Ok(is_diagnosable)
+  }
+
+  fn module_inner(
+    &self,
+    document: &Document2,
+    specifier: Option<&Arc<Url>>,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    if !document.is_importable() {
+      return None;
+    }
+    let modules = self.modules_for_scope(scope)?;
+    if let Some(module) = modules.get(document) {
+      return Some(module);
+    }
+    let specifier = specifier
+      .cloned()
+      .or_else(|| {
+        if let Some(document) = document.server() {
+          match &document.kind {
+            ServerDocumentKind::Fs { .. } => {}
+            ServerDocumentKind::DataUrl { url, .. } => {
+              return Some(url.clone())
+            }
+            ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
+          }
+        }
+        None
+      })
+      .or_else(|| {
+        let uri = document.uri();
+        if !uri.scheme()?.eq_lowercase("file") {
+          return None;
+        }
+        let file_url = uri_to_url(uri);
+        if let Some(remote_specifier) =
+          self.cache.unvendored_specifier(&file_url)
+        {
+          return Some(Arc::new(remote_specifier));
+        }
+        Some(Arc::new(file_url))
+      })?;
+    let module = Arc::new(DocumentModule::new(specifier, document));
+    modules.insert(document, module.clone());
+    Some(module)
   }
 
   pub fn module(
@@ -731,8 +889,7 @@ impl DocumentModules {
     document: &Document2,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    None
+    self.module_inner(document, None, scope)
   }
 
   pub fn module_from_specifier(
@@ -740,23 +897,26 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
+    let modules = self.modules_for_scope(scope)?;
+    if let Some(module) = modules.get_for_specifier(specifier) {
+      return Some(module);
+    }
+    let document =
+      self
+        .documents
+        .get_for_specifier(specifier, scope, &self.cache)?;
+    if let Some(module) =
+      self.module_inner(&document, Some(&Arc::new(specifier.clone())), scope)
+    {
+      modules.insert_for_specifier(specifier, module.clone());
+      return Some(module);
+    }
     None
   }
 
   pub fn primary_module(
     &self,
     document: &Document2,
-  ) -> Option<Arc<DocumentModule>> {
-    // TODO(nayeemrmn): Implement!
-    None
-  }
-
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_from_specifier(
-    &self,
-    specifier: &Url,
-    scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     // TODO(nayeemrmn): Implement!
     None
@@ -821,6 +981,16 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
+  pub fn inspect_module_from_specifier(
+    &self,
+    specifier: &Url,
+    scope: Option<&Url>,
+  ) -> Option<Arc<DocumentModule>> {
+    let modules = self.modules_for_scope(scope)?;
+    modules.get_for_specifier(specifier)
+  }
+
+  /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_primary_module(
     &self,
     document: &Document2,
@@ -836,6 +1006,23 @@ impl DocumentModules {
   ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
     // TODO(nayeemrmn): Implement!
     Default::default()
+  }
+
+  fn modules_for_scope(
+    &self,
+    scope: Option<&Url>,
+  ) -> Option<&Arc<WeakDocumentModuleMap>> {
+    match scope {
+      Some(s) => Some(self.modules_by_scope.get(s)?),
+      None => Some(&self.modules_unscoped),
+    }
+  }
+
+  pub fn remove_expired_modules(&self) {
+    self.modules_unscoped.remove_expired();
+    for modules in self.modules_by_scope.values() {
+      modules.remove_expired();
+    }
   }
 
   pub fn scopes(&self) -> BTreeSet<Option<Arc<Url>>> {
@@ -1136,6 +1323,25 @@ fn media_type_is_diagnosable(media_type: MediaType) -> bool {
       | MediaType::Dts
       | MediaType::Dmts
       | MediaType::Dcts
+  )
+}
+
+fn media_type_is_importable(media_type: MediaType) -> bool {
+  matches!(
+    media_type,
+    MediaType::JavaScript
+      | MediaType::Jsx
+      | MediaType::Mjs
+      | MediaType::Cjs
+      | MediaType::TypeScript
+      | MediaType::Tsx
+      | MediaType::Mts
+      | MediaType::Cts
+      | MediaType::Dts
+      | MediaType::Dmts
+      | MediaType::Dcts
+      | MediaType::Json
+      | MediaType::Wasm
   )
 }
 
