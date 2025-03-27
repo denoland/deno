@@ -807,14 +807,6 @@ impl WeakDocumentModuleMap {
     Some(module)
   }
 
-  fn insert_for_specifier(&self, specifier: &Url, module: Arc<DocumentModule>) {
-    self
-      .by_specifier
-      .write()
-      .entry(Arc::new(specifier.clone()))
-      .or_insert(module);
-  }
-
   fn remove_expired(&self) {
     // IMPORTANT: Maintain this order based on weak ref relations.
     self.open.write().remove_expired();
@@ -884,7 +876,6 @@ impl DocumentModules {
       }
       path.is_file()
     });
-    self.remove_expired_modules();
   }
 
   pub fn open_document(
@@ -896,7 +887,6 @@ impl DocumentModules {
   ) -> Arc<OpenDocument> {
     self.dep_info_by_scope = Default::default();
     let document = self.documents.open(uri, version, language_id, text);
-    self.remove_expired_modules();
     document
   }
 
@@ -908,7 +898,6 @@ impl DocumentModules {
   ) -> Result<Arc<OpenDocument>, AnyError> {
     self.dep_info_by_scope = Default::default();
     let document = self.documents.change(uri, version, changes)?;
-    self.remove_expired_modules();
     Ok(document)
   }
 
@@ -918,7 +907,6 @@ impl DocumentModules {
     let document = self.documents.close(uri)?;
     let is_diagnosable = document.is_diagnosable();
     drop(document);
-    self.remove_expired_modules();
     Ok(is_diagnosable)
   }
 
@@ -987,21 +975,11 @@ impl DocumentModules {
     specifier: &Url,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
-    let modules = self.modules_for_scope(scope)?;
-    if let Some(module) = modules.get_for_specifier(specifier) {
-      return Some(module);
-    }
     let document =
       self
         .documents
         .get_for_specifier(specifier, scope, &self.cache)?;
-    if let Some(module) =
-      self.module_inner(&document, Some(&Arc::new(specifier.clone())), scope)
-    {
-      modules.insert_for_specifier(specifier, module.clone());
-      return Some(module);
-    }
-    None
+    self.module_inner(&document, Some(&Arc::new(specifier.clone())), scope)
   }
 
   pub fn primary_module(

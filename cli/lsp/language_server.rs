@@ -175,13 +175,6 @@ pub struct StateSnapshot {
   pub resolver: Arc<LspResolver>,
 }
 
-impl Drop for StateSnapshot {
-  fn drop(&mut self) {
-    drop(std::mem::take(&mut self.document_modules.documents));
-    self.document_modules.remove_expired_modules();
-  }
-}
-
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 
 /// Used to queue tasks from inside of the language server lock that must be
@@ -3693,10 +3686,13 @@ impl Inner {
           .collect()
       }),
     );
+    self.document_modules.remove_expired_modules();
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn send_diagnostics_update(&self) {
+    // TODO!(nayeemrmn): Remove!
+    return;
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
       url_map: self.url_map.clone(),
