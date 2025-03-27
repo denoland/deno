@@ -29,6 +29,23 @@ Deno.test({
   },
 });
 
+Deno.test({
+  name: "[node/fs] mkdir mode",
+  fn: () => {
+    mkdirSync(tmpDir, { mode: 0o777 });
+    assert(existsSync(tmpDir));
+    assert(Deno.statSync(tmpDir).mode! & 0o777);
+
+    Deno.removeSync(tmpDir);
+
+    mkdirSync(tmpDir, { mode: "0777" });
+    assert(existsSync(tmpDir));
+    assert(Deno.statSync(tmpDir).mode! & 0o777);
+
+    Deno.removeSync(tmpDir);
+  },
+});
+
 Deno.test("[std/node/fs] mkdir callback isn't called twice if error is thrown", async () => {
   const tempDir = await Deno.makeTempDir();
   const subdir = path.join(tempDir, "subdir");

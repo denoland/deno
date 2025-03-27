@@ -97,7 +97,7 @@ x509-parser.workspace = true
 yoke.workspace = true
 
 [target.'cfg(unix)'.dependencies]
-errno = "0.3.8"
+errno = "0.3.10"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
