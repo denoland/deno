@@ -2803,7 +2803,6 @@ impl ApplicableRefactorInfo {
       data: Some(
         serde_json::to_value(RefactorCodeActionData {
           uri: uri.clone(),
-          specifier: specifier.clone(),
           range: *range,
           refactor_name: refactor_name.to_owned(),
           action_name: action.name.clone(),
