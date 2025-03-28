@@ -2011,7 +2011,6 @@ mod tests {
       temp_dir,
       StateSnapshot {
         project_version: 0,
-        documents: Default::default(),
         document_modules: Arc::new(document_modules),
         config: Arc::new(config),
         resolver,

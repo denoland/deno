@@ -646,6 +646,10 @@ impl Documents2 {
       .filter(predicate)
       .collect()
   }
+
+  pub fn remove_server_doc(&self, uri: &Uri) {
+    self.server.remove(uri);
+  }
 }
 
 #[derive(Debug)]
@@ -933,6 +937,13 @@ impl DocumentModules {
     let is_diagnosable = document.is_diagnosable();
     drop(document);
     Ok(is_diagnosable)
+  }
+
+  pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
+    let Some(module) = self.module_for_specifier(specifier, scope) else {
+      return;
+    };
+    self.documents.remove_server_doc(&module.uri);
   }
 
   fn module_inner(

@@ -74,7 +74,6 @@ use super::documents::to_lsp_range;
 use super::documents::Document2;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
-use super::documents::Documents;
 use super::documents::LanguageId;
 use super::jsr::CliJsrSearchApi;
 use super::logging::lsp_log;
@@ -168,7 +167,6 @@ pub struct LanguageServer {
 pub struct StateSnapshot {
   pub project_version: usize,
   pub config: Arc<Config>,
-  pub documents: Arc<Documents>,
   pub document_modules: DocumentModules,
   pub resolver: Arc<LspResolver>,
 }
@@ -222,8 +220,6 @@ pub struct Inner {
   diagnostics_server: diagnostics::DiagnosticsServer,
   /// The collection of documents that the server is currently handling, either
   /// on disk or "open" within the client.
-  // TODO(nayeemrmn): Remove!
-  pub documents: Documents,
   pub document_modules: DocumentModules,
   http_client_provider: Arc<HttpClientProvider>,
   initial_cwd: PathBuf,
@@ -506,7 +502,6 @@ impl Inner {
       CliJsrSearchApi::new(module_registry.file_fetcher.clone());
     let npm_search_api =
       CliNpmSearchApi::new(module_registry.file_fetcher.clone());
-    let documents = Documents::default();
     let config = Config::default();
     let ts_server = Arc::new(TsServer::new(performance.clone()));
     let diagnostics_state = Arc::new(DiagnosticsState::default());
@@ -526,7 +521,6 @@ impl Inner {
       config,
       diagnostics_state,
       diagnostics_server,
-      documents,
       document_modules: Default::default(),
       http_client_provider,
       initial_cwd: initial_cwd.clone(),
@@ -658,7 +652,6 @@ impl Inner {
     Arc::new(StateSnapshot {
       project_version: self.project_version,
       config: Arc::new(self.config.clone()),
-      documents: Arc::new(self.documents.clone()),
       document_modules: self.document_modules.clone(),
       resolver: self.resolver.snapshot(),
     })

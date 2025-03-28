@@ -4388,13 +4388,17 @@ fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<(), deno_core::url::ParseError> {
+  dbg!("release", specifier);
   let _span = super::logging::lsp_tracing_info_span!("op_release").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
     .performance
     .mark_with_args("tsc.op.op_release", specifier);
   let specifier = state.specifier_map.normalize(specifier)?;
-  state.state_snapshot.documents.release(&specifier);
+  state
+    .state_snapshot
+    .document_modules
+    .release(&specifier, state.last_scope.as_deref());
   state.performance.measure(mark);
   Ok(())
 }
@@ -5575,7 +5579,6 @@ mod tests {
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
-      documents: Default::default(),
       document_modules: Arc::new(document_modules),
       config: Arc::new(config),
       resolver,
