@@ -6,6 +6,25 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.6 / 2025.03.28
+
+- feat(unstable/run): ability to lazily load statically analyzable dynamic
+  imports (#28593)
+- fix(ext/crypto): support cross-curve ECDSA sign and verify (#28574)
+- fix(ext/node): `mkdir()` parse file mode (#28609)
+- fix(ext/node): emit 'close' event on ServerResponse object when client aborted
+  the request (#28601)
+- fix(ext/node): propagate 'close' event of IncomingMessage to Socket (#28582)
+- fix(ext/node): sqlite error details (#28431)
+- fix(ext/websocket): cancel in-flight handshake on close() (#28598)
+- fix(npm): improve optional peer dep handling (#28651)
+- fix(npm): reduce occurrences of duplicate packages due to peer dep resolution
+  (#28586)
+- fix(npm): resolve non-version matching peer deps and warn instead (#28616)
+- fix(npm): set up bin entries for package even if it's already downloaded
+  (#28626)
+- perf(install): keep parsed npm package info in memory cache (#28636)
+
 ### 2.2.5 / 2025.03.21
 
 - feat(unstable): basic otel event recording (#28552)
