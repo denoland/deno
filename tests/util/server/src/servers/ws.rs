@@ -62,6 +62,24 @@ pub async fn run_ws_close_server(port: u16) {
   }
 }
 
+pub async fn run_ws_hang_handshake(port: u16) {
+  let mut tcp = get_tcp_listener_stream("ws (hang handshake)", port).await;
+  while let Some(Ok(mut stream)) = tcp.next().await {
+    loop {
+      let mut buf = [0; 1024];
+      let n = stream.read(&mut buf).await;
+
+      if n.is_err() {
+        break;
+      }
+
+      if n.unwrap() == 0 {
+        break;
+      }
+    }
+  }
+}
+
 pub async fn run_wss2_server(port: u16) {
   let mut tls = get_tls_listener_stream(
     "wss2 (tls)",

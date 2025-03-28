@@ -84,6 +84,7 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
@@ -120,6 +121,7 @@ pub async fn run_all_servers() {
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
   let wss_server_fut = ws::run_wss_server(WSS_PORT);
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
@@ -162,6 +164,7 @@ pub async fn run_all_servers() {
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
+    ws_hang_server_fut.boxed_local(),
     another_redirect_server_fut.boxed_local(),
     auth_redirect_server_fut.boxed_local(),
     basic_auth_redirect_server_fut.boxed_local(),
