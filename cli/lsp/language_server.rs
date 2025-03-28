@@ -4816,14 +4816,14 @@ mod tests {
       Default::default(),
       vec![
         (
-          temp_dir.url().join("root1/").unwrap(),
+          Arc::new(temp_dir.url().join("root1/").unwrap()),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.url().join("root2/").unwrap(),
+          Arc::new(temp_dir.url().join("root2/").unwrap()),
           WorkspaceSettings {
             enable: Some(true),
             enable_paths: Some(vec![
@@ -4836,21 +4836,21 @@ mod tests {
           },
         ),
         (
-          temp_dir.url().join("root2/root2.1/").unwrap(),
+          Arc::new(temp_dir.url().join("root2/root2.1/").unwrap()),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()
           },
         ),
         (
-          temp_dir.url().join("root3/").unwrap(),
+          Arc::new(temp_dir.url().join("root3/").unwrap()),
           WorkspaceSettings {
             enable: Some(false),
             ..Default::default()
           },
         ),
         (
-          temp_dir.url().join("root4_parent/root4/").unwrap(),
+          Arc::new(temp_dir.url().join("root4_parent/root4/").unwrap()),
           WorkspaceSettings {
             enable: Some(true),
             ..Default::default()

@@ -1937,6 +1937,7 @@ mod tests {
   use std::sync::Arc;
 
   use deno_config::deno_json::ConfigFile;
+  use deno_core::resolve_url;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
@@ -1951,10 +1952,11 @@ mod tests {
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;
+  use crate::lsp::urls::uri_to_url;
   use crate::lsp::urls::url_to_uri;
 
   fn mock_config() -> Config {
-    let root_url = resolve_url("file:///").unwrap();
+    let root_url = Arc::new(resolve_url("file:///").unwrap());
     let root_uri = url_to_uri(&root_url).unwrap();
     Config {
       settings: Arc::new(Settings {
@@ -1981,11 +1983,11 @@ mod tests {
     maybe_import_map: Option<(&str, &str)>,
   ) -> (TempDir, StateSnapshot) {
     let temp_dir = TempDir::new();
-    let root_uri = temp_dir.url();
-    let cache = LspCache::new(Some(root_uri.join(".deno_dir").unwrap()));
-    let mut config = Config::new_with_roots([root_uri.clone()]);
+    let root_url = temp_dir.url();
+    let cache = LspCache::new(Some(root_url.join(".deno_dir").unwrap()));
+    let mut config = Config::new_with_roots([root_url.clone()]);
     if let Some((relative_path, json_string)) = maybe_import_map {
-      let base_url = root_uri.join(relative_path).unwrap();
+      let base_url = root_url.join(relative_path).unwrap();
       let config_file = ConfigFile::new(json_string, base_url).unwrap();
       config.tree.inject_config_file(config_file).await;
     }
@@ -1999,9 +2001,9 @@ mod tests {
       &Default::default(),
     );
     for (relative_path, source, version, language_id) in sources {
-      let specifier = root_uri.join(relative_path).unwrap();
+      let specifier = root_url.join(relative_path).unwrap();
       document_modules.open_document(
-        specifier.clone(),
+        url_to_uri(&specifier).unwrap(),
         *version,
         *language_id,
         (*source).into(),
@@ -2011,7 +2013,7 @@ mod tests {
       temp_dir,
       StateSnapshot {
         project_version: 0,
-        document_modules: Arc::new(document_modules),
+        document_modules,
         config: Arc::new(config),
         resolver,
       },
@@ -2186,8 +2188,9 @@ let c: number = "a";
     let actual = generate_all_deno_diagnostics(&snapshot, &config, token);
     assert_eq!(actual.len(), 3);
     for record in actual {
+      let specifier = uri_to_url(&record.uri);
       let relative_specifier =
-        temp_dir.url().make_relative(&record.uri).unwrap();
+        temp_dir.url().make_relative(&specifier).unwrap();
       match relative_specifier.as_str() {
         "std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
@@ -2220,7 +2223,7 @@ let c: number = "a";
         "a/file2.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
-        _ => unreachable!("unexpected specifier {}", record.uri),
+        _ => unreachable!("unexpected specifier {}", &specifier),
       }
     }
   }

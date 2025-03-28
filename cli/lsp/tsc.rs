@@ -5533,7 +5533,7 @@ mod tests {
   use crate::lsp::cache::LspCache;
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
-  use crate::lsp::documents::Documents;
+  use crate::lsp::documents::DocumentModules;
   use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
@@ -5571,7 +5571,7 @@ mod tests {
     for (relative_specifier, source, version, language_id) in sources {
       let specifier = temp_dir.url().join(relative_specifier).unwrap();
       document_modules.documents.open(
-        specifier,
+        url_to_uri(&specifier).unwrap(),
         *version,
         *language_id,
         (*source).into(),
@@ -5579,7 +5579,7 @@ mod tests {
     }
     let snapshot = Arc::new(StateSnapshot {
       project_version: 0,
-      document_modules: Arc::new(document_modules),
+      document_modules,
       config: Arc::new(config),
       resolver,
     });
@@ -5649,7 +5649,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5698,7 +5698,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5733,7 +5733,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5764,7 +5764,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5819,7 +5819,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5857,7 +5857,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -5921,7 +5921,7 @@ mod tests {
     let specifier = temp_dir.url().join("a.ts").unwrap();
     let (diagnostics, _ambient) = ts_server
       .get_diagnostics(
-        snapshot,
+        snapshot.clone(),
         [&specifier],
         snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
@@ -6112,7 +6112,7 @@ mod tests {
           trigger_kind: None,
         },
         Default::default(),
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
       )
       .await
@@ -6129,7 +6129,7 @@ mod tests {
         None,
         None,
         None,
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
       )
       .await
@@ -6305,7 +6305,7 @@ mod tests {
           ..Default::default()
         },
         FormatCodeSettings::from(&fmt_options_config),
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
       )
       .await
@@ -6329,7 +6329,7 @@ mod tests {
           ..Default::default()
         }),
         entry.data.clone(),
-        Some(temp_dir.url()),
+        snapshot.config.tree.scope_for_specifier(&specifier),
         &Default::default(),
       )
       .await

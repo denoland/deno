@@ -952,7 +952,7 @@ impl Config {
       let name = root_url.path_segments().and_then(|s| s.last());
       let name = name.unwrap_or_default().to_string();
       folders.push((
-        root_url,
+        Arc::new(root_url),
         lsp::WorkspaceFolder {
           uri: root_uri,
           name,
@@ -1981,7 +1981,7 @@ impl ConfigTree {
     use sys_traits::FsCreateDirAll;
     use sys_traits::FsWrite;
 
-    let scope = config_file.specifier.join(".").unwrap();
+    let scope = Arc::new(config_file.specifier.join(".").unwrap());
     let json_text = serde_json::to_string(&config_file.json).unwrap();
     let memory_sys = sys_traits::impls::InMemorySys::default();
     let config_path = url_to_file_path(&config_file.specifier).unwrap();
@@ -2004,7 +2004,7 @@ impl ConfigTree {
     let data = Arc::new(
       ConfigData::load_inner(
         workspace_dir,
-        Arc::new(scope.clone()),
+        scope.clone(),
         &Default::default(),
         None,
       )
