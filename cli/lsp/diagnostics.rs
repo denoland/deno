@@ -46,7 +46,7 @@ use tower_lsp::lsp_types as lsp;
 use super::analysis;
 use super::client::Client;
 use super::config::Config;
-use super::documents::Document2;
+use super::documents::Document;
 use super::documents::DocumentModule;
 use super::language_server;
 use super::language_server::StateSnapshot;
@@ -938,7 +938,7 @@ fn generate_lint_diagnostics(
   for document in snapshot.document_modules.documents.open_docs() {
     let Some(module) = snapshot
       .document_modules
-      .primary_module(&Document2::Open(document.clone()))
+      .primary_module(&Document::Open(document.clone()))
     else {
       continue;
     };
@@ -1046,7 +1046,7 @@ async fn generate_ts_diagnostics(
   for document in snapshot.document_modules.documents.open_docs() {
     if let Some(module) = snapshot
       .document_modules
-      .primary_module(&Document2::Open(document.clone()))
+      .primary_module(&Document::Open(document.clone()))
     {
       if config.specifier_enabled(&module.specifier) {
         enabled_modules_by_scope
@@ -1896,7 +1896,7 @@ fn generate_deno_diagnostics(
     }
     let Some(module) = snapshot
       .document_modules
-      .primary_module(&Document2::Open(document.clone()))
+      .primary_module(&Document::Open(document.clone()))
     else {
       continue;
     };

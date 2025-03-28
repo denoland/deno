@@ -70,7 +70,7 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::Document2;
+use super::documents::Document;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
 use super::documents::LanguageId;
@@ -560,7 +560,7 @@ impl Inner {
     enabled: Enabled,
     exists: Exists,
     diagnosable: Diagnosable,
-  ) -> LspResult<Option<Document2>> {
+  ) -> LspResult<Option<Document>> {
     match enabled {
       Enabled::Filter => {
         if !self.config.uri_enabled(uri) {
@@ -599,7 +599,7 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn get_primary_module(
     &self,
-    document: &Document2,
+    document: &Document,
   ) -> LspResult<Option<Arc<DocumentModule>>> {
     let Some(module) = self.document_modules.primary_module(document) else {
       if document
@@ -1074,7 +1074,7 @@ impl Inner {
     if self.workspace_files_hash == enable_settings_hash {
       return;
     }
-    let (workspace_files2, hit_limit) = Self::walk_workspace(&self.config);
+    let (workspace_files, hit_limit) = Self::walk_workspace(&self.config);
     if hit_limit {
       let document_preload_limit =
         self.config.workspace_settings().document_preload_limit;
@@ -1092,7 +1092,7 @@ impl Inner {
         );
       }
     }
-    self.workspace_files = Arc::new(workspace_files2);
+    self.workspace_files = Arc::new(workspace_files);
     self.workspace_files_hash = enable_settings_hash;
   }
 
@@ -4416,7 +4416,7 @@ impl Inner {
       .flat_map(|d| {
         self
           .document_modules
-          .module(&Document2::Open(d.clone()), scope.as_deref())
+          .module(&Document::Open(d.clone()), scope.as_deref())
       })
       .collect();
     Ok(PrepareCacheResult {

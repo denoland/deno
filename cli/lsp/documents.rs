@@ -390,18 +390,18 @@ impl ServerDocument {
 }
 
 #[derive(Debug)]
-pub struct AssetDocuments2 {
+pub struct AssetDocuments {
   inner: HashMap<Arc<Uri>, Arc<ServerDocument>>,
 }
 
-impl AssetDocuments2 {
+impl AssetDocuments {
   pub fn get(&self, k: &Uri) -> Option<&Arc<ServerDocument>> {
     self.inner.get(k)
   }
 }
 
-pub static ASSET_DOCUMENTS: Lazy<AssetDocuments2> =
-  Lazy::new(|| AssetDocuments2 {
+pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
+  Lazy::new(|| AssetDocuments {
     inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
       .iter()
       .map(|(k, v)| {
@@ -413,12 +413,12 @@ pub static ASSET_DOCUMENTS: Lazy<AssetDocuments2> =
   });
 
 #[derive(Debug, Clone)]
-pub enum Document2 {
+pub enum Document {
   Open(Arc<OpenDocument>),
   Server(Arc<ServerDocument>),
 }
 
-impl Document2 {
+impl Document {
   pub fn open(&self) -> Option<&Arc<OpenDocument>> {
     match self {
       Self::Open(d) => Some(d),
@@ -477,7 +477,7 @@ impl Document2 {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Documents2 {
+pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
@@ -487,7 +487,7 @@ pub struct Documents2 {
   remote_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
 }
 
-impl Documents2 {
+impl Documents {
   pub fn open(
     &mut self,
     uri: Uri,
@@ -538,15 +538,15 @@ impl Documents2 {
     })
   }
 
-  pub fn get(&self, uri: &Uri) -> Option<Document2> {
+  pub fn get(&self, uri: &Uri) -> Option<Document> {
     if let Some(doc) = self.open.get(uri) {
-      return Some(Document2::Open(doc.clone()));
+      return Some(Document::Open(doc.clone()));
     }
     if let Some(doc) = ASSET_DOCUMENTS.get(uri) {
-      return Some(Document2::Server(doc.clone()));
+      return Some(Document::Server(doc.clone()));
     }
     if let Some(doc) = self.server.get(uri) {
-      return Some(Document2::Server(doc.clone()));
+      return Some(Document::Server(doc.clone()));
     }
     let doc = if let Some(doc) = ServerDocument::load(uri) {
       doc
@@ -557,7 +557,7 @@ impl Documents2 {
     };
     let doc = Arc::new(doc);
     self.server.insert(uri.clone(), doc.clone());
-    Some(Document2::Server(doc))
+    Some(Document::Server(doc))
   }
 
   pub fn get_for_specifier(
@@ -565,7 +565,7 @@ impl Documents2 {
     specifier: &Url,
     scope: Option<&Url>,
     cache: &LspCache,
-  ) -> Option<Document2> {
+  ) -> Option<Document> {
     let scheme = specifier.scheme();
     if scheme == "file" {
       let uri = url_to_uri(specifier).ok()?;
@@ -582,25 +582,25 @@ impl Documents2 {
       } else {
         let uri = remote_url_to_uri(specifier)?;
         if let Some(doc) = self.server.get(&uri) {
-          return Some(Document2::Server(doc.clone()));
+          return Some(Document::Server(doc.clone()));
         }
         let url = Arc::new(specifier.clone());
         self.remote_urls_by_uri.insert(uri.clone(), url.clone());
         let doc =
           Arc::new(ServerDocument::remote_url(&uri, url, scope, cache)?);
         self.server.insert(uri, doc.clone());
-        Some(Document2::Server(doc))
+        Some(Document::Server(doc))
       }
     } else if scheme == "data" {
       let uri = data_url_to_uri(specifier)?;
       if let Some(doc) = self.server.get(&uri) {
-        return Some(Document2::Server(doc.clone()));
+        return Some(Document::Server(doc.clone()));
       }
       let url = Arc::new(specifier.clone());
       self.data_urls_by_uri.insert(uri.clone(), url.clone());
       let doc = Arc::new(ServerDocument::data_url(&uri, url)?);
       self.server.insert(uri, doc.clone());
-      Some(Document2::Server(doc))
+      Some(Document::Server(doc))
     } else {
       None
     }
@@ -614,33 +614,33 @@ impl Documents2 {
     self.server.iter().map(|e| e.value().clone()).collect()
   }
 
-  pub fn docs(&self) -> Vec<Document2> {
+  pub fn docs(&self) -> Vec<Document> {
     self
       .open
       .values()
-      .map(|d| Document2::Open(d.clone()))
+      .map(|d| Document::Open(d.clone()))
       .chain(
         self
           .server
           .iter()
-          .map(|e| Document2::Server(e.value().clone())),
+          .map(|e| Document::Server(e.value().clone())),
       )
       .collect()
   }
 
   pub fn filtered_docs(
     &self,
-    predicate: impl FnMut(&Document2) -> bool,
-  ) -> Vec<Document2> {
+    predicate: impl FnMut(&Document) -> bool,
+  ) -> Vec<Document> {
     self
       .open
       .values()
-      .map(|d| Document2::Open(d.clone()))
+      .map(|d| Document::Open(d.clone()))
       .chain(
         self
           .server
           .iter()
-          .map(|e| Document2::Server(e.value().clone())),
+          .map(|e| Document::Server(e.value().clone())),
       )
       .filter(predicate)
       .collect()
@@ -679,7 +679,7 @@ pub struct DocumentModule {
 
 impl DocumentModule {
   pub fn new(
-    document: &Document2,
+    document: &Document,
     specifier: Arc<Url>,
     scope: Option<Arc<Url>>,
     resolver: &LspResolver,
@@ -791,10 +791,10 @@ struct WeakDocumentModuleMap {
 }
 
 impl WeakDocumentModuleMap {
-  fn get(&self, document: &Document2) -> Option<Arc<DocumentModule>> {
+  fn get(&self, document: &Document) -> Option<Arc<DocumentModule>> {
     match document {
-      Document2::Open(d) => self.open.read().get(d).cloned(),
-      Document2::Server(d) => self.server.read().get(d).cloned(),
+      Document::Open(d) => self.open.read().get(d).cloned(),
+      Document::Server(d) => self.server.read().get(d).cloned(),
     }
   }
 
@@ -818,14 +818,14 @@ impl WeakDocumentModuleMap {
 
   fn insert(
     &self,
-    document: &Document2,
+    document: &Document,
     module: Arc<DocumentModule>,
   ) -> Option<Arc<DocumentModule>> {
     match document {
-      Document2::Open(d) => {
+      Document::Open(d) => {
         self.open.write().insert(d.clone(), module.clone());
       }
-      Document2::Server(d) => {
+      Document::Server(d) => {
         self.server.write().insert(d.clone(), module.clone());
       }
     }
@@ -846,7 +846,7 @@ impl WeakDocumentModuleMap {
 
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
-  pub documents: Documents2,
+  pub documents: Documents,
   config: Arc<Config>,
   resolver: Arc<LspResolver>,
   cache: Arc<LspCache>,
@@ -886,7 +886,7 @@ impl DocumentModules {
     // Clean up non-existent documents.
     self.documents.server.retain(|_, d| {
       let Some(module) =
-        self.inspect_primary_module(&Document2::Server(d.clone()))
+        self.inspect_primary_module(&Document::Server(d.clone()))
       else {
         return false;
       };
@@ -943,7 +943,7 @@ impl DocumentModules {
 
   fn module_inner(
     &self,
-    document: &Document2,
+    document: &Document,
     specifier: Option<&Arc<Url>>,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
@@ -995,7 +995,7 @@ impl DocumentModules {
 
   pub fn module(
     &self,
-    document: &Document2,
+    document: &Document,
     scope: Option<&Url>,
   ) -> Option<Arc<DocumentModule>> {
     self.module_inner(document, None, scope)
@@ -1023,7 +1023,7 @@ impl DocumentModules {
 
   pub fn primary_module(
     &self,
-    document: &Document2,
+    document: &Document,
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
@@ -1117,7 +1117,7 @@ impl DocumentModules {
   /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_primary_module(
     &self,
-    document: &Document2,
+    document: &Document,
   ) -> Option<Arc<DocumentModule>> {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self
@@ -1135,7 +1135,7 @@ impl DocumentModules {
   /// This will not create any module entries, only retrieve existing entries.
   pub fn inspect_modules_by_scope(
     &self,
-    document: &Document2,
+    document: &Document,
   ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
     let mut result = BTreeMap::new();
     for (scope, modules) in self.modules_by_scope.iter() {
@@ -1983,7 +1983,7 @@ console.log(b, "hello deno");
       );
 
       let module = document_modules
-        .primary_module(&Document2::Open(document.clone()))
+        .primary_module(&Document::Open(document.clone()))
         .unwrap();
       assert_eq!(
         module
@@ -2026,7 +2026,7 @@ console.log(b, "hello deno");
 
       // check the document's dependencies
       let module = document_modules
-        .primary_module(&Document2::Open(document.clone()))
+        .primary_module(&Document::Open(document.clone()))
         .unwrap();
       assert_eq!(
         module
