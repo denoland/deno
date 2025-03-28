@@ -8,6 +8,7 @@ use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 use lsp_types::Uri;
+
 use super::logging::lsp_warn;
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
