@@ -323,7 +323,7 @@ async fn get_tcp_listener_stream(
   futures::stream::select_all(listeners)
 }
 
-pub const TEST_SERVERS_COUNT: usize = 33;
+pub const TEST_SERVERS_COUNT: usize = 34;
 
 #[derive(Default)]
 struct HttpServerCount {

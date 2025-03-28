@@ -222,6 +222,7 @@ async function runSingle(testPath: string, retry = 0): Promise<SingleResult> {
       ],
       env: {
         NODE_TEST_KNOWN_GLOBALS: "0",
+        NODE_SKIP_FLAG_CHECK: "1",
         NO_COLOR: "1",
       },
       stdout: "piped",
@@ -289,7 +290,7 @@ async function main() {
   }
   // Runs parallel tests
   for await (
-    const _ of pooledMap(navigator.hardwareConcurrency * 2, parallel, run)
+    const _ of pooledMap(navigator.hardwareConcurrency, parallel, run)
   ) {
     // pass
   }
