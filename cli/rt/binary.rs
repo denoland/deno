@@ -553,6 +553,7 @@ fn deserialize_npm_snapshot(
         dist: Default::default(),
         dependencies,
         optional_dependencies: Default::default(),
+        optional_peer_dependencies: Default::default(),
         bin: None,
         scripts: Default::default(),
         deprecated: Default::default(),

@@ -6,6 +6,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use deno_ast::MediaType;
 use deno_config::deno_json;
 use deno_config::deno_json::CompilerOptionTypesDeserializeError;
 use deno_config::deno_json::NodeModulesDirMode;
@@ -1170,6 +1171,13 @@ fn get_resolution_error_bare_specifier(
 }
 
 fn get_import_prefix_missing_error(error: &ResolutionError) -> Option<&str> {
+  // not exact, but ok because this is just a hint
+  let media_type =
+    MediaType::from_specifier_and_headers(&error.range().specifier, None);
+  if media_type == MediaType::Wasm {
+    return None;
+  }
+
   let mut maybe_specifier = None;
   if let ResolutionError::InvalidSpecifier {
     error: SpecifierError::ImportPrefixMissing { specifier, .. },
