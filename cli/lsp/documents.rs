@@ -941,12 +941,14 @@ impl DocumentModules {
   }
 
   /// Returns if the document is diagnosable.
-  pub fn close_document(&mut self, uri: &Uri) -> Result<bool, AnyError> {
+  pub fn close_document(
+    &mut self,
+    uri: &Uri,
+  ) -> Result<Arc<OpenDocument>, AnyError> {
     self.dep_info_by_scope = Default::default();
     let document = self.documents.close(uri)?;
     let is_diagnosable = document.is_diagnosable();
-    drop(document);
-    Ok(is_diagnosable)
+    Ok(document)
   }
 
   pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
@@ -3006,61 +3008,69 @@ mod tests {
   use super::*;
   use crate::lsp::cache::LspCache;
 
-  async fn setup() -> (Documents, LspCache, TempDir) {
+  async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
     temp_dir.create_dir_all(".deno_dir");
     let cache = LspCache::new(Some(temp_dir.url().join(".deno_dir").unwrap()));
     let config = Config::default();
     let resolver =
       Arc::new(LspResolver::from_config(&config, &cache, None).await);
-    let mut documents = Documents::default();
-    documents.update_config(&config, &resolver, &cache, &Default::default());
-    (documents, cache, temp_dir)
+    let mut document_modules = DocumentModules::default();
+    document_modules.update_config(
+      &config,
+      &resolver,
+      &cache,
+      &Default::default(),
+    );
+    (document_modules, cache, temp_dir)
   }
 
   #[tokio::test]
   async fn test_documents_open_close() {
-    let (mut documents, _, _) = setup().await;
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (mut document_modules, _, _) = setup().await;
+    let uri = Uri::from_str("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
 "#;
-    let document = documents.open(
-      specifier.clone(),
+    document_modules.open_document(
+      uri.clone(),
       1,
       "javascript".parse().unwrap(),
       content.into(),
-      None,
     );
+    let document = document_modules
+      .documents
+      .get(&uri)
+      .unwrap()
+      .open()
+      .cloned()
+      .unwrap();
+    assert_eq!(document.uri.as_ref(), &uri);
+    assert_eq!(document.text.as_ref(), content);
+    assert_eq!(document.version, 1);
+    assert_eq!(document.language_id, LanguageId::JavaScript);
     assert!(document.is_diagnosable());
-    assert!(document.is_open());
-    assert!(document.maybe_parsed_source().is_some());
-    assert!(document.maybe_lsp_version().is_some());
-    documents.close(&specifier);
-    // We can't use `Documents::get()` here, it will look through the real FS.
-    let document = documents.file_system_docs.docs.get(&specifier).unwrap();
-    assert!(!document.is_open());
-    assert!(document.maybe_parsed_source().is_none());
-    assert!(document.maybe_lsp_version().is_none());
+    assert!(document.is_file_like());
+    document_modules.close_document(&uri).unwrap();
+    assert!(document_modules.documents.get(&uri).is_none());
   }
 
   #[tokio::test]
   async fn test_documents_change() {
-    let (mut documents, _, _) = setup().await;
-    let specifier = ModuleSpecifier::parse("file:///a.ts").unwrap();
+    let (mut document_modules, _, _) = setup().await;
+    let uri = Uri::from_str("file:///a.ts").unwrap();
     let content = r#"import * as b from "./b.ts";
 console.log(b);
 "#;
-    documents.open(
-      specifier.clone(),
+    document_modules.open_document(
+      uri.clone(),
       1,
       "javascript".parse().unwrap(),
       content.into(),
-      None,
     );
-    documents
-      .change(
-        &specifier,
+    document_modules
+      .change_document(
+        &uri,
         2,
         vec![lsp::TextDocumentContentChangeEvent {
           range: Some(lsp::Range {
@@ -3079,7 +3089,12 @@ console.log(b);
       )
       .unwrap();
     assert_eq!(
-      documents.get(&specifier).unwrap().content().as_ref(),
+      document_modules
+        .documents
+        .get(&uri)
+        .unwrap()
+        .text()
+        .as_ref() as &str,
       r#"import * as b from "./b.ts";
 console.log(b, "hello deno");
 "#
@@ -3087,37 +3102,10 @@ console.log(b, "hello deno");
   }
 
   #[tokio::test]
-  async fn test_documents_ensure_no_duplicates() {
-    // it should never happen that a user of this API causes this to happen,
-    // but we'll guard against it anyway
-    let (mut documents, _, temp_dir) = setup().await;
-    let file_path = temp_dir.path().join("file.ts");
-    let file_specifier = temp_dir.url().join("file.ts").unwrap();
-    file_path.write("");
-
-    // open the document
-    documents.open(
-      file_specifier.clone(),
-      1,
-      LanguageId::TypeScript,
-      "".into(),
-      None,
-    );
-
-    // make a clone of the document store and close the document in that one
-    let mut documents2 = documents.clone();
-    documents2.close(&file_specifier);
-
-    // At this point the document will be in both documents and the shared file system documents.
-    // Now make sure that the original documents doesn't return both copies
-    assert_eq!(documents.documents(DocumentsFilter::All).len(), 1);
-  }
-
-  #[tokio::test]
   async fn test_documents_refresh_dependencies_config_change() {
     // it should never happen that a user of this API causes this to happen,
     // but we'll guard against it anyway
-    let (mut documents, cache, temp_dir) = setup().await;
+    let (mut document_modules, cache, temp_dir) = setup().await;
 
     let file1_path = temp_dir.path().join("file1.ts");
     let file1_specifier = temp_dir.url().join("file1.ts").unwrap();
@@ -3135,11 +3123,19 @@ console.log(b, "hello deno");
     let workspace_settings =
       serde_json::from_str(r#"{ "enable": true }"#).unwrap();
     config.set_workspace_settings(workspace_settings, vec![]);
-    let workspace_files =
+    let workspace_files = Arc::new(
       [&file1_specifier, &file2_specifier, &file3_specifier]
         .into_iter()
-        .cloned()
-        .collect::<IndexSet<_>>();
+        .map(|s| s.to_file_path().unwrap())
+        .collect::<IndexSet<_>>(),
+    );
+
+    let document = document_modules.open_document(
+      url_to_uri(&file1_specifier).unwrap(),
+      1,
+      LanguageId::TypeScript,
+      "import {} from 'test';".into(),
+    );
 
     // set the initial import map and point to file 2
     {
@@ -3161,20 +3157,19 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
-      documents.update_config(&config, &resolver, &cache, &workspace_files);
-
-      // open the document
-      let document = documents.open(
-        file1_specifier.clone(),
-        1,
-        LanguageId::TypeScript,
-        "import {} from 'test';".into(),
-        None,
+      document_modules.update_config(
+        &config,
+        &resolver,
+        &cache,
+        &workspace_files,
       );
 
+      let module = document_modules
+        .primary_module(&Document2::Open(document.clone()))
+        .unwrap();
       assert_eq!(
-        document
-          .dependencies()
+        module
+          .dependencies
           .get("test")
           .unwrap()
           .maybe_code
@@ -3204,13 +3199,20 @@ console.log(b, "hello deno");
 
       let resolver =
         Arc::new(LspResolver::from_config(&config, &cache, None).await);
-      documents.update_config(&config, &resolver, &cache, &workspace_files);
+      document_modules.update_config(
+        &config,
+        &resolver,
+        &cache,
+        &workspace_files,
+      );
 
       // check the document's dependencies
-      let document = documents.get(&file1_specifier).unwrap();
+      let module = document_modules
+        .primary_module(&Document2::Open(document.clone()))
+        .unwrap();
       assert_eq!(
-        document
-          .dependencies()
+        module
+          .dependencies
           .get("test")
           .unwrap()
           .maybe_code

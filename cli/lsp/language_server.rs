@@ -1338,7 +1338,7 @@ impl Inner {
       return;
     }
     self.diagnostics_state.clear(&params.text_document.uri);
-    let is_diagnosable = match self
+    let document = match self
       .document_modules
       .close_document(&params.text_document.uri)
     {
@@ -1348,8 +1348,9 @@ impl Inner {
         return;
       }
     };
-    if is_diagnosable {
+    if document.is_diagnosable() {
       self.refresh_dep_info().await;
+      drop(document);
       self.project_changed(
         [(&params.text_document.uri, ChangeKind::Closed)],
         false,
