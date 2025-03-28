@@ -263,6 +263,8 @@ class WebSocket extends EventTarget {
 
         if (this[_cancelHandle]) {
           core.tryClose(this[_cancelHandle]);
+
+          this[_cancelHandle] = undefined;
         }
 
         const closeEv = new CloseEvent("close");
