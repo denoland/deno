@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use super::logging::lsp_warn;
 use deno_config::UrlToFilePathError;
 use deno_core::error::AnyError;
 use deno_core::url::Url;
 use deno_path_util::url_to_file_path;
 use lsp_types::Uri;
+use super::logging::lsp_warn;
 
 /// Matches the `encodeURIComponent()` encoding from JavaScript, which matches
 /// the component percent encoding set.
