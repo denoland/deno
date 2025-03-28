@@ -4388,7 +4388,6 @@ fn op_release(
   state: &mut OpState,
   #[string] specifier: &str,
 ) -> Result<(), deno_core::url::ParseError> {
-  dbg!("release", specifier);
   let _span = super::logging::lsp_tracing_info_span!("op_release").entered();
   let state = state.borrow_mut::<State>();
   let mark = state
@@ -6019,6 +6018,14 @@ mod tests {
         b"export const b = \"b\";\n\nexport const a = \"b\";\n",
       )
       .unwrap();
+    snapshot.document_modules.release(
+      &specifier_dep,
+      snapshot
+        .config
+        .tree
+        .scope_for_specifier(&specifier)
+        .map(|s| s.as_ref()),
+    );
     let snapshot = {
       Arc::new(StateSnapshot {
         project_version: snapshot.project_version + 1,
@@ -6399,7 +6406,7 @@ mod tests {
         &temp_dir.url().join("🦕.ts").unwrap(),
         FormatCodeSettings::default(),
         UserPreferences::default(),
-        None,
+        Some(&Arc::new(temp_dir.url())),
         &Default::default(),
       )
       .await

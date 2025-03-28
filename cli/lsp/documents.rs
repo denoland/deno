@@ -15,6 +15,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Weak;
+use std::time::SystemTime;
 
 use dashmap::DashMap;
 use deno_ast::swc::ecma_visit::VisitWith;
@@ -254,6 +255,7 @@ pub enum ServerDocumentKind {
   },
   RemoteUrl {
     url: Arc<Url>,
+    fs_cache_version: String,
     text: Arc<str>,
   },
   DataUrl {
@@ -315,6 +317,12 @@ impl ServerDocument {
         &url,
         Some(&cache_entry.metadata.headers),
       );
+    let fs_cache_version = (|| {
+      let modified = http_cache.read_modified_time(&cache_key).ok()??;
+      let duration = modified.duration_since(SystemTime::UNIX_EPOCH).ok()?;
+      Some(duration.as_millis().to_string())
+    })()
+    .unwrap_or_else(|| "1".to_string());
     let text: Arc<str> = bytes_to_content(
       &url,
       media_type,
@@ -328,7 +336,11 @@ impl ServerDocument {
       uri: Arc::new(uri.clone()),
       media_type,
       line_index,
-      kind: ServerDocumentKind::RemoteUrl { url, text },
+      kind: ServerDocumentKind::RemoteUrl {
+        url,
+        fs_cache_version,
+        text,
+      },
     })
   }
 
@@ -383,7 +395,9 @@ impl ServerDocument {
   pub fn script_version(&self) -> String {
     match &self.kind {
       ServerDocumentKind::Fs { fs_version, .. } => fs_version.clone(),
-      ServerDocumentKind::RemoteUrl { .. } => "1".to_string(),
+      ServerDocumentKind::RemoteUrl {
+        fs_cache_version, ..
+      } => fs_cache_version.clone(),
       ServerDocumentKind::DataUrl { .. } => "1".to_string(),
       ServerDocumentKind::Asset { .. } => "1".to_string(),
     }
