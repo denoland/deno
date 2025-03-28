@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -13,7 +14,6 @@ use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::RwLock;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
@@ -47,17 +47,15 @@ use super::analysis;
 use super::client::Client;
 use super::config::Config;
 use super::documents;
-use super::documents::Document;
-use super::documents::Documents;
-use super::documents::DocumentsFilter;
+use super::documents::Document2;
+use super::documents::DocumentModule;
 use super::language_server;
 use super::language_server::StateSnapshot;
 use super::performance::Performance;
 use super::tsc;
-use super::tsc::ScopedAmbientModules;
+use super::tsc::MaybeAmbientModules;
 use super::tsc::TsServer;
 use super::urls::uri_parse_unencoded;
-use super::urls::LspUrlMap;
 use crate::graph_util;
 use crate::graph_util::enhanced_resolution_error_message;
 use crate::lsp::logging::lsp_warn;
@@ -69,15 +67,16 @@ use crate::tools::lint::LintRuleProvider;
 use crate::tsc::DiagnosticCategory;
 use crate::util::path::to_percent_decoded_str;
 
+pub type ScopedAmbientModules = HashMap<Option<Arc<Url>>, MaybeAmbientModules>;
+
 #[derive(Debug)]
 pub struct DiagnosticServerUpdateMessage {
   pub snapshot: Arc<StateSnapshot>,
-  pub url_map: LspUrlMap,
 }
 
 #[derive(Debug)]
 struct DiagnosticRecord {
-  pub specifier: ModuleSpecifier,
+  pub uri: Arc<Uri>,
   pub versioned: VersionedDiagnostics,
 }
 
@@ -114,8 +113,7 @@ type DiagnosticsBySource = HashMap<DiagnosticSource, VersionedDiagnostics>;
 struct DiagnosticsPublisher {
   client: Client,
   state: Arc<DiagnosticsState>,
-  diagnostics_by_specifier:
-    AsyncMutex<HashMap<ModuleSpecifier, DiagnosticsBySource>>,
+  diagnostics_by_uri: AsyncMutex<HashMap<Arc<Uri>, DiagnosticsBySource>>,
 }
 
 impl DiagnosticsPublisher {
@@ -123,7 +121,7 @@ impl DiagnosticsPublisher {
     Self {
       client,
       state,
-      diagnostics_by_specifier: Default::default(),
+      diagnostics_by_uri: Default::default(),
     }
   }
 
@@ -131,12 +129,9 @@ impl DiagnosticsPublisher {
     &self,
     source: DiagnosticSource,
     diagnostics: DiagnosticVec,
-    url_map: &LspUrlMap,
-    documents: &Documents,
     token: &CancellationToken,
   ) -> usize {
-    let mut diagnostics_by_specifier =
-      self.diagnostics_by_specifier.lock().await;
+    let mut diagnostics_by_uri = self.diagnostics_by_uri.lock().await;
     let mut seen_specifiers = HashSet::with_capacity(diagnostics.len());
     let mut messages_sent = 0;
 
@@ -145,11 +140,10 @@ impl DiagnosticsPublisher {
         return messages_sent;
       }
 
-      seen_specifiers.insert(record.specifier.clone());
+      seen_specifiers.insert(record.uri.clone());
 
-      let diagnostics_by_source = diagnostics_by_specifier
-        .entry(record.specifier.clone())
-        .or_default();
+      let diagnostics_by_source =
+        diagnostics_by_uri.entry(record.uri.clone()).or_default();
       let version = record.versioned.version;
       let source_diagnostics = diagnostics_by_source.entry(source).or_default();
       *source_diagnostics = record.versioned;
@@ -165,26 +159,22 @@ impl DiagnosticsPublisher {
 
       self
         .state
-        .update(&record.specifier, version, &all_specifier_diagnostics);
-      let file_referrer = documents.get_file_referrer(&record.specifier);
-      let Ok(uri) =
-        url_map.specifier_to_uri(&record.specifier, file_referrer.as_deref())
-      else {
-        continue;
-      };
+        .update(&record.uri, version, &all_specifier_diagnostics);
       self
         .client
-        .publish_diagnostics(uri, all_specifier_diagnostics, version)
+        .publish_diagnostics(
+          record.uri.as_ref().clone(),
+          all_specifier_diagnostics,
+          version,
+        )
         .await;
       messages_sent += 1;
     }
 
     // now check all the specifiers to clean up any ones with old diagnostics
-    let mut specifiers_to_remove = Vec::new();
-    for (specifier, diagnostics_by_source) in
-      diagnostics_by_specifier.iter_mut()
-    {
-      if seen_specifiers.contains(specifier) {
+    let mut uris_to_remove = Vec::new();
+    for (uri, diagnostics_by_source) in diagnostics_by_uri.iter_mut() {
+      if seen_specifiers.contains(uri) {
         continue;
       }
       if token.is_cancelled() {
@@ -192,19 +182,17 @@ impl DiagnosticsPublisher {
       }
       let maybe_removed_value = diagnostics_by_source.remove(&source);
       if diagnostics_by_source.is_empty() {
-        specifiers_to_remove.push(specifier.clone());
+        uris_to_remove.push(uri.clone());
         if let Some(removed_value) = maybe_removed_value {
           // clear out any diagnostics for this specifier
-          self.state.update(specifier, removed_value.version, &[]);
-          let file_referrer = documents.get_file_referrer(specifier);
-          let Ok(uri) =
-            url_map.specifier_to_uri(specifier, file_referrer.as_deref())
-          else {
-            continue;
-          };
+          self.state.update(uri, removed_value.version, &[]);
           self
             .client
-            .publish_diagnostics(uri, Vec::new(), removed_value.version)
+            .publish_diagnostics(
+              uri.as_ref().clone(),
+              Vec::new(),
+              removed_value.version,
+            )
             .await;
           messages_sent += 1;
         }
@@ -212,41 +200,32 @@ impl DiagnosticsPublisher {
     }
 
     // clean up specifiers with no diagnostics
-    for specifier in specifiers_to_remove {
-      diagnostics_by_specifier.remove(&specifier);
+    for specifier in uris_to_remove {
+      diagnostics_by_uri.remove(&specifier);
     }
 
     messages_sent
   }
 
   pub async fn clear(&self) {
-    let mut all_diagnostics = self.diagnostics_by_specifier.lock().await;
+    let mut all_diagnostics = self.diagnostics_by_uri.lock().await;
     all_diagnostics.clear();
   }
 }
 
-type DiagnosticMap = HashMap<ModuleSpecifier, VersionedDiagnostics>;
+type DiagnosticMap = HashMap<Arc<Uri>, VersionedDiagnostics>;
 
 #[derive(Clone, Default, Debug)]
 struct TsDiagnosticsStore(Arc<deno_core::parking_lot::Mutex<DiagnosticMap>>);
 
 impl TsDiagnosticsStore {
-  pub fn get2(
+  pub fn get(
     &self,
     uri: &Uri,
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    // TODO(nayeemrmn): Implement!
-    vec![]
-  }
-
-  pub fn get(
-    &self,
-    specifier: &ModuleSpecifier,
-    document_version: Option<i32>,
-  ) -> Vec<lsp::Diagnostic> {
     let ts_diagnostics = self.0.lock();
-    if let Some(versioned) = ts_diagnostics.get(specifier) {
+    if let Some(versioned) = ts_diagnostics.get(uri) {
       // only get the diagnostics if they're up to date
       if document_version == versioned.version {
         return versioned.diagnostics.clone();
@@ -255,15 +234,10 @@ impl TsDiagnosticsStore {
     Vec::new()
   }
 
-  pub fn invalidate2(&self, uris: &[&Uri]) {
-    // TODO(nayeemrmn): Implement!
-  }
-
-  // TODO(nayeemrmn): Remove!
-  pub fn invalidate(&self, specifiers: &[ModuleSpecifier]) {
+  pub fn invalidate(&self, uris: &[&Uri]) {
     let mut ts_diagnostics = self.0.lock();
-    for specifier in specifiers {
-      ts_diagnostics.remove(specifier);
+    for uri in uris {
+      ts_diagnostics.remove(*uri);
     }
   }
 
@@ -275,7 +249,7 @@ impl TsDiagnosticsStore {
     let mut stored_ts_diagnostics = self.0.lock();
     *stored_ts_diagnostics = diagnostics
       .iter()
-      .map(|record| (record.specifier.clone(), record.versioned.clone()))
+      .map(|record| (record.uri.clone(), record.versioned.clone()))
       .collect();
   }
 }
@@ -328,25 +302,25 @@ struct ChannelUpdateMessage {
 }
 
 #[derive(Debug)]
-struct SpecifierState {
+struct DocumentDiagnosticsState {
   version: Option<i32>,
   no_cache_diagnostics: Vec<lsp::Diagnostic>,
 }
 
 #[derive(Debug, Default)]
 pub struct DiagnosticsState {
-  specifiers: RwLock<HashMap<ModuleSpecifier, SpecifierState>>,
+  documents: RwLock<HashMap<Uri, DocumentDiagnosticsState>>,
 }
 
 impl DiagnosticsState {
   fn update(
     &self,
-    specifier: &ModuleSpecifier,
+    uri: &Uri,
     version: Option<i32>,
     diagnostics: &[lsp::Diagnostic],
   ) {
-    let mut specifiers = self.specifiers.write();
-    let current_version = specifiers.get(specifier).and_then(|s| s.version);
+    let mut specifiers = self.documents.write();
+    let current_version = specifiers.get(uri).and_then(|s| s.version);
     match (version, current_version) {
       (Some(arg), Some(existing)) if arg < existing => return,
       _ => {}
@@ -364,51 +338,32 @@ impl DiagnosticsState {
       }
     }
     specifiers.insert(
-      specifier.clone(),
-      SpecifierState {
+      uri.clone(),
+      DocumentDiagnosticsState {
         version,
         no_cache_diagnostics,
       },
     );
   }
 
-  pub fn clear2(&self, uri: &Uri) {
-    // TODO(nayeemrmn): Implement!
+  pub fn clear(&self, uri: &Uri) {
+    self.documents.write().remove(uri);
   }
 
-  // TODO(nayeemrmn): Remove!
-  pub fn clear(&self, specifier: &ModuleSpecifier) {
-    self.specifiers.write().remove(specifier);
-  }
-
-  pub fn has_no_cache_diagnostics2(&self, uri: &Uri) -> bool {
-    // TODO(nayeemrmn): Implement!
-    false
-  }
-
-  // TODO(nayeemrmn): Remove!
-  pub fn has_no_cache_diagnostics(&self, specifier: &ModuleSpecifier) -> bool {
+  pub fn has_no_cache_diagnostics(&self, uri: &Uri) -> bool {
     self
-      .specifiers
+      .documents
       .read()
-      .get(specifier)
+      .get(uri)
       .map(|s| !s.no_cache_diagnostics.is_empty())
       .unwrap_or(false)
   }
 
-  pub fn no_cache_diagnostics2(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
-    // TODO(nayeemrmn): Implement!
-    vec![]
-  }
-
-  pub fn no_cache_diagnostics(
-    &self,
-    specifier: &ModuleSpecifier,
-  ) -> Vec<lsp::Diagnostic> {
+  pub fn no_cache_diagnostics(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
-      .specifiers
+      .documents
       .read()
-      .get(specifier)
+      .get(uri)
       .map(|s| s.no_cache_diagnostics.clone())
       .unwrap_or_default()
   }
@@ -427,14 +382,9 @@ struct DeferredDiagnostics {
 }
 
 impl DeferredDiagnostics {
-  fn invalidate2(&mut self, uris: &[&Uri]) {
-    // TODO(nayeemrmn): Implement!
-  }
-
-  // TODO(nayeemrmn): Remove!
-  fn invalidate(&mut self, specifiers: &[ModuleSpecifier]) {
+  fn invalidate(&mut self, uris: &[&Uri]) {
     if let Some(diagnostics) = &mut self.diagnostics {
-      diagnostics.retain(|d| !specifiers.contains(&d.document_specifier));
+      diagnostics.retain(|d| !uris.contains(&d.uri.as_ref()));
     }
     for ambient in self.ambient_modules_by_scope.values_mut() {
       ambient.dirty = true;
@@ -486,9 +436,9 @@ impl DeferredDiagnostics {
             diagnostic.diagnostics.into_iter().map(|d| d.1).collect()
           };
           DiagnosticRecord {
-            specifier: diagnostic.document_specifier,
+            uri: diagnostic.uri,
             versioned: VersionedDiagnostics {
-              version: diagnostic.version,
+              version: Some(diagnostic.version),
               diagnostics: filtered,
             },
           }
@@ -583,12 +533,12 @@ impl DiagnosticsServer {
     uri: &Uri,
     document_version: Option<i32>,
   ) -> Vec<lsp::Diagnostic> {
-    self.ts_diagnostics.get2(uri, document_version)
+    self.ts_diagnostics.get(uri, document_version)
   }
 
   pub fn invalidate(&self, uris: &[&Uri]) {
-    self.ts_diagnostics.invalidate2(uris);
-    self.deferred_diagnostics.lock().invalidate2(uris);
+    self.ts_diagnostics.invalidate(uris);
+    self.deferred_diagnostics.lock().invalidate(uris);
   }
 
   pub fn invalidate_all(&self) {
@@ -636,10 +586,9 @@ impl DiagnosticsServer {
                 }
               };
               let ChannelUpdateMessage {
-                message: DiagnosticServerUpdateMessage { snapshot, url_map },
+                message: DiagnosticServerUpdateMessage { snapshot },
                 batch_index,
               } = message;
-              let url_map = Arc::new(url_map);
 
               // cancel the previous run
               token.cancel();
@@ -654,7 +603,6 @@ impl DiagnosticsServer {
                 let ts_diagnostics_store = ts_diagnostics_store.clone();
                 let snapshot = snapshot.clone();
                 let config = snapshot.config.clone();
-                let url_map = url_map.clone();
                 let deferred_diagnostics_state =
                   deferred_diagnostics_state.clone();
                 async move {
@@ -711,21 +659,13 @@ impl DiagnosticsServer {
                           .publish(
                             DiagnosticSource::DeferredDeno,
                             deferred,
-                            &url_map,
-                            snapshot.documents.as_ref(),
                             &token,
                           )
                           .await;
                       }
                     }
                     messages_len += diagnostics_publisher
-                      .publish(
-                        DiagnosticSource::Ts,
-                        diagnostics,
-                        &url_map,
-                        snapshot.documents.as_ref(),
-                        &token,
-                      )
+                      .publish(DiagnosticSource::Ts, diagnostics, &token)
                       .await;
 
                     if !token.is_cancelled() {
@@ -753,7 +693,6 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = snapshot.config.clone();
-                let url_map = url_map.clone();
                 let deferred_diagnostics_state =
                   deferred_diagnostics_state.clone();
                 async move {
@@ -783,8 +722,6 @@ impl DiagnosticsServer {
                           .publish(
                             DiagnosticSource::DeferredDeno,
                             deferred,
-                            &url_map,
-                            snapshot.documents.as_ref(),
                             &token,
                           )
                           .await;
@@ -792,13 +729,7 @@ impl DiagnosticsServer {
                     }
 
                     messages_len += diagnostics_publisher
-                      .publish(
-                        DiagnosticSource::Deno,
-                        diagnostics,
-                        &url_map,
-                        snapshot.documents.as_ref(),
-                        &token,
-                      )
+                      .publish(DiagnosticSource::Deno, diagnostics, &token)
                       .await;
 
                     if !token.is_cancelled() {
@@ -826,7 +757,6 @@ impl DiagnosticsServer {
                 let token = token.clone();
                 let snapshot = snapshot.clone();
                 let config = snapshot.config.clone();
-                let url_map = url_map.clone();
                 async move {
                   if let Some(previous_handle) = previous_lint_handle {
                     previous_handle.await;
@@ -843,13 +773,7 @@ impl DiagnosticsServer {
                   let mut messages_len = 0;
                   if !token.is_cancelled() {
                     messages_len = diagnostics_publisher
-                      .publish(
-                        DiagnosticSource::Lint,
-                        diagnostics,
-                        &url_map,
-                        snapshot.documents.as_ref(),
-                        &token,
-                      )
+                      .publish(DiagnosticSource::Lint, diagnostics, &token)
                       .await;
 
                     if !token.is_cancelled() {
@@ -1010,20 +934,22 @@ fn generate_lint_diagnostics(
   config: &Config,
   token: CancellationToken,
 ) -> DiagnosticVec {
-  let documents = snapshot
-    .documents
-    .documents(DocumentsFilter::OpenDiagnosable);
   let config_data_by_scope = config.tree.data_by_scope();
-  let mut diagnostics_vec = Vec::new();
-  for document in documents {
-    let specifier = document.specifier();
-    if specifier.scheme() != "file" {
+  let mut records = Vec::new();
+  for document in snapshot.document_modules.documents.open_docs() {
+    let Some(module) = snapshot
+      .document_modules
+      .primary_module(&Document2::Open(document.clone()))
+    else {
+      continue;
+    };
+    if module.specifier.scheme() != "file" {
       continue;
     }
-    if !config.specifier_enabled(specifier) {
+    if !config.specifier_enabled(&module.specifier) {
       continue;
     }
-    let settings = config.workspace_settings_for_specifier(specifier);
+    let settings = config.workspace_settings_for_specifier(&module.specifier);
     if !settings.lint {
       continue;
     }
@@ -1032,13 +958,12 @@ fn generate_lint_diagnostics(
       break;
     }
     // ignore any npm package files
-    if snapshot.resolver.in_node_modules(specifier) {
+    if snapshot.resolver.in_node_modules(&module.specifier) {
       continue;
     }
-    let version = document.maybe_lsp_version();
-    let (lint_config, linter) = config
-      .tree
-      .scope_for_specifier(specifier)
+    let (lint_config, linter) = module
+      .scope
+      .as_ref()
       .and_then(|s| config_data_by_scope.get(s))
       .map(|d| (d.lint_config.clone(), d.linter.clone()))
       .unwrap_or_else(|| {
@@ -1059,12 +984,12 @@ fn generate_lint_diagnostics(
           })),
         )
       });
-    diagnostics_vec.push(DiagnosticRecord {
-      specifier: specifier.clone(),
+    records.push(DiagnosticRecord {
+      uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
-        version,
+        version: Some(document.version),
         diagnostics: generate_document_lint_diagnostics(
-          &document,
+          &module,
           &lint_config,
           &linter,
           token.clone(),
@@ -1072,19 +997,23 @@ fn generate_lint_diagnostics(
       },
     });
   }
-  diagnostics_vec
+  records
 }
 
 fn generate_document_lint_diagnostics(
-  document: &Document,
+  module: &DocumentModule,
   lint_config: &LintConfig,
   linter: &CliLinter,
   token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
-  if !lint_config.files.matches_specifier(document.specifier()) {
+  if !lint_config.files.matches_specifier(&module.specifier) {
     return Vec::new();
   }
-  match document.maybe_parsed_source() {
+  match &module
+    .open_data
+    .as_ref()
+    .and_then(|d| d.parsed_source.as_ref())
+  {
     Some(Ok(parsed_source)) => {
       if let Ok(references) =
         analysis::get_lint_references(parsed_source, linter, token)
@@ -1099,7 +1028,7 @@ fn generate_document_lint_diagnostics(
     }
     Some(Err(_)) => Vec::new(),
     None => {
-      error!("Missing file contents for: {}", document.specifier());
+      error!("Missing file contents for: {}", &module.specifier);
       Vec::new()
     }
   }
@@ -1111,32 +1040,58 @@ async fn generate_ts_diagnostics(
   ts_server: &tsc::TsServer,
   token: CancellationToken,
 ) -> Result<(DiagnosticVec, ScopedAmbientModules), AnyError> {
-  let mut diagnostics_vec = Vec::new();
-  let specifiers = snapshot
-    .documents
-    .documents(DocumentsFilter::OpenDiagnosable)
-    .into_iter()
-    .map(|d| d.specifier().clone());
-  let (enabled_specifiers, disabled_specifiers) = specifiers
-    .into_iter()
-    .partition::<Vec<_>, _>(|s| config.specifier_enabled(s));
-  let (ts_diagnostics_map, ambient_modules_by_scope) =
-    if !enabled_specifiers.is_empty() {
-      ts_server
-        .get_diagnostics(snapshot.clone(), enabled_specifiers, &token)
-        .await?
-    } else {
-      Default::default()
-    };
-  for (specifier_str, mut ts_json_diagnostics) in ts_diagnostics_map {
-    let specifier = resolve_url(&specifier_str)?;
+  let mut records = Vec::new();
+  let mut ambient_modules_by_scope = HashMap::new();
+  let mut enabled_modules_by_scope = BTreeMap::<_, Vec<_>>::new();
+  let mut disabled_documents = Vec::new();
+  for document in snapshot.document_modules.documents.open_docs() {
+    if let Some(module) = snapshot
+      .document_modules
+      .primary_module(&Document2::Open(document.clone()))
+    {
+      if config.specifier_enabled(&module.specifier) {
+        enabled_modules_by_scope
+          .entry(module.scope.clone())
+          .or_default()
+          .push(module);
+        continue;
+      }
+    }
+    disabled_documents.push(document.clone());
+  }
+  // add an empty diagnostic publish for disabled documents in order
+  // to clear those diagnostics if they exist
+  for document in disabled_documents {
+    records.push(DiagnosticRecord {
+      uri: document.uri.clone(),
+      versioned: VersionedDiagnostics {
+        version: Some(document.version),
+        diagnostics: Vec::new(),
+      },
+    });
+  }
+  let mut enabled_modules_with_diagnostics = Vec::new();
+  for (scope, enabled_modules) in enabled_modules_by_scope {
+    let (diagnostics_list, ambient_modules) = ts_server
+      .get_diagnostics(
+        snapshot.clone(),
+        enabled_modules.iter().map(|m| m.specifier.as_ref()),
+        scope.as_ref(),
+        &token,
+      )
+      .await?;
+    enabled_modules_with_diagnostics
+      .extend(enabled_modules.into_iter().zip(diagnostics_list));
+    ambient_modules_by_scope.insert(scope.clone(), ambient_modules);
+  }
+  for (module, mut diagnostics) in enabled_modules_with_diagnostics {
     let suggestion_actions_settings = snapshot
       .config
-      .language_settings_for_specifier(&specifier)
+      .language_settings_for_specifier(&module.specifier)
       .map(|s| s.suggestion_actions.clone())
       .unwrap_or_default();
     if !suggestion_actions_settings.enabled {
-      ts_json_diagnostics.retain(|d| {
+      diagnostics.retain(|d| {
         d.category != DiagnosticCategory::Suggestion
           // Still show deprecated and unused diagnostics.
           // https://github.com/microsoft/vscode/blob/ce50bd4876af457f64d83cfd956bc916535285f4/extensions/typescript-language-features/src/languageFeatures/diagnostics.ts#L113-L114
@@ -1144,41 +1099,16 @@ async fn generate_ts_diagnostics(
           || d.reports_unnecessary == Some(true)
       });
     }
-    let version = snapshot
-      .documents
-      .get(&specifier)
-      .and_then(|d| d.maybe_lsp_version());
-    // check if the specifier is enabled again just in case TS returns us
-    // diagnostics for a disabled specifier
-    let ts_diagnostics = if config.specifier_enabled(&specifier) {
-      ts_json_to_diagnostics(ts_json_diagnostics)
-    } else {
-      Vec::new()
-    };
-    diagnostics_vec.push(DiagnosticRecord {
-      specifier,
+    let diagnostics = ts_json_to_diagnostics(diagnostics);
+    records.push(DiagnosticRecord {
+      uri: module.uri.clone(),
       versioned: VersionedDiagnostics {
-        version,
-        diagnostics: ts_diagnostics,
+        version: Some(module.open_data.as_ref().unwrap().version),
+        diagnostics,
       },
     });
   }
-  // add an empty diagnostic publish for disabled specifiers in order
-  // to clear those diagnostics if they exist
-  for specifier in disabled_specifiers {
-    let version = snapshot
-      .documents
-      .get(&specifier)
-      .and_then(|d| d.maybe_lsp_version());
-    diagnostics_vec.push(DiagnosticRecord {
-      specifier,
-      versioned: VersionedDiagnostics {
-        version,
-        diagnostics: Vec::new(),
-      },
-    });
-  }
-  Ok((diagnostics_vec, ambient_modules_by_scope))
+  Ok((records, ambient_modules_by_scope))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1628,25 +1558,24 @@ fn diagnose_resolution(
   resolution: &Resolution,
   is_dynamic: bool,
   maybe_assert_type: Option<&str>,
-  referrer_doc: &Document,
+  referrer_module: &DocumentModule,
   import_map: Option<&ImportMap>,
 ) -> (Vec<DenoDiagnostic>, Vec<DenoDiagnostic>) {
   fn check_redirect_diagnostic(
     specifier: &ModuleSpecifier,
-    doc: &Document,
+    module: &DocumentModule,
   ) -> Option<DenoDiagnostic> {
-    let doc_specifier = doc.specifier();
     // If the module was redirected, we want to issue an informational
     // diagnostic that indicates this. This then allows us to issue a code
     // action to replace the specifier with the final redirected one.
-    if specifier.scheme() == "jsr" || doc_specifier == specifier {
+    if specifier.scheme() == "jsr" || specifier == module.specifier.as_ref() {
       return None;
     }
     // don't bother warning about sloppy import redirects from .js to .d.ts
     // because explaining how to fix this via a diagnostic involves using
     // @ts-types and that's a bit complicated to explain
-    let is_sloppy_import_dts_redirect = doc_specifier.scheme() == "file"
-      && doc.media_type().is_declaration()
+    let is_sloppy_import_dts_redirect = module.specifier.scheme() == "file"
+      && module.media_type.is_declaration()
       && !MediaType::from_specifier(specifier).is_declaration();
     if is_sloppy_import_dts_redirect {
       return None;
@@ -1654,7 +1583,7 @@ fn diagnose_resolution(
 
     Some(DenoDiagnostic::Redirect {
       from: specifier.clone(),
-      to: doc_specifier.clone(),
+      to: module.specifier.as_ref().clone(),
     })
   }
 
@@ -1662,30 +1591,32 @@ fn diagnose_resolution(
   let mut deferred_diagnostics = vec![];
   match resolution {
     Resolution::Ok(resolved) => {
-      let file_referrer = referrer_doc.file_referrer();
       let specifier = &resolved.specifier;
-      let managed_npm_resolver =
-        snapshot.resolver.maybe_managed_npm_resolver(file_referrer);
+      let managed_npm_resolver = snapshot
+        .resolver
+        .maybe_managed_npm_resolver(referrer_module.scope.as_deref());
       for (_, headers) in snapshot
         .resolver
-        .redirect_chain_headers(specifier, file_referrer)
+        .redirect_chain_headers(specifier, referrer_module.scope.as_deref())
       {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }
       }
-      if let Some(doc) =
-        snapshot.documents.get_or_load(specifier, file_referrer)
+      if let Some(module) = snapshot
+        .document_modules
+        .module_for_specifier(specifier, referrer_module.scope.as_deref())
       {
-        if let Some(headers) = doc.maybe_headers() {
+        if let Some(headers) = &module.headers {
           if let Some(message) = headers.get("x-deno-warning") {
             diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
           }
         }
-        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &doc) {
+        if let Some(diagnostic) = check_redirect_diagnostic(specifier, &module)
+        {
           diagnostics.push(diagnostic);
         }
-        if doc.media_type() == MediaType::Json {
+        if module.media_type == MediaType::Json {
           match maybe_assert_type {
             // The module has the correct assertion type, no diagnostic
             Some("json") => (),
@@ -1782,7 +1713,7 @@ fn diagnose_dependency(
   diagnostics: &mut Vec<lsp::Diagnostic>,
   deferred_diagnostics: &mut Vec<(String, lsp::Diagnostic)>,
   snapshot: &language_server::StateSnapshot,
-  referrer_doc: &Document,
+  referrer_module: &DocumentModule,
   dependency_key: &str,
   dependency: &deno_graph::Dependency,
 ) {
@@ -1819,25 +1750,29 @@ fn diagnose_dependency(
     None
   }
 
-  let referrer = referrer_doc.specifier();
-  if snapshot.resolver.in_node_modules(referrer) {
+  if snapshot
+    .resolver
+    .in_node_modules(&referrer_module.specifier)
+  {
     return; // ignore, surface typescript errors instead
   }
 
-  let import_map = snapshot
-    .config
-    .tree
-    .data_for_specifier(referrer_doc.file_referrer().unwrap_or(referrer))
-    .and_then(|d| d.resolver.maybe_import_map());
+  let config_data = referrer_module
+    .scope
+    .as_ref()
+    .and_then(|s| snapshot.config.tree.data_for_specifier(s));
+  let import_map = config_data.and_then(|d| d.resolver.maybe_import_map());
   if let Some(import_map) = import_map {
     let resolved = dependency
       .maybe_code
       .ok()
       .or_else(|| dependency.maybe_type.ok());
     if let Some(resolved) = resolved {
-      if let Some(to) =
-        import_map_lookup(import_map, &resolved.specifier, referrer)
-      {
+      if let Some(to) = import_map_lookup(
+        import_map,
+        &resolved.specifier,
+        &referrer_module.specifier,
+      ) {
         if dependency_key != to {
           diagnostics.push(
             DenoDiagnostic::ImportMapRemap {
@@ -1885,7 +1820,7 @@ fn diagnose_dependency(
     },
     dependency.is_dynamic,
     dependency.maybe_attribute_type.as_deref(),
-    referrer_doc,
+    referrer_module,
     import_map,
   );
   diagnostics.extend(resolution_diagnostics.iter().flat_map(|diag| {
@@ -1918,7 +1853,7 @@ fn diagnose_dependency(
       &dependency.maybe_type,
       dependency.is_dynamic,
       dependency.maybe_attribute_type.as_deref(),
-      referrer_doc,
+      referrer_module,
       import_map,
     );
     diagnostics.extend(
@@ -1935,8 +1870,8 @@ fn diagnose_dependency(
 
 #[derive(Debug)]
 struct DeferredDiagnosticRecord {
-  document_specifier: Url,
-  version: Option<i32>,
+  uri: Arc<Uri>,
+  version: i32,
   scope: Option<Arc<Url>>,
   diagnostics: Vec<(String, lsp::Diagnostic)>,
 }
@@ -1951,46 +1886,44 @@ fn generate_deno_diagnostics(
 ) -> (DiagnosticVec, Vec<DeferredDiagnosticRecord>) {
   let mut diagnostics_vec = Vec::new();
   let mut deferred_diagnostics = Vec::new();
-  for document in snapshot
-    .documents
-    .documents(DocumentsFilter::OpenDiagnosable)
-  {
+  for document in snapshot.document_modules.documents.open_docs() {
     if token.is_cancelled() {
       break;
     }
+    if !document.is_diagnosable() {
+      continue;
+    }
+    let Some(module) = snapshot
+      .document_modules
+      .primary_module(&Document2::Open(document.clone()))
+    else {
+      continue;
+    };
     let mut diagnostics = Vec::new();
     let mut deferred = Vec::new();
-    let specifier = document.specifier();
-    if config.specifier_enabled(specifier) {
-      for (dependency_key, dependency) in document.dependencies() {
+    if config.specifier_enabled(&module.specifier) {
+      for (dependency_key, dependency) in module.dependencies.iter() {
         diagnose_dependency(
           &mut diagnostics,
           &mut deferred,
           snapshot,
-          &document,
+          &module,
           dependency_key,
           dependency,
         );
       }
     }
     diagnostics_vec.push(DiagnosticRecord {
-      specifier: specifier.clone(),
+      uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
-        version: document.maybe_lsp_version(),
+        version: Some(document.version),
         diagnostics,
       },
     });
     deferred_diagnostics.push(DeferredDiagnosticRecord {
-      document_specifier: specifier.clone(),
-      scope: if snapshot.documents.is_valid_file_referrer(specifier) {
-        snapshot.config.tree.scope_for_specifier(specifier).cloned()
-      } else {
-        snapshot
-          .documents
-          .get(specifier)
-          .and_then(|d| d.scope().cloned().map(Arc::new))
-      },
-      version: document.maybe_lsp_version(),
+      uri: document.uri.clone(),
+      scope: module.scope.clone(),
+      version: document.version,
       diagnostics: deferred,
     });
   }
@@ -2074,23 +2007,11 @@ mod tests {
         (*source).into(),
       );
     }
-    let mut documents = Documents::default();
-    documents.update_config(&config, &resolver, &cache, &Default::default());
-    for (relative_path, source, version, language_id) in sources {
-      let specifier = root_uri.join(relative_path).unwrap();
-      documents.open(
-        specifier.clone(),
-        *version,
-        *language_id,
-        (*source).into(),
-        None,
-      );
-    }
     (
       temp_dir,
       StateSnapshot {
         project_version: 0,
-        documents: Arc::new(documents),
+        documents: Default::default(),
         document_modules: Arc::new(document_modules),
         config: Arc::new(config),
         resolver,
@@ -2204,23 +2125,24 @@ let c: number = "a";
 
     let mut all_diagnostics = diagnostics
       .into_iter()
-      .map(|d| (d.specifier.clone(), d))
+      .map(|d| (d.uri.clone(), d))
       .collect::<HashMap<_, _>>();
     for diag in deferred {
-      let existing = all_diagnostics
-        .entry(diag.document_specifier.clone())
-        .or_insert_with(|| DiagnosticRecord {
-          specifier: diag.document_specifier.clone(),
-          versioned: VersionedDiagnostics {
-            diagnostics: vec![],
-            version: diag.version,
-          },
+      let existing =
+        all_diagnostics.entry(diag.uri.clone()).or_insert_with(|| {
+          DiagnosticRecord {
+            uri: diag.uri.clone(),
+            versioned: VersionedDiagnostics {
+              diagnostics: vec![],
+              version: Some(diag.version),
+            },
+          }
         });
       existing
         .versioned
         .diagnostics
         .extend(diag.diagnostics.into_iter().map(|(_, d)| d));
-      assert_eq!(existing.versioned.version, diag.version);
+      assert_eq!(existing.versioned.version, Some(diag.version));
     }
     all_diagnostics.into_values().collect()
   }
@@ -2266,7 +2188,7 @@ let c: number = "a";
     assert_eq!(actual.len(), 3);
     for record in actual {
       let relative_specifier =
-        temp_dir.url().make_relative(&record.specifier).unwrap();
+        temp_dir.url().make_relative(&record.uri).unwrap();
       match relative_specifier.as_str() {
         "std/assert/mod.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
@@ -2299,7 +2221,7 @@ let c: number = "a";
         "a/file2.ts" => {
           assert_eq!(json!(record.versioned.diagnostics), json!([]))
         }
-        _ => unreachable!("unexpected specifier {}", record.specifier),
+        _ => unreachable!("unexpected specifier {}", record.uri),
       }
     }
   }

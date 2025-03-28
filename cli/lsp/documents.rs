@@ -140,13 +140,7 @@ impl OpenDocument {
   }
 
   pub fn is_diagnosable(&self) -> bool {
-    matches!(
-      self.language_id,
-      LanguageId::JavaScript
-        | LanguageId::Jsx
-        | LanguageId::TypeScript
-        | LanguageId::Tsx
-    )
+    self.language_id.is_diagnosable()
   }
 
   pub fn is_file_like(&self) -> bool {
@@ -378,15 +372,6 @@ impl ServerDocument {
     }
   }
 
-  pub fn exists(&self) -> bool {
-    match &self.kind {
-      ServerDocumentKind::Fs { path, .. } => path.is_file(),
-      ServerDocumentKind::RemoteUrl { .. } => true,
-      ServerDocumentKind::DataUrl { .. } => true,
-      ServerDocumentKind::Asset { .. } => true,
-    }
-  }
-
   pub fn is_diagnosable(&self) -> bool {
     media_type_is_diagnosable(self.media_type)
   }
@@ -414,13 +399,6 @@ impl AssetDocuments2 {
   pub fn get(&self, k: &Uri) -> Option<&Arc<ServerDocument>> {
     self.inner.get(k)
   }
-
-  pub fn contains_specifier(&self, specifier: &Url) -> bool {
-    let Some(uri) = asset_url_to_uri(specifier) else {
-      return false;
-    };
-    self.inner.contains_key(&uri)
-  }
 }
 
 pub static ASSET_DOCUMENTS: Lazy<AssetDocuments2> =
@@ -445,13 +423,13 @@ impl Document2 {
   pub fn open(&self) -> Option<&Arc<OpenDocument>> {
     match self {
       Self::Open(d) => Some(d),
-      Self::Server(d) => None,
+      Self::Server(_) => None,
     }
   }
 
   pub fn server(&self) -> Option<&Arc<ServerDocument>> {
     match self {
-      Self::Open(d) => None,
+      Self::Open(_) => None,
       Self::Server(d) => Some(d),
     }
   }
@@ -684,6 +662,7 @@ pub struct DocumentModule {
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
   pub media_type: MediaType,
+  pub headers: Option<HashMap<String, String>>,
   pub text: DocumentText,
   pub line_index: Arc<LineIndex>,
   pub resolution_mode: ResolutionMode,
@@ -751,6 +730,7 @@ impl DocumentModule {
       specifier,
       scope,
       media_type,
+      headers,
       text,
       line_index: document.line_index().clone(),
       resolution_mode,
@@ -819,13 +799,6 @@ impl WeakDocumentModuleMap {
     self.by_specifier.read().get(specifier)
   }
 
-  fn contains_key(&self, document: &Document2) -> bool {
-    match document {
-      Document2::Open(d) => self.open.read().contains_key(d),
-      Document2::Server(d) => self.server.read().contains_key(d),
-    }
-  }
-
   fn contains_specifier(&self, specifier: &Url) -> bool {
     self.by_specifier.read().contains_key(specifier)
   }
@@ -872,11 +845,6 @@ impl WeakDocumentModuleMap {
   }
 }
 
-#[derive(Debug, Default)]
-struct DocumentModuleScopeData {
-  modules_by_document: WeakDocumentModuleMap,
-}
-
 #[derive(Debug, Default, Clone)]
 pub struct DocumentModules {
   pub documents: Documents2,
@@ -917,7 +885,7 @@ impl DocumentModules {
     NodeResolutionThreadLocalCache::clear();
 
     // Clean up non-existent documents.
-    self.documents.server.retain(|u, d| {
+    self.documents.server.retain(|_, d| {
       let Some(module) =
         self.inspect_primary_module(&Document2::Server(d.clone()))
       else {
@@ -1027,7 +995,7 @@ impl DocumentModules {
     self.module_inner(document, None, scope)
   }
 
-  pub fn module_from_specifier(
+  pub fn module_for_specifier(
     &self,
     specifier: &Url,
     scope: Option<&Url>,
@@ -1039,11 +1007,12 @@ impl DocumentModules {
     } else {
       Cow::Borrowed(specifier)
     };
+    let specifier = self.resolver.resolve_redirects(&specifier, scope)?;
     let document =
       self
         .documents
         .get_for_specifier(&specifier, scope, &self.cache)?;
-    self.module_inner(&document, Some(&Arc::new(specifier.into_owned())), scope)
+    self.module_inner(&document, Some(&Arc::new(specifier)), scope)
   }
 
   pub fn primary_module(
@@ -1053,7 +1022,7 @@ impl DocumentModules {
     if let Some(scope) = self.primary_scope(document.uri()) {
       return self.module(document, scope.map(|s| s.as_ref()));
     }
-    for (scope, modules) in self.modules_by_scope.iter() {
+    for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
         return Some(module);
       }
@@ -1122,7 +1091,7 @@ impl DocumentModules {
   }
 
   /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_module_from_specifier(
+  pub fn inspect_module_for_specifier(
     &self,
     specifier: &Url,
     scope: Option<&Url>,
@@ -1134,6 +1103,7 @@ impl DocumentModules {
     } else {
       Cow::Borrowed(specifier)
     };
+    let specifier = self.resolver.resolve_redirects(&specifier, scope)?;
     let modules = self.modules_for_scope(scope)?;
     modules.get_for_specifier(&specifier)
   }
@@ -1148,7 +1118,7 @@ impl DocumentModules {
         .modules_for_scope(scope.map(|s| s.as_ref()))?
         .get(document);
     }
-    for (scope, modules) in self.modules_by_scope.iter() {
+    for modules in self.modules_by_scope.values() {
       if let Some(module) = modules.get(document) {
         return Some(module);
       }
@@ -1378,7 +1348,7 @@ impl DocumentModules {
     referrer: &Url,
     scope: Option<&Url>,
   ) -> Vec<Option<(Url, MediaType)>> {
-    let referrer_module = self.module_from_specifier(referrer, scope);
+    let referrer_module = self.module_for_specifier(referrer, scope);
     let dependencies = referrer_module.as_ref().map(|d| &d.dependencies);
     let mut results = Vec::new();
     for (is_cjs, raw_specifier) in raw_specifiers {
@@ -1463,7 +1433,7 @@ impl DocumentModules {
       specifier = s;
       media_type = Some(mt);
     }
-    let Some(module) = self.module_from_specifier(&specifier, scope) else {
+    let Some(module) = self.module_for_specifier(&specifier, scope) else {
       let media_type =
         media_type.unwrap_or_else(|| MediaType::from_specifier(&specifier));
       return Some((specifier, media_type));

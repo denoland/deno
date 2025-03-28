@@ -92,7 +92,6 @@ use super::text;
 use super::tsc;
 use super::tsc::ChangeKind;
 use super::tsc::TsServer;
-use super::urls;
 use super::urls::uri_to_file_path;
 use super::urls::uri_to_url;
 use super::urls::url_to_uri;
@@ -106,7 +105,6 @@ use crate::http_util::HttpClientProvider;
 use crate::lsp::config::ConfigWatchedFileType;
 use crate::lsp::logging::init_log_file;
 use crate::lsp::tsc::file_text_changes_to_workspace_edit;
-use crate::lsp::urls::LspUrlKind;
 use crate::sys::CliSys;
 use crate::tools::fmt::format_file;
 use crate::tools::fmt::format_parsed_source;
@@ -243,8 +241,6 @@ pub struct Inner {
   task_queue: LanguageServerTaskQueue,
   ts_fixable_diagnostics: tokio::sync::OnceCell<Vec<String>>,
   pub ts_server: Arc<TsServer>,
-  /// A map of specifiers and URLs used to translate over the LSP.
-  pub url_map: urls::LspUrlMap,
   workspace_files: Arc<IndexSet<PathBuf>>,
   /// Set to `self.config.settings.enable_settings_hash()` after
   /// refreshing `self.workspace_files`.
@@ -545,7 +541,6 @@ impl Inner {
       resolver: Default::default(),
       ts_fixable_diagnostics: Default::default(),
       ts_server,
-      url_map: Default::default(),
       workspace_files: Default::default(),
       workspace_files_hash: 0,
       _tracing: Default::default(),
@@ -777,7 +772,6 @@ impl Inner {
   pub fn update_cache(&mut self) {
     let mark = self.performance.mark("lsp.update_cache");
     self.cache.update_config(&self.config);
-    self.url_map.set_cache(&self.cache);
     self.performance.measure(mark);
   }
 
@@ -872,14 +866,13 @@ impl Inner {
         workspace_folders = folders
           .into_iter()
           .map(|folder| {
-            (
-              Arc::new(
-                self
-                  .url_map
-                  .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
-              ),
-              folder,
-            )
+            let mut url = uri_to_url(&folder.uri);
+            if !url.path().ends_with('/') {
+              if let Ok(mut path_segments) = url.path_segments_mut() {
+                path_segments.push("");
+              }
+            }
+            (Arc::new(url), folder)
           })
           .collect();
       }
@@ -888,15 +881,21 @@ impl Inner {
       #[allow(deprecated)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
-          let root_url = Arc::new(
-            self.url_map.uri_to_specifier(&root_uri, LspUrlKind::Folder),
-          );
-          let name = root_url.path_segments().and_then(|s| s.last());
-          let name = name.unwrap_or_default().to_string();
+          let mut root_url = uri_to_url(&root_uri);
+          let name = root_url
+            .path_segments()
+            .and_then(|s| s.last())
+            .unwrap_or_default()
+            .to_string();
+          if !root_url.path().ends_with('/') {
+            if let Ok(mut path_segments) = root_url.path_segments_mut() {
+              path_segments.push("");
+            }
+          }
           workspace_folders.insert(
             0,
             (
-              root_url,
+              Arc::new(root_url),
               WorkspaceFolder {
                 uri: root_uri,
                 name,
@@ -1293,7 +1292,7 @@ impl Inner {
       || !self.config.uri_enabled(document.uri())
       || !self
         .diagnostics_state
-        .has_no_cache_diagnostics2(document.uri())
+        .has_no_cache_diagnostics(document.uri())
     {
       return;
     }
@@ -1345,7 +1344,7 @@ impl Inner {
     if scheme.eq_lowercase("deno") {
       return;
     }
-    self.diagnostics_state.clear2(&params.text_document.uri);
+    self.diagnostics_state.clear(&params.text_document.uri);
     let is_diagnosable = match self
       .document_modules
       .close_document(&params.text_document.uri)
@@ -1417,7 +1416,7 @@ impl Inner {
     let changes = params
       .changes
       .into_iter()
-      .map(|e| (self.url_map.uri_to_specifier(&e.uri, LspUrlKind::File), e))
+      .map(|e| (uri_to_url(&e.uri), e))
       .collect::<Vec<_>>();
     if changes
       .iter()
@@ -1657,7 +1656,7 @@ impl Inner {
       let dep_module = dep.get_code().and_then(|s| {
         self
           .document_modules
-          .inspect_module_from_specifier(s, module.scope.as_deref())
+          .inspect_module_for_specifier(s, module.scope.as_deref())
       });
       let dep_types_dependency = dep_module.as_ref().map(|m| {
         m.types_dependency
@@ -1936,7 +1935,7 @@ impl Inner {
       }
       if includes_no_cache {
         let no_cache_diagnostics =
-          self.diagnostics_state.no_cache_diagnostics2(document.uri());
+          self.diagnostics_state.no_cache_diagnostics(document.uri());
         let uncached_deps = no_cache_diagnostics
           .iter()
           .filter_map(|d| {
@@ -1995,12 +1994,7 @@ impl Inner {
       .into_iter()
       .map(|refactor_info| {
         refactor_info
-          .to_code_actions(
-            document.uri(),
-            &module.specifier,
-            &params.range,
-            token,
-          )
+          .to_code_actions(document.uri(), &params.range, token)
           .map_err(|err| {
             if token.is_cancelled() {
               LspError::request_cancelled()
@@ -3687,11 +3681,8 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   fn send_diagnostics_update(&self) {
-    // TODO(nayeemrmn): Remove!
-    return;
     let snapshot = DiagnosticServerUpdateMessage {
       snapshot: self.snapshot(),
-      url_map: self.url_map.clone(),
     };
     if let Err(err) = self.diagnostics_server.update(snapshot) {
       error!("Cannot update diagnostics: {:#}", err);
@@ -4453,14 +4444,13 @@ impl Inner {
       .added
       .into_iter()
       .map(|folder| {
-        (
-          Arc::new(
-            self
-              .url_map
-              .uri_to_specifier(&folder.uri, LspUrlKind::Folder),
-          ),
-          folder,
-        )
+        let mut url = uri_to_url(&folder.uri);
+        if !url.path().ends_with('/') {
+          if let Ok(mut path_segments) = url.path_segments_mut() {
+            path_segments.push("");
+          }
+        }
+        (Arc::new(url), folder)
       })
       .collect::<Vec<_>>();
     for (specifier, folder) in self.config.workspace_folders.as_ref() {

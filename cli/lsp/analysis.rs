@@ -669,7 +669,7 @@ pub fn fix_ts_import_changes(
     } else {
       let Some(target_module) = language_server
         .document_modules
-        .inspect_module_from_specifier(
+        .inspect_module_for_specifier(
           &target_specifier,
           module.scope.as_deref(),
         )
