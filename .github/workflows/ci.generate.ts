@@ -761,7 +761,7 @@ const ci = {
           ].join("\n"),
           run: [
             "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
-            "du -h target/release/deno.symcache",
+            "du -h deno.symcache",
           ].join("\n"),
           env: {
             NO_COLOR: 1,
@@ -793,12 +793,13 @@ const ci = {
           ].join("\n"),
           run: [
             "cd target/release",
+            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
+            "strip deno",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
             "./deno types > lib.deno.d.ts",
           ].join("\n"),
         },
@@ -822,12 +823,13 @@ const ci = {
             "--p12-file=<(echo $APPLE_CODESIGN_KEY | base64 -d) " +
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
+            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-apple-darwin.symcache",
+            "strip deno",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
             "strip denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-apple-darwin.symcache",
           ]
             .join("\n"),
         },
