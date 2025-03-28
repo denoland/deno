@@ -1735,7 +1735,7 @@ impl Inner {
   fn resolution_to_hover_text(
     &self,
     resolution: &Resolution,
-    file_referrer: Option<&ModuleSpecifier>,
+    scope: Option<&Url>,
   ) -> String {
     match resolution {
       Resolution::Ok(resolved) => {
@@ -1758,9 +1758,8 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
-              if let Some(url) = self
-                .resolver
-                .jsr_to_resource_url(&jsr_req_ref, file_referrer)
+              if let Some(url) =
+                self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)
               {
                 result = format!("{result} (<{url}>)");
               }

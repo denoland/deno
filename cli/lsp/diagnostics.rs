@@ -1947,7 +1947,6 @@ mod tests {
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
-  use crate::lsp::documents::Documents;
   use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;

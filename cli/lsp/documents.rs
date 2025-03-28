@@ -821,17 +821,13 @@ impl WeakDocumentModuleMap {
     self.by_specifier.read().contains_key(specifier)
   }
 
-  fn filtered_modules(
-    &self,
-    predicate: impl FnMut(&Arc<DocumentModule>) -> bool,
-  ) -> Vec<Arc<DocumentModule>> {
+  fn inspect_values(&self) -> Vec<Arc<DocumentModule>> {
     self
       .open
       .read()
       .values()
       .map(|m| m.clone())
       .chain(self.server.read().values().map(|m| m.clone()))
-      .filter(predicate)
       .collect()
   }
 
@@ -1270,7 +1266,7 @@ impl DocumentModules {
           }
         }
       };
-      for module in modules.filtered_modules(|_| true) {
+      for module in modules.inspect_values() {
         visit_module(&module);
       }
       let config_data =
@@ -1352,17 +1348,6 @@ impl DocumentModules {
       .filter(|(_, i)| i.has_node_specifier)
       .map(|(s, _)| s.clone())
       .collect::<HashSet<_>>()
-  }
-
-  pub fn filtered_modules(
-    &self,
-    scope: Option<&Url>,
-    predicate: impl FnMut(&Arc<DocumentModule>) -> bool,
-  ) -> Vec<Arc<DocumentModule>> {
-    let Some(modules) = self.modules_for_scope(scope) else {
-      return Vec::new();
-    };
-    modules.filtered_modules(predicate)
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
