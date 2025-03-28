@@ -27,7 +27,6 @@ use super::config::Config;
 use super::config::WorkspaceSettings;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
-use super::documents::DocumentsFilter;
 use super::documents::ServerDocumentKind;
 use super::jsr::CliJsrSearchApi;
 use super::lsp_custom;
@@ -174,7 +173,7 @@ pub async fn get_import_completions(
   let resolved = resolver
     .as_cli_resolver(module.scope.as_deref())
     .resolve(
-      &text,
+      text,
       &module.specifier,
       deno_graph::Position::zeroed(),
       resolution_mode,
@@ -183,7 +182,7 @@ pub async fn get_import_completions(
     .ok();
   if let Some(completion_list) = get_jsr_completions(
     &module.specifier,
-    &text,
+    text,
     &range,
     resolved.as_ref(),
     jsr_search_api,
@@ -193,14 +192,14 @@ pub async fn get_import_completions(
   {
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) =
-    get_npm_completions(&module.specifier, &text, &range, npm_search_api).await
+    get_npm_completions(&module.specifier, text, &range, npm_search_api).await
   {
     Some(lsp::CompletionResponse::List(completion_list))
-  } else if let Some(completion_list) = get_node_completions(&text, &range) {
+  } else if let Some(completion_list) = get_node_completions(text, &range) {
     Some(lsp::CompletionResponse::List(completion_list))
   } else if let Some(completion_list) = get_import_map_completions(
     &module.specifier,
-    &text,
+    text,
     &range,
     maybe_import_map,
   ) {
@@ -209,7 +208,7 @@ pub async fn get_import_completions(
   } else if let Some(completion_list) = get_local_completions(
     &module.specifier,
     resolution_mode,
-    &text,
+    text,
     &range,
     resolver,
   ) {
@@ -218,21 +217,21 @@ pub async fn get_import_completions(
   } else if !text.is_empty() {
     // completion of modules from a module registry or cache
     check_auto_config_registry(
-      &text,
+      text,
       config.workspace_settings_for_specifier(&module.specifier),
       client,
       module_registries,
     )
     .await;
     let maybe_list = module_registries
-      .get_completions(&text, &range, resolved.as_ref(), |s| {
+      .get_completions(text, &range, resolved.as_ref(), |s| {
         document_modules.specifier_exists(s, module.scope.as_deref())
       })
       .await;
     let maybe_list = maybe_list
-      .or_else(|| module_registries.get_origin_completions(&text, &range));
+      .or_else(|| module_registries.get_origin_completions(text, &range));
     let list = maybe_list.unwrap_or_else(|| CompletionList {
-      items: get_remote_completions(module, &text, &range, document_modules),
+      items: get_remote_completions(module, text, &range, document_modules),
       is_incomplete: false,
     });
     Some(lsp::CompletionResponse::List(list))
@@ -261,7 +260,7 @@ pub async fn get_import_completions(
       ));
     }
     if let Some(origin_items) =
-      module_registries.get_origin_completions(&text, &range)
+      module_registries.get_origin_completions(text, &range)
     {
       is_incomplete = origin_items.is_incomplete;
       items.extend(origin_items.items);
@@ -777,17 +776,14 @@ fn get_remote_completions(
     .server_docs()
     .into_iter()
     .filter_map(|d| {
-      match &d.kind {
-        ServerDocumentKind::RemoteUrl { url, .. } => {
-          if *url == module.specifier {
-            return None;
-          }
-          return Some(
-            relative_specifier(&module.specifier, &url)
-              .unwrap_or_else(|| url.to_string()),
-          );
+      if let ServerDocumentKind::RemoteUrl { url, .. } = &d.kind {
+        if *url == module.specifier {
+          return None;
         }
-        _ => {}
+        return Some(
+          relative_specifier(&module.specifier, url)
+            .unwrap_or_else(|| url.to_string()),
+        );
       }
       None
     });

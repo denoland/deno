@@ -19,20 +19,6 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
 
-pub fn calculate_fs_version(
-  cache: &LspCache,
-  specifier: &ModuleSpecifier,
-  file_referrer: Option<&ModuleSpecifier>,
-) -> Option<String> {
-  match specifier.scheme() {
-    "npm" | "node" | "data" | "blob" => None,
-    "file" => url_to_file_path(specifier)
-      .ok()
-      .and_then(|path| calculate_fs_version_at_path(&path)),
-    _ => calculate_fs_version_in_cache(cache, specifier, file_referrer),
-  }
-}
-
 /// Calculate a version for for a given path.
 pub fn calculate_fs_version_at_path(path: impl AsRef<Path>) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
@@ -44,27 +30,6 @@ pub fn calculate_fs_version_at_path(path: impl AsRef<Path>) -> Option<String> {
     }
   } else {
     Some("1".to_string())
-  }
-}
-
-fn calculate_fs_version_in_cache(
-  cache: &LspCache,
-  specifier: &ModuleSpecifier,
-  file_referrer: Option<&ModuleSpecifier>,
-) -> Option<String> {
-  let http_cache = cache.for_specifier(file_referrer);
-  let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
-    return Some("1".to_string());
-  };
-  match http_cache.read_modified_time(&cache_key) {
-    Ok(Some(modified)) => {
-      match modified.duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => Some(n.as_millis().to_string()),
-        Err(_) => Some("1".to_string()),
-      }
-    }
-    Ok(None) => None,
-    Err(_) => Some("1".to_string()),
   }
 }
 
@@ -176,15 +141,6 @@ impl LspCache {
       .1
       .as_ref()?;
     vendor.get_remote_url(&path)
-  }
-
-  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Ok(path) = url_to_file_path(specifier) {
-      if !path.starts_with(&self.deno_dir().root) {
-        return true;
-      }
-    }
-    false
   }
 
   pub fn in_cache_directory(&self, specifier: &Url) -> bool {

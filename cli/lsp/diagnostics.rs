@@ -46,7 +46,6 @@ use tower_lsp::lsp_types as lsp;
 use super::analysis;
 use super::client::Client;
 use super::config::Config;
-use super::documents;
 use super::documents::Document2;
 use super::documents::DocumentModule;
 use super::language_server;
@@ -1779,7 +1778,7 @@ fn diagnose_dependency(
               from: dependency_key.to_string(),
               to,
             }
-            .to_lsp_diagnostic(&documents::to_lsp_range(&resolved.range)),
+            .to_lsp_diagnostic(&language_server::to_lsp_range(&resolved.range)),
           );
         }
       }
@@ -1789,7 +1788,7 @@ fn diagnose_dependency(
   let import_ranges: Vec<_> = dependency
     .imports
     .iter()
-    .map(|i| documents::to_lsp_range(&i.specifier_range))
+    .map(|i| language_server::to_lsp_range(&i.specifier_range))
     .collect();
   // TODO(nayeemrmn): This is a crude way of detecting `@ts-types` which has
   // a different specifier and therefore needs a separate call to
@@ -1843,8 +1842,10 @@ fn diagnose_dependency(
 
   if is_types_deno_types {
     let range = match &dependency.maybe_type {
-      Resolution::Ok(resolved) => documents::to_lsp_range(&resolved.range),
-      Resolution::Err(error) => documents::to_lsp_range(error.range()),
+      Resolution::Ok(resolved) => {
+        language_server::to_lsp_range(&resolved.range)
+      }
+      Resolution::Err(error) => language_server::to_lsp_range(error.range()),
       Resolution::None => unreachable!(),
     };
     let (resolution_diagnostics, deferred) = diagnose_resolution(
@@ -1947,7 +1948,6 @@ mod tests {
   use crate::lsp::config::Settings;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
-  use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::language_server::StateSnapshot;
   use crate::lsp::resolver::LspResolver;

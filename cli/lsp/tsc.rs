@@ -687,6 +687,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_combined_code_fix(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -747,6 +748,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_edits_for_file_rename(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -758,8 +760,8 @@ impl TsServer {
     token: &CancellationToken,
   ) -> Result<Vec<FileTextChanges>, AnyError> {
     let req = TscRequest::GetEditsForFileRename(Box::new((
-      self.specifier_map.denormalize(&old_specifier),
-      self.specifier_map.denormalize(&new_specifier),
+      self.specifier_map.denormalize(old_specifier),
+      self.specifier_map.denormalize(new_specifier),
       format_code_settings,
       user_preferences,
     )));
@@ -885,6 +887,7 @@ impl TsServer {
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
+  #[allow(clippy::too_many_arguments)]
   pub async fn get_completion_details(
     &self,
     snapshot: Arc<StateSnapshot>,
@@ -1951,7 +1954,7 @@ impl InlayHintDisplayPart {
       let range = self
         .span
         .as_ref()
-        .and_then(|s| Some(s.to_range(target_module.line_index.clone())))
+        .map(|s| s.to_range(target_module.line_index.clone()))
         .unwrap_or_else(|| {
           lsp::Range::new(lsp::Position::new(0, 0), lsp::Position::new(0, 0))
         });
@@ -5533,7 +5536,6 @@ mod tests {
   use crate::lsp::config::Config;
   use crate::lsp::config::WorkspaceSettings;
   use crate::lsp::documents::DocumentModules;
-  use crate::lsp::documents::Documents2;
   use crate::lsp::documents::LanguageId;
   use crate::lsp::resolver::LspResolver;
   use crate::lsp::text::LineIndex;

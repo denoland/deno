@@ -70,7 +70,6 @@ use super::diagnostics::DiagnosticDataSpecifier;
 use super::diagnostics::DiagnosticServerUpdateMessage;
 use super::diagnostics::DiagnosticsServer;
 use super::diagnostics::DiagnosticsState;
-use super::documents::to_lsp_range;
 use super::documents::Document2;
 use super::documents::DocumentModule;
 use super::documents::DocumentModules;
@@ -146,6 +145,19 @@ pub enum Diagnosable {
   Filter,
   /// Allow even if not diagnosable.
   Ignore,
+}
+
+pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp_types::Range {
+  lsp_types::Range {
+    start: lsp_types::Position {
+      line: referrer.range.start.line as u32,
+      character: referrer.range.start.character as u32,
+    },
+    end: lsp_types::Position {
+      line: referrer.range.end.line as u32,
+      character: referrer.range.end.character as u32,
+    },
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -1690,7 +1702,7 @@ impl Inner {
         ),
         (true, true, _) => unreachable!("{}", json!(params)),
       };
-      let value = if let Some(docs) = self.module_registry.get_hover(&dep).await
+      let value = if let Some(docs) = self.module_registry.get_hover(dep).await
       {
         format!("{value}\n\n---\n\n{docs}")
       } else {
@@ -1701,7 +1713,7 @@ impl Inner {
           kind: MarkupKind::Markdown,
           value,
         }),
-        range: Some(to_lsp_range(&range)),
+        range: Some(to_lsp_range(range)),
       })
     } else {
       let position = module
@@ -1822,10 +1834,9 @@ impl Inner {
       .collect();
     let mut code_actions = CodeActionCollection::default();
     if !fixable_diagnostics.is_empty() {
-      let file_diagnostics = self.diagnostics_server.get_ts_diagnostics(
-        &document.uri(),
-        document.open().map(|d| d.version),
-      );
+      let file_diagnostics = self
+        .diagnostics_server
+        .get_ts_diagnostics(document.uri(), document.open().map(|d| d.version));
       let mut includes_no_cache = false;
       for diagnostic in &fixable_diagnostics {
         match diagnostic.source.as_deref() {
@@ -3393,7 +3404,7 @@ impl Inner {
     };
     if let Some(tokens) = module.semantic_tokens_full.get() {
       let tokens =
-        super::semantic_tokens::tokens_within_range(&tokens, params.range);
+        super::semantic_tokens::tokens_within_range(tokens, params.range);
       let response = if !tokens.data.is_empty() {
         Some(SemanticTokensRangeResult::Tokens(tokens))
       } else {
