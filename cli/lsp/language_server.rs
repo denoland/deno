@@ -1112,7 +1112,12 @@ impl Inner {
     self
       .config
       .tree
-      .refresh(&self.config.settings, &self.workspace_files, &file_fetcher)
+      .refresh(
+        &self.config.settings,
+        &self.workspace_files,
+        &file_fetcher,
+        self.cache.deno_dir(),
+      )
       .await;
     self
       .client

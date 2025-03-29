@@ -66,6 +66,7 @@ use crate::args::CliLockfileReadFromPathOptions;
 use crate::args::ConfigFile;
 use crate::args::LintFlags;
 use crate::args::LintOptions;
+use crate::cache::DenoDir;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
@@ -1069,6 +1070,9 @@ impl Config {
   }
 
   pub fn specifier_enabled(&self, specifier: &ModuleSpecifier) -> bool {
+    if self.tree.in_global_npm_cache(specifier) {
+      return true;
+    }
     let data = self.tree.data_for_specifier(specifier);
     if let Some(data) = &data {
       if let Ok(path) = specifier.to_file_path() {
@@ -1761,6 +1765,7 @@ impl ConfigData {
 #[derive(Clone, Debug, Default)]
 pub struct ConfigTree {
   scopes: Arc<BTreeMap<Arc<Url>, Arc<ConfigData>>>,
+  global_npm_cache_url: Option<Arc<Url>>,
 }
 
 impl ConfigTree {
@@ -1888,11 +1893,19 @@ impl ConfigTree {
     lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams { data }
   }
 
+  pub fn in_global_npm_cache(&self, url: &Url) -> bool {
+    self
+      .global_npm_cache_url
+      .as_ref()
+      .is_some_and(|s| url.as_str().starts_with(s.as_str()))
+  }
+
   pub async fn refresh(
     &mut self,
     settings: &Settings,
     workspace_files: &IndexSet<PathBuf>,
     file_fetcher: &Arc<CliFileFetcher>,
+    deno_dir: &DenoDir,
   ) {
     lsp_log!("Refreshing configuration tree...");
     // since we're resolving a workspace multiple times in different
@@ -1981,6 +1994,10 @@ impl ConfigTree {
     }
 
     self.scopes = Arc::new(scopes);
+    self.global_npm_cache_url =
+      Url::from_directory_path(deno_dir.npm_folder_path())
+        .ok()
+        .map(Arc::new);
   }
 
   #[cfg(test)]
