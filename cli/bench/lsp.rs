@@ -130,11 +130,27 @@ fn bench_deco_apps_edits(deno_exe: &Path) -> Duration {
       }
     }),
   );
-  let re = lazy_regex::regex!(r"Documents in memory: (\d+)");
+  let open_re = lazy_regex::regex!(r"Open: (\d+)");
+  let server_re = lazy_regex::regex!(r"Server: (\d+)");
   let res = res.as_str().unwrap().to_string();
   assert!(res.starts_with("# Deno Language Server Status"));
-  let captures = re.captures(&res).unwrap();
-  let count = captures.get(1).unwrap().as_str().parse::<usize>().unwrap();
+  let open_count = open_re
+    .captures(&res)
+    .unwrap()
+    .get(1)
+    .unwrap()
+    .as_str()
+    .parse::<usize>()
+    .unwrap();
+  let server_count = server_re
+    .captures(&res)
+    .unwrap()
+    .get(1)
+    .unwrap()
+    .as_str()
+    .parse::<usize>()
+    .unwrap();
+  let count = open_count + server_count;
   assert!(count > 1000, "count: {}", count);
 
   client.shutdown();

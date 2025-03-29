@@ -57,6 +57,7 @@ pub struct DenoConfigurationData {
 #[serde(rename_all = "camelCase")]
 pub struct DidRefreshDenoConfigurationTreeNotificationParams {
   pub data: Vec<DenoConfigurationData>,
+  pub deno_dir_npm_folder_uri: Option<lsp::Uri>,
 }
 
 pub enum DidRefreshDenoConfigurationTreeNotification {}

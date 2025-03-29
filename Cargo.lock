@@ -1591,6 +1591,7 @@ dependencies = [
  "unicode-width 0.1.13",
  "uuid",
  "walkdir",
+ "weak-table",
  "winapi",
  "winres",
  "zip",
@@ -9401,6 +9402,12 @@ dependencies = [
  "deno_error",
  "thiserror 2.0.12",
 ]
+
+[[package]]
+name = "weak-table"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "323f4da9523e9a669e1eaf9c6e763892769b1d38c623913647bfdc1532fe4549"
 
 [[package]]
 name = "web-sys"

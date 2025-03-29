@@ -19,22 +19,8 @@ use crate::lsp::logging::lsp_log;
 use crate::lsp::logging::lsp_warn;
 use crate::sys::CliSys;
 
-pub fn calculate_fs_version(
-  cache: &LspCache,
-  specifier: &ModuleSpecifier,
-  file_referrer: Option<&ModuleSpecifier>,
-) -> Option<String> {
-  match specifier.scheme() {
-    "npm" | "node" | "data" | "blob" => None,
-    "file" => url_to_file_path(specifier)
-      .ok()
-      .and_then(|path| calculate_fs_version_at_path(&path)),
-    _ => calculate_fs_version_in_cache(cache, specifier, file_referrer),
-  }
-}
-
 /// Calculate a version for for a given path.
-pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
+pub fn calculate_fs_version_at_path(path: impl AsRef<Path>) -> Option<String> {
   let metadata = fs::metadata(path).ok()?;
   if let Ok(modified) = metadata.modified() {
     if let Ok(n) = modified.duration_since(SystemTime::UNIX_EPOCH) {
@@ -47,32 +33,11 @@ pub fn calculate_fs_version_at_path(path: &Path) -> Option<String> {
   }
 }
 
-fn calculate_fs_version_in_cache(
-  cache: &LspCache,
-  specifier: &ModuleSpecifier,
-  file_referrer: Option<&ModuleSpecifier>,
-) -> Option<String> {
-  let http_cache = cache.for_specifier(file_referrer);
-  let Ok(cache_key) = http_cache.cache_item_key(specifier) else {
-    return Some("1".to_string());
-  };
-  match http_cache.read_modified_time(&cache_key) {
-    Ok(Some(modified)) => {
-      match modified.duration_since(SystemTime::UNIX_EPOCH) {
-        Ok(n) => Some(n.as_millis().to_string()),
-        Err(_) => Some("1".to_string()),
-      }
-    }
-    Ok(None) => None,
-    Err(_) => Some("1".to_string()),
-  }
-}
-
 #[derive(Debug, Clone)]
 pub struct LspCache {
   deno_dir: DenoDir,
   global: Arc<GlobalHttpCache>,
-  vendors_by_scope: BTreeMap<ModuleSpecifier, Option<Arc<LocalLspHttpCache>>>,
+  vendors_by_scope: BTreeMap<Arc<Url>, Option<Arc<LocalLspHttpCache>>>,
 }
 
 impl Default for LspCache {
@@ -178,11 +143,30 @@ impl LspCache {
     vendor.get_remote_url(&path)
   }
 
-  pub fn is_valid_file_referrer(&self, specifier: &ModuleSpecifier) -> bool {
-    if let Ok(path) = url_to_file_path(specifier) {
-      if !path.starts_with(&self.deno_dir().root) {
-        return true;
-      }
+  pub fn in_cache_directory(&self, specifier: &Url) -> bool {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return false;
+    };
+    if path.starts_with(&self.deno_dir().root) {
+      return true;
+    }
+    let Some(vendor) = self
+      .vendors_by_scope
+      .iter()
+      .rfind(|(s, _)| specifier.as_str().starts_with(s.as_str()))
+      .and_then(|(_, c)| c.as_ref())
+    else {
+      return false;
+    };
+    vendor.get_remote_url(&path).is_some()
+  }
+
+  pub fn in_global_cache_directory(&self, specifier: &Url) -> bool {
+    let Ok(path) = url_to_file_path(specifier) else {
+      return false;
+    };
+    if path.starts_with(&self.deno_dir().root) {
+      return true;
     }
     false
   }
