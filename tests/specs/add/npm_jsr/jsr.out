@@ -1,0 +1,10 @@
+Add npm:@denotest/esm-basic@1.0.0
+Add jsr:@denotest/add@1.0.0
+Add npm:chalk@5.0.1
+[UNORDERED_START]
+Download http://localhost:4260/chalk
+Download http://localhost:4260/chalk/chalk-5.0.1.tgz
+Download http://localhost:4260/@denotest%2fesm-basic
+Download http://127.0.0.1:4250/@denotest/add/1.0.0/mod.ts
+Download http://localhost:4260/@denotest/esm-basic/1.0.0.tgz
+[UNORDERED_END]

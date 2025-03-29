@@ -1,0 +1,21 @@
+{
+  "tempDir": true,
+  "tests": {
+    "npm": {
+      "steps": [
+        {
+          "args": "add --npm @denotest/esm-basic jsr:@denotest/add npm:chalk",
+          "output": "npm.out"
+        }
+      ]
+    },
+    "jsr": {
+      "steps": [
+        {
+          "args": "add --jsr npm:@denotest/esm-basic @denotest/add npm:chalk",
+          "output": "jsr.out"
+        }
+      ]
+    }
+  }
+}
