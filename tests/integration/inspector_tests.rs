@@ -1196,6 +1196,33 @@ async fn inspector_profile() {
   tester.child.wait().unwrap();
 }
 
+/// Ensure that scripts compiled via the Node "vm" polyfill report file URLs
+/// to the inspector so that coverage tools can pick them up.
+#[tokio::test]
+async fn inspector_vm_coverage_file_url() {
+  let script = util::testdata_path().join("inspector/vm_coverage.js");
+  // `vm_coverage.js` starts its own inspector session, runs a small script via
+  // `vm.runInThisContext()` with an absolute filename, and then prints the
+  // list of file URLs reported by `Profiler.takePreciseCoverage`.
+  let output = util::deno_cmd()
+    .arg("run")
+    .arg("--allow-sys")
+    .arg(script)
+    .output()
+    .unwrap();
+  assert!(output.status.success());
+  let stdout = String::from_utf8_lossy(&output.stdout);
+  // Expect a JSON array like [{ url: "file:///tmp/foo.js", ... }]
+  let files: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+  let arr = files.as_array().unwrap();
+  assert!(
+    !arr.is_empty(),
+    "expected at least one file url in coverage"
+  );
+  let first_url = arr[0]["url"].as_str().unwrap();
+  assert!(first_url.starts_with("file:///"));
+}
+
 // TODO(bartlomieju): this test became flaky on CI after wiring up "ext/node"
 // compatibility layer. Can't reproduce this problem locally for either Mac M1
 // or Linux. Ignoring for now to unblock further integration of "ext/node".
