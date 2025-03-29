@@ -974,16 +974,17 @@ impl DocumentModules {
       })
       .or_else(|| {
         let uri = document.uri();
-        if !uri.scheme()?.eq_lowercase("file") {
+        let url = uri_to_url(uri);
+        if url.scheme() != "file" {
           return None;
         }
-        let file_url = uri_to_url(uri);
-        if let Some(remote_specifier) =
-          self.cache.unvendored_specifier(&file_url)
-        {
-          return Some(Arc::new(remote_specifier));
+        if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+          if let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
+          {
+            return Some(Arc::new(remote_specifier));
+          }
         }
-        Some(Arc::new(file_url))
+        Some(Arc::new(url))
       })?;
     let module = Arc::new(DocumentModule::new(
       document,
