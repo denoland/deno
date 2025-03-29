@@ -556,7 +556,7 @@ impl WebWorker {
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
       ),
-      deno_os::deno_os_worker::init_ops_and_esm(),
+      deno_os::deno_os::init_ops_and_esm(None),
       deno_process::deno_process::init_ops_and_esm(
         services.npm_process_state_provider,
       ),
