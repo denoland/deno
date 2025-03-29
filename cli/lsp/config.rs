@@ -1890,7 +1890,14 @@ impl ConfigTree {
         })
       })
       .collect();
-    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams { data }
+    let deno_dir_npm_folder_uri = self
+      .global_npm_cache_url
+      .as_ref()
+      .and_then(|s| url_to_uri(s).ok());
+    lsp_custom::DidRefreshDenoConfigurationTreeNotificationParams {
+      data,
+      deno_dir_npm_folder_uri,
+    }
   }
 
   pub fn in_global_npm_cache(&self, url: &Url) -> bool {

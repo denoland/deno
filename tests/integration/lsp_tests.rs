@@ -998,11 +998,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
   temp_dir.write("non_workspace1/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
@@ -1052,11 +1053,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
     }],
   }));
   client.read_diagnostics();
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
@@ -1111,11 +1113,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "disablePaths": ["non_workspace1"],
     },
   }));
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
