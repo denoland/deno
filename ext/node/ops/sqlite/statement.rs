@@ -263,6 +263,8 @@ impl StatementSync {
       let mut data = value.data();
       let mut size = value.byte_length();
 
+      // data may be NULL if length is 0 or ab is detached. we need to pass a valid pointer
+      // to sqlite3_bind_blob, so we use a static empty array in this case.
       if data.is_null() {
         static EMPTY: [u8; 0] = [];
 
