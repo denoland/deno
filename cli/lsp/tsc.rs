@@ -3642,6 +3642,8 @@ pub struct CompletionEntry {
   is_import_statement_completion: Option<bool>,
   #[serde(skip_serializing_if = "Option::is_none")]
   data: Option<Value>,
+  #[serde(flatten)]
+  other: serde_json::Map<String, Value>,
   /// This is not from tsc, we add it for convenience during normalization.
   /// Represents `self.data.file_name`, but normalized.
   #[serde(skip)]
@@ -3725,11 +3727,37 @@ impl CompletionEntry {
     }
   }
 
-  fn get_filter_text(&self) -> Option<String> {
+  // https://github.com/microsoft/vscode/blob/52eae268f764fd41d69705eb629010f4c0e28ae9/extensions/typescript-language-features/src/languageFeatures/completions.ts#L391-L425
+  fn get_filter_text(
+    &self,
+    context: Option<(&DocumentModule, u32)>,
+  ) -> Option<String> {
     if self.name.starts_with('#') {
       if let Some(insert_text) = &self.insert_text {
         if insert_text.starts_with("this.#") {
-          return Some(insert_text.replace("this.#", ""));
+          let prefix_starts_with_hash = context
+            .map(|(module, position)| {
+              for (_, c) in module
+                .text
+                .char_indices()
+                .rev()
+                .skip_while(|(i, _)| *i as u32 >= position)
+              {
+                if c == '#' {
+                  return true;
+                }
+                if !c.is_ascii_alphanumeric() && c != '_' && c != '$' {
+                  break;
+                }
+              }
+              false
+            })
+            .unwrap_or(false);
+          if prefix_starts_with_hash {
+            return Some(insert_text.clone());
+          } else {
+            return Some(insert_text.replace("this.#", ""));
+          }
         } else {
           return Some(insert_text.clone());
         }
@@ -3773,12 +3801,7 @@ impl CompletionEntry {
     let mut kind: Option<lsp::CompletionItemKind> =
       Some(self.kind.clone().into());
     let mut specifier_rewrite = None;
-
-    let mut sort_text = if self.source.is_some() {
-      format!("\u{ffff}{}", self.sort_text)
-    } else {
-      self.sort_text.clone()
-    };
+    let mut sort_text = self.sort_text.clone();
 
     let preselect = self.is_recommended;
     let use_code_snippet = settings.complete_function_calls
@@ -3791,7 +3814,7 @@ impl CompletionEntry {
       _ => None,
     };
     let range = self.replacement_span.clone();
-    let mut filter_text = self.get_filter_text();
+    let mut filter_text = self.get_filter_text(Some((module, position)));
     let mut tags = None;
     let mut detail = None;
 
@@ -3826,8 +3849,9 @@ impl CompletionEntry {
       }
     }
     if let Some(source) = &self.source {
-      let mut display_source = source.clone();
       if let Some(import_data) = &self.auto_import_data {
+        sort_text = format!("\u{ffff}{}", self.sort_text);
+        let mut display_source = source.clone();
         let import_mapper =
           language_server.get_ts_response_import_mapper(module);
         let maybe_cached = resolution_cache
@@ -3883,17 +3907,17 @@ impl CompletionEntry {
         } else if source.starts_with(jsr_url().as_str()) {
           return None;
         }
+        // We want relative or bare (import-mapped or otherwise) specifiers to
+        // appear at the top.
+        if resolve_url(&display_source).is_err() {
+          sort_text += "_0";
+        } else {
+          sort_text += "_1";
+        }
+        label_details
+          .get_or_insert_with(Default::default)
+          .description = Some(display_source);
       }
-      // We want relative or bare (import-mapped or otherwise) specifiers to
-      // appear at the top.
-      if resolve_url(&display_source).is_err() {
-        sort_text += "_0";
-      } else {
-        sort_text += "_1";
-      }
-      label_details
-        .get_or_insert_with(Default::default)
-        .description = Some(display_source);
     }
 
     let text_edit =
@@ -6060,7 +6084,7 @@ mod tests {
       insert_text: Some("['foo']".to_string()),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some(".foo".to_string()));
 
     let fixture = CompletionEntry {
@@ -6068,7 +6092,7 @@ mod tests {
       name: "#abc".to_string(),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, None);
 
     let fixture = CompletionEntry {
@@ -6077,7 +6101,7 @@ mod tests {
       insert_text: Some("this.#abc".to_string()),
       ..Default::default()
     };
-    let actual = fixture.get_filter_text();
+    let actual = fixture.get_filter_text(None);
     assert_eq!(actual, Some("abc".to_string()));
   }
 

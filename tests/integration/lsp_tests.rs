@@ -12670,6 +12670,107 @@ fn lsp_completions_complete_function_calls() {
   client.shutdown();
 }
 
+// Regression test for https://github.com/denoland/vscode_deno/issues/1276.
+#[test]
+#[timeout(300_000)]
+fn lsp_completions_private_class_fields() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        export class SomeClass {
+          #prop = 1;
+          foo() {
+            pro;
+            #pro;
+          }
+        }
+      "#,
+    },
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (4, 15),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "#prop",
+      "kind": 5,
+      "sortText": "14",
+      "filterText": "prop",
+      "insertText": "this.#prop",
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "uri": "file:///a/file.ts",
+          "position": 88,
+          "name": "#prop",
+          "source": "ThisProperty/",
+          "useCodeSnippet": false,
+        },
+      },
+    }),
+  );
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (5, 16),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "#prop",
+      "kind": 5,
+      "sortText": "14",
+      "filterText": "this.#prop",
+      "insertText": "this.#prop",
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "uri": "file:///a/file.ts",
+          "position": 106,
+          "name": "#prop",
+          "source": "ThisProperty/",
+          "useCodeSnippet": false,
+        },
+      },
+    }),
+  );
+  client.shutdown();
+}
+
 #[test]
 #[timeout(300_000)]
 fn lsp_workspace_symbol() {
