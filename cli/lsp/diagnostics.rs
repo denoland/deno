@@ -1005,7 +1005,9 @@ fn generate_document_lint_diagnostics(
   linter: &CliLinter,
   token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
-  if !lint_config.files.matches_specifier(&module.specifier) {
+  if !module.is_diagnosable()
+    || !lint_config.files.matches_specifier(&module.specifier)
+  {
     return Vec::new();
   }
   match &module

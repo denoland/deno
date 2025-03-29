@@ -746,6 +746,10 @@ impl DocumentModule {
     }
   }
 
+  pub fn is_diagnosable(&self) -> bool {
+    media_type_is_diagnosable(self.media_type)
+  }
+
   pub fn dependency_at_position(
     &self,
     position: &lsp::Position,

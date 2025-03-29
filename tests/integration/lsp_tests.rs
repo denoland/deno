@@ -4138,7 +4138,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 0, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4147,7 +4147,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4156,7 +4156,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 3, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4165,7 +4165,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 7, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4178,7 +4178,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 0, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4217,7 +4217,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 14, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4245,7 +4245,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 15, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4325,7 +4325,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4334,7 +4334,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4343,7 +4343,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4352,7 +4352,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4361,7 +4361,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4370,7 +4370,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4379,7 +4379,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4388,7 +4388,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 11, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4401,7 +4401,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }),
@@ -4438,7 +4438,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }),
@@ -4816,7 +4816,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
         "end": { "line": 416, "character": 19 }
       },
       "data": {
-        "specifier": "asset:///lib.deno.shared_globals.d.ts",
+        "uri": "asset:///lib.deno.shared_globals.d.ts",
         "source": "references"
       }
     }),
@@ -4865,7 +4865,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4874,7 +4874,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4883,7 +4883,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4892,7 +4892,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4901,7 +4901,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4910,7 +4910,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4919,7 +4919,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4928,7 +4928,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 11, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4967,7 +4967,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4976,7 +4976,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4985,7 +4985,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4994,7 +4994,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -5003,7 +5003,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -5613,7 +5613,7 @@ fn lsp_code_actions_deno_cache() {
             "source": "deno",
             "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
             "data": {
-              "specifier": "https://deno.land/x/a/mod.ts"
+              "uri": "https://deno.land/x/a/mod.ts"
             }
           }],
           "only": ["quickfix"]
@@ -5635,7 +5635,7 @@ fn lsp_code_actions_deno_cache() {
         "source": "deno",
         "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
         "data": {
-          "specifier": "https://deno.land/x/a/mod.ts"
+          "uri": "https://deno.land/x/a/mod.ts"
         }
       }],
       "command": {
@@ -6254,7 +6254,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       },
       "isPreferred": false,
       "data": {
-        "specifier": file.url(),
+        "uri": file.url(),
         "range": {
           "start": { "line": 2, "character": 19 },
           "end": { "line": 2, "character": 28 },
@@ -6430,7 +6430,7 @@ fn lsp_code_actions_deno_cache_all() {
             "source": "deno",
             "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
             "data": {
-              "specifier": "https://deno.land/x/a/mod.ts",
+              "uri": "https://deno.land/x/a/mod.ts",
             },
           }],
           "only": ["quickfix"],
@@ -6458,7 +6458,7 @@ fn lsp_code_actions_deno_cache_all() {
           "source": "deno",
           "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
           "data": {
-            "specifier": "https://deno.land/x/a/mod.ts",
+            "uri": "https://deno.land/x/a/mod.ts",
           },
         }],
         "command": {
@@ -6481,7 +6481,7 @@ fn lsp_code_actions_deno_cache_all() {
             "source": "deno",
             "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
             "data": {
-              "specifier": "https://deno.land/x/a/mod.ts",
+              "uri": "https://deno.land/x/a/mod.ts",
             },
           },
           {
@@ -8813,7 +8813,7 @@ fn lsp_infer_return_type() {
         "kind": "refactor.rewrite.function.returnType",
         "isPreferred": false,
         "data": {
-          "specifier": file.url(),
+          "uri": file.url(),
           "range": {
             "start": { "line": 1, "character": 15 },
             "end": { "line": 1, "character": 18 },
@@ -8833,7 +8833,7 @@ fn lsp_infer_return_type() {
       "kind": "refactor.rewrite.function.returnType",
       "isPreferred": false,
       "data": {
-        "specifier": file.url(),
+        "uri": file.url(),
         "range": {
           "start": { "line": 1, "character": 15 },
           "end": { "line": 1, "character": 18 },
@@ -10266,7 +10266,7 @@ fn lsp_completions_node_builtin() {
           "source": "deno",
           "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
-            "specifier": "fs"
+            "uri": "fs"
           },
         }
       ],
@@ -10326,7 +10326,7 @@ fn lsp_completions_node_builtin() {
           "end": { "line": 0, "character": 24 }
         },
         "data": {
-          "specifier": "npm:@types/node",
+          "uri": "npm:@types/node",
         },
         "severity": 1,
         "code": "not-installed-npm",
@@ -16832,7 +16832,7 @@ fn sloppy_imports_not_enabled() {
             temp_dir.join("a").url_file(),
           ),
           "data": {
-            "specifier": temp_dir.join("a").url_file(),
+            "uri": temp_dir.join("a").url_file(),
             "to": temp_dir.join("a.ts").url_file(),
             "message": "Add a '.ts' extension.",
           },
@@ -16859,7 +16859,7 @@ fn sloppy_imports_not_enabled() {
           temp_dir.join("a").url_file(),
         ),
         "data": {
-          "specifier": temp_dir.join("a").url_file(),
+          "uri": temp_dir.join("a").url_file(),
           "to": temp_dir.join("a.ts").url_file(),
           "message": "Add a '.ts' extension.",
         },
