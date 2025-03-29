@@ -1072,7 +1072,14 @@ impl Config {
     let data = self.tree.data_for_specifier(specifier);
     if let Some(data) = &data {
       if let Ok(path) = specifier.to_file_path() {
-        if data.exclude_files.matches_path(&path) {
+        // deno_config's exclusion checks exclude vendor dirs invariably. We
+        // don't want that behavior here.
+        if data.exclude_files.matches_path(&path)
+          && !data
+            .vendor_dir
+            .as_ref()
+            .is_some_and(|p| path.starts_with(p))
+        {
           return false;
         }
       }
