@@ -268,14 +268,6 @@ where
     n => n.to_string(),
   };
 
-  {
-    let mut s = state.borrow_mut();
-    let permissions = s.borrow_mut::<NP>();
-    permissions
-      .check_net(&(&hostname, Some(0)), "Deno.startTls()")
-      .map_err(NetError::Permission)?;
-  }
-
   let ca_certs = args
     .ca_certs
     .into_iter()

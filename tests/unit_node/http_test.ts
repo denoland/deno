@@ -15,7 +15,7 @@ import net, { Socket } from "node:net";
 import fs from "node:fs";
 import { text } from "node:stream/consumers";
 
-import { assert, assertEquals, fail } from "@std/assert";
+import { assert, assertEquals, assertStringIncludes, fail } from "@std/assert";
 import { assertSpyCalls, spy } from "@std/testing/mock";
 import { fromFileUrl, relative } from "@std/path";
 import { retry } from "@std/async/retry";
@@ -1038,7 +1038,7 @@ Deno.test(
     );
     const { promise, resolve, reject } = Promise.withResolvers<void>();
 
-    const request = http.request("http://localhost:5929/");
+    const request = http.request("http://127.0.0.1:5929/");
     request.on("error", reject);
     request.on("close", () => {});
     request.end();
@@ -1058,7 +1058,7 @@ Deno.test(
   "[node/http] client destroy before sending request should not error",
   async () => {
     const { resolve, promise } = Promise.withResolvers<void>();
-    const request = http.request("http://localhost:5929/");
+    const request = http.request("http://127.0.0.1:5929/");
     // Calling this would throw
     request.destroy();
     request.on("error", (e) => {
@@ -1087,7 +1087,7 @@ Deno.test(
       receivedRequest = true;
       return new Response(null);
     });
-    const request = http.request(`http://localhost:${server.addr.port}/`);
+    const request = http.request(`http://127.0.0.1:${server.addr.port}/`);
     request.destroy();
     request.end("hello");
     request.on("error", (err) => {
@@ -1945,6 +1945,48 @@ Deno.test("[node/http] supports proxy http request", async () => {
   await promise;
   await server.finished;
 });
+
+Deno.test("[node/http] `request` requires net permission to host and port", {
+  permissions: { net: ["localhost:4545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  http.request("http://localhost:4545/echo.ts", async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
+});
+
+const ca = await Deno.readTextFile("tests/testdata/tls/RootCA.pem");
+
+Deno.test("[node/https] `request` requires net permission to host and port", {
+  permissions: { net: ["localhost:5545"] },
+}, async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  https.request("https://localhost:5545/echo.ts", { ca }, async (res) => {
+    assertEquals(res.statusCode, 200);
+    assertStringIncludes(await text(res), "function echo(");
+    resolve();
+  }).end();
+  await promise;
+});
+
+Deno.test(
+  "[node/http] `request` errors with EPERM error when permission is not granted",
+  { permissions: { net: ["localhost:4321"] } }, // wrong permission
+  async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    http.request("http://localhost:4545/echo.ts", async () => {})
+      .on("error", (e) => {
+        assertEquals(e.message, "getaddrinfo EPERM localhost");
+        // deno-lint-ignore no-explicit-any
+        assertEquals((e as any).code, "EPERM");
+        resolve();
+      }).end();
+    await promise;
+  },
+);
 
 Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
