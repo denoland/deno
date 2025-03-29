@@ -6,6 +6,7 @@ import process, {
   arch as importedArch,
   argv,
   argv0 as importedArgv0,
+  cpuUsage as importedCpuUsage,
   env,
   execArgv as importedExecArgv,
   execPath as importedExecPath,
@@ -1145,9 +1146,56 @@ Deno.test(function importedExecPathTest() {
 });
 
 Deno.test("process.cpuUsage()", () => {
+  assert(process.cpuUsage.length === 1);
   const cpuUsage = process.cpuUsage();
   assert(typeof cpuUsage.user === "number");
   assert(typeof cpuUsage.system === "number");
+  const a = process.cpuUsage();
+  const b = process.cpuUsage(a);
+  assert(a.user > b.user);
+  assert(a.system > b.system);
+
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({});
+    },
+    TypeError,
+  );
+
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({ user: "1", system: 2 });
+    },
+    TypeError,
+  );
+  assertThrows(
+    () => {
+      // @ts-ignore TS2322
+      process.cpuUsage({ user: 1, system: "2" });
+    },
+    TypeError,
+  );
+
+  for (const invalidNumber of [-1, -Infinity, Infinity, NaN]) {
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: invalidNumber, system: 2 });
+      },
+      RangeError,
+    );
+    assertThrows(
+      () => {
+        process.cpuUsage({ user: 2, system: invalidNumber });
+      },
+      RangeError,
+    );
+  }
+});
+
+Deno.test("importedCpuUsage", () => {
+  assert(importedCpuUsage === process.cpuUsage);
 });
 
 Deno.test("process.stdout.columns writable", () => {
