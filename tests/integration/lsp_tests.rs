@@ -5338,7 +5338,7 @@ fn lsp_code_actions() {
         "relatedInformation": []
       }],
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "fixId": "fixAwaitInSyncFunction"
       }
     }])
@@ -5361,7 +5361,7 @@ fn lsp_code_actions() {
           "relatedInformation": []
         }],
         "data": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "fixId": "fixAwaitInSyncFunction"
         }
       }),
@@ -5424,7 +5424,7 @@ fn lsp_code_actions() {
         }]
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "fixId": "fixAwaitInSyncFunction"
       }
     })
@@ -6594,7 +6594,7 @@ fn lsp_asset_document_dom_code_action() {
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": "asset:///lib.dom.d.ts" },
+      "textDocument": { "uri": "deno:/asset/lib.dom.d.ts" },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 },
@@ -6816,7 +6816,7 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     }, {
@@ -6874,7 +6874,7 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfig'."
       }],
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     }),
@@ -6919,7 +6919,7 @@ export class DuckConfig {
         }]
       },
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     })
@@ -7150,7 +7150,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.move.newFile",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7163,7 +7163,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.function",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7176,7 +7176,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.constant",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7192,7 +7192,7 @@ fn lsp_code_actions_refactor() {
         "reason": "This file already has a default export"
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7208,7 +7208,7 @@ fn lsp_code_actions_refactor() {
         "reason": "This file already has a default export"
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7224,7 +7224,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7240,7 +7240,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7256,7 +7256,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7273,7 +7273,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.interface",
       "isPreferred": true,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 33 }
@@ -7311,7 +7311,7 @@ fn lsp_code_actions_refactor() {
       },
       "isPreferred": true,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 33 }
@@ -7448,7 +7448,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "data": {
-        "specifier": temp_dir.url().join("file00.ts").unwrap(),
+        "uri": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     }),
@@ -7484,7 +7484,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         }]
       },
       "data": {
-        "specifier": temp_dir.url().join("file00.ts").unwrap(),
+        "uri": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     })
@@ -7679,7 +7679,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       "kind": "refactor.move.newFile",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 14, "character": 0 }
@@ -7692,7 +7692,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       "kind": "refactor.extract.function",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 14, "character": 0 }
@@ -14014,7 +14014,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
   );
 
   // won't have results because the document won't be pre-loaded
-  assert_eq!(res, json!([]));
+  assert_eq!(res, json!(null));
 
   client.shutdown();
 }
@@ -14069,7 +14069,7 @@ fn lsp_closed_file_find_references_excluded_path() {
   );
 
   // won't have results because the documents won't be pre-loaded
-  assert_eq!(res, json!([]));
+  assert_eq!(res, json!(null));
 
   client.shutdown();
 }
