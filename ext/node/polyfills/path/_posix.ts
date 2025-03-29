@@ -485,7 +485,7 @@ export function parse(path: string): ParsedPath {
     ret.ext = StringPrototypeSlice(path, startDot, end);
   }
 
-  if (startPart > 0) ret.base = StringPrototypeSlice(path, 0, startPart - 1);
+  if (startPart > 0) ret.dir = StringPrototypeSlice(path, 0, startPart - 1);
   else if (isAbsolute) ret.dir = "/";
 
   return ret;
