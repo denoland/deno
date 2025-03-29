@@ -4726,7 +4726,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
         "end": { "line": 416, "character": 19 }
       },
       "data": {
-        "uri": "asset:///lib.deno.shared_globals.d.ts",
+        "uri": "deno:/asset/lib.deno.shared_globals.d.ts",
         "source": "references"
       }
     }),
@@ -5523,7 +5523,7 @@ fn lsp_code_actions_deno_cache() {
             "source": "deno",
             "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
             "data": {
-              "uri": "https://deno.land/x/a/mod.ts"
+              "specifier": "https://deno.land/x/a/mod.ts"
             }
           }],
           "only": ["quickfix"]
@@ -5545,7 +5545,7 @@ fn lsp_code_actions_deno_cache() {
         "source": "deno",
         "message": "Unable to load the remote module: \"https://deno.land/x/a/mod.ts\".",
         "data": {
-          "uri": "https://deno.land/x/a/mod.ts"
+          "specifier": "https://deno.land/x/a/mod.ts"
         }
       }],
       "command": {
@@ -6340,7 +6340,7 @@ fn lsp_code_actions_deno_cache_all() {
             "source": "deno",
             "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
             "data": {
-              "uri": "https://deno.land/x/a/mod.ts",
+              "specifier": "https://deno.land/x/a/mod.ts",
             },
           }],
           "only": ["quickfix"],
@@ -6368,7 +6368,7 @@ fn lsp_code_actions_deno_cache_all() {
           "source": "deno",
           "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
           "data": {
-            "uri": "https://deno.land/x/a/mod.ts",
+            "specifier": "https://deno.land/x/a/mod.ts",
           },
         }],
         "command": {
@@ -6391,7 +6391,7 @@ fn lsp_code_actions_deno_cache_all() {
             "source": "deno",
             "message": "Uncached or missing remote URL: https://deno.land/x/a/mod.ts",
             "data": {
-              "uri": "https://deno.land/x/a/mod.ts",
+              "specifier": "https://deno.land/x/a/mod.ts",
             },
           },
           {
@@ -7773,7 +7773,7 @@ fn lsp_completions() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 5,
           "name": "build",
           "useCodeSnippet": false
@@ -7862,7 +7862,7 @@ fn lsp_completions_optional() {
           "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
-              "specifier": "file:///a/file.ts",
+              "uri": "file:///a/file.ts",
               "position": 79,
               "name": "b",
               "useCodeSnippet": false
@@ -7882,7 +7882,7 @@ fn lsp_completions_optional() {
       "insertText": "b",
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 79,
           "name": "b",
           "useCodeSnippet": false
@@ -9527,7 +9527,7 @@ fn lsp_completions_snippet() {
           ],
           "data": {
             "tsc": {
-              "specifier": "file:///a/a.tsx",
+              "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
               "useCodeSnippet": false
@@ -9555,7 +9555,7 @@ fn lsp_completions_snippet() {
       ],
       "data": {
         "tsc": {
-          "specifier": "file:///a/a.tsx",
+          "uri": "file:///a/a.tsx",
           "position": 87,
           "name": "type",
           "useCodeSnippet": false
@@ -9626,7 +9626,7 @@ fn lsp_completions_no_snippet() {
           ],
           "data": {
             "tsc": {
-              "specifier": "file:///a/a.tsx",
+              "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
               "useCodeSnippet": false
@@ -9729,7 +9729,7 @@ fn lsp_completions_npm() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
           "useCodeSnippet": false
@@ -9746,7 +9746,7 @@ fn lsp_completions_npm() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
           "useCodeSnippet": false
@@ -10176,7 +10176,7 @@ fn lsp_completions_node_builtin() {
           "source": "deno",
           "message": "Relative import path \"fs\" not prefixed with / or ./ or ../\n  \u{1b}[0m\u{1b}[36mhint:\u{1b}[0m If you want to use a built-in Node module, add a \"node:\" prefix (ex. \"node:fs\").",
           "data": {
-            "uri": "fs"
+            "specifier": "fs"
           },
         }
       ],
@@ -10236,7 +10236,7 @@ fn lsp_completions_node_builtin() {
           "end": { "line": 0, "character": 24 }
         },
         "data": {
-          "uri": "npm:@types/node",
+          "specifier": "npm:@types/node",
         },
         "severity": 1,
         "code": "not-installed-npm",
@@ -12641,7 +12641,7 @@ fn lsp_completions_complete_function_calls() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 3,
           "name": "map",
           "useCodeSnippet": true
@@ -14038,7 +14038,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": { "line": 1, "character": 1 }
       }
     }, {
-      "uri": "deno:/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8/data_url.ts",
+      "uri": "deno:/data_url/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8.ts",
       "range": {
         "start": { "line": 0, "character": 7 },
         "end": {"line": 0, "character": 14 },
@@ -14842,7 +14842,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14893,7 +14893,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,

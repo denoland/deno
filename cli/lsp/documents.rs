@@ -1184,6 +1184,40 @@ impl DocumentModules {
     result
   }
 
+  /// This will not store any module entries, only retrieve existing entries or
+  /// create temporary entries for scopes where one doesn't exist.
+  pub fn inspect_or_temp_modules_by_scope(
+    &self,
+    document: &Document,
+  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
+    let mut result = BTreeMap::new();
+    for (scope, modules) in self.modules_by_scope.iter() {
+      let module = modules.get(document).unwrap_or_else(|| {
+        Arc::new(DocumentModule::new(
+          document,
+          Arc::new(uri_to_url(document.uri())),
+          Some(scope.clone()),
+          &self.resolver,
+          &self.config,
+          &self.cache,
+        ))
+      });
+      result.insert(Some(scope.clone()), module);
+    }
+    let module = self.modules_unscoped.get(document).unwrap_or_else(|| {
+      Arc::new(DocumentModule::new(
+        document,
+        Arc::new(uri_to_url(document.uri())),
+        None,
+        &self.resolver,
+        &self.config,
+        &self.cache,
+      ))
+    });
+    result.insert(None, module);
+    result
+  }
+
   fn modules_for_scope(
     &self,
     scope: Option<&Url>,

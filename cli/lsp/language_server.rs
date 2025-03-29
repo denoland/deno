@@ -2444,8 +2444,9 @@ impl Inner {
       return Ok(None);
     };
     let mut locations = IndexSet::new();
-    for (scope, module) in
-      self.document_modules.inspect_modules_by_scope(&document)
+    for (scope, module) in self
+      .document_modules
+      .inspect_or_temp_modules_by_scope(&document)
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -2870,8 +2871,9 @@ impl Inner {
       return Ok(None);
     };
     let mut implementations_with_modules = IndexMap::new();
-    for (scope, module) in
-      self.document_modules.inspect_modules_by_scope(&document)
+    for (scope, module) in self
+      .document_modules
+      .inspect_or_temp_modules_by_scope(&document)
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3004,8 +3006,9 @@ impl Inner {
       return Ok(None);
     };
     let mut incoming_calls_with_modules = IndexMap::new();
-    for (scope, module) in
-      self.document_modules.inspect_modules_by_scope(&document)
+    for (scope, module) in self
+      .document_modules
+      .inspect_or_temp_modules_by_scope(&document)
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3216,8 +3219,9 @@ impl Inner {
       return Ok(None);
     };
     let mut locations_with_modules = IndexMap::new();
-    for (scope, module) in
-      self.document_modules.inspect_modules_by_scope(&document)
+    for (scope, module) in self
+      .document_modules
+      .inspect_or_temp_modules_by_scope(&document)
     {
       if token.is_cancelled() {
         return Err(LspError::request_cancelled());
@@ -3554,8 +3558,9 @@ impl Inner {
       else {
         continue;
       };
-      for (scope, module) in
-        self.document_modules.inspect_modules_by_scope(&document)
+      for (scope, module) in self
+        .document_modules
+        .inspect_or_temp_modules_by_scope(&document)
       {
         if token.is_cancelled() {
           return Err(LspError::request_cancelled());
