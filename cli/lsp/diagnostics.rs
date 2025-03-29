@@ -81,8 +81,7 @@ struct DiagnosticRecord {
 
 #[derive(Clone, Default, Debug)]
 struct VersionedDiagnostics {
-  // TODO(nayeemrmn): Make non-optional!
-  pub version: Option<i32>,
+  pub version: i32,
   pub diagnostics: Vec<lsp::Diagnostic>,
 }
 
@@ -165,7 +164,7 @@ impl DiagnosticsPublisher {
         .publish_diagnostics(
           record.uri.as_ref().clone(),
           all_specifier_diagnostics,
-          version,
+          Some(version),
         )
         .await;
       messages_sent += 1;
@@ -191,7 +190,7 @@ impl DiagnosticsPublisher {
             .publish_diagnostics(
               uri.as_ref().clone(),
               Vec::new(),
-              removed_value.version,
+              Some(removed_value.version),
             )
             .await;
           messages_sent += 1;
@@ -227,7 +226,7 @@ impl TsDiagnosticsStore {
     let ts_diagnostics = self.0.lock();
     if let Some(versioned) = ts_diagnostics.get(uri) {
       // only get the diagnostics if they're up to date
-      if document_version == versioned.version {
+      if document_version == Some(versioned.version) {
         return versioned.diagnostics.clone();
       }
     }
@@ -303,7 +302,7 @@ struct ChannelUpdateMessage {
 
 #[derive(Debug)]
 struct DocumentDiagnosticsState {
-  version: Option<i32>,
+  version: i32,
   no_cache_diagnostics: Vec<lsp::Diagnostic>,
 }
 
@@ -313,17 +312,13 @@ pub struct DiagnosticsState {
 }
 
 impl DiagnosticsState {
-  fn update(
-    &self,
-    uri: &Uri,
-    version: Option<i32>,
-    diagnostics: &[lsp::Diagnostic],
-  ) {
+  fn update(&self, uri: &Uri, version: i32, diagnostics: &[lsp::Diagnostic]) {
     let mut specifiers = self.documents.write();
-    let current_version = specifiers.get(uri).and_then(|s| s.version);
-    match (version, current_version) {
-      (Some(arg), Some(existing)) if arg < existing => return,
-      _ => {}
+    let current_version = specifiers.get(uri).map(|s| s.version);
+    if let Some(current_version) = current_version {
+      if version < current_version {
+        return;
+      }
     }
     let mut no_cache_diagnostics = vec![];
     for diagnostic in diagnostics {
@@ -438,7 +433,7 @@ impl DeferredDiagnostics {
           DiagnosticRecord {
             uri: diagnostic.uri,
             versioned: VersionedDiagnostics {
-              version: Some(diagnostic.version),
+              version: diagnostic.version,
               diagnostics: filtered,
             },
           }
@@ -987,7 +982,7 @@ fn generate_lint_diagnostics(
     records.push(DiagnosticRecord {
       uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
-        version: Some(document.version),
+        version: document.version,
         diagnostics: generate_document_lint_diagnostics(
           &module,
           &lint_config,
@@ -1067,7 +1062,7 @@ async fn generate_ts_diagnostics(
     records.push(DiagnosticRecord {
       uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
-        version: Some(document.version),
+        version: document.version,
         diagnostics: Vec::new(),
       },
     });
@@ -1105,7 +1100,7 @@ async fn generate_ts_diagnostics(
     records.push(DiagnosticRecord {
       uri: module.uri.clone(),
       versioned: VersionedDiagnostics {
-        version: Some(module.open_data.as_ref().unwrap().version),
+        version: module.open_data.as_ref().unwrap().version,
         diagnostics,
       },
     });
@@ -1920,7 +1915,7 @@ fn generate_deno_diagnostics(
     diagnostics_vec.push(DiagnosticRecord {
       uri: document.uri.clone(),
       versioned: VersionedDiagnostics {
-        version: Some(document.version),
+        version: document.version,
         diagnostics,
       },
     });
@@ -2137,7 +2132,7 @@ let c: number = "a";
             uri: diag.uri.clone(),
             versioned: VersionedDiagnostics {
               diagnostics: vec![],
-              version: Some(diag.version),
+              version: diag.version,
             },
           }
         });
@@ -2145,7 +2140,7 @@ let c: number = "a";
         .versioned
         .diagnostics
         .extend(diag.diagnostics.into_iter().map(|(_, d)| d));
-      assert_eq!(existing.versioned.version, Some(diag.version));
+      assert_eq!(existing.versioned.version, diag.version);
     }
     all_diagnostics.into_values().collect()
   }
