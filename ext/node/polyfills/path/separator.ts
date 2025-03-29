@@ -7,5 +7,5 @@ const { SafeRegExp } = primordials;
 
 export const SEP = isWindows ? "\\" : "/";
 export const SEP_PATTERN = isWindows
-  ? SafeRegExp("/[\\/]+/")
-  : SafeRegExp("/\/+/");
+  ? new SafeRegExp("/[\\/]+/")
+  : new SafeRegExp("/\/+/");
