@@ -1313,6 +1313,8 @@ impl DocumentModules {
       .dep_info_by_scope
       .get_or_init(|| {
         NodeResolutionThreadLocalCache::clear();
+        // Ensure at least module entries for workspace files are initialized.
+        self.workspace_file_modules_by_scope();
         Arc::new(
           self
             .modules_by_scope
