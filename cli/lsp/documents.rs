@@ -480,9 +480,10 @@ impl Document {
 pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
+  file_like_uris_by_url: Arc<DashMap<Url, Arc<Uri>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
-  /// maps. We want to be able to discard old documents from here but keep this
-  /// mapping.
+  /// maps. We want to be able to discard old documents from here but keep these
+  /// mappings.
   data_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
   remote_urls_by_uri: Arc<DashMap<Uri, Arc<Url>>>,
 }
@@ -499,6 +500,12 @@ impl Documents {
     let doc =
       Arc::new(OpenDocument::new(uri.clone(), version, language_id, text));
     self.open.insert(uri, doc.clone());
+    if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+      let url = uri_to_url(&doc.uri);
+      if url.scheme() == "file" {
+        self.file_like_uris_by_url.insert(url, doc.uri.clone());
+      }
+    }
     doc
   }
 
@@ -526,6 +533,7 @@ impl Documents {
   }
 
   pub fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
+    self.file_like_uris_by_url.retain(|_, u| u.as_ref() != uri);
     self.open.shift_remove(uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
@@ -568,7 +576,11 @@ impl Documents {
   ) -> Option<Document> {
     let scheme = specifier.scheme();
     if scheme == "file" {
-      let uri = url_to_uri(specifier).ok()?;
+      let uri = self
+        .file_like_uris_by_url
+        .get(specifier)
+        .map(|e| e.value().clone())
+        .or_else(|| url_to_uri(specifier).ok().map(Arc::new))?;
       self.get(&uri)
     } else if scheme == "asset" {
       let uri = asset_url_to_uri(specifier)?;
@@ -935,6 +947,13 @@ impl DocumentModules {
   ) -> Result<Arc<OpenDocument>, AnyError> {
     self.dep_info_by_scope = Default::default();
     let document = self.documents.close(uri)?;
+    // If applicable, try to load the closed document as a server document so
+    // it's still included as a ts root etc..
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("file"))
+      && self.config.uri_enabled(uri)
+    {
+      self.documents.get(uri);
+    }
     Ok(document)
   }
 
