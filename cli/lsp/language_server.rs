@@ -1548,7 +1548,7 @@ impl Inner {
       &params.text_document.uri,
       Enabled::Filter,
       Exists::Enforce,
-      Diagnosable::Filter,
+      Diagnosable::Ignore,
     )?
     else {
       return Ok(None);
@@ -1558,7 +1558,7 @@ impl Inner {
     };
     let fmt_config =
       self.config.tree.fmt_config_for_specifier(&module.specifier);
-    if fmt_config.files.matches_specifier(&module.specifier) {
+    if !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }
     let file_path = url_to_file_path(&module.specifier)
