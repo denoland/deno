@@ -166,6 +166,7 @@
       "test-uv-unmapped-exception.js",
       "test-v8-serdes.js",
       "test-webcrypto-sign-verify.js",
+      "test-webstreams-finished.js",
       "test-whatwg-url-properties.js",
       // needs replace ".on" => ".addEventListener" in L29
       "test-worker-message-port-receive-message.js",

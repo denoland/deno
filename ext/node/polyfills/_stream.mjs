@@ -5,6 +5,7 @@
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import { EventEmitter as EE } from "ext:deno_node/_events.mjs";
 import { AbortController } from "ext:deno_web/03_abort_signal.js";
+import { _isClosedPromise } from "ext:deno_web/06_streams.js";
 import { Blob } from "ext:deno_web/09_file.js";
 import { StringDecoder } from "node:string_decoder";
 import {
@@ -830,6 +831,33 @@ var require_end_of_stream = __commonJS({
     }
     var nop = () => {
     };
+    function isReadableStream(obj) {
+      return !!(
+        obj &&
+        !isNodeStream(obj) &&
+        typeof obj.pipeThrough === 'function' &&
+        typeof obj.getReader === 'function' &&
+        typeof obj.cancel === 'function'
+      );
+    }
+    function isWritableStream(obj) {
+      return !!(
+        obj &&
+        !isNodeStream(obj) &&
+        typeof obj.getWriter === 'function' &&
+        typeof obj.abort === 'function'
+      );
+    }
+    function eosWeb(stream, opts, callback) {
+      const promise = stream[_isClosedPromise].promise;
+      promise.then(
+        () => process.nextTick(() => callback.call(stream))
+      ).catch(
+        (err) => process.nextTick(() => callback.call(stream, err)),
+      );
+
+      return nop;
+    }
     function eos(stream, options, callback) {
       var _options$readable, _options$writable;
       if (arguments.length === 2) {
@@ -843,6 +871,9 @@ var require_end_of_stream = __commonJS({
       validateFunction(callback, "callback");
       validateAbortSignal(options.signal, "options.signal");
       callback = once(callback);
+      if (isReadableStream(stream) || isWritableStream(stream)) {
+        return eosWeb(stream, options, callback);
+      }
       const readable = (_options$readable = options.readable) !== null &&
           _options$readable !== void 0
         ? _options$readable
