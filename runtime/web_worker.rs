@@ -39,7 +39,6 @@ use deno_core::RuntimeOptions;
 use deno_core::SharedArrayBufferStore;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
@@ -489,8 +488,8 @@ impl WebWorker {
     let create_cache = create_cache_inner(&options);
 
     // NOTE(bartlomieju): ordering is important here, keep it in sync with
-    // `runtime/worker.rs` and `runtime/snapshot.rs`!
-
+    // `runtime/worker.rs`, `runtime/web_worker.rs`, `runtime/snapshot_info.rs`
+    // and `runtime/snapshot.rs`!
     let mut extensions = vec![
       deno_telemetry::deno_telemetry::init_ops_and_esm(),
       // Web APIs
@@ -550,9 +549,10 @@ impl WebWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-        deno_http::Options::default(),
-      ),
+      deno_http::deno_http::init_ops_and_esm(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),

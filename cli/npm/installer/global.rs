@@ -101,11 +101,11 @@ async fn cache_packages(
 ) -> Result<(), deno_npm_cache::EnsurePackageError> {
   let mut futures_unordered = FuturesUnordered::new();
   for package in packages {
-    futures_unordered.push(async move {
-      tarball_cache
-        .ensure_package(&package.id.nv, &package.dist)
-        .await
-    });
+    if let Some(dist) = &package.dist {
+      futures_unordered.push(async move {
+        tarball_cache.ensure_package(&package.id.nv, dist).await
+      });
+    }
   }
   while let Some(result) = futures_unordered.next().await {
     // surface the first error
@@ -137,8 +137,8 @@ impl<'a> GlobalLifecycleScripts<'a> {
   }
 }
 
-impl<'a> super::common::lifecycle_scripts::LifecycleScriptsStrategy
-  for GlobalLifecycleScripts<'a>
+impl super::common::lifecycle_scripts::LifecycleScriptsStrategy
+  for GlobalLifecycleScripts<'_>
 {
   fn can_run_scripts(&self) -> bool {
     false

@@ -159,6 +159,7 @@ pub struct WorkspaceBenchOptions {
   pub filter: Option<String>,
   pub json: bool,
   pub no_run: bool,
+  pub permit_no_files: bool,
 }
 
 impl WorkspaceBenchOptions {
@@ -167,6 +168,7 @@ impl WorkspaceBenchOptions {
       filter: bench_flags.filter.clone(),
       json: bench_flags.json,
       no_run: bench_flags.no_run,
+      permit_no_files: bench_flags.permit_no_files,
     }
   }
 }
@@ -364,6 +366,7 @@ pub struct LintOptions {
   pub rules: LintRulesConfig,
   pub files: FilePatterns,
   pub fix: bool,
+  pub plugins: Vec<Url>,
 }
 
 impl Default for LintOptions {
@@ -378,20 +381,41 @@ impl LintOptions {
       rules: Default::default(),
       files: FilePatterns::new_with_base(base),
       fix: false,
+      plugins: vec![],
     }
   }
 
-  pub fn resolve(lint_config: LintConfig, lint_flags: &LintFlags) -> Self {
-    Self {
+  pub fn resolve(
+    dir_path: PathBuf,
+    lint_config: LintConfig,
+    lint_flags: &LintFlags,
+  ) -> Result<Self, AnyError> {
+    let rules = resolve_lint_rules_options(
+      lint_config.options.rules,
+      lint_flags.maybe_rules_tags.clone(),
+      lint_flags.maybe_rules_include.clone(),
+      lint_flags.maybe_rules_exclude.clone(),
+    );
+
+    let plugins = {
+      let plugin_specifiers = lint_config.options.plugins;
+      let mut plugins = Vec::with_capacity(plugin_specifiers.len());
+      for plugin in &plugin_specifiers {
+        // TODO(bartlomieju): handle import-mapped specifiers
+        let url = resolve_url_or_path(plugin, &dir_path)?;
+        plugins.push(url);
+      }
+      // ensure stability for hasher
+      plugins.sort_unstable();
+      plugins
+    };
+
+    Ok(Self {
       files: lint_config.files,
-      rules: resolve_lint_rules_options(
-        lint_config.options.rules,
-        lint_flags.maybe_rules_tags.clone(),
-        lint_flags.maybe_rules_include.clone(),
-        lint_flags.maybe_rules_exclude.clone(),
-      ),
+      rules,
       fix: lint_flags.fix,
-    }
+      plugins,
+    })
   }
 }
 
@@ -575,8 +599,16 @@ impl CliOptions {
     }
   }
 
+  pub fn eszip(&self) -> bool {
+    self.flags.eszip
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
+  }
+
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
   }
 
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
@@ -673,7 +705,10 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  pub fn node_modules_dir(
+  /// Gets the explicitly specified NodeModulesDir setting.
+  ///
+  /// Use `WorkspaceFactory.node_modules_dir_mode()` to get the resolved value.
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<
     Option<NodeModulesDirMode>,
@@ -757,7 +792,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(config, lint_flags);
+      let options = LintOptions::resolve(ctx.dir_path(), config, lint_flags)?;
       result.push((ctx, options));
     }
     Ok(result)
@@ -1088,43 +1123,51 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_lazy_dynamic_imports(&self) -> bool {
+    self.flags.unstable_config.lazy_dynamic_imports
+      || self.workspace().has_unstable("lazy-dynamic-imports")
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace().unstable_features().to_vec();
-
-    self
-      .flags
-      .unstable_config
-      .features
+    let from_config_file = self.workspace().unstable_features();
+    let unstable_features = from_config_file
       .iter()
-      .for_each(|feature| {
-        if !from_config_file.contains(feature) {
-          from_config_file.push(feature.to_string());
-        }
-      });
+      .chain(
+        self
+          .flags
+          .unstable_config
+          .features
+          .iter()
+          .filter(|f| !from_config_file.contains(f)),
+      )
+      .map(|f| f.to_owned())
+      .collect::<Vec<_>>();
 
-    if !from_config_file.is_empty() {
+    if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
         .iter()
         .map(|granular_flag| granular_flag.name)
         .chain([
-          "sloppy-imports",
           "byonm",
           "bare-node-builtins",
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-dynamic-imports",
           "lazy-npm-caching",
+          "npm-patch",
+          "sloppy-imports",
         ])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
-      for unstable_value_from_config_file in &from_config_file {
+      for unstable_value_from_config_file in &unstable_features {
         if !all_valid_unstable_flags
           .contains(&unstable_value_from_config_file.as_str())
         {
@@ -1137,7 +1180,7 @@ impl CliOptions {
       }
     }
 
-    from_config_file
+    unstable_features
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

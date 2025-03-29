@@ -424,6 +424,9 @@ pub enum DecipherError {
   #[class(range)]
   #[error("Invalid key length")]
   InvalidKeyLength,
+  #[class(range)]
+  #[error("Wrong final block length")]
+  InvalidFinalBlockLength,
   #[class(type)]
   #[error("Invalid initialization vector")]
   InvalidInitializationVector,
@@ -442,6 +445,14 @@ pub enum DecipherError {
   #[class(type)]
   #[error("Unknown cipher {0}")]
   UnknownCipher(String),
+}
+
+macro_rules! assert_block_len {
+  ($input:expr, $len:expr) => {
+    if $input != $len {
+      return Err(DecipherError::InvalidFinalBlockLength);
+    }
+  };
 }
 
 impl Decipher {
@@ -604,7 +615,7 @@ impl Decipher {
 
     match (self, auto_pad) {
       (Aes128Cbc(decryptor), true) => {
-        assert!(input.len() == 16);
+        assert_block_len!(input.len(), 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| DecipherError::CannotUnpadInputData)?;
@@ -618,7 +629,7 @@ impl Decipher {
         Ok(())
       }
       (Aes128Ecb(decryptor), true) => {
-        assert!(input.len() == 16);
+        assert_block_len!(input.len(), 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| DecipherError::CannotUnpadInputData)?;
@@ -632,7 +643,7 @@ impl Decipher {
         Ok(())
       }
       (Aes192Ecb(decryptor), true) => {
-        assert!(input.len() == 16);
+        assert_block_len!(input.len(), 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| DecipherError::CannotUnpadInputData)?;
@@ -646,7 +657,7 @@ impl Decipher {
         Ok(())
       }
       (Aes256Ecb(decryptor), true) => {
-        assert!(input.len() == 16);
+        assert_block_len!(input.len(), 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| DecipherError::CannotUnpadInputData)?;
@@ -682,7 +693,7 @@ impl Decipher {
         Err(DecipherError::SetAutoPaddingFalseAes256GcmUnsupported)
       }
       (Aes256Cbc(decryptor), true) => {
-        assert!(input.len() == 16);
+        assert_block_len!(input.len(), 16);
         let _ = (*decryptor)
           .decrypt_padded_b2b_mut::<Pkcs7>(input, output)
           .map_err(|_| DecipherError::CannotUnpadInputData)?;

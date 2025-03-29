@@ -210,7 +210,7 @@ impl<T> Nullable for Option<T> {
   }
 }
 
-impl<'s> Nullable for napi_value<'s> {
+impl Nullable for napi_value<'_> {
   fn is_null(&self) -> bool {
     self.is_none()
   }

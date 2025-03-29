@@ -13,7 +13,6 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::JsxImportSourceConfig;
 use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
@@ -21,16 +20,13 @@ use deno_config::deno_json::TsConfig;
 use deno_config::deno_json::TsConfigWithIgnoredOptions;
 use deno_config::glob::FilePatterns;
 use deno_config::glob::PathOrPatternSet;
-use deno_config::workspace::CreateResolverOptions;
-use deno_config::workspace::PackageJsonDepResolution;
-use deno_config::workspace::SpecifiedImportMap;
+use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -49,7 +45,12 @@ use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_package_json::PackageJsonCache;
 use deno_path_util::url_to_file_path;
 use deno_resolver::npmrc::discover_npmrc_from_workspace;
-use deno_resolver::sloppy_imports::SloppyImportsCachedFs;
+use deno_resolver::workspace::CreateResolverOptions;
+use deno_resolver::workspace::FsCacheOptions;
+use deno_resolver::workspace::PackageJsonDepResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::workspace::SpecifiedImportMap;
+use deno_resolver::workspace::WorkspaceResolver;
 use deno_runtime::deno_node::PackageJson;
 use indexmap::IndexSet;
 use lsp_types::ClientCapabilities;
@@ -65,7 +66,6 @@ use crate::args::LintFlags;
 use crate::args::LintOptions;
 use crate::file_fetcher::CliFileFetcher;
 use crate::lsp::logging::lsp_warn;
-use crate::resolver::CliSloppyImportsResolver;
 use crate::sys::CliSys;
 use crate::tools::lint::CliLinter;
 use crate::tools::lint::CliLinterOptions;
@@ -619,6 +619,9 @@ pub struct WorkspaceSettings {
 
   #[serde(default)]
   pub typescript: LanguageWorkspaceSettings,
+
+  #[serde(default)]
+  pub tracing: Option<super::trace::TracingConfigOrEnabled>,
 }
 
 impl Default for WorkspaceSettings {
@@ -645,6 +648,7 @@ impl Default for WorkspaceSettings {
       unstable: Default::default(),
       javascript: Default::default(),
       typescript: Default::default(),
+      tracing: Default::default(),
     }
   }
 }
@@ -1004,7 +1008,9 @@ impl Config {
       MediaType::Json
       | MediaType::Wasm
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => None,
     }
   }
@@ -1205,8 +1211,7 @@ pub struct ConfigData {
   pub vendor_dir: Option<PathBuf>,
   pub lockfile: Option<Arc<CliLockfile>>,
   pub npmrc: Option<Arc<ResolvedNpmRc>>,
-  pub resolver: Arc<WorkspaceResolver>,
-  pub sloppy_imports_resolver: Option<Arc<CliSloppyImportsResolver>>,
+  pub resolver: Arc<WorkspaceResolver<CliSys>>,
   pub import_map_from_settings: Option<ModuleSpecifier>,
   pub unstable: BTreeSet<String>,
   watched_files: HashMap<ModuleSpecifier, ConfigWatchedFileType>,
@@ -1535,17 +1540,11 @@ impl ConfigData {
           import_map_url.clone(),
           ConfigWatchedFileType::ImportMap,
         );
-        // spawn due to the lsp's `Send` requirement
-        let fetch_result =
-          deno_core::unsync::spawn({
-            let file_fetcher = file_fetcher.cloned().unwrap();
-            let import_map_url = import_map_url.clone();
-            async move {
-              file_fetcher.fetch_bypass_permissions(&import_map_url).await
-            }
-          })
-          .await
-          .unwrap();
+        let fetch_result = file_fetcher
+          .as_ref()
+          .unwrap()
+          .fetch_bypass_permissions(import_map_url)
+          .await;
 
         let value_result = fetch_result.and_then(|f| {
           serde_json::from_slice::<Value>(&f.source).map_err(|e| e.into())
@@ -1569,43 +1568,6 @@ impl ConfigData {
         None
       }
     };
-    let resolver = member_dir
-      .workspace
-      .create_resolver(
-        &CliSys::default(),
-        CreateResolverOptions {
-          pkg_json_dep_resolution,
-          specified_import_map,
-        },
-      )
-      .inspect_err(|err| {
-        lsp_warn!(
-          "  Failed to load resolver: {}",
-          err // will contain the specifier
-        );
-      })
-      .ok()
-      .unwrap_or_else(|| {
-        // create a dummy resolver
-        WorkspaceResolver::new_raw(
-          scope.clone(),
-          None,
-          member_dir.workspace.resolver_jsr_pkgs().collect(),
-          member_dir.workspace.package_jsons().cloned().collect(),
-          pkg_json_dep_resolution,
-        )
-      });
-    if !resolver.diagnostics().is_empty() {
-      lsp_warn!(
-        "  Import map diagnostics:\n{}",
-        resolver
-          .diagnostics()
-          .iter()
-          .map(|d| format!("    - {d}"))
-          .collect::<Vec<_>>()
-          .join("\n")
-      );
-    }
     let unstable = member_dir
       .workspace
       .unstable_features()
@@ -1616,24 +1578,95 @@ impl ConfigData {
     let unstable_sloppy_imports = std::env::var("DENO_UNSTABLE_SLOPPY_IMPORTS")
       .is_ok()
       || unstable.contains("sloppy-imports");
-    let sloppy_imports_resolver = unstable_sloppy_imports.then(|| {
-      Arc::new(CliSloppyImportsResolver::new(
-        SloppyImportsCachedFs::new_without_stat_cache(CliSys::default()),
-      ))
+    let resolver = WorkspaceResolver::from_workspace(
+      &member_dir.workspace,
+      CliSys::default(),
+      CreateResolverOptions {
+        pkg_json_dep_resolution,
+        specified_import_map,
+        sloppy_imports_options: if unstable_sloppy_imports {
+          SloppyImportsOptions::Enabled
+        } else {
+          SloppyImportsOptions::Disabled
+        },
+        fs_cache_options: FsCacheOptions::Disabled,
+      },
+    )
+    .inspect_err(|err| {
+      lsp_warn!(
+        "  Failed to load resolver: {}",
+        err // will contain the specifier
+      );
+    })
+    .ok()
+    .unwrap_or_else(|| {
+      // create a dummy resolver
+      WorkspaceResolver::new_raw(
+        scope.clone(),
+        None,
+        member_dir.workspace.resolver_jsr_pkgs().collect(),
+        member_dir.workspace.package_jsons().cloned().collect(),
+        pkg_json_dep_resolution,
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        Default::default(),
+        CliSys::default(),
+      )
     });
+    if !resolver.diagnostics().is_empty() {
+      lsp_warn!(
+        "  Resolver diagnostics:\n{}",
+        resolver
+          .diagnostics()
+          .iter()
+          .map(|d| format!("    - {d}"))
+          .collect::<Vec<_>>()
+          .join("\n")
+      );
+    }
     let resolver = Arc::new(resolver);
-    let lint_rule_provider = LintRuleProvider::new(
-      sloppy_imports_resolver.clone(),
-      Some(resolver.clone()),
-    );
+    let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
+
+    let lint_options = LintOptions::resolve(
+      member_dir.dir_path(),
+      (*lint_config).clone(),
+      &LintFlags::default(),
+    )
+    .inspect_err(|err| lsp_warn!("  Failed to resolve linter options: {}", err))
+    .ok()
+    .unwrap_or_default();
+    let mut plugin_runner = None;
+    if !lint_options.plugins.is_empty() {
+      fn logger_printer(msg: &str, _is_err: bool) {
+        lsp_log!("pluggin runner - {}", msg);
+      }
+      let logger = crate::tools::lint::PluginLogger::new(logger_printer);
+      let plugin_load_result =
+        crate::tools::lint::create_runner_and_load_plugins(
+          lint_options.plugins.clone(),
+          logger,
+          lint_options.rules.exclude.clone(),
+        )
+        .await;
+      match plugin_load_result {
+        Ok(runner) => {
+          plugin_runner = Some(Arc::new(runner));
+        }
+        Err(err) => {
+          lsp_warn!("Failed to load lint plugins: {}", err);
+        }
+      }
+    }
+
     let linter = Arc::new(CliLinter::new(CliLinterOptions {
       configured_rules: lint_rule_provider.resolve_lint_rules(
-        LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
-          .rules,
+        lint_options.rules,
         member_dir.maybe_deno_json().map(|c| c.as_ref()),
       ),
       fix: false,
       deno_lint_config,
+      maybe_plugin_runner: plugin_runner,
     }));
 
     ConfigData {
@@ -1641,7 +1674,6 @@ impl ConfigData {
       canonicalized_scope,
       member_dir,
       resolver,
-      sloppy_imports_resolver,
       fmt_config,
       lint_config,
       test_config,
@@ -2283,8 +2315,9 @@ mod tests {
           suggestion_actions: SuggestionActionsSettings { enabled: true },
           update_imports_on_file_move: UpdateImportsOnFileMoveOptions {
             enabled: UpdateImportsOnFileMoveEnabled::Prompt
-          }
+          },
         },
+        tracing: Default::default()
       }
     );
   }

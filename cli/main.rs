@@ -9,18 +9,19 @@ mod file_fetcher;
 mod graph_container;
 mod graph_util;
 mod http_util;
-mod js;
 mod jsr;
 mod lsp;
 mod module_loader;
 mod node;
 mod npm;
 mod ops;
+mod registry;
 mod resolver;
 mod standalone;
 mod task_runner;
 mod tools;
 mod tsc;
+mod type_checker;
 mod util;
 mod worker;
 
@@ -108,14 +109,14 @@ fn spawn_subcommand<F: Future<Output = T> + 'static, T: SubcommandOutput>(
 async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   let handle = match flags.subcommand.clone() {
     DenoSubcommand::Add(add_flags) => spawn_subcommand(async {
-      tools::registry::add(flags, add_flags, tools::registry::AddCommandName::Add).await
+      tools::pm::add(flags, add_flags, tools::pm::AddCommandName::Add).await
     }),
     DenoSubcommand::Remove(remove_flags) => spawn_subcommand(async {
-      tools::registry::remove(flags, remove_flags).await
+      tools::pm::remove(flags, remove_flags).await
     }),
     DenoSubcommand::Bench(bench_flags) => spawn_subcommand(async {
       if bench_flags.watch.is_some() {
-        tools::bench::run_benchmarks_with_watch(flags, bench_flags).await
+        tools::bench::run_benchmarks_with_watch(flags, bench_flags).boxed_local().await
       } else {
         tools::bench::run_benchmarks(flags, bench_flags).await
       }
@@ -137,7 +138,11 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
       tools::clean::clean(flags)
     }),
     DenoSubcommand::Compile(compile_flags) => spawn_subcommand(async {
-      tools::compile::compile(flags, compile_flags).await
+      if compile_flags.eszip {
+        tools::compile::compile_eszip(flags, compile_flags).boxed_local().await
+      } else {
+        tools::compile::compile(flags, compile_flags).await
+      }
     }),
     DenoSubcommand::Coverage(coverage_flags) => spawn_subcommand(async {
       tools::coverage::cover_files(flags, coverage_flags)
@@ -193,7 +198,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }),
     DenoSubcommand::Outdated(update_flags) => {
       spawn_subcommand(async move {
-        tools::registry::outdated(flags, update_flags).await
+        tools::pm::outdated(flags, update_flags).await
       })
     }
     DenoSubcommand::Repl(repl_flags) => {
@@ -201,7 +206,10 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     }
     DenoSubcommand::Run(run_flags) => spawn_subcommand(async move {
       if run_flags.is_stdin() {
-        tools::run::run_from_stdin(flags.clone()).await
+        // these futures are boxed to prevent stack overflows on Windows
+        tools::run::run_from_stdin(flags.clone()).boxed_local().await
+      } else if flags.eszip {
+        tools::run::run_eszip(flags, run_flags).boxed_local().await
       } else {
         let result = tools::run::run_script(WorkerExecutionMode::Run, flags.clone(), run_flags.watch).await;
         match result {
@@ -316,7 +324,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     ),
     DenoSubcommand::Vendor => exit_with_message("⚠️ `deno vendor` was removed in Deno 2.\n\nSee the Deno 1.x to 2.x Migration Guide for migration instructions: https://docs.deno.com/runtime/manual/advanced/migrate_deprecations", 1),
     DenoSubcommand::Publish(publish_flags) => spawn_subcommand(async {
-      tools::registry::publish(flags, publish_flags).await
+      tools::publish::publish(flags, publish_flags).await
     }),
     DenoSubcommand::Help(help_flags) => spawn_subcommand(async move {
       use std::io::Write;
@@ -457,7 +465,10 @@ fn resolve_flags_and_init(
   };
 
   let otel_config = flags.otel_config();
-  deno_telemetry::init(deno_lib::version::otel_runtime_config(), &otel_config)?;
+  deno_telemetry::init(
+    deno_lib::version::otel_runtime_config(),
+    otel_config.clone(),
+  )?;
   init_logging(flags.log_level, Some(otel_config));
 
   // TODO(bartlomieju): remove in Deno v2.5 and hard error then.
@@ -471,15 +482,21 @@ fn resolve_flags_and_init(
   }
 
   let default_v8_flags = match flags.subcommand {
-    // Using same default as VSCode:
-    // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
-    DenoSubcommand::Lsp => vec!["--max-old-space-size=3072".to_string()],
+    DenoSubcommand::Lsp => vec![
+      "--stack-size=1024".to_string(),
+      // Using same default as VSCode:
+      // https://github.com/microsoft/vscode/blob/48d4ba271686e8072fc6674137415bc80d936bc7/extensions/typescript-language-features/src/configuration/configuration.ts#L213-L214
+      "--max-old-space-size=3072".to_string(),
+    ],
     _ => {
-      // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
-      // and its settings.
-      // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
-      // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
-      vec!["--no-harmony-import-assertions".to_string()]
+      vec![
+        "--stack-size=1024".to_string(),
+        // TODO(bartlomieju): I think this can be removed as it's handled by `deno_core`
+        // and its settings.
+        // deno_ast removes TypeScript `assert` keywords, so this flag only affects JavaScript
+        // TODO(petamoriken): Need to check TypeScript `assert` keywords in deno_ast
+        "--no-harmony-import-assertions".to_string(),
+      ]
     }
   };
 

@@ -8,7 +8,6 @@ import {
   error,
   filterMapDiagnostic,
   fromTypeScriptDiagnostics,
-  getAssets,
   getCreateSourceFileOptions,
   host,
   IS_NODE_SOURCE_FILE_CACHE,
@@ -26,6 +25,9 @@ import {
 /** @type {DenoCore} */
 const core = globalThis.Deno.core;
 const ops = core.ops;
+
+/** @type {Map<string | null, string[]>} */
+const ambientModulesCacheByScope = new Map();
 
 const ChangeKind = {
   Opened: 0,
@@ -282,17 +284,44 @@ async function pollRequests() {
 
 let hasStarted = false;
 
+function createLs() {
+  let exportInfoMap = undefined;
+  const newHost = {
+    ...host,
+    getCachedExportInfoMap: () => {
+      // this export info map is specific to
+      // the language service instance
+      return exportInfoMap;
+    },
+  };
+  const ls = ts.createLanguageService(
+    newHost,
+    documentRegistry,
+  );
+  exportInfoMap = ts.createCacheableExportInfoMap({
+    getCurrentProgram() {
+      return ls.getProgram();
+    },
+    getGlobalTypingsCacheLocation() {
+      return undefined;
+    },
+    getPackageJsonAutoImportProvider() {
+      return undefined;
+    },
+  });
+  return ls;
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
+  ts.deno.setEnterSpan(ops.op_make_span);
+  ts.deno.setExitSpan(ops.op_exit_span);
   if (hasStarted) {
     throw new Error("The language server has already been initialized.");
   }
   hasStarted = true;
   LANGUAGE_SERVICE_ENTRIES.unscoped = {
-    ls: ts.createLanguageService(
-      host,
-      documentRegistry,
-    ),
+    ls: createLs(),
     compilerOptions: lspTsConfigToCompilerOptions({
       "allowJs": true,
       "esModuleInterop": true,
@@ -352,13 +381,35 @@ function formatErrorWithArgs(error, args) {
 }
 
 /**
+ * @param {string[]} a
+ * @param {string[]} b
+ */
+function arraysEqual(a, b) {
+  if (a === b) {
+    return true;
+  }
+  if (a === null || b === null) {
+    return false;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * @param {number} id
  * @param {string} method
  * @param {any[]} args
  * @param {string | null} scope
  * @param {PendingChange | null} maybeChange
  */
-function serverRequest(id, method, args, scope, maybeChange) {
+function serverRequestInner(id, method, args, scope, maybeChange) {
   debug(`serverRequest()`, id, method, args, scope, maybeChange);
   if (maybeChange !== null) {
     const changedScripts = maybeChange[0];
@@ -372,9 +423,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
       for (const [scope, config] of newConfigsByScope) {
         LAST_REQUEST_SCOPE.set(scope);
         const oldEntry = LANGUAGE_SERVICE_ENTRIES.byScope.get(scope);
-        const ls = oldEntry
-          ? oldEntry.ls
-          : ts.createLanguageService(host, documentRegistry);
+        const ls = oldEntry ? oldEntry.ls : createLs();
         const compilerOptions = lspTsConfigToCompilerOptions(config);
         newByScope.set(scope, { ls, compilerOptions });
         LANGUAGE_SERVICE_ENTRIES.byScope.delete(scope);
@@ -421,9 +470,6 @@ function serverRequest(id, method, args, scope, maybeChange) {
         ts.getSupportedCodeFixes(),
       );
     }
-    case "$getAssets": {
-      return respond(id, getAssets());
-    }
     case "$getDiagnostics": {
       const projectVersion = args[1];
       // there's a possibility that we receive a change notification
@@ -432,7 +478,7 @@ function serverRequest(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
       try {
         /** @type {Record<string, any[]>} */
@@ -444,18 +490,30 @@ function serverRequest(id, method, args, scope, maybeChange) {
             ...ls.getSyntacticDiagnostics(specifier),
           ].filter(filterMapDiagnostic));
         }
-        return respond(id, diagnosticMap);
+        let ambient =
+          ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
+            symbol.getName()
+          ) ?? [];
+        const previousAmbient = ambientModulesCacheByScope.get(scope);
+        if (
+          ambient && previousAmbient && arraysEqual(ambient, previousAmbient)
+        ) {
+          ambient = null; // null => use previous value
+        } else {
+          ambientModulesCacheByScope.set(scope, ambient);
+        }
+        return respond(id, [diagnosticMap, ambient]);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            {},
+            [{}, null],
             formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
           );
         }
-        return respond(id, {});
+        return respond(id, [{}, null]);
       }
     }
     default:
@@ -482,5 +540,21 @@ function serverRequest(id, method, args, scope, maybeChange) {
         // @ts-ignore exhausted case statement sets type to never
         `Invalid request method for request: "${method}" (${id})`,
       );
+  }
+}
+
+/**
+ * @param {number} id
+ * @param {string} method
+ * @param {any[]} args
+ * @param {string | null} scope
+ * @param {PendingChange | null} maybeChange
+ */
+function serverRequest(id, method, args, scope, maybeChange) {
+  const span = ops.op_make_span(`serverRequest(${method})`, true);
+  try {
+    serverRequestInner(id, method, args, scope, maybeChange);
+  } finally {
+    ops.op_exit_span(span, true);
   }
 }

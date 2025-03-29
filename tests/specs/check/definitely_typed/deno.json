@@ -1,0 +1,7 @@
+{
+  "imports": {
+    "@denotest/index-export-no-types": "npm:@denotest/index-export-no-types@1.0.0",
+    "@types/denotest__index-export-no-types": "npm:@types/denotest__index-export-no-types@1.0.0",
+    "oldtypes": "npm:@types/denotest__index-export-no-types@0.5.0"
+  }
+}

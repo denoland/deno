@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::cmp::min;
 use std::fmt::Debug;
+use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::Context;
@@ -13,7 +14,6 @@ use bytes::Bytes;
 use deno_core::error::ResourceError;
 use deno_core::futures::channel::mpsc;
 use deno_core::futures::stream::Peekable;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -113,6 +113,9 @@ pub enum ConnError {
   #[error("Invalid URL {0}")]
   InvalidUrl(Url),
   #[class(type)]
+  #[error("Invalid Path {0}")]
+  InvalidPath(String),
+  #[class(type)]
   #[error(transparent)]
   InvalidHeaderName(#[from] http::header::InvalidHeaderName),
   #[class(type)]
@@ -150,6 +153,7 @@ pub async fn op_node_http_request_with_conn<P>(
   state: Rc<RefCell<OpState>>,
   #[serde] method: ByteString,
   #[string] url: String,
+  #[string] request_path: Option<String>,
   #[serde] headers: Vec<(ByteString, ByteString)>,
   #[smi] body: Option<ResourceId>,
   #[smi] conn_rid: ResourceId,
@@ -247,11 +251,17 @@ where
   *request.method_mut() = method.clone();
   let path = url_parsed.path();
   let query = url_parsed.query();
-  *request.uri_mut() = query
-    .map(|q| format!("{}?{}", path, q))
-    .unwrap_or_else(|| path.to_string())
-    .parse()
-    .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  if let Some(request_path) = request_path {
+    *request.uri_mut() = request_path
+      .parse()
+      .map_err(|_| ConnError::InvalidPath(request_path.clone()))?;
+  } else {
+    *request.uri_mut() = query
+      .map(|q| format!("{}?{}", path, q))
+      .unwrap_or_else(|| path.to_string())
+      .parse()
+      .map_err(|_| ConnError::InvalidUrl(url_parsed.clone()))?;
+  }
   *request.headers_mut() = header_map;
 
   if let Some((username, password)) = maybe_authority {

@@ -38,6 +38,7 @@ const {
   MathRound,
   MathTrunc,
   Number,
+  SymbolFor,
   NumberIsFinite,
   NumberIsNaN,
   NumberMAX_SAFE_INTEGER,
@@ -1324,18 +1325,17 @@ function configureProperties(obj) {
   }
 }
 
-const setlikeInner = Symbol("[[set]]");
+const setlikeInner = SymbolFor("setlike_set");
 
 // Ref: https://webidl.spec.whatwg.org/#es-setlike
-function setlike(obj, objPrototype, readonly) {
-  ObjectDefineProperties(obj, {
+function setlikeObjectWrap(objPrototype, readonly) {
+  ObjectDefineProperties(objPrototype, {
     size: {
       __proto__: null,
       configurable: true,
       enumerable: true,
       get() {
-        assertBranded(this, objPrototype);
-        return obj[setlikeInner].size;
+        return this[setlikeInner]().size;
       },
     },
     [SymbolIterator]: {
@@ -1344,8 +1344,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: false,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return obj[setlikeInner][SymbolIterator]();
+        return this[setlikeInner]()[SymbolIterator]();
       },
     },
     entries: {
@@ -1354,8 +1353,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeEntries(obj[setlikeInner]);
+        return SetPrototypeEntries(this[setlikeInner]());
       },
     },
     keys: {
@@ -1364,8 +1362,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeKeys(obj[setlikeInner]);
+        return SetPrototypeKeys(this[setlikeInner]());
       },
     },
     values: {
@@ -1374,8 +1371,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value() {
-        assertBranded(this, objPrototype);
-        return SetPrototypeValues(obj[setlikeInner]);
+        return SetPrototypeValues(this[setlikeInner]());
       },
     },
     forEach: {
@@ -1384,8 +1380,7 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(callbackfn, thisArg) {
-        assertBranded(this, objPrototype);
-        return SetPrototypeForEach(obj[setlikeInner], callbackfn, thisArg);
+        return SetPrototypeForEach(this[setlikeInner](), callbackfn, thisArg);
       },
     },
     has: {
@@ -1394,22 +1389,20 @@ function setlike(obj, objPrototype, readonly) {
       enumerable: true,
       writable: true,
       value(value) {
-        assertBranded(this, objPrototype);
-        return SetPrototypeHas(obj[setlikeInner], value);
+        return SetPrototypeHas(this[setlikeInner](), value);
       },
     },
   });
 
   if (!readonly) {
-    ObjectDefineProperties(obj, {
+    ObjectDefineProperties(objPrototype, {
       add: {
         __proto__: null,
         configurable: true,
         enumerable: true,
         writable: true,
         value(value) {
-          assertBranded(this, objPrototype);
-          return SetPrototypeAdd(obj[setlikeInner], value);
+          return SetPrototypeAdd(this[setlikeInner](), value);
         },
       },
       delete: {
@@ -1418,8 +1411,7 @@ function setlike(obj, objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value(value) {
-          assertBranded(this, objPrototype);
-          return SetPrototypeDelete(obj[setlikeInner], value);
+          return SetPrototypeDelete(this[setlikeInner](), value);
         },
       },
       clear: {
@@ -1428,8 +1420,7 @@ function setlike(obj, objPrototype, readonly) {
         enumerable: true,
         writable: true,
         value() {
-          assertBranded(this, objPrototype);
-          return SetPrototypeClear(obj[setlikeInner]);
+          return SetPrototypeClear(this[setlikeInner]());
         },
       },
     });
@@ -1457,7 +1448,7 @@ export {
   makeException,
   mixinPairIterable,
   requiredArguments,
-  setlike,
   setlikeInner,
+  setlikeObjectWrap,
   type,
 };

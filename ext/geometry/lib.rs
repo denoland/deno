@@ -3,7 +3,6 @@
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::mem;
-use std::path::PathBuf;
 use std::slice;
 
 use deno_core::cppgc;
@@ -29,10 +28,6 @@ deno_core::extension!(
   esm = ["00_init.js"],
   lazy_loaded_esm = ["01_geometry.js"],
 );
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_geometry.d.ts")
-}
 
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum GeometryError {

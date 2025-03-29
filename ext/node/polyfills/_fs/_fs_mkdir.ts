@@ -7,7 +7,10 @@ import type { CallbackWithError } from "ext:deno_node/_fs/_fs_common.ts";
 import { promisify } from "ext:deno_node/internal/util.mjs";
 import { denoErrorToNodeError } from "ext:deno_node/internal/errors.ts";
 import { getValidatedPath } from "ext:deno_node/internal/fs/utils.mjs";
-import { validateBoolean } from "ext:deno_node/internal/validators.mjs";
+import {
+  parseFileMode,
+  validateBoolean,
+} from "ext:deno_node/internal/validators.mjs";
 
 /**
  * TODO: Also accept 'path' parameter as a Node polyfill Buffer type once these
@@ -31,12 +34,14 @@ export function mkdir(
   if (typeof options == "function") {
     callback = options;
   } else if (typeof options === "number") {
-    mode = options;
+    mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
   } else if (options) {
     if (options.recursive !== undefined) recursive = options.recursive;
-    if (options.mode !== undefined) mode = options.mode;
+    if (options.mode !== undefined) {
+      mode = parseFileMode(options.mode, "options.mode");
+    }
   }
   validateBoolean(recursive, "options.recursive");
 
@@ -64,12 +69,14 @@ export function mkdirSync(path: string | URL, options?: MkdirOptions) {
   let recursive = false;
 
   if (typeof options === "number") {
-    mode = options;
+    mode = parseFileMode(options, "mode");
   } else if (typeof options === "boolean") {
     recursive = options;
   } else if (options) {
     if (options.recursive !== undefined) recursive = options.recursive;
-    if (options.mode !== undefined) mode = options.mode;
+    if (options.mode !== undefined) {
+      mode = parseFileMode(options.mode, "options.mode");
+    }
   }
   validateBoolean(recursive, "options.recursive");
 

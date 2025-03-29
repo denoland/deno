@@ -2073,6 +2073,7 @@ fn napi_get_value_bool(
   return napi_clear_last_error(env_ptr);
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_latin1(
   env_ptr: *mut Env,
@@ -2121,6 +2122,7 @@ fn napi_get_value_string_latin1(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf8(
   env_ptr: *mut Env,
@@ -2170,6 +2172,7 @@ fn napi_get_value_string_utf8(
   napi_clear_last_error(env_ptr)
 }
 
+#[allow(deprecated)]
 #[napi_sym]
 fn napi_get_value_string_utf16(
   env_ptr: *mut Env,

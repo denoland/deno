@@ -1,17 +1,11 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-export interface NodeFacade {
-  type: string;
-  range: [number, number];
-  [key: string]: unknown;
-}
-
 export interface AstContext {
   buf: Uint8Array;
   strTable: Map<number, string>;
   strTableOffset: number;
   rootOffset: number;
-  nodes: Map<number, NodeFacade>;
+  nodes: Map<number, Deno.lint.Node>;
   spansOffset: number;
   propsOffset: number;
   strByType: number[];
@@ -21,38 +15,17 @@ export interface AstContext {
   matcher: MatchContext;
 }
 
-export interface Node {
-  range: Range;
-}
-
-export type Range = [number, number];
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface RuleContext {
-  id: string;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintRule {
-  create(ctx: RuleContext): Record<string, (node: unknown) => void>;
-  destroy?(ctx: RuleContext): void;
-}
-
-// TODO(@marvinhagemeister) Remove once we land "official" types
-export interface LintPlugin {
-  name: string;
-  rules: Record<string, LintRule>;
-}
-
 export interface LintState {
-  plugins: LintPlugin[];
+  plugins: Deno.lint.Plugin[];
   installedPlugins: Set<string>;
+  /** format: `<plugin>/<rule>` */
+  ignoredRules: Set<string>;
 }
 
 export type VisitorFn = (node: unknown) => void;
 
 export interface CompiledVisitor {
-  matcher: (ctx: MatchContext, offset: number) => boolean;
+  matcher: MatcherFn;
   info: { enter: VisitorFn; exit: VisitorFn };
 }
 
@@ -77,6 +50,11 @@ export interface ElemSelector {
   elem: number;
 }
 
+export interface FieldSelector {
+  type: 10;
+  props: number[];
+}
+
 export interface PseudoNthChild {
   type: 5;
   op: string | null;
@@ -88,6 +66,10 @@ export interface PseudoNthChild {
 
 export interface PseudoHas {
   type: 6;
+  selectors: Selector[];
+}
+export interface PseudoIs {
+  type: 11;
   selectors: Selector[];
 }
 export interface PseudoNot {
@@ -108,12 +90,14 @@ export interface Relation {
 
 export type Selector = Array<
   | ElemSelector
+  | FieldSelector
   | Relation
   | AttrExists
   | AttrBin
   | PseudoNthChild
   | PseudoNot
   | PseudoHas
+  | PseudoIs
   | PseudoFirstChild
   | PseudoLastChild
 >;
@@ -124,15 +108,17 @@ export interface SelectorParseCtx {
 }
 
 export interface MatchContext {
+  /** Used for `:has()` and `:not()` */
+  subSelect(selectors: MatcherFn[], idx: number): boolean;
   getFirstChild(id: number): number;
   getLastChild(id: number): number;
   getSiblings(id: number): number[];
   getParent(id: number): number;
+  getField(id: number, prop: number): number;
   getType(id: number): number;
   getAttrPathValue(id: number, propIds: number[], idx: number): unknown;
 }
 
-export type NextFn = (ctx: MatchContext, id: number) => boolean;
 export type MatcherFn = (ctx: MatchContext, id: number) => boolean;
 export type TransformFn = (value: string) => number;
 

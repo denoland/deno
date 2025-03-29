@@ -48,7 +48,7 @@ impl CliNpmSearchApi {
   }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl PackageSearchApi for CliNpmSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
     if let Some(names) = self.search_cache.get(query) {
