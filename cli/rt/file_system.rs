@@ -1231,6 +1231,7 @@ pub struct FileBackedVfsMetadata {
   pub name: String,
   pub file_type: sys_traits::FileType,
   pub len: u64,
+  pub mtime: Option<u128>,
 }
 
 impl FileBackedVfsMetadata {
@@ -1247,17 +1248,23 @@ impl FileBackedVfsMetadata {
         VfsEntryRef::File(file) => file.offset.len,
         VfsEntryRef::Symlink(_) => 0,
       },
+      mtime: match vfs_entry {
+        VfsEntryRef::Dir(_) => None,
+        VfsEntryRef::File(file) => file.mtime,
+        VfsEntryRef::Symlink(_) => None,
+      },
     }
   }
   pub fn as_fs_stat(&self) -> FsStat {
+    // to use lower overhead, use mtime instead of all time params
     FsStat {
       is_directory: self.file_type == sys_traits::FileType::Dir,
       is_file: self.file_type == sys_traits::FileType::File,
       is_symlink: self.file_type == sys_traits::FileType::Symlink,
-      atime: None,
-      birthtime: None,
-      mtime: None,
-      ctime: None,
+      atime: Some(self.get_mtime()),
+      birthtime: Some(self.get_mtime()),
+      mtime: Some(self.get_mtime()),
+      ctime: Some(self.get_mtime()),
       blksize: 0,
       size: self.len,
       dev: 0,
@@ -1273,6 +1280,13 @@ impl FileBackedVfsMetadata {
       is_fifo: false,
       is_socket: false,
     }
+  }
+
+  /// if `mtime` is `None`, return `0`.
+  ///
+  /// if `mtime` is greater than `u64::MAX`, return `u64::MAX`.
+  fn get_mtime(&self) -> u64 {
+    self.mtime.unwrap_or(0).try_into().unwrap_or(u64::MAX)
   }
 }
 

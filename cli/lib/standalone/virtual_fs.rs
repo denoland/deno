@@ -260,6 +260,8 @@ pub struct VirtualFile {
   pub cjs_export_analysis_offset: Option<OffsetWithLength>,
   #[serde(rename = "s", skip_serializing_if = "Option::is_none")]
   pub source_map_offset: Option<OffsetWithLength>,
+  #[serde(rename = "t", skip_serializing_if = "Option::is_none")]
+  pub mtime: Option<u128>, // mtime in milliseconds
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -720,6 +722,16 @@ impl VfsBuilder {
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
 
+    #[allow(clippy::disallowed_methods)]
+    let file_metadata = path.metadata().ok();
+    let file_mtime = file_metadata.and_then(|metadata| {
+      metadata.modified().ok().map(|mtime| {
+        mtime
+          .duration_since(std::time::UNIX_EPOCH)
+          .map_or(0, |duration| duration.as_millis())
+      })
+    });
+
     dir.entries.insert_or_modify(
       &name,
       case_sensitivity,
@@ -730,6 +742,7 @@ impl VfsBuilder {
           transpiled_offset,
           cjs_export_analysis_offset,
           source_map_offset,
+          mtime: file_mtime,
         })
       },
       |entry| match entry {
@@ -746,6 +759,7 @@ impl VfsBuilder {
             virtual_file.cjs_export_analysis_offset =
               cjs_export_analysis_offset;
           }
+          virtual_file.mtime = file_mtime;
         }
         VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
       },
