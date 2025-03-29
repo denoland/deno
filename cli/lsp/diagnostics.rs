@@ -81,6 +81,7 @@ struct DiagnosticRecord {
 
 #[derive(Clone, Default, Debug)]
 struct VersionedDiagnostics {
+  // TODO(nayeemrmn): Make non-optional!
   pub version: Option<i32>,
   pub diagnostics: Vec<lsp::Diagnostic>,
 }

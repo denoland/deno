@@ -568,6 +568,17 @@ impl Documents {
     Some(Document::Server(doc))
   }
 
+  /// This will not create any server entries, only retrieve existing entries.
+  pub fn inspect(&self, uri: &Uri) -> Option<Document> {
+    if let Some(doc) = self.open.get(uri) {
+      return Some(Document::Open(doc.clone()));
+    }
+    if let Some(doc) = self.server.get(uri) {
+      return Some(Document::Server(doc.clone()));
+    }
+    None
+  }
+
   pub fn get_for_specifier(
     &self,
     specifier: &Url,

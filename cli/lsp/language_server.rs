@@ -3675,12 +3675,21 @@ impl Inner {
     self.project_version += 1; // increment before getting the snapshot
     let modified_scripts = changed_docs
       .into_iter()
-      .map(|(u, k)| (uri_to_url(u), k))
-      .collect::<Vec<_>>();
-    // TODO(nayeemrmn): Pass URIs into tsc here.
+      .filter_map(|(u, k)| {
+        Some((self.document_modules.documents.inspect(u)?, k))
+      })
+      .flat_map(|(d, k)| {
+        self
+          .document_modules
+          .inspect_modules_by_scope(&d)
+          .values()
+          .map(|m| (m.specifier.clone(), k))
+          .collect::<Vec<_>>()
+      })
+      .collect::<IndexMap<_, _>>();
     self.ts_server.project_changed(
       self.snapshot(),
-      modified_scripts.iter().map(|(s, k)| (s, *k)),
+      modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
       config_changed.then(|| {
         self
           .config

@@ -43,9 +43,12 @@ pub const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
 
 /// Characters that may be left unencoded in a `Url` path but not valid in a
 /// `Uri` path.
+// TODO(nayeemrmn): Align this properly with VSCode's set!
+// Currently it is as lenient as the fluent URI parser will accept.
 const URL_TO_URI_PATH: &percent_encoding::AsciiSet =
   &percent_encoding::CONTROLS
     .add(b' ')
+    .add(b'@')
     .add(b'[')
     .add(b']')
     .add(b'^')
