@@ -6,16 +6,18 @@ use dashmap::DashMap;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::serde_json;
+use deno_core::url::Url;
 use deno_npm::npm_rc::NpmRc;
 use deno_semver::package::PackageNv;
 use deno_semver::Version;
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use super::search::PackageSearchApi;
-use crate::args::npm_registry_url;
 use crate::file_fetcher::CliFileFetcher;
 use crate::file_fetcher::TextDecodedFile;
 use crate::npm::NpmFetchResolver;
+use crate::sys::CliSys;
 
 #[derive(Debug)]
 pub struct CliNpmSearchApi {
@@ -46,7 +48,7 @@ impl CliNpmSearchApi {
   }
 }
 
-#[async_trait::async_trait]
+#[async_trait::async_trait(?Send)]
 impl PackageSearchApi for CliNpmSearchApi {
   async fn search(&self, query: &str) -> Result<Arc<Vec<String>>, AnyError> {
     if let Some(names) = self.search_cache.get(query) {
@@ -109,6 +111,14 @@ fn parse_npm_search_response(source: &str) -> Result<Vec<String>, AnyError> {
   }
   let objects = serde_json::from_str::<Response>(source)?.objects;
   Ok(objects.into_iter().map(|o| o.package.name).collect())
+}
+
+// this is buried here because generally you want to use the ResolvedNpmRc instead of this.
+fn npm_registry_url() -> &'static Url {
+  static NPM_REGISTRY_DEFAULT_URL: Lazy<Url> =
+    Lazy::new(|| deno_resolver::npmrc::npm_registry_url(&CliSys::default()));
+
+  &NPM_REGISTRY_DEFAULT_URL
 }
 
 #[cfg(test)]

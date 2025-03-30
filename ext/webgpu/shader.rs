@@ -1,54 +1,49 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::borrow::Cow;
-use std::rc::Rc;
-
 use deno_core::op2;
-use deno_core::OpState;
-use deno_core::Resource;
-use deno_core::ResourceId;
+use deno_core::webidl::WebIdlInterfaceConverter;
+use deno_core::GarbageCollected;
+use deno_core::WebIDL;
 
-use super::error::WebGpuResult;
+use crate::Instance;
 
-pub(crate) struct WebGpuShaderModule(
-  pub(crate) super::Instance,
-  pub(crate) wgpu_core::id::ShaderModuleId,
-);
-impl Resource for WebGpuShaderModule {
-  fn name(&self) -> Cow<str> {
-    "webGPUShaderModule".into()
-  }
+pub struct GPUShaderModule {
+  pub instance: Instance,
+  pub id: wgpu_core::id::ShaderModuleId,
+  pub label: String,
+}
 
-  fn close(self: Rc<Self>) {
-    gfx_select!(self.1 => self.0.shader_module_drop(self.1));
+impl Drop for GPUShaderModule {
+  fn drop(&mut self) {
+    self.instance.shader_module_drop(self.id);
   }
 }
 
+impl WebIdlInterfaceConverter for GPUShaderModule {
+  const NAME: &'static str = "GPUShaderModule";
+}
+
+impl GarbageCollected for GPUShaderModule {}
+
 #[op2]
-#[serde]
-pub fn op_webgpu_create_shader_module(
-  state: &mut OpState,
-  #[smi] device_rid: ResourceId,
-  #[string] label: Cow<str>,
-  #[string] code: Cow<str>,
-) -> Result<WebGpuResult, deno_core::error::ResourceError> {
-  let instance = state.borrow::<super::Instance>();
-  let device_resource = state
-    .resource_table
-    .get::<super::WebGpuDevice>(device_rid)?;
-  let device = device_resource.1;
+impl GPUShaderModule {
+  #[getter]
+  #[string]
+  fn label(&self) -> String {
+    self.label.clone()
+  }
+  #[setter]
+  #[string]
+  fn label(&self, #[webidl] _label: String) {
+    // TODO(@crowlKats): no-op, needs wpgu to implement changing the label
+  }
+}
 
-  let source = wgpu_core::pipeline::ShaderModuleSource::Wgsl(code);
+#[derive(WebIDL)]
+#[webidl(dictionary)]
+pub(crate) struct GPUShaderModuleDescriptor {
+  #[webidl(default = String::new())]
+  pub label: String,
 
-  let descriptor = wgpu_core::pipeline::ShaderModuleDescriptor {
-    label: Some(label),
-    shader_bound_checks: wgpu_types::ShaderBoundChecks::default(),
-  };
-
-  gfx_put!(device => instance.device_create_shader_module(
-    device,
-    &descriptor,
-    source,
-    None
-  ) => state, WebGpuShaderModule)
+  pub code: String,
 }

@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::collections::VecDeque;
+use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,7 +21,6 @@ use deno_terminal::colors;
 use rand::Rng;
 
 use super::installer::infer_name_from_url;
-use crate::args::check_warn_tsconfig;
 use crate::args::CompileFlags;
 use crate::args::Flags;
 use crate::factory::CliFactory;
@@ -38,30 +38,18 @@ pub async fn compile(
   let binary_writer = factory.create_compile_binary_writer().await?;
   let http_client = factory.http_client_provider();
   let entrypoint = cli_options.resolve_main_module()?;
-  let (module_roots, include_files) = get_module_roots_and_include_files(
-    entrypoint,
-    &compile_flags,
-    cli_options.initial_cwd(),
-  )?;
-
-  // this is not supported, so show a warning about it, but don't error in order
-  // to allow someone to still run `deno compile` when this is in a deno.json
-  if cli_options.unstable_sloppy_imports() {
-    log::warn!(
-      concat!(
-        "{} Sloppy imports are not supported in deno compile. ",
-        "The compiled executable may encounter runtime errors.",
-      ),
-      crate::colors::yellow("Warning"),
-    );
-  }
-
   let output_path = resolve_compile_executable_output_path(
     http_client,
     &compile_flags,
     cli_options.initial_cwd(),
   )
   .await?;
+  let (module_roots, include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
 
   let graph = Arc::try_unwrap(
     module_graph_creator
@@ -84,9 +72,6 @@ pub async fn compile(
     graph
   };
 
-  let ts_config_for_emit = cli_options
-    .resolve_ts_config_for_emit(deno_config::deno_json::TsConfigType::Emit)?;
-  check_warn_tsconfig(&ts_config_for_emit);
   log::info!(
     "{} {} to {}",
     colors::green("Compile"),
@@ -162,6 +147,122 @@ pub async fn compile(
   Ok(())
 }
 
+pub async fn compile_eszip(
+  flags: Arc<Flags>,
+  compile_flags: CompileFlags,
+) -> Result<(), AnyError> {
+  let factory = CliFactory::from_flags(flags);
+  let cli_options = factory.cli_options()?;
+  let module_graph_creator = factory.module_graph_creator().await?;
+  let parsed_source_cache = factory.parsed_source_cache();
+  let tsconfig_resolver = factory.tsconfig_resolver()?;
+  let http_client = factory.http_client_provider();
+  let entrypoint = cli_options.resolve_main_module()?;
+  let mut output_path = resolve_compile_executable_output_path(
+    http_client,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )
+  .await?;
+  output_path.set_extension("eszip");
+
+  let maybe_import_map_specifier =
+    cli_options.resolve_specified_import_map_specifier()?;
+  let (module_roots, _include_files) = get_module_roots_and_include_files(
+    entrypoint,
+    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
+    &compile_flags,
+    cli_options.initial_cwd(),
+  )?;
+
+  let graph = Arc::try_unwrap(
+    module_graph_creator
+      .create_graph_and_maybe_check(module_roots.clone())
+      .await?,
+  )
+  .unwrap();
+  let graph = if cli_options.type_check_mode().is_true() {
+    // In this case, the previous graph creation did type checking, which will
+    // create a module graph with types information in it. We don't want to
+    // store that in the binary so create a code only module graph from scratch.
+    module_graph_creator
+      .create_graph(
+        GraphKind::CodeOnly,
+        module_roots,
+        crate::graph_util::NpmCachingStrategy::Eager,
+      )
+      .await?
+  } else {
+    graph
+  };
+
+  let transpile_and_emit_options = tsconfig_resolver
+    .transpile_and_emit_options(cli_options.workspace().root_dir())?;
+  let transpile_options = transpile_and_emit_options.transpile.clone();
+  let emit_options = transpile_and_emit_options.emit.clone();
+
+  let parser = parsed_source_cache.as_capturing_parser();
+  let root_dir_url = cli_options.workspace().root_dir();
+  log::debug!("Binary root dir: {}", root_dir_url);
+  let relative_file_base = eszip::EszipRelativeFileBaseUrl::new(root_dir_url);
+  let mut eszip = eszip::EszipV2::from_graph(eszip::FromGraphOptions {
+    graph,
+    parser,
+    transpile_options,
+    emit_options,
+    relative_file_base: Some(relative_file_base),
+    npm_packages: None,
+    module_kind_resolver: Default::default(),
+  })?;
+
+  if let Some(import_map_specifier) = maybe_import_map_specifier {
+    let import_map_path = import_map_specifier.to_file_path().unwrap();
+    let import_map_content = std::fs::read_to_string(&import_map_path)
+      .with_context(|| {
+        format!("Failed to read import map: {:?}", import_map_path)
+      })?;
+
+    let import_map_specifier_str = if let Some(relative_import_map_specifier) =
+      root_dir_url.make_relative(&import_map_specifier)
+    {
+      relative_import_map_specifier
+    } else {
+      import_map_specifier.to_string()
+    };
+
+    eszip.add_import_map(
+      eszip::ModuleKind::Json,
+      import_map_specifier_str,
+      import_map_content.as_bytes().to_vec().into(),
+    );
+  }
+
+  log::info!(
+    "{} {} to {}",
+    colors::green("Compile"),
+    entrypoint,
+    output_path.display(),
+  );
+  validate_output_path(&output_path)?;
+
+  let mut file = std::fs::File::create(&output_path).with_context(|| {
+    format!("Opening ESZip file '{}'", output_path.display())
+  })?;
+
+  let write_result = {
+    let r = file.write_all(&eszip.into_bytes());
+    drop(file);
+    r
+  };
+
+  if let Err(err) = write_result {
+    let _ = std::fs::remove_file(output_path);
+    return Err(err.into());
+  }
+
+  Ok(())
+}
+
 /// This function writes out a final binary to specified path. If output path
 /// is not already standalone binary it will return error instead.
 fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
@@ -214,6 +315,7 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
 fn get_module_roots_and_include_files(
   entrypoint: &ModuleSpecifier,
+  output_url: &ModuleSpecifier,
   compile_flags: &CompileFlags,
   initial_cwd: &Path,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
@@ -236,15 +338,18 @@ fn get_module_roots_and_include_files(
       | MediaType::Tsx
       | MediaType::Json
       | MediaType::Wasm => true,
-      MediaType::Css | MediaType::SourceMap | MediaType::Unknown => false,
+      MediaType::Css
+      | MediaType::Html
+      | MediaType::SourceMap
+      | MediaType::Sql
+      | MediaType::Unknown => false,
     }
   }
 
   fn analyze_path(
     url: &ModuleSpecifier,
-    module_roots: &mut Vec<ModuleSpecifier>,
-    include_files: &mut Vec<ModuleSpecifier>,
     searched_paths: &mut HashSet<PathBuf>,
+    mut add_url: impl FnMut(ModuleSpecifier),
   ) -> Result<(), AnyError> {
     let Ok(path) = url_to_file_path(url) else {
       return Ok(());
@@ -256,10 +361,7 @@ fn get_module_roots_and_include_files(
       }
       if !path.is_dir() {
         let url = url_from_file_path(&path)?;
-        include_files.push(url.clone());
-        if is_module_graph_module(&url) {
-          module_roots.push(url);
-        }
+        add_url(url);
         continue;
       }
       for entry in std::fs::read_dir(&path).with_context(|| {
@@ -286,12 +388,14 @@ fn get_module_roots_and_include_files(
         include_files.push(url);
       }
     } else {
-      analyze_path(
-        &url,
-        &mut module_roots,
-        &mut include_files,
-        &mut searched_paths,
-      )?;
+      analyze_path(&url, &mut searched_paths, |file_url| {
+        if file_url != *output_url {
+          include_files.push(file_url.clone());
+          if is_module_graph_module(&file_url) {
+            module_roots.push(file_url);
+          }
+        }
+      })?;
     }
   }
   Ok((module_roots, include_files))
@@ -374,6 +478,7 @@ mod test {
         no_terminal: false,
         icon: None,
         include: vec![],
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )
@@ -399,6 +504,7 @@ mod test {
         include: vec![],
         icon: None,
         no_terminal: false,
+        eszip: true,
       },
       &std::env::current_dir().unwrap(),
     )

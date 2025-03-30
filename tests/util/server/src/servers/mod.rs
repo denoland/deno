@@ -84,6 +84,7 @@ const WS_PORT: u16 = 4242;
 const WSS_PORT: u16 = 4243;
 const WSS2_PORT: u16 = 4249;
 const WS_CLOSE_PORT: u16 = 4244;
+const WS_HANG_PORT: u16 = 4264;
 const WS_PING_PORT: u16 = 4245;
 const H2_GRPC_PORT: u16 = 4246;
 const H2S_GRPC_PORT: u16 = 4247;
@@ -120,6 +121,7 @@ pub async fn run_all_servers() {
   let ws_ping_server_fut = ws::run_ws_ping_server(WS_PING_PORT);
   let wss_server_fut = ws::run_wss_server(WSS_PORT);
   let ws_close_server_fut = ws::run_ws_close_server(WS_CLOSE_PORT);
+  let ws_hang_server_fut = ws::run_ws_hang_handshake(WS_HANG_PORT);
   let wss2_server_fut = ws::run_wss2_server(WSS2_PORT);
 
   let tls_server_fut = run_tls_server(TLS_PORT);
@@ -162,6 +164,7 @@ pub async fn run_all_servers() {
     tls_server_fut.boxed_local(),
     tls_client_auth_server_fut.boxed_local(),
     ws_close_server_fut.boxed_local(),
+    ws_hang_server_fut.boxed_local(),
     another_redirect_server_fut.boxed_local(),
     auth_redirect_server_fut.boxed_local(),
     basic_auth_redirect_server_fut.boxed_local(),
@@ -450,7 +453,7 @@ async fn absolute_redirect(
 async fn main_server(
   req: Request<hyper::body::Incoming>,
 ) -> Result<Response<UnsyncBoxBody<Bytes, Infallible>>, anyhow::Error> {
-  return match (req.method(), req.uri().path()) {
+  match (req.method(), req.uri().path()) {
     (_, "/echo_server") => {
       let (parts, body) = req.into_parts();
       let mut response = Response::new(UnsyncBoxBody::new(Full::new(
@@ -1098,30 +1101,30 @@ console.log("imported", import.meta.url);
     }
     (&Method::GET, "/upgrade/sleep/release-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/upgrade/sleep/canary-latest.txt") => {
       tokio::time::sleep(Duration::from_secs(95)).await;
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
           .unwrap(),
-      );
+      )
     }
     (&Method::GET, "/release-latest.txt") => {
-      return Ok(
+      Ok(
         Response::builder()
           .status(StatusCode::OK)
           // use a deno version that will never happen
           .body(string_body("99999.99.99"))
           .unwrap(),
-      );
+      )
     }
     (
       &Method::GET,
@@ -1133,14 +1136,12 @@ console.log("imported", import.meta.url);
       | "/canary-x86_64-unknown-linux-musl-latest.txt"
       | "/canary-aarch64-unknown-linux-musl-latest.txt"
       | "/canary-x86_64-pc-windows-msvc-latest.txt",
-    ) => {
-      return Ok(
-        Response::builder()
-          .status(StatusCode::OK)
-          .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
-          .unwrap(),
-      );
-    }
+    ) => Ok(
+      Response::builder()
+        .status(StatusCode::OK)
+        .body(string_body("bda3850f84f24b71e02512c1ba2d6bf2e3daa2fd"))
+        .unwrap(),
+    ),
     _ => {
       let uri_path = req.uri().path();
       let mut file_path = testdata_path().to_path_buf();
@@ -1171,7 +1172,7 @@ console.log("imported", import.meta.url);
         .body(empty_body())
         .map_err(|e| e.into())
     }
-  };
+  }
 }
 
 async fn wrap_redirect_server(port: u16) {

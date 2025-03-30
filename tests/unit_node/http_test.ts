@@ -372,6 +372,35 @@ Deno.test("[node/http] request default protocol", async () => {
   assertEquals(clientRes!.complete, true);
 });
 
+Deno.test("[node/http] request non-ws upgrade header", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((_req, res) => {
+    res.writeHead(200, { "upgrade": "h2,h2c" });
+    res.end("ok");
+  });
+  server.listen(() => {
+    const req = http.request(
+      {
+        host: "localhost",
+        // deno-lint-ignore no-explicit-any
+        port: (server.address() as any).port,
+      },
+      (res) => {
+        res.on("data", () => {});
+        res.on("end", () => {
+          server.close();
+        });
+        assertEquals(res.statusCode, 200);
+      },
+    );
+    req.end();
+  });
+  server.on("close", () => {
+    resolve();
+  });
+  await promise;
+});
+
 Deno.test("[node/http] request with headers", async () => {
   const { promise, resolve } = Promise.withResolvers<void>();
   const server = http.createServer((req, res) => {
@@ -1891,4 +1920,82 @@ Deno.test("[node/http] an error with DNS propagates to request object", async ()
     resolve();
   });
   await promise;
+});
+
+Deno.test("[node/http] supports proxy http request", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = Deno.serve({ port: 0, onListen }, (req) => {
+    console.log("server received", req.url);
+    assertEquals(req.url, "http://example.com/");
+    return new Response("ok");
+  });
+
+  function onListen({ port }: { port: number }) {
+    http.request({
+      host: "localhost",
+      port,
+      path: "http://example.com",
+    }, async (res) => {
+      assertEquals(res.statusCode, 200);
+      assertEquals(await text(res), "ok");
+      resolve();
+      server.shutdown();
+    }).end();
+  }
+  await promise;
+  await server.finished;
+});
+
+Deno.test("[node/http] 'close' event is emitted when request finished", async () => {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  let socketCloseEmitted = false;
+  const req = http.request("http://localhost:4545/echo.ts", async (res) => {
+    res.on("close", resolve);
+    req.socket?.on("close", () => {
+      socketCloseEmitted = true;
+    });
+    await text(res);
+  });
+  req.end();
+  await promise;
+  assert(socketCloseEmitted);
+});
+
+Deno.test("[node/http] 'close' event is emitted on ServerResponse object when the client aborted the request in the middle", async () => {
+  let responseCloseEmitted = false;
+  const { promise, resolve } = Promise.withResolvers<void>();
+  const server = http.createServer((req, res) => {
+    res.on("close", () => {
+      responseCloseEmitted = true;
+      res.end();
+    });
+
+    // Streams thre response body
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    const interval = setInterval(() => {
+      res.write("Hello, world!\n");
+    }, 100);
+
+    req.on("error", () => {
+      clearInterval(interval);
+      resolve();
+    });
+  });
+
+  server.listen(0, () => {
+    const { port } = server.address() as { port: number };
+    const client = net.createConnection({ port });
+    client.write("GET / HTTP/1.1\r\n");
+    client.write("Host: localhost\r\n");
+    client.write("Connection: close\r\n");
+    client.write("\r\n");
+    client.on("data", () => {
+      // Client aborts the request in the middle
+      client.end();
+    });
+  });
+
+  await promise;
+  await new Promise((resolve) => server.close(resolve));
+  assert(responseCloseEmitted);
 });

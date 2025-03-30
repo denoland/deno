@@ -1148,7 +1148,7 @@ async fn test_watch_doc() {
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),
-    "error: TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
+    "TS2322 [ERROR]: Type 'number' is not assignable to type 'string'."
   );
   assert_eq!(
     next_line(&mut stderr_lines).await.unwrap(),

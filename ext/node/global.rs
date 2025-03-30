@@ -241,13 +241,7 @@ fn is_managed_key(
     return false;
   }
   let buf = &mut [0u16; LONGEST_MANAGED_GLOBAL];
-  let written = str.write(
-    scope,
-    buf.as_mut_slice(),
-    0,
-    v8::WriteOptions::NO_NULL_TERMINATION,
-  );
-  assert_eq!(written, len);
+  str.write_v2(scope, 0, buf.as_mut_slice(), v8::WriteFlags::empty());
   MANAGED_GLOBALS.binary_search(&&buf[..len]).is_ok()
 }
 

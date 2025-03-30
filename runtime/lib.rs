@@ -36,9 +36,12 @@ pub mod inspector_server;
 pub mod js;
 pub mod ops;
 pub mod permissions;
-#[cfg(feature = "snapshotting")]
+#[cfg(feature = "snapshot")]
 pub mod snapshot;
+pub mod snapshot_info;
 pub mod tokio_util;
+#[cfg(feature = "transpile")]
+pub mod transpile;
 pub mod web_worker;
 pub mod worker;
 
@@ -102,6 +105,12 @@ pub static UNSTABLE_GRANULAR_FLAGS: &[UnstableGranularFlag] = &[
     help_text: "Enable unstable net APIs",
     show_in_help: true,
     id: 7,
+  },
+  UnstableGranularFlag {
+    name: "no-legacy-abort",
+    help_text: "Enable abort signal in Deno.serve without legacy behavior. This will not abort the server when the request is handled successfully.",
+    show_in_help: true,
+    id: 13,
   },
   UnstableGranularFlag {
     name: "node-globals",

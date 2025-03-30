@@ -212,7 +212,7 @@ pub async fn uninstall(
   let uninstall_flags = match uninstall_flags.kind {
     UninstallKind::Global(flags) => flags,
     UninstallKind::Local(remove_flags) => {
-      return super::registry::remove(flags, remove_flags).await;
+      return super::pm::remove(flags, remove_flags).await;
     }
   };
 
@@ -279,8 +279,15 @@ pub(crate) async fn install_from_entrypoints(
   let factory = CliFactory::from_flags(flags.clone());
   let emitter = factory.emitter()?;
   let main_graph_container = factory.main_module_graph_container().await?;
+  let specifiers = main_graph_container.collect_specifiers(entrypoints)?;
   main_graph_container
-    .load_and_type_check_files(entrypoints)
+    .check_specifiers(
+      &specifiers,
+      crate::graph_container::CheckSpecifiersOptions {
+        ext_overwrite: None,
+        allow_unknown_media_types: true,
+      },
+    )
     .await?;
   emitter
     .cache_module_emits(&main_graph_container.graph())
@@ -293,12 +300,7 @@ async fn install_local(
 ) -> Result<(), AnyError> {
   match install_flags {
     InstallFlagsLocal::Add(add_flags) => {
-      super::registry::add(
-        flags,
-        add_flags,
-        super::registry::AddCommandName::Install,
-      )
-      .await
+      super::pm::add(flags, add_flags, super::pm::AddCommandName::Install).await
     }
     InstallFlagsLocal::Entrypoints(entrypoints) => {
       install_from_entrypoints(flags, &entrypoints).await
@@ -306,10 +308,8 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      if let Some(npm_installer) = factory.npm_installer_if_managed()? {
-        npm_installer.ensure_no_pkg_json_dep_errors()?;
-      }
-      crate::tools::registry::cache_top_level_deps(&factory, None).await?;
+      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
+      crate::tools::pm::cache_top_level_deps(&factory, None).await?;
 
       if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
         lockfile.write_if_changed()?;
@@ -376,7 +376,7 @@ async fn install_global(
     log::Level::Trace,
   );
 
-  let npmrc = factory.cli_options().unwrap().npmrc();
+  let npmrc = factory.npmrc()?;
 
   let deps_file_fetcher = Arc::new(deps_file_fetcher);
   let jsr_resolver = Arc::new(JsrFetchResolver::new(deps_file_fetcher.clone()));
@@ -388,8 +388,7 @@ async fn install_global(
   let entry_text = install_flags_global.module_url.as_str();
   if !cli_options.initial_cwd().join(entry_text).exists() {
     // check for package requirement missing prefix
-    if let Ok(Err(package_req)) =
-      super::registry::AddRmPackageReq::parse(entry_text)
+    if let Ok(Err(package_req)) = super::pm::AddRmPackageReq::parse(entry_text)
     {
       if jsr_resolver.req_to_nv(&package_req).await.is_some() {
         bail!(
@@ -410,6 +409,12 @@ async fn install_global(
     .await?
     .load_and_type_check_files(&[install_flags_global.module_url.clone()])
     .await?;
+
+  if matches!(flags.config_flag, ConfigFlag::Discover)
+    && cli_options.workspace().deno_jsons().next().is_some()
+  {
+    log::warn!("{} discovered config file will be ignored in the installed command. Use the --config flag if you wish to include it.", crate::colors::yellow("Warning"));
+  }
 
   // create the install shim
   create_install_shim(http_client, &flags, install_flags_global).await

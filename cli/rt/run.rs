@@ -7,9 +7,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use deno_cache_dir::npm::NpmCacheDir;
-use deno_config::workspace::MappedResolution;
 use deno_config::workspace::ResolverWorkspaceJsrPackage;
-use deno_config::workspace::WorkspaceResolver;
 use deno_core::error::AnyError;
 use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -59,11 +57,14 @@ use deno_resolver::npm::NpmReqResolver;
 use deno_resolver::npm::NpmReqResolverOptions;
 use deno_resolver::npm::NpmResolver;
 use deno_resolver::npm::NpmResolverCreateOptions;
+use deno_resolver::workspace::MappedResolution;
+use deno_resolver::workspace::SloppyImportsOptions;
+use deno_resolver::workspace::WorkspaceResolver;
+use deno_resolver::DenoResolveErrorKind;
 use deno_runtime::code_cache::CodeCache;
 use deno_runtime::deno_fs::FileSystem;
 use deno_runtime::deno_node::create_host_defined_options;
 use deno_runtime::deno_node::NodeRequireLoader;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use deno_runtime::deno_permissions::Permissions;
 use deno_runtime::deno_permissions::PermissionsContainer;
 use deno_runtime::deno_tls::rustls::RootCertStore;
@@ -73,11 +74,15 @@ use deno_runtime::permissions::RuntimePermissionDescriptorParser;
 use deno_runtime::WorkerExecutionMode;
 use deno_runtime::WorkerLogLevel;
 use deno_semver::npm::NpmPackageReqReference;
+use node_resolver::analyze::CjsModuleExportAnalyzer;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::cache::NodeResolutionSys;
 use node_resolver::errors::ClosestPkgJsonError;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::NodeResolutionKind;
 use node_resolver::NodeResolver;
 use node_resolver::PackageJsonResolver;
+use node_resolver::PackageJsonThreadLocalCache;
 use node_resolver::ResolutionMode;
 
 use crate::binary::DenoCompileModuleSource;
@@ -103,7 +108,7 @@ struct SharedModuleLoaderState {
   npm_registry_permission_checker: NpmRegistryReadPermissionChecker<DenoRtSys>,
   npm_req_resolver: Arc<DenoRtNpmReqResolver>,
   vfs: Arc<FileBackedVfs>,
-  workspace_resolver: WorkspaceResolver,
+  workspace_resolver: WorkspaceResolver<DenoRtSys>,
 }
 
 impl SharedModuleLoaderState {
@@ -150,20 +155,12 @@ impl ModuleLoader for EmbeddedModuleLoader {
     &self,
     raw_specifier: &str,
     referrer: &str,
-    kind: ResolutionKind,
+    _kind: ResolutionKind,
   ) -> Result<Url, ModuleLoaderError> {
     let referrer = if referrer == "." {
-      if kind != ResolutionKind::MainModule {
-        return Err(
-          JsErrorBox::generic(format!(
-            "Expected to resolve main module, got {:?} instead.",
-            kind
-          ))
-          .into(),
-        );
-      }
       let current_dir = std::env::current_dir().unwrap();
-      deno_core::resolve_path(".", &current_dir)?
+      deno_core::resolve_path(".", &current_dir)
+        .map_err(JsErrorBox::from_err)?
     } else {
       Url::parse(referrer).map_err(|err| {
         JsErrorBox::type_error(format!(
@@ -194,15 +191,16 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?
-          .into_url(),
+          .and_then(|res| res.into_url())
+          .map_err(JsErrorBox::from_err)?,
       );
     }
 
-    let mapped_resolution = self
-      .shared
-      .workspace_resolver
-      .resolve(raw_specifier, &referrer);
+    let mapped_resolution = self.shared.workspace_resolver.resolve(
+      raw_specifier,
+      &referrer,
+      deno_resolver::workspace::ResolutionKind::Execution,
+    );
 
     match mapped_resolution {
       Ok(MappedResolution::WorkspaceJsrPackage { specifier, .. }) => {
@@ -223,7 +221,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
             referrer_kind,
             NodeResolutionKind::Execution,
           )
-          .map_err(JsErrorBox::from_err)?,
+          .map_err(JsErrorBox::from_err)
+          .and_then(|url_or_path| {
+            url_or_path.into_url().map_err(JsErrorBox::from_err)
+          })?,
       ),
       Ok(MappedResolution::PackageJson {
         dep_result,
@@ -234,17 +235,29 @@ impl ModuleLoader for EmbeddedModuleLoader {
         .as_ref()
         .map_err(|e| JsErrorBox::from_err(e.clone()))?
       {
-        PackageJsonDepValue::Req(req) => self
-          .shared
-          .npm_req_resolver
-          .resolve_req_with_sub_path(
-            req,
-            sub_path.as_deref(),
-            &referrer,
-            referrer_kind,
-            NodeResolutionKind::Execution,
+        PackageJsonDepValue::File(_) => Err(
+          JsErrorBox::from_err(
+            DenoResolveErrorKind::UnsupportedPackageJsonFileSpecifier
+              .into_box(),
           )
-          .map_err(|e| JsErrorBox::from_err(e).into()),
+          .into(),
+        ),
+        PackageJsonDepValue::Req(req) => Ok(
+          self
+            .shared
+            .npm_req_resolver
+            .resolve_req_with_sub_path(
+              req,
+              sub_path.as_deref(),
+              &referrer,
+              referrer_kind,
+              NodeResolutionKind::Execution,
+            )
+            .map_err(JsErrorBox::from_err)
+            .and_then(|url_or_path| {
+              url_or_path.into_url().map_err(JsErrorBox::from_err)
+            })?,
+        ),
         PackageJsonDepValue::Workspace(version_req) => {
           let pkg_folder = self
             .shared
@@ -265,12 +278,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           )
         }
       },
-      Ok(MappedResolution::Normal { specifier, .. })
-      | Ok(MappedResolution::ImportMap { specifier, .. }) => {
+      Ok(MappedResolution::Normal { specifier, .. }) => {
         if let Ok(reference) =
           NpmPackageReqReference::from_specifier(&specifier)
         {
@@ -284,7 +299,10 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 referrer_kind,
                 NodeResolutionKind::Execution,
               )
-              .map_err(JsErrorBox::from_err)?,
+              .map_err(JsErrorBox::from_err)
+              .and_then(|url_or_path| {
+                url_or_path.into_url().map_err(JsErrorBox::from_err)
+              })?,
           );
         }
 
@@ -321,7 +339,7 @@ impl ModuleLoader for EmbeddedModuleLoader {
           )
           .map_err(JsErrorBox::from_err)?;
         if let Some(res) = maybe_res {
-          return Ok(res.into_url());
+          return Ok(res.into_url().map_err(JsErrorBox::from_err)?);
         }
         Err(JsErrorBox::from_err(err).into())
       }
@@ -652,7 +670,10 @@ pub async fn run(
   let root_dir_url = Arc::new(Url::from_directory_path(&root_path).unwrap());
   let main_module = root_dir_url.join(&metadata.entrypoint_key).unwrap();
   let npm_global_cache_dir = root_path.join(".deno_compile_node_modules");
-  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(sys.clone()));
+  let pkg_json_resolver = Arc::new(PackageJsonResolver::new(
+    sys.clone(),
+    Some(Arc::new(PackageJsonThreadLocalCache)),
+  ));
   let npm_registry_permission_checker = {
     let mode = match &metadata.node_modules {
       Some(NodeModules::Managed {
@@ -670,6 +691,7 @@ pub async fn run(
     };
     NpmRegistryReadPermissionChecker::new(sys.clone(), mode)
   };
+  let node_resolution_sys = NodeResolutionSys::new(sys.clone(), None);
   let (in_npm_pkg_checker, npm_resolver) = match metadata.node_modules {
     Some(NodeModules::Managed { node_modules_dir }) => {
       // create an npmrc that uses the fake npm_registry_url to resolve packages
@@ -719,7 +741,7 @@ pub async fn run(
         DenoInNpmPackageChecker::new(CreateInNpmPkgCheckerOptions::Byonm);
       let npm_resolver = NpmResolver::<DenoRtSys>::new::<DenoRtSys>(
         NpmResolverCreateOptions::Byonm(ByonmNpmResolverCreateOptions {
-          sys: sys.clone(),
+          sys: node_resolution_sys.clone(),
           pkg_json_resolver: pkg_json_resolver.clone(),
           root_node_modules_dir,
         }),
@@ -760,11 +782,11 @@ pub async fn run(
   let has_node_modules_dir = npm_resolver.root_node_modules_path().is_some();
   let node_resolver = Arc::new(NodeResolver::new(
     in_npm_pkg_checker.clone(),
-    RealIsBuiltInNodeModuleChecker,
+    DenoIsBuiltInNodeModuleChecker,
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
-    sys.clone(),
-    node_resolver::ConditionsFromResolutionMode::default(),
+    node_resolution_sys,
+    node_resolver::NodeResolverOptions::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
@@ -785,7 +807,7 @@ pub async fn run(
   }));
   let cjs_esm_code_analyzer =
     CjsCodeAnalyzer::new(cjs_tracker.clone(), modules.clone(), sys.clone());
-  let node_code_translator = Arc::new(NodeCodeTranslator::new(
+  let cjs_module_export_analyzer = Arc::new(CjsModuleExportAnalyzer::new(
     cjs_esm_code_analyzer,
     in_npm_pkg_checker,
     node_resolver.clone(),
@@ -793,6 +815,8 @@ pub async fn run(
     pkg_json_resolver.clone(),
     sys.clone(),
   ));
+  let node_code_translator =
+    Arc::new(NodeCodeTranslator::new(cjs_module_export_analyzer));
   let workspace_resolver = {
     let import_map = match metadata.workspace_resolver.import_map {
       Some(import_map) => Some(
@@ -819,10 +843,10 @@ pub async fn run(
           .to_file_path()
           .unwrap();
         let pkg_json =
-          deno_package_json::PackageJson::load_from_value(path, json);
-        Arc::new(pkg_json)
+          deno_package_json::PackageJson::load_from_value(path, json)?;
+        Ok(Arc::new(pkg_json))
       })
-      .collect();
+      .collect::<Result<Vec<_>, AnyError>>()?;
     WorkspaceResolver::new_raw(
       root_dir_url.clone(),
       import_map,
@@ -840,6 +864,15 @@ pub async fn run(
         .collect(),
       pkg_jsons,
       metadata.workspace_resolver.pkg_json_resolution,
+      if metadata.unstable_config.sloppy_imports {
+        SloppyImportsOptions::Enabled
+      } else {
+        SloppyImportsOptions::Disabled
+      },
+      Default::default(),
+      Default::default(),
+      Default::default(),
+      sys.clone(),
     )
   };
   let code_cache = match metadata.code_cache_key {
@@ -931,6 +964,7 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
+    no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
   };
   let worker_factory = LibMainWorkerFactory::new(

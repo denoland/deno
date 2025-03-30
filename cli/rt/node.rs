@@ -11,10 +11,11 @@ use deno_media_type::MediaType;
 use deno_resolver::npm::DenoInNpmPackageChecker;
 use deno_resolver::npm::NpmReqResolver;
 use deno_runtime::deno_fs::FileSystem;
-use deno_runtime::deno_node::RealIsBuiltInNodeModuleChecker;
 use node_resolver::analyze::CjsAnalysis;
 use node_resolver::analyze::CjsAnalysisExports;
+use node_resolver::analyze::EsmAnalysisMode;
 use node_resolver::analyze::NodeCodeTranslator;
+use node_resolver::DenoIsBuiltInNodeModuleChecker;
 
 use crate::binary::StandaloneModules;
 use crate::file_system::DenoRtSys;
@@ -25,14 +26,14 @@ pub type DenoRtNpmResolver = deno_resolver::npm::NpmResolver<DenoRtSys>;
 pub type DenoRtNpmModuleLoader = NpmModuleLoader<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;
 pub type DenoRtNodeCodeTranslator = NodeCodeTranslator<
   CjsCodeAnalyzer,
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;
@@ -43,7 +44,7 @@ pub type DenoRtNodeResolver = deno_runtime::deno_node::NodeResolver<
 >;
 pub type DenoRtNpmReqResolver = NpmReqResolver<
   DenoInNpmPackageChecker,
-  RealIsBuiltInNodeModuleChecker,
+  DenoIsBuiltInNodeModuleChecker,
   DenoRtNpmResolver,
   DenoRtSys,
 >;
@@ -96,11 +97,17 @@ impl CjsCodeAnalyzer {
           match data {
             CjsExportAnalysisEntry::Esm => {
               cjs_tracker.set_is_known_script(specifier, false);
-              CjsAnalysis::Esm(source)
+              CjsAnalysis::Esm(source, None)
             }
-            CjsExportAnalysisEntry::Cjs(analysis) => {
+            CjsExportAnalysisEntry::Cjs(exports) => {
               cjs_tracker.set_is_known_script(specifier, true);
-              CjsAnalysis::Cjs(analysis)
+              CjsAnalysis::Cjs(CjsAnalysisExports {
+                exports,
+                reexports: Vec::new(), // already resolved
+              })
+            }
+            CjsExportAnalysisEntry::Error(err) => {
+              return Err(JsErrorBox::generic(err));
             }
           }
         }
@@ -119,11 +126,11 @@ impl CjsCodeAnalyzer {
             }
           }
           // assume ESM as we don't have access to swc here
-          CjsAnalysis::Esm(source)
+          CjsAnalysis::Esm(source, None)
         }
       }
     } else {
-      CjsAnalysis::Esm(source)
+      CjsAnalysis::Esm(source, None)
     };
 
     Ok(analysis)
@@ -136,6 +143,7 @@ impl node_resolver::analyze::CjsCodeAnalyzer for CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     source: Option<Cow<'a, str>>,
+    _esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox> {
     let source = match source {
       Some(source) => source,

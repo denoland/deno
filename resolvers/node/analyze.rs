@@ -7,7 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use deno_error::JsErrorBox;
-use deno_path_util::url_from_file_path;
 use deno_path_util::url_to_file_path;
 use futures::future::LocalBoxFuture;
 use futures::stream::FuturesUnordered;
@@ -21,6 +20,7 @@ use sys_traits::FsMetadata;
 use sys_traits::FsRead;
 use url::Url;
 
+use crate::errors::ModuleNotFoundError;
 use crate::resolution::NodeResolverRc;
 use crate::InNpmPackageChecker;
 use crate::IsBuiltInNodeModuleChecker;
@@ -29,12 +29,14 @@ use crate::NpmPackageFolderResolver;
 use crate::PackageJsonResolverRc;
 use crate::PathClean;
 use crate::ResolutionMode;
+use crate::UrlOrPath;
+use crate::UrlOrPathRef;
 
 #[derive(Debug, Clone)]
 pub enum CjsAnalysis<'a> {
   /// File was found to be an ES module and the translator should
   /// load the code as ESM.
-  Esm(Cow<'a, str>),
+  Esm(Cow<'a, str>, Option<CjsAnalysisExports>),
   Cjs(CjsAnalysisExports),
 }
 
@@ -42,6 +44,13 @@ pub enum CjsAnalysis<'a> {
 pub struct CjsAnalysisExports {
   pub exports: Vec<String>,
   pub reexports: Vec<String>,
+}
+
+/// What parts of an ES module should be analyzed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EsmAnalysisMode {
+  SourceOnly,
+  SourceImportsAndExports,
 }
 
 /// Code analyzer for CJS and ESM files.
@@ -58,31 +67,33 @@ pub trait CjsCodeAnalyzer {
     &self,
     specifier: &Url,
     maybe_source: Option<Cow<'a, str>>,
+    esm_analysis_mode: EsmAnalysisMode,
   ) -> Result<CjsAnalysis<'a>, JsErrorBox>;
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-pub enum TranslateCjsToEsmError {
-  #[class(inherit)]
-  #[error(transparent)]
-  CjsCodeAnalysis(JsErrorBox),
-  #[class(inherit)]
-  #[error(transparent)]
-  ExportAnalysis(JsErrorBox),
+pub enum ResolvedCjsAnalysis<'a> {
+  Esm(Cow<'a, str>),
+  Cjs(BTreeSet<String>),
 }
 
-#[derive(Debug, thiserror::Error, deno_error::JsError)]
-#[class(generic)]
-#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
-pub struct CjsAnalysisCouldNotLoadError {
-  reexport: String,
-  reexport_specifier: Url,
-  referrer: Url,
-  #[source]
-  source: JsErrorBox,
-}
+#[allow(clippy::disallowed_types)]
+pub type CjsModuleExportAnalyzerRc<
+  TCjsCodeAnalyzer,
+  TInNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver,
+  TSys,
+> = crate::sync::MaybeArc<
+  CjsModuleExportAnalyzer<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+>;
 
-pub struct NodeCodeTranslator<
+pub struct CjsModuleExportAnalyzer<
   TCjsCodeAnalyzer: CjsCodeAnalyzer,
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
@@ -109,7 +120,7 @@ impl<
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
     TSys: FsCanonicalize + FsMetadata + FsRead,
   >
-  NodeCodeTranslator<
+  CjsModuleExportAnalyzer<
     TCjsCodeAnalyzer,
     TInNpmPackageChecker,
     TIsBuiltInNodeModuleChecker,
@@ -140,35 +151,23 @@ impl<
     }
   }
 
-  /// Translates given CJS module into ESM. This function will perform static
-  /// analysis on the file to find defined exports and reexports.
-  ///
-  /// For all discovered reexports the analysis will be performed recursively.
-  ///
-  /// If successful a source code for equivalent ES module is returned.
-  pub async fn translate_cjs_to_esm<'a>(
+  pub async fn analyze_all_exports<'a>(
     &self,
     entry_specifier: &Url,
     source: Option<Cow<'a, str>>,
-  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
-    let mut temp_var_count = 0;
-
+  ) -> Result<ResolvedCjsAnalysis<'a>, TranslateCjsToEsmError> {
     let analysis = self
       .cjs_code_analyzer
-      .analyze_cjs(entry_specifier, source)
+      .analyze_cjs(entry_specifier, source, EsmAnalysisMode::SourceOnly)
       .await
       .map_err(TranslateCjsToEsmError::CjsCodeAnalysis)?;
 
     let analysis = match analysis {
-      CjsAnalysis::Esm(source) => return Ok(source),
+      CjsAnalysis::Esm(source, _) => {
+        return Ok(ResolvedCjsAnalysis::Esm(source))
+      }
       CjsAnalysis::Cjs(analysis) => analysis,
     };
-
-    let mut source = vec![
-      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
-      const require = __internalCreateRequire(import.meta.url);"#
-        .to_string(),
-    ];
 
     // use a BTreeSet to make the output deterministic for v8's code cache
     let mut all_exports = analysis.exports.into_iter().collect::<BTreeSet<_>>();
@@ -191,39 +190,10 @@ impl<
       }
     }
 
-    source.push(format!(
-      r#"let mod;
-      if (import.meta.main) {{
-        mod = __internalModule._load("{0}", null, true)
-      }} else {{
-        mod = require("{0}");
-      }}"#,
-      url_to_file_path(entry_specifier)
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .replace('\\', "\\\\")
-        .replace('\'', "\\\'")
-        .replace('\"', "\\\"")
-    ));
-
-    for export in &all_exports {
-      if export.as_str() != "default" {
-        add_export(
-          &mut source,
-          export,
-          &format!("mod[{}]", to_double_quote_string(export)),
-          &mut temp_var_count,
-        );
-      }
-    }
-
-    source.push("export default mod;".to_string());
-
-    let translated_source = source.join("\n");
-    Ok(Cow::Owned(translated_source))
+    Ok(ResolvedCjsAnalysis::Cjs(all_exports))
   }
 
+  #[allow(clippy::needless_lifetimes)]
   async fn analyze_reexports<'a>(
     &'a self,
     entry_specifier: &url::Url,
@@ -235,7 +205,6 @@ impl<
   ) {
     struct Analysis {
       reexport_specifier: url::Url,
-      referrer: url::Url,
       analysis: CjsAnalysis<'static>,
     }
 
@@ -253,14 +222,21 @@ impl<
        errors: &mut Vec<JsErrorBox>| {
         // 1. Resolve the re-exports and start a future to analyze each one
         for reexport in reexports {
-          let result = self.resolve(
-            &reexport,
-            &referrer,
-            // FIXME(bartlomieju): check if these conditions are okay, probably
-            // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
-            &["deno", "node", "require", "default"],
-            NodeResolutionKind::Execution,
-          );
+          let result = self
+            .resolve(
+              &reexport,
+              &referrer,
+              // FIXME(bartlomieju): check if these conditions are okay, probably
+              // should be `deno-require`, because `deno` is already used in `esm_resolver.rs`
+              &["deno", "node", "require", "default"],
+              NodeResolutionKind::Execution,
+            )
+            .and_then(|value| {
+              value
+                .map(|url_or_path| url_or_path.into_url())
+                .transpose()
+                .map_err(JsErrorBox::from_err)
+            });
           let reexport_specifier = match result {
             Ok(Some(specifier)) => specifier,
             Ok(None) => continue,
@@ -277,7 +253,11 @@ impl<
           let referrer = referrer.clone();
           let future = async move {
             let analysis = cjs_code_analyzer
-              .analyze_cjs(&reexport_specifier, None)
+              .analyze_cjs(
+                &reexport_specifier,
+                None,
+                EsmAnalysisMode::SourceImportsAndExports,
+              )
               .await
               .map_err(|source| {
                 JsErrorBox::from_err(CjsAnalysisCouldNotLoadError {
@@ -290,7 +270,6 @@ impl<
 
             Ok(Analysis {
               reexport_specifier,
-              referrer,
               analysis,
             })
           }
@@ -310,7 +289,6 @@ impl<
       // 2. Look at the analysis result and resolve its exports and re-exports
       let Analysis {
         reexport_specifier,
-        referrer,
         analysis,
       } = match analysis_result {
         Ok(analysis) => analysis,
@@ -320,14 +298,7 @@ impl<
         }
       };
       match analysis {
-        CjsAnalysis::Esm(_) => {
-          // todo(dsherret): support this once supporting requiring ES modules
-          errors.push(JsErrorBox::generic(format!(
-            "Cannot require ES module '{}' from '{}'",
-            reexport_specifier, referrer,
-          )));
-        }
-        CjsAnalysis::Cjs(analysis) => {
+        CjsAnalysis::Cjs(analysis) | CjsAnalysis::Esm(_, Some(analysis)) => {
           if !analysis.reexports.is_empty() {
             handle_reexports(
               reexport_specifier.clone(),
@@ -344,6 +315,10 @@ impl<
               .filter(|e| e.as_str() != "default"),
           );
         }
+        CjsAnalysis::Esm(_, None) => {
+          // should not hit this due to EsmAnalysisMode::SourceImportsAndExports
+          debug_assert!(false);
+        }
       }
     }
   }
@@ -355,18 +330,18 @@ impl<
     referrer: &Url,
     conditions: &[&str],
     resolution_kind: NodeResolutionKind,
-  ) -> Result<Option<Url>, JsErrorBox> {
+  ) -> Result<Option<UrlOrPath>, JsErrorBox> {
     if specifier.starts_with('/') {
       todo!();
     }
 
-    let referrer_path = url_to_file_path(referrer).unwrap();
+    let referrer = UrlOrPathRef::from_url(referrer);
+    let referrer_path = referrer.path().unwrap();
     if specifier.starts_with("./") || specifier.starts_with("../") {
       if let Some(parent) = referrer_path.parent() {
         return self
-          .file_extension_probe(parent.join(specifier), &referrer_path)
-          .and_then(|p| url_from_file_path(&p).map_err(JsErrorBox::from_err))
-          .map(Some);
+          .file_extension_probe(parent.join(specifier), referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else {
         todo!();
       }
@@ -376,20 +351,21 @@ impl<
     let (package_specifier, package_subpath) =
       parse_specifier(specifier).unwrap();
 
-    let module_dir = match self
-      .npm_resolver
-      .resolve_package_folder_from_package(package_specifier.as_str(), referrer)
-    {
-      Err(err)
-        if matches!(
-          err.as_kind(),
-          crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
-        ) =>
-      {
-        return Ok(None);
-      }
-      other => other.map_err(JsErrorBox::from_err)?,
-    };
+    let module_dir =
+      match self.npm_resolver.resolve_package_folder_from_package(
+        package_specifier.as_str(),
+        &referrer,
+      ) {
+        Err(err)
+          if matches!(
+            err.as_kind(),
+            crate::errors::PackageFolderResolveErrorKind::PackageNotFound(..)
+          ) =>
+        {
+          return Ok(None);
+        }
+        other => other.map_err(JsErrorBox::from_err)?,
+      };
 
     let package_json_path = module_dir.join("package.json");
     let maybe_package_json = self
@@ -405,7 +381,7 @@ impl<
               &package_json_path,
               &package_subpath,
               exports,
-              Some(referrer),
+              Some(&referrer),
               ResolutionMode::Import,
               conditions,
               resolution_kind,
@@ -429,39 +405,26 @@ impl<
             if let Some(main) =
               package_json.main(deno_package_json::NodeModuleKind::Cjs)
             {
-              return Ok(Some(
-                url_from_file_path(&d.join(main).clean())
-                  .map_err(JsErrorBox::from_err)?,
-              ));
+              return Ok(Some(UrlOrPath::Path(d.join(main).clean())));
             }
           }
 
-          return Ok(Some(
-            url_from_file_path(&d.join("index.js").clean())
-              .map_err(JsErrorBox::from_err)?,
-          ));
+          return Ok(Some(UrlOrPath::Path(d.join("index.js").clean())));
         }
         return self
-          .file_extension_probe(d, &referrer_path)
-          .and_then(|p| url_from_file_path(&p).map_err(JsErrorBox::from_err))
-          .map(Some);
+          .file_extension_probe(d, referrer_path)
+          .map(|p| Some(UrlOrPath::Path(p)));
       } else if let Some(main) =
         package_json.main(deno_package_json::NodeModuleKind::Cjs)
       {
-        return Ok(Some(
-          url_from_file_path(&module_dir.join(main).clean())
-            .map_err(JsErrorBox::from_err)?,
-        ));
+        return Ok(Some(UrlOrPath::Path(module_dir.join(main).clean())));
       } else {
-        return Ok(Some(
-          url_from_file_path(&module_dir.join("index.js").clean())
-            .map_err(JsErrorBox::from_err)?,
-        ));
+        return Ok(Some(UrlOrPath::Path(module_dir.join("index.js").clean())));
       }
     }
 
     // as a fallback, attempt to resolve it via the ancestor directories
-    let mut last = referrer_path.as_path();
+    let mut last = referrer_path;
     while let Some(parent) = last.parent() {
       if !self.in_npm_pkg_checker.in_npm_package_at_dir_path(parent) {
         break;
@@ -471,15 +434,18 @@ impl<
       } else {
         parent.join("node_modules").join(specifier)
       };
-      if let Ok(path) = self.file_extension_probe(path, &referrer_path) {
-        return Ok(Some(
-          url_from_file_path(&path).map_err(JsErrorBox::from_err)?,
-        ));
+      if let Ok(path) = self.file_extension_probe(path, referrer_path) {
+        return Ok(Some(UrlOrPath::Path(path)));
       }
       last = parent;
     }
 
-    Err(not_found(specifier, &referrer_path))
+    Err(JsErrorBox::from_err(ModuleNotFoundError {
+      specifier: UrlOrPath::Path(PathBuf::from(specifier)),
+      typ: "module",
+      maybe_referrer: Some(UrlOrPath::Path(referrer_path.to_path_buf())),
+      suggested_ext: None,
+    }))
   }
 
   fn file_extension_probe(
@@ -515,7 +481,143 @@ impl<
         }
       }
     }
-    Err(not_found(&p.to_string_lossy(), referrer))
+    Err(JsErrorBox::from_err(ModuleNotFoundError {
+      specifier: UrlOrPath::Path(p),
+      maybe_referrer: Some(UrlOrPath::Path(referrer.to_path_buf())),
+      typ: "module",
+      suggested_ext: None,
+    }))
+  }
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+pub enum TranslateCjsToEsmError {
+  #[class(inherit)]
+  #[error(transparent)]
+  CjsCodeAnalysis(JsErrorBox),
+  #[class(inherit)]
+  #[error(transparent)]
+  ExportAnalysis(JsErrorBox),
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+#[class(generic)]
+#[error("Could not load '{reexport}' ({reexport_specifier}) referenced from {referrer}")]
+pub struct CjsAnalysisCouldNotLoadError {
+  reexport: String,
+  reexport_specifier: Url,
+  referrer: Url,
+  #[source]
+  source: JsErrorBox,
+}
+
+pub struct NodeCodeTranslator<
+  TCjsCodeAnalyzer: CjsCodeAnalyzer,
+  TInNpmPackageChecker: InNpmPackageChecker,
+  TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+  TNpmPackageFolderResolver: NpmPackageFolderResolver,
+  TSys: FsCanonicalize + FsMetadata + FsRead,
+> {
+  module_export_analyzer: CjsModuleExportAnalyzerRc<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >,
+}
+
+impl<
+    TCjsCodeAnalyzer: CjsCodeAnalyzer,
+    TInNpmPackageChecker: InNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver: NpmPackageFolderResolver,
+    TSys: FsCanonicalize + FsMetadata + FsRead,
+  >
+  NodeCodeTranslator<
+    TCjsCodeAnalyzer,
+    TInNpmPackageChecker,
+    TIsBuiltInNodeModuleChecker,
+    TNpmPackageFolderResolver,
+    TSys,
+  >
+{
+  pub fn new(
+    module_export_analyzer: CjsModuleExportAnalyzerRc<
+      TCjsCodeAnalyzer,
+      TInNpmPackageChecker,
+      TIsBuiltInNodeModuleChecker,
+      TNpmPackageFolderResolver,
+      TSys,
+    >,
+  ) -> Self {
+    Self {
+      module_export_analyzer,
+    }
+  }
+
+  /// Translates given CJS module into ESM. This function will perform static
+  /// analysis on the file to find defined exports and reexports.
+  ///
+  /// For all discovered reexports the analysis will be performed recursively.
+  ///
+  /// If successful a source code for equivalent ES module is returned.
+  pub async fn translate_cjs_to_esm<'a>(
+    &self,
+    entry_specifier: &Url,
+    source: Option<Cow<'a, str>>,
+  ) -> Result<Cow<'a, str>, TranslateCjsToEsmError> {
+    let analysis = self
+      .module_export_analyzer
+      .analyze_all_exports(entry_specifier, source)
+      .await?;
+
+    let all_exports = match analysis {
+      ResolvedCjsAnalysis::Esm(source) => return Ok(source),
+      ResolvedCjsAnalysis::Cjs(all_exports) => all_exports,
+    };
+
+    // todo(dsherret): use capacity_builder here to remove all these heap
+    // allocations and make the string writing faster
+    let mut temp_var_count = 0;
+    let mut source = vec![
+      r#"import {createRequire as __internalCreateRequire, Module as __internalModule } from "node:module";
+      const require = __internalCreateRequire(import.meta.url);"#
+        .to_string(),
+    ];
+
+    source.push(format!(
+      r#"let mod;
+      if (import.meta.main) {{
+        mod = __internalModule._load("{0}", null, true)
+      }} else {{
+        mod = require("{0}");
+      }}"#,
+      url_to_file_path(entry_specifier)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .replace('\\', "\\\\")
+        .replace('\'', "\\\'")
+        .replace('\"', "\\\"")
+    ));
+
+    for export in &all_exports {
+      if !matches!(export.as_str(), "default" | "module.exports") {
+        add_export(
+          &mut source,
+          export,
+          &format!("mod[{}]", to_double_quote_string(export)),
+          &mut temp_var_count,
+        );
+      }
+    }
+
+    source.push("export default mod;".to_string());
+    add_export(&mut source, "module.exports", "mod", &mut temp_var_count);
+
+    let translated_source = source.join("\n");
+    Ok(Cow::Owned(translated_source))
   }
 }
 
@@ -674,15 +776,6 @@ fn parse_specifier(specifier: &str) -> Option<(String, String)> {
   };
 
   Some((package_name, package_subpath))
-}
-
-fn not_found(path: &str, referrer: &Path) -> JsErrorBox {
-  let msg = format!(
-    "[ERR_MODULE_NOT_FOUND] Cannot find module \"{}\" imported from \"{}\"",
-    path,
-    referrer.to_string_lossy()
-  );
-  JsErrorBox::from_err(std::io::Error::new(std::io::ErrorKind::NotFound, msg))
 }
 
 fn to_double_quote_string(text: &str) -> String {
