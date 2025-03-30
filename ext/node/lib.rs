@@ -42,6 +42,7 @@ pub use polyfill::SUPPORTED_BUILTIN_NODE_MODULES_WITH_PREFIX;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
+pub use crate::global::GlobalsStorage;
 
 pub trait NodePermissions {
   fn check_net_url(
