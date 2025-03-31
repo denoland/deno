@@ -1,5 +1,7 @@
 // Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
 
+use std::collections::HashMap;
+
 use deno_ast::swc::common::comments::Comment;
 use deno_ast::swc::common::comments::CommentKind;
 use deno_ast::swc::common::Spanned;
@@ -8,7 +10,6 @@ use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned as _;
 use deno_ast::SourceTextInfo;
 use deno_core::url::Url;
-use std::collections::HashMap;
 
 static COVERAGE_IGNORE_START_DIRECTIVE: &str = "deno-coverage-ignore-start";
 static COVERAGE_IGNORE_STOP_DIRECTIVE: &str = "deno-coverage-ignore-stop";
@@ -204,9 +205,8 @@ mod tests {
   use deno_ast::ModuleSpecifier;
   use deno_ast::ParsedSource;
 
-  use crate::tools::coverage::ast_parser;
-
   use super::*;
+  use crate::tools::coverage::ast_parser;
 
   const TEST_FILE_NAME: &str = "file:///coverage_test.ts";
 
