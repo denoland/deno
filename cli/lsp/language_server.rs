@@ -1187,6 +1187,19 @@ impl Inner {
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
+    let uri1 = &params.text_document.uri;
+    dbg!(uri1.as_str());
+    let url = uri_to_url(&params.text_document.uri);
+    (|| {
+      if url.scheme() != "file" {
+        return None;
+      }
+      let path = url.to_file_path().ok()?;
+      let url2 = Url::from_file_path(&path).ok()?;
+      let uri2 = url_to_uri(&url2).ok()?;
+      dbg!(uri2.as_str());
+      Some(())
+    })();
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
     let Some(scheme) = params.text_document.uri.scheme() else {
       return;
