@@ -762,6 +762,7 @@ const ci = {
           run: [
             "target/release/deno -A tools/release/create_symcache.ts ./deno.symcache",
             "du -h deno.symcache",
+            "du -h target/release/deno",
           ].join("\n"),
           env: {
             NO_COLOR: 1,
@@ -794,10 +795,10 @@ const ci = {
           run: [
             "cd target/release",
             "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-unknown-linux-gnu.symcache",
-            "strip deno",
+            "strip ./deno",
             "zip -r deno-${{ matrix.arch }}-unknown-linux-gnu.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-unknown-linux-gnu.zip > deno-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
-            "strip denort",
+            "strip ./denort",
             "zip -r denort-${{ matrix.arch }}-unknown-linux-gnu.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-unknown-linux-gnu.zip > denort-${{ matrix.arch }}-unknown-linux-gnu.zip.sha256sum",
             "./deno types > lib.deno.d.ts",
@@ -824,10 +825,10 @@ const ci = {
             "--entitlements-xml-file=cli/entitlements.plist",
             "cd target/release",
             "./deno -A ../../tools/release/create_symcache.ts deno-${{ matrix.arch }}-apple-darwin.symcache",
-            "strip deno",
+            "strip ./deno",
             "zip -r deno-${{ matrix.arch }}-apple-darwin.zip deno",
             "shasum -a 256 deno-${{ matrix.arch }}-apple-darwin.zip > deno-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
-            "strip denort",
+            "strip ./denort",
             "zip -r denort-${{ matrix.arch }}-apple-darwin.zip denort",
             "shasum -a 256 denort-${{ matrix.arch }}-apple-darwin.zip > denort-${{ matrix.arch }}-apple-darwin.zip.sha256sum",
           ]
