@@ -140,7 +140,7 @@ fn run_coverage_text(test_name: &str, extension: &str) {
     .run();
 
   // Verify there's no "Check" being printed
-  assert!(output.stderr().is_empty());
+  assert_eq!(output.stderr(), "");
 
   output.assert_stdout_matches_file(
     util::testdata_path().join(format!("coverage/{test_name}_expected.out")),
