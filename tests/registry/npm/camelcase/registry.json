@@ -61,6 +61,5 @@
   "bugs": {
     "url": "https://github.com/sindresorhus/camelcase/issues"
   },
-  "license": "MIT",
-  "readmeFilename": "readme.md"
+  "license": "MIT"
 }

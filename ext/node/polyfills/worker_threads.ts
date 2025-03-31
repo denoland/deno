@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 // Copyright Joyent and Node contributors. All rights reserved. MIT license.
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -21,7 +21,7 @@ import {
   nodeWorkerThreadCloseCb,
   refMessagePort,
   serializeJsMessageData,
-  unrefPollForMessages,
+  unrefParentPort,
 } from "ext:deno_web/13_message_port.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { notImplemented } from "ext:deno_node/_utils.ts";
@@ -42,6 +42,7 @@ const {
   SafeWeakMap,
   SafeMap,
   TypeError,
+  encodeURIComponent,
 } = primordials;
 
 const debugWorkerThreads = false;
@@ -123,7 +124,11 @@ class NodeWorker extends EventEmitter {
       );
     }
     if (options?.eval) {
-      specifier = `data:text/javascript,${specifier}`;
+      const code = typeof specifier === "string"
+        ? encodeURIComponent(specifier)
+        // deno-lint-ignore prefer-primordials
+        : specifier.toString();
+      specifier = `data:text/javascript,${code}`;
     } else if (
       !(typeof specifier === "object" && specifier.protocol === "data:")
     ) {
@@ -446,10 +451,10 @@ internals.__initWorkerThreads = (
       parentPort.emit("close");
     });
     parentPort.unref = () => {
-      parentPort[unrefPollForMessages] = true;
+      parentPort[unrefParentPort] = true;
     };
     parentPort.ref = () => {
-      parentPort[unrefPollForMessages] = false;
+      parentPort[unrefParentPort] = false;
     };
 
     if (isWorkerThread) {

@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // Lazily initializes the error classes in this object.
 // This trick is necessary for avoiding circular dendencies between

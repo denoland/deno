@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // This file is forked/ported from <https://github.com/evcxr/evcxr>
 // Copyright 2020 The Evcxr Authors. MIT license.
@@ -11,8 +11,6 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::cdp;
-use crate::tools::repl;
 use deno_core::anyhow::bail;
 use deno_core::error::AnyError;
 use deno_core::futures;
@@ -20,12 +18,10 @@ use deno_core::parking_lot::Mutex;
 use deno_core::serde_json;
 use deno_core::CancelFuture;
 use deno_core::CancelHandle;
-use jupyter_runtime::ExecutionCount;
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
-
+use deno_lib::version::DENO_VERSION_INFO;
 use jupyter_runtime::messaging;
 use jupyter_runtime::ConnectionInfo;
+use jupyter_runtime::ExecutionCount;
 use jupyter_runtime::JupyterMessage;
 use jupyter_runtime::JupyterMessageContent;
 use jupyter_runtime::KernelControlConnection;
@@ -34,9 +30,13 @@ use jupyter_runtime::KernelShellConnection;
 use jupyter_runtime::ReplyError;
 use jupyter_runtime::ReplyStatus;
 use jupyter_runtime::StreamContent;
+use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use super::JupyterReplProxy;
+use crate::cdp;
+use crate::tools::repl;
 
 pub struct JupyterServer {
   execution_count: ExecutionCount,
@@ -680,10 +680,10 @@ fn kernel_info() -> messaging::KernelInfoReply {
     status: ReplyStatus::Ok,
     protocol_version: "5.3".to_string(),
     implementation: "Deno kernel".to_string(),
-    implementation_version: crate::version::DENO_VERSION_INFO.deno.to_string(),
+    implementation_version: DENO_VERSION_INFO.deno.to_string(),
     language_info: messaging::LanguageInfo {
       name: "typescript".to_string(),
-      version: crate::version::DENO_VERSION_INFO.typescript.to_string(),
+      version: DENO_VERSION_INFO.typescript.to_string(),
       mimetype: "text/x.typescript".to_string(),
       file_extension: ".ts".to_string(),
       pygments_lexer: "typescript".to_string(),

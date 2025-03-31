@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
 const {
@@ -54,7 +54,7 @@ export function clearTimeout(timeout?: Timeout | number) {
   const id = +timeout;
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    timeout._destroyed = true;
+    timer._destroyed = true;
     MapPrototypeDelete(activeTimers, id);
   }
   clearTimeout_(id);
@@ -74,7 +74,7 @@ export function clearInterval(timeout?: Timeout | number | string) {
   const id = +timeout;
   const timer = MapPrototypeGet(activeTimers, id);
   if (timer) {
-    timeout._destroyed = true;
+    timer._destroyed = true;
     MapPrototypeDelete(activeTimers, id);
   }
   clearInterval_(id);

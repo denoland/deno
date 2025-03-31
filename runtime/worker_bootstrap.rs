@@ -1,13 +1,13 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use crate::ops::otel::OtelConfig;
-use deno_core::v8;
-use deno_core::ModuleSpecifier;
-use serde::Serialize;
 use std::cell::RefCell;
 use std::thread;
 
+use deno_core::v8;
+use deno_core::ModuleSpecifier;
+use deno_telemetry::OtelConfig;
 use deno_terminal::colors;
+use serde::Serialize;
 
 /// The execution mode for this worker. Some modes may have implicit behaviour.
 #[derive(Copy, Clone)]
@@ -102,10 +102,6 @@ pub struct BootstrapOptions {
   pub enable_testing_features: bool,
   pub locale: String,
   pub location: Option<ModuleSpecifier>,
-  /// Sets `Deno.noColor` in JS runtime.
-  pub no_color: bool,
-  pub is_stdout_tty: bool,
-  pub is_stderr_tty: bool,
   pub color_level: deno_terminal::colors::ColorLevel,
   // --unstable-* flags
   pub unstable_features: Vec<i32>,
@@ -116,11 +112,12 @@ pub struct BootstrapOptions {
   pub node_debug: Option<String>,
   pub node_ipc_fd: Option<i64>,
   pub mode: WorkerExecutionMode,
+  pub no_legacy_abort: bool,
   // Used by `deno serve`
   pub serve_port: Option<u16>,
   pub serve_host: Option<String>,
-  // OpenTelemetry output options. If `None`, OpenTelemetry is disabled.
-  pub otel_config: Option<OtelConfig>,
+  pub otel_config: OtelConfig,
+  pub close_on_idle: bool,
 }
 
 impl Default for BootstrapOptions {
@@ -129,6 +126,8 @@ impl Default for BootstrapOptions {
       .map(|p| p.get())
       .unwrap_or(1);
 
+    // this version is not correct as its the version of deno_runtime
+    // and the implementor should supply a user agent that makes sense
     let runtime_version = env!("CARGO_PKG_VERSION");
     let user_agent = format!("Deno/{runtime_version}");
 
@@ -136,9 +135,6 @@ impl Default for BootstrapOptions {
       deno_version: runtime_version.to_string(),
       user_agent,
       cpu_count,
-      no_color: !colors::use_color(),
-      is_stdout_tty: deno_terminal::is_stdout_tty(),
-      is_stderr_tty: deno_terminal::is_stderr_tty(),
       color_level: colors::get_color_level(),
       enable_op_summary_metrics: Default::default(),
       enable_testing_features: Default::default(),
@@ -153,9 +149,11 @@ impl Default for BootstrapOptions {
       node_debug: None,
       node_ipc_fd: None,
       mode: WorkerExecutionMode::None,
+      no_legacy_abort: false,
       serve_port: Default::default(),
       serve_host: Default::default(),
-      otel_config: None,
+      otel_config: Default::default(),
+      close_on_idle: false,
     }
   }
 }
@@ -199,6 +197,8 @@ struct BootstrapV8<'a>(
   Option<usize>,
   // OTEL config
   Box<[u8]>,
+  // close on idle
+  bool,
 );
 
 impl BootstrapOptions {
@@ -225,11 +225,8 @@ impl BootstrapOptions {
       self.serve_host.as_deref(),
       serve_is_main,
       serve_worker_count,
-      if let Some(otel_config) = self.otel_config.as_ref() {
-        Box::new([otel_config.console as u8, otel_config.deterministic as u8])
-      } else {
-        Box::new([])
-      },
+      self.otel_config.as_v8(),
+      self.close_on_idle,
     );
 
     bootstrap.serialize(ser).unwrap()

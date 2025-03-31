@@ -1,117 +1,29 @@
 {
   "name": "@types/node",
   "dist-tags": {
-    "ts4.9": "22.5.4",
-    "ts5.5": "22.5.4",
-    "ts5.6": "22.5.4",
-    "ts5.7": "22.5.4",
-    "ts4.8": "22.5.4",
-    "ts5.2": "22.5.4",
-    "ts5.3": "22.5.4",
-    "ts5.4": "22.5.4",
-    "ts5.1": "22.5.4",
-    "ts5.0": "22.5.4",
-    "latest": "22.5.4"
+    "ts5.8": "22.12.0",
+    "ts5.0": "22.12.0",
+    "ts5.4": "22.12.0",
+    "ts5.6": "22.12.0",
+    "latest": "22.12.0",
+    "ts5.3": "22.12.0",
+    "ts5.7": "22.12.0",
+    "ts5.1": "22.12.0",
+    "ts5.5": "22.12.0",
+    "ts5.2": "22.12.0"
   },
   "versions": {
-    "18.8.2": {
+    "22.12.0": {
       "name": "@types/node",
-      "version": "18.8.2",
+      "version": "22.12.0",
       "license": "MIT",
-      "_id": "@types/node@18.8.2",
+      "_id": "@types/node@22.12.0",
       "dist": {
-        "shasum": "17d42c6322d917764dd3d2d3a10d7884925de067",
-        "tarball": "http://localhost:4260/@types/node/node-18.8.2.tgz",
-        "fileCount": 124,
-        "integrity": "sha512-cRMwIgdDN43GO4xMWAfJAecYn8wV4JbsOGHNfNUIDiuYkUYAR5ec4Rj7IO2SAhFPEfpPtLtUTbbny/TCT7aDwA==",
-        "signatures": [
-          {
-            "sig": "MEYCIQCAqI3XibndhBD647C/13AFb58Fhmg4WmfCoGrIYrgtzwIhAIB0b0D58Tigwb3qKaOVsKnuYOOr0strAmprZSCi/+oq",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
-        "unpackedSize": 3524549,
-        "npm-signature": "-----BEGIN PGP SIGNATURE-----\r\nVersion: OpenPGP.js v4.10.10\r\nComment: https://openpgpjs.org\r\n\r\nwsFzBAEBCAAGBQJjPFItACEJED1NWxICdlZqFiEECWMYAoorWMhJKdjhPU1b\r\nEgJ2VmrKAg/+IwaUWPgePlO4IxW7CVhFEEFiyhjEH3FHe0ogC3YmreoBFv/A\r\nPwQrwObdskbGWrBzsAOVFvhzYktzP3kc857HtU2ia9FXeaEYvsSQBqh6jZfA\r\njR1+h+jn+W5JnmbnwRGfNn2riCo/un4tYoZ4o/bKiMdNd9WrdIs0Oii1Dd4N\r\nnsBXPb05UPPP4Uu8cz68u1bj+QQ6aslr6keGNyNeILf8bJsEfcfVkEO3l4cu\r\njyTIrxiD+tM8jrUE9CDeodF8CZNuvLh3hqdMPJeH3U47qkDtPDKEOvZTbyYm\r\ngodto6mcnuBr8F9vmikAQfGiXV0U2cg2XRjWc1lI8HT4X0kESTIo+nzNuliD\r\niTpfjyZHdKBGGIuHP1Ou9dVvx4t5XZ1JsK9EK5WTilvAlu/qZrynxXxAV3Rc\r\nvL9UhIacISprMWB3Sohl9ZtfcmGnV/KMRpM+yPZOWp39gQQCKaKF/j2f/mir\r\n8YFbFUnySZkXKzxgsgjrSsh9QiK2dYAzcqHlazITeFN9jOYRzYUjAFj3qOFm\r\n7o1eJpW0qM5vgR+fPq30WxcdcQ4PaWgHSlb/ll8hiwQG1ZUihO/1RU7FtDoc\r\n1KwcfrGOAJPL6vBSLPReUkhDIUTSBwfmvfMxzqD1aDp6YV5WX7h03B0dWbPJ\r\nmPJmJZjjZje4Trk9jBJ5/ZLpB8/zkrDKvhE=\r\n=LPWa\r\n-----END PGP SIGNATURE-----\r\n"
-      },
-      "main": "",
-      "types": "index.d.ts",
-      "scripts": {},
-      "repository": {
-        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
-        "type": "git",
-        "directory": "types/node"
-      },
-      "description": "TypeScript definitions for Node.js",
-      "directories": {},
-      "dependencies": {},
-      "typesVersions": {
-        "<4.9.0-0": {
-          "*": [
-            "ts4.8/*"
-          ]
-        }
-      },
-      "_hasShrinkwrap": false,
-      "typeScriptVersion": "4.1",
-      "typesPublisherContentHash": "034172ea945b66afc6502e6be34d6fb957c596091e39cf43672e8aca563a8c66"
-    },
-    "18.16.19": {
-      "name": "@types/node",
-      "version": "18.16.19",
-      "license": "MIT",
-      "_id": "@types/node@18.16.19",
-      "dist": {
-        "shasum": "cb03fca8910fdeb7595b755126a8a78144714eea",
-        "tarball": "http://localhost:4260/@types/node/node-18.16.19.tgz",
-        "fileCount": 125,
-        "integrity": "sha512-IXl7o+R9iti9eBW4Wg2hx1xQDig183jj7YLn8F7udNceyfkbn1ZxmzZXuak20gR40D7pIkIY1kYGx5VIGbaHKA==",
-        "signatures": [
-          {
-            "sig": "MEYCIQCrmUK+J0P1ywi+U/RBUqMXSK7c0kDYxMEYunkXNSPf+wIhANTRnqmuKWdzIKhsGHCZB+js8qhLcce/P+XOR1JmSNIc",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
-        "unpackedSize": 3677153
-      },
-      "main": "",
-      "types": "index.d.ts",
-      "scripts": {},
-      "repository": {
-        "url": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
-        "type": "git",
-        "directory": "types/node"
-      },
-      "description": "TypeScript definitions for Node.js",
-      "directories": {},
-      "dependencies": {},
-      "typesVersions": {
-        "<=4.8": {
-          "*": [
-            "ts4.8/*"
-          ]
-        }
-      },
-      "_hasShrinkwrap": false,
-      "typeScriptVersion": "4.3",
-      "typesPublisherContentHash": "e0763594b4075c74150a6024cd39f92797ea5c273540e3a5fe0a63a791ffa0c8"
-    },
-    "22.5.4": {
-      "name": "@types/node",
-      "version": "22.5.4",
-      "license": "MIT",
-      "_id": "@types/node@22.5.4",
-      "dist": {
-        "shasum": "83f7d1f65bc2ed223bdbf57c7884f1d5a4fa84e8",
-        "tarball": "http://localhost:4260/@types/node/node-22.5.4.tgz",
-        "fileCount": 66,
-        "integrity": "sha512-FDuKUJQm/ju9fT/SeX/6+gBzoPzlVCzfzmGkwKvRHQVxi4BntVbyIwf6a4Xn62mrvndLiml6z/UBXIdEVjQLXg==",
-        "signatures": [
-          {
-            "sig": "MEQCIBbWAo9Soe8vwExWQDxwtbCM6CdXy4QChOKJVJSoNpNiAiBfaOBNxW/iDfPEGn6WQ/wZggtMCAdZNLbVBfSynJ/pdA==",
-            "keyid": "SHA256:jl3bwswu80PjjokCgh0o2w5c2U4LhQAE57gj9cz1kzA"
-          }
-        ],
-        "unpackedSize": 2203331
+        "shasum": "bf8af3b2af0837b5a62a368756ff2b705ae0048c",
+        "tarball": "http://localhost:4260/@types/node/node-22.12.0.tgz",
+        "fileCount": 76,
+        "integrity": "sha512-Fll2FZ1riMjNmlmJOdAyY5pUbkftXslB5DgEzlIuNaiWhXd00FhWxVC/r4yV/4wBb9JfImTu+jiSvXTkJ7F/gA==",
+        "unpackedSize": 2296605
       },
       "main": "",
       "types": "index.d.ts",
@@ -124,11 +36,19 @@
       "description": "TypeScript definitions for node",
       "directories": {},
       "dependencies": {
-        "undici-types": "~6.19.2"
+        "undici-types": "~6.20.0"
+      },
+      "typesVersions": {
+        "<=5.6": {
+          "*": [
+            "ts5.6/*"
+          ]
+        }
       },
       "_hasShrinkwrap": false,
-      "typeScriptVersion": "4.8",
-      "typesPublisherContentHash": "6ee9a11eba834031423800320320aa873d6bf2b6f33603c13a2aa9d90b3803ee"
+      "peerDependencies": {},
+      "typeScriptVersion": "5.0",
+      "typesPublisherContentHash": "d4bd811572964de73064ee6d85299d0dff56616e67d674f2ccdc3c824a4288b7"
     }
   },
   "license": "MIT",
@@ -138,7 +58,5 @@
     "type": "git",
     "directory": "types/node"
   },
-  "description": "TypeScript definitions for node",
-  "readme": "[object Object]",
-  "readmeFilename": ""
+  "description": "TypeScript definitions for node"
 }

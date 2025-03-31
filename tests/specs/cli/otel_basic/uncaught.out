@@ -33,5 +33,6 @@ throw new Error("uncaught");
       "traceId": "",
       "spanId": ""
     }
-  ]
+  ],
+  "metrics": []
 }

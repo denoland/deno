@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 // deno-lint-ignore-file no-undef no-console
 
@@ -390,6 +390,8 @@ Deno.test({
 Deno.test({
   name: "process.env",
   fn() {
+    assert(Object.prototype.hasOwnProperty.call(process, "env"));
+
     Deno.env.set("HELLO", "WORLD");
 
     assertObjectMatch(process.env, Deno.env.toObject());

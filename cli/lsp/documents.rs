@@ -1,42 +1,5 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
-use super::cache::calculate_fs_version;
-use super::cache::LspCache;
-use super::config::Config;
-use super::resolver::LspIsCjsResolver;
-use super::resolver::LspResolver;
-use super::resolver::ScopeDepInfo;
-use super::resolver::SingleReferrerGraphResolver;
-use super::testing::TestCollector;
-use super::testing::TestModule;
-use super::text::LineIndex;
-use super::tsc;
-use super::tsc::AssetDocument;
-
-use crate::graph_util::CliJsrUrlProvider;
-
-use dashmap::DashMap;
-use deno_ast::swc::visit::VisitWith;
-use deno_ast::MediaType;
-use deno_ast::ParsedSource;
-use deno_ast::SourceTextInfo;
-use deno_core::error::custom_error;
-use deno_core::error::AnyError;
-use deno_core::futures::future;
-use deno_core::futures::future::Shared;
-use deno_core::futures::FutureExt;
-use deno_core::parking_lot::Mutex;
-use deno_core::ModuleSpecifier;
-use deno_graph::source::ResolutionMode;
-use deno_graph::Resolution;
-use deno_path_util::url_to_file_path;
-use deno_runtime::deno_node;
-use deno_semver::jsr::JsrPackageReqReference;
-use deno_semver::npm::NpmPackageReqReference;
-use deno_semver::package::PackageReq;
-use indexmap::IndexMap;
-use indexmap::IndexSet;
-use node_resolver::NodeModuleKind;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -49,7 +12,45 @@ use std::str::FromStr;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+use dashmap::DashMap;
+use deno_ast::swc::ecma_visit::VisitWith;
+use deno_ast::MediaType;
+use deno_ast::ParsedSource;
+use deno_ast::SourceTextInfo;
+use deno_core::error::AnyError;
+use deno_core::futures::future;
+use deno_core::futures::future::Shared;
+use deno_core::futures::FutureExt;
+use deno_core::parking_lot::Mutex;
+use deno_core::resolve_url;
+use deno_core::ModuleSpecifier;
+use deno_error::JsErrorBox;
+use deno_graph::Resolution;
+use deno_path_util::url_to_file_path;
+use deno_runtime::deno_node;
+use deno_semver::jsr::JsrPackageReqReference;
+use deno_semver::npm::NpmPackageReqReference;
+use deno_semver::package::PackageReq;
+use indexmap::IndexMap;
+use indexmap::IndexSet;
+use node_resolver::cache::NodeResolutionThreadLocalCache;
+use node_resolver::NodeResolutionKind;
+use node_resolver::ResolutionMode;
+use once_cell::sync::Lazy;
 use tower_lsp::lsp_types as lsp;
+
+use super::cache::calculate_fs_version;
+use super::cache::LspCache;
+use super::config::Config;
+use super::resolver::LspResolver;
+use super::resolver::ScopeDepInfo;
+use super::resolver::SingleReferrerGraphResolver;
+use super::testing::TestCollector;
+use super::testing::TestModule;
+use super::text::LineIndex;
+use super::tsc;
+use crate::graph_util::CliJsrUrlProvider;
 
 pub const DOCUMENT_SCHEMES: [&str; 5] =
   ["data", "blob", "file", "http", "https"];
@@ -65,7 +66,16 @@ pub enum LanguageId {
   Markdown,
   Html,
   Css,
+  Scss,
+  Sass,
+  Less,
   Yaml,
+  Sql,
+  Svelte,
+  Vue,
+  Astro,
+  Vento,
+  Nunjucks,
   Unknown,
 }
 
@@ -81,7 +91,16 @@ impl LanguageId {
       LanguageId::Markdown => Some("md"),
       LanguageId::Html => Some("html"),
       LanguageId::Css => Some("css"),
+      LanguageId::Scss => Some("scss"),
+      LanguageId::Sass => Some("sass"),
+      LanguageId::Less => Some("less"),
       LanguageId::Yaml => Some("yaml"),
+      LanguageId::Sql => Some("sql"),
+      LanguageId::Svelte => Some("svelte"),
+      LanguageId::Vue => Some("vue"),
+      LanguageId::Astro => Some("astro"),
+      LanguageId::Vento => Some("vto"),
+      LanguageId::Nunjucks => Some("njk"),
       LanguageId::Unknown => None,
     }
   }
@@ -96,7 +115,16 @@ impl LanguageId {
       LanguageId::Markdown => Some("text/markdown"),
       LanguageId::Html => Some("text/html"),
       LanguageId::Css => Some("text/css"),
+      LanguageId::Scss => None,
+      LanguageId::Sass => None,
+      LanguageId::Less => None,
       LanguageId::Yaml => Some("application/yaml"),
+      LanguageId::Sql => None,
+      LanguageId::Svelte => None,
+      LanguageId::Vue => None,
+      LanguageId::Astro => None,
+      LanguageId::Vento => None,
+      LanguageId::Nunjucks => None,
       LanguageId::Unknown => None,
     }
   }
@@ -123,7 +151,16 @@ impl FromStr for LanguageId {
       "markdown" => Ok(Self::Markdown),
       "html" => Ok(Self::Html),
       "css" => Ok(Self::Css),
+      "scss" => Ok(Self::Scss),
+      "sass" => Ok(Self::Sass),
+      "less" => Ok(Self::Less),
       "yaml" => Ok(Self::Yaml),
+      "sql" => Ok(Self::Sql),
+      "svelte" => Ok(Self::Svelte),
+      "vue" => Ok(Self::Vue),
+      "astro" => Ok(Self::Astro),
+      "vento" => Ok(Self::Vento),
+      "nunjucks" => Ok(Self::Nunjucks),
       _ => Ok(Self::Unknown),
     }
   }
@@ -144,10 +181,83 @@ impl IndexValid {
   }
 }
 
+/// An lsp representation of an asset in memory, that has either been retrieved
+/// from static assets built into Rust, or static assets built into tsc.
+#[derive(Debug)]
+pub struct AssetDocument {
+  specifier: ModuleSpecifier,
+  text: &'static str,
+  line_index: Arc<LineIndex>,
+  maybe_navigation_tree: Mutex<Option<Arc<tsc::NavigationTree>>>,
+}
+
+impl AssetDocument {
+  pub fn new(specifier: ModuleSpecifier, text: &'static str) -> Self {
+    let line_index = Arc::new(LineIndex::new(text));
+    Self {
+      specifier,
+      text,
+      line_index,
+      maybe_navigation_tree: Default::default(),
+    }
+  }
+
+  pub fn specifier(&self) -> &ModuleSpecifier {
+    &self.specifier
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    *self.maybe_navigation_tree.lock() = Some(navigation_tree);
+  }
+
+  pub fn text(&self) -> &'static str {
+    self.text
+  }
+
+  pub fn line_index(&self) -> Arc<LineIndex> {
+    self.line_index.clone()
+  }
+
+  pub fn maybe_navigation_tree(&self) -> Option<Arc<tsc::NavigationTree>> {
+    self.maybe_navigation_tree.lock().clone()
+  }
+}
+
+#[derive(Debug)]
+pub struct AssetDocuments {
+  inner: HashMap<ModuleSpecifier, Arc<AssetDocument>>,
+}
+
+impl AssetDocuments {
+  pub fn contains_key(&self, k: &ModuleSpecifier) -> bool {
+    self.inner.contains_key(k)
+  }
+
+  pub fn get(&self, k: &ModuleSpecifier) -> Option<Arc<AssetDocument>> {
+    self.inner.get(k).cloned()
+  }
+}
+
+pub static ASSET_DOCUMENTS: Lazy<AssetDocuments> =
+  Lazy::new(|| AssetDocuments {
+    inner: crate::tsc::LAZILY_LOADED_STATIC_ASSETS
+      .iter()
+      .map(|(k, v)| {
+        let url_str = format!("asset:///{k}");
+        let specifier = resolve_url(&url_str).unwrap();
+        let asset = Arc::new(AssetDocument::new(specifier.clone(), v.as_str()));
+        (specifier, asset)
+      })
+      .collect(),
+  });
+
 #[derive(Debug, Clone)]
 pub enum AssetOrDocument {
   Document(Arc<Document>),
-  Asset(AssetDocument),
+  Asset(Arc<AssetDocument>),
 }
 
 impl AssetOrDocument {
@@ -182,10 +292,17 @@ impl AssetOrDocument {
     }
   }
 
-  pub fn text(&self) -> Arc<str> {
+  pub fn text_str(&self) -> &str {
     match self {
       AssetOrDocument::Asset(a) => a.text(),
-      AssetOrDocument::Document(d) => d.text.clone(),
+      AssetOrDocument::Document(d) => d.text.as_ref(),
+    }
+  }
+
+  pub fn text_fast_string(&self) -> deno_core::FastString {
+    match self {
+      AssetOrDocument::Asset(a) => deno_core::FastString::from_static(a.text()),
+      AssetOrDocument::Document(d) => d.text.clone().into(),
     }
   }
 
@@ -227,6 +344,23 @@ impl AssetOrDocument {
 
   pub fn document_lsp_version(&self) -> Option<i32> {
     self.document().and_then(|d| d.maybe_lsp_version())
+  }
+
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    match self {
+      AssetOrDocument::Asset(_) => ResolutionMode::Import,
+      AssetOrDocument::Document(d) => d.resolution_mode(),
+    }
+  }
+
+  pub fn cache_navigation_tree(
+    &self,
+    navigation_tree: Arc<tsc::NavigationTree>,
+  ) {
+    match self {
+      AssetOrDocument::Asset(a) => a.cache_navigation_tree(navigation_tree),
+      AssetOrDocument::Document(d) => d.cache_navigation_tree(navigation_tree),
+    }
   }
 }
 
@@ -313,6 +447,7 @@ pub struct Document {
   media_type: MediaType,
   /// Present if and only if this is an open document.
   open_data: Option<DocumentOpenData>,
+  resolution_mode: ResolutionMode,
   resolver: Arc<LspResolver>,
   specifier: ModuleSpecifier,
   text: Arc<str>,
@@ -328,7 +463,6 @@ impl Document {
     maybe_lsp_version: Option<i32>,
     maybe_language_id: Option<LanguageId>,
     maybe_headers: Option<HashMap<String, String>>,
-    is_cjs_resolver: &LspIsCjsResolver,
     resolver: Arc<LspResolver>,
     config: Arc<Config>,
     cache: &Arc<LspCache>,
@@ -340,7 +474,7 @@ impl Document {
       .or(file_referrer);
     let media_type =
       resolve_media_type(&specifier, maybe_headers.as_ref(), maybe_language_id);
-    let (maybe_parsed_source, maybe_module) =
+    let (maybe_parsed_source, maybe_module, resolution_mode) =
       if media_type_is_diagnosable(media_type) {
         parse_and_analyze_module(
           specifier.clone(),
@@ -348,11 +482,10 @@ impl Document {
           maybe_headers.as_ref(),
           media_type,
           file_referrer.as_ref(),
-          is_cjs_resolver,
           &resolver,
         )
       } else {
-        (None, None)
+        (None, None, ResolutionMode::Import)
       };
     let maybe_module = maybe_module.and_then(Result::ok);
     let dependencies = maybe_module
@@ -387,6 +520,7 @@ impl Document {
         maybe_parsed_source,
         maybe_semantic_tokens: Default::default(),
       }),
+      resolution_mode,
       resolver,
       specifier,
       text,
@@ -396,7 +530,6 @@ impl Document {
 
   fn with_new_config(
     &self,
-    is_cjs_resolver: &LspIsCjsResolver,
     resolver: Arc<LspResolver>,
     config: Arc<Config>,
   ) -> Arc<Self> {
@@ -408,20 +541,20 @@ impl Document {
     let dependencies;
     let maybe_types_dependency;
     let maybe_parsed_source;
+    let found_resolution_mode;
     let is_script;
     let maybe_test_module_fut;
     if media_type != self.media_type {
       let parsed_source_result =
         parse_source(self.specifier.clone(), self.text.clone(), media_type);
-      let maybe_module = analyze_module(
+      let (maybe_module_result, resolution_mode) = analyze_module(
         self.specifier.clone(),
         &parsed_source_result,
         self.maybe_headers.as_ref(),
         self.file_referrer.as_ref(),
-        is_cjs_resolver,
         &resolver,
-      )
-      .ok();
+      );
+      let maybe_module = maybe_module_result.ok();
       dependencies = maybe_module
         .as_ref()
         .map(|m| Arc::new(m.dependencies.clone()))
@@ -433,17 +566,21 @@ impl Document {
       maybe_parsed_source = Some(parsed_source_result);
       maybe_test_module_fut =
         get_maybe_test_module_fut(maybe_parsed_source.as_ref(), &config);
+      found_resolution_mode = resolution_mode;
     } else {
       let cli_resolver = resolver.as_cli_resolver(self.file_referrer.as_ref());
+      let is_cjs_resolver =
+        resolver.as_is_cjs_resolver(self.file_referrer.as_ref());
       let npm_resolver =
-        resolver.create_graph_npm_resolver(self.file_referrer.as_ref());
+        resolver.as_graph_npm_resolver(self.file_referrer.as_ref());
       let config_data = resolver.as_config_data(self.file_referrer.as_ref());
       let jsx_import_source_config =
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
+      found_resolution_mode = is_cjs_resolver
+        .get_lsp_resolution_mode(&self.specifier, self.is_script);
       let resolver = SingleReferrerGraphResolver {
         valid_referrer: &self.specifier,
-        referrer_kind: is_cjs_resolver
-          .get_lsp_referrer_kind(&self.specifier, self.is_script),
+        module_resolution_mode: found_resolution_mode,
         cli_resolver,
         jsx_import_source_config: jsx_import_source_config.as_ref(),
       };
@@ -458,7 +595,7 @@ impl Document {
                 s,
                 &CliJsrUrlProvider,
                 Some(&resolver),
-                Some(&npm_resolver),
+                Some(npm_resolver.as_ref()),
               ),
             )
           })
@@ -468,7 +605,7 @@ impl Document {
         Arc::new(d.with_new_resolver(
           &CliJsrUrlProvider,
           Some(&resolver),
-          Some(&npm_resolver),
+          Some(npm_resolver.as_ref()),
         ))
       });
       is_script = self.is_script;
@@ -493,6 +630,7 @@ impl Document {
       maybe_language_id: self.maybe_language_id,
       maybe_test_module_fut,
       media_type,
+      resolution_mode: found_resolution_mode,
       open_data: self.open_data.as_ref().map(|d| DocumentOpenData {
         lsp_version: d.lsp_version,
         maybe_parsed_source,
@@ -508,7 +646,6 @@ impl Document {
 
   fn with_change(
     &self,
-    is_cjs_resolver: &LspIsCjsResolver,
     version: i32,
     changes: Vec<lsp::TextDocumentContentChangeEvent>,
   ) -> Result<Arc<Self>, AnyError> {
@@ -530,7 +667,7 @@ impl Document {
     }
     let text: Arc<str> = content.into();
     let media_type = self.media_type;
-    let (maybe_parsed_source, maybe_module) = if self
+    let (maybe_parsed_source, maybe_module, resolution_mode) = if self
       .maybe_language_id
       .as_ref()
       .map(|li| li.is_diagnosable())
@@ -542,11 +679,10 @@ impl Document {
         self.maybe_headers.as_ref(),
         media_type,
         self.file_referrer.as_ref(),
-        is_cjs_resolver,
         self.resolver.as_ref(),
       )
     } else {
-      (None, None)
+      (None, None, ResolutionMode::Import)
     };
     let maybe_module = maybe_module.and_then(Result::ok);
     let dependencies = maybe_module
@@ -580,6 +716,7 @@ impl Document {
       maybe_navigation_tree: Mutex::new(None),
       maybe_test_module_fut,
       media_type,
+      resolution_mode,
       open_data: self.open_data.is_some().then_some(DocumentOpenData {
         lsp_version: version,
         maybe_parsed_source,
@@ -613,6 +750,7 @@ impl Document {
       maybe_test_module_fut: self.maybe_test_module_fut.clone(),
       media_type: self.media_type,
       open_data: None,
+      resolution_mode: self.resolution_mode,
       resolver: self.resolver.clone(),
     })
   }
@@ -641,6 +779,7 @@ impl Document {
       maybe_test_module_fut: self.maybe_test_module_fut.clone(),
       media_type: self.media_type,
       open_data: self.open_data.clone(),
+      resolution_mode: self.resolution_mode,
       resolver: self.resolver.clone(),
     })
   }
@@ -664,6 +803,10 @@ impl Document {
     &self.text
   }
 
+  pub fn resolution_mode(&self) -> ResolutionMode {
+    self.resolution_mode
+  }
+
   pub fn text_info(&self) -> &SourceTextInfo {
     // try to get the text info from the parsed source and if
     // not then create one in the cell
@@ -677,14 +820,6 @@ impl Document {
           .get_or_init(|| SourceTextInfo::new(self.text.clone()))
       })
   }
-
-  /// If this is maybe a CJS script and maybe not an ES module.
-  ///
-  /// Use `LspIsCjsResolver` to determine for sure.
-  pub fn is_script(&self) -> Option<bool> {
-    self.is_script
-  }
-
   pub fn line_index(&self) -> Arc<LineIndex> {
     self.line_index.clone()
   }
@@ -768,7 +903,7 @@ impl Document {
     };
     self.dependencies().iter().find_map(|(s, dep)| {
       dep
-        .includes(&position)
+        .includes(position)
         .map(|r| (s.clone(), dep.clone(), r.clone()))
     })
   }
@@ -809,15 +944,15 @@ fn resolve_media_type(
   MediaType::from_specifier(specifier)
 }
 
-pub fn to_lsp_range(range: &deno_graph::Range) -> lsp::Range {
+pub fn to_lsp_range(referrer: &deno_graph::Range) -> lsp::Range {
   lsp::Range {
     start: lsp::Position {
-      line: range.start.line as u32,
-      character: range.start.character as u32,
+      line: referrer.range.start.line as u32,
+      character: referrer.range.start.character as u32,
     },
     end: lsp::Position {
-      line: range.end.line as u32,
-      character: range.end.character as u32,
+      line: referrer.range.end.line as u32,
+      character: referrer.range.end.character as u32,
     },
   }
 }
@@ -832,7 +967,6 @@ impl FileSystemDocuments {
   pub fn get(
     &self,
     specifier: &ModuleSpecifier,
-    is_cjs_resolver: &LspIsCjsResolver,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
     cache: &Arc<LspCache>,
@@ -855,15 +989,9 @@ impl FileSystemDocuments {
       }
     };
     if dirty {
+      NodeResolutionThreadLocalCache::clear();
       // attempt to update the file on the file system
-      self.refresh_document(
-        specifier,
-        is_cjs_resolver,
-        resolver,
-        config,
-        cache,
-        file_referrer,
-      )
+      self.refresh_document(specifier, resolver, config, cache, file_referrer)
     } else {
       old_doc
     }
@@ -874,7 +1002,6 @@ impl FileSystemDocuments {
   fn refresh_document(
     &self,
     specifier: &ModuleSpecifier,
-    is_cjs_resolver: &LspIsCjsResolver,
     resolver: &Arc<LspResolver>,
     config: &Arc<Config>,
     cache: &Arc<LspCache>,
@@ -896,14 +1023,13 @@ impl FileSystemDocuments {
         None,
         None,
         None,
-        is_cjs_resolver,
         resolver.clone(),
         config.clone(),
         cache,
         file_referrer.cloned(),
       )
     } else if specifier.scheme() == "data" {
-      let source = deno_graph::source::RawDataUrl::parse(specifier)
+      let source = deno_media_type::data_url::RawDataUrl::parse(specifier)
         .ok()?
         .decode()
         .ok()?;
@@ -913,7 +1039,6 @@ impl FileSystemDocuments {
         None,
         None,
         None,
-        is_cjs_resolver,
         resolver.clone(),
         config.clone(),
         cache,
@@ -936,7 +1061,7 @@ impl FileSystemDocuments {
       let content = bytes_to_content(
         specifier,
         media_type,
-        cached_file.content,
+        cached_file.content.into_owned(),
         maybe_charset,
       )
       .ok()?;
@@ -946,7 +1071,6 @@ impl FileSystemDocuments {
         None,
         None,
         Some(cached_file.metadata.headers),
-        is_cjs_resolver,
         resolver.clone(),
         config.clone(),
         cache,
@@ -987,8 +1111,6 @@ pub struct Documents {
   /// The DENO_DIR that the documents looks for non-file based modules.
   cache: Arc<LspCache>,
   config: Arc<Config>,
-  /// Resolver for detecting if a document is CJS or ESM.
-  is_cjs_resolver: Arc<LspIsCjsResolver>,
   /// A resolver that takes into account currently loaded import map and JSX
   /// settings.
   resolver: Arc<LspResolver>,
@@ -1024,7 +1146,6 @@ impl Documents {
       // the cache for remote modules here in order to get the
       // x-typescript-types?
       None,
-      &self.is_cjs_resolver,
       self.resolver.clone(),
       self.config.clone(),
       &self.cache,
@@ -1053,13 +1174,13 @@ impl Documents {
       .or_else(|| self.file_system_docs.remove_document(specifier))
       .map(Ok)
       .unwrap_or_else(|| {
-        Err(custom_error(
+        Err(JsErrorBox::new(
           "NotFound",
           format!("The specifier \"{specifier}\" was not found."),
         ))
       })?;
     self.dirty = true;
-    let doc = doc.with_change(&self.is_cjs_resolver, version, changes)?;
+    let doc = doc.with_change(version, changes)?;
     self.open_docs.insert(doc.specifier().clone(), doc.clone());
     Ok(doc)
   }
@@ -1191,7 +1312,6 @@ impl Documents {
       if let Some(old_doc) = old_doc {
         self.file_system_docs.get(
           specifier,
-          &self.is_cjs_resolver,
           &self.resolver,
           &self.config,
           &self.cache,
@@ -1216,7 +1336,6 @@ impl Documents {
     } else {
       self.file_system_docs.get(
         &specifier,
-        &self.is_cjs_resolver,
         &self.resolver,
         &self.config,
         &self.cache,
@@ -1269,9 +1388,11 @@ impl Documents {
   /// For a given set of string specifiers, resolve each one from the graph,
   /// for a given referrer. This is used to provide resolution information to
   /// tsc when type checking.
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve(
     &self,
-    raw_specifiers: &[String],
+    // (is_cjs: bool, raw_specifier: String)
+    raw_specifiers: &[(bool, String)],
     referrer: &ModuleSpecifier,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Vec<Option<(ModuleSpecifier, MediaType)>> {
@@ -1281,11 +1402,12 @@ impl Documents {
       .and_then(|d| d.file_referrer())
       .or(file_referrer);
     let dependencies = referrer_doc.as_ref().map(|d| d.dependencies());
-    let referrer_kind = self
-      .is_cjs_resolver
-      .get_maybe_doc_module_kind(referrer, referrer_doc.as_deref());
     let mut results = Vec::new();
-    for raw_specifier in raw_specifiers {
+    for (is_cjs, raw_specifier) in raw_specifiers {
+      let resolution_mode = match is_cjs {
+        true => ResolutionMode::Require,
+        false => ResolutionMode::Import,
+      };
       if raw_specifier.starts_with("asset:") {
         if let Ok(specifier) = ModuleSpecifier::parse(raw_specifier) {
           let media_type = MediaType::from_specifier(&specifier);
@@ -1300,14 +1422,14 @@ impl Documents {
           results.push(self.resolve_dependency(
             specifier,
             referrer,
-            referrer_kind,
+            resolution_mode,
             file_referrer,
           ));
         } else if let Some(specifier) = dep.maybe_code.maybe_specifier() {
           results.push(self.resolve_dependency(
             specifier,
             referrer,
-            referrer_kind,
+            resolution_mode,
             file_referrer,
           ));
         } else {
@@ -1316,19 +1438,16 @@ impl Documents {
       } else if let Ok(specifier) =
         self.resolver.as_cli_resolver(file_referrer).resolve(
           raw_specifier,
-          &deno_graph::Range {
-            specifier: referrer.clone(),
-            start: deno_graph::Position::zeroed(),
-            end: deno_graph::Position::zeroed(),
-          },
-          referrer_kind,
-          ResolutionMode::Types,
+          referrer,
+          deno_graph::Position::zeroed(),
+          resolution_mode,
+          NodeResolutionKind::Types,
         )
       {
         results.push(self.resolve_dependency(
           &specifier,
           referrer,
-          referrer_kind,
+          resolution_mode,
           file_referrer,
         ));
       } else {
@@ -1347,10 +1466,10 @@ impl Documents {
   ) {
     self.config = Arc::new(config.clone());
     self.cache = Arc::new(cache.clone());
-    self.is_cjs_resolver = Arc::new(LspIsCjsResolver::new(cache));
     self.resolver = resolver.clone();
 
     node_resolver::PackageJsonThreadLocalCache::clear();
+    NodeResolutionThreadLocalCache::clear();
 
     {
       let fs_docs = &self.file_system_docs;
@@ -1371,21 +1490,14 @@ impl Documents {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        *doc = doc.with_new_config(
-          &self.is_cjs_resolver,
-          self.resolver.clone(),
-          self.config.clone(),
-        );
+        *doc = doc.with_new_config(self.resolver.clone(), self.config.clone());
       }
       for mut doc in self.file_system_docs.docs.iter_mut() {
         if !config.specifier_enabled(doc.specifier()) {
           continue;
         }
-        *doc.value_mut() = doc.with_new_config(
-          &self.is_cjs_resolver,
-          self.resolver.clone(),
-          self.config.clone(),
-        );
+        *doc.value_mut() =
+          doc.with_new_config(self.resolver.clone(), self.config.clone());
       }
       self.open_docs = open_docs;
       let mut preload_count = 0;
@@ -1402,7 +1514,6 @@ impl Documents {
         {
           fs_docs.refresh_document(
             specifier,
-            &self.is_cjs_resolver,
             &self.resolver,
             &self.config,
             &self.cache,
@@ -1424,6 +1535,7 @@ impl Documents {
     if !is_fs_docs_dirty && !self.dirty {
       return;
     }
+    NodeResolutionThreadLocalCache::clear();
     let mut visit_doc = |doc: &Arc<Document>| {
       let scope = doc.scope();
       let dep_info = dep_info_by_scope.entry(scope.cloned()).or_default();
@@ -1471,33 +1583,30 @@ impl Documents {
     for (scope, config_data) in self.config.tree.data_by_scope().as_ref() {
       let dep_info = dep_info_by_scope.entry(Some(scope.clone())).or_default();
       (|| {
-        let config_file = config_data.maybe_deno_json()?;
+        let member_dir = &config_data.member_dir;
         let jsx_config =
-          config_file.to_maybe_jsx_import_source_config().ok()??;
-        let type_specifier = jsx_config.default_types_specifier.as_ref()?;
-        let code_specifier = jsx_config.default_specifier.as_ref()?;
+          member_dir.to_maybe_jsx_import_source_config().ok()??;
+        let import_source_types = jsx_config.import_source_types.as_ref()?;
+        let import_source = jsx_config.import_source.as_ref()?;
         let cli_resolver = self.resolver.as_cli_resolver(Some(scope));
-        let range = deno_graph::Range {
-          specifier: jsx_config.base_url.clone(),
-          start: deno_graph::Position::zeroed(),
-          end: deno_graph::Position::zeroed(),
-        };
         let type_specifier = cli_resolver
           .resolve(
-            type_specifier,
-            &range,
+            &import_source_types.specifier,
+            &import_source_types.base,
+            deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-            deno_package_json::NodeModuleKind::Esm,
-            ResolutionMode::Types,
+            ResolutionMode::Import,
+            NodeResolutionKind::Types,
           )
           .ok()?;
         let code_specifier = cli_resolver
           .resolve(
-            code_specifier,
-            &range,
+            &import_source.specifier,
+            &import_source.base,
+            deno_graph::Position::zeroed(),
             // todo(dsherret): this is wrong because it doesn't consider CJS referrers
-            deno_package_json::NodeModuleKind::Esm,
-            ResolutionMode::Execution,
+            ResolutionMode::Import,
+            NodeResolutionKind::Execution,
           )
           .ok()?;
         dep_info
@@ -1538,11 +1647,12 @@ impl Documents {
     self.dirty = false;
   }
 
+  #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   pub fn resolve_dependency(
     &self,
     specifier: &ModuleSpecifier,
     referrer: &ModuleSpecifier,
-    referrer_kind: NodeModuleKind,
+    resolution_mode: ResolutionMode,
     file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<(ModuleSpecifier, MediaType)> {
     if let Some(module_name) = specifier.as_str().strip_prefix("node:") {
@@ -1559,7 +1669,7 @@ impl Documents {
       let (s, mt) = self.resolver.npm_to_file_url(
         &npm_ref,
         referrer,
-        referrer_kind,
+        resolution_mode,
         file_referrer,
       )?;
       specifier = s;
@@ -1571,8 +1681,12 @@ impl Documents {
       return Some((specifier, media_type));
     };
     if let Some(types) = doc.maybe_types_dependency().maybe_specifier() {
-      let specifier_kind = self.is_cjs_resolver.get_doc_module_kind(&doc);
-      self.resolve_dependency(types, &specifier, specifier_kind, file_referrer)
+      self.resolve_dependency(
+        types,
+        &specifier,
+        doc.resolution_mode(),
+        file_referrer,
+      )
     } else {
       Some((doc.specifier().clone(), doc.media_type()))
     }
@@ -1585,7 +1699,7 @@ pub struct OpenDocumentsGraphLoader<'a> {
   pub open_docs: &'a HashMap<ModuleSpecifier, Arc<Document>>,
 }
 
-impl<'a> OpenDocumentsGraphLoader<'a> {
+impl OpenDocumentsGraphLoader<'_> {
   fn load_from_docs(
     &self,
     specifier: &ModuleSpecifier,
@@ -1606,7 +1720,7 @@ impl<'a> OpenDocumentsGraphLoader<'a> {
   }
 }
 
-impl<'a> deno_graph::source::Loader for OpenDocumentsGraphLoader<'a> {
+impl deno_graph::source::Loader for OpenDocumentsGraphLoader<'_> {
   fn load(
     &self,
     specifier: &ModuleSpecifier,
@@ -1640,19 +1754,25 @@ fn parse_and_analyze_module(
   maybe_headers: Option<&HashMap<String, String>>,
   media_type: MediaType,
   file_referrer: Option<&ModuleSpecifier>,
-  is_cjs_resolver: &LspIsCjsResolver,
   resolver: &LspResolver,
-) -> (Option<ParsedSourceResult>, Option<ModuleResult>) {
+) -> (
+  Option<ParsedSourceResult>,
+  Option<ModuleResult>,
+  ResolutionMode,
+) {
   let parsed_source_result = parse_source(specifier.clone(), text, media_type);
-  let module_result = analyze_module(
+  let (module_result, resolution_mode) = analyze_module(
     specifier,
     &parsed_source_result,
     maybe_headers,
     file_referrer,
-    is_cjs_resolver,
     resolver,
   );
-  (Some(parsed_source_result), Some(module_result))
+  (
+    Some(parsed_source_result),
+    Some(module_result),
+    resolution_mode,
+  )
 }
 
 fn parse_source(
@@ -1675,44 +1795,51 @@ fn analyze_module(
   parsed_source_result: &ParsedSourceResult,
   maybe_headers: Option<&HashMap<String, String>>,
   file_referrer: Option<&ModuleSpecifier>,
-  is_cjs_resolver: &LspIsCjsResolver,
   resolver: &LspResolver,
-) -> ModuleResult {
+) -> (ModuleResult, ResolutionMode) {
   match parsed_source_result {
     Ok(parsed_source) => {
-      let npm_resolver = resolver.create_graph_npm_resolver(file_referrer);
+      let npm_resolver = resolver.as_graph_npm_resolver(file_referrer);
       let cli_resolver = resolver.as_cli_resolver(file_referrer);
+      let is_cjs_resolver = resolver.as_is_cjs_resolver(file_referrer);
       let config_data = resolver.as_config_data(file_referrer);
       let valid_referrer = specifier.clone();
       let jsx_import_source_config =
         config_data.and_then(|d| d.maybe_jsx_import_source_config());
+      let module_resolution_mode = is_cjs_resolver.get_lsp_resolution_mode(
+        &specifier,
+        Some(parsed_source.compute_is_script()),
+      );
       let resolver = SingleReferrerGraphResolver {
         valid_referrer: &valid_referrer,
-        referrer_kind: is_cjs_resolver.get_lsp_referrer_kind(
-          &specifier,
-          Some(parsed_source.compute_is_script()),
-        ),
+        module_resolution_mode,
         cli_resolver,
         jsx_import_source_config: jsx_import_source_config.as_ref(),
       };
-      Ok(deno_graph::parse_module_from_ast(
-        deno_graph::ParseModuleFromAstOptions {
-          graph_kind: deno_graph::GraphKind::TypesOnly,
-          specifier,
-          maybe_headers,
-          parsed_source,
-          // use a null file system because there's no need to bother resolving
-          // dynamic imports like import(`./dir/${something}`) in the LSP
-          file_system: &deno_graph::source::NullFileSystem,
-          jsr_url_provider: &CliJsrUrlProvider,
-          maybe_resolver: Some(&resolver),
-          maybe_npm_resolver: Some(&npm_resolver),
-        },
-      ))
+      (
+        Ok(deno_graph::parse_module_from_ast(
+          deno_graph::ParseModuleFromAstOptions {
+            graph_kind: deno_graph::GraphKind::TypesOnly,
+            specifier,
+            maybe_headers,
+            parsed_source,
+            // use a null file system because there's no need to bother resolving
+            // dynamic imports like import(`./dir/${something}`) in the LSP
+            file_system: &deno_graph::source::NullFileSystem,
+            jsr_url_provider: &CliJsrUrlProvider,
+            maybe_resolver: Some(&resolver),
+            maybe_npm_resolver: Some(npm_resolver.as_ref()),
+          },
+        )),
+        module_resolution_mode,
+      )
     }
-    Err(err) => Err(deno_graph::ModuleGraphError::ModuleError(
-      deno_graph::ModuleError::ParseErr(specifier, err.clone()),
-    )),
+    Err(err) => (
+      Err(deno_graph::ModuleGraphError::ModuleError(
+        deno_graph::ModuleError::ParseErr(specifier, err.clone()),
+      )),
+      ResolutionMode::Import,
+    ),
   }
 }
 
@@ -1726,25 +1853,25 @@ fn bytes_to_content(
     // we use the dts representation for Wasm modules
     Ok(deno_graph::source::wasm::wasm_module_to_dts(&bytes)?)
   } else {
-    Ok(deno_graph::source::decode_owned_source(
-      specifier,
-      bytes,
-      maybe_charset,
+    let charset = maybe_charset.unwrap_or_else(|| {
+      deno_media_type::encoding::detect_charset(specifier, &bytes)
+    });
+    Ok(deno_media_type::encoding::decode_owned_source(
+      charset, bytes,
     )?)
   }
 }
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-  use crate::lsp::cache::LspCache;
-
   use deno_config::deno_json::ConfigFile;
-  use deno_config::deno_json::ConfigParseOptions;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
+
+  use super::*;
+  use crate::lsp::cache::LspCache;
 
   async fn setup() -> (Documents, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -1894,7 +2021,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )
@@ -1938,7 +2064,6 @@ console.log(b, "hello deno");
             })
             .to_string(),
             config.root_uri().unwrap().join("deno.json").unwrap(),
-            &ConfigParseOptions::default(),
           )
           .unwrap(),
         )

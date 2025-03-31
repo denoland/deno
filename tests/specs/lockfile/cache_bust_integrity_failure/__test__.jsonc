@@ -1,0 +1,16 @@
+{
+  "tempDir": true,
+  "envs": {
+    "DENO_DIR": "./deno_dir"
+  },
+  "steps": [{
+    "args": "cache --allow-import main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run -A update.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": "run --allow-import main.ts",
+    "output": "main.out"
+  }]
+}

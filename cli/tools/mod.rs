@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 pub mod bench;
 pub mod check;
@@ -12,7 +12,8 @@ pub mod init;
 pub mod installer;
 pub mod jupyter;
 pub mod lint;
-pub mod registry;
+pub mod pm;
+pub mod publish;
 pub mod repl;
 pub mod run;
 pub mod serve;

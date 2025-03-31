@@ -1,5 +1,0 @@
-{
-  "args": "run --config jsx/deno-jsx-error.jsonc --check jsx_import_source_no_pragma.tsx",
-  "output": "jsx_import_source_error.out",
-  "exitCode": 1
-}

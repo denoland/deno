@@ -1,4 +1,4 @@
-// Copyright 2018-2024 the Deno authors. All rights reserved. MIT license.
+// Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -323,6 +323,15 @@ impl TestContext {
       builder = builder.env(key, value);
     }
     builder
+  }
+
+  pub fn run_deno(&self, args: impl AsRef<str>) {
+    self
+      .new_command()
+      .name("deno")
+      .args(args)
+      .run()
+      .skip_output_check();
   }
 
   pub fn run_npm(&self, args: impl AsRef<str>) {
