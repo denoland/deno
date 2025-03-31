@@ -14895,7 +14895,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14946,7 +14946,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14997,7 +14997,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -16068,7 +16068,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest+add%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
