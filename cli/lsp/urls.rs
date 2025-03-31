@@ -82,6 +82,28 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
   let components = deno_core::url::quirks::internal_components(url);
   let mut input = String::with_capacity(url.as_str().len());
   input.push_str(&url.as_str()[..components.path_start as usize]);
+  #[cfg(target_os = "windows")]
+  {
+    let path = url.path();
+    let mut chars = path.chars();
+    let has_drive_letter = chars.next().is_some_and(|c| c == '/')
+      && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+      && chars.next().is_some_and(|c| c == ':')
+      && chars.next().is_none_or(|c| c == '/');
+    if has_drive_letter {
+      input.push_str(&path[..3]);
+      input.push_str(
+        &percent_encoding::utf8_percent_encode(&path[3..], URL_TO_URI_PATH)
+          .to_string(),
+      );
+    } else {
+      input.push_str(
+        &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH)
+          .to_string(),
+      );
+    }
+  }
+  #[cfg(not(target_os = "windows"))]
   input.push_str(
     &percent_encoding::utf8_percent_encode(url.path(), URL_TO_URI_PATH)
       .to_string(),
