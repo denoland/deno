@@ -1,10 +1,8 @@
 # Deno
 
 [![](https://img.shields.io/crates/v/deno.svg)](https://crates.io/crates/deno)
-[![Twitter badge][]][Twitter link]
-[![Bluesky badge][]][Bluesky link]
-[![Discord badge][]][Discord link]
-[![YouTube badge][]][YouTube link]
+[![Twitter badge][]][Twitter link] [![Bluesky badge][]][Bluesky link]
+[![Discord badge][]][Discord link] [![YouTube badge][]][YouTube link]
 
 <img align="right" src="https://deno.land/logo.svg" height="150px" alt="the deno mascot dinosaur standing in the rain">
 
