@@ -1477,7 +1477,6 @@ version = "2.2.6"
 dependencies = [
  "anstream",
  "async-trait",
- "backtrace-on-stack-overflow",
  "base64 0.22.1",
  "bincode",
  "boxed_error",
@@ -3504,7 +3503,7 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 [[package]]
 name = "eszip"
 version = "0.83.0"
-source = "git+https://github.com/nathanwhit/eszip?branch=lockfile-packument-take-2#d0f914517049bb6d22d2fc3123975b7d383e51eb"
+source = "git+https://github.com/nathanwhit/eszip?branch=lockfile-packument-take-2#dbac4ebeed9d8ae901ba33727b89959c1402dae6"
 dependencies = [
  "anyhow",
  "async-trait",
