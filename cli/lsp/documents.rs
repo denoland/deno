@@ -2060,6 +2060,7 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          &default_registry(),
         )
         .await;
 

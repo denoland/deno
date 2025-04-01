@@ -507,12 +507,15 @@ impl CliOptions {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
+    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
+
     let maybe_lock_file = CliLockfile::discover(
       sys,
       &flags,
       &start_dir.workspace,
       maybe_external_import_map.as_ref().map(|v| &v.value),
       registry_info_provider,
+      use_lockfile_v5,
     )
     .await?;
 
@@ -532,11 +535,14 @@ impl CliOptions {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
+    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
+
     let maybe_lock_file = CliLockfile::discover_current_version(
       sys,
       &flags,
       &start_dir.workspace,
       maybe_external_import_map.as_ref().map(|v| &v.value),
+      use_lockfile_v5,
     )?;
 
     log::debug!("Finished config loading.");
@@ -1146,6 +1152,10 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
+  pub fn unstable_lockfile_v5(&self) -> bool {
+    unstable_lockfile_v5(&self.flags, self.workspace())
+  }
+
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1283,6 +1293,10 @@ impl CliOptions {
       NpmCachingStrategy::Eager
     }
   }
+}
+
+fn unstable_lockfile_v5(flags: &Flags, workspace: &Workspace) -> bool {
+  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(

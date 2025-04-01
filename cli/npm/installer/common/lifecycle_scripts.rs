@@ -437,11 +437,16 @@ async fn resolve_custom_commands_from_packages<
 ) -> crate::task_runner::TaskCustomCommands {
   for package in packages {
     let package_path = get_package_path(package);
-    let Ok(extra) = provider
-      .get_package_extra_info(&package.id.nv, package.is_deprecated)
-      .await
-    else {
-      continue;
+    let extra = if let Some(extra) = &package.extra {
+      extra.clone()
+    } else {
+      let Ok(extra) = provider
+        .get_package_extra_info(&package.id.nv, package.is_deprecated)
+        .await
+      else {
+        continue;
+      };
+      extra
     };
     if extra.bin.is_some() {
       bin_entries.add(package, &extra, package_path);

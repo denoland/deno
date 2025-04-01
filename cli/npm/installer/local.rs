@@ -24,7 +24,6 @@ use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
-use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::hard_link_file;
@@ -389,13 +388,13 @@ async fn sync_resolution_with_fs(
             });
             let extra_fut = if package.has_bin
               || package.has_scripts
-              || package.is_deprecated
+              || package.is_deprecated && package.extra.is_none()
             {
               extra_info_provider
                 .get_package_extra_info(&package.id.nv, package.is_deprecated)
                 .boxed_local()
             } else {
-              std::future::ready(Ok(NpmPackageExtraInfo::default()))
+              std::future::ready(Ok(package.extra.clone().unwrap_or_default()))
                 .boxed_local()
             };
 

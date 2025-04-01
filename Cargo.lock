@@ -2195,7 +2195,7 @@ dependencies = [
 [[package]]
 name = "deno_lockfile"
 version = "0.25.0"
-source = "git+https://github.com/nathanwhit/deno_lockfile?branch=npm-packument-in-lockfile#650bda6656a3dcfff0beedc1c1c9587a685965b9"
+source = "git+https://github.com/nathanwhit/deno_lockfile?branch=npm-packument-in-lockfile#72ec7b1dbbc0d753d33acdcdfc61214e73af2fe7"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2356,7 +2356,7 @@ dependencies = [
 [[package]]
 name = "deno_npm"
 version = "0.30.2"
-source = "git+https://github.com/nathanwhit/deno_npm?branch=lockfile-packument-take-2#363677bf9309e4f35cb783cb8b3391375af5ded9"
+source = "git+https://github.com/nathanwhit/deno_npm?branch=lockfile-packument-take-2#8baa8653b72d76ad9614685503df2503a5d205c4"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -3503,7 +3503,7 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 [[package]]
 name = "eszip"
 version = "0.83.0"
-source = "git+https://github.com/nathanwhit/eszip?branch=lockfile-packument-take-2#dbac4ebeed9d8ae901ba33727b89959c1402dae6"
+source = "git+https://github.com/nathanwhit/eszip?branch=lockfile-packument-take-2#ee5538152769f359e93a4e8eb8e8317be5ca050d"
 dependencies = [
  "anyhow",
  "async-trait",
