@@ -46,6 +46,11 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  StringPrototypeSlice,
+  StringPrototypeSplit,
+  StringPrototypeIndexOf,
+  NumberIsSafeInteger,
+  NumberParseInt,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -765,6 +770,58 @@ function serve(arg1, arg2) {
   }
   if (options === undefined) {
     options = { __proto__: null };
+  }
+
+  // const canOverrideOptions = !ObjectHasOwn(options, "path") &&
+  //   !ObjectHasOwn(options, "hostname") &&
+  //   !ObjectHasOwn(options, "port");
+  const env =
+    Deno.permissions.querySync({ name: "env", variable: "DENO_SERVE_ADDRESS" })
+        .state === "granted" &&
+    Deno.env.get("DENO_SERVE_ADDRESS");
+
+  if (env) {
+    const delim = StringPrototypeIndexOf(env, "/");
+    if (delim >= 0) {
+      const network = StringPrototypeSlice(env, 0, delim);
+      const address = StringPrototypeSlice(env, delim + 1);
+
+      switch (network) {
+        case "tcp": {
+          const ipv6Delim = StringPrototypeIndexOf(address, "]");
+          let hostname: string;
+          let port: number;
+          if (ipv6Delim >= 0) {
+            hostname = StringPrototypeSlice(address, 0, ipv6Delim + 1);
+            port = NumberParseInt(StringPrototypeSlice(address, ipv6Delim + 2));
+          } else {
+            const { 0: hostname_, 1: port_ } = StringPrototypeSplit(
+              address,
+              ":",
+            );
+            hostname = hostname_;
+            port = NumberParseInt(port_);
+          }
+          if (!NumberIsSafeInteger(port) || port < 0 || port > 65535) {
+            throw new TypeError(`DENO_SERVE_ADDRESS: Invalid port: ${port}`);
+          }
+          options.hostname = hostname;
+          options.port = port;
+          delete options.path;
+          break;
+        }
+        case "unix": {
+          delete options.hostname;
+          delete options.port;
+          options.path = address;
+          break;
+        }
+        default:
+          // deno-lint-ignore no-console
+          console.error(`DENO_SERVE_ADDRESS: Invalid network type: ${network}`);
+          break;
+      }
+    }
   }
 
   const wantsHttps = hasTlsKeyPairOptions(options);
