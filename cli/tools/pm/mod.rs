@@ -943,14 +943,8 @@ mod test {
       let s = format!("on input: {input}, maybe_prefix: {maybe_prefix:?}");
       assert_eq!(
         AddRmPackageReq::parse(input, maybe_prefix)
-          .inspect_err(|e| {
-            eprintln!("error: {e}, {s}");
-          })
-          .unwrap()
-          .inspect_err(|e| {
-            eprintln!("error: {e}, {s}");
-          })
-          .unwrap(),
+          .expect(&s)
+          .expect(&s),
         expected,
         "{s}",
       );
