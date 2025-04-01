@@ -388,7 +388,8 @@ async fn install_global(
   let entry_text = install_flags_global.module_url.as_str();
   if !cli_options.initial_cwd().join(entry_text).exists() {
     // check for package requirement missing prefix
-    if let Ok(Err(package_req)) = super::pm::AddRmPackageReq::parse(entry_text)
+    if let Ok(Err(package_req)) =
+      super::pm::AddRmPackageReq::parse(entry_text, None)
     {
       if jsr_resolver.req_to_nv(&package_req).await.is_some() {
         bail!(
