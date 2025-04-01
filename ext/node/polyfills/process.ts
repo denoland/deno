@@ -574,9 +574,7 @@ process.config = {
   },
 };
 
-process.cpuUsage = function () {
-  return Deno.cpuUsage();
-};
+process.cpuUsage = cpuUsage;
 
 /** https://nodejs.org/api/process.html#process_process_cwd */
 process.cwd = cwd;
