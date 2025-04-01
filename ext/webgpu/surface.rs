@@ -166,6 +166,9 @@ impl GPUCanvasContext {
 
     config.device.instance.surface_present(self.surface_id)?;
 
+    // next `get_current_texture` call would get a new texture
+    *self.texture.borrow_mut() = None;
+
     Ok(())
   }
 }
