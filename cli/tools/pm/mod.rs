@@ -714,7 +714,7 @@ pub struct AddRmPackageReq {
   value: AddRmPackageReqValue,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Prefix {
   Jsr,
   Npm,
@@ -894,55 +894,68 @@ async fn npm_install_after_modification(
 mod test {
   use super::*;
 
+  fn jsr_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
+    AddRmPackageReq {
+      alias: alias.into(),
+      value: AddRmPackageReqValue::Jsr(PackageReq::from_str(req).unwrap()),
+    }
+  }
+
+  fn npm_pkg_req(alias: &str, req: &str) -> AddRmPackageReq {
+    AddRmPackageReq {
+      alias: alias.into(),
+      value: AddRmPackageReqValue::Npm(PackageReq::from_str(req).unwrap()),
+    }
+  }
+
   #[test]
   fn test_parse_add_package_req() {
-    assert_eq!(
-      AddRmPackageReq::parse("jsr:foo", None).unwrap().unwrap(),
-      AddRmPackageReq {
-        alias: "foo".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("alias@jsr:foo", None)
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "alias".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("@alias/pkg@npm:foo", None)
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "@alias/pkg".into(),
-        value: AddRmPackageReqValue::Npm(
-          PackageReq::from_str("foo@latest").unwrap()
-        )
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("@alias/pkg@jsr:foo", None)
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "@alias/pkg".into(),
-        value: AddRmPackageReqValue::Jsr(PackageReq::from_str("foo").unwrap())
-      }
-    );
-    assert_eq!(
-      AddRmPackageReq::parse("alias@jsr:foo@^1.5.0", None)
-        .unwrap()
-        .unwrap(),
-      AddRmPackageReq {
-        alias: "alias".into(),
-        value: AddRmPackageReqValue::Jsr(
-          PackageReq::from_str("foo@^1.5.0").unwrap()
-        )
-      }
-    );
+    let cases = [
+      (("jsr:foo", None), jsr_pkg_req("foo", "foo")),
+      (("alias@jsr:foo", None), jsr_pkg_req("alias", "foo")),
+      (
+        ("@alias/pkg@npm:foo", None),
+        npm_pkg_req("@alias/pkg", "foo@latest"),
+      ),
+      (
+        ("@alias/pkg@jsr:foo", None),
+        jsr_pkg_req("@alias/pkg", "foo"),
+      ),
+      (
+        ("alias@jsr:foo@^1.5.0", None),
+        jsr_pkg_req("alias", "foo@^1.5.0"),
+      ),
+      (("foo", Some(Prefix::Npm)), npm_pkg_req("foo", "foo@latest")),
+      (("foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
+      (
+        ("npm:foo", Some(Prefix::Npm)),
+        npm_pkg_req("foo", "foo@latest"),
+      ),
+      (("jsr:foo", Some(Prefix::Jsr)), jsr_pkg_req("foo", "foo")),
+      (
+        ("npm:foo", Some(Prefix::Jsr)),
+        npm_pkg_req("foo", "foo@latest"),
+      ),
+      (("jsr:foo", Some(Prefix::Npm)), jsr_pkg_req("foo", "foo")),
+    ];
+
+    for ((input, maybe_prefix), expected) in cases {
+      let s = format!("on input: {input}, maybe_prefix: {maybe_prefix:?}");
+      assert_eq!(
+        AddRmPackageReq::parse(input, maybe_prefix)
+          .inspect_err(|e| {
+            eprintln!("error: {e}, {s}");
+          })
+          .unwrap()
+          .inspect_err(|e| {
+            eprintln!("error: {e}, {s}");
+          })
+          .unwrap(),
+        expected,
+        "{s}",
+      );
+    }
+
     assert_eq!(
       AddRmPackageReq::parse("@scope/pkg@tag", None)
         .unwrap()
