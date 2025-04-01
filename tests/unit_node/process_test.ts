@@ -1194,6 +1194,10 @@ Deno.test("process.cpuUsage()", () => {
   }
 });
 
+Deno.test("importedCpuUsage", () => {
+  assert(importedCpuUsage === process.cpuUsage);
+});
+
 Deno.test("process.stdout.columns writable", () => {
   process.stdout.columns = 80;
   assertEquals(process.stdout.columns, 80);
