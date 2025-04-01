@@ -210,6 +210,7 @@ async fn npm_module_check_then_error() {
       file_path: lockfile_path.to_path_buf(),
       content: &lockfile_path.read_to_string(),
       overwrite: false,
+      next_version: false,
     })
     .unwrap();
 

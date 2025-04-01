@@ -282,6 +282,17 @@ fn populate_lockfile_from_snapshot(
       })
       .collect();
 
+    let optional_peers = pkg
+      .optional_peer_dependencies
+      .iter()
+      .filter_map(|name| {
+        let id = pkg.dependencies.get(name)?;
+        Some(NpmPackageDependencyLockfileInfo {
+          name: name.clone(),
+          id: id.as_serialized(),
+        })
+      })
+      .collect();
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
       integrity: pkg
@@ -297,8 +308,9 @@ fn populate_lockfile_from_snapshot(
         .as_ref()
         .map(|dist| StackString::from_str(&dist.tarball)),
       deprecated: pkg.is_deprecated,
-      bin: pkg.has_bin,
-      scripts: pkg.has_scripts,
+      has_bin: pkg.has_bin,
+      has_scripts: pkg.has_scripts,
+      optional_peers,
     }
   }
 

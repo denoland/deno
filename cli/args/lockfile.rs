@@ -492,13 +492,14 @@ impl CliLockfile {
             file_path: opts.file_path,
             content: &text,
             overwrite: false,
+            next_version: false,
           },
           api,
         )
         .await?
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false)
+        Lockfile::new_empty(opts.file_path, false, true)
       }
       Err(err) => {
         return Err(err).with_context(|| {
@@ -525,6 +526,7 @@ impl CliLockfile {
           file_path: opts.file_path,
           content: &text,
           overwrite: false,
+          next_version: false,
         }) {
           Ok(lockfile) => lockfile,
           Err(err) => {
@@ -539,7 +541,7 @@ impl CliLockfile {
         }
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false)
+        Lockfile::new_empty(opts.file_path, false, false)
       }
       Err(err) => {
         return Err(ReadCurrentVersionError::Other(

@@ -554,13 +554,10 @@ fn deserialize_npm_snapshot(
         dependencies,
         optional_dependencies: Default::default(),
         optional_peer_dependencies: Default::default(),
-        has_bin: None,
-        has_scripts: Default::default(),
-        is_deprecated: Default::default(),
-        extra: Default::default(),
-        is_deprecated: false,
         has_bin: false,
         has_scripts: false,
+        is_deprecated: false,
+        extra: Default::default(),
       },
     ))
   }
