@@ -11,18 +11,19 @@ use deno_ast::swc::ecma_visit::VisitWith;
 use deno_ast::ParsedSource;
 use deno_ast::SourceRange;
 use deno_ast::SourceRangedForSpanned;
-use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
-use deno_core::resolve_url;
 use deno_core::serde::Deserialize;
 use deno_core::serde::Serialize;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::ModuleSpecifier;
 use lazy_regex::lazy_regex;
+use lsp_types::Uri;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tokio_util::sync::CancellationToken;
+use tower_lsp::jsonrpc::Error as LspError;
+use tower_lsp::jsonrpc::Result as LspResult;
 use tower_lsp::lsp_types as lsp;
 
 use super::analysis::source_range_to_lsp_range;
@@ -36,7 +37,7 @@ static ABSTRACT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\babstract\b");
 
 static EXPORT_MODIFIER: Lazy<Regex> = lazy_regex!(r"\bexport\b");
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub enum CodeLensSource {
   #[serde(rename = "implementations")]
   Implementations,
@@ -44,11 +45,11 @@ pub enum CodeLensSource {
   References,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeLensData {
   pub source: CodeLensSource,
-  pub specifier: ModuleSpecifier,
+  pub uri: Uri,
 }
 
 struct DenoTestCollector {
@@ -254,83 +255,61 @@ async fn resolve_implementation_code_lens(
   data: CodeLensData,
   language_server: &language_server::Inner,
   token: &CancellationToken,
-) -> Result<lsp::CodeLens, AnyError> {
-  let asset_or_doc = language_server.get_asset_or_document(&data.specifier)?;
-  let line_index = asset_or_doc.line_index();
-  let maybe_implementations = language_server
-    .ts_server
-    .get_implementations(
-      language_server.snapshot(),
-      data.specifier.clone(),
-      line_index.offset_tsc(code_lens.range.start)?,
+) -> LspResult<lsp::CodeLens> {
+  let locations = language_server
+    .goto_implementation(
+      lsp::request::GotoImplementationParams {
+        text_document_position_params: lsp::TextDocumentPositionParams {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: data.uri.clone(),
+          },
+          position: code_lens.range.start,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+      },
       token,
     )
-    .await
-    .map_err(|err| {
-      if token.is_cancelled() {
-        anyhow!("request cancelled")
-      } else {
-        anyhow!(
-          "Unable to get implementation locations from TypeScript: {:#}",
-          err
-        )
-      }
-    })?;
-  if let Some(implementations) = maybe_implementations {
-    let mut locations = Vec::new();
-    for implementation in implementations {
-      if token.is_cancelled() {
-        break;
-      }
-      let implementation_specifier =
-        resolve_url(&implementation.document_span.file_name)?;
-      let implementation_location =
-        implementation.to_location(line_index.clone(), language_server);
-      if !(implementation_specifier == data.specifier
-        && implementation_location.range.start == code_lens.range.start)
-      {
-        locations.push(implementation_location);
-      }
-    }
-    let command = if !locations.is_empty() {
-      let title = if locations.len() > 1 {
-        format!("{} implementations", locations.len())
-      } else {
-        "1 implementation".to_string()
-      };
-      lsp::Command {
-        title,
-        command: "deno.client.showReferences".to_string(),
-        arguments: Some(vec![
-          json!(data.specifier),
-          json!(code_lens.range.start),
-          json!(locations),
-        ]),
-      }
-    } else {
-      lsp::Command {
-        title: "0 implementations".to_string(),
-        command: "".to_string(),
-        arguments: None,
-      }
-    };
-    Ok(lsp::CodeLens {
-      range: code_lens.range,
-      command: Some(command),
-      data: None,
+    .await?
+    .map(|r| match r {
+      lsp::GotoDefinitionResponse::Scalar(location) => vec![location],
+      lsp::GotoDefinitionResponse::Array(locations) => locations,
+      lsp::GotoDefinitionResponse::Link(links) => links
+        .into_iter()
+        .map(|l| lsp::Location {
+          uri: l.target_uri,
+          range: l.target_selection_range,
+        })
+        .collect(),
     })
+    .unwrap_or(Vec::new());
+  let title = if locations.len() == 1 {
+    "1 implementation".to_string()
   } else {
-    let command = Some(lsp::Command {
-      title: "0 implementations".to_string(),
-      command: "".to_string(),
+    format!("{} implementations", locations.len())
+  };
+  let command = if locations.is_empty() {
+    lsp::Command {
+      title,
+      command: String::new(),
       arguments: None,
-    });
-    Ok(lsp::CodeLens {
-      range: code_lens.range,
-      command,
-      data: None,
-    })
-  }
+    }
+  } else {
+    lsp::Command {
+      title,
+      command: "deno.client.showReferences".to_string(),
+      arguments: Some(vec![
+        json!(data.uri),
+        json!(code_lens.range.start),
+        json!(locations),
+      ]),
+    }
+  };
+  Ok(lsp::CodeLens {
+    range: code_lens.range,
+    command: Some(command),
+    data: None,
+  })
 }
 
 async fn resolve_references_code_lens(
@@ -338,59 +317,26 @@ async fn resolve_references_code_lens(
   data: CodeLensData,
   language_server: &language_server::Inner,
   token: &CancellationToken,
-) -> Result<lsp::CodeLens, AnyError> {
-  fn get_locations(
-    maybe_referenced_symbols: Option<Vec<tsc::ReferencedSymbol>>,
-    language_server: &language_server::Inner,
-    token: &CancellationToken,
-  ) -> Result<Vec<lsp::Location>, AnyError> {
-    let symbols = match maybe_referenced_symbols {
-      Some(symbols) => symbols,
-      None => return Ok(Vec::new()),
-    };
-    let mut locations = Vec::new();
-    for reference in symbols.iter().flat_map(|s| &s.references) {
-      if token.is_cancelled() {
-        break;
-      }
-      if reference.is_definition {
-        continue;
-      }
-      let reference_specifier =
-        resolve_url(&reference.entry.document_span.file_name)?;
-      let asset_or_doc =
-        language_server.get_asset_or_document(&reference_specifier)?;
-      locations.push(
-        reference
-          .entry
-          .to_location(asset_or_doc.line_index(), language_server),
-      );
-    }
-    Ok(locations)
-  }
-
-  let asset_or_document =
-    language_server.get_asset_or_document(&data.specifier)?;
-  let line_index = asset_or_document.line_index();
-
-  let maybe_referenced_symbols = language_server
-    .ts_server
-    .find_references(
-      language_server.snapshot(),
-      data.specifier.clone(),
-      line_index.offset_tsc(code_lens.range.start)?,
+) -> LspResult<lsp::CodeLens> {
+  let locations = language_server
+    .references(
+      lsp::ReferenceParams {
+        text_document_position: lsp::TextDocumentPositionParams {
+          text_document: lsp::TextDocumentIdentifier {
+            uri: data.uri.clone(),
+          },
+          position: code_lens.range.start,
+        },
+        work_done_progress_params: Default::default(),
+        partial_result_params: Default::default(),
+        context: lsp::ReferenceContext {
+          include_declaration: false,
+        },
+      },
       token,
     )
-    .await
-    .map_err(|err| {
-      if token.is_cancelled() {
-        anyhow!("request cancelled")
-      } else {
-        anyhow!("Unable to get references from TypeScript: {:#}", err)
-      }
-    })?;
-  let locations =
-    get_locations(maybe_referenced_symbols, language_server, token)?;
+    .await?
+    .unwrap_or_default();
   let title = if locations.len() == 1 {
     "1 reference".to_string()
   } else {
@@ -407,7 +353,7 @@ async fn resolve_references_code_lens(
       title,
       command: "deno.client.showReferences".to_string(),
       arguments: Some(vec![
-        json!(data.specifier),
+        json!(data.uri),
         json!(code_lens.range.start),
         json!(locations),
       ]),
@@ -424,9 +370,14 @@ pub async fn resolve_code_lens(
   code_lens: lsp::CodeLens,
   language_server: &language_server::Inner,
   token: &CancellationToken,
-) -> Result<lsp::CodeLens, AnyError> {
+) -> LspResult<lsp::CodeLens> {
   let data: CodeLensData =
-    serde_json::from_value(code_lens.data.clone().unwrap())?;
+    serde_json::from_value(code_lens.data.clone().unwrap()).map_err(|err| {
+      LspError::invalid_params(format!(
+        "Unable to parse code lens data: {:#}",
+        err
+      ))
+    })?;
   match data.source {
     CodeLensSource::Implementations => {
       resolve_implementation_code_lens(code_lens, data, language_server, token)
@@ -453,7 +404,7 @@ pub fn collect_test(
 
 /// Return tsc navigation tree code lenses.
 pub fn collect_tsc(
-  specifier: &ModuleSpecifier,
+  uri: &Uri,
   code_lens_settings: &CodeLensSettings,
   line_index: Arc<LineIndex>,
   navigation_tree: &NavigationTree,
@@ -468,11 +419,7 @@ pub fn collect_tsc(
       let source = CodeLensSource::Implementations;
       match i.kind {
         tsc::ScriptElementKind::InterfaceElement => {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
         }
         tsc::ScriptElementKind::ClassElement
         | tsc::ScriptElementKind::MemberFunctionElement
@@ -480,11 +427,7 @@ pub fn collect_tsc(
         | tsc::ScriptElementKind::MemberGetAccessorElement
         | tsc::ScriptElementKind::MemberSetAccessorElement => {
           if ABSTRACT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
           }
         }
         _ => (),
@@ -496,51 +439,31 @@ pub fn collect_tsc(
       let source = CodeLensSource::References;
       if let Some(parent) = &mp {
         if parent.kind == tsc::ScriptElementKind::EnumElement {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
         }
       }
       match i.kind {
         tsc::ScriptElementKind::FunctionElement => {
           if code_lens_settings.references_all_functions {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
           }
         }
         tsc::ScriptElementKind::ConstElement
         | tsc::ScriptElementKind::LetElement
         | tsc::ScriptElementKind::VariableElement => {
           if EXPORT_MODIFIER.is_match(&i.kind_modifiers) {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
           }
         }
         tsc::ScriptElementKind::ClassElement => {
           if i.text != "<class>" {
-            code_lenses.push(i.to_code_lens(
-              line_index.clone(),
-              specifier,
-              &source,
-            ));
+            code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
           }
         }
         tsc::ScriptElementKind::InterfaceElement
         | tsc::ScriptElementKind::TypeElement
         | tsc::ScriptElementKind::EnumElement => {
-          code_lenses.push(i.to_code_lens(
-            line_index.clone(),
-            specifier,
-            &source,
-          ));
+          code_lenses.push(i.to_code_lens(line_index.clone(), uri, source));
         }
         tsc::ScriptElementKind::LocalFunctionElement
         | tsc::ScriptElementKind::MemberFunctionElement
@@ -556,8 +479,8 @@ pub fn collect_tsc(
                 | tsc::ScriptElementKind::TypeElement => {
                   code_lenses.push(i.to_code_lens(
                     line_index.clone(),
-                    specifier,
-                    &source,
+                    uri,
+                    source,
                   ));
                 }
                 _ => (),
@@ -575,6 +498,7 @@ pub fn collect_tsc(
 #[cfg(test)]
 mod tests {
   use deno_ast::MediaType;
+  use deno_core::resolve_url;
 
   use super::*;
 
