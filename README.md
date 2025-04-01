@@ -87,7 +87,8 @@ Learn more about writing and running Deno programs
   the Deno runtime, [Deno Deploy](https://deno.com/deploy), and beyond.
 - **[Deno Standard Library](https://jsr.io/@std)**: officially supported common
   utilities for Deno programs.
-- **[deno.land/x](https://deno.land/x)**: registry for third-party Deno modules.
+- **[JSR](https://jsr.io/)**: The open-source package registry for modern
+  JavaScript and TypeScript
 - **[Developer Blog](https://deno.com/blog)**: Product updates, tutorials, and
   more from the Deno team.
 
