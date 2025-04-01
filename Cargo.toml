@@ -115,6 +115,7 @@ napi_sym = { version = "0.127.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.35.0", path = "./resolvers/node" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
+# widely used libraries
 anyhow = "1.0.57"
 async-compression = "0.4"
 async-once-cell = "0.5.4"
@@ -138,6 +139,7 @@ color-print = "0.3.5"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
+dotenvy = "0.15.7"
 dyn-clone = "1"
 encoding_rs = "=0.8.35"
 error_reporter = "1"
@@ -280,7 +282,6 @@ console_static_text = "=0.8.3"
 crossterm = "0.28.1"
 dhat = "0.3.3"
 dissimilar = "=1.0.9"
-dotenvy = "0.15.7"
 dprint-plugin-json = "=0.20.0"
 dprint-plugin-jupyter = "=0.2.0"
 dprint-plugin-markdown = "=0.18.0"
@@ -365,7 +366,7 @@ wgpu-types = "24.0.0"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
-# unix
+# unix deps
 nix = "=0.27.1"
 
 # windows deps
