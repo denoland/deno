@@ -1199,9 +1199,10 @@ impl CliOptions {
           "fmt-component",
           "fmt-sql",
           "lazy-dynamic-imports",
-          "lazy-npm-caching",
+          "npm-lazy-caching",
           "npm-patch",
           "sloppy-imports",
+          "lockfile-v5",
         ])
         .collect();
 
