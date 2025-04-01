@@ -1,12 +1,11 @@
 {
-  "version": "5",
+  "version": "4",
   "specifiers": {
     "npm:@denotest/esm-basic@*": "1.0.0"
   },
   "npm": {
     "@denotest/esm-basic@1.0.0": {
-      "integrity": "sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ==",
-      "tarball": "http://localhost:4260/@denotest/esm-basic/1.0.0.tgz"
+      "integrity": "sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ=="
     }
   },
   "workspace": {
