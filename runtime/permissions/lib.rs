@@ -3348,6 +3348,10 @@ impl PermissionsContainer {
       ),
     )
   }
+
+  pub fn allows_all(&self) -> bool {
+    matches!(self.inner.lock().all.state, PermissionState::Granted)
+  }
 }
 
 const fn unit_permission_from_flag_bools(
