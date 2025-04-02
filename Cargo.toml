@@ -153,7 +153,7 @@ deno_cache_dir = "=0.18.0"
 deno_error = "=0.5.6"
 deno_native_certs = "0.3.0"
 deno_package_json = { version = "=0.6.0", default-features = false }
-deno_task_shell = "=0.20.2"
+deno_task_shell = "=0.22.0"
 deno_unsync = "0.4.2"
 deno_whoami = "0.1.0"
 der = "0.7.9"
