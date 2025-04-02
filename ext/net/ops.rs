@@ -1164,7 +1164,7 @@ mod tests {
       }
     );
 
-    let mut runtime = JsRuntime::new(RuntimeOptions {
+    let runtime = JsRuntime::new(RuntimeOptions {
       extensions: vec![test_ext::init_ops()],
       feature_checker: Some(Arc::new(Default::default())),
       ..Default::default()
