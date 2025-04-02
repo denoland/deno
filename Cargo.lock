@@ -1505,6 +1505,7 @@ dependencies = [
  "deno_npm 0.30.3",
  "deno_npm_cache",
  "deno_package_json",
+ "deno_panic",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -2491,6 +2492,15 @@ dependencies = [
  "sys_traits",
  "thiserror 2.0.12",
  "url",
+]
+
+[[package]]
+name = "deno_panic"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "032c5c8f43f1402273f4cd1ca133931b3da094fa167406b6dec5875982e18969"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
