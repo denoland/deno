@@ -1502,9 +1502,10 @@ dependencies = [
  "deno_lint",
  "deno_lockfile 0.25.0",
  "deno_media_type",
- "deno_npm 0.30.2",
+ "deno_npm 0.30.3",
  "deno_npm_cache",
  "deno_package_json",
+ "deno_panic",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -2152,7 +2153,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
- "deno_npm 0.30.2",
+ "deno_npm 0.30.3",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -2356,6 +2357,7 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tokio-eld",
+ "tower-service",
  "url",
  "webpki-root-certs",
  "winapi",
@@ -2387,9 +2389,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.30.2"
+version = "0.30.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89ca19bca63c7a74c09100b004ac18f77716046e9c8752cccee4ddedf9760aea"
+checksum = "459d5cdced5fb532db6819148111f5d344d977bec1be72e49baee7471a5d244a"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -2415,7 +2417,7 @@ dependencies = [
  "boxed_error",
  "deno_cache_dir",
  "deno_error",
- "deno_npm 0.30.2",
+ "deno_npm 0.30.3",
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
@@ -2493,6 +2495,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deno_panic"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "032c5c8f43f1402273f4cd1ca133931b3da094fa167406b6dec5875982e18969"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "deno_path_util"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2566,7 +2577,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_media_type",
- "deno_npm 0.30.2",
+ "deno_npm 0.30.3",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -2970,7 +2981,7 @@ dependencies = [
  "deno_error",
  "deno_lib",
  "deno_media_type",
- "deno_npm 0.30.2",
+ "deno_npm 0.30.3",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
