@@ -939,7 +939,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.6.0",
  "hyper-util",
- "nix",
+ "nix 0.27.1",
  "ntest_timeout",
  "once_cell",
  "os_pipe",
@@ -1544,7 +1544,7 @@ dependencies = [
  "malva",
  "markup_fmt",
  "memchr",
- "nix",
+ "nix 0.27.1",
  "node_resolver",
  "notify",
  "once_cell",
@@ -2007,7 +2007,7 @@ dependencies = [
  "filetime",
  "junction",
  "libc",
- "nix",
+ "nix 0.27.1",
  "rand",
  "rayon",
  "serde",
@@ -2550,7 +2550,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix",
+ "nix 0.27.1",
  "pin-project-lite",
  "rand",
  "serde",
@@ -2642,7 +2642,7 @@ dependencies = [
  "hyper-util",
  "libc",
  "log",
- "nix",
+ "nix 0.27.1",
  "node_resolver",
  "notify",
  "ntapi",
@@ -2687,18 +2687,20 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.20.2"
+version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa3763bc068e17b6d488fb73ecda463c13ef792b0a5288b6018bc2119becd635"
+checksum = "126e6062adfcc544f0937d610d23dc4dc70c4d2aab8636b31a93bcb26177115d"
 dependencies = [
  "anyhow",
+ "deno_path_util",
  "futures",
  "glob",
  "monch",
- "nix",
+ "nix 0.29.0",
  "os_pipe",
  "path-dedot",
- "thiserror 1.0.69",
+ "sys_traits",
+ "thiserror 2.0.12",
  "tokio",
  "windows-sys 0.59.0",
 ]
@@ -5631,6 +5633,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
+dependencies = [
+ "bitflags 2.8.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "node_resolver"
 version = "0.35.0"
 dependencies = [
@@ -7168,7 +7182,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "nix",
+ "nix 0.27.1",
  "radix_trie",
  "unicode-segmentation",
  "unicode-width 0.1.13",
@@ -8490,7 +8504,7 @@ dependencies = [
  "libc",
  "lsp-types",
  "monch",
- "nix",
+ "nix 0.27.1",
  "once_cell",
  "os_pipe",
  "parking_lot",
