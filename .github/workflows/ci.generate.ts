@@ -788,7 +788,7 @@ const ci = {
           name: "Pre-release (linux)",
           if: [
             "matrix.os == 'linux' &&",
-            "matrix.job == 'test' &&",
+            "(matrix.job == 'test' || matrix.job == 'bench') &&",
             "matrix.profile == 'release' &&",
             "github.repository == 'denoland/deno'",
           ].join("\n"),
