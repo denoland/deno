@@ -373,6 +373,11 @@ codegen-units = 1
 incremental = true
 lto = true
 opt-level = 'z' # Optimize for size
+split-debuginfo = "packed"
+debug = "line-tables-only"
+
+[profile.dev]
+split-debuginfo = "packed"
 
 # Build release with debug symbols: cargo build --profile=release-with-debug
 [profile.release-with-debug]
