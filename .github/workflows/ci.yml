@@ -462,7 +462,7 @@ jobs:
       - name: Pre-release (linux)
         if: |-
           !(matrix.skip) && (matrix.os == 'linux' &&
-          matrix.job == 'test' &&
+          (matrix.job == 'test' || matrix.job == 'bench') &&
           matrix.profile == 'release' &&
           github.repository == 'denoland/deno')
         run: |-
