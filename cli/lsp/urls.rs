@@ -132,6 +132,7 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     if !scheme.eq_lowercase("untitled")
       && !scheme.eq_lowercase("vscode-notebook-cell")
       && !scheme.eq_lowercase("deno-notebook-cell")
+      && !scheme.eq_lowercase("vscode-userdata")
     {
       return None;
     }
@@ -157,4 +158,5 @@ pub fn uri_is_file_like(uri: &Uri) -> bool {
     || scheme.eq_lowercase("untitled")
     || scheme.eq_lowercase("vscode-notebook-cell")
     || scheme.eq_lowercase("deno-notebook-cell")
+    || scheme.eq_lowercase("vscode-userdata")
 }

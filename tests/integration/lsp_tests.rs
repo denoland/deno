@@ -11800,6 +11800,47 @@ fn lsp_format_json() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_format_vscode_userdata() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": "vscode-userdata:///a/settings.json",
+      "languageId": "jsonc",
+      "version": 1,
+      "text": "  // foo\n{}\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "vscode-userdata:///a/settings.json",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_format_editor_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
