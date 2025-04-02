@@ -234,7 +234,7 @@ impl ShellCommand for NpmCommand {
       // run with deno task instead
       let mut args: Vec<OsString> = Vec::with_capacity(context.args.len());
       args.push("task".into());
-      args.extend(context.args.iter().skip(1).cloned());
+      args.extend(context.args.into_iter().skip(1));
 
       let mut state = context.state;
       state.apply_env_var(
@@ -342,7 +342,7 @@ impl ShellCommand for NpxCommand {
     if let Some(first_arg) = context.args.first().cloned() {
       if let Some(command) = context.state.resolve_custom_command(&first_arg) {
         let context = ShellCommandContext {
-          args: context.args.iter().skip(1).cloned().collect::<Vec<_>>(),
+          args: context.args.into_iter().skip(1).collect::<Vec<_>>(),
           ..context
         };
         command.execute(context)
