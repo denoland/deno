@@ -115,6 +115,7 @@ fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
   }
 }
 
+// workaround for rustc incorrectly inferring closure type
 fn cast<T>(t: T) -> T
 where
   T: for<'a> FnMut(
