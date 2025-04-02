@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::num::NonZeroUsize;
-use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
