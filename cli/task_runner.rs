@@ -286,15 +286,12 @@ impl ShellCommand for NodeCommand {
         )
       })
     {
-      return ExecutableCommand::new(
-        "node".to_string(),
-        "node".to_string().into(),
-      )
-      .execute(context);
+      return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
+        .execute(context);
     }
 
     args.extend(["run".into(), "-A".into()]);
-    args.extend(context.args.iter().cloned());
+    args.extend(context.args);
 
     let mut state = context.state;
 
