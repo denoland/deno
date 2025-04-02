@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ffi::OsString;
 use std::num::NonZeroUsize;
 use std::path::Path;
 use std::path::PathBuf;
@@ -220,7 +221,7 @@ pub async fn execute_script(
 struct RunSingleOptions<'a> {
   task_name: &'a str,
   script: &'a str,
-  cwd: &'a Path,
+  cwd: PathBuf,
   custom_commands: HashMap<String, Rc<dyn ShellCommand>>,
   kill_signal: KillSignal,
   argv: &'a [String],
@@ -231,7 +232,7 @@ struct TaskRunner<'a> {
   npm_installer: Option<&'a NpmInstaller>,
   npm_resolver: &'a CliNpmResolver,
   node_resolver: &'a CliNodeResolver,
-  env_vars: HashMap<String, String>,
+  env_vars: HashMap<OsString, OsString>,
   cli_options: &'a CliOptions,
   concurrency: usize,
 }
@@ -439,7 +440,7 @@ impl<'a> TaskRunner<'a> {
       .run_single(RunSingleOptions {
         task_name,
         script: command,
-        cwd: &cwd,
+        cwd,
         custom_commands,
         kill_signal,
         argv,
@@ -482,7 +483,7 @@ impl<'a> TaskRunner<'a> {
           .run_single(RunSingleOptions {
             task_name,
             script,
-            cwd: &cwd,
+            cwd: cwd.clone(),
             custom_commands: custom_commands.clone(),
             kill_signal: kill_signal.clone(),
             argv,
