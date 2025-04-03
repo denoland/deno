@@ -12,6 +12,7 @@ use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
+use deno_npm::resolution::DefaultTarballUrlProvider;
 use deno_npm::resolution::NpmResolutionError;
 use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
@@ -295,18 +296,25 @@ fn populate_lockfile_from_snapshot(
       .collect();
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg
-        .dist
-        .as_ref()
-        .and_then(|dist| dist.integrity().for_lockfile()),
+      integrity: pkg.dist.as_ref().and_then(|dist| {
+        dist.integrity().for_lockfile().map(|s| s.into_owned())
+      }),
       dependencies,
       optional_dependencies,
       os: pkg.system.os.clone(),
       cpu: pkg.system.cpu.clone(),
-      tarball: pkg
-        .dist
-        .as_ref()
-        .map(|dist| StackString::from_str(&dist.tarball)),
+      tarball: pkg.dist.as_ref().and_then(|dist| {
+        if dist.tarball
+          == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
+            &crate::npm::managed::DefaultTarballUrl,
+            &pkg.id,
+          )
+        {
+          None
+        } else {
+          Some(StackString::from_str(&dist.tarball))
+        }
+      }),
       deprecated: pkg.is_deprecated,
       has_bin: pkg.has_bin,
       has_scripts: pkg.has_scripts,

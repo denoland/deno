@@ -191,15 +191,19 @@ pub enum SnapshotFromLockfileError {
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
-struct DefaultTarballUrl;
+pub(crate) struct DefaultTarballUrl;
 
 impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
   fn default_tarball_url(&self, id: &deno_npm::NpmPackageId) -> String {
     let scope = id.nv.scope();
     let package_name = if let Some(scope) = scope {
-      id.nv.name.strip_prefix(scope).unwrap().to_string()
+      id.nv
+        .name
+        .strip_prefix(scope)
+        .unwrap_or(&id.nv.name)
+        .trim_end_matches('/')
     } else {
-      id.nv.name.to_string()
+      &id.nv.name
     };
     format!(
       "https://registry.npmjs.org/{}/-/{}-{}.tgz",
