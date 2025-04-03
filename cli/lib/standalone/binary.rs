@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::sync::OnceLock;
 
 use deno_media_type::MediaType;
 use deno_resolver::workspace::PackageJsonDepResolution;
@@ -18,10 +17,6 @@ use super::virtual_fs::FileSystemCaseSensitivity;
 use crate::args::UnstableConfig;
 
 pub const MAGIC_BYTES: &[u8; 8] = b"d3n0l4nd";
-
-/// Only init when use standalone mode.
-/// Add a fallback to the default value.
-pub static METADATA: OnceLock<&'static Metadata> = OnceLock::new();
 
 pub trait DenoRtDeserializable<'a>: Sized {
   fn deserialize(input: &'a [u8]) -> std::io::Result<(&'a [u8], Self)>;
@@ -41,7 +36,7 @@ pub trait DenoRtSerializable<'a> {
   );
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 pub enum NodeModules {
   Managed {
     /// Relative path for the node_modules directory in the vfs.
@@ -52,7 +47,7 @@ pub enum NodeModules {
   },
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolverImportMap {
   pub specifier: String,
   pub json: String,
@@ -66,7 +61,7 @@ pub struct SerializedResolverWorkspaceJsrPackage {
   pub exports: IndexMap<String, String>,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 pub struct SerializedWorkspaceResolver {
   pub import_map: Option<SerializedWorkspaceResolverImportMap>,
   pub jsr_pkgs: Vec<SerializedResolverWorkspaceJsrPackage>,
@@ -76,7 +71,7 @@ pub struct SerializedWorkspaceResolver {
 
 // Note: Don't use hashmaps/hashsets. Ensure the serialization
 // is deterministic.
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize)]
 pub struct Metadata {
   pub argv: Vec<String>,
   pub seed: Option<u64>,

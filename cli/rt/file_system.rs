@@ -1494,19 +1494,28 @@ mod test {
     let src_path = src_path.to_path_buf();
     let mut builder = VfsBuilder::new();
     builder
-      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into())
+      .add_file_with_data_raw(&src_path.join("a.txt"), "data".into(), None)
       .unwrap();
     builder
-      .add_file_with_data_raw(&src_path.join("b.txt"), "data".into())
+      .add_file_with_data_raw(
+        &src_path.join("b.txt"),
+        "data".into(),
+        Some(
+          SystemTime::UNIX_EPOCH
+            .checked_add(Duration::from_secs(2))
+            .unwrap(),
+        ),
+      )
       .unwrap();
     assert_eq!(builder.files_len(), 1); // because duplicate data
     builder
-      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into())
+      .add_file_with_data_raw(&src_path.join("c.txt"), "c".into(), None)
       .unwrap();
     builder
       .add_file_with_data_raw(
         &src_path.join("sub_dir").join("d.txt"),
         "d".into(),
+        None,
       )
       .unwrap();
     builder.add_file_at_path(&src_path.join("e.txt")).unwrap();
@@ -1541,6 +1550,10 @@ mod test {
         .unwrap()
         .file_type,
       sys_traits::FileType::Symlink,
+    );
+    assert_eq!(
+      virtual_fs.lstat(&dest_path.join("b.txt")).unwrap().mtime,
+      Some(2_000),
     );
     assert_eq!(
       virtual_fs
@@ -1667,6 +1680,7 @@ mod test {
       .add_file_with_data_raw(
         temp_path.join("a.txt").as_path(),
         "0123456789".to_string().into_bytes(),
+        None,
       )
       .unwrap();
     let (dest_path, virtual_fs) = into_virtual_fs(builder, &temp_dir);

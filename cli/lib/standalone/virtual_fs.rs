@@ -5,8 +5,10 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::SystemTime;
 
 use deno_path_util::normalize_path;
 use deno_path_util::strip_unc_prefix;
@@ -434,6 +436,7 @@ impl FilesData {
 
 pub struct AddFileDataOptions {
   pub data: Vec<u8>,
+  pub mtime: Option<SystemTime>,
   pub maybe_transpiled: Option<Vec<u8>>,
   pub maybe_source_map: Option<Vec<u8>>,
   pub maybe_cjs_export_analysis: Option<Vec<u8>>,
@@ -641,14 +644,12 @@ impl VfsBuilder {
   }
 
   pub fn add_file_at_path(&mut self, path: &Path) -> Result<(), AnyError> {
-    // ok, building fs implementation
-    #[allow(clippy::disallowed_methods)]
-    let file_bytes = std::fs::read(path)
-      .with_context(|| format!("Reading {}", path.display()))?;
+    let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
     self.add_file_with_data(
       path,
       AddFileDataOptions {
         data: file_bytes,
+        mtime,
         maybe_cjs_export_analysis: None,
         maybe_transpiled: None,
         maybe_source_map: None,
@@ -660,11 +661,28 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
   ) -> Result<(), AnyError> {
+    let (file_bytes, mtime) = self.read_file_bytes_and_mtime(path)?;
+    self.add_file_with_data_raw(path, file_bytes, mtime)
+  }
+
+  fn read_file_bytes_and_mtime(
+    &self,
+    path: &Path,
+  ) -> Result<(Vec<u8>, Option<SystemTime>), AnyError> {
     // ok, building fs implementation
     #[allow(clippy::disallowed_methods)]
-    let file_bytes = std::fs::read(path)
-      .with_context(|| format!("Reading {}", path.display()))?;
-    self.add_file_with_data_raw(path, file_bytes)
+    {
+      let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .with_context(|| format!("Opening {}", path.display()))?;
+      let mtime = file.metadata().ok().and_then(|m| m.modified().ok());
+      let mut file_bytes = Vec::new();
+      file
+        .read_to_end(&mut file_bytes)
+        .with_context(|| format!("Reading {}", path.display()))?;
+      Ok((file_bytes, mtime))
+    }
   }
 
   pub fn add_file_with_data(
@@ -689,11 +707,13 @@ impl VfsBuilder {
     &mut self,
     path: &Path,
     data: Vec<u8>,
+    mtime: Option<SystemTime>,
   ) -> Result<(), AnyError> {
     self.add_file_with_data_raw_options(
       path,
       AddFileDataOptions {
         data,
+        mtime,
         maybe_transpiled: None,
         maybe_cjs_export_analysis: None,
         maybe_source_map: None,
@@ -722,15 +742,10 @@ impl VfsBuilder {
     let dir = self.add_dir_raw(path.parent().unwrap());
     let name = path.file_name().unwrap().to_string_lossy();
 
-    #[allow(clippy::disallowed_methods)]
-    let file_metadata = path.metadata().ok();
-    let file_mtime = file_metadata.and_then(|metadata| {
-      metadata.modified().ok().map(|mtime| {
-        mtime
-          .duration_since(std::time::UNIX_EPOCH)
-          .map_or(0, |duration| duration.as_millis())
-      })
-    });
+    let mtime = options
+      .mtime
+      .and_then(|mtime| mtime.duration_since(std::time::UNIX_EPOCH).ok())
+      .map(|m| m.as_millis());
 
     dir.entries.insert_or_modify(
       &name,
@@ -742,7 +757,7 @@ impl VfsBuilder {
           transpiled_offset,
           cjs_export_analysis_offset,
           source_map_offset,
-          mtime: file_mtime,
+          mtime,
         })
       },
       |entry| match entry {
@@ -759,7 +774,7 @@ impl VfsBuilder {
             virtual_file.cjs_export_analysis_offset =
               cjs_export_analysis_offset;
           }
-          virtual_file.mtime = file_mtime;
+          virtual_file.mtime = mtime;
         }
         VfsEntry::Dir(_) | VfsEntry::Symlink(_) => unreachable!(),
       },

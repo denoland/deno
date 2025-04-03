@@ -32,7 +32,6 @@ use deno_lib::npm::create_npm_process_state_provider;
 use deno_lib::npm::NpmRegistryReadPermissionChecker;
 use deno_lib::npm::NpmRegistryReadPermissionCheckerMode;
 use deno_lib::standalone::binary::NodeModules;
-use deno_lib::standalone::binary::METADATA;
 use deno_lib::util::hash::FastInsecureHasher;
 use deno_lib::util::text_encoding::from_utf8_lossy_cow;
 use deno_lib::util::text_encoding::from_utf8_lossy_owned;
@@ -661,15 +660,6 @@ pub async fn run(
     root_path,
     vfs,
   } = data;
-
-  // Leak metadata as a global variable.
-  let metadata_static_ref = Box::leak(Box::new(metadata.clone()));
-  match METADATA.set(metadata_static_ref) {
-    Ok(_) => {}
-    Err(_) => {
-      log::error!("Failed to set metadata globally, already exists.");
-    }
-  }
 
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
