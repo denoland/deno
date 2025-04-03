@@ -164,6 +164,7 @@ impl TestModule {
     ))
   }
 
+  #[allow(clippy::double_ended_iterator_last)]
   pub fn label(&self, maybe_root_uri: Option<&ModuleSpecifier>) -> String {
     if let Some(root) = maybe_root_uri {
       self.specifier.as_str().replace(root.as_str(), "")

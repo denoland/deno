@@ -943,6 +943,7 @@ pub struct Config {
 
 impl Config {
   #[cfg(test)]
+  #[allow(clippy::double_ended_iterator_last)]
   pub fn new_with_roots(root_urls: impl IntoIterator<Item = Url>) -> Self {
     use super::urls::url_to_uri;
 

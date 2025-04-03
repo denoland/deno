@@ -54,6 +54,7 @@ pub fn get_extension(file_path: &Path) -> Option<String> {
 /// TypeScript figures out the type of file based on the extension, but we take
 /// other factors into account like the file headers. The hack here is to map the
 /// specifier passed to TypeScript to a new specifier with the file extension.
+#[allow(clippy::double_ended_iterator_last)]
 pub fn mapped_specifier_for_tsc(
   specifier: &ModuleSpecifier,
   media_type: MediaType,

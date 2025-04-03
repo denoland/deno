@@ -712,6 +712,7 @@ impl<TSys: FsMetadata + FsRead> SpecifierUnfurler<TSys> {
   }
 }
 
+#[allow(clippy::double_ended_iterator_last)]
 fn relative_url(
   resolved: &ModuleSpecifier,
   referrer: &ModuleSpecifier,
