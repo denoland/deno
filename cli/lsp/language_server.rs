@@ -1591,20 +1591,9 @@ impl Inner {
     _token: &CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let mark = self.performance.mark_with_args("lsp.formatting", &params);
-    // Untitled files are exempt from enabled-checks because they tend not to
-    // have meaningful paths, and they won't be auto-formatted on save anyway.
-    let is_untitled = params
-      .text_document
-      .uri
-      .scheme()
-      .is_some_and(|s| s.eq_lowercase("untitled"));
     let Some(document) = self.get_document(
       &params.text_document.uri,
-      if is_untitled {
-        Enabled::Ignore
-      } else {
-        Enabled::Filter
-      },
+      Enabled::Ignore,
       Exists::Enforce,
       Diagnosable::Ignore,
     )?
@@ -1616,6 +1605,13 @@ impl Inner {
     };
     let fmt_config =
       self.config.tree.fmt_config_for_specifier(&module.specifier);
+    // Untitled files are exempt from enabled-checks because they tend not to
+    // have meaningful paths, and they won't be auto-formatted on save anyway.
+    let is_untitled = params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("untitled"));
     if !is_untitled && !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }

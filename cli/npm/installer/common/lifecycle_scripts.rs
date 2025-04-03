@@ -246,10 +246,7 @@ impl<'a> LifecycleScripts<'a> {
       let mut env_vars = crate::task_runner::real_env_vars();
       // so the subprocess can detect that it is running as part of a lifecycle script,
       // and avoid trying to set up node_modules again
-      env_vars.insert(
-        LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.to_string(),
-        "1".to_string(),
-      );
+      env_vars.insert(LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR.into(), "1".into());
       // we want to pass the current state of npm resolution down to the deno subprocess
       // (that may be running as part of the script). we do this with an inherited temp file
       //
@@ -266,9 +263,8 @@ impl<'a> LifecycleScripts<'a> {
       let _temp_file =
         unsafe { std::fs::File::from_raw_io_handle(temp_file_fd) }; // make sure the file gets closed
       env_vars.insert(
-        deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME
-          .to_string(),
-        (temp_file_fd as usize).to_string(),
+        deno_runtime::deno_process::NPM_RESOLUTION_STATE_FD_ENV_VAR_NAME.into(),
+        (temp_file_fd as usize).to_string().into(),
       );
       for (package, scripts, package_path) in self.packages_with_scripts {
         // add custom commands for binaries from the package's dependencies. this will take precedence over the
@@ -301,7 +297,7 @@ impl<'a> LifecycleScripts<'a> {
               crate::task_runner::RunTaskOptions {
                 task_name: script_name,
                 script,
-                cwd: &package_path,
+                cwd: package_path.clone(),
                 env_vars: env_vars.clone(),
                 custom_commands: custom_commands.clone(),
                 init_cwd,
@@ -374,7 +370,7 @@ impl<'a> LifecycleScripts<'a> {
   }
 }
 
-const LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
+static LIFECYCLE_SCRIPTS_RUNNING_ENV_VAR: &str =
   "DENO_INTERNAL_IS_LIFECYCLE_SCRIPT";
 
 pub fn is_running_lifecycle_script() -> bool {
