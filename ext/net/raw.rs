@@ -280,6 +280,14 @@ network_stream!(
     tokio::net::UnixListener,
     tokio::net::unix::SocketAddr,
     crate::io::UnixStreamResource
+  ],
+  [
+    Vsock,
+    vsock,
+    tokio_vsock::VsockStream,
+    tokio_vsock::VsockListener,
+    tokio_vsock::VsockAddr,
+    crate::io::VsockStreamResource
   ]
 );
 
@@ -307,6 +315,8 @@ pub enum NetworkStreamAddress {
   Ip(std::net::SocketAddr),
   #[cfg(unix)]
   Unix(tokio::net::unix::SocketAddr),
+  #[cfg(unix)]
+  Vsock(tokio_vsock::VsockAddr),
 }
 
 impl From<std::net::SocketAddr> for NetworkStreamAddress {
@@ -322,6 +332,13 @@ impl From<tokio::net::unix::SocketAddr> for NetworkStreamAddress {
   }
 }
 
+#[cfg(unix)]
+impl From<tokio_vsock::VsockAddr> for NetworkStreamAddress {
+  fn from(value: tokio_vsock::VsockAddr) -> Self {
+    NetworkStreamAddress::Vsock(value)
+  }
+}
+
 #[derive(Debug, thiserror::Error, deno_error::JsError)]
 pub enum TakeNetworkStreamError {
   #[class("Busy")]
@@ -334,6 +351,10 @@ pub enum TakeNetworkStreamError {
   #[class("Busy")]
   #[error("Unix socket is currently in use")]
   UnixBusy,
+  #[cfg(unix)]
+  #[class("Busy")]
+  #[error("Vsock socket is currently in use")]
+  VsockBusy,
   #[class(generic)]
   #[error(transparent)]
   ReuniteTcp(#[from] tokio::net::tcp::ReuniteError),
@@ -341,6 +362,10 @@ pub enum TakeNetworkStreamError {
   #[class(generic)]
   #[error(transparent)]
   ReuniteUnix(#[from] tokio::net::unix::ReuniteError),
+  #[cfg(unix)]
+  #[class(generic)]
+  #[error("Cannot reunite halves from different streams")]
+  ReuniteVsock,
   #[class(inherit)]
   #[error(transparent)]
   Resource(deno_core::error::ResourceError),
@@ -386,6 +411,21 @@ pub fn take_network_stream_resource(
     let (read_half, write_half) = resource.into_inner();
     let unix_stream = read_half.reunite(write_half)?;
     return Ok(NetworkStream::Unix(unix_stream));
+  }
+
+  #[cfg(unix)]
+  if let Ok(resource_rc) =
+    resource_table.take::<crate::io::VsockStreamResource>(stream_rid)
+  {
+    // This Vsock socket might be used somewhere else.
+    let resource = Rc::try_unwrap(resource_rc)
+      .map_err(|_| TakeNetworkStreamError::VsockBusy)?;
+    let (read_half, write_half) = resource.into_inner();
+    if !read_half.is_pair_of(&write_half) {
+      return Err(TakeNetworkStreamError::ReuniteVsock);
+    }
+    let vsock_stream = read_half.unsplit(write_half);
+    return Ok(NetworkStream::Vsock(vsock_stream));
   }
 
   Err(TakeNetworkStreamError::Resource(

@@ -28,5 +28,6 @@ sha2.workspace = true
 socket2.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-vsock.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true

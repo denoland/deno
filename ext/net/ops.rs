@@ -38,8 +38,12 @@ use socket2::Socket;
 use socket2::Type;
 use tokio::net::TcpStream;
 use tokio::net::UdpSocket;
+use tokio_vsock::VsockAddr;
+use tokio_vsock::VsockListener;
+use tokio_vsock::VsockStream;
 
 use crate::io::TcpStreamResource;
+use crate::io::VsockStreamResource;
 use crate::raw::NetworkListenerResource;
 use crate::resolve_addr::resolve_addr;
 use crate::resolve_addr::resolve_addr_sync;
@@ -606,6 +610,85 @@ where
   NP: NetPermissions + 'static,
 {
   net_listen_udp::<NP>(state, addr, reuse_address, loopback)
+}
+
+#[op2(async, stack_trace)]
+#[serde]
+pub async fn op_net_connect_vsock<NP>(
+  state: Rc<RefCell<OpState>>,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let addr = VsockAddr::new(cid, port);
+  let vsock_stream = VsockStream::connect(addr).await?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let mut state_ = state.borrow_mut();
+  let rid = state_
+    .resource_table
+    .add(VsockStreamResource::new(vsock_stream.into_split()));
+
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
+}
+
+#[op2(stack_trace)]
+#[serde]
+pub fn op_net_listen_vsock<NP>(
+  state: &mut OpState,
+  #[smi] cid: u32,
+  #[smi] port: u32,
+) -> Result<(ResourceId, u32, u32), NetError>
+where
+  NP: NetPermissions + 'static,
+{
+  let addr = VsockAddr::new(cid, port);
+  let listener = VsockListener::bind(addr)?;
+  let local_addr = listener.local_addr()?;
+  let listener_resource = NetworkListenerResource::new(listener);
+  let rid = state.resource_table.add(listener_resource);
+  Ok((rid, local_addr.cid(), local_addr.port()))
+}
+
+#[op2(async)]
+#[serde]
+pub async fn op_net_accept_vsock(
+  state: Rc<RefCell<OpState>>,
+  #[smi] rid: ResourceId,
+) -> Result<(ResourceId, (u32, u32), (u32, u32)), NetError> {
+  let resource = state
+    .borrow()
+    .resource_table
+    .get::<NetworkListenerResource<VsockListener>>(rid)
+    .map_err(|_| NetError::ListenerClosed)?;
+  let listener = RcRef::map(&resource, |r| &r.listener)
+    .try_borrow_mut()
+    .ok_or_else(|| NetError::AcceptTaskOngoing)?;
+  let cancel = RcRef::map(resource, |r| &r.cancel);
+  let (vsock_stream, _socket_addr) = listener
+    .accept()
+    .try_or_cancel(cancel)
+    .await
+    .map_err(accept_err)?;
+  let local_addr = vsock_stream.local_addr()?;
+  let remote_addr = vsock_stream.peer_addr()?;
+
+  let mut state = state.borrow_mut();
+  let rid = state
+    .resource_table
+    .add(VsockStreamResource::new(vsock_stream.into_split()));
+  Ok((
+    rid,
+    (local_addr.cid(), local_addr.port()),
+    (remote_addr.cid(), remote_addr.port()),
+  ))
 }
 
 #[derive(Serialize, Eq, PartialEq, Debug)]

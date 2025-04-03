@@ -189,3 +189,44 @@ impl Resource for UnixStreamResource {
     self.cancel_read_ops();
   }
 }
+
+#[cfg(unix)]
+pub type VsockStreamResource =
+  FullDuplexResource<tokio_vsock::OwnedReadHalf, tokio_vsock::OwnedWriteHalf>;
+
+#[cfg(not(unix))]
+pub struct VsockStreamResource;
+
+#[cfg(not(unix))]
+impl VsockStreamResource {
+  fn read(self: Rc<Self>, _data: &mut [u8]) -> AsyncResult<usize> {
+    unreachable!()
+  }
+  fn write(self: Rc<Self>, _data: &[u8]) -> AsyncResult<usize> {
+    unreachable!()
+  }
+  #[allow(clippy::unused_async)]
+  pub async fn shutdown(self: Rc<Self>) -> Result<(), JsErrorBox> {
+    unreachable!()
+  }
+  pub fn cancel_read_ops(&self) {
+    unreachable!()
+  }
+}
+
+impl Resource for VsockStreamResource {
+  deno_core::impl_readable_byob!();
+  deno_core::impl_writable!();
+
+  fn name(&self) -> Cow<str> {
+    "vsockStream".into()
+  }
+
+  fn shutdown(self: Rc<Self>) -> AsyncResult<()> {
+    Box::pin(self.shutdown().map_err(JsErrorBox::from_err))
+  }
+
+  fn close(self: Rc<Self>) {
+    self.cancel_read_ops();
+  }
+}
