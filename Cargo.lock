@@ -2195,8 +2195,9 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.25.0"
-source = "git+https://github.com/nathanwhit/deno_lockfile?branch=npm-packument-in-lockfile#72ec7b1dbbc0d753d33acdcdfc61214e73af2fe7"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf38d2df0cfe7ca030a0328c2039afaba39d13c775be9d2cf5fd7705ad2b5c72"
 dependencies = [
  "async-trait",
  "deno_semver",
@@ -2357,8 +2358,9 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.30.2"
-source = "git+https://github.com/nathanwhit/deno_npm?branch=lockfile-packument-take-2#8baa8653b72d76ad9614685503df2503a5d205c4"
+version = "0.31.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "352510920cdb72896495893f9baa344175df4f9317a24858c3c224a58f6f8d2d"
 dependencies = [
  "async-trait",
  "capacity_builder 0.5.0",
@@ -3515,8 +3517,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.83.0"
-source = "git+https://github.com/nathanwhit/eszip?branch=lockfile-packument-take-2#ee5538152769f359e93a4e8eb8e8317be5ca050d"
+version = "0.84.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "88b6e201a88de1a02c8a29389474d50a33d995caeeb9c947a1a45521fd41f3a2"
 dependencies = [
  "anyhow",
  "async-trait",
