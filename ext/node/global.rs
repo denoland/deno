@@ -105,7 +105,7 @@ enum Mode {
   Node,
 }
 
-struct GlobalsStorage {
+pub struct GlobalsStorage {
   deno_globals: v8::Global<v8::Object>,
   node_globals: v8::Global<v8::Object>,
 }

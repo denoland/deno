@@ -607,6 +607,10 @@ impl CliOptions {
     self.flags.otel_config()
   }
 
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
+  }
+
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
     self.flags.env_file.as_ref()
   }
@@ -1119,6 +1123,11 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_lazy_dynamic_imports(&self) -> bool {
+    self.flags.unstable_config.lazy_dynamic_imports
+      || self.workspace().has_unstable("lazy-dynamic-imports")
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
@@ -1144,14 +1153,15 @@ impl CliOptions {
         .iter()
         .map(|granular_flag| granular_flag.name)
         .chain([
-          "sloppy-imports",
           "byonm",
           "bare-node-builtins",
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-dynamic-imports",
           "lazy-npm-caching",
           "npm-patch",
+          "sloppy-imports",
         ])
         .collect();
 

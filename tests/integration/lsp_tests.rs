@@ -895,96 +895,6 @@ fn lsp_import_map_node_specifiers() {
   client.shutdown();
 }
 
-#[test]
-#[timeout(300_000)]
-fn lsp_format_vendor_path() {
-  let context = TestContextBuilder::new()
-    .use_http_server()
-    .use_temp_cwd()
-    .build();
-
-  // put this dependency in the global cache
-  context
-    .new_command()
-    .args("cache --allow-import http://localhost:4545/run/002_hello.ts")
-    .run()
-    .skip_output_check();
-
-  let temp_dir = context.temp_dir();
-  temp_dir.write("deno.json", json!({ "vendor": true }).to_string());
-  let mut client = context.new_lsp_command().build();
-  client.initialize_default();
-  let diagnostics = client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("file.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"import "http://localhost:4545/run/002_hello.ts";"#,
-    },
-  }));
-  // copying from the global cache to the local cache requires explicitly
-  // running the cache command so that the checksums can be verified
-  assert_eq!(
-    diagnostics
-      .all()
-      .iter()
-      .map(|d| d.message.as_str())
-      .collect::<Vec<_>>(),
-    vec![
-      "Uncached or missing remote URL: http://localhost:4545/run/002_hello.ts"
-    ]
-  );
-  client.write_request(
-    "workspace/executeCommand",
-    json!({
-      "command": "deno.cache",
-      "arguments": [[], temp_dir.url().join("file.ts").unwrap()],
-    }),
-  );
-  client.read_diagnostics();
-  assert!(temp_dir
-    .path()
-    .join("vendor/http_localhost_4545/run/002_hello.ts")
-    .exists());
-  client.did_open(json!({
-    "textDocument": {
-      "uri": temp_dir.url().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
-      "languageId": "typescript",
-      "version": 1,
-      "text": r#"console.log("Hello World");"#,
-    },
-  }));
-  let res = client.write_request(
-    "textDocument/formatting",
-    json!({
-      "textDocument": {
-        "uri": temp_dir.url().join("vendor/http_localhost_4545/run/002_hello.ts").unwrap(),
-      },
-      "options": {
-        "tabSize": 2,
-        "insertSpaces": true,
-      }
-    }),
-  );
-  assert_eq!(
-    res,
-    json!([{
-      "range": {
-        "start": {
-          "line": 0,
-          "character": 27,
-        },
-        "end": {
-          "line": 0,
-          "character": 27,
-        },
-      },
-      "newText": "\n",
-    }]),
-  );
-  client.shutdown();
-}
-
 // Regression test for https://github.com/denoland/deno/issues/19802.
 // Disable the `workspace/configuration` capability. Ensure the LSP falls back
 // to using `enablePaths` from the `InitializationOptions`.
@@ -1088,11 +998,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
   temp_dir.write("non_workspace1/deno.json", json!({}).to_string());
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
@@ -1142,11 +1053,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
     }],
   }));
   client.read_diagnostics();
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
@@ -1201,11 +1113,12 @@ fn lsp_did_refresh_deno_configuration_tree_notification() {
       "disablePaths": ["non_workspace1"],
     },
   }));
-  let res = client
+  let mut res = client
     .read_notification_with_method::<Value>(
       "deno/didRefreshDenoConfigurationTree",
     )
     .unwrap();
+  res.as_object_mut().unwrap().remove("denoDirNpmFolderUri");
   assert_eq!(
     res,
     json!({
@@ -4138,7 +4051,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 0, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4147,7 +4060,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4156,7 +4069,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 3, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4165,7 +4078,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 7, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4178,7 +4091,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 0, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4217,7 +4130,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 14, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4245,7 +4158,7 @@ fn lsp_code_lens_references() {
         "end": { "line": 15, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }),
@@ -4325,7 +4238,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4334,7 +4247,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4343,7 +4256,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4352,7 +4265,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4361,7 +4274,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4370,7 +4283,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4379,7 +4292,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4388,7 +4301,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 11, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4401,7 +4314,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }),
@@ -4438,7 +4351,7 @@ fn lsp_code_lens_implementations() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }),
@@ -4816,7 +4729,7 @@ fn lsp_code_lens_non_doc_nav_tree() {
         "end": { "line": 416, "character": 19 }
       },
       "data": {
-        "specifier": "asset:///lib.deno.shared_globals.d.ts",
+        "uri": "deno:/asset/lib.deno.shared_globals.d.ts",
         "source": "references"
       }
     }),
@@ -4865,7 +4778,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4874,7 +4787,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4883,7 +4796,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4892,7 +4805,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4901,7 +4814,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4910,7 +4823,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4919,7 +4832,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 10, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4928,7 +4841,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 11, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -4967,7 +4880,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "implementations"
       }
     }, {
@@ -4976,7 +4889,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 0, "character": 11 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4985,7 +4898,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 1, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -4994,7 +4907,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 4, "character": 7 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }, {
@@ -5003,7 +4916,7 @@ fn lsp_nav_tree_updates() {
         "end": { "line": 5, "character": 3 }
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "source": "references"
       }
     }])
@@ -5338,7 +5251,7 @@ fn lsp_code_actions() {
         "relatedInformation": []
       }],
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "fixId": "fixAwaitInSyncFunction"
       }
     }])
@@ -5361,7 +5274,7 @@ fn lsp_code_actions() {
           "relatedInformation": []
         }],
         "data": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "fixId": "fixAwaitInSyncFunction"
         }
       }),
@@ -5424,7 +5337,7 @@ fn lsp_code_actions() {
         }]
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "fixId": "fixAwaitInSyncFunction"
       }
     })
@@ -6254,7 +6167,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       },
       "isPreferred": false,
       "data": {
-        "specifier": file.url(),
+        "uri": file.url(),
         "range": {
           "start": { "line": 2, "character": 19 },
           "end": { "line": 2, "character": 28 },
@@ -6594,7 +6507,7 @@ fn lsp_asset_document_dom_code_action() {
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": "asset:///lib.dom.d.ts" },
+      "textDocument": { "uri": "deno:/asset/lib.dom.d.ts" },
       "range": {
         "start": { "line": 0, "character": 0 },
         "end": { "line": 0, "character": 0 },
@@ -6816,7 +6729,7 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     }, {
@@ -6874,7 +6787,7 @@ export class DuckConfig {
         "message": "Cannot find name 'DuckConfig'."
       }],
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     }),
@@ -6919,7 +6832,7 @@ export class DuckConfig {
         }]
       },
       "data": {
-        "specifier": "file:///a/file00.ts",
+        "uri": "file:///a/file00.ts",
         "fixId": "fixMissingImport"
       }
     })
@@ -7150,7 +7063,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.move.newFile",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7163,7 +7076,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.function",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7176,7 +7089,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.constant",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7192,7 +7105,7 @@ fn lsp_code_actions_refactor() {
         "reason": "This file already has a default export"
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7208,7 +7121,7 @@ fn lsp_code_actions_refactor() {
         "reason": "This file already has a default export"
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7224,7 +7137,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7240,7 +7153,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7256,7 +7169,7 @@ fn lsp_code_actions_refactor() {
         "reason": "Selection is not an import declaration."
       },
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 1, "character": 0 }
@@ -7273,7 +7186,7 @@ fn lsp_code_actions_refactor() {
       "kind": "refactor.extract.interface",
       "isPreferred": true,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 33 }
@@ -7311,7 +7224,7 @@ fn lsp_code_actions_refactor() {
       },
       "isPreferred": true,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 7 },
           "end": { "line": 0, "character": 33 }
@@ -7448,7 +7361,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         "message": "Cannot find name 'DuckConfigOptions'."
       }],
       "data": {
-        "specifier": temp_dir.url().join("file00.ts").unwrap(),
+        "uri": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     }),
@@ -7484,7 +7397,7 @@ fn lsp_code_actions_imports_respects_fmt_config() {
         }]
       },
       "data": {
-        "specifier": temp_dir.url().join("file00.ts").unwrap(),
+        "uri": temp_dir.url().join("file00.ts").unwrap(),
         "fixId": "fixMissingImport"
       }
     })
@@ -7679,7 +7592,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       "kind": "refactor.move.newFile",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 14, "character": 0 }
@@ -7692,7 +7605,7 @@ fn lsp_code_actions_refactor_no_disabled_support() {
       "kind": "refactor.extract.function",
       "isPreferred": false,
       "data": {
-        "specifier": "file:///a/file.ts",
+        "uri": "file:///a/file.ts",
         "range": {
           "start": { "line": 0, "character": 0 },
           "end": { "line": 14, "character": 0 }
@@ -7863,7 +7776,7 @@ fn lsp_completions() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 5,
           "name": "build",
           "useCodeSnippet": false
@@ -7952,7 +7865,7 @@ fn lsp_completions_optional() {
           "commitCharacters": [".", ",", ";", "("],
           "data": {
             "tsc": {
-              "specifier": "file:///a/file.ts",
+              "uri": "file:///a/file.ts",
               "position": 79,
               "name": "b",
               "useCodeSnippet": false
@@ -7972,7 +7885,7 @@ fn lsp_completions_optional() {
       "insertText": "b",
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 79,
           "name": "b",
           "useCodeSnippet": false
@@ -8813,7 +8726,7 @@ fn lsp_infer_return_type() {
         "kind": "refactor.rewrite.function.returnType",
         "isPreferred": false,
         "data": {
-          "specifier": file.url(),
+          "uri": file.url(),
           "range": {
             "start": { "line": 1, "character": 15 },
             "end": { "line": 1, "character": 18 },
@@ -8833,7 +8746,7 @@ fn lsp_infer_return_type() {
       "kind": "refactor.rewrite.function.returnType",
       "isPreferred": false,
       "data": {
-        "specifier": file.url(),
+        "uri": file.url(),
         "range": {
           "start": { "line": 1, "character": 15 },
           "end": { "line": 1, "character": 18 },
@@ -9617,7 +9530,7 @@ fn lsp_completions_snippet() {
           ],
           "data": {
             "tsc": {
-              "specifier": "file:///a/a.tsx",
+              "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
               "useCodeSnippet": false
@@ -9645,7 +9558,7 @@ fn lsp_completions_snippet() {
       ],
       "data": {
         "tsc": {
-          "specifier": "file:///a/a.tsx",
+          "uri": "file:///a/a.tsx",
           "position": 87,
           "name": "type",
           "useCodeSnippet": false
@@ -9716,7 +9629,7 @@ fn lsp_completions_no_snippet() {
           ],
           "data": {
             "tsc": {
-              "specifier": "file:///a/a.tsx",
+              "uri": "file:///a/a.tsx",
               "position": 87,
               "name": "type",
               "useCodeSnippet": false
@@ -9819,7 +9732,7 @@ fn lsp_completions_npm() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
           "useCodeSnippet": false
@@ -9836,7 +9749,7 @@ fn lsp_completions_npm() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 69,
           "name": "MyClass",
           "useCodeSnippet": false
@@ -11887,6 +11800,47 @@ fn lsp_format_json() {
 
 #[test]
 #[timeout(300_000)]
+fn lsp_format_vscode_userdata() {
+  let context = TestContextBuilder::new().use_temp_cwd().build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open_raw(json!({
+    "textDocument": {
+      "uri": "vscode-userdata:///a/settings.json",
+      "languageId": "jsonc",
+      "version": 1,
+      "text": "  // foo\n{}\n",
+    }
+  }));
+  let res = client.write_request(
+    "textDocument/formatting",
+    json!({
+      "textDocument": {
+        "uri": "vscode-userdata:///a/settings.json",
+      },
+      "options": {
+        "tabSize": 2,
+        "insertSpaces": true,
+      },
+    }),
+  );
+  assert_eq!(
+    res,
+    json!([
+      {
+        "range": {
+          "start": { "line": 0, "character": 0 },
+          "end": { "line": 0, "character": 2 },
+        },
+        "newText": "",
+      },
+    ]),
+  );
+  client.shutdown();
+}
+
+#[test]
+#[timeout(300_000)]
 fn lsp_format_editor_options() {
   let context = TestContextBuilder::new().use_temp_cwd().build();
   let temp_dir = context.temp_dir();
@@ -12731,7 +12685,7 @@ fn lsp_completions_complete_function_calls() {
       "insertTextFormat": 1,
       "data": {
         "tsc": {
-          "specifier": "file:///a/file.ts",
+          "uri": "file:///a/file.ts",
           "position": 3,
           "name": "map",
           "useCodeSnippet": true
@@ -12753,6 +12707,107 @@ fn lsp_completions_complete_function_calls() {
       "insertText": "map(${1:callbackfn})",
       "insertTextFormat": 2,
     })
+  );
+  client.shutdown();
+}
+
+// Regression test for https://github.com/denoland/vscode_deno/issues/1276.
+#[test]
+#[timeout(300_000)]
+fn lsp_completions_private_class_fields() {
+  let context = TestContextBuilder::new()
+    .use_http_server()
+    .use_temp_cwd()
+    .build();
+  let mut client = context.new_lsp_command().build();
+  client.initialize_default();
+  client.did_open(json!({
+    "textDocument": {
+      "uri": "file:///a/file.ts",
+      "languageId": "typescript",
+      "version": 1,
+      "text": r#"
+        export class SomeClass {
+          #prop = 1;
+          foo() {
+            pro;
+            #pro;
+          }
+        }
+      "#,
+    },
+  }));
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (4, 15),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "#prop",
+      "kind": 5,
+      "sortText": "14",
+      "filterText": "prop",
+      "insertText": "this.#prop",
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "uri": "file:///a/file.ts",
+          "position": 88,
+          "name": "#prop",
+          "source": "ThisProperty/",
+          "useCodeSnippet": false,
+        },
+      },
+    }),
+  );
+
+  let list = client.get_completion_list(
+    "file:///a/file.ts",
+    (5, 16),
+    json!({
+      "triggerKind": 2,
+      "triggerCharacter": ".",
+    }),
+  );
+  assert!(!list.is_incomplete);
+  let item = list.items.iter().find(|i| i.label == "#prop").unwrap();
+  assert_eq!(
+    json!(item),
+    json!({
+      "label": "#prop",
+      "kind": 5,
+      "sortText": "14",
+      "filterText": "this.#prop",
+      "insertText": "this.#prop",
+      "commitCharacters": [
+        ".",
+        ",",
+        ";",
+        "("
+      ],
+      "data": {
+        "tsc": {
+          "uri": "file:///a/file.ts",
+          "position": 106,
+          "name": "#prop",
+          "source": "ThisProperty/",
+          "useCodeSnippet": false,
+        },
+      },
+    }),
   );
   client.shutdown();
 }
@@ -14014,7 +14069,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
   );
 
   // won't have results because the document won't be pre-loaded
-  assert_eq!(res, json!([]));
+  assert_eq!(res, json!(null));
 
   client.shutdown();
 }
@@ -14069,7 +14124,7 @@ fn lsp_closed_file_find_references_excluded_path() {
   );
 
   // won't have results because the documents won't be pre-loaded
-  assert_eq!(res, json!([]));
+  assert_eq!(res, json!(null));
 
   client.shutdown();
 }
@@ -14128,7 +14183,7 @@ fn lsp_data_urls_with_jsx_compiler_option() {
         "end": { "line": 1, "character": 1 }
       }
     }, {
-      "uri": "deno:/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8/data_url.ts",
+      "uri": "deno:/data_url/ed0224c51f7e2a845dfc0941ed6959675e5e3e3d2a39b127f0ff569c1ffda8d8.ts",
       "range": {
         "start": { "line": 0, "character": 7 },
         "end": {"line": 0, "character": 14 },
@@ -14881,7 +14936,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14932,7 +14987,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -14983,7 +15038,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -16054,7 +16109,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/@denotest+add@1.0.0/node_modules/@denotest/add/index.d.ts").unwrap(),
+      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -16832,7 +16887,7 @@ fn sloppy_imports_not_enabled() {
             temp_dir.join("a").url_file(),
           ),
           "data": {
-            "specifier": temp_dir.join("a").url_file(),
+            "uri": temp_dir.join("a").url_file(),
             "to": temp_dir.join("a.ts").url_file(),
             "message": "Add a '.ts' extension.",
           },
@@ -16859,7 +16914,7 @@ fn sloppy_imports_not_enabled() {
           temp_dir.join("a").url_file(),
         ),
         "data": {
-          "specifier": temp_dir.join("a").url_file(),
+          "uri": temp_dir.join("a").url_file(),
           "to": temp_dir.join("a.ts").url_file(),
           "message": "Add a '.ts' extension.",
         },

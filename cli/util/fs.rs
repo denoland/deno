@@ -179,7 +179,7 @@ pub fn clone_dir_recursive<
         err.kind(),
         std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::Unsupported
       ) {
-        log::warn!(
+        log::debug!(
           "Failed to clone dir {:?} to {:?} via clonefile: {}",
           from,
           to,

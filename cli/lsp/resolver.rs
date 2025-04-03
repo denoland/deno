@@ -299,7 +299,7 @@ impl LspScopeResolver {
 #[derive(Debug, Default, Clone)]
 pub struct LspResolver {
   unscoped: Arc<LspScopeResolver>,
-  by_scope: BTreeMap<ModuleSpecifier, Arc<LspScopeResolver>>,
+  by_scope: BTreeMap<Arc<Url>, Arc<LspScopeResolver>>,
 }
 
 impl LspResolver {
@@ -357,9 +357,7 @@ impl LspResolver {
 
   pub async fn set_dep_info_by_scope(
     &self,
-    dep_info_by_scope: &Arc<
-      BTreeMap<Option<ModuleSpecifier>, Arc<ScopeDepInfo>>,
-    >,
+    dep_info_by_scope: &Arc<BTreeMap<Option<Arc<Url>>, Arc<ScopeDepInfo>>>,
   ) {
     for (scope, resolver) in [(None, &self.unscoped)]
       .into_iter()
