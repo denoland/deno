@@ -276,8 +276,8 @@ impl ShellCommand for NodeCommand {
     // run with deno if it's a simple invocation, fall back to node
     // if there are extra flags
     let mut args: Vec<OsString> = Vec::with_capacity(context.args.len());
-    if context.args.len() > 1
-      && ({
+    if context.args.is_empty()
+      || ({
         let first_arg = context.args[0].to_string_lossy();
         first_arg.starts_with('-') // has a flag
         || !matches!(
@@ -290,7 +290,15 @@ impl ShellCommand for NodeCommand {
         .execute(context);
     }
 
-    args.extend(["run".into(), "-A".into()]);
+    args.extend([
+      "run".into(),
+      "-A".into(),
+      "--unstable-bare-node-builtins".into(),
+      "--unstable-detect-cjs".into(),
+      "--unstable-node-globals".into(),
+      "--unstable-sloppy-imports".into(),
+      "--unstable-unsafe-proto".into(),
+    ]);
     args.extend(context.args);
 
     let mut state = context.state;
