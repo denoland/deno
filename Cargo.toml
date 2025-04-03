@@ -360,6 +360,7 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 
 # unix
 nix = "=0.27.1"
+tokio-vsock = "0.7"
 
 # windows deps
 junction = "=1.2.0"
