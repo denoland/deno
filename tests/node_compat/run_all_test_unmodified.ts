@@ -8,7 +8,7 @@ import { basename } from "@std/path/basename";
 import { pooledMap } from "@std/async/pool";
 import { partition } from "@std/collections/partition";
 import { stripAnsiCode } from "@std/fmt/colors";
-import { version as nodeVersion } from "./runner/suite/node_version.ts"
+import { version as nodeVersion } from "./runner/suite/node_version.ts";
 
 // The timeout ms for single test execution. If a single test didn't finish in this timeout milliseconds, the test is considered as failure
 const TIMEOUT = 2000;
@@ -331,22 +331,26 @@ async function main() {
   // Summary
   const total = tests.length;
   const pass = tests.filter((test) => results[test][0]).length;
-  console.log(`All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`);
+  console.log(
+    `All tests: ${pass}/${total} (${(pass / total * 100).toFixed(2)}%)`,
+  );
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   // Store the results in a JSON file
   Deno.writeTextFile(
     "tests/node_compat/report.json",
-    JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
-      denoVersion: Deno.version.deno,
-      os: Deno.build.os,
-      arch: Deno.build.arch,
-      nodeVersion,
-      runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
-      total,
-      pass,
-      results
-    } satisfies TestReport),
+    JSON.stringify(
+      {
+        date: new Date().toISOString().slice(0, 10),
+        denoVersion: Deno.version.deno,
+        os: Deno.build.os,
+        arch: Deno.build.arch,
+        nodeVersion,
+        runId: Deno.env.get("GTIHUB_RUN_ID") ?? null,
+        total,
+        pass,
+        results,
+      } satisfies TestReport,
+    ),
   );
   Deno.exit(0);
 }
