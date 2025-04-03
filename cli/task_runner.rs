@@ -290,7 +290,15 @@ impl ShellCommand for NodeCommand {
         .execute(context);
     }
 
-    args.extend(["run".into(), "-A".into()]);
+    args.extend([
+      "run".into(),
+      "-A".into(),
+      "--unstable-bare-node-builtins".into(),
+      "--unstable-detect-cjs".into(),
+      "--unstable-node-globals".into(),
+      "--unstable-sloppy-imports".into(),
+      "--unstable-unsafe-proto".into(),
+    ]);
     args.extend(context.args);
 
     let mut state = context.state;
