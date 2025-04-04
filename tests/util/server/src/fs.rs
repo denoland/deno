@@ -548,7 +548,7 @@ impl TempDir {
   }
 
   pub fn uri(&self) -> Uri {
-    url_to_uri(self.url().as_str()).unwrap()
+    url_to_uri(&self.url()).unwrap()
   }
 
   pub fn path(&self) -> &PathRef {
