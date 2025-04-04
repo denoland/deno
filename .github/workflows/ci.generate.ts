@@ -382,6 +382,7 @@ const ci = {
             ...Runners.macosX86,
             job: "test",
             profile: "debug",
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "test",
@@ -391,6 +392,7 @@ const ci = {
             ...Runners.macosArm,
             job: "test",
             profile: "debug",
+            skip_pr: true,
           }, {
             ...Runners.macosArmSelfHosted,
             job: "test",
@@ -404,7 +406,6 @@ const ci = {
             ...Runners.windowsX86Xl,
             job: "test",
             profile: "release",
-            skip_pr: true,
           }, {
             ...Runners.linuxX86Xl,
             job: "test",
@@ -413,35 +414,40 @@ const ci = {
             // TODO(ry): Because CI is so slow on for OSX and Windows, we
             // currently run the Web Platform tests only on Linux.
             wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
+            skip_pr: true,
           }, {
             ...Runners.linuxX86Xl,
             job: "bench",
             profile: "release",
             use_sysroot: true,
-            skip_pr:
-              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
+            skip_pr: true,
           }, {
             ...Runners.linuxX86,
             job: "test",
             profile: "debug",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.linuxX86,
             job: "lint",
             profile: "debug",
+            skip_pr: true,
           }, {
             ...Runners.linuxArm,
             job: "test",
             profile: "debug",
+            skip_pr: true,
           }, {
             ...Runners.linuxArm,
             job: "test",
             profile: "release",
             use_sysroot: true,
+            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
+            skip_pr: true,
           }, {
             ...Runners.windowsX86,
             job: "lint",
