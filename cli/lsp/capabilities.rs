@@ -39,13 +39,13 @@ fn code_action_capabilities(
 
 pub fn semantic_tokens_registration_options(
 ) -> SemanticTokensRegistrationOptions {
-  const LANGUAGES: [&'static str; 4] = [
+  const LANGUAGES: [&str; 4] = [
     "javascript",
     "javascriptreact",
     "typescript",
     "typescriptreact",
   ];
-  const SCHEMES: [&'static str; 5] = [
+  const SCHEMES: [&str; 5] = [
     "file",
     "untitled",
     "deno",
