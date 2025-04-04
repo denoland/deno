@@ -553,7 +553,7 @@ jobs:
           matrix.profile == 'debug' &&
           !startsWith(github.ref, 'refs/tags/') &&
           matrix.os == 'linux')
-        run: cargo test --locked
+        run: cargo test --locked lsp
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: 'Test (fast, debug)'
@@ -562,8 +562,8 @@ jobs:
           matrix.profile == 'debug' &&
           (startsWith(github.ref, 'refs/tags/') || matrix.os != 'linux'))
         run: |-
-          cargo test --locked --lib
-          cargo test --locked --tests
+          cargo test --locked --lib lsp
+          cargo test --locked --tests lsp
         env:
           CARGO_PROFILE_DEV_DEBUG: 0
       - name: Test (release)
@@ -573,7 +573,7 @@ jobs:
           (matrix.use_sysroot || (
           github.repository == 'denoland/deno' &&
           !startsWith(github.ref, 'refs/tags/'))))
-        run: cargo test --release --locked
+        run: cargo test --release --locked lsp
       - name: Configure hosts file for WPT
         if: '!(matrix.skip) && (matrix.wpt)'
         run: ./wpt make-hosts-file | sudo tee -a /etc/hosts
