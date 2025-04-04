@@ -388,6 +388,8 @@ const _writer = Symbol("[[writer]]");
 const _writeRequests = Symbol("[[writeRequests]]");
 const _brand = webidl.brand;
 
+const _isClosedPromise = Symbol("[[isClosedPromise]]");
+
 function noop() {}
 async function noopAsync() {}
 const _defaultStartAlgorithm = noop;
@@ -605,6 +607,7 @@ function initializeReadableStream(stream) {
   stream[_state] = "readable";
   stream[_reader] = stream[_storedError] = undefined;
   stream[_disturbed] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -684,6 +687,7 @@ function initializeWritableStream(stream) {
       undefined;
   stream[_writeRequests] = [];
   stream[_backpressure] = false;
+  stream[_isClosedPromise] = new Deferred();
 }
 
 /**
@@ -1679,6 +1683,7 @@ function readableStreamCancel(stream, reason) {
 function readableStreamClose(stream) {
   assert(stream[_state] === "readable");
   stream[_state] = "closed";
+  stream[_isClosedPromise].resolve(undefined);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (!reader) {
@@ -2557,6 +2562,8 @@ function readableStreamError(stream, e) {
   assert(stream[_state] === "readable");
   stream[_state] = "errored";
   stream[_storedError] = e;
+  stream[_isClosedPromise].reject(e);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
   /** @type {ReadableStreamDefaultReader<R> | undefined} */
   const reader = stream[_reader];
   if (reader === undefined) {
@@ -4761,6 +4768,7 @@ function writableStreamFinishInFlightClose(stream) {
   if (writer !== undefined) {
     writer[_closedPromise].resolve(undefined);
   }
+  stream[_isClosedPromise].resolve?.();
   assert(stream[_pendingAbortRequest] === undefined);
   assert(stream[_storedError] === undefined);
 }
@@ -4841,6 +4849,10 @@ function writableStreamRejectCloseAndClosedPromiseIfNeeded(stream) {
     stream[_closeRequest].reject(stream[_storedError]);
     stream[_closeRequest] = undefined;
   }
+
+  stream[_isClosedPromise].reject(stream[_storedError]);
+  setPromiseIsHandledToTrue(stream[_isClosedPromise].promise);
+
   const writer = stream[_writer];
   if (writer !== undefined) {
     writer[_closedPromise].reject(stream[_storedError]);
@@ -5132,6 +5144,8 @@ class ReadableStream {
   [_storedError];
   /** @type {{ rid: number, autoClose: boolean } | null} */
   [_resourceBacking] = null;
+  /** @type {Deferred<void>} */
+  [_isClosedPromise];
 
   /**
    * @param {UnderlyingSource<R>=} underlyingSource
@@ -6891,6 +6905,7 @@ webidl.converters["async iterable<any>"] = webidl.createAsyncIterableConverter(
 internals.resourceForReadableStream = resourceForReadableStream;
 
 export {
+  _isClosedPromise,
   // Non-Public
   _state,
   // Exposed in global runtime scope
