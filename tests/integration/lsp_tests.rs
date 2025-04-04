@@ -1213,7 +1213,7 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.url(),
+        "scopeUri": temp_dir.uri(),
         "fileUri": url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap(),
         "type": "changed",
         "configurationType": "denoJson"
@@ -1235,7 +1235,7 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.url(),
+        "scopeUri": temp_dir.uri(),
         "fileUri": url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap(),
         "type": "removed",
         "configurationType": "denoJson"
@@ -1257,7 +1257,7 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.url(),
+        "scopeUri": temp_dir.uri(),
         "fileUri": url_to_uri(&temp_dir.url().join("package.json").unwrap()).unwrap(),
         "type": "changed",
         "configurationType": "packageJson"
@@ -1279,7 +1279,7 @@ fn lsp_did_change_deno_configuration_notification() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.url(),
+        "scopeUri": temp_dir.uri(),
         "fileUri": url_to_uri(&temp_dir.url().join("package.json").unwrap()).unwrap(),
         "type": "removed",
         "configurationType": "packageJson"
