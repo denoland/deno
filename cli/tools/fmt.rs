@@ -830,8 +830,6 @@ impl Formatter for RealFormatter {
 
     let failed_files_count = self.failed_files_count.load(Ordering::Relaxed);
     let checked_files_count = self.checked_files_count.load(Ordering::Relaxed);
-    let checked_files_str =
-      format!("{} {}", checked_files_count, files_str(checked_files_count));
 
     if failed_files_count == 0 {
       info!(
@@ -841,10 +839,13 @@ impl Formatter for RealFormatter {
       );
       Ok(())
     } else {
-      let failed_files_str =
-        format!("{} {}", failed_files_count, files_str(failed_files_count));
+      let checked_files_str = format!(
+        "{} checked {}",
+        checked_files_count,
+        files_str(checked_files_count)
+      );
       Err(anyhow!(
-        "Failed to format {failed_files_str} in {checked_files_str}",
+        "Failed to format {failed_files_count} of {checked_files_str}",
       ))
     }
   }
