@@ -70,7 +70,7 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
       let (dl_part, rest) = path.split_at(2);
       input.push_str(&dl_part.to_ascii_lowercase());
       input.push_str(
-        &percent_encoding::utf8_percent_encode(&path[3..], URL_TO_URI_PATH)
+        &percent_encoding::utf8_percent_encode(rest, URL_TO_URI_PATH)
           .to_string(),
       );
     } else {
