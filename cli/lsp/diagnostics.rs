@@ -1042,16 +1042,18 @@ async fn generate_ts_diagnostics(
   let mut enabled_modules_by_scope = BTreeMap::<_, Vec<_>>::new();
   let mut disabled_documents = Vec::new();
   for document in snapshot.document_modules.documents.open_docs() {
-    if let Some(module) = snapshot
-      .document_modules
-      .primary_module(&Document::Open(document.clone()))
-    {
-      if config.specifier_enabled(&module.specifier) {
-        enabled_modules_by_scope
-          .entry(module.scope.clone())
-          .or_default()
-          .push(module);
-        continue;
+    if document.is_diagnosable() {
+      if let Some(module) = snapshot
+        .document_modules
+        .primary_module(&Document::Open(document.clone()))
+      {
+        if config.specifier_enabled(&module.specifier) {
+          enabled_modules_by_scope
+            .entry(module.scope.clone())
+            .or_default()
+            .push(module);
+          continue;
+        }
       }
     }
     disabled_documents.push(document.clone());
