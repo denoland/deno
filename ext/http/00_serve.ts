@@ -1008,6 +1008,11 @@ function registerDeclarativeServer(exports) {
     typeof exports.prototype.fetch === "function"
   ) {
     serveFn = exports.prototype.fetch;
+  } else if (
+    typeof exports === "object" && exports !== null &&
+    typeof exports.fetch === "function"
+  ) {
+    serveFn = exports.fetch;
   }
 
   if (serveFn !== undefined) {
