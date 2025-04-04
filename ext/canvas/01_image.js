@@ -250,7 +250,7 @@ function createImageBitmap(
     if (isBlob) {
       imageBitmapSource = 0;
       buf = new Uint8Array(await image.arrayBuffer());
-      const mimeTypeString = sniffImage(image.type, buf);
+      const mimeTypeString = sniffImage(null, buf);
 
       if (mimeTypeString === "image/png") {
         mimeType = 1;
