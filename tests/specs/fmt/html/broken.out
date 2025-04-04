@@ -1,4 +1,4 @@
 Error formatting: [WILDCARD]broken.html
    Syntax error (expected close tag) at file://[WILDCARD]broken.html:3:0
 
-Checked 1 file
+error: Failed to format 1 of 1 checked file

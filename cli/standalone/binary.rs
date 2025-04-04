@@ -484,6 +484,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
                 maybe_transpiled,
                 maybe_source_map,
                 maybe_cjs_export_analysis,
+                mtime: file_path
+                  .metadata()
+                  .ok()
+                  .and_then(|m| m.modified().ok()),
               },
             )
             .with_context(|| {
