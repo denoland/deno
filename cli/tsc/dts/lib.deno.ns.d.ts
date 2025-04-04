@@ -4369,6 +4369,7 @@ declare namespace Deno {
       | "aix"
       | "solaris"
       | "illumos";
+    standalone: boolean;
     /** The computer vendor that the Deno CLI was built for. */
     vendor: string;
     /** Optional environment flags that were set for this build of Deno CLI. */
