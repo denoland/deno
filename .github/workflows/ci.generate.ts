@@ -382,7 +382,6 @@ const ci = {
             ...Runners.macosX86,
             job: "test",
             profile: "debug",
-            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "test",
@@ -392,7 +391,6 @@ const ci = {
             ...Runners.macosArm,
             job: "test",
             profile: "debug",
-            skip_pr: true,
           }, {
             ...Runners.macosArmSelfHosted,
             job: "test",
@@ -406,6 +404,7 @@ const ci = {
             ...Runners.windowsX86Xl,
             job: "test",
             profile: "release",
+            skip_pr: true,
           }, {
             ...Runners.linuxX86Xl,
             job: "test",
@@ -414,40 +413,35 @@ const ci = {
             // TODO(ry): Because CI is so slow on for OSX and Windows, we
             // currently run the Web Platform tests only on Linux.
             wpt: "${{ !startsWith(github.ref, 'refs/tags/') }}",
-            skip_pr: true,
           }, {
             ...Runners.linuxX86Xl,
             job: "bench",
             profile: "release",
             use_sysroot: true,
-            skip_pr: true,
+            skip_pr:
+              "${{ !contains(github.event.pull_request.labels.*.name, 'ci-bench') }}",
           }, {
             ...Runners.linuxX86,
             job: "test",
             profile: "debug",
             use_sysroot: true,
-            skip_pr: true,
           }, {
             ...Runners.linuxX86,
             job: "lint",
             profile: "debug",
-            skip_pr: true,
           }, {
             ...Runners.linuxArm,
             job: "test",
             profile: "debug",
-            skip_pr: true,
           }, {
             ...Runners.linuxArm,
             job: "test",
             profile: "release",
             use_sysroot: true,
-            skip_pr: true,
           }, {
             ...Runners.macosX86,
             job: "lint",
             profile: "debug",
-            skip_pr: true,
           }, {
             ...Runners.windowsX86,
             job: "lint",
@@ -777,7 +771,6 @@ const ci = {
         {
           name: "Upload PR artifact (linux)",
           if: [
-            "matrix.os == 'linux' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
             "(github.repository == 'denoland/deno' &&",
@@ -789,23 +782,6 @@ const ci = {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
-          },
-        },
-        {
-          name: "Upload PR artifact (windows)",
-          if: [
-            "matrix.os == 'windows' &&",
-            "matrix.job == 'test' &&",
-            "matrix.profile == 'release' && (matrix.use_sysroot ||",
-            "(github.repository == 'denoland/deno' &&",
-            "(github.ref == 'refs/heads/main' ||",
-            "startsWith(github.ref, 'refs/tags/'))))",
-          ].join("\n"),
-          uses: "actions/upload-artifact@v4",
-          with: {
-            name:
-              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
-            path: "target/release/deno.exe",
           },
         },
         {
@@ -911,7 +887,7 @@ const ci = {
             // Run full tests only on Linux.
             "matrix.os == 'linux'",
           ].join("\n"),
-          run: "cargo test --locked lsp",
+          run: "cargo test --locked",
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
         {
@@ -924,8 +900,8 @@ const ci = {
           run: [
             // Run unit then integration tests. Skip doc tests here
             // since they are sometimes very slow on Mac.
-            "cargo test --locked --lib lsp",
-            "cargo test --locked --tests lsp",
+            "cargo test --locked --lib",
+            "cargo test --locked --tests",
           ].join("\n"),
           env: { CARGO_PROFILE_DEV_DEBUG: 0 },
         },
@@ -938,7 +914,7 @@ const ci = {
             "github.repository == 'denoland/deno' &&",
             "!startsWith(github.ref, 'refs/tags/')))",
           ].join("\n"),
-          run: "cargo test --release --locked lsp",
+          run: "cargo test --release --locked",
         },
         {
           name: "Configure hosts file for WPT",
