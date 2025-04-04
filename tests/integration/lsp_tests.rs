@@ -916,7 +916,7 @@ fn lsp_workspace_enable_paths_no_workspace_configuration() {
       uri: temp_dir.uri(),
       name: "project".to_string(),
     }]);
-    builder.set_root_uri(temp_dir.url());
+    builder.set_root_uri(temp_dir.uri());
     builder.set_enable_paths(vec!["./main_enabled.ts".to_string()]);
   });
 
@@ -2117,23 +2117,18 @@ fn lsp_workspace_disable_enable_paths() {
     temp_dir.write("worker/other.ts", "import { a } from './shared.ts';\na;");
     temp_dir.write("worker/node.ts", "Buffer.alloc(1);");
 
-    let root_specifier = temp_dir.url();
-
     let mut client = context.new_lsp_command().build();
     client.initialize_with_config(
       |builder| {
         builder
           .set_disable_paths(vec!["./worker/node.ts".to_string()])
           .set_enable_paths(vec!["./worker".to_string()])
-          .set_root_uri(root_specifier.clone())
+          .set_root_uri(temp_dir.uri())
           .set_workspace_folders(vec![lsp::WorkspaceFolder {
             uri: if use_trailing_slash {
-              lsp::Uri::from_str(root_specifier.as_str()).unwrap()
+              temp_dir.uri()
             } else {
-              lsp::Uri::from_str(
-                root_specifier.as_str().strip_suffix('/').unwrap(),
-              )
-              .unwrap()
+              url_to_uri(&Url::from_file_path(temp_dir.path())).unwrap()
             },
             name: "project".to_string(),
           }]);
@@ -2146,7 +2141,7 @@ fn lsp_workspace_disable_enable_paths() {
 
     client.did_open(json!({
       "textDocument": {
-        "uri": root_specifier.join("./file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./file.ts").unwrap()).unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -2155,7 +2150,7 @@ fn lsp_workspace_disable_enable_paths() {
 
     client.did_open(json!({
       "textDocument": {
-        "uri": root_specifier.join("./other/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./other/file.ts").unwrap()).unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -2164,7 +2159,7 @@ fn lsp_workspace_disable_enable_paths() {
 
     client.did_open(json!({
       "textDocument": {
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": concat!(
@@ -2177,7 +2172,7 @@ fn lsp_workspace_disable_enable_paths() {
 
     client.did_open(json!({
       "textDocument": {
-        "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/subdir/file.ts").unwrap()).unwrap(),
         "languageId": "typescript",
         "version": 1,
         "text": "console.log(Date.now());\n"
@@ -2188,7 +2183,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./file.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./file.ts").unwrap()).unwrap(),
         },
         "position": { "line": 0, "character": 19 }
       }),
@@ -2199,7 +2194,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./other/file.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./other/file.ts").unwrap()).unwrap(),
         },
         "position": { "line": 0, "character": 19 }
       }),
@@ -2210,7 +2205,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./worker/node.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./worker/node.ts").unwrap()).unwrap(),
         },
         "position": { "line": 0, "character": 0 }
       }),
@@ -2221,7 +2216,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
         },
         "position": { "line": 0, "character": 19 }
       }),
@@ -2247,7 +2242,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/hover",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./worker/subdir/file.ts").unwrap()).unwrap(),
         },
         "position": { "line": 0, "character": 19 }
       }),
@@ -2275,7 +2270,7 @@ fn lsp_workspace_disable_enable_paths() {
       "textDocument/references",
       json!({
         "textDocument": {
-          "uri": root_specifier.join("./worker/file.ts").unwrap(),
+          "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
         },
         "position": { "line": 2, "character": 0 },
         "context": {
@@ -2287,31 +2282,31 @@ fn lsp_workspace_disable_enable_paths() {
     assert_eq!(
       res,
       json!([{
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
         "range": {
           "start": { "line": 1, "character": 9 },
           "end": { "line": 1, "character": 10 }
         }
       }, {
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
         "range": {
           "start": { "line": 2, "character": 0 },
           "end": { "line": 2, "character": 1 }
         }
       }, {
-        "uri": root_specifier.join("./worker/shared.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/shared.ts").unwrap()).unwrap(),
         "range": {
           "start": { "line": 0, "character": 13 },
           "end": { "line": 0, "character": 14 }
         }
       }, {
-        "uri": root_specifier.join("./worker/other.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/other.ts").unwrap()).unwrap(),
         "range": {
           "start": { "line": 0, "character": 9 },
           "end": { "line": 0, "character": 10 }
         }
       }, {
-        "uri": root_specifier.join("./worker/other.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/other.ts").unwrap()).unwrap(),
         "range": {
           "start": { "line": 1, "character": 0 },
           "end": { "line": 1, "character": 1 }
@@ -2343,14 +2338,12 @@ fn lsp_exclude_config() {
   "exclude": ["other"],
 }"#,
   );
-  let root_specifier = temp_dir.url();
-
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
 
   client.did_open(json!({
     "textDocument": {
-      "uri": root_specifier.join("./other/file.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./other/file.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(Date.now());\n"
@@ -2359,7 +2352,7 @@ fn lsp_exclude_config() {
 
   client.did_open(json!({
     "textDocument": {
-      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": concat!(
@@ -2372,7 +2365,7 @@ fn lsp_exclude_config() {
 
   client.did_open(json!({
     "textDocument": {
-      "uri": root_specifier.join("./worker/subdir/file.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./worker/subdir/file.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": "console.log(Date.now());\n"
@@ -2383,7 +2376,7 @@ fn lsp_exclude_config() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": root_specifier.join("./other/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./other/file.ts").unwrap()).unwrap(),
       },
       "position": { "line": 0, "character": 19 }
     }),
@@ -2394,7 +2387,7 @@ fn lsp_exclude_config() {
     "textDocument/hover",
     json!({
       "textDocument": {
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
       },
       "position": { "line": 0, "character": 19 }
     }),
@@ -2421,7 +2414,7 @@ fn lsp_exclude_config() {
     "textDocument/references",
     json!({
       "textDocument": {
-        "uri": root_specifier.join("./worker/file.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
       },
       "position": { "line": 2, "character": 0 },
       "context": {
@@ -2433,19 +2426,19 @@ fn lsp_exclude_config() {
   assert_eq!(
     res,
     json!([{
-      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
       "range": {
         "start": { "line": 1, "character": 9 },
         "end": { "line": 1, "character": 10 }
       }
     }, {
-      "uri": root_specifier.join("./worker/file.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./worker/file.ts").unwrap()).unwrap(),
       "range": {
         "start": { "line": 2, "character": 0 },
         "end": { "line": 2, "character": 1 }
       }
     }, {
-      "uri": root_specifier.join("./worker/shared.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("./worker/shared.ts").unwrap()).unwrap(),
       "range": {
         "start": { "line": 0, "character": 13 },
         "end": { "line": 0, "character": 14 }
@@ -14354,7 +14347,12 @@ fn lsp_node_modules_dir() {
     .unwrap();
   // canonicalize for mac
   let path = temp_dir.path().join("node_modules").canonicalize();
-  assert_starts_with!(uri, Url::from_file_path(&path).unwrap().as_str());
+  assert_starts_with!(
+    uri,
+    url_to_uri(&Url::from_file_path(&path).unwrap())
+      .unwrap()
+      .as_str()
+  );
 
   client.shutdown();
 }
@@ -16659,7 +16657,7 @@ fn lsp_sloppy_imports() {
   temp_dir.join("c.d.ts").write("export class C {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_root_uri(temp_dir.url_dir());
+    builder.set_root_uri(temp_dir.uri_dir());
   });
   client.did_open(json!({
     "textDocument": {
@@ -16818,7 +16816,7 @@ fn lsp_sloppy_imports_prefers_dts() {
   );
 
   let diagnostics = client.did_open_file(&a_dts);
-  assert_eq!(json!(diagnostics.for_file(&a_dts.url())), json!([]));
+  assert_eq!(json!(diagnostics.for_file(&a_dts.uri())), json!([]));
 
   let response = client.write_request(
     "textDocument/references",
@@ -16834,12 +16832,12 @@ fn lsp_sloppy_imports_prefers_dts() {
     response,
     json!([
       {
-        "uri": file.url(),
+        "uri": file.uri(),
         // the import
         "range": file.range_of("foo"),
       },
       {
-        "uri": file.url(),
+        "uri": file.uri(),
         // the usage
         "range": file.range_of_nth(1, "foo"),
       }
@@ -16860,7 +16858,7 @@ fn sloppy_imports_not_enabled() {
   temp_dir.join("a.ts").write("export class A {}");
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
-    builder.set_root_uri(temp_dir.url_dir());
+    builder.set_root_uri(temp_dir.uri_dir());
   });
   let diagnostics = client.did_open(json!({
     "textDocument": {
