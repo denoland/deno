@@ -1,31 +1,37 @@
 {
   "tempDir": true,
   "steps": [{
-    "args": "run -A setup.ts",
+    "args": [
+      "eval",
+      "Deno.mkdirSync('a'); Deno.copyFileSync('main.ts', 'a/main.ts');"
+    ],
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --no-config --output a/main a/main.ts",
+    "args": "compile --no-config --output a_bin a/main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --no-config --output a.exe a/main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "args": ["eval", "Deno.renameSync('a', 'b')"],
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "compile --no-config --output b/main b/main.ts",
+    "args": "compile --no-config --output b_bin b/main.ts",
+    "output": "[WILDCARD]"
+  }, {
+    "if": "windows",
+    "args": "compile --no-config --output b.exe b/main.ts",
     "output": "[WILDCARD]"
   }, {
     "if": "unix",
-    "args": "run --allow-read=. assert_equal.ts a/main b/main",
+    "args": "run --allow-read=. assert_equal.ts a_bin b_bin",
     "output": "Same\n"
   }, {
     "if": "windows",
-    "args": "compile --no-config --output a/main.exe a/main.ts",
-    "output": "[WILDCARD]"
-  }, {
-    "if": "windows",
-    "args": "compile --no-config --output b/main.exe b/main.ts",
-    "output": "[WILDCARD]"
-  }, {
-    "if": "windows",
-    "args": "run --allow-read=. assert_equal.ts a/main.exe b/main.exe",
+    "args": "run --allow-read=. assert_equal.ts a.exe b.exe",
     "output": "Same\n"
   }]
 }
