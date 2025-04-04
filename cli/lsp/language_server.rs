@@ -1135,7 +1135,9 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
+              let scoped_resolver =
+                inner.resolver.get_scoped_resolver(Some(&referrer));
+              let resolver = scoped_resolver.as_cli_resolver();
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &referrer,

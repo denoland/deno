@@ -170,8 +170,9 @@ pub async fn get_import_completions(
     .map(to_node_resolution_mode)
     .unwrap_or_else(|| module.resolution_mode);
   let range = to_narrow_lsp_range(module.text_info(), graph_range.range);
-  let resolved = resolver
-    .as_cli_resolver(module.scope.as_deref())
+  let scoped_resolver = resolver.get_scoped_resolver(module.scope.as_deref());
+  let resolved = scoped_resolver
+    .as_cli_resolver()
     .resolve(
       text,
       &module.specifier,
