@@ -8,8 +8,7 @@ https://github.com/denoland/deno_install
 
 ### 2.2.7 / 2025.04.04
 
-- feat(add/install): --npm and --jsr flags for deno add/install (#28666)
-- feat: v8js metrics (#28592)
+- feat(unstable/otel): v8js metrics (#28592)
 - fix(ext/node): better dns.lookup compatibility (#27936)
 - fix(ext/node): sqlite handle empty blob being NULL (#28674)
 - fix(ext/node): support the optional `previousValue` parameter for
