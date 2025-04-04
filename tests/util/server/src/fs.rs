@@ -55,14 +55,36 @@ const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
 const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
   &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
 
-pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
-  let components = url::quirks::internal_components(url);
+pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
+  let components = deno_core::url::quirks::internal_components(url);
   let mut input = String::with_capacity(url.as_str().len());
   input.push_str(&url.as_str()[..components.path_start as usize]);
-  input.push_str(
-    &percent_encoding::utf8_percent_encode(url.path(), URL_TO_URI_PATH)
-      .to_string(),
-  );
+  if cfg!(windows) && url.scheme() == "file" {
+    let path = url.path();
+    let mut chars = path.chars();
+    let has_drive_letter = chars.next().is_some_and(|c| c == '/')
+      && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+      && chars.next().is_some_and(|c| c == ':')
+      && chars.next().is_none_or(|c| c == '/');
+    if has_drive_letter {
+      let (dl_part, rest) = path.split_at(2);
+      input.push_str(&dl_part.to_ascii_lowercase());
+      input.push_str(
+        &percent_encoding::utf8_percent_encode(&path[3..], URL_TO_URI_PATH)
+          .to_string(),
+      );
+    } else {
+      input.push_str(
+        &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH)
+          .to_string(),
+      );
+    }
+  } else {
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(url.path(), URL_TO_URI_PATH)
+        .to_string(),
+    );
+  }
   if let Some(query) = url.query() {
     input.push('?');
     input.push_str(
