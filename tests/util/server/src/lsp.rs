@@ -1227,11 +1227,11 @@ impl CollectedDiagnostics {
       .collect()
   }
 
-  pub fn for_file(&self, specifier: &Url) -> Vec<lsp::Diagnostic> {
+  pub fn for_file(&self, uri: &Uri) -> Vec<lsp::Diagnostic> {
     self
       .all_messages()
       .iter()
-      .filter(|p| p.uri.as_str() == specifier.as_str())
+      .filter(|p| p.uri.as_str() == uri.as_str())
       .flat_map(|p| p.diagnostics.iter())
       .cloned()
       .collect()

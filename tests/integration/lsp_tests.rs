@@ -2128,7 +2128,8 @@ fn lsp_workspace_disable_enable_paths() {
             uri: if use_trailing_slash {
               temp_dir.uri()
             } else {
-              url_to_uri(&Url::from_file_path(temp_dir.path())).unwrap()
+              url_to_uri(&Url::from_file_path(temp_dir.path()).unwrap())
+                .unwrap()
             },
             name: "project".to_string(),
           }]);
@@ -14017,7 +14018,6 @@ fn lsp_closed_file_find_references() {
     "./mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
