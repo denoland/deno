@@ -424,7 +424,7 @@ async fn sync_resolution_with_fs(
               if let Some(deprecated) = &extra.deprecated {
                 packages_with_deprecation_warnings
                   .lock()
-                  .push((package.id.clone(), deprecated.clone()));
+                  .push((package.id.nv.clone(), deprecated.clone()));
               }
             }
 
@@ -476,7 +476,7 @@ async fn sync_resolution_with_fs(
               if let Some(deprecated) = &extra.deprecated {
                 packages_with_deprecation_warnings
                   .lock()
-                  .push((package.id.clone(), deprecated.clone()));
+                  .push((package.id.nv.clone(), deprecated.clone()));
               }
             }
 
@@ -837,18 +837,18 @@ async fn sync_resolution_with_fs(
         colors::yellow("Warning")
       );
       let len = packages_with_deprecation_warnings.len();
-      for (idx, (package_id, msg)) in
+      for (idx, (package_nv, msg)) in
         packages_with_deprecation_warnings.iter().enumerate()
       {
         if idx != len - 1 {
           log::warn!(
             "┠─ {}",
-            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+            colors::gray(format!("npm:{:?} ({})", package_nv, msg))
           );
         } else {
           log::warn!(
             "┖─ {}",
-            colors::gray(format!("npm:{:?} ({})", package_id, msg))
+            colors::gray(format!("npm:{:?} ({})", package_nv, msg))
           );
         }
       }
