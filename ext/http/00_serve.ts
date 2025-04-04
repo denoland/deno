@@ -46,6 +46,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  FunctionPrototypeToString,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -991,12 +992,25 @@ internals.serveHttpOnListener = serveHttpOnListener;
 internals.serveHttpOnConnection = serveHttpOnConnection;
 
 function registerDeclarativeServer(exports) {
+  let serveFn;
+
   if (ObjectHasOwn(exports, "fetch")) {
     if (typeof exports.fetch !== "function") {
       throw new TypeError(
         "Invalid type for fetch: must be a function with a single or no parameter",
       );
     }
+
+    serveFn = exports.fetch;
+  } else if (
+    typeof exports === "function" &&
+    StringPrototypeIncludes(FunctionPrototypeToString(exports), "class ") &&
+    typeof exports.prototype.fetch === "function"
+  ) {
+    serveFn = exports.prototype.fetch;
+  }
+
+  if (serveFn !== undefined) {
     return ({ servePort, serveHost, serveIsMain, serveWorkerCount }) => {
       Deno.serve({
         port: servePort,
@@ -1021,7 +1035,7 @@ function registerDeclarativeServer(exports) {
           }
         },
         handler: (req, connInfo) => {
-          return exports.fetch(req, connInfo);
+          return serveFn(req, connInfo);
         },
       });
     };
