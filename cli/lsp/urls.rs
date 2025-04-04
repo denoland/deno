@@ -1,6 +1,8 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::Component;
+use std::path::Path;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use deno_config::UrlToFilePathError;
