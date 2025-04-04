@@ -400,3 +400,22 @@ Deno.test("imageBitmapFromBlobColorspaceConversion", async (t) => {
     assertEquals(firstPixel, new Uint8Array([255, 0, 0, 255]));
   });
 });
+
+// reference:
+// https://github.com/web-platform-tests/wpt/blob/ea49709e5880c8133249d919c72d67798afc31ec/html/canvas/element/manual/imagebitmap/createImageBitmap-blob-invalidtype.html
+Deno.test("imageBitmapFromBlobInvalidtype", async () => {
+  const IMAGE = atob(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEUAA" +
+      "ACnej3aAAAAAXRSTlMAQObYZgAAAApJREFUCNdjYAAAAAIAAeIhvDMAAAAASUVORK5CYII=",
+  );
+
+  const bytes = new Array(IMAGE.length);
+  for (let i = 0; i < IMAGE.length; i++) {
+    bytes[i] = IMAGE.charCodeAt(i);
+  }
+
+  const blob = new Blob([new Uint8Array(bytes)], { type: "text/html" });
+  const imageBitmap = await createImageBitmap(blob);
+  assertEquals(imageBitmap.width, 1);
+  assertEquals(imageBitmap.height, 1);
+});
