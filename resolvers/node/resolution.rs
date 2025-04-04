@@ -2121,7 +2121,9 @@ fn collect_modules_in_dir_recursive(
             }
             MediaType::Css
             | MediaType::Json
+            | MediaType::Html
             | MediaType::SourceMap
+            | MediaType::Sql
             | MediaType::Unknown => {}
           }
         }

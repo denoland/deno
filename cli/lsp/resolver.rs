@@ -295,10 +295,6 @@ impl LspScopeResolver {
     })
   }
 
-  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
-    self.config_data.as_ref()
-  }
-
   pub fn as_jsr_cache_resolver(&self) -> Option<&Arc<JsrCacheResolver>> {
     self.jsr_resolver.as_ref()
   }

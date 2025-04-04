@@ -515,7 +515,7 @@ pub struct NodeCodeTranslator<
   TInNpmPackageChecker: InNpmPackageChecker,
   TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
   TNpmPackageFolderResolver: NpmPackageFolderResolver,
-  TSys: FsCanonicalize + FsMetadata + FsRead,
+  TSys: NodeResolverSys,
 > {
   module_export_analyzer: CjsModuleExportAnalyzerRc<
     TCjsCodeAnalyzer,
@@ -531,7 +531,7 @@ impl<
     TInNpmPackageChecker: InNpmPackageChecker,
     TIsBuiltInNodeModuleChecker: IsBuiltInNodeModuleChecker,
     TNpmPackageFolderResolver: NpmPackageFolderResolver,
-    TSys: FsCanonicalize + FsMetadata + FsRead,
+    TSys: NodeResolverSys,
   >
   NodeCodeTranslator<
     TCjsCodeAnalyzer,

@@ -4340,27 +4340,25 @@ fn op_export_modules_for_module(
     .state_snapshot
     .resolver
     .get_scope_resolver(Some(&referrer));
-  let config_data = scope_resolver.as_config_data();
   let mut urls = IndexSet::new();
 
   get_jsr_and_npm_importable_paths(scope_resolver, &referrer, state, &mut urls);
 
   // Include all remote modules and any modules in the current
   // package (or else all user code)
-  let documents = state
-    .state_snapshot
-    .documents
-    .documents(DocumentsFilter::AllDiagnosable);
+  // todo(THIS PR): this is wrong and should filter by scope?
+  let documents = state.state_snapshot.document_modules.documents.docs();
   let in_npm_pkg_checker = scope_resolver.as_in_npm_pkg_checker();
   for document in documents {
-    let should_add = match document.specifier().scheme() {
-      // todo: also filter out specifiers in other packages
-      "file" => !in_npm_pkg_checker.in_npm_package(document.specifier()),
+    let url = uri_to_url(document.uri());
+    let should_add = match url.scheme() {
+      // todo(THIS PR): also filter out specifiers in other packages
+      "file" => !in_npm_pkg_checker.in_npm_package(&url),
       "cache" => false,
       _ => true,
     };
     if should_add {
-      urls.insert(state.specifier_map.denormalize(document.specifier()));
+      urls.insert(state.specifier_map.denormalize(&url));
     }
   }
 
@@ -4840,7 +4838,7 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
         script_names.insert(state.specifier_map.denormalize(types_specifier));
       }
       if types_specifier.is_none() || is_open {
-        script_names.insert(state.specifier_map.denormalize(module.specifier));
+        script_names.insert(state.specifier_map.denormalize(&module.specifier));
       }
     }
   }
