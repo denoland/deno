@@ -46,7 +46,6 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
-  FunctionPrototypeToString,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
