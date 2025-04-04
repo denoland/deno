@@ -77,9 +77,9 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
         .to_string(),
     );
   }
-  Ok(Uri::from_str(&input).map_err(|err| {
+  Uri::from_str(&input).map_err(|err| {
     anyhow::anyhow!("Could not convert URL \"{url}\" to URI: {err}")
-  })?)
+  })
 }
 
 /// Represents a path on the file system, which can be used
