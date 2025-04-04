@@ -5903,7 +5903,7 @@ fn lsp_jsr_auto_import_completion_import_map_sub_path() {
   client.read_diagnostics();
   client.did_open_file(&file);
   let list = client.get_completion_list(
-    file.url(),
+    file.uri().as_str(),
     (3, 15),
     json!({ "triggerKind": 1 }),
   );
@@ -8718,7 +8718,7 @@ fn lsp_infer_return_type() {
   let res = client.write_request(
     "textDocument/codeAction",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": file.uri() },
       "range": {
         "start": { "line": 1, "character": 15 },
         "end": { "line": 1, "character": 18 },
@@ -8737,7 +8737,7 @@ fn lsp_infer_return_type() {
         "kind": "refactor.rewrite.function.returnType",
         "isPreferred": false,
         "data": {
-          "uri": file.url(),
+          "uri": file.uri(),
           "range": {
             "start": { "line": 1, "character": 15 },
             "end": { "line": 1, "character": 18 },
@@ -8757,7 +8757,7 @@ fn lsp_infer_return_type() {
       "kind": "refactor.rewrite.function.returnType",
       "isPreferred": false,
       "data": {
-        "uri": file.url(),
+        "uri": file.uri(),
         "range": {
           "start": { "line": 1, "character": 15 },
           "end": { "line": 1, "character": 18 },
@@ -8768,7 +8768,7 @@ fn lsp_infer_return_type() {
       "edit": {
         "documentChanges": [
           {
-            "textDocument": { "uri": file.url(), "version": null },
+            "textDocument": { "uri": file.uri(), "version": null },
             "edits": [
               {
                 "range": {
@@ -11796,7 +11796,7 @@ fn lsp_format_json() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": json_file.url(),
+        "uri": json_file.uri(),
       },
       "options": {
         "tabSize": 2,
@@ -11888,7 +11888,7 @@ fn lsp_format_editor_options() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": file.url(),
+        "uri": file.uri(),
       },
       "options": {
         "tabSize": 4,
@@ -11912,7 +11912,7 @@ fn lsp_format_editor_options() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": file.url(),
+        "uri": file.uri(),
       },
       "options": {
         "tabSize": 2,
@@ -12022,7 +12022,7 @@ fn lsp_format_markdown() {
     "textDocument/formatting",
     json!({
       "textDocument": {
-        "uri": file.url()
+        "uri": file.uri(),
       },
       "options": {
         "tabSize": 2,
@@ -12063,7 +12063,7 @@ fn lsp_format_html() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12112,7 +12112,7 @@ fn lsp_format_css() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": css_file.url() },
+      "textDocument": { "uri": css_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12134,7 +12134,7 @@ fn lsp_format_css() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": scss_file.url() },
+      "textDocument": { "uri": scss_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12156,7 +12156,7 @@ fn lsp_format_css() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": sass_file.url() },
+      "textDocument": { "uri": sass_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12178,7 +12178,7 @@ fn lsp_format_css() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": less_file.url() },
+      "textDocument": { "uri": less_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12211,7 +12211,7 @@ fn lsp_format_yaml() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12261,7 +12261,7 @@ fn lsp_format_sql() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12327,7 +12327,7 @@ fn lsp_format_component() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": svelte_file.url() },
+      "textDocument": { "uri": svelte_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12349,7 +12349,7 @@ fn lsp_format_component() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": vue_file.url() },
+      "textDocument": { "uri": vue_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12371,7 +12371,7 @@ fn lsp_format_component() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": astro_file.url() },
+      "textDocument": { "uri": astro_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12393,7 +12393,7 @@ fn lsp_format_component() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": vento_file.url() },
+      "textDocument": { "uri": vento_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -12415,7 +12415,7 @@ fn lsp_format_component() {
   let res = client.write_request(
     "textDocument/formatting",
     json!({
-      "textDocument": { "uri": nunjucks_file.url() },
+      "textDocument": { "uri": nunjucks_file.uri() },
       "options": {
         "tabSize": 2,
         "insertSpaces": true,
@@ -13618,7 +13618,7 @@ fn lsp_jsx_import_source_byonm_preact() {
   let res = client.write_request(
     "textDocument/hover",
     json!({
-      "textDocument": { "uri": file.url() },
+      "textDocument": { "uri": file.uri() },
       "position": { "line": 0, "character": 1 },
     }),
   );
@@ -14072,14 +14072,13 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
     "./sub_dir/mod.test.ts",
     "import { a } from './mod.ts'; console.log(a);",
   );
-  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize(|builder| {
     builder.set_preload_limit(1);
   });
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("sub_dir/mod.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"export const a = 5;"#
@@ -14089,7 +14088,7 @@ fn lsp_closed_file_find_references_low_document_pre_load() {
     "textDocument/references",
     json!({
       "textDocument": {
-        "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("sub_dir/mod.ts").unwrap()).unwrap(),
       },
       "position": { "line": 0, "character": 13 },
       "context": {
@@ -14129,12 +14128,11 @@ fn lsp_closed_file_find_references_excluded_path() {
   ]
 }"#,
   );
-  let temp_dir_url = temp_dir.url();
   let mut client = context.new_lsp_command().build();
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("sub_dir/mod.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"export const a = 5;"#
@@ -14144,7 +14142,7 @@ fn lsp_closed_file_find_references_excluded_path() {
     "textDocument/references",
     json!({
       "textDocument": {
-        "uri": temp_dir_url.join("sub_dir/mod.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("sub_dir/mod.ts").unwrap()).unwrap(),
       },
       "position": { "line": 0, "character": 13 },
       "context": {
@@ -15075,7 +15073,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project2/project3/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -15304,8 +15302,8 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
     json!({
       "files": [
         {
-          "oldUri": file1.url(),
-          "newUri": file1.url().join("file_renamed.ts").unwrap(),
+          "oldUri": file1.uri(),
+          "newUri": url_to_uri(&file1.url().join("file_renamed.ts").unwrap()).unwrap(),
         },
       ],
     }),
@@ -16611,7 +16609,7 @@ fn lsp_byonm() {
   context.run_npm("install");
   client.did_change_watched_files(json!({
     "changes": [{
-      "uri": temp_dir.url().join("node_modules/.package-lock.json").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("node_modules/.package-lock.json").unwrap()).unwrap(),
       "type": 1,
     }],
   }));
@@ -17618,7 +17616,7 @@ fn compiler_options_types() {
     context.run_deno("install");
     client.did_change_watched_files(json!({
       "changes": [{
-        "uri": temp.url().join("deno.json").unwrap(),
+        "uri": url_to_uri(&temp.url().join("deno.json").unwrap()).unwrap(),
         "type": 2,
       }],
     }));
@@ -17693,7 +17691,7 @@ fn type_reference_import_meta() {
     context.run_deno("install");
     client.did_change_watched_files(json!({
       "changes": [{
-        "uri": temp.url().join("deno.json").unwrap(),
+        "uri": url_to_uri(&temp.url().join("deno.json").unwrap()).unwrap(),
         "type": 2,
       }],
     }));
@@ -17789,7 +17787,7 @@ fn definitely_typed_fallback() {
     context.run_deno("install");
     client.did_change_watched_files(json!({
       "changes": [{
-        "uri": temp.url().join("deno.json").unwrap(),
+        "uri": url_to_uri(&temp.url().join("deno.json").unwrap()).unwrap(),
         "type": 2,
       }],
     }));
@@ -17864,7 +17862,7 @@ fn do_not_auto_import_from_definitely_typed() {
     temp.write("deno.json", deno_json.to_string());
     client.did_change_watched_files(json!({
       "changes": [{
-        "uri": temp.url().join("deno.json").unwrap(),
+        "uri": url_to_uri(&temp.url().join("deno.json").unwrap()).unwrap(),
         "type": 2,
       }],
     }));
