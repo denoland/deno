@@ -6,6 +6,38 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.7 / 2025.04.04
+
+- feat: v8js metrics (#28592)
+- fix(ext/node): better dns.lookup compatibility (#27936)
+- fix(ext/node): sqlite handle empty blob being NULL (#28674)
+- fix(ext/node): support the optional `previousValue` parameter for
+  process.cpuUsage() (#28550)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_lstat.ts`
+  (#28644)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_readv.ts`
+  (#28645)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_realpath.ts`
+  (#28652)
+- fix(ext/webgpu): release current texture of surface after present (#28691)
+- fix(install): remove duplicate deprecated messages (#28738)
+- fix(lsp): format vscode-userdata schemed documents (#28706)
+- fix(lsp): preserve notification order after init flag is raised (#28733)
+- fix(lsp): url_to_uri() encoding on windows (#28737)
+- fix(npm): further reduce duplicates with optional peers (#28705)
+- fix(npm): reduce duplicate peers by preferring existing nv if nv anywhere in
+  ancestor peers (#28663)
+- fix(npm): use Deno instead of Node in more cases for lifecycle scripts
+  (#28715)
+- fix(runtime): fix duplicate unstable ids for no-legacy-abort (#28740)
+- fix(task): filter empty elements in `xargs` (#28714)
+- fix(test): ignore write errors in reporter (#28722)
+- fix(types): add `Error.isError` type (#28679)
+- fix(webgpu): move `isFallbackAdapter` from `GPUAdapter` to `GPUAdapterInfo`
+  (#28650)
+- fix: show referrer for Wasm module dependency errors (#28653)
+- perf: remote symbolicate stack traces (#28470)
+
 ### 2.2.6 / 2025.03.28
 
 - feat(unstable/run): ability to lazily load statically analyzable dynamic
