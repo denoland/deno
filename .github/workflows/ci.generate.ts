@@ -771,6 +771,7 @@ const ci = {
         {
           name: "Upload PR artifact (linux)",
           if: [
+            "matrix.os == 'linux' &&",
             "matrix.job == 'test' &&",
             "matrix.profile == 'release' && (matrix.use_sysroot ||",
             "(github.repository == 'denoland/deno' &&",
@@ -782,6 +783,23 @@ const ci = {
             name:
               "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
             path: "target/release/deno",
+          },
+        },
+        {
+          name: "Upload PR artifact (windows)",
+          if: [
+            "matrix.os == 'windows' &&",
+            "matrix.job == 'test' &&",
+            "matrix.profile == 'release' && (matrix.use_sysroot ||",
+            "(github.repository == 'denoland/deno' &&",
+            "(github.ref == 'refs/heads/main' ||",
+            "startsWith(github.ref, 'refs/tags/'))))",
+          ].join("\n"),
+          uses: "actions/upload-artifact@v4",
+          with: {
+            name:
+              "deno-${{ matrix.os }}-${{ matrix.arch }}-${{ github.event.number }}",
+            path: "target/release/deno.exe",
           },
         },
         {

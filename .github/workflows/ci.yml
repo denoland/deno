@@ -450,7 +450,8 @@ jobs:
           NO_COLOR: 1
       - name: Upload PR artifact (linux)
         if: |-
-          !(matrix.skip) && (matrix.os == 'linux' && matrix.job == 'test' &&
+          !(matrix.skip) && (matrix.os == 'linux' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
@@ -461,7 +462,8 @@ jobs:
           path: target/release/deno
       - name: Upload PR artifact (windows)
         if: |-
-          !(matrix.skip) && (matrix.os == 'windows' && matrix.job == 'test' &&
+          !(matrix.skip) && (matrix.os == 'windows' &&
+          matrix.job == 'test' &&
           matrix.profile == 'release' && (matrix.use_sysroot ||
           (github.repository == 'denoland/deno' &&
           (github.ref == 'refs/heads/main' ||
