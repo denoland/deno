@@ -55,8 +55,8 @@ const URL_TO_URI_QUERY: &percent_encoding::AsciiSet =
 const URL_TO_URI_FRAGMENT: &percent_encoding::AsciiSet =
   &URL_TO_URI_PATH.add(b'#').add(b'\\').add(b'{').add(b'}');
 
-pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
-  let components = deno_core::url::quirks::internal_components(url);
+pub fn url_to_uri(url: &Url) -> Result<Uri, anyhow::Error> {
+  let components = url::quirks::internal_components(url);
   let mut input = String::with_capacity(url.as_str().len());
   input.push_str(&url.as_str()[..components.path_start as usize]);
   if cfg!(windows) && url.scheme() == "file" {
