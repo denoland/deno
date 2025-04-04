@@ -3881,10 +3881,8 @@ impl CompletionEntry {
           let mut new_deno_types_specifier = None;
           if let Some(code_specifier) = language_server
             .resolver
-            .deno_types_to_code_resolution(
-              &import_data.normalized,
-              module.scope.as_deref(),
-            )
+            .get_scoped_resolver(module.scope.as_deref())
+            .deno_types_to_code_resolution(&import_data.normalized)
             .and_then(|s| {
               import_mapper
                 .check_specifier(&s, &module.specifier)
@@ -4684,23 +4682,20 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
 
   // inject these next because they're global
   for (scope, script_names) in &mut result.by_scope {
-    for (_, specifiers) in state
+    let scoped_resolver = state
       .state_snapshot
       .resolver
-      .graph_imports_by_referrer(scope)
-    {
+      .get_scoped_resolver(Some(scope));
+    for (_, specifiers) in scoped_resolver.graph_imports_by_referrer() {
       for specifier in specifiers {
         if let Ok(req_ref) =
           deno_semver::npm::NpmPackageReqReference::from_specifier(specifier)
         {
-          let Some((resolved, _)) =
-            state.state_snapshot.resolver.npm_to_file_url(
-              &req_ref,
-              scope,
-              ResolutionMode::Import,
-              Some(scope),
-            )
-          else {
+          let Some((resolved, _)) = scoped_resolver.npm_to_file_url(
+            &req_ref,
+            scope,
+            ResolutionMode::Import,
+          ) else {
             lsp_log!("failed to resolve {req_ref} to file URL");
             continue;
           };
