@@ -2691,6 +2691,7 @@
       "Document interface: operation prepend((Node or DOMString)...)",
       "Document interface: operation append((Node or DOMString)...)",
       "Document interface: operation replaceChildren((Node or DOMString)...)",
+      "Document interface: operation moveBefore(Node, Node?)",
       "Document interface: operation querySelector(DOMString)",
       "Document interface: operation querySelectorAll(DOMString)",
       "Document interface: operation createExpression(DOMString, optional XPathNSResolver?)",
@@ -2739,6 +2740,7 @@
       "DocumentFragment interface: operation prepend((Node or DOMString)...)",
       "DocumentFragment interface: operation append((Node or DOMString)...)",
       "DocumentFragment interface: operation replaceChildren((Node or DOMString)...)",
+      "DocumentFragment interface: operation moveBefore(Node, Node?)",
       "DocumentFragment interface: operation querySelector(DOMString)",
       "DocumentFragment interface: operation querySelectorAll(DOMString)",
       "ShadowRoot interface: existence and properties of interface object",
@@ -2806,6 +2808,7 @@
       "Element interface: operation prepend((Node or DOMString)...)",
       "Element interface: operation append((Node or DOMString)...)",
       "Element interface: operation replaceChildren((Node or DOMString)...)",
+      "Element interface: operation moveBefore(Node, Node?)",
       "Element interface: operation querySelector(DOMString)",
       "Element interface: operation querySelectorAll(DOMString)",
       "Element interface: attribute previousElementSibling",
@@ -3223,16 +3226,7 @@
       "Node member must be removed: getFeature",
       "Node member must be removed: getUserData",
       "Node member must be removed: setUserData",
-      "Node member must be removed: rootNode",
-      "The DOMSubtreeModified mutation event must not be fired.",
-      "The DOMNodeInserted mutation event must not be fired.",
-      "The DOMNodeRemoved mutation event must not be fired.",
-      "The DOMNodeRemovedFromDocument mutation event must not be fired.",
-      "The DOMNodeInsertedIntoDocument mutation event must not be fired.",
-      "The DOMCharacterDataModified mutation event must not be fired.",
-      "The DOMAttrModified mutation event must not be fired.",
-      "The DOMAttributeNameChanged mutation event must not be fired.",
-      "The DOMElementNameChanged mutation event must not be fired."
+      "Node member must be removed: rootNode"
     ],
     "idlharness.any.serviceworker.html": false,
     "idlharness.any.sharedworker.html": false,
@@ -3774,7 +3768,13 @@
         "observable-takeUntil.any.worker.html": false,
         "observable-takeUntil.window.html": false,
         "observable-toArray.any.html": false,
-        "observable-toArray.any.worker.html": false
+        "observable-toArray.any.worker.html": false,
+        "observable-catch.any.html": false,
+        "observable-catch.any.worker.html": false,
+        "observable-finally.any.html": false,
+        "observable-finally.any.worker.html": false,
+        "observable-reduce.any.html": false,
+        "observable-reduce.any.worker.html": false
       }
     },
     "parts": {
@@ -3840,7 +3840,8 @@
       "TreeWalker-traversal-skip-most.html": false,
       "TreeWalker-traversal-skip.html": false,
       "TreeWalker-walking-outside-a-tree.html": false,
-      "TreeWalker.html": false
+      "TreeWalker.html": false,
+      "TreeWalker-realm.html": false
     },
     "window-extends-event-target.html": [
       "window.addEventListener respects custom `this`",
@@ -3848,8 +3849,21 @@
     ],
     "xslt": {
       "functions.tentative.window.html": false,
-      "transformToFragment.tentative.window.html": false
-    }
+      "transformToFragment.tentative.window.html": false,
+      "document-function.window.html": false
+    },
+    "historical-mutation-events.html": [
+      "The DOMSubtreeModified mutation event must not be fired.",
+      "The DOMNodeInserted mutation event must not be fired.",
+      "The DOMNodeRemoved mutation event must not be fired.",
+      "The DOMNodeRemovedFromDocument mutation event must not be fired.",
+      "The DOMNodeInsertedIntoDocument mutation event must not be fired.",
+      "The DOMCharacterDataModified mutation event must not be fired.",
+      "The DOMAttrModified mutation event must not be fired.",
+      "The DOMAttributeNameChanged mutation event must not be fired.",
+      "The DOMElementNameChanged mutation event must not be fired."
+    ],
+    "idlharness.any.shadowrealm-in-window.html": false
   },
   "encoding": {
     "api-basics.any.html": true,
@@ -8389,7 +8403,6 @@
           "Access-Control-Request-Headers is a forbidden request header",
           "Access-Control-Request-Method is a forbidden request header",
           "Connection is a forbidden request header",
-          "Content-Length is a forbidden request header",
           "Cookie is a forbidden request header",
           "Cookie2 is a forbidden request header",
           "Date is a forbidden request header",
@@ -10297,12 +10310,12 @@
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&#10;&lt;b\">",
           "<img id=\"dangling\" src=\"/images/green-1x1.png?img=&lt;&#10;b\">",
           "\\n      <img id=\"dangling\" src=\"/images/green-1x1.png?img=\\n        &lt;\\n        &#10;b\\n      \">\\n    ",
-          "Fetch: /images/gre\\ten-1x1.png?img=<",
-          "Fetch: /images/gre\\nen-1x1.png?img=<",
           "Fetch: /images/gre\\ren-1x1.png?img=<",
-          "Fetch: /images/green-1x1.png?<\\t=block",
           "Fetch: /images/green-1x1.png?<\\n=block",
-          "Fetch: /images/green-1x1.png?<\\r=block"
+          "Fetch: /images/green-1x1.png?<\\r=block",
+          "Fetch: /images/gre\\nen-1x1.png?img=<",
+          "Fetch: /images/green-1x1.png?<\\t=block",
+          "Fetch: /images/gre\\ten-1x1.png?img=<"
         ],
         "dangling-markup-mitigation.tentative.https.html": false,
         "media.html": false,
@@ -15913,5 +15926,61 @@
     "eventsource-constructor-url-bogus.any.sharedworker.html": false,
     "request-credentials.window.html": false,
     "request-redirect.window.html": false
+  },
+  "domparsing": {
+    "DOMParser-parseFromString-encoding.html": false,
+    "DOMParser-parseFromString-html.html": false,
+    "DOMParser-parseFromString-url-base-pushstate.html": false,
+    "DOMParser-parseFromString-url-base.html": false,
+    "DOMParser-parseFromString-url-moretests.html": false,
+    "DOMParser-parseFromString-url-pushstate.html": false,
+    "DOMParser-parseFromString-url.html": false,
+    "DOMParser-parseFromString-xml-doctype.html": false,
+    "DOMParser-parseFromString-xml-internal-subset.html": false,
+    "DOMParser-parseFromString-xml-parsererror.html": false,
+    "DOMParser-parseFromString-xml.html": false,
+    "XMLSerializer-serializeToString.html": false,
+    "createContextualFragment.html": false,
+    "innerhtml-04.html": false,
+    "innerhtml-06.html": false,
+    "innerhtml-07.html": false,
+    "innerhtml-mxss.sub.html": false,
+    "insert-adjacent.html": false,
+    "insert_adjacent_html.html": false,
+    "outerhtml-01.html": false,
+    "outerhtml-02.html": false,
+    "style_attribute_html.html": false,
+    "xmldomparser.html": false
+  },
+  "domxpath": {
+    "booleans.html": false,
+    "document.tentative.html": false,
+    "evaluator-constructor.html": [
+      "Constructor with 'new'"
+    ],
+    "evaluator-cross-realm.tentative.html": false,
+    "evaluator-different-document.tentative.html": false,
+    "expression-cross-realm.tentative.html": false,
+    "expression-different-document.tentative.html": false,
+    "fn-concat.html": false,
+    "fn-contains.html": false,
+    "fn-lang.html": false,
+    "fn-normalize-space.html": false,
+    "fn-starts-with.html": false,
+    "fn-substring-after.html": false,
+    "fn-substring-before.html": false,
+    "fn-substring.html": false,
+    "fn-translate.html": false,
+    "lexical-structure.html": false,
+    "node-sets.html": false,
+    "numbers.html": false,
+    "predicates.html": false,
+    "resolver-callback-interface-cross-realm.tentative.html": false,
+    "resolver-callback-interface.html": false,
+    "resolver-non-string-result.html": false,
+    "text-html-attributes.html": false,
+    "text-html-elements.html": false,
+    "xml_xpath_runner.html": false,
+    "xpathevaluatorbase-creatensresolver.html": false
   }
 }
