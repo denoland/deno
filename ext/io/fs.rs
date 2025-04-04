@@ -26,6 +26,8 @@ pub enum FsError {
   NotSupported,
   #[class("NotCapable")]
   NotCapable(&'static str),
+  #[class(generic)]
+  Paused,
 }
 
 impl std::fmt::Display for FsError {
@@ -37,6 +39,7 @@ impl std::fmt::Display for FsError {
       FsError::NotCapable(err) => {
         f.write_str(&format!("requires {err} access"))
       }
+      FsError::Paused => f.write_str("paused"),
     }
   }
 }
@@ -50,6 +53,7 @@ impl FsError {
       Self::FileBusy => io::ErrorKind::Other,
       Self::NotSupported => io::ErrorKind::Other,
       Self::NotCapable(_) => io::ErrorKind::Other,
+      Self::Paused => io::ErrorKind::Other,
     }
   }
 
@@ -61,6 +65,7 @@ impl FsError {
       FsError::NotCapable(err) => {
         io::Error::new(self.kind(), format!("requires {err} access"))
       }
+      FsError::Paused => io::Error::new(self.kind(), "paused"),
     }
   }
 }
@@ -267,6 +272,7 @@ pub trait File {
   fn as_stdio(self: Rc<Self>) -> FsResult<std::process::Stdio>;
   fn backing_fd(self: Rc<Self>) -> Option<ResourceHandleFd>;
   fn try_clone_inner(self: Rc<Self>) -> FsResult<Rc<dyn File>>;
+  fn read_stop(self: Rc<Self>) {}
 }
 
 pub struct FileResource {

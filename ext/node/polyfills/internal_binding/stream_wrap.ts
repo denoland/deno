@@ -32,7 +32,7 @@
 
 import { core } from "ext:core/mod.js";
 const { internalRidSymbol } = core;
-import { op_can_write_vectored, op_raw_write_vectored } from "ext:core/ops";
+import { op_can_write_vectored, op_raw_write_vectored, op_io_read_stop } from "ext:core/ops";
 
 import { TextEncoder } from "ext:deno_web/08_text_encoding.js";
 import { Buffer } from "node:buffer";
@@ -121,6 +121,7 @@ export class LibuvStreamWrap extends HandleWrap {
   writeQueueSize = 0;
   bytesRead = 0;
   bytesWritten = 0;
+  cancelRead?: () => void;
   #buf = new Uint8Array(SUGGESTED_SIZE);
 
   onread!: (_arrayBuffer: Uint8Array, _nread: number) => Uint8Array | undefined;
@@ -152,6 +153,9 @@ export class LibuvStreamWrap extends HandleWrap {
    */
   readStop(): number {
     this.#reading = false;
+    if (this[kStreamBaseField]!.rid !== undefined) {
+      op_io_read_stop(this[kStreamBaseField]!.rid);
+    }
 
     return 0;
   }
@@ -333,6 +337,9 @@ export class LibuvStreamWrap extends HandleWrap {
     try {
       nread = await this[kStreamBaseField]!.read(buf);
     } catch (e) {
+      if (e.message == "paused") {
+        return null;
+      }
       // Try to read again if the underlying stream resource
       // changed. This can happen during TLS upgrades (eg. STARTTLS)
       if (
