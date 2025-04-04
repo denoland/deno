@@ -51,10 +51,10 @@ repository = "https://github.com/denoland/deno"
 
 [workspace.dependencies]
 deno_ast = { version = "=0.46.2", features = ["transpiling"] }
-deno_core = { version = "0.341.0" }
+deno_core = { version = "0.342.0" }
 
 deno_cache_dir = "=0.18.0"
-deno_config = { version = "=0.51.0", features = ["workspace"] }
+deno_config = { version = "=0.52.0", features = ["workspace"] }
 deno_doc = "=0.169.1"
 deno_error = "=0.5.6"
 deno_graph = "=0.89.4"
@@ -152,7 +152,7 @@ flaky_test = "=0.2.2"
 flate2 = { version = "1.0.30", default-features = false }
 fqdn = "0.3.4"
 fs3 = "0.5.0"
-futures = "0.3.21"
+futures = "0.3.31"
 glob = "0.3.1"
 h2 = "0.4.6"
 hickory-client = "0.25.0-alpha.4"

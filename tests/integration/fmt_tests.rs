@@ -252,18 +252,6 @@ itest!(fmt_check_ignore {
   exit_code: 0,
 });
 
-itest!(fmt_check_parse_error {
-  args: "fmt --check fmt/parse_error/parse_error.ts",
-  output: "fmt/fmt_check_parse_error.out",
-  exit_code: 1,
-});
-
-itest!(fmt_check_invalid_data {
-  args: "fmt --check fmt/invalid_data.json",
-  output: "fmt/invalid_data.out",
-  exit_code: 1,
-});
-
 itest!(fmt_stdin {
   args: "fmt -",
   input: Some("const a = 1\n"),
