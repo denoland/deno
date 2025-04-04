@@ -16422,7 +16422,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
   }));
 
   let diagnostics = diagnostics
-    .messages_with_file_and_source(main_uri.as_ref(), "deno")
+    .messages_with_file_and_source(main_uri.as_str(), "deno")
     .diagnostics
     .into_iter()
     .filter(|d| {
@@ -16472,7 +16472,7 @@ fn lsp_import_unstable_bare_node_builtins_auto_discovered() {
       ],
       "edit": {
         "changes": {
-          main_uri: [
+          main_uri.as_str(): [
             {
               "range": {
                 "start": { "line": 0, "character": 17 },
