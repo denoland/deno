@@ -1003,12 +1003,6 @@ function registerDeclarativeServer(exports) {
 
     serveFn = exports.fetch;
   } else if (
-    typeof exports === "function" &&
-    StringPrototypeIncludes(FunctionPrototypeToString(exports), "class ") &&
-    typeof exports.prototype.fetch === "function"
-  ) {
-    serveFn = exports.prototype.fetch;
-  } else if (
     typeof exports === "object" && exports !== null &&
     typeof exports.fetch === "function"
   ) {
