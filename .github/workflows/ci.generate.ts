@@ -818,7 +818,7 @@ const ci = {
           },
           run: [
             "target/release/deno -A tools/release/create_symcache.ts target/release/deno-${{ matrix.arch }}-apple-darwin.symcache",
-            "strip target/release/deno",
+            "strip -x -S target/release/deno",
             'echo "Key is $(echo $APPLE_CODESIGN_KEY | base64 -d | wc -c) bytes"',
             "rcodesign sign target/release/deno " +
             "--code-signature-flags=runtime " +
