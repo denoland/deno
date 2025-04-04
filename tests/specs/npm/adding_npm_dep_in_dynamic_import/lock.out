@@ -6,10 +6,10 @@
   },
   "npm": {
     "@denotest/add@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "sha512-P7KqAn8qFLI/13TfERSPS0NYt7CmA0diT6bhscyT6FzZjFaAVCja3K/dk96eZDsCyI1gtwtHg5Ahh8XDIvAgrw=="
     },
     "@denotest/subtract@1.0.0": {
-      "integrity": "[WILDLINE]"
+      "integrity": "sha512-KYvMedSXaa2fCzJbiZ9as6h34nwiOZQ5wTrRTOHJcwn7P4y/qVtbIvCdgsUwCaCPXiRd6ccEfKcZPzjt+eOmaw=="
     }
   }
 }

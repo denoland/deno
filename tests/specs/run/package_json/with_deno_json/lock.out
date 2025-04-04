@@ -5,7 +5,7 @@
   },
   "npm": {
     "@denotest/esm-basic@1.0.0": {
-      "integrity": "sha512-[WILDCARD]"
+      "integrity": "sha512-LvAO9tXoBq0fhrWc5PdAATOZxxrd1KTeIFhUucK8w1WNKrapcjVVjqU8s8L5fm0Ppd/tMIGXcRvbfWWmOmBgWQ=="
     }
   },
   "workspace": {

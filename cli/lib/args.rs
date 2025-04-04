@@ -217,5 +217,6 @@ pub struct UnstableConfig {
   pub lazy_dynamic_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
+  pub lockfile_v5: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron
 }

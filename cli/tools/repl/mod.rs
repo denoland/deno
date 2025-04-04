@@ -200,6 +200,7 @@ pub async fn run(
     worker,
     main_module.clone(),
     test_event_receiver,
+    Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api()),
   )
   .await?;
   let rustyline_channel = rustyline_channel();

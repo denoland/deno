@@ -58,6 +58,7 @@ pub use flags::*;
 pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
+pub use lockfile::ReadCurrentVersionError;
 use once_cell::sync::Lazy;
 pub use package_json::NpmInstallDepsProvider;
 pub use package_json::PackageJsonDepValueParseWithLocationError;
@@ -481,27 +482,62 @@ impl CliOptions {
     })
   }
 
-  pub fn from_flags(
+  pub async fn from_flags(
     sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
     maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
+    registry_info_provider: &(dyn deno_lockfile::NpmPackageInfoProvider
+        + Send
+        + Sync),
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
+
+    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
 
     let maybe_lock_file = CliLockfile::discover(
       sys,
       &flags,
       &start_dir.workspace,
       maybe_external_import_map.as_ref().map(|v| &v.value),
+      registry_info_provider,
+      use_lockfile_v5,
+    )
+    .await?;
+
+    log::debug!("Finished config loading.");
+
+    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+  }
+
+  pub fn from_flags_current_version(
+    sys: &CliSys,
+    flags: Arc<Flags>,
+    initial_cwd: PathBuf,
+    maybe_external_import_map: Option<&ExternalImportMap>,
+    start_dir: Arc<WorkspaceDirectory>,
+  ) -> Result<Self, crate::args::lockfile::ReadCurrentVersionError> {
+    for diagnostic in start_dir.workspace.diagnostics() {
+      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
+    }
+
+    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
+
+    let maybe_lock_file = CliLockfile::discover_current_version(
+      sys,
+      &flags,
+      &start_dir.workspace,
+      maybe_external_import_map.as_ref().map(|v| &v.value),
+      use_lockfile_v5,
     )?;
 
     log::debug!("Finished config loading.");
 
     Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+      .map_err(crate::args::lockfile::ReadCurrentVersionError::Other)
   }
 
   #[inline(always)]
@@ -1105,6 +1141,10 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
+  pub fn unstable_lockfile_v5(&self) -> bool {
+    unstable_lockfile_v5(&self.flags, self.workspace())
+  }
+
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1148,9 +1188,10 @@ impl CliOptions {
           "fmt-component",
           "fmt-sql",
           "lazy-dynamic-imports",
-          "lazy-npm-caching",
+          "npm-lazy-caching",
           "npm-patch",
           "sloppy-imports",
+          "lockfile-v5",
         ])
         .collect();
 
@@ -1242,6 +1283,10 @@ impl CliOptions {
       NpmCachingStrategy::Eager
     }
   }
+}
+
+fn unstable_lockfile_v5(flags: &Flags, workspace: &Workspace) -> bool {
+  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(

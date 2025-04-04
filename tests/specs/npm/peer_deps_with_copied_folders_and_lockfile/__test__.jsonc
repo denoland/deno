@@ -1,0 +1,41 @@
+{
+  "tempDir": true,
+  "steps": [
+    {
+      "args": "run -A main.ts",
+      "output": "main_first.out"
+    },
+    {
+      "args": "run -A assert-exists.ts deno.lock $DENO_DIR/npm/localhost_4260/@denotest/peer-dep-test-grandchild/1.0.0{,_1}",
+      "output": ""
+    },
+    {
+      "args": "run -A main.ts",
+      "output": "main.out"
+    },
+    {
+      "args": "run -A --reload main.ts",
+      "output": "main_after_reload.out"
+    },
+    {
+      "args": "run -A --node-modules-dir=auto main.ts",
+      "output": "main_node_modules.out"
+    },
+    {
+      "args": "run -A assert-exists.ts node_modules/.deno/@denotest+peer-dep-test-grandchild@1.0.0{,_1}",
+      "output": ""
+    },
+    {
+      "args": "run -A --node-modules-dir=auto main.ts",
+      "output": "main.out"
+    },
+    {
+      "args": "run -A --reload --node-modules-dir=auto main.ts",
+      "output": "main_node_modules_after_reload.out"
+    },
+    {
+      "args": "run -A --reload --node-modules-dir=auto --no-lock main.ts",
+      "output": "main_node_modules_after_reload_no_lock.out"
+    }
+  ]
+}
