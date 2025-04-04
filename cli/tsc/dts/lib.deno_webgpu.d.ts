@@ -17,35 +17,39 @@ interface GPUObjectDescriptorBase {
 
 /** @category GPU */
 declare class GPUSupportedLimits {
-  maxTextureDimension1D?: number;
-  maxTextureDimension2D?: number;
-  maxTextureDimension3D?: number;
-  maxTextureArrayLayers?: number;
-  maxBindGroups?: number;
-  maxBindingsPerBindGroup?: number;
-  maxDynamicUniformBuffersPerPipelineLayout?: number;
-  maxDynamicStorageBuffersPerPipelineLayout?: number;
-  maxSampledTexturesPerShaderStage?: number;
-  maxSamplersPerShaderStage?: number;
-  maxStorageBuffersPerShaderStage?: number;
-  maxStorageTexturesPerShaderStage?: number;
-  maxUniformBuffersPerShaderStage?: number;
-  maxUniformBufferBindingSize?: number;
-  maxStorageBufferBindingSize?: number;
-  minUniformBufferOffsetAlignment?: number;
-  minStorageBufferOffsetAlignment?: number;
-  maxVertexBuffers?: number;
-  maxBufferSize?: number;
-  maxVertexAttributes?: number;
-  maxVertexBufferArrayStride?: number;
-  maxColorAttachments?: number;
-  maxColorAttachmentBytesPerSample?: number;
-  maxComputeWorkgroupStorageSize?: number;
-  maxComputeInvocationsPerWorkgroup?: number;
-  maxComputeWorkgroupSizeX?: number;
-  maxComputeWorkgroupSizeY?: number;
-  maxComputeWorkgroupSizeZ?: number;
-  maxComputeWorkgroupsPerDimension?: number;
+  readonly maxTextureDimension1D: number;
+  readonly maxTextureDimension2D: number;
+  readonly maxTextureDimension3D: number;
+  readonly maxTextureArrayLayers: number;
+  readonly maxBindGroups: number;
+  // TODO(@crowlKats): support max_bind_groups_plus_vertex_buffers
+  readonly maxBindGroupsPlusVertexBuffers?: number;
+  readonly maxBindingsPerBindGroup: number;
+  readonly maxDynamicUniformBuffersPerPipelineLayout: number;
+  readonly maxDynamicStorageBuffersPerPipelineLayout: number;
+  readonly maxSampledTexturesPerShaderStage: number;
+  readonly maxSamplersPerShaderStage: number;
+  readonly maxStorageBuffersPerShaderStage: number;
+  readonly maxStorageTexturesPerShaderStage: number;
+  readonly maxUniformBuffersPerShaderStage: number;
+  readonly maxUniformBufferBindingSize: number;
+  readonly maxStorageBufferBindingSize: number;
+  readonly minUniformBufferOffsetAlignment: number;
+  readonly minStorageBufferOffsetAlignment: number;
+  readonly maxVertexBuffers: number;
+  readonly maxBufferSize: number;
+  readonly maxVertexAttributes: number;
+  readonly maxVertexBufferArrayStride: number;
+  // TODO(@crowlKats): support max_inter_stage_shader_variables
+  readonly maxInterStageShaderVariables?: number;
+  readonly maxColorAttachments: number;
+  readonly maxColorAttachmentBytesPerSample: number;
+  readonly maxComputeWorkgroupStorageSize: number;
+  readonly maxComputeInvocationsPerWorkgroup: number;
+  readonly maxComputeWorkgroupSizeX: number;
+  readonly maxComputeWorkgroupSizeY: number;
+  readonly maxComputeWorkgroupSizeZ: number;
+  readonly maxComputeWorkgroupsPerDimension: number;
 }
 
 /** @category GPU */
@@ -74,9 +78,40 @@ declare class GPUAdapterInfo {
   readonly description: string;
   readonly subgroupMinSize: number;
   readonly subgroupMaxSize: number;
+  readonly isFallbackAdapter: boolean;
 }
 
-/** @category GPU */
+/**
+ * The entry point to WebGPU in Deno, accessed via the global navigator.gpu property.
+ *
+ * @example
+ * ```ts
+ * // Basic WebGPU initialization in Deno
+ * const gpu = navigator.gpu;
+ * if (!gpu) {
+ *   console.error("WebGPU not supported in this Deno environment");
+ *   Deno.exit(1);
+ * }
+ *
+ * // Request an adapter (physical GPU device)
+ * const adapter = await gpu.requestAdapter();
+ * if (!adapter) {
+ *   console.error("Couldn't request WebGPU adapter");
+ *   Deno.exit(1);
+ * }
+ *
+ * // Get the preferred format for canvas rendering
+ * // Useful when working with canvas in browser/Deno environments
+ * const preferredFormat = gpu.getPreferredCanvasFormat();
+ * console.log(`Preferred canvas format: ${preferredFormat}`);
+ *
+ * // Create a device with default settings
+ * const device = await adapter.requestDevice();
+ * console.log("WebGPU device created successfully");
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPU {
   requestAdapter(
     options?: GPURequestAdapterOptions,
@@ -93,12 +128,47 @@ interface GPURequestAdapterOptions {
 /** @category GPU */
 type GPUPowerPreference = "low-power" | "high-performance";
 
-/** @category GPU */
+/**
+ * Represents a physical GPU device that can be used to create a logical GPU device.
+ *
+ * @example
+ * ```ts
+ * // Request an adapter with specific power preference
+ * const adapter = await navigator.gpu.requestAdapter({
+ *   powerPreference: "high-performance"
+ * });
+ *
+ * if (!adapter) {
+ *   console.error("WebGPU not supported or no appropriate adapter found");
+ *   Deno.exit(1);
+ * }
+ *
+ * // Check adapter capabilities
+ * if (adapter.features.has("shader-f16")) {
+ *   console.log("Adapter supports 16-bit shader operations");
+ * }
+ *
+ * console.log(`Maximum buffer size: ${adapter.limits.maxBufferSize} bytes`);
+ *
+ * // Get adapter info (vendor, device, etc.)
+ * console.log(`GPU Vendor: ${adapter.info.vendor}`);
+ * console.log(`GPU Device: ${adapter.info.device}`);
+ *
+ * // Request a logical device with specific features and limits
+ * const device = await adapter.requestDevice({
+ *   requiredFeatures: ["shader-f16"],
+ *   requiredLimits: {
+ *     maxStorageBufferBindingSize: 128 * 1024 * 1024, // 128MB
+ *   }
+ * });
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUAdapter {
   readonly features: GPUSupportedFeatures;
   readonly limits: GPUSupportedLimits;
   readonly info: GPUAdapterInfo;
-  readonly isFallbackAdapter: boolean;
 
   requestDevice(descriptor?: GPUDeviceDescriptor): Promise<GPUDevice>;
 }
@@ -156,7 +226,30 @@ type GPUFeatureName =
   | "shader-primitive-index"
   | "shader-early-depth-test";
 
-/** @category GPU */
+/**
+ * The primary interface for interacting with a WebGPU device.
+ *
+ * @example
+ * ```ts
+ * // Request a GPU adapter from the browser/Deno
+ * const adapter = await navigator.gpu.requestAdapter();
+ * if (!adapter) throw new Error("WebGPU not supported");
+ *
+ * // Request a device from the adapter
+ * const device = await adapter.requestDevice();
+ *
+ * // Create a buffer on the GPU
+ * const buffer = device.createBuffer({
+ *   size: 128,
+ *   usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+ * });
+ *
+ * // Use device.queue to submit commands
+ * device.queue.writeBuffer(buffer, 0, new Uint8Array([1, 2, 3, 4]));
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUDevice extends EventTarget implements GPUObjectBase {
   label: string;
 
@@ -207,7 +300,35 @@ declare class GPUDevice extends EventTarget implements GPUObjectBase {
   createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
 }
 
-/** @category GPU */
+/**
+ * Represents a block of memory allocated on the GPU.
+ *
+ * @example
+ * ```ts
+ * // Create a buffer that can be used as a vertex buffer and can be written to
+ * const vertexBuffer = device.createBuffer({
+ *   label: "Vertex Buffer",
+ *   size: vertices.byteLength,
+ *   usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+ * });
+ *
+ * // Write data to the buffer
+ * device.queue.writeBuffer(vertexBuffer, 0, vertices);
+ *
+ * // Example of creating a mapped buffer for CPU access
+ * const stagingBuffer = device.createBuffer({
+ *   size: data.byteLength,
+ *   usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC,
+ *   mappedAtCreation: true,
+ * });
+ *
+ * // Copy data to the mapped buffer
+ * new Uint8Array(stagingBuffer.getMappedRange()).set(data);
+ * stagingBuffer.unmap();
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUBuffer implements GPUObjectBase {
   label: string;
 
@@ -265,7 +386,35 @@ declare class GPUMapMode {
   static WRITE: 0x0002;
 }
 
-/** @category GPU */
+/**
+ * Represents a texture (image) in GPU memory.
+ *
+ * @example
+ * ```ts
+ * // Create a texture to render to
+ * const texture = device.createTexture({
+ *   label: "Output Texture",
+ *   size: { width: 640, height: 480 },
+ *   format: "rgba8unorm",
+ *   usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+ * });
+ *
+ * // Get a view of the texture (needed for most operations)
+ * const textureView = texture.createView();
+ *
+ * // When the texture is no longer needed
+ * texture.destroy();
+ *
+ * // Example: Creating a depth texture
+ * const depthTexture = device.createTexture({
+ *   size: { width: 640, height: 480 },
+ *   format: "depth24plus",
+ *   usage: GPUTextureUsage.RENDER_ATTACHMENT,
+ * });
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUTexture implements GPUObjectBase {
   label: string;
 
@@ -625,9 +774,44 @@ interface GPUPipelineErrorInit {
 /** @category GPU */
 type GPUPipelineErrorReason = "validation" | "internal";
 
-/** @category GPU */
+/**
+ * Represents a compiled shader module that can be used to create graphics or compute pipelines.
+ *
+ * @example
+ * ```ts
+ * // Create a shader module using WGSL (WebGPU Shading Language)
+ * const shaderModule = device.createShaderModule({
+ *   label: "My Shader",
+ *   code: `
+ *     @vertex
+ *     fn vertexMain(@location(0) pos: vec2f) -> @builtin(position) vec4f {
+ *       return vec4f(pos, 0.0, 1.0);
+ *     }
+ *
+ *     @fragment
+ *     fn fragmentMain() -> @location(0) vec4f {
+ *       return vec4f(1.0, 0.0, 0.0, 1.0); // red color
+ *     }
+ *   `
+ * });
+ *
+ * // Can optionally check for compilation errors/warnings
+ * const compilationInfo = await shaderModule.getCompilationInfo();
+ * for (const message of compilationInfo.messages) {
+ *   console.log(`${message.type}: ${message.message} at ${message.lineNum}:${message.linePos}`);
+ * }
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUShaderModule implements GPUObjectBase {
   label: string;
+
+  /**
+   * Returns compilation messages for this shader module,
+   * which can include errors, warnings and info messages.
+   */
+  getCompilationInfo(): Promise<GPUCompilationInfo>;
 }
 
 /** @category GPU */
@@ -892,7 +1076,50 @@ declare class GPUCommandBuffer implements GPUObjectBase {
 /** @category GPU */
 interface GPUCommandBufferDescriptor extends GPUObjectDescriptorBase {}
 
-/** @category GPU */
+/**
+ * Used to record GPU commands for later execution by the GPU.
+ *
+ * @example
+ * ```ts
+ * // Create a command encoder
+ * const commandEncoder = device.createCommandEncoder({
+ *   label: "Main Command Encoder"
+ * });
+ *
+ * // Record a copy from one buffer to another
+ * commandEncoder.copyBufferToBuffer(
+ *   sourceBuffer, 0, // Source buffer and offset
+ *   destinationBuffer, 0, // Destination buffer and offset
+ *   sourceBuffer.size // Size to copy
+ * );
+ *
+ * // Begin a compute pass to execute a compute shader
+ * const computePass = commandEncoder.beginComputePass();
+ * computePass.setPipeline(computePipeline);
+ * computePass.setBindGroup(0, bindGroup);
+ * computePass.dispatchWorkgroups(32, 1, 1); // Run 32 workgroups
+ * computePass.end();
+ *
+ * // Begin a render pass to draw to a texture
+ * const renderPass = commandEncoder.beginRenderPass({
+ *   colorAttachments: [{
+ *     view: textureView,
+ *     clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
+ *     loadOp: "clear",
+ *     storeOp: "store"
+ *   }]
+ * });
+ * renderPass.setPipeline(renderPipeline);
+ * renderPass.draw(3, 1, 0, 0); // Draw a triangle
+ * renderPass.end();
+ *
+ * // Finish encoding and submit to GPU
+ * const commandBuffer = commandEncoder.finish();
+ * device.queue.submit([commandBuffer]);
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUCommandEncoder implements GPUObjectBase {
   label: string;
 
@@ -1264,7 +1491,48 @@ interface GPURenderBundleEncoderDescriptor extends GPURenderPassLayout {
   stencilReadOnly?: boolean;
 }
 
-/** @category GPU */
+/**
+ * Represents a queue to submit commands to the GPU.
+ *
+ * @example
+ * ```ts
+ * // Get a queue from the device (each device has a default queue)
+ * const queue = device.queue;
+ *
+ * // Write data to a buffer
+ * const buffer = device.createBuffer({
+ *   size: data.byteLength,
+ *   usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE
+ * });
+ * queue.writeBuffer(buffer, 0, data);
+ *
+ * // Submit command buffers to the GPU for execution
+ * const commandBuffer = commandEncoder.finish();
+ * queue.submit([commandBuffer]);
+ *
+ * // Wait for all submitted operations to complete
+ * await queue.onSubmittedWorkDone();
+ *
+ * // Example: Write data to a texture
+ * const texture = device.createTexture({
+ *   size: { width: 256, height: 256 },
+ *   format: "rgba8unorm",
+ *   usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+ * });
+ *
+ * const data = new Uint8Array(256 * 256 * 4); // RGBA data
+ * // Fill data with your texture content...
+ *
+ * queue.writeTexture(
+ *   { texture },
+ *   data,
+ *   { bytesPerRow: 256 * 4 },
+ *   { width: 256, height: 256 }
+ * );
+ * ```
+ *
+ * @category GPU
+ */
 declare class GPUQueue implements GPUObjectBase {
   label: string;
 
@@ -1397,6 +1665,7 @@ interface GPUCanvasConfiguration {
   colorSpace?: "srgb" | "display-p3";
   alphaMode?: GPUCanvasAlphaMode;
 }
+
 /** @category GPU */
 interface GPUCanvasContext {
   configure(configuration: GPUCanvasConfiguration): undefined;

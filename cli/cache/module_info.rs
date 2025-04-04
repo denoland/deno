@@ -141,7 +141,7 @@ pub struct ModuleInfoCacheModuleAnalyzer<'a> {
   parsed_source_cache: &'a Arc<ParsedSourceCache>,
 }
 
-impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
+impl ModuleInfoCacheModuleAnalyzer<'_> {
   fn load_cached_module_info(
     &self,
     specifier: &ModuleSpecifier,
@@ -220,7 +220,7 @@ impl<'a> ModuleInfoCacheModuleAnalyzer<'a> {
 }
 
 #[async_trait::async_trait(?Send)]
-impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
+impl deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'_> {
   async fn analyze(
     &self,
     specifier: &ModuleSpecifier,
@@ -260,6 +260,8 @@ impl<'a> deno_graph::ModuleAnalyzer for ModuleInfoCacheModuleAnalyzer<'a> {
   }
 }
 
+// note: there is no deserialize for this because this is only ever
+// saved in the db and then used for comparisons
 fn serialize_media_type(media_type: MediaType) -> i64 {
   use MediaType::*;
   match media_type {
@@ -277,8 +279,10 @@ fn serialize_media_type(media_type: MediaType) -> i64 {
     Json => 12,
     Wasm => 13,
     Css => 14,
-    SourceMap => 15,
-    Unknown => 16,
+    Html => 15,
+    SourceMap => 16,
+    Sql => 17,
+    Unknown => 18,
   }
 }
 

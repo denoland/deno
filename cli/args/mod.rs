@@ -599,8 +599,16 @@ impl CliOptions {
     }
   }
 
+  pub fn eszip(&self) -> bool {
+    self.flags.eszip
+  }
+
   pub fn otel_config(&self) -> OtelConfig {
     self.flags.otel_config()
+  }
+
+  pub fn no_legacy_abort(&self) -> bool {
+    self.flags.no_legacy_abort()
   }
 
   pub fn env_file_name(&self) -> Option<&Vec<String>> {
@@ -697,7 +705,10 @@ impl CliOptions {
     NPM_PROCESS_STATE.is_some()
   }
 
-  pub fn node_modules_dir(
+  /// Gets the explicitly specified NodeModulesDir setting.
+  ///
+  /// Use `WorkspaceFactory.node_modules_dir_mode()` to get the resolved value.
+  pub fn specified_node_modules_dir(
     &self,
   ) -> Result<
     Option<NodeModulesDirMode>,
@@ -1112,43 +1123,51 @@ impl CliOptions {
     self.workspace().package_jsons().next().is_some() || self.is_node_main()
   }
 
+  pub fn unstable_lazy_dynamic_imports(&self) -> bool {
+    self.flags.unstable_config.lazy_dynamic_imports
+      || self.workspace().has_unstable("lazy-dynamic-imports")
+  }
+
   pub fn unstable_sloppy_imports(&self) -> bool {
     self.flags.unstable_config.sloppy_imports
       || self.workspace().has_unstable("sloppy-imports")
   }
 
   pub fn unstable_features(&self) -> Vec<String> {
-    let mut from_config_file = self.workspace().unstable_features().to_vec();
-
-    self
-      .flags
-      .unstable_config
-      .features
+    let from_config_file = self.workspace().unstable_features();
+    let unstable_features = from_config_file
       .iter()
-      .for_each(|feature| {
-        if !from_config_file.contains(feature) {
-          from_config_file.push(feature.to_string());
-        }
-      });
+      .chain(
+        self
+          .flags
+          .unstable_config
+          .features
+          .iter()
+          .filter(|f| !from_config_file.contains(f)),
+      )
+      .map(|f| f.to_owned())
+      .collect::<Vec<_>>();
 
-    if !from_config_file.is_empty() {
+    if !unstable_features.is_empty() {
       let all_valid_unstable_flags: Vec<&str> = crate::UNSTABLE_GRANULAR_FLAGS
         .iter()
         .map(|granular_flag| granular_flag.name)
         .chain([
-          "sloppy-imports",
           "byonm",
           "bare-node-builtins",
           "detect-cjs",
           "fmt-component",
           "fmt-sql",
+          "lazy-dynamic-imports",
           "lazy-npm-caching",
+          "npm-patch",
+          "sloppy-imports",
         ])
         .collect();
 
       // check and warn if the unstable flag of config file isn't supported, by
       // iterating through the vector holding the unstable flags
-      for unstable_value_from_config_file in &from_config_file {
+      for unstable_value_from_config_file in &unstable_features {
         if !all_valid_unstable_flags
           .contains(&unstable_value_from_config_file.as_str())
         {
@@ -1161,7 +1180,7 @@ impl CliOptions {
       }
     }
 
-    from_config_file
+    unstable_features
   }
 
   pub fn v8_flags(&self) -> &Vec<String> {

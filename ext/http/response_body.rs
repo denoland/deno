@@ -2,6 +2,7 @@
 use std::io::Write;
 use std::pin::Pin;
 use std::rc::Rc;
+use std::task::ready;
 
 use brotli::enc::encode::BrotliEncoderOperation;
 use brotli::enc::encode::BrotliEncoderParameter;
@@ -9,7 +10,6 @@ use brotli::enc::encode::BrotliEncoderStateStruct;
 use brotli::writer::StandardAlloc;
 use bytes::Bytes;
 use bytes::BytesMut;
-use deno_core::futures::ready;
 use deno_core::futures::FutureExt;
 use deno_core::AsyncResult;
 use deno_core::BufView;
@@ -575,11 +575,10 @@ impl PollFrame for BrotliResponseStream {
 #[allow(clippy::print_stderr)]
 #[cfg(test)]
 mod tests {
+  use std::future::poll_fn;
   use std::hash::Hasher;
   use std::io::Read;
   use std::io::Write;
-
-  use deno_core::futures::future::poll_fn;
 
   use super::*;
 

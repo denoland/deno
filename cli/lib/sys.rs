@@ -32,6 +32,23 @@ pub trait DenoLibSys:
 {
 }
 
-// ok, implementation
-#[allow(clippy::disallowed_types)]
-impl DenoLibSys for sys_traits::impls::RealSys {}
+impl<
+    T: FsCanonicalize
+      + FsCreateDirAll
+      + FsReadDir
+      + FsMetadata
+      + FsOpen
+      + FsRemoveFile
+      + FsRename
+      + FsRead
+      + ThreadSleep
+      + SystemRandom
+      + ExtNodeSys
+      + Clone
+      + Send
+      + Sync
+      + std::fmt::Debug
+      + 'static,
+  > DenoLibSys for T
+{
+}

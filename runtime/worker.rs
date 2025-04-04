@@ -34,7 +34,6 @@ use deno_core::SharedArrayBufferStore;
 use deno_core::SourceCodeCacheInfo;
 use deno_cron::local::LocalCronHandler;
 use deno_fs::FileSystem;
-use deno_http::DefaultHttpPropertyExtractor;
 use deno_io::Stdio;
 use deno_kv::dynamic::MultiBackendDbHandler;
 use deno_node::ExtNodeSys;
@@ -449,9 +448,10 @@ impl MainWorker {
       ),
       deno_cron::deno_cron::init_ops_and_esm(LocalCronHandler::new()),
       deno_napi::deno_napi::init_ops_and_esm::<PermissionsContainer>(),
-      deno_http::deno_http::init_ops_and_esm::<DefaultHttpPropertyExtractor>(
-        deno_http::Options::default(),
-      ),
+      deno_http::deno_http::init_ops_and_esm(deno_http::Options {
+        no_legacy_abort: options.bootstrap.no_legacy_abort,
+        ..Default::default()
+      }),
       deno_io::deno_io::init_ops_and_esm(Some(options.stdio)),
       deno_fs::deno_fs::init_ops_and_esm::<PermissionsContainer>(
         services.fs.clone(),
@@ -563,12 +563,12 @@ impl MainWorker {
               hasher.finish()
             };
             let data = cache
-              .get_sync(specifier, CodeCacheType::Script, source_hash)
-              .inspect(|_| {
-                // This log line is also used by tests.
-                log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
-              })
-              .map(Cow::Owned);
+            .get_sync(specifier, CodeCacheType::Script, source_hash)
+            .inspect(|_| {
+              // This log line is also used by tests.
+              log::debug!("V8 code cache hit for script: {specifier}, [{source_hash}]");
+            })
+            .map(Cow::Owned);
             Ok(SourceCodeCacheInfo {
               data,
               hash: source_hash,

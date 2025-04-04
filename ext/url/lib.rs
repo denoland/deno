@@ -2,8 +2,6 @@
 
 mod urlpattern;
 
-use std::path::PathBuf;
-
 use deno_core::op2;
 use deno_core::url::form_urlencoded;
 use deno_core::url::quirks;
@@ -242,8 +240,4 @@ pub fn op_url_stringify_search_params(
     .extend_pairs(args)
     .finish();
   search
-}
-
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_url.d.ts")
 }

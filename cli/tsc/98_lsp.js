@@ -488,17 +488,17 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
       // (it's about to be invalidated anyway).
       const cachedProjectVersion = PROJECT_VERSION_CACHE.get();
       if (cachedProjectVersion && projectVersion !== cachedProjectVersion) {
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
       try {
-        /** @type {Record<string, any[]>} */
-        const diagnosticMap = {};
+        /** @type {any[][]} */
+        const diagnosticsList = [];
         for (const specifier of args[0]) {
-          diagnosticMap[specifier] = fromTypeScriptDiagnostics([
+          diagnosticsList.push(fromTypeScriptDiagnostics([
             ...ls.getSemanticDiagnostics(specifier),
             ...ls.getSuggestionDiagnostics(specifier),
             ...ls.getSyntacticDiagnostics(specifier),
-          ].filter(filterMapDiagnostic));
+          ].filter(filterMapDiagnostic)));
         }
         let ambient =
           ls.getProgram()?.getTypeChecker().getAmbientModules().map((symbol) =>
@@ -512,18 +512,18 @@ function serverRequestInner(id, method, args, scope, maybeChange) {
         } else {
           ambientModulesCacheByScope.set(scope, ambient);
         }
-        return respond(id, [diagnosticMap, ambient]);
+        return respond(id, [diagnosticsList, ambient]);
       } catch (e) {
         if (
           !isCancellationError(e)
         ) {
           return respond(
             id,
-            [{}, null],
+            [[], null],
             formatErrorWithArgs(e, [id, method, args, scope, maybeChange]),
           );
         }
-        return respond(id, [{}, null]);
+        return respond(id, [[], null]);
       }
     }
     default:

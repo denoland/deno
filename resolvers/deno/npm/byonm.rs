@@ -197,6 +197,9 @@ impl<TSys: FsCanonicalize + FsRead + FsMetadata + FsReadDir>
       {
         if let Ok(value) = value {
           match value {
+            PackageJsonDepValue::File(_) => {
+              // skip
+            }
             PackageJsonDepValue::Req(dep_req) => {
               if dep_req.name == req.name
                 && dep_req.version_req.intersects(&req.version_req)

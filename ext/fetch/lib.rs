@@ -11,8 +11,8 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::convert::From;
 use std::future;
+use std::future::Future;
 use std::path::Path;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -24,7 +24,6 @@ use bytes::Bytes;
 pub use data_url;
 use data_url::DataUrl;
 use deno_core::futures::stream::Peekable;
-use deno_core::futures::Future;
 use deno_core::futures::FutureExt;
 use deno_core::futures::Stream;
 use deno_core::futures::StreamExt;
@@ -47,7 +46,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
-use deno_fs::FsError;
+pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
 use deno_tls::rustls::RootCertStore;
@@ -274,9 +273,6 @@ impl FetchHandler for DefaultFileFetchHandler {
   }
 }
 
-pub fn get_declaration() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("lib.deno_fetch.d.ts")
-}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FetchReturn {

@@ -214,6 +214,7 @@ pub struct UnstableConfig {
   pub legacy_flag_enabled: bool, // --unstable
   pub bare_node_builtins: bool,
   pub detect_cjs: bool,
+  pub lazy_dynamic_imports: bool,
   pub sloppy_imports: bool,
   pub npm_lazy_caching: bool,
   pub features: Vec<String>, // --unstabe-kv --unstable-cron

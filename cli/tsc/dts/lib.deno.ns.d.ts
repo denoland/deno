@@ -1242,6 +1242,17 @@ declare namespace Deno {
     /** If at least one bench has `only` set to true, only run benches that have
      * `only` set to `true` and fail the bench suite. */
     only?: boolean;
+    /** Number of iterations to perform.
+     * @remarks When the benchmark is very fast, this will only be used as a
+     * suggestion in order to get a more accurate measurement.
+     */
+    n?: number;
+    /** Number of warmups to do before running the benchmark.
+     * @remarks A warmup will always be performed even if this is `0` in order to
+     * determine the speed of the benchmark in order to improve the measurement. When
+     * the benchmark is very fast, this will be used as a suggestion.
+     */
+    warmup?: number;
     /** Ensure the bench case does not prematurely cause the process to exit,
      * for example via a call to {@linkcode Deno.exit}.
      *
