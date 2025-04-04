@@ -295,8 +295,8 @@ impl LspScopedResolver {
     })
   }
 
-  pub fn as_in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
-    &self.in_npm_pkg_checker
+  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
+    self.config_data.as_ref()
   }
 
   pub fn as_cli_resolver(&self) -> &CliResolver {
@@ -307,12 +307,24 @@ impl LspScopedResolver {
     &self.npm_graph_resolver
   }
 
+  pub fn as_in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
+    &self.in_npm_pkg_checker
+  }
+
   pub fn as_is_cjs_resolver(&self) -> &CliIsCjsResolver {
     self.is_cjs_resolver.as_ref()
   }
 
-  pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
-    self.config_data.as_ref()
+  pub fn as_jsr_cache_resolver(&self) -> Option<&Arc<JsrCacheResolver>> {
+    self.jsr_resolver.as_ref()
+  }
+
+  pub fn as_node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
+    self.node_resolver.as_ref()
+  }
+
+  pub fn as_npm_resolver(&self) -> Option<&CliNpmResolver> {
+    self.npm_resolver.as_ref()
   }
 
   pub fn as_maybe_managed_npm_resolver(
@@ -323,6 +335,10 @@ impl LspScopedResolver {
 
   pub fn as_pkg_json_resolver(&self) -> &Arc<CliPackageJsonResolver> {
     &self.pkg_json_resolver
+  }
+
+  pub fn dep_info(&self) -> Arc<ScopeDepInfo> {
+    self.dep_info.lock().clone()
   }
 
   pub fn graph_imports_by_referrer(

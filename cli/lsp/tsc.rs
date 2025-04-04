@@ -86,7 +86,7 @@ use super::refactor::ALL_KNOWN_REFACTOR_ACTION_KINDS;
 use super::refactor::EXTRACT_CONSTANT;
 use super::refactor::EXTRACT_INTERFACE;
 use super::refactor::EXTRACT_TYPE;
-use super::resolver::LspScopeResolver;
+use super::resolver::LspScopedResolver;
 use super::semantic_tokens;
 use super::semantic_tokens::SemanticTokensBuilder;
 use super::text::LineIndex;
@@ -4334,19 +4334,24 @@ fn op_export_modules_for_module(
     return Default::default();
   };
   let state = state.borrow::<State>();
-  let scope_resolver = state
+  let scoped_resolver = state
     .state_snapshot
     .resolver
-    .get_scope_resolver(Some(&referrer));
+    .get_scoped_resolver(Some(&referrer));
   let mut urls = IndexSet::new();
 
-  get_jsr_and_npm_importable_paths(scope_resolver, &referrer, state, &mut urls);
+  get_jsr_and_npm_importable_paths(
+    scoped_resolver,
+    &referrer,
+    state,
+    &mut urls,
+  );
 
   // Include all remote modules and any modules in the current
   // package (or else all user code)
   // todo(THIS PR): this is wrong and should filter by scope?
   let documents = state.state_snapshot.document_modules.documents.docs();
-  let in_npm_pkg_checker = scope_resolver.as_in_npm_pkg_checker();
+  let in_npm_pkg_checker = scoped_resolver.as_in_npm_pkg_checker();
   for document in documents {
     let url = uri_to_url(document.uri());
     let should_add = match url.scheme() {
@@ -4364,15 +4369,15 @@ fn op_export_modules_for_module(
 }
 
 fn get_jsr_and_npm_importable_paths(
-  scope_resolver: &LspScopeResolver,
+  scoped_resolver: &LspScopedResolver,
   referrer: &ModuleSpecifier,
   state: &State,
   urls: &mut IndexSet<String>,
 ) {
   // Discover all the npm package export modules
-  if let Some(npm_resolver) = scope_resolver.as_npm_resolver() {
-    if let Some(node_resolver) = scope_resolver.as_node_resolver() {
-      let dep_info = scope_resolver.dep_info();
+  if let Some(npm_resolver) = scoped_resolver.as_npm_resolver() {
+    if let Some(node_resolver) = scoped_resolver.as_node_resolver() {
+      let dep_info = scoped_resolver.dep_info();
       for req in &dep_info.npm_reqs {
         let maybe_package_folder = npm_resolver
           .resolve_pkg_folder_from_deno_module_req(&req, referrer)
@@ -4395,7 +4400,7 @@ fn get_jsr_and_npm_importable_paths(
   }
 
   // Resolve all the exports of jsr packages
-  if let Some(jsr_cache_resolver) = scope_resolver.as_jsr_cache_resolver() {
+  if let Some(jsr_cache_resolver) = scoped_resolver.as_jsr_cache_resolver() {
     urls.extend(
       jsr_cache_resolver
         .all_jsr_pkg_modules()
@@ -4784,12 +4789,8 @@ fn op_script_names(state: &mut OpState) -> ScriptNames {
     }
 
     // add the importable paths
-    let scope_resolver = state
-      .state_snapshot
-      .resolver
-      .get_scope_resolver(Some(scope));
     get_jsr_and_npm_importable_paths(
-      scope_resolver,
+      scoped_resolver,
       scope,
       state,
       script_names,
