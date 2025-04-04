@@ -422,21 +422,16 @@ function imageTypePatternMatchingAlgorithm(input) {
 /**
  * Ref: https://mimesniff.spec.whatwg.org/#rules-for-sniffing-images-specifically
  * @param {string} mimeTypeString
+ * @param {Uint8Array} byteSequence
  * @returns {string}
  */
-function sniffImage(mimeTypeString) {
+function sniffImage(mimeTypeString, byteSequence) {
   const mimeType = parseMimeType(mimeTypeString);
-  if (mimeType === null) {
-    return mimeTypeString;
-  }
-
   if (isXML(mimeType)) {
     return mimeTypeString;
   }
 
-  const imageTypeMatched = imageTypePatternMatchingAlgorithm(
-    new TextEncoder().encode(mimeTypeString),
-  );
+  const imageTypeMatched = imageTypePatternMatchingAlgorithm(byteSequence);
   if (imageTypeMatched !== undefined) {
     return imageTypeMatched;
   }
