@@ -1596,13 +1596,12 @@ fn diagnose_resolution(
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot
+      let scoped_resolver = snapshot
         .resolver
-        .maybe_managed_npm_resolver(referrer_module.scope.as_deref());
-      for (_, headers) in snapshot
-        .resolver
-        .redirect_chain_headers(specifier, referrer_module.scope.as_deref())
-      {
+        .get_scoped_resolver(referrer_module.scope.as_deref());
+      let managed_npm_resolver =
+        scoped_resolver.as_maybe_managed_npm_resolver();
+      for (_, headers) in scoped_resolver.redirect_chain_headers(specifier) {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }

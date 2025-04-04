@@ -295,34 +295,15 @@ impl LspScopedResolver {
     })
   }
 
-  pub fn as_jsr_cache_resolver(&self) -> Option<&Arc<JsrCacheResolver>> {
-    self.jsr_resolver.as_ref()
-  }
-
   pub fn as_in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
     &self.in_npm_pkg_checker
-  }
-
-  pub fn as_node_resolver(&self) -> Option<&Arc<CliNodeResolver>> {
-    self.node_resolver.as_ref()
-  }
-
-  pub fn as_npm_resolver(&self) -> Option<&CliNpmResolver> {
-    self.npm_resolver.as_ref()
-  }
-
-  pub fn dep_info(&self) -> Arc<ScopeDepInfo> {
-    self.dep_info.lock().clone()
   }
 
   pub fn as_cli_resolver(&self) -> &CliResolver {
     self.resolver.as_ref()
   }
 
-  pub fn as_graph_npm_resolver(
-    &self,
-    file_referrer: Option<&ModuleSpecifier>,
-  ) -> &Arc<CliNpmGraphResolver> {
+  pub fn as_graph_npm_resolver(&self) -> &Arc<CliNpmGraphResolver> {
     &self.npm_graph_resolver
   }
 
@@ -332,10 +313,6 @@ impl LspScopedResolver {
 
   pub fn as_config_data(&self) -> Option<&Arc<ConfigData>> {
     self.config_data.as_ref()
-  }
-
-  pub fn in_npm_pkg_checker(&self) -> &DenoInNpmPackageChecker {
-    &self.in_npm_pkg_checker
   }
 
   pub fn as_maybe_managed_npm_resolver(
@@ -455,7 +432,6 @@ impl LspScopedResolver {
   pub fn resolve_redirects(
     &self,
     specifier: &ModuleSpecifier,
-    file_referrer: Option<&ModuleSpecifier>,
   ) -> Option<ModuleSpecifier> {
     let Some(redirect_resolver) = self.redirect_resolver.as_ref() else {
       return Some(specifier.clone());
@@ -568,6 +544,12 @@ impl LspResolver {
         }
       }
     }
+  }
+
+  pub fn in_node_modules(&self, specifier: &ModuleSpecifier) -> bool {
+    self
+      .get_scoped_resolver(Some(specifier))
+      .in_node_modules(specifier)
   }
 
   pub fn get_scoped_resolver(

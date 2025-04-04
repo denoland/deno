@@ -378,8 +378,9 @@ fn get_local_completions(
     return None;
   }
   let parent = &text[..text.char_indices().rfind(|(_, c)| *c == '/')?.0 + 1];
-  let resolved_parent = resolver
-    .as_cli_resolver(Some(referrer))
+  let scoped_resolver = resolver.get_scoped_resolver(Some(referrer));
+  let resolved_parent = scoped_resolver
+    .as_cli_resolver()
     .resolve(
       parent,
       referrer,

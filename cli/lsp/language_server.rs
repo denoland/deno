@@ -1785,8 +1785,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
+              let scoped_resolver = self.resolver.get_scoped_resolver(scope);
               if let Some(url) =
-                self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)
+                scoped_resolver.jsr_to_resource_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }
