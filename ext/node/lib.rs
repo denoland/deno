@@ -839,6 +839,7 @@ impl<
       + sys_traits::BaseFsRead
       + sys_traits::BaseFsReadDir
       + sys_traits::EnvCurrentDir
+      + node_resolver::NodeResolverSys
       + Clone,
   > ExtNodeSys for T
 {

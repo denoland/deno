@@ -4352,7 +4352,7 @@ fn op_export_modules_for_module(
   // todo(THIS PR): this is wrong and should filter by scope?
   let documents = state.state_snapshot.document_modules.documents.docs();
   let in_npm_pkg_checker = scoped_resolver.as_in_npm_pkg_checker();
-  for document in documents {
+  for document in documents.iter().filter(|d| d.is_diagnosable()) {
     let url = uri_to_url(document.uri());
     let should_add = match url.scheme() {
       // todo(THIS PR): also filter out specifiers in other packages
