@@ -6940,7 +6940,7 @@ mod tests {
             include: vec![],
             ignore: vec![],
           },
-          permit_no_files: false,
+          permit_no_files: true,
           use_tabs: None,
           line_width: None,
           indent_width: None,
