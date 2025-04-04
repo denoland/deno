@@ -107,6 +107,7 @@ pub struct BootstrapOptions {
   pub unstable_features: Vec<i32>,
   pub user_agent: String,
   pub inspect: bool,
+  /// If this is a `deno compile`-ed executable.
   pub is_standalone: bool,
   pub has_node_modules_dir: bool,
   pub argv0: Option<String>,
