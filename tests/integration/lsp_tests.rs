@@ -3056,7 +3056,7 @@ fn lsp_document_preload_limit_zero_deno_json_detection() {
     res,
     Some(json!({
       "changes": [{
-        "scopeUri": temp_dir.url(),
+        "scopeUri": temp_dir.uri(),
         "fileUri": url_to_uri(&temp_dir.url().join("deno.json").unwrap()).unwrap(),
         "type": "added",
         "configurationType": "denoJson",
@@ -5977,7 +5977,7 @@ fn lsp_jsr_code_action_missing_declaration() {
     "textDocument/codeAction",
     json!({
       "textDocument": {
-        "uri": file.url(),
+        "uri": file.uri(),
       },
       "range": {
         "start": { "line": 2, "character": 6 },
@@ -6030,7 +6030,7 @@ fn lsp_jsr_code_action_missing_declaration() {
           "documentChanges": [
             {
               "textDocument": {
-                "uri": file.url(),
+                "uri": file.uri(),
                 "version": 1,
               },
               "edits": [
@@ -6099,7 +6099,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
     .write_request_with_res_as::<Option<lsp::CodeActionResponse>>(
       "textDocument/codeAction",
       json!({
-        "textDocument": { "uri": file.url() },
+        "textDocument": { "uri": file.uri() },
         "range": {
           "start": { "line": 2, "character": 19 },
           "end": { "line": 2, "character": 28 },
@@ -6128,7 +6128,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       "edit": {
         "documentChanges": [
           {
-            "textDocument": { "uri": file.url(), "version": 1 },
+            "textDocument": { "uri": file.uri(), "version": 1 },
             "edits": [
               {
                 "range": {
@@ -6148,14 +6148,14 @@ fn lsp_jsr_code_action_move_to_new_file() {
           },
           {
             "kind": "create",
-            "uri": file.url().join("someValue.ts").unwrap(),
+            "uri": url_to_uri(&file.url().join("someValue.ts").unwrap()).unwrap(),
             "options": {
               "ignoreIfExists": true,
             },
           },
           {
             "textDocument": {
-              "uri": file.url().join("someValue.ts").unwrap(),
+              "uri": url_to_uri(&file.url().join("someValue.ts").unwrap()).unwrap(),
               "version": null,
             },
             "edits": [
@@ -6172,7 +6172,7 @@ fn lsp_jsr_code_action_move_to_new_file() {
       },
       "isPreferred": false,
       "data": {
-        "uri": file.url(),
+        "uri": file.uri(),
         "range": {
           "start": { "line": 2, "character": 19 },
           "end": { "line": 2, "character": 28 },
@@ -14029,7 +14029,7 @@ fn lsp_closed_file_find_references() {
   client.initialize_default();
   client.did_open(json!({
     "textDocument": {
-      "uri": temp_dir_url.join("mod.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
       "languageId": "typescript",
       "version": 1,
       "text": r#"export const a = 5;"#
@@ -14039,7 +14039,7 @@ fn lsp_closed_file_find_references() {
     "textDocument/references",
     json!({
       "textDocument": {
-        "uri": temp_dir_url.join("mod.ts").unwrap(),
+        "uri": url_to_uri(&temp_dir.url().join("mod.ts").unwrap()).unwrap(),
       },
       "position": { "line": 0, "character": 13 },
       "context": {
@@ -14051,13 +14051,13 @@ fn lsp_closed_file_find_references() {
   assert_eq!(
     res,
     json!([{
-      "uri": temp_dir_url.join("mod.test.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
       "range": {
         "start": { "line": 0, "character": 9 },
         "end": { "line": 0, "character": 10 }
       }
     }, {
-      "uri": temp_dir_url.join("mod.test.ts").unwrap(),
+      "uri": url_to_uri(&temp_dir.url().join("mod.test.ts").unwrap()).unwrap(),
       "range": {
         "start": { "line": 0, "character": 42 },
         "end": { "line": 0, "character": 43 }
@@ -14975,7 +14975,7 @@ fn lsp_deno_json_scopes_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -15318,7 +15318,7 @@ fn lsp_deno_json_scopes_file_rename_import_edits() {
       "documentChanges": [
         {
           "textDocument": {
-            "uri": file2.url(),
+            "uri": file2.uri(),
             "version": null,
           },
           "edits": [
@@ -15420,7 +15420,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
         "name": "bar",
         "kind": 12,
         "detail": "",
-        "uri": file2.url(),
+        "uri": file2.uri(),
         "range": {
           "start": { "line": 2, "character": 6 },
           "end": { "line": 4, "character": 7 },
@@ -15440,7 +15440,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
           "name": "file.ts",
           "kind": 2,
           "detail": "project3",
-          "uri": file3.url(),
+          "uri": file3.uri(),
           "range": {
             "start": { "line": 1, "character": 6 },
             "end": { "line": 3, "character": 4 },
@@ -15469,7 +15469,7 @@ fn lsp_deno_json_scopes_call_hierarchy() {
           "name": "foo",
           "kind": 12,
           "detail": "",
-          "uri": file1.url(),
+          "uri": file1.uri(),
           "range": file1.range_of("export function foo() {}"),
           "selectionRange": file1.range_of("foo"),
         },
@@ -16148,7 +16148,7 @@ fn lsp_deno_json_workspace_node_modules_dir() {
   assert_eq!(
     res,
     json!([{
-      "targetUri": canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap(),
+      "targetUri": url_to_uri(&canon_temp_dir.join("project1/node_modules/.deno/%40denotest%2Badd%401.0.0/node_modules/%40denotest/add/index.d.ts").unwrap()).unwrap(),
       "targetRange": {
         "start": {
           "line": 0,
@@ -16893,7 +16893,7 @@ fn sloppy_imports_not_enabled() {
           temp_dir.join("a").url_file(),
         ),
         data: Some(json!({
-          "specifier": temp_dir.join("a").uri_file(),
+          "specifier": temp_dir.join("a").url_file(),
           "to": temp_dir.join("a.ts").url_file(),
           "message": "Add a '.ts' extension.",
         })),
