@@ -24,34 +24,6 @@
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.cc
 // - https://github.com/nodejs/node/blob/master/src/handle_wrap.h
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-import { unreachable } from "ext:deno_node/_util/asserts.ts";
-import {
-  AsyncWrap,
-  providerType,
-} from "ext:deno_node/internal_binding/async_wrap.ts";
-import { nextTick } from "ext:deno_node/_process/process.ts";
+import { HandleWrap } from "ext:core/ops";
 
-export class HandleWrap extends AsyncWrap {
-  constructor(provider: providerType) {
-    super(provider);
-  }
-
-  close(cb: () => void = () => {}) {
-    this._onClose();
-    // We need to delay 'cb' at least 2 ticks to avoid "close" event happening before "error" event in net.Socket
-    // See https://github.com/denoland/deno/pull/24656 for more information
-    nextTick(nextTick, cb);
-  }
-
-  ref() {
-    unreachable();
-  }
-
-  unref() {
-    unreachable();
-  }
-
-  // deno-lint-ignore no-explicit-any
-  _onClose(): any {}
-}
+export { HandleWrap };
