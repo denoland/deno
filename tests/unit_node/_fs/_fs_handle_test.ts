@@ -317,3 +317,98 @@ Deno.test({
     await fileHandle.close();
   },
 });
+
+Deno.test(
+  "[node/fs filehandle.createReadStream] Create a read stream",
+  async function () {
+    const fileHandle = await fs.open(testData);
+    const stream = fileHandle.createReadStream();
+    const fileSize = (await fileHandle.stat()).size;
+
+    assertEquals(stream.bytesRead, 0);
+    assertEquals(stream.readable, true);
+
+    let bytesRead = 0;
+
+    stream.on("open", () => assertEquals(stream.bytesRead, 0));
+
+    stream.on("data", (data) => {
+      assertEquals(data instanceof Buffer, true);
+      assertEquals((data as Buffer).byteOffset % 8, 0);
+      bytesRead += data.length;
+      assertEquals(stream.bytesRead, bytesRead);
+    });
+
+    stream.on("end", () => {
+      assertEquals(stream.bytesRead, fileSize);
+      assertEquals(bytesRead, fileSize);
+    });
+
+    // Wait for the 'close' event so that the test won't finish prematurely
+    // note: stream automatically closes fd once all the data is read
+    await new Promise<void>((resolve) => {
+      stream.on("close", resolve);
+    });
+  },
+);
+
+Deno.test(
+  "[node/fs filehandle.createWriteStream] Create a write stream",
+  async function () {
+    const tempFile: string = await Deno.makeTempFile();
+    const fileHandle = await fs.open(tempFile, "w");
+    const stream = fileHandle.createWriteStream();
+
+    // Data to write
+    const data1 = Buffer.from("Hello, ");
+    const data2 = Buffer.from("world!");
+    const allData = Buffer.concat([data1, data2]);
+
+    // Initial state checks
+    assertEquals(stream.bytesWritten, 0);
+    assertEquals(stream.writable, true);
+
+    let bytesWritten = 0;
+
+    stream.on("open", () => {
+      assertEquals(stream.bytesWritten, 0);
+    });
+
+    // write data1
+    await new Promise<void>((resolve) => {
+      stream.write(data1, () => {
+        bytesWritten += data1.length;
+        assertEquals(stream.bytesWritten, bytesWritten);
+        resolve();
+      });
+    });
+
+    // write data2
+    await new Promise<void>((resolve) => {
+      stream.write(data2, () => {
+        bytesWritten += data2.length;
+        assertEquals(stream.bytesWritten, bytesWritten);
+        resolve();
+      });
+    });
+
+    // check that data1+data2 gives the full data
+    await new Promise<void>((resolve) => {
+      stream.end(async () => {
+        // stream.bytesWritten should match the full data
+        assertEquals(stream.bytesWritten, allData.length);
+
+        // Ensure the file actually has the data
+        const fileContents = await fs.readFile(tempFile);
+        assertEquals(fileContents, allData);
+        resolve();
+      });
+    });
+
+    // Wait for the 'close' event so that the test won't finish prematurely
+    // note: fd closes when stream.end is called
+    await new Promise<void>((resolve) => {
+      stream.on("close", resolve);
+    });
+  },
+);
