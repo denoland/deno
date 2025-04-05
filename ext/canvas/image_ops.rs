@@ -590,6 +590,11 @@ mod tests {
     let rgba = Rgba::<u8>([127, 0, 0, 127]);
     let rgba = rgba.unpremultiply_alpha();
     assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 127]));
+
+    // https://github.com/denoland/deno/issues/28732
+    let rgba = Rgba::<u8>([247, 0, 0, 233]);
+    let rgba = rgba.unpremultiply_alpha();
+    assert_eq!(rgba, Rgba::<u8>([255, 0, 0, 233]));
   }
 
   #[test]
