@@ -6,6 +6,14 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.8 / 2025.04.05
+
+- fix(compile): ensure atime/birthtime/mtime/ctime is set in vfs (#28731)
+- fix(fmt): use non-zero exit code when formatting fails (#28523)
+- fix(lint): resolve plugin paths from proper config specifier (#28752)
+- fix(lsp): filter scheme in semantic tokens registration options (#28756)
+- fix: only strip local and debug symbols from macOS binary (#28758)
+
 ### 2.2.7 / 2025.04.04
 
 - feat(unstable/otel): v8js metrics (#28592)
