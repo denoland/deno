@@ -1378,6 +1378,7 @@ async fn wrap_client_auth_https_server(port: u16) {
   .await
 }
 
+#[allow(clippy::double_ended_iterator_last)]
 pub fn custom_headers(
   p: &str,
   body: Vec<u8>,

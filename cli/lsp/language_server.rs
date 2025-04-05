@@ -884,6 +884,7 @@ impl Inner {
       // rootUri is deprecated by the LSP spec. If it's specified, merge it into
       // workspace_folders.
       #[allow(deprecated)]
+      #[allow(clippy::double_ended_iterator_last)]
       if let Some(root_uri) = params.root_uri {
         if !workspace_folders.iter().any(|(_, f)| f.uri == root_uri) {
           let mut root_url = uri_to_url(&root_uri);
