@@ -107,5 +107,6 @@ fn upgrade_context() -> TestContext {
       "DENO_DONT_USE_INTERNAL_BASE_UPGRADE_URL",
       "http://localhost:4545",
     )
+    .env("DENO_DONT_USE_INTERNAL_UPGRADE_TEST", "1")
     .build()
 }
