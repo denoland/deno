@@ -280,6 +280,9 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(specifier.to_string());
     }
 
+    let scoped_resolver =
+      self.resolver.get_scoped_resolver(self.scope.as_deref());
+
     if let Some(jsr_path) = specifier.as_str().strip_prefix(jsr_url().as_str())
     {
       let mut segments = jsr_path.split('/');
@@ -298,11 +301,7 @@ impl<'a> TsResponseImportMapper<'a> {
       let version = Version::parse_standard(segments.next()?).ok()?;
       let nv = PackageNv { name, version };
       let path = segments.collect::<Vec<_>>().join("/");
-      let export = self.resolver.jsr_lookup_export_for_path(
-        &nv,
-        &path,
-        self.scope.as_deref(),
-      )?;
+      let export = scoped_resolver.jsr_lookup_export_for_path(&nv, &path)?;
       let sub_path = (export != ".")
         .then_some(export)
         .map(SmallStackString::from_string);
@@ -326,11 +325,7 @@ impl<'a> TsResponseImportMapper<'a> {
         }
         None
       });
-      req = req.or_else(|| {
-        self
-          .resolver
-          .jsr_lookup_req_for_nv(&nv, self.scope.as_deref())
-      });
+      req = req.or_else(|| scoped_resolver.jsr_lookup_req_for_nv(&nv));
       let spec_str = if let Some(req) = req {
         let req_ref = PackageReqReference { req, sub_path };
         JsrPackageReqReference::new(req_ref).to_string()
@@ -357,13 +352,10 @@ impl<'a> TsResponseImportMapper<'a> {
       return Some(spec_str);
     }
 
-    if let Some(npm_resolver) = self
-      .resolver
-      .maybe_managed_npm_resolver(self.scope.as_deref())
+    if let Some(npm_resolver) = scoped_resolver.as_maybe_managed_npm_resolver()
     {
-      let in_npm_pkg = self
-        .resolver
-        .in_npm_pkg_checker(self.scope.as_deref())
+      let in_npm_pkg = scoped_resolver
+        .as_in_npm_pkg_checker()
         .in_npm_package(specifier);
       if in_npm_pkg {
         if let Ok(Some(pkg_id)) =
@@ -428,9 +420,8 @@ impl<'a> TsResponseImportMapper<'a> {
           }
         }
       }
-    } else if let Some(dep_name) = self
-      .resolver
-      .file_url_to_package_json_dep(specifier, self.scope.as_deref())
+    } else if let Some(dep_name) =
+      scoped_resolver.file_url_to_package_json_dep(specifier)
     {
       return Some(dep_name);
     }
@@ -450,9 +441,9 @@ impl<'a> TsResponseImportMapper<'a> {
     specifier: &ModuleSpecifier,
     package_root_folder: &Path,
   ) -> Option<String> {
-    let package_json = self
-      .resolver
-      .pkg_json_resolver(specifier)
+    let scoped_resolver = self.resolver.get_scoped_resolver(Some(specifier));
+    let package_json = scoped_resolver
+      .as_pkg_json_resolver()
       // the specifier might have a closer package.json, but we
       // want the root of the package's package.json
       .get_closest_package_json(&package_root_folder.join("package.json"))
@@ -514,10 +505,11 @@ impl<'a> TsResponseImportMapper<'a> {
         .iter()
         .map(|ext| Cow::Owned(format!("{specifier_stem}{ext}"))),
     );
+    let scoped_resolver =
+      self.resolver.get_scoped_resolver(self.scope.as_deref());
     for specifier in specifiers {
-      if let Some(specifier) = self
-        .resolver
-        .as_cli_resolver(self.scope.as_deref())
+      if let Some(specifier) = scoped_resolver
+        .as_cli_resolver()
         .resolve(
           &specifier,
           referrer,
@@ -553,7 +545,8 @@ impl<'a> TsResponseImportMapper<'a> {
   ) -> bool {
     self
       .resolver
-      .as_cli_resolver(self.scope.as_deref())
+      .get_scoped_resolver(self.scope.as_deref())
+      .as_cli_resolver()
       .resolve(
         specifier_text,
         referrer,
