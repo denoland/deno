@@ -6,6 +6,8 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.11 / 2025.04.05
+
 ### 2.1.10 / 2025.02.13
 
 - Revert "fix(lsp): silence debug error for 'move to a new file' action
