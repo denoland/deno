@@ -12,7 +12,8 @@ https://github.com/denoland/deno_install
 - fix(fmt): use non-zero exit code when formatting fails (#28523)
 - fix(lint): resolve plugin paths from proper config specifier (#28752)
 - fix(lsp): filter scheme in semantic tokens registration options (#28756)
-- fix: only strip local and debug symbols from macOS binary (#28758)
+- fix: only strip local and debug symbols from macOS binary to fix Node API
+  (#28758)
 - fix: upgrade v8 to 135.1.0 (#28697)
 
 ### 2.2.7 / 2025.04.04
