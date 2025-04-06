@@ -933,6 +933,15 @@ fn generate_lint_diagnostics(
   let config_data_by_scope = config.tree.data_by_scope();
   let mut records = Vec::new();
   for document in snapshot.document_modules.documents.open_docs() {
+    // TODO(nayeemrmn): Support linting notebooks cells. Will require stitching
+    // cells from the same notebook into one module, linting it and then
+    // splitting/relocating the diagnostics to each cell.
+    if document.uri.scheme().is_some_and(|s| {
+      s.eq_lowercase("vscode-notebook-cell")
+        || s.eq_lowercase("deno-notebook-cell")
+    }) {
+      continue;
+    }
     let Some(module) = snapshot
       .document_modules
       .primary_module(&Document::Open(document.clone()))
