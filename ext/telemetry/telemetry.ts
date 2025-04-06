@@ -2,6 +2,8 @@
 
 import { core, primordials } from "ext:core/mod.js";
 import {
+  op_otel_collect_isolate_metrics,
+  op_otel_enable_isolate_metrics,
   op_otel_log,
   op_otel_log_foreign,
   op_otel_metric_attribute3,
@@ -75,6 +77,7 @@ const { AsyncVariable, getAsyncContext, setAsyncContext } = core;
 export let TRACING_ENABLED = false;
 export let METRICS_ENABLED = false;
 export let PROPAGATORS: TextMapPropagator[] = [];
+let ISOLATE_METRICS = false;
 
 // Note: These start at 0 in the JS library,
 // but start at 1 when serialized with JSON.
@@ -1061,6 +1064,10 @@ class ObservableResult {
 }
 
 async function observe(): Promise<void> {
+  if (ISOLATE_METRICS) {
+    op_otel_collect_isolate_metrics();
+  }
+
   const promises: Promise<void>[] = [];
   // Primordials are not needed, because this is a SafeMap.
   // deno-lint-ignore prefer-primordials
@@ -1668,6 +1675,12 @@ export function builtinTracer(): Tracer {
   return builtinTracerCache;
 }
 
+function enableIsolateMetrics() {
+  op_otel_enable_isolate_metrics();
+  ISOLATE_METRICS = true;
+  startObserving();
+}
+
 // We specify a very high version number, to allow any `@opentelemetry/api`
 // version to load this module. This does cause @opentelemetry/api to not be
 // able to register anything itself with the global registration methods.
@@ -1678,7 +1691,6 @@ export function bootstrap(
     0 | 1,
     0 | 1,
     (typeof otelConsoleConfig)[keyof typeof otelConsoleConfig],
-    0 | 1,
     ...Array<(typeof otelPropagators)[keyof typeof otelPropagators]>,
   ],
 ): void {
@@ -1732,6 +1744,7 @@ export function bootstrap(
     }
     if (METRICS_ENABLED) {
       otel.metrics = MeterProvider;
+      enableIsolateMetrics();
     }
   }
 }
