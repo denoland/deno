@@ -312,8 +312,19 @@ function createLs() {
   return ls;
 }
 
+/** @param sourceFile {ts.SourceFile} */
+function isClassicScript(sourceFile) {
+  let isClassicScript = false;
+  let scriptSnapshot = SCRIPT_SNAPSHOT_CACHE.get(sourceFile.fileName);
+  if (!scriptSnapshot) {
+    return false;
+  }
+  return scriptSnapshot.isClassicScript ?? false;
+}
+
 /** @param {boolean} enableDebugLogging */
 export async function serverMainLoop(enableDebugLogging) {
+  ts.deno.setIsClassicScript(isClassicScript);
   ts.deno.setEnterSpan(ops.op_make_span);
   ts.deno.setExitSpan(ops.op_exit_span);
   if (hasStarted) {

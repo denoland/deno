@@ -131,7 +131,7 @@ export function assert(cond, msg = "Assertion failed.") {
 /** @type {Map<string, ts.SourceFile>} */
 export const SOURCE_FILE_CACHE = new Map();
 
-/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; }>} */
+/** @type {Map<string, ts.IScriptSnapshot & { isCjs?: boolean; isClassicScript?: boolean; }>} */
 export const SCRIPT_SNAPSHOT_CACHE = new Map();
 
 /** @type {Map<string, number>} */
@@ -714,13 +714,14 @@ const hostImpl = {
     }
     let scriptSnapshot = SCRIPT_SNAPSHOT_CACHE.get(specifier);
     if (scriptSnapshot == undefined) {
-      /** @type {{ data: string, version: string, isCjs: boolean }} */
+      /** @type {{ data: string, version: string, isCjs: boolean, isClassicScript: boolean }} */
       const fileInfo = ops.op_load(specifier);
       if (!fileInfo) {
         return undefined;
       }
       scriptSnapshot = ts.ScriptSnapshot.fromString(fileInfo.data);
       scriptSnapshot.isCjs = fileInfo.isCjs;
+      scriptSnapshot.isClassicScript = fileInfo.isClassicScript;
       SCRIPT_SNAPSHOT_CACHE.set(specifier, scriptSnapshot);
       SCRIPT_VERSION_CACHE.set(specifier, fileInfo.version);
     }

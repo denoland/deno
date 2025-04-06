@@ -1119,7 +1119,14 @@ impl DocumentModules {
       {
         continue;
       }
-      let scope = self.config.tree.scope_for_specifier(&url).cloned();
+      let scope = if uri.scheme().is_some_and(|s| {
+        s.eq_lowercase("vscode-notebook-cell")
+          || s.eq_lowercase("deno-notebook-cell")
+      }) {
+        None
+      } else {
+        self.config.tree.scope_for_specifier(&url).cloned()
+      };
       let Some(module) = self.module(&document, scope.as_deref()) else {
         continue;
       };
@@ -1231,6 +1238,12 @@ impl DocumentModules {
   }
 
   fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
+    if uri.scheme().is_some_and(|s| {
+      s.eq_lowercase("vscode-notebook-cell")
+        || s.eq_lowercase("deno-notebook-cell")
+    }) {
+      return Some(None);
+    }
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
       let scope = self.config.tree.scope_for_specifier(&url);

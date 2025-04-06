@@ -4378,6 +4378,7 @@ struct LoadResponse {
   script_kind: i32,
   version: Option<String>,
   is_cjs: bool,
+  is_classic_script: bool,
 }
 
 #[op2]
@@ -4402,6 +4403,10 @@ fn op_load<'s>(
     script_kind: crate::tsc::as_ts_script_kind(m.media_type),
     version: state.script_version(&specifier),
     is_cjs: m.resolution_mode == ResolutionMode::Require,
+    is_classic_script: m.uri.scheme().is_some_and(|s| {
+      s.eq_lowercase("vscode-notebook-cell")
+        || s.eq_lowercase("deno-notebook-cell")
+    }),
   });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);
