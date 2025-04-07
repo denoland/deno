@@ -232,6 +232,7 @@ impl CliLockfile {
           ))
         })
         .collect(),
+      patches: Default::default(),
     };
     lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
       no_npm: flags.no_npm,

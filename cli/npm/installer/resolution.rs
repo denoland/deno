@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use deno_error::JsErrorBox;
 use deno_lockfile::NpmPackageDependencyLockfileInfo;
 use deno_lockfile::NpmPackageLockfileInfo;
 use deno_npm::registry::NpmPackageInfo;
+use deno_npm::registry::NpmPackageVersionInfo;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::registry::NpmRegistryPackageInfoLoadError;
 use deno_npm::resolution::AddPkgReqsOptions;
@@ -17,6 +19,7 @@ use deno_npm::resolution::NpmResolutionSnapshot;
 use deno_npm::NpmResolutionPackage;
 use deno_resolver::npm::managed::NpmResolutionCell;
 use deno_semver::jsr::JsrDepPackageReq;
+use deno_semver::package::PackageName;
 use deno_semver::package::PackageNv;
 use deno_semver::package::PackageReq;
 use deno_semver::SmallStackString;
@@ -184,6 +187,10 @@ async fn add_package_reqs_to_snapshot(
 }
 
 fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
+  static PATCH_PACKAGES: std::sync::OnceLock<
+    HashMap<PackageName, Vec<NpmPackageVersionInfo>>,
+  > = std::sync::OnceLock::new();
+
   AddPkgReqsOptions {
     package_reqs,
     // WARNING: When bumping this version, check if anything needs to be
@@ -191,6 +198,7 @@ fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
     types_node_version_req: Some(
       VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
     ),
+    patch_packages: &PATCH_PACKAGES.get_or_init(Default::default),
   }
 }
 
@@ -212,7 +220,7 @@ fn populate_lockfile_from_snapshot(
 
     NpmPackageLockfileInfo {
       serialized_id: pkg.id.as_serialized(),
-      integrity: pkg.dist.integrity().for_lockfile(),
+      integrity: pkg.dist.as_ref().map(|d| d.integrity().for_lockfile()),
       dependencies,
     }
   }

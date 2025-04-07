@@ -196,6 +196,7 @@ async fn snapshot_from_lockfile(
       incomplete_snapshot,
       api,
       skip_integrity_check,
+      patch_packages: &Default::default(),
     },
   )
   .await?;

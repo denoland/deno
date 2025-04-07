@@ -301,58 +301,62 @@ async fn sync_resolution_with_fs(
       .should_use_for_npm_package(&package.id.nv.name)
       || matches!(package_state, PackageFolderState::Uninitialized)
     {
-      // cache bust the dep from the dep setup cache so the symlinks
-      // are forced to be recreated
-      setup_cache.remove_dep(&package_folder_name);
+      if let Some(dist) = &package.dist {
+        // cache bust the dep from the dep setup cache so the symlinks
+        // are forced to be recreated
+        setup_cache.remove_dep(&package_folder_name);
 
-      let folder_path = folder_path.clone();
-      let bin_entries_to_setup = bin_entries.clone();
-      let packages_with_deprecation_warnings =
-        packages_with_deprecation_warnings.clone();
+        let folder_path = folder_path.clone();
+        let bin_entries_to_setup = bin_entries.clone();
+        let packages_with_deprecation_warnings =
+          packages_with_deprecation_warnings.clone();
 
-      cache_futures.push(async move {
-        tarball_cache
-          .ensure_package(&package.id.nv, &package.dist)
+        cache_futures.push(async move {
+          tarball_cache
+            .ensure_package(&package.id.nv, dist)
+            .await
+            .map_err(JsErrorBox::from_err)?;
+          let pb_guard = progress_bar.update_with_prompt(
+            ProgressMessagePrompt::Initialize,
+            &package.id.nv.to_string(),
+          );
+          let sub_node_modules = folder_path.join("node_modules");
+          let package_path = join_package_name(
+            Cow::Owned(sub_node_modules),
+            &package.id.nv.name,
+          );
+          let cache_folder = cache.package_folder_for_nv(&package.id.nv);
+
+          deno_core::unsync::spawn_blocking({
+            let package_path = package_path.clone();
+            let sys = sys.clone();
+            move || {
+              clone_dir_recursive(&sys, &cache_folder, &package_path)?;
+              // write out a file that indicates this folder has been initialized
+              fs::write(initialized_file, tags)?;
+
+              Ok::<_, SyncResolutionWithFsError>(())
+            }
+          })
           .await
+          .map_err(JsErrorBox::from_err)?
           .map_err(JsErrorBox::from_err)?;
-        let pb_guard = progress_bar.update_with_prompt(
-          ProgressMessagePrompt::Initialize,
-          &package.id.nv.to_string(),
-        );
-        let sub_node_modules = folder_path.join("node_modules");
-        let package_path =
-          join_package_name(Cow::Owned(sub_node_modules), &package.id.nv.name);
-        let cache_folder = cache.package_folder_for_nv(&package.id.nv);
 
-        deno_core::unsync::spawn_blocking({
-          let package_path = package_path.clone();
-          let sys = sys.clone();
-          move || {
-            clone_dir_recursive(&sys, &cache_folder, &package_path)?;
-            // write out a file that indicates this folder has been initialized
-            fs::write(initialized_file, tags)?;
-
-            Ok::<_, SyncResolutionWithFsError>(())
+          if package.bin.is_some() {
+            bin_entries_to_setup.borrow_mut().add(package, package_path);
           }
-        })
-        .await
-        .map_err(JsErrorBox::from_err)?
-        .map_err(JsErrorBox::from_err)?;
 
-        if package.bin.is_some() {
-          bin_entries_to_setup.borrow_mut().add(package, package_path);
-        }
+          if let Some(deprecated) = &package.deprecated {
+            packages_with_deprecation_warnings
+              .lock()
+              .push((package.id.clone(), deprecated.clone()));
+          }
 
-        if let Some(deprecated) = &package.deprecated {
-          packages_with_deprecation_warnings
-            .lock()
-            .push((package.id.clone(), deprecated.clone()));
-        }
-
-        // finally stop showing the progress bar
-        drop(pb_guard); // explicit for clarity
-        Ok::<_, JsErrorBox>(())
-      });
+          // finally stop showing the progress bar
+          drop(pb_guard); // explicit for clarity
+          Ok::<_, JsErrorBox>(())
+        });
+      }
     } else if matches!(package_state, PackageFolderState::TagsOutdated) {
       fs::write(initialized_file, tags)?;
     }
