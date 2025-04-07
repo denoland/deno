@@ -273,7 +273,7 @@ impl ShellCommand for NodeCommand {
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    // use Node instead of Deno if the first argument is a flag
+    // continue to use Node if the first argument is a flag
     // or there are no arguments provided for some reason
     if context.args.is_empty()
       || ({
