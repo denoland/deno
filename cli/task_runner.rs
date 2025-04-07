@@ -7,7 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
