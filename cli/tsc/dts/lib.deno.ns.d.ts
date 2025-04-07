@@ -6105,6 +6105,7 @@ declare namespace Deno {
      * @default {false}
      */
     allowHost?: boolean;
+    localAddress?: string;
   }
 
   /**
