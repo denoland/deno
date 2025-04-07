@@ -201,7 +201,7 @@ impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
         .name
         .strip_prefix(scope)
         .unwrap_or(&id.nv.name)
-        .trim_end_matches('/')
+        .trim_start_matches('/')
     } else {
       &id.nv.name
     };

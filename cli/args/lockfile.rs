@@ -409,7 +409,7 @@ impl CliLockfile {
           file_path: opts.file_path,
           content: &text,
           overwrite: false,
-          next_version: false,
+          next_version: opts.use_lockfile_v5,
         }) {
           Ok(lockfile) => lockfile,
           Err(err) => {
