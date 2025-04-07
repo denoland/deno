@@ -90,7 +90,6 @@ impl NpmInstaller {
           npm_resolution.clone(),
           lifecycle_scripts,
           system_info,
-          npm_registry_info_provider,
         )),
       };
     Self {
