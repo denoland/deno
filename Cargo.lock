@@ -1759,8 +1759,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.342.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98701d7fdd467ea88f37f09cf8d5f0a90db67fa5b158431e2ef8f040cf807441"
+source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
 dependencies = [
  "anyhow",
  "az",
@@ -2416,8 +2415,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.218.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57e5af655fdcdc3332c490d44c8244b91697e34568194af74b84b1774d7876fe"
+source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
 dependencies = [
  "indexmap 2.8.0",
  "proc-macro-rules",
@@ -7397,8 +7395,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.251.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0ffa046dbea05faf0296054ed0e70d8fcf2fe94b78d66b4ce0fc338c179b102"
+source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
 dependencies = [
  "deno_error",
  "num-bigint",
