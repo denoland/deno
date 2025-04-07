@@ -149,6 +149,7 @@ async fn add_package_reqs_to_snapshot(
         .map(|req| Ok(snapshot.package_reqs().get(req).unwrap().clone()))
         .collect(),
       dep_graph_result: Ok(snapshot),
+      unmet_peer_diagnostics: Vec::new(),
     };
   }
   log::debug!(
