@@ -1462,6 +1462,7 @@ name = "deno_cache"
 version = "0.122.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "deno_core",
  "deno_error",
  "rusqlite",
@@ -7895,9 +7896,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b46ac05dfbe9fd3a9703eff20e17f5b31e7b6a54daf27a421dcd56c7a27ecdd"
+checksum = "638f0e61b5134e56b2abdf4c704fd44672603f15ca09013f314649056f3fee4d"
 dependencies = [
  "filetime",
  "getrandom",
