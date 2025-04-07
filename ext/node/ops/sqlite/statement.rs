@@ -173,11 +173,16 @@ impl StatementSync {
         ffi::SQLITE_BLOB => {
           let value = ffi::sqlite3_column_blob(self.inner, index);
           let size = ffi::sqlite3_column_bytes(self.inner, index);
-          let value =
-            std::slice::from_raw_parts(value as *const u8, size as usize);
-          let bs = v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
-            .make_shared();
-          let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+          let ab = if size == 0 {
+            v8::ArrayBuffer::new(scope, 0)
+          } else {
+            let value =
+              std::slice::from_raw_parts(value as *const u8, size as usize);
+            let bs =
+              v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+                .make_shared();
+            v8::ArrayBuffer::with_backing_store(scope, &bs)
+          };
           v8::Uint8Array::new(scope, ab, 0, size as _).unwrap().into()
         }
         ffi::SQLITE_NULL => v8::null(scope).into(),
@@ -255,8 +260,17 @@ impl StatementSync {
       unsafe { ffi::sqlite3_bind_null(raw, index) }
     } else if value.is_array_buffer_view() {
       let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
-      let data = value.data();
-      let size = value.byte_length();
+      let mut data = value.data();
+      let mut size = value.byte_length();
+
+      // data may be NULL if length is 0 or ab is detached. we need to pass a valid pointer
+      // to sqlite3_bind_blob, so we use a static empty array in this case.
+      if data.is_null() {
+        static EMPTY: [u8; 0] = [];
+
+        data = EMPTY.as_ptr() as *mut _;
+        size = 0;
+      }
 
       // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
       // as it lives as long as the StatementSync instance.
