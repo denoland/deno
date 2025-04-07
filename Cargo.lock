@@ -1759,7 +1759,7 @@ dependencies = [
 [[package]]
 name = "deno_core"
 version = "0.342.0"
-source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
+source = "git+https://github.com/littledivy/deno_core?branch=constructor_behaviour_object_methods#c8d3c1771adf67b96fd83bb465485e45ef77b389"
 dependencies = [
  "anyhow",
  "az",
@@ -2415,7 +2415,7 @@ dependencies = [
 [[package]]
 name = "deno_ops"
 version = "0.218.0"
-source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
+source = "git+https://github.com/littledivy/deno_core?branch=constructor_behaviour_object_methods#c8d3c1771adf67b96fd83bb465485e45ef77b389"
 dependencies = [
  "indexmap 2.8.0",
  "proc-macro-rules",
@@ -7395,7 +7395,7 @@ dependencies = [
 [[package]]
 name = "serde_v8"
 version = "0.251.0"
-source = "git+https://github.com/denoland/deno_core?branch=x%2Ffix-cppgc-proto-tracing#6dfe94a8ec28a85e067597bb2060c42b9c2df932"
+source = "git+https://github.com/littledivy/deno_core?branch=constructor_behaviour_object_methods#c8d3c1771adf67b96fd83bb465485e45ef77b389"
 dependencies = [
  "deno_error",
  "num-bigint",
