@@ -566,6 +566,8 @@ impl VfsBuilder {
   }
 
   pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    // ok, building fs implementation
+    #[allow(clippy::disallowed_methods)]
     let file_type = path.metadata()?.file_type();
     self.add_path_with_file_type(path, file_type)
   }
