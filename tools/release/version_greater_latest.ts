@@ -19,7 +19,7 @@ if (isGreater) {
   console.error("Updating release-latest.txt");
 } else {
   console.error(
-    "Skipping release-latest.txt update because this version was less than the latest.",
+    "Skipping release-latest.txt update because this version is not greater than the latest.",
   );
 }
 Deno.exit(isGreater ? 0 : 1);
