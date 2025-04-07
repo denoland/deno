@@ -114,15 +114,6 @@ impl<
     package_nv: &PackageNv,
     dist: &NpmPackageVersionDistInfo,
   ) -> Result<(), EnsurePackageError> {
-    if package_nv.name == "cowsay" && !dist.tarball.contains("cowsay") {
-      return Err(EnsurePackageError {
-        package_nv: Box::new(package_nv.clone()),
-        source: Arc::new(JsErrorBox::generic(format!(
-          "Tarball URL was bad: {}",
-          std::backtrace::Backtrace::force_capture()
-        ))),
-      });
-    }
     self
       .ensure_package_inner(package_nv, dist)
       .await

@@ -283,10 +283,6 @@ async fn sync_resolution_with_fs(
     }
   }
 
-  // tokio_util::task::LocalPoolHandle::new(
-  //   std::thread::available_parallelism().unwrap_or(8),
-  // );
-
   let extra_info_provider = Arc::new(super::common::ExtraInfoProvider::new(
     cache.clone(),
     npm_registry_info_provider.clone(),
@@ -789,6 +785,7 @@ async fn sync_resolution_with_fs(
       snapshot,
       &bin_node_modules_dir_path,
       |setup_outcome| {
+        let lifecycle_scripts = lifecycle_scripts.borrow();
         match setup_outcome {
           bin_entries::EntrySetupOutcome::MissingEntrypoint {
             package,
@@ -798,10 +795,8 @@ async fn sync_resolution_with_fs(
           } if super::common::lifecycle_scripts::has_lifecycle_scripts(
             extra,
             package_path,
-          ) && lifecycle_scripts
-            .borrow()
-            .can_run_scripts(&package.id.nv)
-            && !lifecycle_scripts.borrow().has_run_scripts(package) =>
+          ) && lifecycle_scripts.can_run_scripts(&package.id.nv)
+            && !lifecycle_scripts.has_run_scripts(package) =>
           {
             // ignore, it might get fixed when the lifecycle scripts run.
             // if not, we'll warn then

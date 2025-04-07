@@ -304,6 +304,7 @@ fn populate_lockfile_from_snapshot(
       os: pkg.system.os.clone(),
       cpu: pkg.system.cpu.clone(),
       tarball: pkg.dist.as_ref().and_then(|dist| {
+        // Omit the tarball URL if it's the standard NPM registry URL
         if dist.tarball
           == crate::npm::managed::DefaultTarballUrl::default_tarball_url(
             &crate::npm::managed::DefaultTarballUrl,
