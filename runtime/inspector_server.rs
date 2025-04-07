@@ -8,6 +8,7 @@ use std::net::SocketAddr;
 use std::pin::pin;
 use std::process;
 use std::rc::Rc;
+use std::task::Poll;
 use std::thread;
 
 use deno_core::futures::channel::mpsc;
@@ -18,7 +19,6 @@ use deno_core::futures::future;
 use deno_core::futures::prelude::*;
 use deno_core::futures::select;
 use deno_core::futures::stream::StreamExt;
-use deno_core::futures::task::Poll;
 use deno_core::serde_json;
 use deno_core::serde_json::json;
 use deno_core::serde_json::Value;

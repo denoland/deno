@@ -3,7 +3,7 @@
 // @ts-check
 /// <reference path="../webidl/internal.d.ts" />
 /// <reference path="./06_streams_types.d.ts" />
-/// <reference path="./lib.deno_web.d.ts" />
+/// <reference path="../../cli/tsc/dts/lib.deno_web.d.ts" />
 /// <reference lib="esnext" />
 
 import { core, internals, primordials } from "ext:core/mod.js";
@@ -164,8 +164,7 @@ function resolvePromiseWith(value) {
 function rethrowAssertionErrorRejection(e) {
   if (e && ObjectPrototypeIsPrototypeOf(AssertionError.prototype, e)) {
     queueMicrotask(() => {
-      // deno-lint-ignore no-console
-      console.error(`Internal Error: ${e.stack}`);
+      import.meta.log("error", `Internal Error: ${e.stack}`);
     });
   }
 }

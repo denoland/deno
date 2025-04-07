@@ -40,6 +40,7 @@ pub use ops::vm::VM_CONTEXT_INDEX;
 
 use crate::global::global_object_middleware;
 use crate::global::global_template_middleware;
+pub use crate::global::GlobalsStorage;
 
 pub fn is_builtin_node_module(module_name: &str) -> bool {
   DenoIsBuiltInNodeModuleChecker.is_builtin_node_module(module_name)
@@ -312,6 +313,7 @@ deno_core::extension!(deno_node,
     ops::crypto::x509::op_node_x509_get_serial_number,
     ops::crypto::x509::op_node_x509_key_usage,
     ops::crypto::x509::op_node_x509_public_key,
+    ops::dns::op_node_getaddrinfo<P>,
     ops::fs::op_node_fs_exists_sync<P>,
     ops::fs::op_node_fs_exists<P>,
     ops::fs::op_node_cp_sync<P>,
@@ -829,7 +831,15 @@ pub trait ExtNodeSys:
 {
 }
 
-impl ExtNodeSys for sys_traits::impls::RealSys {}
+impl<
+    T: sys_traits::BaseFsCanonicalize
+      + sys_traits::BaseFsMetadata
+      + sys_traits::BaseFsRead
+      + sys_traits::EnvCurrentDir
+      + Clone,
+  > ExtNodeSys for T
+{
+}
 
 pub type NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   node_resolver::NodeResolver<
@@ -843,8 +853,8 @@ pub type NodeResolverRc<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys> =
   deno_fs::sync::MaybeArc<
     NodeResolver<TInNpmPackageChecker, TNpmPackageFolderResolver, TSys>,
   >;
-#[allow(clippy::disallowed_types)]
 
+#[allow(clippy::disallowed_types)]
 pub fn create_host_defined_options<'s>(
   scope: &mut v8::HandleScope<'s>,
 ) -> v8::Local<'s, v8::Data> {

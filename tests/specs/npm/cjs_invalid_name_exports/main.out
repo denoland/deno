@@ -1,0 +1,20 @@
+[Module: null prototype] {
+  "a \\ b": "a \\ b",
+  "another 'case'": "example",
+  default: {
+    'wow "double quotes"': "double quotes",
+    "another 'case'": "example",
+    "a \\ b": "a \\ b",
+    "name variable": "a",
+    "foo - bar": "foo - bar"
+  },
+  "foo - bar": "foo - bar",
+  "module.exports": {
+    'wow "double quotes"': "double quotes",
+    "another 'case'": "example",
+    "a \\ b": "a \\ b",
+    "name variable": "a",
+    "foo - bar": "foo - bar"
+  },
+  'wow "double quotes"': "double quotes"
+}

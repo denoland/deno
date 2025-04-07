@@ -203,6 +203,12 @@ impl NodeJsErrorCoded for PackageSubpathResolveError {
   }
 }
 
+impl PackageSubpathResolveError {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    self.as_kind().as_types_not_found()
+  }
+}
+
 #[derive(Debug, Boxed, JsError)]
 pub struct PackageSubpathResolveError(pub Box<PackageSubpathResolveErrorKind>);
 
@@ -220,6 +226,35 @@ pub enum PackageSubpathResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+}
+
+impl PackageSubpathResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      PackageSubpathResolveErrorKind::PkgJsonLoad(_) => None,
+      PackageSubpathResolveErrorKind::Exports(err) => match err.as_kind() {
+        PackageExportsResolveErrorKind::PackagePathNotExported(_) => None,
+        PackageExportsResolveErrorKind::PackageTargetResolve(err) => {
+          match err.as_kind() {
+            PackageTargetResolveErrorKind::TypesNotFound(not_found) => {
+              Some(not_found)
+            }
+            PackageTargetResolveErrorKind::NotFound(_)
+            | PackageTargetResolveErrorKind::InvalidPackageTarget(_)
+            | PackageTargetResolveErrorKind::InvalidModuleSpecifier(_)
+            | PackageTargetResolveErrorKind::PackageResolve(_)
+            | PackageTargetResolveErrorKind::UrlToFilePath(_) => None,
+          }
+        }
+      },
+      PackageSubpathResolveErrorKind::LegacyResolve(err) => match err.as_kind()
+      {
+        LegacyResolveErrorKind::TypesNotFound(not_found) => Some(not_found),
+        LegacyResolveErrorKind::ModuleNotFound(_) => None,
+      },
+      PackageSubpathResolveErrorKind::FinalizeResolution(_) => None,
+    }
+  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -295,6 +330,15 @@ pub enum PackageTargetResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] deno_path_util::UrlToFilePathError),
+}
+
+impl PackageTargetResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      Self::TypesNotFound(not_found) => Some(not_found),
+      _ => None,
+    }
+  }
 }
 
 impl NodeJsErrorCoded for PackageExportsResolveError {
@@ -417,6 +461,15 @@ pub enum PackageImportsResolveErrorKind {
   Target(#[from] PackageTargetResolveError),
 }
 
+impl PackageImportsResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      Self::Target(err) => err.as_types_not_found(),
+      _ => None,
+    }
+  }
+}
+
 impl NodeJsErrorCoded for PackageImportsResolveErrorKind {
   fn code(&self) -> NodeJsErrorCode {
     match self {
@@ -466,6 +519,19 @@ pub enum PackageResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   UrlToFilePath(#[from] UrlToFilePathError),
+}
+
+impl PackageResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      PackageResolveErrorKind::ClosestPkgJson(_)
+      | PackageResolveErrorKind::InvalidModuleSpecifier(_)
+      | PackageResolveErrorKind::PackageFolderResolve(_)
+      | PackageResolveErrorKind::ExportsResolve(_)
+      | PackageResolveErrorKind::UrlToFilePath(_) => None,
+      PackageResolveErrorKind::SubpathResolve(err) => err.as_types_not_found(),
+    }
+  }
 }
 
 #[derive(Debug, Error, JsError)]
@@ -518,6 +584,26 @@ pub enum NodeResolveErrorKind {
   #[class(inherit)]
   #[error(transparent)]
   FinalizeResolution(#[from] FinalizeResolutionError),
+}
+
+impl NodeResolveErrorKind {
+  pub fn as_types_not_found(&self) -> Option<&TypesNotFoundError> {
+    match self {
+      NodeResolveErrorKind::TypesNotFound(not_found) => Some(not_found),
+      NodeResolveErrorKind::PackageImportsResolve(err) => {
+        err.as_kind().as_types_not_found()
+      }
+      NodeResolveErrorKind::PackageResolve(package_resolve_error) => {
+        package_resolve_error.as_types_not_found()
+      }
+      NodeResolveErrorKind::UnsupportedEsmUrlScheme(_)
+      | NodeResolveErrorKind::DataUrlReferrer(_)
+      | NodeResolveErrorKind::FinalizeResolution(_)
+      | NodeResolveErrorKind::RelativeJoin(_)
+      | NodeResolveErrorKind::PathToUrl(_)
+      | NodeResolveErrorKind::UrlToFilePath(_) => None,
+    }
+  }
 }
 
 #[derive(Debug, Boxed, JsError)]

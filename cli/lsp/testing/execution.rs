@@ -235,7 +235,10 @@ impl TestRun {
     )?;
     let main_graph_container = factory.main_module_graph_container().await?;
     main_graph_container
-      .check_specifiers(&self.queue.iter().cloned().collect::<Vec<_>>(), None)
+      .check_specifiers(
+        &self.queue.iter().cloned().collect::<Vec<_>>(),
+        Default::default(),
+      )
       .await?;
 
     let (concurrent_jobs, fail_fast) =

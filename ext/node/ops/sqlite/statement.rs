@@ -6,8 +6,9 @@ use std::rc::Rc;
 
 use deno_core::op2;
 use deno_core::v8;
+use deno_core::v8::GetPropertyNamesArgs;
 use deno_core::GarbageCollected;
-use libsqlite3_sys as ffi;
+use rusqlite::ffi;
 use serde::Serialize;
 
 use super::SqliteError;
@@ -22,11 +23,15 @@ pub struct RunStatementResult {
   changes: u64,
 }
 
+#[derive(Debug)]
 pub struct StatementSync {
   pub inner: *mut ffi::sqlite3_stmt,
   pub db: Rc<RefCell<Option<rusqlite::Connection>>>,
 
   pub use_big_ints: Cell<bool>,
+  pub allow_bare_named_params: Cell<bool>,
+
+  pub is_iter_finished: bool,
 }
 
 impl Drop for StatementSync {
@@ -80,12 +85,12 @@ impl GarbageCollected for StatementSync {}
 
 impl StatementSync {
   // Clear the prepared statement back to its initial state.
-  fn reset(&self) {
+  fn reset(&self) -> Result<(), SqliteError> {
     // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
     // as it lives as long as the StatementSync instance.
-    unsafe {
-      ffi::sqlite3_reset(self.inner);
-    }
+    let r = unsafe { ffi::sqlite3_reset(self.inner) };
+
+    self.check_error_code(r)
   }
 
   // Evaluate the prepared statement.
@@ -99,7 +104,7 @@ impl StatementSync {
         return Ok(true);
       }
       if r != ffi::SQLITE_ROW {
-        return Err(SqliteError::FailedStep);
+        self.check_error_code(r)?;
       }
     }
 
@@ -135,9 +140,19 @@ impl StatementSync {
           if self.use_big_ints.get() {
             v8::BigInt::new_from_i64(scope, value).into()
           } else if value.abs() <= MAX_SAFE_JS_INTEGER {
-            v8::Integer::new(scope, value as _).into()
+            v8::Number::new(scope, value as f64).into()
           } else {
-            return Err(SqliteError::NumberTooLarge(index, value));
+            let db = self.db.borrow();
+            let db = db.as_ref().ok_or(SqliteError::InUse)?;
+            let handle = db.handle();
+
+            return SqliteError::create_enhanced_error::<
+              v8::Local<'a, v8::Value>,
+            >(
+              ffi::SQLITE_TOOBIG,
+              &SqliteError::NumberTooLarge(index, value).to_string(),
+              Some(handle),
+            );
           }
         }
         ffi::SQLITE_FLOAT => {
@@ -158,11 +173,16 @@ impl StatementSync {
         ffi::SQLITE_BLOB => {
           let value = ffi::sqlite3_column_blob(self.inner, index);
           let size = ffi::sqlite3_column_bytes(self.inner, index);
-          let value =
-            std::slice::from_raw_parts(value as *const u8, size as usize);
-          let bs = v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
-            .make_shared();
-          let ab = v8::ArrayBuffer::with_backing_store(scope, &bs);
+          let ab = if size == 0 {
+            v8::ArrayBuffer::new(scope, 0)
+          } else {
+            let value =
+              std::slice::from_raw_parts(value as *const u8, size as usize);
+            let bs =
+              v8::ArrayBuffer::new_backing_store_from_vec(value.to_vec())
+                .make_shared();
+            v8::ArrayBuffer::with_backing_store(scope, &bs)
+          };
           v8::Uint8Array::new(scope, ab, 0, size as _).unwrap().into()
         }
         ffi::SQLITE_NULL => v8::null(scope).into(),
@@ -205,6 +225,125 @@ impl StatementSync {
     Ok(Some(result))
   }
 
+  fn bind_value(
+    &self,
+    scope: &mut v8::HandleScope,
+    value: v8::Local<v8::Value>,
+    index: i32,
+  ) -> Result<(), SqliteError> {
+    let raw = self.inner;
+    let r = if value.is_number() {
+      let value = value.number_value(scope).unwrap();
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe { ffi::sqlite3_bind_double(raw, index, value) }
+    } else if value.is_string() {
+      let value = value.to_rust_string_lossy(scope);
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      //
+      // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
+      unsafe {
+        ffi::sqlite3_bind_text(
+          raw,
+          index,
+          value.as_ptr() as *const _,
+          value.len() as i32,
+          ffi::SQLITE_TRANSIENT(),
+        )
+      }
+    } else if value.is_null() {
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe { ffi::sqlite3_bind_null(raw, index) }
+    } else if value.is_array_buffer_view() {
+      let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
+      let mut data = value.data();
+      let mut size = value.byte_length();
+
+      // data may be NULL if length is 0 or ab is detached. we need to pass a valid pointer
+      // to sqlite3_bind_blob, so we use a static empty array in this case.
+      if data.is_null() {
+        static EMPTY: [u8; 0] = [];
+
+        data = EMPTY.as_ptr() as *mut _;
+        size = 0;
+      }
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      //
+      // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
+      unsafe {
+        ffi::sqlite3_bind_blob(
+          raw,
+          index,
+          data,
+          size as i32,
+          ffi::SQLITE_TRANSIENT(),
+        )
+      }
+    } else if value.is_big_int() {
+      let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
+      let (as_int, lossless) = value.i64_value();
+      if !lossless {
+        let db = self.db.borrow();
+        let db = db.as_ref().ok_or(SqliteError::InUse)?;
+        // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+        let handle = unsafe { db.handle() };
+
+        return SqliteError::create_enhanced_error(
+          ffi::SQLITE_TOOBIG,
+          &SqliteError::FailedBind("BigInt value is too large to bind")
+            .to_string(),
+          Some(handle),
+        );
+      }
+
+      // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
+      // as it lives as long as the StatementSync instance.
+      unsafe { ffi::sqlite3_bind_int64(raw, index, as_int) }
+    } else {
+      let db = self.db.borrow();
+      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+      let handle = unsafe { db.handle() };
+
+      return SqliteError::create_enhanced_error(
+        ffi::SQLITE_MISMATCH,
+        &SqliteError::FailedBind("Unsupported type").to_string(),
+        Some(handle),
+      );
+    };
+
+    self.check_error_code(r)
+  }
+
+  fn check_error_code(&self, r: i32) -> Result<(), SqliteError> {
+    if r != ffi::SQLITE_OK {
+      let db = self.db.borrow();
+      let db = db.as_ref().ok_or(SqliteError::InUse)?;
+      // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+      let handle = unsafe { db.handle() };
+
+      // SAFETY: lifetime of the connection is guaranteed by reference
+      // counting.
+      let err_str = unsafe { ffi::sqlite3_errmsg(db.handle()) };
+
+      if !err_str.is_null() {
+        // SAFETY: `err_str` is a valid pointer to a null-terminated string.
+        let err_str = unsafe { std::ffi::CStr::from_ptr(err_str) }
+          .to_string_lossy()
+          .into_owned();
+        return SqliteError::create_enhanced_error(r, &err_str, Some(handle));
+      }
+    }
+
+    Ok(())
+  }
+
   // Bind the parameters to the prepared statement.
   fn bind_params(
     &self,
@@ -212,81 +351,114 @@ impl StatementSync {
     params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<(), SqliteError> {
     let raw = self.inner;
+    let mut anon_start = 0;
 
     if let Some(params) = params {
-      let len = params.length();
-      for i in 0..len {
+      let param0 = params.get(0);
+
+      if param0.is_object() && !param0.is_array_buffer_view() {
+        let obj = v8::Local::<v8::Object>::try_from(param0).unwrap();
+        let keys = obj
+          .get_property_names(scope, GetPropertyNamesArgs::default())
+          .unwrap();
+
+        // Allow specifying named parameters without the SQLite prefix character to improve
+        // ergonomics. This can be disabled with `StatementSync#setAllowBareNamedParams`.
+        let mut bare_named_params = std::collections::HashMap::new();
+        if self.allow_bare_named_params.get() {
+          // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+          let param_count = unsafe { ffi::sqlite3_bind_parameter_count(raw) };
+          for i in 1..=param_count {
+            // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+            let bare_name = unsafe {
+              let name = ffi::sqlite3_bind_parameter_name(raw, i);
+              if name.is_null() {
+                continue;
+              }
+              std::ffi::CStr::from_ptr(name.offset(1)).to_bytes()
+            };
+
+            let e = bare_named_params.insert(bare_name, i);
+            if e.is_some() {
+              let db = self.db.borrow();
+              let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+              let handle = unsafe { db.handle() };
+
+              return SqliteError::create_enhanced_error(
+                ffi::SQLITE_ERROR,
+                &SqliteError::FailedBind("Duplicate named parameter")
+                  .to_string(),
+                Some(handle),
+              );
+            }
+          }
+        }
+
+        let len = keys.length();
+        for j in 0..len {
+          let key = keys.get_index(scope, j).unwrap();
+          let key_str = key.to_rust_string_lossy(scope);
+          let key_c = std::ffi::CString::new(key_str).unwrap();
+
+          // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+          let mut r = unsafe {
+            ffi::sqlite3_bind_parameter_index(raw, key_c.as_ptr() as *const _)
+          };
+          if r == 0 {
+            let lookup = bare_named_params.get(key_c.as_bytes());
+            if let Some(index) = lookup {
+              r = *index;
+            }
+
+            if r == 0 {
+              let db = self.db.borrow();
+              let db = db.as_ref().ok_or(SqliteError::InUse)?;
+              // SAFETY: lifetime of the connection is guaranteed by the rusqlite API.
+              let handle = unsafe { db.handle() };
+
+              return SqliteError::create_enhanced_error(
+                ffi::SQLITE_RANGE,
+                &SqliteError::FailedBind("Named parameter not found")
+                  .to_string(),
+                Some(handle),
+              );
+            }
+          }
+
+          let value = obj.get(scope, key).unwrap();
+          self.bind_value(scope, value, r)?;
+        }
+
+        anon_start += 1;
+      }
+
+      let mut anon_idx = 1;
+      for i in anon_start..params.length() {
+        // SAFETY: `raw` is a valid pointer to a sqlite3_stmt.
+        while !unsafe { ffi::sqlite3_bind_parameter_name(raw, anon_idx) }
+          .is_null()
+        {
+          anon_idx += 1;
+        }
+
         let value = params.get(i);
 
-        if value.is_number() {
-          let value = value.number_value(scope).unwrap();
+        self.bind_value(scope, value, anon_idx)?;
 
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-          // as it lives as long as the StatementSync instance.
-          unsafe {
-            ffi::sqlite3_bind_double(raw, i + 1, value);
-          }
-        } else if value.is_string() {
-          let value = value.to_rust_string_lossy(scope);
-
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-          // as it lives as long as the StatementSync instance.
-          //
-          // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
-          unsafe {
-            ffi::sqlite3_bind_text(
-              raw,
-              i + 1,
-              value.as_ptr() as *const _,
-              value.len() as i32,
-              ffi::SQLITE_TRANSIENT(),
-            );
-          }
-        } else if value.is_null() {
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-          // as it lives as long as the StatementSync instance.
-          unsafe {
-            ffi::sqlite3_bind_null(raw, i + 1);
-          }
-        } else if value.is_array_buffer_view() {
-          let value: v8::Local<v8::ArrayBufferView> = value.try_into().unwrap();
-          let data = value.data();
-          let size = value.byte_length();
-
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-          // as it lives as long as the StatementSync instance.
-          //
-          // SQLITE_TRANSIENT is used to indicate that SQLite should make a copy of the data.
-          unsafe {
-            ffi::sqlite3_bind_blob(
-              raw,
-              i + 1,
-              data,
-              size as i32,
-              ffi::SQLITE_TRANSIENT(),
-            );
-          }
-        } else if value.is_big_int() {
-          let value: v8::Local<v8::BigInt> = value.try_into().unwrap();
-          let (as_int, lossless) = value.i64_value();
-          if !lossless {
-            return Err(SqliteError::FailedBind(
-              "BigInt value is too large to bind",
-            ));
-          }
-
-          // SAFETY: `self.inner` is a valid pointer to a sqlite3_stmt
-          // as it lives as long as the StatementSync instance.
-          unsafe {
-            ffi::sqlite3_bind_int64(raw, i + 1, as_int);
-          }
-        } else {
-          return Err(SqliteError::FailedBind("Unsupported type"));
-        }
+        anon_idx += 1;
       }
     }
 
     Ok(())
+  }
+}
+
+struct ResetGuard<'a>(&'a StatementSync);
+
+impl Drop for ResetGuard<'_> {
+  fn drop(&mut self) {
+    let _ = self.0.reset();
   }
 }
 
@@ -311,9 +483,11 @@ impl StatementSync {
     scope: &mut v8::HandleScope<'a>,
     #[varargs] params: Option<&v8::FunctionCallbackArguments>,
   ) -> Result<v8::Local<'a, v8::Value>, SqliteError> {
-    self.reset();
+    self.reset()?;
 
     self.bind_params(scope, params)?;
+
+    let _reset = ResetGuard(self);
 
     let entry = self.read_row(scope)?;
     let result = entry
@@ -337,9 +511,12 @@ impl StatementSync {
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
     self.bind_params(scope, params)?;
-    self.step()?;
 
-    self.reset();
+    let reset = ResetGuard(self);
+
+    self.step()?;
+    // Reset to return correct change metadata.
+    drop(reset);
 
     Ok(RunStatementResult {
       last_insert_rowid: db.last_insert_rowid(),
@@ -359,14 +536,156 @@ impl StatementSync {
     let mut arr = vec![];
 
     self.bind_params(scope, params)?;
+
+    let _reset = ResetGuard(self);
     while let Some(result) = self.read_row(scope)? {
       arr.push(result.into());
     }
 
-    self.reset();
-
     let arr = v8::Array::new_with_elements(scope, &arr);
     Ok(arr)
+  }
+
+  fn iterate<'a>(
+    &self,
+    scope: &mut v8::HandleScope<'a>,
+    #[varargs] params: Option<&v8::FunctionCallbackArguments>,
+  ) -> Result<v8::Local<'a, v8::Object>, SqliteError> {
+    macro_rules! v8_static_strings {
+      ($($ident:ident = $str:literal),* $(,)?) => {
+        $(
+          pub static $ident: deno_core::FastStaticString = deno_core::ascii_str!($str);
+        )*
+      };
+    }
+
+    v8_static_strings! {
+      ITERATOR = "Iterator",
+      PROTOTYPE = "prototype",
+      NEXT = "next",
+      RETURN = "return",
+      DONE = "done",
+      VALUE = "value",
+    }
+
+    self.reset()?;
+
+    self.bind_params(scope, params)?;
+
+    let iterate_next = |scope: &mut v8::HandleScope,
+                        args: v8::FunctionCallbackArguments,
+                        mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#next expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+
+      if statement.is_iter_finished {
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      }
+
+      let Ok(Some(row)) = statement.read_row(scope) else {
+        let _ = statement.reset();
+        statement.is_iter_finished = true;
+
+        let values = &[
+          v8::Boolean::new(scope, true).into(),
+          v8::undefined(scope).into(),
+        ];
+        let null = v8::null(scope).into();
+        let result =
+          v8::Object::with_prototype_and_properties(scope, null, names, values);
+        rv.set(result.into());
+        return;
+      };
+
+      let values = &[v8::Boolean::new(scope, false).into(), row.into()];
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let iterate_return = |scope: &mut v8::HandleScope,
+                          args: v8::FunctionCallbackArguments,
+                          mut rv: v8::ReturnValue| {
+      let context = v8::Local::<v8::External>::try_from(args.data())
+        .expect("Iterator#return expected external data");
+      // SAFETY: `context` is a valid pointer to a StatementSync instance
+      let statement = unsafe { &mut *(context.value() as *mut StatementSync) };
+
+      statement.is_iter_finished = true;
+      let _ = statement.reset();
+
+      let names = &[
+        DONE.v8_string(scope).unwrap().into(),
+        VALUE.v8_string(scope).unwrap().into(),
+      ];
+      let values = &[
+        v8::Boolean::new(scope, true).into(),
+        v8::undefined(scope).into(),
+      ];
+
+      let null = v8::null(scope).into();
+      let result =
+        v8::Object::with_prototype_and_properties(scope, null, names, values);
+      rv.set(result.into());
+    };
+
+    let external = v8::External::new(scope, self as *const _ as _);
+    let next_func = v8::Function::builder(iterate_next)
+      .data(external.into())
+      .build(scope)
+      .expect("Failed to create Iterator#next function");
+    let return_func = v8::Function::builder(iterate_return)
+      .data(external.into())
+      .build(scope)
+      .expect("Failed to create Iterator#return function");
+
+    let global = scope.get_current_context().global(scope);
+    let iter_str = ITERATOR.v8_string(scope).unwrap();
+    let js_iterator: v8::Local<v8::Object> = {
+      global
+        .get(scope, iter_str.into())
+        .unwrap()
+        .try_into()
+        .unwrap()
+    };
+
+    let proto_str = PROTOTYPE.v8_string(scope).unwrap();
+    let js_iterator_proto = js_iterator.get(scope, proto_str.into()).unwrap();
+
+    let names = &[
+      NEXT.v8_string(scope).unwrap().into(),
+      RETURN.v8_string(scope).unwrap().into(),
+    ];
+    let values = &[next_func.into(), return_func.into()];
+    let iterator = v8::Object::with_prototype_and_properties(
+      scope,
+      js_iterator_proto,
+      names,
+      values,
+    );
+
+    Ok(iterator)
+  }
+
+  #[fast]
+  fn set_allow_bare_named_parameters(&self, enabled: bool) {
+    self.allow_bare_named_params.set(enabled);
   }
 
   #[fast]
@@ -397,13 +716,20 @@ impl StatementSync {
     unsafe {
       let raw = ffi::sqlite3_expanded_sql(self.inner);
       if raw.is_null() {
-        return Err(SqliteError::InvalidExpandedSql);
+        let db = self.db.borrow();
+        let db = db.as_ref().ok_or(SqliteError::InUse)?;
+        let handle = db.handle();
+
+        return SqliteError::create_enhanced_error(
+          ffi::SQLITE_ERROR,
+          &SqliteError::InvalidExpandedSql.to_string(),
+          Some(handle),
+        );
       }
       let sql = std::ffi::CStr::from_ptr(raw as _)
         .to_string_lossy()
         .into_owned();
       ffi::sqlite3_free(raw as _);
-
       Ok(sql)
     }
   }
