@@ -1229,7 +1229,7 @@ Deno.test(
 );
 
 Deno.test(
-  { permissions: { net: true } /* ignore: Deno.build.os !== "linux" */ },
+  { permissions: { net: true }, ignore: Deno.build.os !== "linux" },
   async function createHttpClientLocalAddress() {
     const client = Deno.createHttpClient({
       localAddress: "127.0.0.2",
