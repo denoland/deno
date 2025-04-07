@@ -406,6 +406,9 @@ impl CliFactory {
       ) {
         Ok(cli_options) => Ok(Arc::new(cli_options)),
         Err(crate::args::ReadCurrentVersionError::Other(err)) => Err(err),
+        Err(err @ crate::args::ReadCurrentVersionError::UnsupportedV5) => {
+          Err(err.into())
+        }
         Err(crate::args::ReadCurrentVersionError::NeedsUpgrade) => {
           let provider = self.npm_registry_info_provider()?.clone();
           let initial_cwd = workspace_factory.initial_cwd().clone();

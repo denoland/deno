@@ -418,13 +418,17 @@ impl CliLockfile {
               deno_lockfile::LockfileErrorReason::TransformNeeded
             ) {
               return Err(ReadCurrentVersionError::NeedsUpgrade);
+            } else if let deno_lockfile::LockfileErrorReason::UnsupportedVersion { version } = &err.source {
+              if version == "5" {
+                return Err(ReadCurrentVersionError::UnsupportedV5);
+              }
             }
             return Err(ReadCurrentVersionError::Other(err.into()));
           }
         }
       }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false, false)
+        Lockfile::new_empty(opts.file_path, false, opts.use_lockfile_v5)
       }
       Err(err) => {
         return Err(ReadCurrentVersionError::Other(
@@ -469,6 +473,8 @@ impl CliLockfile {
 pub enum ReadCurrentVersionError {
   #[error("Lockfile needs to be upgraded to the latest version")]
   NeedsUpgrade,
+  #[error("Lockfile version 5 requires the `--unstable-lockfile-v5` flag")]
+  UnsupportedV5,
   #[error(transparent)]
   Other(#[from] AnyError),
 }
