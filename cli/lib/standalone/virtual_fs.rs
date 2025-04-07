@@ -552,34 +552,50 @@ impl VfsBuilder {
     for entry in dir_entries {
       let file_type = entry.file_type()?;
       let path = entry.path();
+      self.add_path_with_file_type(&path, file_type)?;
+    }
 
-      if file_type.is_dir() {
-        self.add_dir_recursive_not_symlink(&path)?;
-      } else if file_type.is_file() {
-        self.add_file_at_path_not_symlink(&path)?;
-      } else if file_type.is_symlink() {
-        match self.add_symlink(&path) {
-          Ok(target) => match target {
-            SymlinkTarget::File(target) => {
-              self.add_file_at_path_not_symlink(&target)?
-            }
-            SymlinkTarget::Dir(target) => {
-              self.add_dir_recursive_not_symlink(&target)?;
-            }
-          },
-          Err(err) => {
-            log::warn!(
+    Ok(())
+  }
+
+  pub fn add_path(&mut self, path: &Path) -> Result<(), AnyError> {
+    let file_type = path.metadata()?.file_type();
+    self.add_path_with_file_type(path, file_type)
+  }
+
+  fn add_path_with_file_type(
+    &mut self,
+    path: &Path,
+    file_type: std::fs::FileType,
+  ) -> Result<(), AnyError> {
+    if file_type.is_dir() {
+      self.add_dir_recursive_not_symlink(path)
+    } else if file_type.is_file() {
+      self.add_file_at_path_not_symlink(path)
+    } else if file_type.is_symlink() {
+      match self.add_symlink(path) {
+        Ok(target) => match target {
+          SymlinkTarget::File(target) => {
+            self.add_file_at_path_not_symlink(&target)
+          }
+          SymlinkTarget::Dir(target) => {
+            self.add_dir_recursive_not_symlink(&target)
+          }
+        },
+        Err(err) => {
+          log::warn!(
             "{} Failed resolving symlink. Ignoring.\n    Path: {}\n    Message: {:#}",
             colors::yellow("Warning"),
             path.display(),
             err
           );
-          }
+          Ok(())
         }
       }
+    } else {
+      // ignore
+      Ok(())
     }
-
-    Ok(())
   }
 
   fn add_dir_raw(&mut self, path: &Path) -> &mut VirtualDirectory {

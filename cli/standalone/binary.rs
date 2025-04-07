@@ -184,7 +184,7 @@ pub struct WriteBinOptions<'a> {
   pub display_output_filename: &'a str,
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
-  pub include_files: &'a [ModuleSpecifier],
+  pub include_paths: &'a [ModuleSpecifier],
   pub compile_flags: &'a CompileFlags,
 }
 
@@ -365,7 +365,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       display_output_filename,
       graph,
       entrypoint,
-      include_files,
+      include_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -393,10 +393,10 @@ impl<'a> DenoCompileBinaryWriter<'a> {
         None
       }
     };
-    for include_file in include_files {
+    for include_file in include_paths {
       let path = deno_path_util::url_to_file_path(include_file)?;
       vfs
-        .add_file_at_path(&path)
+        .add_path(&path)
         .with_context(|| format!("Including {}", path.display()))?;
     }
     let specifiers_count = graph.specifiers_count();
