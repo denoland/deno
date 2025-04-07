@@ -9,7 +9,8 @@ use std::sync::Arc;
 use std::thread;
 
 use deno_ast::MediaType;
-use deno_config::deno_json::LintConfig;
+use deno_config::glob::FilePatterns;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_core::anyhow::anyhow;
 use deno_core::error::AnyError;
 use deno_core::parking_lot::Mutex;
@@ -963,7 +964,11 @@ fn generate_lint_diagnostics(
       .map(|d| (d.lint_config.clone(), d.linter.clone()))
       .unwrap_or_else(|| {
         (
-          Arc::new(LintConfig::new_with_base(PathBuf::from("/"))),
+          Arc::new(WorkspaceDirLintConfig {
+            rules: Default::default(),
+            plugins: Default::default(),
+            files: FilePatterns::new_with_base(PathBuf::from("/")),
+          }),
           Arc::new(CliLinter::new(CliLinterOptions {
             configured_rules: {
               let lint_rule_provider = LintRuleProvider::new(None);
@@ -997,7 +1002,7 @@ fn generate_lint_diagnostics(
 
 fn generate_document_lint_diagnostics(
   module: &DocumentModule,
-  lint_config: &LintConfig,
+  lint_config: &WorkspaceDirLintConfig,
   linter: &CliLinter,
   token: CancellationToken,
 ) -> Vec<lsp::Diagnostic> {
@@ -1591,13 +1596,12 @@ fn diagnose_resolution(
   match resolution {
     Resolution::Ok(resolved) => {
       let specifier = &resolved.specifier;
-      let managed_npm_resolver = snapshot
+      let scoped_resolver = snapshot
         .resolver
-        .maybe_managed_npm_resolver(referrer_module.scope.as_deref());
-      for (_, headers) in snapshot
-        .resolver
-        .redirect_chain_headers(specifier, referrer_module.scope.as_deref())
-      {
+        .get_scoped_resolver(referrer_module.scope.as_deref());
+      let managed_npm_resolver =
+        scoped_resolver.as_maybe_managed_npm_resolver();
+      for (_, headers) in scoped_resolver.redirect_chain_headers(specifier) {
         if let Some(message) = headers.get("x-deno-warning") {
           diagnostics.push(DenoDiagnostic::DenoWarn(message.clone()));
         }

@@ -22,7 +22,6 @@ pub use deno_config::deno_json::BenchConfig;
 pub use deno_config::deno_json::ConfigFile;
 use deno_config::deno_json::FmtConfig;
 pub use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::LintConfig;
 pub use deno_config::deno_json::LintRulesConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 pub use deno_config::deno_json::ProseWrap;
@@ -31,6 +30,7 @@ pub use deno_config::deno_json::TsConfig;
 pub use deno_config::deno_json::TsTypeLib;
 pub use deno_config::glob::FilePatterns;
 use deno_config::workspace::Workspace;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceLintConfig;
 use deno_core::anyhow::bail;
@@ -387,29 +387,18 @@ impl LintOptions {
   }
 
   pub fn resolve(
-    dir_path: PathBuf,
-    lint_config: LintConfig,
+    lint_config: WorkspaceDirLintConfig,
     lint_flags: &LintFlags,
   ) -> Result<Self, AnyError> {
     let rules = resolve_lint_rules_options(
-      lint_config.options.rules,
+      lint_config.rules,
       lint_flags.maybe_rules_tags.clone(),
       lint_flags.maybe_rules_include.clone(),
       lint_flags.maybe_rules_exclude.clone(),
     );
 
-    let plugins = {
-      let plugin_specifiers = lint_config.options.plugins;
-      let mut plugins = Vec::with_capacity(plugin_specifiers.len());
-      for plugin in &plugin_specifiers {
-        // TODO(bartlomieju): handle import-mapped specifiers
-        let url = resolve_url_or_path(plugin, &dir_path)?;
-        plugins.push(url);
-      }
-      // ensure stability for hasher
-      plugins.sort_unstable();
-      plugins
-    };
+    let mut plugins = lint_config.plugins;
+    plugins.sort_unstable();
 
     Ok(Self {
       files: lint_config.files,
@@ -828,7 +817,7 @@ impl CliOptions {
       .resolve_lint_config_for_members(&cli_arg_patterns)?;
     let mut result = Vec::with_capacity(member_configs.len());
     for (ctx, config) in member_configs {
-      let options = LintOptions::resolve(ctx.dir_path(), config, lint_flags)?;
+      let options = LintOptions::resolve(config, lint_flags)?;
       result.push((ctx, options));
     }
     Ok(result)

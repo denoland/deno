@@ -1177,7 +1177,9 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
+              let scoped_resolver =
+                inner.resolver.get_scoped_resolver(Some(&referrer));
+              let resolver = scoped_resolver.as_cli_resolver();
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &referrer,
@@ -1825,8 +1827,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
+              let scoped_resolver = self.resolver.get_scoped_resolver(scope);
               if let Some(url) =
-                self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)
+                scoped_resolver.jsr_to_resource_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }

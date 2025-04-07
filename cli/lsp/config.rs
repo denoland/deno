@@ -13,7 +13,6 @@ use deno_ast::MediaType;
 use deno_config::deno_json::DenoJsonCache;
 use deno_config::deno_json::FmtConfig;
 use deno_config::deno_json::FmtOptionsConfig;
-use deno_config::deno_json::LintConfig;
 use deno_config::deno_json::NodeModulesDirMode;
 use deno_config::deno_json::TestConfig;
 use deno_config::deno_json::TsConfig;
@@ -24,6 +23,7 @@ use deno_config::workspace::JsxImportSourceConfig;
 use deno_config::workspace::VendorEnablement;
 use deno_config::workspace::Workspace;
 use deno_config::workspace::WorkspaceCache;
+use deno_config::workspace::WorkspaceDirLintConfig;
 use deno_config::workspace::WorkspaceDirectory;
 use deno_config::workspace::WorkspaceDirectoryEmptyOptions;
 use deno_config::workspace::WorkspaceDiscoverOptions;
@@ -1243,7 +1243,7 @@ pub struct ConfigData {
   pub canonicalized_scope: Option<Arc<ModuleSpecifier>>,
   pub member_dir: Arc<WorkspaceDirectory>,
   pub fmt_config: Arc<FmtConfig>,
-  pub lint_config: Arc<LintConfig>,
+  pub lint_config: Arc<WorkspaceDirLintConfig>,
   pub test_config: Arc<TestConfig>,
   pub exclude_files: Arc<PathOrPatternSet>,
   pub linter: Arc<CliLinter>,
@@ -1455,8 +1455,10 @@ impl ConfigData {
           lsp_warn!("  Couldn't read lint configuration: {}", err)
         })
         .ok()
-        .unwrap_or_else(|| {
-          LintConfig::new_with_base(default_file_pattern_base.clone())
+        .unwrap_or_else(|| WorkspaceDirLintConfig {
+          rules: Default::default(),
+          plugins: Default::default(),
+          files: FilePatterns::new_with_base(default_file_pattern_base.clone()),
         }),
     );
 
@@ -1683,14 +1685,13 @@ impl ConfigData {
     let resolver = Arc::new(resolver);
     let lint_rule_provider = LintRuleProvider::new(Some(resolver.clone()));
 
-    let lint_options = LintOptions::resolve(
-      member_dir.dir_path(),
-      (*lint_config).clone(),
-      &LintFlags::default(),
-    )
-    .inspect_err(|err| lsp_warn!("  Failed to resolve linter options: {}", err))
-    .ok()
-    .unwrap_or_default();
+    let lint_options =
+      LintOptions::resolve((*lint_config).clone(), &LintFlags::default())
+        .inspect_err(|err| {
+          lsp_warn!("  Failed to resolve linter options: {}", err)
+        })
+        .ok()
+        .unwrap_or_default();
     let mut plugin_runner = None;
     if !lint_options.plugins.is_empty() {
       fn logger_printer(msg: &str, _is_err: bool) {
