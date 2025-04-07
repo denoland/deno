@@ -1,3 +1,5 @@
+// Copyright 2018-2025 the Deno authors. MIT license.
+// deno-lint-ignore-file no-console
 import { greaterThan, parse } from "jsr:@std/semver@1";
 
 const response = await fetch("https://dl.deno.land/release-latest.txt");
@@ -5,7 +7,7 @@ if (!response.ok) {
   throw new Error(`Failed to fetch: ${response.statusText}`);
 }
 
-const latestVersionText = await response.text();
+const latestVersionText = (await response.text()).trim();
 const currentVersionText = Deno.args[0];
 console.error("Latest version:", latestVersionText);
 console.error("Current version:", currentVersionText);
