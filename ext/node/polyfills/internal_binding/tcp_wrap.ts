@@ -348,16 +348,7 @@ export class TCP extends ConnectionWrap {
    * @return An error status code.
    */
   #bind(address: string, port: number, _flags: number): number {
-    // Deno doesn't currently separate bind from connect etc.
-    // REF:
-    // - https://doc.deno.land/deno/stable/~/Deno.connect
-    // - https://doc.deno.land/deno/stable/~/Deno.listen
-    //
-    // This also means we won't be connecting from the specified local address
-    // and port as providing these is not an option in Deno.
-    // REF:
-    // - https://doc.deno.land/deno/stable/~/Deno.ConnectOptions
-    // - https://doc.deno.land/deno/stable/~/Deno.ListenOptions
+    // bind is defered during socket creation. See #connect().
 
     this.#address = address;
     this.#port = port;
@@ -378,14 +369,15 @@ export class TCP extends ConnectionWrap {
     this.#remoteFamily = isIP(address);
 
     op_net_connect_tcp(
-      { hostname: address ?? "127.0.0.1", port },
+      {
+        hostname: address ?? "127.0.0.1",
+        port,
+        localAddress: this.#address,
+        localPort: this.#port,
+      },
       this.#netPermToken,
     ).then(
       ({ 0: rid, 1: localAddr, 2: remoteAddr }) => {
-        // Incorrect / backwards, but correcting the local address and port with
-        // what was actually used given we can't actually specify these in Deno.
-        this.#address = req.localAddress = localAddr.hostname;
-        this.#port = req.localPort = localAddr.port;
         this[kStreamBaseField] = new TcpConn(rid, remoteAddr, localAddr);
 
         try {
