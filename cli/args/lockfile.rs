@@ -1,12 +1,15 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
+use std::future::Future;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
+use deno_config::deno_json::ToLockConfigError;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
@@ -131,180 +134,19 @@ impl CliLockfile {
     maybe_external_import_map: Option<&serde_json::Value>,
     use_lockfile_v5: bool,
   ) -> Result<Option<CliLockfile>, ReadCurrentVersionError> {
-    fn pkg_json_deps(
-      maybe_pkg_json: Option<&PackageJson>,
-    ) -> HashSet<JsrDepPackageReq> {
-      let Some(pkg_json) = maybe_pkg_json else {
-        return Default::default();
-      };
-      let deps = pkg_json.resolve_local_package_json_deps();
-
-      deps
-        .dependencies
-        .values()
-        .chain(deps.dev_dependencies.values())
-        .filter_map(|dep| dep.as_ref().ok())
-        .filter_map(|dep| match dep {
-          PackageJsonDepValue::File(_) => {
-            // ignored because this will have its own separate lockfile
-            None
-          }
-          PackageJsonDepValue::Req(req) => {
-            Some(JsrDepPackageReq::npm(req.clone()))
-          }
-          PackageJsonDepValue::Workspace(_) => None,
-        })
-        .collect()
-    }
-
-    fn deno_json_deps(
-      maybe_deno_json: Option<&ConfigFile>,
-    ) -> HashSet<JsrDepPackageReq> {
-      maybe_deno_json
-        .map(crate::args::deno_json::deno_json_deps)
-        .unwrap_or_default()
-    }
-
-    if flags.no_lock
-      || matches!(
-        flags.subcommand,
-        DenoSubcommand::Install(InstallFlags::Global(..))
-          | DenoSubcommand::Uninstall(_)
-      )
-    {
-      return Ok(None);
-    }
-
-    let file_path = match flags.lock {
-      Some(ref lock) => PathBuf::from(lock),
-      None => match workspace
-        .resolve_lockfile_path()
-        .map_err(|e| ReadCurrentVersionError::Other(e.into()))?
-      {
-        Some(path) => path,
-        None => return Ok(None),
-      },
-    };
-
-    let root_folder = workspace.root_folder_configs();
-    // CLI flag takes precedence over the config
-    let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
-      root_folder
-        .deno_json
-        .as_ref()
-        .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
-        .unwrap_or(false)
-    });
-
-    let lockfile = Self::read_from_path_current_version(
+    Self::discover_inner(
       sys,
-      CliLockfileReadFromPathOptions {
-        file_path,
-        frozen,
-        skip_write: flags.internal.lockfile_skip_write,
-        use_lockfile_v5,
+      flags,
+      workspace,
+      maybe_external_import_map,
+      None,
+      use_lockfile_v5,
+      |sys, opts, _| {
+        std::future::ready(Self::read_from_path_current_version(sys, opts))
       },
-    )?;
-
-    // initialize the lockfile with the workspace's configuration
-    let root_url = workspace.root_dir();
-    let config = deno_lockfile::WorkspaceConfig {
-      root: WorkspaceMemberConfig {
-        package_json_deps: pkg_json_deps(root_folder.pkg_json.as_deref()),
-        dependencies: if let Some(map) = maybe_external_import_map {
-          import_map_deps(map)
-        } else {
-          deno_json_deps(root_folder.deno_json.as_deref())
-        },
-      },
-      members: workspace
-        .config_folders()
-        .iter()
-        .filter(|(folder_url, _)| *folder_url != root_url)
-        .filter_map(|(folder_url, folder)| {
-          Some((
-            {
-              // should never be None here, but just ignore members that
-              // do fail for this
-              let mut relative_path = root_url.make_relative(folder_url)?;
-              if relative_path.ends_with('/') {
-                // make it slightly cleaner by removing the trailing slash
-                relative_path.pop();
-              }
-              relative_path
-            },
-            {
-              let config = WorkspaceMemberConfig {
-                package_json_deps: pkg_json_deps(folder.pkg_json.as_deref()),
-                dependencies: deno_json_deps(folder.deno_json.as_deref()),
-              };
-              if config.package_json_deps.is_empty()
-                && config.dependencies.is_empty()
-              {
-                // exclude empty workspace members
-                return None;
-              }
-              config
-            },
-          ))
-        })
-        .collect(),
-      patches: if workspace.has_unstable("npm-patch") {
-        workspace
-          .patch_pkg_jsons()
-          .filter_map(|pkg_json| {
-            fn collect_deps(
-              deps: Option<&IndexMap<String, String>>,
-            ) -> HashSet<JsrDepPackageReq> {
-              deps
-                .map(|i| {
-                  i.iter()
-                    .filter_map(|(k, v)| PackageJsonDepValue::parse(k, v).ok())
-                    .filter_map(|dep| match dep {
-                      PackageJsonDepValue::Req(req) => {
-                        Some(JsrDepPackageReq::npm(req.clone()))
-                      }
-                      // not supported
-                      PackageJsonDepValue::File(_)
-                      | PackageJsonDepValue::Workspace(_) => None,
-                    })
-                    .collect()
-                })
-                .unwrap_or_default()
-            }
-
-            let key = format!(
-              "npm:{}@{}",
-              pkg_json.name.as_ref()?,
-              pkg_json.version.as_ref()?
-            );
-            // anything that affects npm resolution should go here in order to bust
-            // the npm resolution when it changes
-            let value = deno_lockfile::LockfilePatchContent {
-              dependencies: collect_deps(pkg_json.dependencies.as_ref()),
-              peer_dependencies: collect_deps(
-                pkg_json.peer_dependencies.as_ref(),
-              ),
-              peer_dependencies_meta: pkg_json
-                .peer_dependencies_meta
-                .clone()
-                .and_then(|v| serde_json::from_value(v).ok())
-                .unwrap_or_default(),
-            };
-            Some((key, value))
-          })
-          .collect()
-      } else {
-        Default::default()
-      },
-    };
-    lockfile.set_workspace_config(deno_lockfile::SetWorkspaceConfigOptions {
-      no_npm: flags.no_npm,
-      no_config: flags.config_flag == super::ConfigFlag::Disabled,
-      config,
-    });
-
-    Ok(Some(lockfile))
+    )
+    .now_or_never() // not ideal but best I could come up with
+    .unwrap()
   }
 
   pub async fn discover(
@@ -315,6 +157,36 @@ impl CliLockfile {
     api: &(dyn NpmPackageInfoProvider + Send + Sync),
     use_lockfile_v5: bool,
   ) -> Result<Option<CliLockfile>, AnyError> {
+    Self::discover_inner(
+      sys,
+      flags,
+      workspace,
+      maybe_external_import_map,
+      Some(api),
+      use_lockfile_v5,
+      |sys, opts, api| Self::read_from_path(sys, opts, api.unwrap()),
+    )
+    .await
+  }
+
+  async fn discover_inner<'a, R, E, Fut>(
+    sys: &'a CliSys,
+    flags: &Flags,
+    workspace: &Workspace,
+    maybe_external_import_map: Option<&serde_json::Value>,
+    api: Option<&'a (dyn NpmPackageInfoProvider + Send + Sync)>,
+    use_lockfile_v5: bool,
+    read_from_path: R,
+  ) -> Result<Option<CliLockfile>, E>
+  where
+    R: FnOnce(
+      &'a CliSys,
+      CliLockfileReadFromPathOptions,
+      Option<&'a (dyn NpmPackageInfoProvider + Send + Sync)>,
+    ) -> Fut,
+    Fut: Future<Output = Result<CliLockfile, E>>,
+    E: From<ToLockConfigError>,
+  {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -377,7 +249,7 @@ impl CliLockfile {
         .unwrap_or(false)
     });
 
-    let lockfile = Self::read_from_path(
+    let lockfile = read_from_path(
       sys,
       CliLockfileReadFromPathOptions {
         file_path,
@@ -599,4 +471,10 @@ pub enum ReadCurrentVersionError {
   NeedsUpgrade,
   #[error(transparent)]
   Other(#[from] AnyError),
+}
+
+impl From<ToLockConfigError> for ReadCurrentVersionError {
+  fn from(err: ToLockConfigError) -> Self {
+    Self::Other(err.into())
+  }
 }
