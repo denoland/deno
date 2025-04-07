@@ -6105,6 +6105,7 @@ declare namespace Deno {
      * @default {false}
      */
     allowHost?: boolean;
+    /** Sets the local address where the socket will connect from. */
     localAddress?: string;
   }
 
