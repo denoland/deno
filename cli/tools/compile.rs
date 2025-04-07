@@ -46,7 +46,6 @@ pub async fn compile(
   .await?;
   let (module_roots, include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
     &compile_flags,
     cli_options.initial_cwd(),
   )?;
@@ -105,6 +104,10 @@ pub async fn compile(
       graph: &graph,
       entrypoint,
       include_paths: &include_paths,
+      exclude_paths: vec![
+        cli_options.initial_cwd().join(&output_path),
+        cli_options.initial_cwd().join(&temp_path),
+      ],
       compile_flags: &compile_flags,
     })
     .await
@@ -170,7 +173,6 @@ pub async fn compile_eszip(
     cli_options.resolve_specified_import_map_specifier()?;
   let (module_roots, _include_paths) = get_module_roots_and_include_paths(
     entrypoint,
-    &url_from_file_path(&cli_options.initial_cwd().join(&output_path))?,
     &compile_flags,
     cli_options.initial_cwd(),
   )?;
@@ -315,7 +317,6 @@ fn validate_output_path(output_path: &Path) -> Result<(), AnyError> {
 
 fn get_module_roots_and_include_paths(
   entrypoint: &ModuleSpecifier,
-  output_url: &ModuleSpecifier,
   compile_flags: &CompileFlags,
   initial_cwd: &Path,
 ) -> Result<(Vec<ModuleSpecifier>, Vec<ModuleSpecifier>), AnyError> {
@@ -386,10 +387,8 @@ fn get_module_roots_and_include_paths(
       module_roots.push(url.clone());
     } else {
       analyze_path(&url, &mut searched_paths, |file_url| {
-        if file_url != *output_url {
-          if is_module_graph_module(&file_url) {
-            module_roots.push(file_url);
-          }
+        if is_module_graph_module(&file_url) {
+          module_roots.push(file_url);
         }
       })?;
     }

@@ -185,6 +185,7 @@ pub struct WriteBinOptions<'a> {
   pub graph: &'a ModuleGraph,
   pub entrypoint: &'a ModuleSpecifier,
   pub include_paths: &'a [ModuleSpecifier],
+  pub exclude_paths: Vec<PathBuf>,
   pub compile_flags: &'a CompileFlags,
 }
 
@@ -366,6 +367,7 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       graph,
       entrypoint,
       include_paths,
+      exclude_paths,
       compile_flags,
     } = options;
     let ca_data = match self.cli_options.ca_data() {
@@ -376,6 +378,9 @@ impl<'a> DenoCompileBinaryWriter<'a> {
       None => None,
     };
     let mut vfs = VfsBuilder::new();
+    for path in exclude_paths {
+      vfs.add_exclude_path(path.clone());
+    }
     let npm_snapshot = match &self.npm_resolver {
       CliNpmResolver::Managed(managed) => {
         let snapshot = managed
