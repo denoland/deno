@@ -215,13 +215,13 @@ fn handle_package_scripts_bin_deprecated<'a>(
   if package.has_bin {
     bin_entries
       .borrow_mut()
-      .add(package, &extra, package_path.to_path_buf());
+      .add(package, extra, package_path.to_path_buf());
   }
 
   if package.has_scripts {
     lifecycle_scripts
       .borrow_mut()
-      .add(package, &extra, package_path.into());
+      .add(package, extra, package_path.into());
   }
 
   if package.is_deprecated {
