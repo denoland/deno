@@ -15,7 +15,7 @@ const TIMEOUT = 2000;
 const testDirUrl = new URL("runner/suite/test/", import.meta.url).href;
 
 // The metadata of the test report
-type TestReportMetadata = {
+export type TestReportMetadata = {
   date: string;
   denoVersion: string;
   os: string;
@@ -208,7 +208,7 @@ function truncateTestOutput(output: string): string {
   return output;
 }
 
-type SingleResult = [
+export type SingleResult = [
   pass: boolean,
   error?: ErrorExit | ErrorTimeout | ErrorUnexpected,
 ];
@@ -336,7 +336,7 @@ async function main() {
   );
   console.log(`Elapsed time: ${((Date.now() - start) / 1000).toFixed(2)}s`);
   // Store the results in a JSON file
-  Deno.writeTextFile(
+  await Deno.writeTextFile(
     "tests/node_compat/report.json",
     JSON.stringify(
       {
@@ -355,4 +355,6 @@ async function main() {
   Deno.exit(0);
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
