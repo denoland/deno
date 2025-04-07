@@ -1135,7 +1135,9 @@ impl Inner {
           spawn(async move {
             let specifier = {
               let inner = ls.inner.read().await;
-              let resolver = inner.resolver.as_cli_resolver(Some(&referrer));
+              let scoped_resolver =
+                inner.resolver.get_scoped_resolver(Some(&referrer));
+              let resolver = scoped_resolver.as_cli_resolver();
               let Ok(specifier) = resolver.resolve(
                 &specifier,
                 &referrer,
@@ -1549,20 +1551,9 @@ impl Inner {
     _token: &CancellationToken,
   ) -> LspResult<Option<Vec<TextEdit>>> {
     let mark = self.performance.mark_with_args("lsp.formatting", &params);
-    // Untitled files are exempt from enabled-checks because they tend not to
-    // have meaningful paths, and they won't be auto-formatted on save anyway.
-    let is_untitled = params
-      .text_document
-      .uri
-      .scheme()
-      .is_some_and(|s| s.eq_lowercase("untitled"));
     let Some(document) = self.get_document(
       &params.text_document.uri,
-      if is_untitled {
-        Enabled::Ignore
-      } else {
-        Enabled::Filter
-      },
+      Enabled::Ignore,
       Exists::Enforce,
       Diagnosable::Ignore,
     )?
@@ -1574,6 +1565,13 @@ impl Inner {
     };
     let fmt_config =
       self.config.tree.fmt_config_for_specifier(&module.specifier);
+    // Untitled files are exempt from enabled-checks because they tend not to
+    // have meaningful paths, and they won't be auto-formatted on save anyway.
+    let is_untitled = params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("untitled"));
     if !is_untitled && !fmt_config.files.matches_specifier(&module.specifier) {
       return Ok(None);
     }
@@ -1787,8 +1785,9 @@ impl Inner {
             if let Ok(jsr_req_ref) =
               JsrPackageReqReference::from_specifier(specifier)
             {
+              let scoped_resolver = self.resolver.get_scoped_resolver(scope);
               if let Some(url) =
-                self.resolver.jsr_to_resource_url(&jsr_req_ref, scope)
+                scoped_resolver.jsr_to_resource_url(&jsr_req_ref)
               {
                 result = format!("{result} (<{url}>)");
               }

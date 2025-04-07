@@ -1,5 +1,7 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::path::Component;
+use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -82,29 +84,21 @@ pub fn url_to_uri(url: &Url) -> Result<Uri, AnyError> {
   let components = deno_core::url::quirks::internal_components(url);
   let mut input = String::with_capacity(url.as_str().len());
   input.push_str(&url.as_str()[..components.path_start as usize]);
-  if cfg!(windows) && url.scheme() == "file" {
-    let path = url.path();
-    let mut chars = path.chars();
-    let has_drive_letter = chars.next().is_some_and(|c| c == '/')
-      && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
-      && chars.next().is_some_and(|c| c == ':')
-      && chars.next().is_none_or(|c| c == '/');
-    if has_drive_letter {
-      input.push_str(&path[..3]);
-      input.push_str(
-        &percent_encoding::utf8_percent_encode(&path[3..], URL_TO_URI_PATH)
-          .to_string(),
-      );
-    } else {
-      input.push_str(
-        &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH)
-          .to_string(),
-      );
-    }
+  let path = url.path();
+  let mut chars = path.chars();
+  let has_drive_letter = chars.next().is_some_and(|c| c == '/')
+    && chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+    && chars.next().is_some_and(|c| c == ':')
+    && chars.next().is_none_or(|c| c == '/');
+  if has_drive_letter {
+    let (dl_part, rest) = path.split_at(2);
+    input.push_str(&dl_part.to_ascii_lowercase());
+    input.push_str(
+      &percent_encoding::utf8_percent_encode(rest, URL_TO_URI_PATH).to_string(),
+    );
   } else {
     input.push_str(
-      &percent_encoding::utf8_percent_encode(url.path(), URL_TO_URI_PATH)
-        .to_string(),
+      &percent_encoding::utf8_percent_encode(path, URL_TO_URI_PATH).to_string(),
     );
   }
   if let Some(query) = url.query() {
@@ -132,6 +126,7 @@ pub fn uri_to_url(uri: &Uri) -> Url {
     if !scheme.eq_lowercase("untitled")
       && !scheme.eq_lowercase("vscode-notebook-cell")
       && !scheme.eq_lowercase("deno-notebook-cell")
+      && !scheme.eq_lowercase("vscode-userdata")
     {
       return None;
     }
@@ -141,8 +136,9 @@ pub fn uri_to_url(uri: &Uri) -> Url {
         .trim_start_matches('/'),
     ))
     .ok()
+    .map(normalize_url)
   })()
-  .unwrap_or_else(|| Url::parse(uri.as_str()).unwrap())
+  .unwrap_or_else(|| normalize_url(Url::parse(uri.as_str()).unwrap()))
 }
 
 pub fn uri_to_file_path(uri: &Uri) -> Result<PathBuf, UrlToFilePathError> {
@@ -157,4 +153,55 @@ pub fn uri_is_file_like(uri: &Uri) -> bool {
     || scheme.eq_lowercase("untitled")
     || scheme.eq_lowercase("vscode-notebook-cell")
     || scheme.eq_lowercase("deno-notebook-cell")
+    || scheme.eq_lowercase("vscode-userdata")
+}
+
+fn normalize_url(url: Url) -> Url {
+  let Ok(path) = url_to_file_path(&url) else {
+    return url;
+  };
+  let normalized_path = normalize_path(&path);
+  let Ok(normalized_url) = Url::from_file_path(&normalized_path) else {
+    return url;
+  };
+  normalized_url
+}
+
+// TODO(nayeemrmn): Change the version of this in deno_path_util to force
+// uppercase on drive letters. Then remove this.
+fn normalize_path<P: AsRef<Path>>(path: P) -> PathBuf {
+  fn inner(path: &Path) -> PathBuf {
+    let mut components = path.components().peekable();
+    let mut ret =
+      if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        let s = c.as_os_str();
+        if s.len() == 2 {
+          PathBuf::from(s.to_ascii_uppercase())
+        } else {
+          PathBuf::from(s)
+        }
+      } else {
+        PathBuf::new()
+      };
+
+    for component in components {
+      match component {
+        Component::Prefix(..) => unreachable!(),
+        Component::RootDir => {
+          ret.push(component.as_os_str());
+        }
+        Component::CurDir => {}
+        Component::ParentDir => {
+          ret.pop();
+        }
+        Component::Normal(c) => {
+          ret.push(c);
+        }
+      }
+    }
+    ret
+  }
+
+  inner(path.as_ref())
 }

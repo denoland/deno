@@ -4,6 +4,7 @@
 
 import { assertIsError, assertMatch, assertRejects } from "@std/assert";
 import { Buffer, type Reader } from "@std/io";
+import { delay } from "@std/async/delay";
 import { TextProtoReader } from "../testdata/run/textproto.ts";
 import {
   assert,
@@ -4327,6 +4328,7 @@ Deno.test({
 
     try {
       while (true) {
+        await delay(100);
         const { done } = await reader.read();
         if (done) break;
       }
@@ -4342,13 +4344,15 @@ Deno.test({
 
   async function onListen({ port }: { port: number }) {
     const body = "a".repeat(1000);
-    const request = `POST / HTTP/1.1\r\n` +
+    const header = `POST / HTTP/1.1\r\n` +
       `Host: 127.0.0.1:${port}\r\n` +
       `Content-Length: 1000\r\n` +
-      "\r\n" + body;
+      "\r\n";
 
     const connection = await Deno.connect({ hostname: "127.0.0.1", port });
-    await connection.write(new TextEncoder().encode(request));
+    await connection.write(new TextEncoder().encode(header));
+    await delay(100);
+    await connection.write(new TextEncoder().encode(body));
     connection.close();
   }
   await server.finished;

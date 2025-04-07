@@ -368,6 +368,16 @@ fn setup_panic_hook() {
     eprintln!("Version: {}", deno_lib::version::DENO_VERSION_INFO.deno);
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
+
+    let trace = deno_panic::trace();
+    eprintln!("View stack trace at:");
+    eprintln!(
+      "https://panic.deno.com/v{}/{}/{}",
+      deno_lib::version::DENO_VERSION_INFO.deno,
+      env!("TARGET"),
+      trace
+    );
+
     orig_hook(panic_info);
     deno_runtime::exit(1);
   }));
