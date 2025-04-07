@@ -70,4 +70,3 @@ jobs:
       - name: Upload the month summary
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/summary.json.gz gs://dl.deno.land/node-compat-test/summary-$(date +%Y-%m).json.gz
-

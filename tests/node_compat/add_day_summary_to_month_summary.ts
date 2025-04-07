@@ -2,7 +2,10 @@
 // This file mostly mirrors the utils in
 // https://github.com/denoland/node_test_viewer/blob/a642f725f2d9595bc8cf217c41967c446814a79e/util/report.ts
 
-import type { TestReportMetadata, SingleResult } from "./run_all_test_unmodified.ts";
+import type {
+  SingleResult,
+  TestReportMetadata,
+} from "./run_all_test_unmodified.ts";
 import { toJson } from "@std/streams/to-json";
 
 /** The test report format, which is stored in JSON file */
