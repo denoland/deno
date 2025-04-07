@@ -852,50 +852,50 @@ fn lock_file_lock_write() {
   );
 }
 
-// #[test]
-// fn auto_discover_lock_file() {
-//   let context = TestContextBuilder::for_npm().use_temp_cwd().build();
+#[test]
+fn auto_discover_lock_file() {
+  let context = TestContextBuilder::for_npm().use_temp_cwd().build();
 
-//   let temp_dir = context.temp_dir();
+  let temp_dir = context.temp_dir();
 
-//   // write empty config file
-//   temp_dir.write("deno.json", "{}");
+  // write empty config file
+  temp_dir.write("deno.json", "{}");
 
-//   // write a lock file with borked integrity
-//   let lock_file_content = r#"{
-//     "version": "4",
-//     "specifiers": {
-//       "npm:@denotest/bin": "1.0.0"
-//     },
-//     "npm": {
-//       "@denotest/bin@1.0.0": {
-//         "integrity": "sha512-foobar"
-//       }
-//     }
-//   }"#;
-//   temp_dir.write("deno.lock", lock_file_content);
+  // write a lock file with borked integrity
+  let lock_file_content = r#"{
+    "version": "4",
+    "specifiers": {
+      "npm:@denotest/bin": "1.0.0"
+    },
+    "npm": {
+      "@denotest/bin@1.0.0": {
+        "integrity": "sha512-foobar"
+      }
+    }
+  }"#;
+  temp_dir.write("deno.lock", lock_file_content);
 
-//   let output = context
-//     .new_command()
-//     .args("run -A npm:@denotest/bin/cli-esm test")
-//     .run();
-//   output
-//     .assert_matches_text(
-// r#"Download http://localhost:4260/@denotest%2fbin
-// error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
-// is the same as when the lockfile was generated.
+  let output = context
+    .new_command()
+    .args("run -A npm:@denotest/bin/cli-esm test")
+    .run();
+  output
+    .assert_matches_text(
+r#"Download http://localhost:4260/@denotest%2fbin
+error: Integrity check failed for package: "npm:@denotest/bin@1.0.0". Unable to verify that the package
+is the same as when the lockfile was generated.
 
-// Actual: sha512-[WILDCARD]
-// Expected: sha512-foobar
+Actual: sha512-[WILDCARD]
+Expected: sha512-foobar
 
-// This could be caused by:
-//   * the lock file may be corrupt
-//   * the source itself may be corrupt
+This could be caused by:
+  * the lock file may be corrupt
+  * the source itself may be corrupt
 
-// Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
-// "#)
-//     .assert_exit_code(10);
-// }
+Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]deno.lock".
+"#)
+    .assert_exit_code(10);
+}
 
 // TODO(2.0): this should be rewritten to a spec test and first run `deno install`
 // itest!(node_modules_import_run {

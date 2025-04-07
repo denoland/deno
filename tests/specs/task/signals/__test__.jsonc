@@ -1,5 +1,4 @@
 {
-  "ignore": true,
   // signals don't really exist on windows
   "if": "unix",
   // this runs a deno task

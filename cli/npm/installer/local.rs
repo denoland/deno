@@ -24,6 +24,7 @@ use deno_core::parking_lot::Mutex;
 use deno_error::JsErrorBox;
 use deno_npm::registry::NpmRegistryApi;
 use deno_npm::resolution::NpmResolutionSnapshot;
+use deno_npm::NpmPackageExtraInfo;
 use deno_npm::NpmResolutionPackage;
 use deno_npm::NpmSystemInfo;
 use deno_npm_cache::hard_link_file;
@@ -199,6 +200,37 @@ pub enum SyncResolutionWithFsError {
   #[class(inherit)]
   #[error(transparent)]
   Other(#[from] JsErrorBox),
+}
+
+fn handle_package_scripts_bin_deprecated<'a>(
+  package: &'a NpmResolutionPackage,
+  extra: &NpmPackageExtraInfo,
+  package_path: PathBuf,
+  bin_entries: &RefCell<bin_entries::BinEntries<'a>>,
+  lifecycle_scripts: &RefCell<
+    super::common::lifecycle_scripts::LifecycleScripts<'a>,
+  >,
+  packages_with_deprecation_warnings: &Mutex<Vec<(PackageNv, String)>>,
+) {
+  if package.has_bin {
+    bin_entries
+      .borrow_mut()
+      .add(package, &extra, package_path.to_path_buf());
+  }
+
+  if package.has_scripts {
+    lifecycle_scripts
+      .borrow_mut()
+      .add(package, &extra, package_path.into());
+  }
+
+  if package.is_deprecated {
+    if let Some(deprecated) = &extra.deprecated {
+      packages_with_deprecation_warnings
+        .lock()
+        .push((package.id.nv.clone(), deprecated.clone()));
+    }
+  }
 }
 
 /// Creates a pnpm style folder structure.
@@ -400,29 +432,14 @@ async fn sync_resolution_with_fs(
               .map_err(JsErrorBox::from_err)?;
             let extra = extra.map_err(JsErrorBox::from_err)?;
 
-            if package.has_bin {
-              bin_entries_to_setup.borrow_mut().add(
-                package,
-                &extra,
-                package_path.clone(),
-              );
-            }
-
-            if package.has_scripts {
-              lifecycle_scripts.borrow_mut().add(
-                package,
-                &extra,
-                package_path.into(),
-              );
-            }
-
-            if package.is_deprecated {
-              if let Some(deprecated) = &extra.deprecated {
-                packages_with_deprecation_warnings
-                  .lock()
-                  .push((package.id.nv.clone(), deprecated.clone()));
-              }
-            }
+            handle_package_scripts_bin_deprecated(
+              package,
+              &extra,
+              package_path,
+              &bin_entries_to_setup,
+              &lifecycle_scripts,
+              &packages_with_deprecation_warnings,
+            );
 
             // finally stop showing the progress bar
             drop(pb_guard); // explicit for clarity
@@ -452,30 +469,14 @@ async fn sync_resolution_with_fs(
               .await
               .map_err(JsErrorBox::from_err)?;
 
-            if package.has_bin {
-              bin_entries_to_setup.borrow_mut().add(
-                package,
-                &extra,
-                package_path.clone(),
-              );
-            }
-
-            if package.has_scripts {
-              lifecycle_scripts.borrow_mut().add(
-                package,
-                &extra,
-                package_path.into(),
-              );
-            }
-
-            if package.is_deprecated {
-              if let Some(deprecated) = &extra.deprecated {
-                packages_with_deprecation_warnings
-                  .lock()
-                  .push((package.id.nv.clone(), deprecated.clone()));
-              }
-            }
-
+            handle_package_scripts_bin_deprecated(
+              package,
+              &extra,
+              package_path,
+              &bin_entries_to_setup,
+              &lifecycle_scripts,
+              &packages_with_deprecation_warnings,
+            );
             Ok(())
           }
           .boxed_local(),
