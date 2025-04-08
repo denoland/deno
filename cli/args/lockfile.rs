@@ -12,6 +12,7 @@ use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
 use deno_error::JsErrorBox;
 use deno_lockfile::Lockfile;
+use deno_lockfile::NpmPackageInfoProvider;
 use deno_lockfile::WorkspaceMemberConfig;
 use deno_package_json::PackageJsonDepValue;
 use deno_path_util::fs::atomic_write_file_with_retries;
@@ -32,6 +33,7 @@ pub struct CliLockfileReadFromPathOptions {
   pub frozen: bool,
   /// Causes the lockfile to only be read from, but not written to.
   pub skip_write: bool,
+  pub use_lockfile_v5: bool,
 }
 
 #[derive(Debug)]
@@ -41,6 +43,7 @@ pub struct CliLockfile {
   pub filename: PathBuf,
   frozen: bool,
   skip_write: bool,
+  use_lockfile_v5: bool,
 }
 
 pub struct Guard<'a, T> {
@@ -86,6 +89,10 @@ impl CliLockfile {
     self.lockfile.lock().set_workspace_config(options);
   }
 
+  pub fn use_lockfile_v5(&self) -> bool {
+    self.use_lockfile_v5
+  }
+
   pub fn overwrite(&self) -> bool {
     self.lockfile.lock().overwrite
   }
@@ -117,11 +124,13 @@ impl CliLockfile {
     Ok(())
   }
 
-  pub fn discover(
+  pub async fn discover(
     sys: &CliSys,
     flags: &Flags,
     workspace: &Workspace,
     maybe_external_import_map: Option<&serde_json::Value>,
+    api: &(dyn NpmPackageInfoProvider + Send + Sync),
+    use_lockfile_v5: bool,
   ) -> Result<Option<CliLockfile>, AnyError> {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
@@ -148,7 +157,6 @@ impl CliLockfile {
         })
         .collect()
     }
-
     fn deno_json_deps(
       maybe_deno_json: Option<&ConfigFile>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -156,7 +164,6 @@ impl CliLockfile {
         .map(crate::args::deno_json::deno_json_deps)
         .unwrap_or_default()
     }
-
     if flags.no_lock
       || matches!(
         flags.subcommand,
@@ -166,7 +173,6 @@ impl CliLockfile {
     {
       return Ok(None);
     }
-
     let file_path = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match workspace.resolve_lockfile_path()? {
@@ -174,9 +180,7 @@ impl CliLockfile {
         None => return Ok(None),
       },
     };
-
     let root_folder = workspace.root_folder_configs();
-    // CLI flag takes precedence over the config
     let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
       root_folder
         .deno_json
@@ -184,17 +188,17 @@ impl CliLockfile {
         .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
         .unwrap_or(false)
     });
-
     let lockfile = Self::read_from_path(
       sys,
       CliLockfileReadFromPathOptions {
         file_path,
         frozen,
         skip_write: flags.internal.lockfile_skip_write,
+        use_lockfile_v5,
       },
-    )?;
-
-    // initialize the lockfile with the workspace's configuration
+      api,
+    )
+    .await?;
     let root_url = workspace.root_dir();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
@@ -291,22 +295,29 @@ impl CliLockfile {
       no_config: flags.config_flag == super::ConfigFlag::Disabled,
       config,
     });
-
     Ok(Some(lockfile))
   }
 
-  pub fn read_from_path(
+  pub async fn read_from_path(
     sys: &CliSys,
     opts: CliLockfileReadFromPathOptions,
+    api: &(dyn NpmPackageInfoProvider + Send + Sync),
   ) -> Result<CliLockfile, AnyError> {
     let lockfile = match std::fs::read_to_string(&opts.file_path) {
-      Ok(text) => Lockfile::new(deno_lockfile::NewLockfileOptions {
-        file_path: opts.file_path,
-        content: &text,
-        overwrite: false,
-      })?,
+      Ok(text) => {
+        Lockfile::new(
+          deno_lockfile::NewLockfileOptions {
+            file_path: opts.file_path,
+            content: &text,
+            overwrite: false,
+            next_version: opts.use_lockfile_v5,
+          },
+          api,
+        )
+        .await?
+      }
       Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false)
+        Lockfile::new_empty(opts.file_path, false, opts.use_lockfile_v5)
       }
       Err(err) => {
         return Err(err).with_context(|| {
@@ -320,6 +331,7 @@ impl CliLockfile {
       lockfile: Mutex::new(lockfile),
       frozen: opts.frozen,
       skip_write: opts.skip_write,
+      use_lockfile_v5: opts.use_lockfile_v5,
     })
   }
 

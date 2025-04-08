@@ -2,9 +2,6 @@
 // Ported from https://github.com/browserify/path-browserify/
 // Copyright 2018-2025 the Deno authors. MIT license.
 
-// TODO(petamoriken): enable prefer-primordials for node polyfills
-// deno-lint-ignore-file prefer-primordials
-
 import type {
   FormatInputPathObject,
   ParsedPath,
@@ -18,6 +15,10 @@ import {
   isPosixPathSeparator,
   normalizeString,
 } from "ext:deno_node/path/_util.ts";
+import { primordials } from "ext:core/mod.js";
+
+const { StringPrototypeSlice, StringPrototypeCharCodeAt, TypeError } =
+  primordials;
 
 export const sep = "/";
 export const delimiter = ":";
@@ -52,7 +53,8 @@ export function resolve(...pathSegments: string[]): string {
     }
 
     resolvedPath = `${path}/${resolvedPath}`;
-    resolvedAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+    resolvedAbsolute =
+      StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
   }
 
   // At this point the path should be resolved to a full absolute path, but
@@ -82,9 +84,9 @@ export function normalize(path: string): string {
 
   if (path.length === 0) return ".";
 
-  const isAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  const isAbsolute = StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
   const trailingSeparator =
-    path.charCodeAt(path.length - 1) === CHAR_FORWARD_SLASH;
+    StringPrototypeCharCodeAt(path, path.length - 1) === CHAR_FORWARD_SLASH;
 
   // Normalize the path
   path = normalizeString(path, !isAbsolute, "/", isPosixPathSeparator);
@@ -102,7 +104,8 @@ export function normalize(path: string): string {
  */
 export function isAbsolute(path: string): boolean {
   assertPath(path);
-  return path.length > 0 && path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  return path.length > 0 &&
+    StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
 }
 
 /**
@@ -144,7 +147,9 @@ export function relative(from: string, to: string): string {
   let fromStart = 1;
   const fromEnd = from.length;
   for (; fromStart < fromEnd; ++fromStart) {
-    if (from.charCodeAt(fromStart) !== CHAR_FORWARD_SLASH) break;
+    if (StringPrototypeCharCodeAt(from, fromStart) !== CHAR_FORWARD_SLASH) {
+      break;
+    }
   }
   const fromLen = fromEnd - fromStart;
 
@@ -152,7 +157,7 @@ export function relative(from: string, to: string): string {
   let toStart = 1;
   const toEnd = to.length;
   for (; toStart < toEnd; ++toStart) {
-    if (to.charCodeAt(toStart) !== CHAR_FORWARD_SLASH) break;
+    if (StringPrototypeCharCodeAt(to, toStart) !== CHAR_FORWARD_SLASH) break;
   }
   const toLen = toEnd - toStart;
 
@@ -163,17 +168,19 @@ export function relative(from: string, to: string): string {
   for (; i <= length; ++i) {
     if (i === length) {
       if (toLen > length) {
-        if (to.charCodeAt(toStart + i) === CHAR_FORWARD_SLASH) {
+        if (StringPrototypeCharCodeAt(to, toStart + i) === CHAR_FORWARD_SLASH) {
           // We get here if `from` is the exact base path for `to`.
           // For example: from='/foo/bar'; to='/foo/bar/baz'
-          return to.slice(toStart + i + 1);
+          return StringPrototypeSlice(to, toStart + i + 1);
         } else if (i === 0) {
           // We get here if `from` is the root
           // For example: from='/'; to='/foo'
-          return to.slice(toStart + i);
+          return StringPrototypeSlice(to, toStart + i);
         }
       } else if (fromLen > length) {
-        if (from.charCodeAt(fromStart + i) === CHAR_FORWARD_SLASH) {
+        if (
+          StringPrototypeCharCodeAt(from, fromStart + i) === CHAR_FORWARD_SLASH
+        ) {
           // We get here if `to` is the exact base path for `from`.
           // For example: from='/foo/bar/baz'; to='/foo/bar'
           lastCommonSep = i;
@@ -185,8 +192,8 @@ export function relative(from: string, to: string): string {
       }
       break;
     }
-    const fromCode = from.charCodeAt(fromStart + i);
-    const toCode = to.charCodeAt(toStart + i);
+    const fromCode = StringPrototypeCharCodeAt(from, fromStart + i);
+    const toCode = StringPrototypeCharCodeAt(to, toStart + i);
     if (fromCode !== toCode) break;
     else if (fromCode === CHAR_FORWARD_SLASH) lastCommonSep = i;
   }
@@ -195,7 +202,9 @@ export function relative(from: string, to: string): string {
   // Generate the relative path based on the path difference between `to`
   // and `from`
   for (i = fromStart + lastCommonSep + 1; i <= fromEnd; ++i) {
-    if (i === fromEnd || from.charCodeAt(i) === CHAR_FORWARD_SLASH) {
+    if (
+      i === fromEnd || StringPrototypeCharCodeAt(from, i) === CHAR_FORWARD_SLASH
+    ) {
       if (out.length === 0) out += "..";
       else out += "/..";
     }
@@ -203,11 +212,14 @@ export function relative(from: string, to: string): string {
 
   // Lastly, append the rest of the destination (`to`) path that comes after
   // the common path parts
-  if (out.length > 0) return out + to.slice(toStart + lastCommonSep);
-  else {
+  if (out.length > 0) {
+    return out + StringPrototypeSlice(to, toStart + lastCommonSep);
+  } else {
     toStart += lastCommonSep;
-    if (to.charCodeAt(toStart) === CHAR_FORWARD_SLASH) ++toStart;
-    return to.slice(toStart);
+    if (StringPrototypeCharCodeAt(to, toStart) === CHAR_FORWARD_SLASH) {
+      ++toStart;
+    }
+    return StringPrototypeSlice(to, toStart);
   }
 }
 
@@ -227,11 +239,11 @@ export function toNamespacedPath(path: string): string {
 export function dirname(path: string): string {
   assertPath(path);
   if (path.length === 0) return ".";
-  const hasRoot = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  const hasRoot = StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
   let end = -1;
   let matchedSlash = true;
   for (let i = path.length - 1; i >= 1; --i) {
-    if (path.charCodeAt(i) === CHAR_FORWARD_SLASH) {
+    if (StringPrototypeCharCodeAt(path, i) === CHAR_FORWARD_SLASH) {
       if (!matchedSlash) {
         end = i;
         break;
@@ -244,7 +256,7 @@ export function dirname(path: string): string {
 
   if (end === -1) return hasRoot ? "/" : ".";
   if (hasRoot && end === 1) return "//";
-  return path.slice(0, end);
+  return StringPrototypeSlice(path, 0, end);
 }
 
 /**
@@ -268,7 +280,7 @@ export function basename(path: string, ext = ""): string {
     let extIdx = ext.length - 1;
     let firstNonSlashEnd = -1;
     for (i = path.length - 1; i >= 0; --i) {
-      const code = path.charCodeAt(i);
+      const code = StringPrototypeCharCodeAt(path, i);
       if (code === CHAR_FORWARD_SLASH) {
         // If we reached a path separator that was not part of a set of path
         // separators at the end of the string, stop now
@@ -285,7 +297,7 @@ export function basename(path: string, ext = ""): string {
         }
         if (extIdx >= 0) {
           // Try to match the explicit extension
-          if (code === ext.charCodeAt(extIdx)) {
+          if (code === StringPrototypeCharCodeAt(ext, extIdx)) {
             if (--extIdx === -1) {
               // We matched the extension, so mark this as the end of our path
               // component
@@ -303,10 +315,10 @@ export function basename(path: string, ext = ""): string {
 
     if (start === end) end = firstNonSlashEnd;
     else if (end === -1) end = path.length;
-    return path.slice(start, end);
+    return StringPrototypeSlice(path, start, end);
   } else {
     for (i = path.length - 1; i >= 0; --i) {
-      if (path.charCodeAt(i) === CHAR_FORWARD_SLASH) {
+      if (StringPrototypeCharCodeAt(path, i) === CHAR_FORWARD_SLASH) {
         // If we reached a path separator that was not part of a set of path
         // separators at the end of the string, stop now
         if (!matchedSlash) {
@@ -322,7 +334,7 @@ export function basename(path: string, ext = ""): string {
     }
 
     if (end === -1) return "";
-    return path.slice(start, end);
+    return StringPrototypeSlice(path, start, end);
   }
 }
 
@@ -340,7 +352,7 @@ export function extname(path: string): string {
   // after any path separator we find
   let preDotState = 0;
   for (let i = path.length - 1; i >= 0; --i) {
-    const code = path.charCodeAt(i);
+    const code = StringPrototypeCharCodeAt(path, i);
     if (code === CHAR_FORWARD_SLASH) {
       // If we reached a path separator that was not part of a set of path
       // separators at the end of the string, stop now
@@ -377,7 +389,7 @@ export function extname(path: string): string {
   ) {
     return "";
   }
-  return path.slice(startDot, end);
+  return StringPrototypeSlice(path, startDot, end);
 }
 
 /**
@@ -400,7 +412,7 @@ export function parse(path: string): ParsedPath {
 
   const ret: ParsedPath = { root: "", dir: "", base: "", ext: "", name: "" };
   if (path.length === 0) return ret;
-  const isAbsolute = path.charCodeAt(0) === CHAR_FORWARD_SLASH;
+  const isAbsolute = StringPrototypeCharCodeAt(path, 0) === CHAR_FORWARD_SLASH;
   let start: number;
   if (isAbsolute) {
     ret.root = "/";
@@ -420,7 +432,7 @@ export function parse(path: string): ParsedPath {
 
   // Get non-dir info
   for (; i >= start; --i) {
-    const code = path.charCodeAt(i);
+    const code = StringPrototypeCharCodeAt(path, i);
     if (code === CHAR_FORWARD_SLASH) {
       // If we reached a path separator that was not part of a set of path
       // separators at the end of the string, stop now
@@ -457,23 +469,23 @@ export function parse(path: string): ParsedPath {
   ) {
     if (end !== -1) {
       if (startPart === 0 && isAbsolute) {
-        ret.base = ret.name = path.slice(1, end);
+        ret.base = ret.name = StringPrototypeSlice(path, 1, end);
       } else {
-        ret.base = ret.name = path.slice(startPart, end);
+        ret.base = ret.name = StringPrototypeSlice(path, startPart, end);
       }
     }
   } else {
     if (startPart === 0 && isAbsolute) {
-      ret.name = path.slice(1, startDot);
-      ret.base = path.slice(1, end);
+      ret.name = StringPrototypeSlice(path, 1, startDot);
+      ret.base = StringPrototypeSlice(path, 1, end);
     } else {
-      ret.name = path.slice(startPart, startDot);
-      ret.base = path.slice(startPart, end);
+      ret.name = StringPrototypeSlice(path, startPart, startDot);
+      ret.base = StringPrototypeSlice(path, startPart, end);
     }
-    ret.ext = path.slice(startDot, end);
+    ret.ext = StringPrototypeSlice(path, startDot, end);
   }
 
-  if (startPart > 0) ret.dir = path.slice(0, startPart - 1);
+  if (startPart > 0) ret.dir = StringPrototypeSlice(path, 0, startPart - 1);
   else if (isAbsolute) ret.dir = "/";
 
   return ret;
