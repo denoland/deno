@@ -183,7 +183,7 @@ async function clippy() {
       "--deny",
       "clippy::print_stdout",
       "--deny",
-      "clippy::large_futures"
+      "clippy::large_futures",
     ],
     stdout: "inherit",
     stderr: "inherit",
