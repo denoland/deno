@@ -1904,11 +1904,30 @@ mod tests {
   use deno_config::deno_json::ConfigFile;
   use deno_core::serde_json;
   use deno_core::serde_json::json;
+  use deno_npm::registry::NpmPackageInfo;
+  use deno_npm::registry::NpmRegistryApi;
+  use deno_npm::registry::NpmRegistryPackageInfoLoadError;
   use pretty_assertions::assert_eq;
   use test_util::TempDir;
 
   use super::*;
   use crate::lsp::cache::LspCache;
+
+  struct DefaultRegistry;
+
+  #[async_trait::async_trait(?Send)]
+  impl deno_npm::registry::NpmRegistryApi for DefaultRegistry {
+    async fn package_info(
+      &self,
+      _name: &str,
+    ) -> Result<Arc<NpmPackageInfo>, NpmRegistryPackageInfoLoadError> {
+      Ok(Arc::new(NpmPackageInfo::default()))
+    }
+  }
+
+  fn default_registry() -> Arc<dyn NpmRegistryApi + Send + Sync> {
+    Arc::new(DefaultRegistry)
+  }
 
   async fn setup() -> (DocumentModules, LspCache, TempDir) {
     let temp_dir = TempDir::new();
@@ -2054,6 +2073,7 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          &default_registry(),
         )
         .await;
 
@@ -2096,6 +2116,7 @@ console.log(b, "hello deno");
             config.root_url().unwrap().join("deno.json").unwrap(),
           )
           .unwrap(),
+          &default_registry(),
         )
         .await;
 
