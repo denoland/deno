@@ -7,7 +7,7 @@ changes:
  9 | -    }
 10 | +    },
 11 | +    "@denotest/bin@0.7.0": {
-12 | +      "integrity": "[WILDLINE]"
+12 | +      "integrity": "sha512-RAE7sQrdTUuV4KdDAshObhsULXb2QjTjfRg/KbzE9asZV8dUmwbPZy2kfmE2CunPo8+6DvwPklXFJ4PQi0Usuw=="
 13 | +    }
 14 | +  },
 15 | +  "workspace": {

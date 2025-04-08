@@ -308,10 +308,13 @@ async fn install_local(
     InstallFlagsLocal::TopLevel => {
       let factory = CliFactory::from_flags(flags);
       // surface any errors in the package.json
-      factory.npm_installer()?.ensure_no_pkg_json_dep_errors()?;
+      factory
+        .npm_installer()
+        .await?
+        .ensure_no_pkg_json_dep_errors()?;
       crate::tools::pm::cache_top_level_deps(&factory, None).await?;
 
-      if let Some(lockfile) = factory.cli_options()?.maybe_lockfile() {
+      if let Some(lockfile) = factory.maybe_lockfile().await? {
         lockfile.write_if_changed()?;
       }
 

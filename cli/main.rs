@@ -172,7 +172,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
     DenoSubcommand::Uninstall(uninstall_flags) => spawn_subcommand(async {
       tools::installer::uninstall(flags, uninstall_flags).await
     }),
-    DenoSubcommand::Lsp => spawn_subcommand(async {
+    DenoSubcommand::Lsp => spawn_subcommand(async move {
       if std::io::stderr().is_terminal() {
         log::warn!(
           "{} command is intended to be run by text editors and IDEs and shouldn't be run manually.
@@ -183,7 +183,8 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
   Press Ctrl+C to exit.
         ", colors::cyan("deno lsp"));
       }
-      lsp::start().await
+      let factory = CliFactory::from_flags(flags.clone());
+      lsp::start(Arc::new(factory.npm_registry_info_provider()?.as_npm_registry_api())).await
     }),
     DenoSubcommand::Lint(lint_flags) => spawn_subcommand(async {
       if lint_flags.rules {
@@ -227,7 +228,7 @@ async fn run_subcommand(flags: Arc<Flags>) -> Result<i32, AnyError> {
                 if flags.frozen_lockfile.is_none() {
                   flags.internal.lockfile_skip_write = true;
                 }
-                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).await;
+                return tools::run::run_script(WorkerExecutionMode::Run, Arc::new(flags), watch).boxed_local().await;
               }
             }
             let script_err_msg = script_err.to_string();

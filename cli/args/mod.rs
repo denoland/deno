@@ -443,7 +443,6 @@ pub struct CliOptions {
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
-  maybe_lockfile: Option<Arc<CliLockfile>>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
 
@@ -452,7 +451,6 @@ impl CliOptions {
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_lockfile: Option<Arc<CliLockfile>>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -475,33 +473,23 @@ impl CliOptions {
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
       start_dir,
     })
   }
 
   pub fn from_flags(
-    sys: &CliSys,
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let maybe_lock_file = CliLockfile::discover(
-      sys,
-      &flags,
-      &start_dir.workspace,
-      maybe_external_import_map.as_ref().map(|v| &v.value),
-    )?;
-
     log::debug!("Finished config loading.");
 
-    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+    Self::new(flags, initial_cwd, start_dir)
   }
 
   #[inline(always)]
@@ -730,10 +718,6 @@ impl CliOptions {
       host,
       DENO_VERSION_INFO.user_agent,
     )?))
-  }
-
-  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
-    self.maybe_lockfile.as_ref()
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -1105,6 +1089,10 @@ impl CliOptions {
       || self.workspace().has_unstable("detect-cjs")
   }
 
+  pub fn unstable_lockfile_v5(&self) -> bool {
+    unstable_lockfile_v5(&self.flags, self.workspace())
+  }
+
   pub fn detect_cjs(&self) -> bool {
     // only enabled when there's a package.json in order to not have a
     // perf penalty for non-npm Deno projects of searching for the closest
@@ -1148,9 +1136,10 @@ impl CliOptions {
           "fmt-component",
           "fmt-sql",
           "lazy-dynamic-imports",
-          "lazy-npm-caching",
+          "npm-lazy-caching",
           "npm-patch",
           "sloppy-imports",
+          "lockfile-v5",
         ])
         .collect();
 
@@ -1242,6 +1231,13 @@ impl CliOptions {
       NpmCachingStrategy::Eager
     }
   }
+}
+
+pub(crate) fn unstable_lockfile_v5(
+  flags: &Flags,
+  workspace: &Workspace,
+) -> bool {
+  flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 
 fn try_resolve_node_binary_main_entrypoint(

@@ -861,12 +861,12 @@ async fn npm_install_after_modification(
   // make a new CliFactory to pick up the updated config file
   let cli_factory = CliFactory::from_flags(flags);
   // surface any errors in the package.json
-  let npm_installer = cli_factory.npm_installer()?;
+  let npm_installer = cli_factory.npm_installer().await?;
   npm_installer.ensure_no_pkg_json_dep_errors()?;
   // npm install
   cache_deps::cache_top_level_deps(&cli_factory, jsr_resolver).await?;
 
-  if let Some(lockfile) = cli_factory.cli_options()?.maybe_lockfile() {
+  if let Some(lockfile) = cli_factory.maybe_lockfile().await? {
     lockfile.write_if_changed()?;
   }
 

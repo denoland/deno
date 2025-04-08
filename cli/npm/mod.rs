@@ -8,6 +8,9 @@ use std::sync::Arc;
 
 use dashmap::DashMap;
 use deno_config::workspace::Workspace;
+use deno_core::anyhow::anyhow;
+use deno_core::futures::stream::FuturesOrdered;
+use deno_core::futures::TryStreamExt;
 use deno_core::serde_json;
 use deno_core::url::Url;
 use deno_error::JsErrorBox;
@@ -15,6 +18,7 @@ use deno_lib::version::DENO_VERSION_INFO;
 use deno_npm::npm_rc::ResolvedNpmRc;
 use deno_npm::registry::NpmPackageInfo;
 use deno_npm::registry::NpmPackageVersionInfo;
+use deno_npm::registry::NpmRegistryApi;
 use deno_resolver::npm::ByonmNpmResolverCreateOptions;
 use deno_runtime::colors;
 use deno_semver::package::PackageName;
@@ -48,6 +52,62 @@ pub type CliNpmResolverCreateOptions =
   deno_resolver::npm::NpmResolverCreateOptions<CliSys>;
 pub type CliByonmNpmResolverCreateOptions =
   ByonmNpmResolverCreateOptions<CliSys>;
+
+pub struct NpmPackageInfoApiAdapter(pub Arc<dyn NpmRegistryApi + Send + Sync>);
+
+#[async_trait::async_trait(?Send)]
+impl deno_lockfile::NpmPackageInfoProvider for NpmPackageInfoApiAdapter {
+  async fn get_npm_package_info(
+    &self,
+    values: &[PackageNv],
+  ) -> Result<
+    Vec<deno_lockfile::Lockfile5NpmInfo>,
+    Box<dyn std::error::Error + Send + Sync>,
+  > {
+    let futs = values
+      .iter()
+      .map(|v| async move {
+        let info = self.0.package_info(v.name.as_str()).await?;
+        let version_info = info.versions.get(&v.version).ok_or_else(|| {
+          anyhow!("Version {} not found for package {}", v.version, v.name)
+        })?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+          deno_lockfile::Lockfile5NpmInfo {
+            tarball_url: version_info.dist.as_ref().map(|d| d.tarball.clone()),
+            optional_dependencies: version_info
+              .optional_dependencies
+              .iter()
+              .map(|(k, v)| (k.to_string(), v.to_string()))
+              .collect::<std::collections::BTreeMap<_, _>>(),
+            cpu: version_info.cpu.iter().map(|s| s.to_string()).collect(),
+            os: version_info.os.iter().map(|s| s.to_string()).collect(),
+            deprecated: version_info.deprecated.is_some(),
+            has_bin: version_info.bin.is_some(),
+            has_scripts: version_info.scripts.contains_key("preinstall")
+              || version_info.scripts.contains_key("install")
+              || version_info.scripts.contains_key("postinstall"),
+            optional_peers: version_info
+              .peer_dependencies_meta
+              .iter()
+              .filter_map(|(k, v)| {
+                if v.optional {
+                  version_info
+                    .peer_dependencies
+                    .get(k)
+                    .map(|v| (k.to_string(), v.to_string()))
+                } else {
+                  None
+                }
+              })
+              .collect::<std::collections::BTreeMap<_, _>>(),
+          },
+        )
+      })
+      .collect::<FuturesOrdered<_>>();
+    let package_infos = futs.try_collect::<Vec<_>>().await?;
+    Ok(package_infos)
+  }
+}
 
 #[derive(Debug, Default)]
 pub struct WorkspaceNpmPatchPackages(
