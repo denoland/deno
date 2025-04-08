@@ -7,7 +7,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use deno_ast::MediaType;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
 use deno_core::futures::future::LocalBoxFuture;
@@ -273,23 +272,19 @@ impl ShellCommand for NodeCommand {
     &self,
     context: ShellCommandContext,
   ) -> LocalBoxFuture<'static, ExecuteResult> {
-    // run with deno if it's a simple invocation, fall back to node
-    // if there are extra flags
-    let mut args: Vec<OsString> = Vec::with_capacity(context.args.len());
+    // continue to use Node if the first argument is a flag
+    // or there are no arguments provided for some reason
     if context.args.is_empty()
       || ({
         let first_arg = context.args[0].to_string_lossy();
         first_arg.starts_with('-') // has a flag
-        || !matches!(
-          MediaType::from_str(&first_arg),
-          MediaType::Cjs | MediaType::Mjs | MediaType::JavaScript
-        )
       })
     {
       return ExecutableCommand::new("node".to_string(), PathBuf::from("node"))
         .execute(context);
     }
 
+    let mut args: Vec<OsString> = Vec::with_capacity(7 + context.args.len());
     args.extend([
       "run".into(),
       "-A".into(),
@@ -302,7 +297,6 @@ impl ShellCommand for NodeCommand {
     args.extend(context.args);
 
     let mut state = context.state;
-
     state.apply_env_var(
       OsStr::new(USE_PKG_JSON_HIDDEN_ENV_VAR_NAME),
       OsStr::new("1"),
