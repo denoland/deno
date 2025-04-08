@@ -199,7 +199,7 @@ fn get_add_pkg_reqs_options(package_reqs: &[PackageReq]) -> AddPkgReqsOptions {
     types_node_version_req: Some(
       VersionReq::parse_from_npm("22.0.0 - 22.5.4").unwrap(),
     ),
-    patch_packages: &PATCH_PACKAGES.get_or_init(Default::default),
+    patch_packages: PATCH_PACKAGES.get_or_init(Default::default),
   }
 }
 
