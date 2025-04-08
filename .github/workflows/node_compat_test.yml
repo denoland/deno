@@ -51,6 +51,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Setup Deno
         uses: denoland/setup-deno@v2
       - name: Authenticate with Google Cloud
