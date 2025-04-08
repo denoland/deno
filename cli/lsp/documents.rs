@@ -73,7 +73,6 @@ pub struct OpenDocument {
   pub line_index: Arc<LineIndex>,
   pub version: i32,
   pub language_id: LanguageId,
-  pub notebook_uri: Option<Arc<Uri>>,
   pub fs_version_on_open: Option<String>,
 }
 
@@ -83,7 +82,6 @@ impl OpenDocument {
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
-    notebook_uri: Option<Arc<Uri>>,
   ) -> Self {
     let line_index = Arc::new(LineIndex::new(&text));
     let fs_version_on_open = uri_to_file_path(&uri)
@@ -95,7 +93,6 @@ impl OpenDocument {
       line_index,
       version,
       language_id,
-      notebook_uri,
       fs_version_on_open,
     }
   }
@@ -133,7 +130,6 @@ impl OpenDocument {
       line_index,
       version,
       language_id: self.language_id,
-      notebook_uri: self.notebook_uri.clone(),
       fs_version_on_open: self.fs_version_on_open.clone(),
     })
   }
@@ -484,7 +480,6 @@ impl Document {
 pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
-  cells_by_notebook_uri: HashMap<Arc<Uri>, IndexSet<Arc<Uri>>>,
   file_like_uris_by_url: Arc<DashMap<Url, Arc<Uri>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
   /// maps. We want to be able to discard old documents from here but keep these
@@ -494,22 +489,16 @@ pub struct Documents {
 }
 
 impl Documents {
-  fn open(
+  pub fn open(
     &mut self,
     uri: Uri,
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
-    notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
     self.server.remove(&uri);
-    let doc = Arc::new(OpenDocument::new(
-      uri.clone(),
-      version,
-      language_id,
-      text,
-      notebook_uri,
-    ));
+    let doc =
+      Arc::new(OpenDocument::new(uri.clone(), version, language_id, text));
     self.open.insert(uri, doc.clone());
     if !doc.uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
       let url = uri_to_url(&doc.uri);
@@ -517,18 +506,10 @@ impl Documents {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
       }
     }
-    // TODO(nayeemrmn): Remove!
-    if let Some(notebook_uri) = &doc.notebook_uri {
-      self
-        .cells_by_notebook_uri
-        .entry(notebook_uri.clone())
-        .or_default()
-        .insert(doc.uri.clone());
-    }
     doc
   }
 
-  fn change(
+  pub fn change(
     &mut self,
     uri: &Uri,
     version: i32,
@@ -551,9 +532,9 @@ impl Documents {
     Ok(doc)
   }
 
-  fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
+  pub fn close(&mut self, uri: &Uri) -> Result<Arc<OpenDocument>, AnyError> {
     self.file_like_uris_by_url.retain(|_, u| u.as_ref() != uri);
-    let doc = self.open.shift_remove(uri).ok_or_else(|| {
+    self.open.shift_remove(uri).ok_or_else(|| {
       JsErrorBox::new(
         "NotFound",
         format!(
@@ -561,17 +542,8 @@ impl Documents {
           uri.as_str()
         ),
       )
-    })?;
-    // TODO(nayeemrmn): Remove!
-    if let Some(notebook_uri) = &doc.notebook_uri {
-      if let Some(cells) = self.cells_by_notebook_uri.get_mut(notebook_uri) {
-        cells.shift_remove(&doc.uri);
-        if cells.is_empty() {
-          self.cells_by_notebook_uri.remove(notebook_uri);
-        }
-      }
-    }
-    Ok(doc)
+      .into()
+    })
   }
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
@@ -655,13 +627,6 @@ impl Documents {
     } else {
       None
     }
-  }
-
-  pub fn cells_for_notebook_uri(
-    &self,
-    uri: &Uri,
-  ) -> Option<IndexSet<Arc<Uri>>> {
-    self.cells_by_notebook_uri.get(uri).cloned()
   }
 
   pub fn open_docs(&self) -> impl Iterator<Item = &Arc<OpenDocument>> {
@@ -970,12 +935,9 @@ impl DocumentModules {
     version: i32,
     language_id: LanguageId,
     text: Arc<str>,
-    notebook_uri: Option<Arc<Uri>>,
   ) -> Arc<OpenDocument> {
     self.dep_info_by_scope = Default::default();
-    self
-      .documents
-      .open(uri, version, language_id, text, notebook_uri)
+    self.documents.open(uri, version, language_id, text)
   }
 
   pub fn change_document(
@@ -1996,7 +1958,6 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
-      None,
     );
     let document = document_modules
       .documents
@@ -2027,7 +1988,6 @@ console.log(b);
       1,
       "javascript".parse().unwrap(),
       content.into(),
-      None,
     );
     document_modules
       .change_document(
@@ -2096,7 +2056,6 @@ console.log(b, "hello deno");
       1,
       LanguageId::TypeScript,
       "import {} from 'test';".into(),
-      None,
     );
 
     // set the initial import map and point to file 2

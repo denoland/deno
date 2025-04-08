@@ -796,6 +796,10 @@ export function filterMapDiagnostic(diagnostic) {
   ) {
     return false;
   }
+  const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
+  if (diagnostic.code === 2451 && isClassicScript) {
+    return false;
+  }
   // make the diagnostic for using an `export =` in an es module a warning
   if (diagnostic.code === 1203) {
     diagnostic.category = ts.DiagnosticCategory.Warning;
