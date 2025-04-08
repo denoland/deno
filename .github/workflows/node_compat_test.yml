@@ -69,7 +69,12 @@ jobs:
       - name: Add the day summary to the month summary
         run: deno -A --config tests/config/deno.json tests/node_compat/add_day_summary_to_month_summary.ts
       - name: Gzip the month summary
-        run: gzip tests/node_compat/summary.json
+        run: gzip tests/node_compat/summary.json -k
       - name: Upload the month summary
         run: |-
           gsutil -h "Cache-Control: public, max-age=3600" cp tests/node_compat/summary.json.gz gs://dl.deno.land/node-compat-test/summary-$(date +%Y-%m).json.gz
+      - name: Post message to slack channel
+        run: deno -A --config tests/config/deno.json tests/node_compat/slack.ts
+        env:
+          SLACK_TOKEN: ${{ secrets.NODE_COMPAT_SLACK_TOKEN }} # NodeCompat bot
+          SLACK_CHANNEL: ${{ secrets.NODE_COMPAT_SLACK_CHANNEL }} # #node-compat channel
