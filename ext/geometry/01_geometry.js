@@ -3,9 +3,11 @@
 import { primordials } from "ext:core/mod.js";
 import {
   DOMMatrixInner,
-  DOMPointInner,
-  DOMQuadInner,
-  DOMRectInner,
+  DOMPoint,
+  DOMPointReadOnly,
+  DOMQuad,
+  DOMRect,
+  DOMRectReadOnly,
 } from "ext:core/ops";
 const {
   ArrayPrototypeJoin,
@@ -24,439 +26,63 @@ import { createFilteredInspectProxy } from "ext:deno_console/01_console.js";
 import * as webidl from "ext:deno_webidl/00_webidl.js";
 import { DOMException } from "ext:deno_web/01_dom_exception.js";
 
-const _inner = Symbol("[[inner]]");
-// Property to prevent writing values when an immutable instance is changed to
-// a mutable instance by Object.setPrototypeOf
-// TODO(petamoriken): Implementing resistance to Object.setPrototypeOf in the WebIDL layer
-const _writable = Symbol("[[writable]]");
-const _brand = webidl.brand;
-
-class DOMPointReadOnly {
-  [_writable] = false;
-  /** @type {DOMPointInner} */
-  [_inner];
-
-  constructor(x = 0, y = 0, z = 0, w = 1) {
-    this[_inner] = new DOMPointInner(x, y, z, w);
-    this[_brand] = _brand;
-  }
-
-  static fromPoint(other = { __proto__: null }) {
-    const point = webidl.createBranded(DOMPointReadOnly);
-    point[_writable] = false;
-    point[_inner] = DOMPointInner.fromPoint(other);
-    return point;
-  }
-
-  get x() {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_inner].x;
-  }
-
-  get y() {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_inner].y;
-  }
-
-  get z() {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_inner].z;
-  }
-
-  get w() {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    return this[_inner].w;
-  }
-
-  matrixTransform(matrix = { __proto__: null }) {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    let matrixInner;
-    // fast path for DOMMatrix or DOMMatrixReadOnly
-    if (
-      matrix !== null &&
-      ObjectPrototypeIsPrototypeOf(DOMMatrixReadOnlyPrototype, matrix)
-    ) {
-      matrixInner = matrix[_inner];
-    } else {
-      matrixInner = DOMMatrixInner.fromMatrix(matrix);
-    }
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = this[_inner].matrixTransform(matrixInner);
-    return point;
-  }
-
-  toJSON() {
-    webidl.assertBranded(this, DOMPointReadOnlyPrototype);
-    const { x, y, z, w } = this[_inner];
-    return { x, y, z, w };
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMPointReadOnlyPrototype, this),
-        keys: [
-          "x",
-          "y",
-          "z",
-          "w",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(DOMPointReadOnly);
-const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
-
-class DOMPoint extends DOMPointReadOnly {
-  [_writable] = true;
-
-  static fromPoint(other = { __proto__: null }) {
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = DOMPointInner.fromPoint(other);
-    return point;
-  }
-
-  get x() {
-    webidl.assertBranded(this, DOMPointPrototype);
-    return this[_inner].x;
-  }
-  set x(value) {
-    webidl.assertBranded(this, DOMPointPrototype);
-    assertWritable(this);
-    this[_inner].x = value;
-  }
-
-  get y() {
-    webidl.assertBranded(this, DOMPointPrototype);
-    return this[_inner].y;
-  }
-  set y(value) {
-    webidl.assertBranded(this, DOMPointPrototype);
-    assertWritable(this);
-    this[_inner].y = value;
-  }
-
-  get z() {
-    webidl.assertBranded(this, DOMPointPrototype);
-    return this[_inner].z;
-  }
-  set z(value) {
-    webidl.assertBranded(this, DOMPointPrototype);
-    assertWritable(this);
-    this[_inner].z = value;
-  }
-
-  get w() {
-    webidl.assertBranded(this, DOMPointPrototype);
-    return this[_inner].w;
-  }
-  set w(value) {
-    webidl.assertBranded(this, DOMPointPrototype);
-    assertWritable(this);
-    this[_inner].w = value;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMPointPrototype, this),
-        keys: [
-          "x",
-          "y",
-          "z",
-          "w",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(DOMPoint);
 const DOMPointPrototype = DOMPoint.prototype;
-
-class DOMRectReadOnly {
-  [_writable] = false;
-  /** @type {DOMRectInner} */
-  [_inner];
-
-  constructor(x = 0, y = 0, width = 0, height = 0) {
-    this[_inner] = new DOMRectInner(x, y, width, height);
-    this[_brand] = _brand;
-  }
-
-  static fromRect(other = { __proto__: null }) {
-    const rect = webidl.createBranded(DOMRectReadOnly);
-    rect[_writable] = false;
-    rect[_inner] = DOMRectInner.fromRect(other);
-    return rect;
-  }
-
-  get x() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].x;
-  }
-
-  get y() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].y;
-  }
-
-  get width() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].width;
-  }
-
-  get height() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].height;
-  }
-
-  get top() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].top;
-  }
-
-  get right() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].right;
-  }
-
-  get bottom() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].bottom;
-  }
-
-  get left() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    return this[_inner].left;
-  }
-
-  toJSON() {
-    webidl.assertBranded(this, DOMRectReadOnlyPrototype);
-    const { x, y, width, height, top, right, bottom, left } = this[_inner];
-    return { x, y, width, height, top, right, bottom, left };
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+const DOMPointReadOnlyPrototype = DOMPointReadOnly.prototype;
+ObjectDefineProperty(DOMPointReadOnlyPrototype, SymbolFor("Deno.privateCustomInspect"), {
+  __proto__: null,
+  value: function customInspect(inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
         object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMRectReadOnlyPrototype, this),
-        keys: [
-          "x",
-          "y",
-          "width",
-          "height",
-          "top",
-          "right",
-          "bottom",
-          "left",
-        ],
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          DOMPointReadOnlyPrototype,
+          this,
+        ),
+        keys: ["x", "y", "z", "w"],
       }),
       inspectOptions,
     );
-  }
-}
+  },
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
 
-webidl.configureInterface(DOMRectReadOnly);
-const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
-
-class DOMRect extends DOMRectReadOnly {
-  [_writable] = true;
-
-  static fromRect(other = { __proto__: null }) {
-    const rect = webidl.createBranded(DOMRect);
-    rect[_writable] = true;
-    rect[_inner] = DOMRectInner.fromRect(other);
-    return rect;
-  }
-
-  get x() {
-    webidl.assertBranded(this, DOMRectPrototype);
-    return this[_inner].x;
-  }
-  set x(value) {
-    webidl.assertBranded(this, DOMRectPrototype);
-    assertWritable(this);
-    this[_inner].x = value;
-  }
-
-  get y() {
-    webidl.assertBranded(this, DOMRectPrototype);
-    return this[_inner].y;
-  }
-  set y(value) {
-    webidl.assertBranded(this, DOMRectPrototype);
-    assertWritable(this);
-    this[_inner].y = value;
-  }
-
-  get width() {
-    webidl.assertBranded(this, DOMRectPrototype);
-    return this[_inner].width;
-  }
-  set width(value) {
-    webidl.assertBranded(this, DOMRectPrototype);
-    assertWritable(this);
-    this[_inner].width = value;
-  }
-
-  get height() {
-    webidl.assertBranded(this, DOMRectPrototype);
-    return this[_inner].height;
-  }
-  set height(value) {
-    webidl.assertBranded(this, DOMRectPrototype);
-    assertWritable(this);
-    this[_inner].height = value;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMRectPrototype, this),
-        keys: [
-          "x",
-          "y",
-          "width",
-          "height",
-          "top",
-          "right",
-          "bottom",
-          "left",
-        ],
-      }),
-      inspectOptions,
-    );
-  }
-}
-
-webidl.configureInterface(DOMRect);
 const DOMRectPrototype = DOMRect.prototype;
+const DOMRectReadOnlyPrototype = DOMRectReadOnly.prototype;
+ObjectDefineProperty(DOMRectReadOnlyPrototype, SymbolFor("Deno.privateCustomInspect"), {
+  __proto__: null,
+  value: function customInspect(inspect, inspectOptions) {
+    return inspect(
+      createFilteredInspectProxy({
+        object: this,
+        evaluate: ObjectPrototypeIsPrototypeOf(
+          DOMRectReadOnlyPrototype,
+          this,
+        ),
+        keys: [
+          "x",
+          "y",
+          "width",
+          "height",
+          "top",
+          "right",
+          "bottom",
+          "left",
+        ],
+      }),
+      inspectOptions,
+    );
+  },
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
 
-const _p1 = Symbol("[[p1]]");
-const _p2 = Symbol("[[p2]]");
-const _p3 = Symbol("[[p3]]");
-const _p4 = Symbol("[[p4]]");
-
-class DOMQuad {
-  /** @type {DOMQuadInner} */
-  [_inner];
-  /** @type {DOMPoint=} */
-  [_p1];
-  /** @type {DOMPoint=} */
-  [_p2];
-  /** @type {DOMPoint=} */
-  [_p3];
-  /** @type {DOMPoint=} */
-  [_p4];
-
-  constructor(
-    p1 = { __proto__: null },
-    p2 = { __proto__: null },
-    p3 = { __proto__: null },
-    p4 = { __proto__: null },
-  ) {
-    this[_inner] = new DOMQuadInner(p1, p2, p3, p4);
-    this[_brand] = _brand;
-  }
-
-  static fromRect(other = { __proto__: null }) {
-    const quad = webidl.createBranded(DOMQuad);
-    quad[_inner] = DOMQuadInner.fromRect(other);
-    quad[_p1] = undefined;
-    quad[_p2] = undefined;
-    quad[_p3] = undefined;
-    quad[_p4] = undefined;
-    return quad;
-  }
-
-  static fromQuad(other = { __proto__: null }) {
-    const quad = webidl.createBranded(DOMQuad);
-    quad[_inner] = DOMQuadInner.fromQuad(other);
-    quad[_p1] = undefined;
-    quad[_p2] = undefined;
-    quad[_p3] = undefined;
-    quad[_p4] = undefined;
-    return quad;
-  }
-
-  get p1() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    if (this[_p1] !== undefined) {
-      return this[_p1];
-    }
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = this[_inner].p1;
-    this[_p1] = point;
-    return point;
-  }
-
-  get p2() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    if (this[_p2] !== undefined) {
-      return this[_p2];
-    }
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = this[_inner].p2;
-    this[_p2] = point;
-    return point;
-  }
-
-  get p3() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    if (this[_p3] !== undefined) {
-      return this[_p3];
-    }
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = this[_inner].p3;
-    this[_p3] = point;
-    return point;
-  }
-
-  get p4() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    if (this[_p4] !== undefined) {
-      return this[_p4];
-    }
-    const point = webidl.createBranded(DOMPoint);
-    point[_writable] = true;
-    point[_inner] = this[_inner].p4;
-    this[_p4] = point;
-    return point;
-  }
-
-  getBounds() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    const bounds = webidl.createBranded(DOMRect);
-    bounds[_writable] = true;
-    bounds[_inner] = this[_inner].getBounds();
-    return bounds;
-  }
-
-  toJSON() {
-    webidl.assertBranded(this, DOMQuadPrototype);
-    return {
-      p1: this[_p1],
-      p2: this[_p2],
-      p3: this[_p3],
-      p4: this[_p4],
-    };
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
+const DOMQuadPrototype = DOMQuad.prototype;
+ObjectDefineProperty(DOMQuadPrototype, SymbolFor("Deno.privateCustomInspect"), {
+  __proto__: null,
+  value: function customInspect(inspect, inspectOptions) {
     return inspect(
       createFilteredInspectProxy({
         object: this,
@@ -470,11 +96,18 @@ class DOMQuad {
       }),
       inspectOptions,
     );
-  }
-}
+  },
+  enumerable: false,
+  writable: true,
+  configurable: true,
+});
 
-webidl.configureInterface(DOMQuad);
-const DOMQuadPrototype = DOMQuad.prototype;
+const _inner = Symbol("[[inner]]");
+// Property to prevent writing values when an immutable instance is changed to
+// a mutable instance by Object.setPrototypeOf
+// TODO(petamoriken): Implementing resistance to Object.setPrototypeOf in the WebIDL layer
+const _writable = Symbol("[[writable]]");
+const _brand = webidl.brand;
 
 class DOMMatrixReadOnly {
   [_writable] = false;
@@ -867,58 +500,7 @@ class DOMMatrixReadOnly {
 
   toJSON() {
     webidl.assertBranded(this, DOMMatrixReadOnlyPrototype);
-    const {
-      a,
-      b,
-      c,
-      d,
-      e,
-      f,
-      m11,
-      m12,
-      m13,
-      m14,
-      m21,
-      m22,
-      m23,
-      m24,
-      m31,
-      m32,
-      m33,
-      m34,
-      m41,
-      m42,
-      m43,
-      m44,
-      is2D,
-      isIdentity,
-    } = this[_inner];
-    return {
-      a,
-      b,
-      c,
-      d,
-      e,
-      f,
-      m11,
-      m12,
-      m13,
-      m14,
-      m21,
-      m22,
-      m23,
-      m24,
-      m31,
-      m32,
-      m33,
-      m34,
-      m41,
-      m42,
-      m43,
-      m44,
-      is2D,
-      isIdentity,
-    };
+    return this[_inner].toJSON();
   }
 
   [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
@@ -1363,42 +945,6 @@ class DOMMatrix extends DOMMatrixReadOnly {
     assertWritable(this);
     this[_inner].invertSelf();
     return this;
-  }
-
-  [SymbolFor("Deno.privateCustomInspect")](inspect, inspectOptions) {
-    return inspect(
-      createFilteredInspectProxy({
-        object: this,
-        evaluate: ObjectPrototypeIsPrototypeOf(DOMMatrixPrototype, this),
-        keys: [
-          "a",
-          "b",
-          "c",
-          "d",
-          "e",
-          "f",
-          "m11",
-          "m12",
-          "m13",
-          "m14",
-          "m21",
-          "m22",
-          "m23",
-          "m24",
-          "m31",
-          "m32",
-          "m33",
-          "m34",
-          "m41",
-          "m42",
-          "m43",
-          "m44",
-          "is2D",
-          "isIdentity",
-        ],
-      }),
-      inspectOptions,
-    );
   }
 }
 
