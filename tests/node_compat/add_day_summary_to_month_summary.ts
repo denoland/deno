@@ -129,4 +129,6 @@ async function main() {
   await Deno.writeTextFile(summaryPath, JSON.stringify(monthSummary));
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}
