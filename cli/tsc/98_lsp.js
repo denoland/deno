@@ -171,6 +171,9 @@ const documentRegistry = {
           /** @type {ts.IScriptSnapshot} */ (sourceFile.scriptSnapShot),
         ),
       );
+      if (scriptSnapshot.isClassicScript) {
+        sourceFile.externalModuleIndicator = undefined;
+      }
       documentRegistrySourceFileCache.set(mapKey, sourceFile);
     }
     return sourceFile;
