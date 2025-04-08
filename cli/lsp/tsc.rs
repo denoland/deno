@@ -5615,11 +5615,12 @@ mod tests {
     );
     for (relative_specifier, source, version, language_id) in sources {
       let specifier = temp_dir.url().join(relative_specifier).unwrap();
-      document_modules.documents.open(
+      document_modules.open_document(
         url_to_uri(&specifier).unwrap(),
         *version,
         *language_id,
         (*source).into(),
+        None,
       );
     }
     let snapshot = Arc::new(StateSnapshot {

@@ -1230,12 +1230,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_open(&mut self, params: DidOpenTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_open", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let language_id =
@@ -1255,21 +1257,18 @@ impl Inner {
       );
     }
     let document = self.document_modules.open_document(
-      params.text_document.uri.clone(),
+      params.text_document.uri,
       params.text_document.version,
-      params.text_document.language_id.parse().unwrap(),
+      language_id,
       params.text_document.text.into(),
+      None,
     );
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
-      self.project_changed(
-        [(&params.text_document.uri, ChangeKind::Opened)],
-        false,
-      );
       self
-        .diagnostics_server
-        .invalidate(&[&params.text_document.uri]);
+        .project_changed([(document.uri.as_ref(), ChangeKind::Opened)], false);
+      self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
       self.send_testing_update();
     }
@@ -1279,12 +1278,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_change(&mut self, params: DidChangeTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_change", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     let document = match self.document_modules.change_document(
@@ -1388,12 +1389,14 @@ impl Inner {
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
   async fn did_close(&mut self, params: DidCloseTextDocumentParams) {
     let mark = self.performance.mark_with_args("lsp.did_close", &params);
-    let Some(scheme) = params.text_document.uri.scheme() else {
-      return;
-    };
     // `deno:` documents are read-only and should only be handled as server
     // documents.
-    if scheme.eq_lowercase("deno") {
+    if params
+      .text_document
+      .uri
+      .scheme()
+      .is_some_and(|s| s.eq_lowercase("deno"))
+    {
       return;
     }
     self.diagnostics_state.clear(&params.text_document.uri);
@@ -1421,6 +1424,211 @@ impl Inner {
       self.send_testing_update();
     }
     self.performance.measure(mark);
+  }
+
+  async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_open");
+    let notebook_uri = Arc::new(params.notebook_document.uri);
+    let mut diagnosable_uris =
+      Vec::with_capacity(params.cell_text_documents.len());
+    for cell in params.cell_text_documents {
+      let language_id = cell.language_id.parse().unwrap_or_else(|err| {
+        error!("{:#}", err);
+        LanguageId::Unknown
+      });
+      if language_id == LanguageId::Unknown {
+        lsp_warn!(
+          "Unsupported language id \"{}\" received for document \"{}\".",
+          cell.language_id,
+          cell.uri.as_str()
+        );
+      }
+      let document = self.document_modules.open_document(
+        cell.uri.clone(),
+        cell.version,
+        language_id,
+        cell.text.into(),
+        Some(notebook_uri.clone()),
+      );
+      if document.is_diagnosable() {
+        diagnosable_uris.push(document.uri.clone());
+      }
+    }
+    if !diagnosable_uris.is_empty() {
+      self.check_semantic_tokens_capabilities();
+      self.refresh_dep_info().await;
+      self.project_changed(
+        diagnosable_uris
+          .iter()
+          .map(|u| (u.as_ref(), ChangeKind::Opened)),
+        false,
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_uris.iter().map(Arc::as_ref).collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
+  }
+
+  async fn notebook_did_change(
+    &mut self,
+    params: DidChangeNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_change");
+    let Some(cells) = params.change.cells else {
+      return;
+    };
+    let notebook_uri = Arc::new(params.notebook_document.uri);
+    let mut diagnosable_uris_with_change_kinds = Vec::new();
+    if let Some(structure) = cells.structure {
+      for closed in structure.did_close.into_iter().flatten() {
+        let document = match self.document_modules.close_document(&closed.uri) {
+          Ok(d) => d,
+          Err(err) => {
+            error!("{:#}", err);
+            continue;
+          }
+        };
+        if document.is_diagnosable() {
+          diagnosable_uris_with_change_kinds
+            .push((document.uri.clone(), ChangeKind::Closed));
+        }
+      }
+      for opened in structure.did_open.into_iter().flatten() {
+        let language_id = opened.language_id.parse().unwrap_or_else(|err| {
+          error!("{:#}", err);
+          LanguageId::Unknown
+        });
+        if language_id == LanguageId::Unknown {
+          lsp_warn!(
+            "Unsupported language id \"{}\" received for document \"{}\".",
+            opened.language_id,
+            opened.uri.as_str()
+          );
+        }
+        let document = self.document_modules.open_document(
+          opened.uri,
+          opened.version,
+          language_id,
+          opened.text.into(),
+          Some(notebook_uri.clone()),
+        );
+        if document.is_diagnosable() {
+          diagnosable_uris_with_change_kinds
+            .push((document.uri.clone(), ChangeKind::Opened));
+        }
+      }
+    }
+    for changed in cells.text_content.into_iter().flatten() {
+      let document = match self.document_modules.change_document(
+        &changed.document.uri,
+        changed.document.version,
+        changed.changes,
+      ) {
+        Ok(d) => d,
+        Err(err) => {
+          error!("{:#}", err);
+          continue;
+        }
+      };
+      if document.is_diagnosable() {
+        diagnosable_uris_with_change_kinds
+          .push((document.uri.clone(), ChangeKind::Modified));
+      }
+    }
+    if !diagnosable_uris_with_change_kinds.is_empty() {
+      let old_scopes_with_node_specifier =
+        self.document_modules.scopes_with_node_specifier();
+      self.refresh_dep_info().await;
+      let mut config_changed = false;
+      if !self
+        .document_modules
+        .scopes_with_node_specifier()
+        .equivalent(&old_scopes_with_node_specifier)
+      {
+        config_changed = true;
+      }
+      self.project_changed(
+        diagnosable_uris_with_change_kinds
+          .iter()
+          .map(|(u, k)| (u.as_ref(), *k)),
+        config_changed,
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_uris_with_change_kinds
+          .iter()
+          .map(|(u, _)| u.as_ref())
+          .collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
+  }
+
+  fn notebook_did_save(&mut self, params: DidSaveNotebookDocumentParams) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_save");
+    let Some(cell_uris) = self
+      .document_modules
+      .documents
+      .cells_for_notebook_uri(&params.notebook_document.uri)
+    else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        params.notebook_document.uri.as_str()
+      );
+      return;
+    };
+    for cell_uri in cell_uris {
+      self.did_save(DidSaveTextDocumentParams {
+        text_document: TextDocumentIdentifier {
+          uri: cell_uri.as_ref().clone(),
+        },
+        text: None,
+      });
+    }
+  }
+
+  async fn notebook_did_close(
+    &mut self,
+    params: DidCloseNotebookDocumentParams,
+  ) {
+    let _mark = self.performance.measure_scope("lsp.notebook_did_close");
+    let Some(cell_uris) = self
+      .document_modules
+      .documents
+      .cells_for_notebook_uri(&params.notebook_document.uri)
+    else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        params.notebook_document.uri.as_str()
+      );
+      return;
+    };
+    let mut diagnosable_uris = Vec::with_capacity(cell_uris.len());
+    for cell_uri in cell_uris {
+      let document = match self.document_modules.close_document(&cell_uri) {
+        Ok(d) => d,
+        Err(err) => {
+          error!("{:#}", err);
+          continue;
+        }
+      };
+      if document.is_diagnosable() {
+        diagnosable_uris.push(document.uri.clone());
+      }
+    }
+    if !diagnosable_uris.is_empty() {
+      self.refresh_dep_info().await;
+      self.project_changed(
+        diagnosable_uris
+          .iter()
+          .map(|u| (u.as_ref(), ChangeKind::Closed)),
+        false,
+      );
+      self.diagnostics_server.invalidate(
+        &diagnosable_uris.iter().map(Arc::as_ref).collect::<Vec<_>>(),
+      );
+      self.send_diagnostics_update();
+    }
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -3889,6 +4097,34 @@ impl tower_lsp::LanguageServer for LanguageServer {
       self.init_flag.wait_raised().await;
     }
     self.inner.write().await.did_close(params).await;
+  }
+
+  async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_open(params).await
+  }
+
+  async fn notebook_did_change(&self, params: DidChangeNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_change(params).await
+  }
+
+  async fn notebook_did_save(&self, params: DidSaveNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_save(params)
+  }
+
+  async fn notebook_did_close(&self, params: DidCloseNotebookDocumentParams) {
+    if !self.init_flag.is_raised() {
+      self.init_flag.wait_raised().await;
+    }
+    self.inner.write().await.notebook_did_close(params).await
   }
 
   async fn did_change_configuration(
