@@ -70,6 +70,9 @@ deno_task_shell = "=0.22.0"
 deno_terminal = "=0.2.2"
 deno_unsync = "0.4.2"
 deno_whoami = "0.1.0"
+
+denokv_proto = "0.10.0"
+denokv_remote = "0.10.0"
 # denokv_sqlite brings in bundled sqlite if we don't disable the default features
 denokv_sqlite = { default-features = false, version = "0.10.0" }
 
