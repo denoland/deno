@@ -41,7 +41,7 @@
         },
         {
           "args": ["eval", "console.log('test')"],
-          "output": "error: Lockfile version 5 requires the `--unstable-lockfile-v5` flag\n",
+          "output": "error.out",
           "exitCode": 1
         }
       ]

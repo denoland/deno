@@ -578,7 +578,7 @@ impl CliFactory {
 
   pub fn npm_cache(&self) -> Result<&Arc<CliNpmCache>, AnyError> {
     self.services.npm_cache.get_or_try_init(|| {
-      let cache_setting = self.flags.cache_setting();
+      let cache_setting = self.cli_options()?.cache_setting();
       Ok(Arc::new(CliNpmCache::new(
         self.npm_cache_dir()?.clone(),
         self.sys(),
