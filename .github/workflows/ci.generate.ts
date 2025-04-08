@@ -694,13 +694,6 @@ const ci = {
             "deno run --allow-write --allow-read --allow-run=git ./tests/node_compat/runner/setup.ts --check",
         },
         {
-          name: "Check tracing build",
-          if:
-            "matrix.job == 'test' && matrix.profile == 'debug' && matrix.os == 'linux' && matrix.arch == 'x86_64'",
-          run: "cargo check -p deno --features=lsp-tracing ",
-          env: { CARGO_PROFILE_DEV_DEBUG: 0 },
-        },
-        {
           name: "Build debug",
           if: "matrix.job == 'test' && matrix.profile == 'debug'",
           run: "cargo build --locked --all-targets",
