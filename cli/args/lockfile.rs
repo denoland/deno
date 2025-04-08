@@ -1,15 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 use std::collections::HashSet;
-use std::future::Future;
 use std::path::PathBuf;
 
 use deno_config::deno_json::ConfigFile;
-use deno_config::deno_json::ToLockConfigError;
 use deno_config::workspace::Workspace;
 use deno_core::anyhow::Context;
 use deno_core::error::AnyError;
-use deno_core::futures::FutureExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::parking_lot::MutexGuard;
 use deno_core::serde_json;
@@ -127,28 +124,6 @@ impl CliLockfile {
     Ok(())
   }
 
-  pub fn discover_current_version(
-    sys: &CliSys,
-    flags: &Flags,
-    workspace: &Workspace,
-    maybe_external_import_map: Option<&serde_json::Value>,
-    use_lockfile_v5: bool,
-  ) -> Result<Option<CliLockfile>, ReadCurrentVersionError> {
-    Self::discover_inner(
-      sys,
-      flags,
-      workspace,
-      maybe_external_import_map,
-      None,
-      use_lockfile_v5,
-      |sys, opts, _| {
-        std::future::ready(Self::read_from_path_current_version(sys, opts))
-      },
-    )
-    .now_or_never() // not ideal but best I could come up with
-    .unwrap()
-  }
-
   pub async fn discover(
     sys: &CliSys,
     flags: &Flags,
@@ -157,36 +132,6 @@ impl CliLockfile {
     api: &(dyn NpmPackageInfoProvider + Send + Sync),
     use_lockfile_v5: bool,
   ) -> Result<Option<CliLockfile>, AnyError> {
-    Self::discover_inner(
-      sys,
-      flags,
-      workspace,
-      maybe_external_import_map,
-      Some(api),
-      use_lockfile_v5,
-      |sys, opts, api| Self::read_from_path(sys, opts, api.unwrap()),
-    )
-    .await
-  }
-
-  async fn discover_inner<'a, R, E, Fut>(
-    sys: &'a CliSys,
-    flags: &Flags,
-    workspace: &Workspace,
-    maybe_external_import_map: Option<&serde_json::Value>,
-    api: Option<&'a (dyn NpmPackageInfoProvider + Send + Sync)>,
-    use_lockfile_v5: bool,
-    read_from_path: R,
-  ) -> Result<Option<CliLockfile>, E>
-  where
-    R: FnOnce(
-      &'a CliSys,
-      CliLockfileReadFromPathOptions,
-      Option<&'a (dyn NpmPackageInfoProvider + Send + Sync)>,
-    ) -> Fut,
-    Fut: Future<Output = Result<CliLockfile, E>>,
-    E: From<ToLockConfigError>,
-  {
     fn pkg_json_deps(
       maybe_pkg_json: Option<&PackageJson>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -212,7 +157,6 @@ impl CliLockfile {
         })
         .collect()
     }
-
     fn deno_json_deps(
       maybe_deno_json: Option<&ConfigFile>,
     ) -> HashSet<JsrDepPackageReq> {
@@ -220,7 +164,6 @@ impl CliLockfile {
         .map(crate::args::deno_json::deno_json_deps)
         .unwrap_or_default()
     }
-
     if flags.no_lock
       || matches!(
         flags.subcommand,
@@ -230,7 +173,6 @@ impl CliLockfile {
     {
       return Ok(None);
     }
-
     let file_path = match flags.lock {
       Some(ref lock) => PathBuf::from(lock),
       None => match workspace.resolve_lockfile_path()? {
@@ -238,9 +180,7 @@ impl CliLockfile {
         None => return Ok(None),
       },
     };
-
     let root_folder = workspace.root_folder_configs();
-    // CLI flag takes precedence over the config
     let frozen = flags.frozen_lockfile.unwrap_or_else(|| {
       root_folder
         .deno_json
@@ -248,8 +188,7 @@ impl CliLockfile {
         .and_then(|c| c.to_lock_config().ok().flatten().map(|c| c.frozen()))
         .unwrap_or(false)
     });
-
-    let lockfile = read_from_path(
+    let lockfile = Self::read_from_path(
       sys,
       CliLockfileReadFromPathOptions {
         file_path,
@@ -260,8 +199,6 @@ impl CliLockfile {
       api,
     )
     .await?;
-
-    // initialize the lockfile with the workspace's configuration
     let root_url = workspace.root_dir();
     let config = deno_lockfile::WorkspaceConfig {
       root: WorkspaceMemberConfig {
@@ -358,7 +295,6 @@ impl CliLockfile {
       no_config: flags.config_flag == super::ConfigFlag::Disabled,
       config,
     });
-
     Ok(Some(lockfile))
   }
 
@@ -399,57 +335,6 @@ impl CliLockfile {
     })
   }
 
-  pub fn read_from_path_current_version(
-    sys: &CliSys,
-    opts: CliLockfileReadFromPathOptions,
-  ) -> Result<CliLockfile, ReadCurrentVersionError> {
-    let lockfile = match std::fs::read_to_string(&opts.file_path) {
-      Ok(text) => {
-        match Lockfile::new_current_version(deno_lockfile::NewLockfileOptions {
-          file_path: opts.file_path,
-          content: &text,
-          overwrite: false,
-          next_version: opts.use_lockfile_v5,
-        }) {
-          Ok(lockfile) => lockfile,
-          Err(err) => {
-            if matches!(
-              err.source,
-              deno_lockfile::LockfileErrorReason::TransformNeeded
-            ) {
-              return Err(ReadCurrentVersionError::NeedsUpgrade);
-            } else if let deno_lockfile::LockfileErrorReason::UnsupportedVersion { version } = &err.source {
-              if version == "5" {
-                return Err(ReadCurrentVersionError::UnsupportedV5);
-              }
-            }
-            return Err(ReadCurrentVersionError::Other(err.into()));
-          }
-        }
-      }
-      Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
-        Lockfile::new_empty(opts.file_path, false, opts.use_lockfile_v5)
-      }
-      Err(err) => {
-        return Err(ReadCurrentVersionError::Other(
-          Err::<CliLockfile, AnyError>(AnyError::from(err))
-            .with_context(|| {
-              format!("Failed reading lockfile '{}'", opts.file_path.display())
-            })
-            .unwrap_err(),
-        ));
-      }
-    };
-    Ok(CliLockfile {
-      sys: sys.clone(),
-      filename: lockfile.filename.clone(),
-      lockfile: Mutex::new(lockfile),
-      frozen: opts.frozen,
-      skip_write: opts.skip_write,
-      use_lockfile_v5: opts.use_lockfile_v5,
-    })
-  }
-
   pub fn error_if_changed(&self) -> Result<(), JsErrorBox> {
     if !self.frozen {
       return Ok(());
@@ -466,21 +351,5 @@ impl CliLockfile {
     } else {
       Ok(())
     }
-  }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum ReadCurrentVersionError {
-  #[error("Lockfile needs to be upgraded to the latest version")]
-  NeedsUpgrade,
-  #[error("Lockfile version 5 requires the `--unstable-lockfile-v5` flag")]
-  UnsupportedV5,
-  #[error(transparent)]
-  Other(#[from] AnyError),
-}
-
-impl From<ToLockConfigError> for ReadCurrentVersionError {
-  fn from(err: ToLockConfigError) -> Self {
-    Self::Other(err.into())
   }
 }

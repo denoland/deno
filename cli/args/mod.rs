@@ -58,7 +58,6 @@ pub use flags::*;
 pub use lockfile::AtomicWriteFileWithRetriesError;
 pub use lockfile::CliLockfile;
 pub use lockfile::CliLockfileReadFromPathOptions;
-pub use lockfile::ReadCurrentVersionError;
 use once_cell::sync::Lazy;
 pub use package_json::NpmInstallDepsProvider;
 pub use package_json::PackageJsonDepValueParseWithLocationError;
@@ -444,7 +443,6 @@ pub struct CliOptions {
   flags: Arc<Flags>,
   initial_cwd: PathBuf,
   main_module_cell: std::sync::OnceLock<Result<ModuleSpecifier, AnyError>>,
-  maybe_lockfile: Option<Arc<CliLockfile>>,
   pub start_dir: Arc<WorkspaceDirectory>,
 }
 
@@ -453,7 +451,6 @@ impl CliOptions {
   pub fn new(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_lockfile: Option<Arc<CliLockfile>>,
     start_dir: Arc<WorkspaceDirectory>,
   ) -> Result<Self, AnyError> {
     if let Some(insecure_allowlist) =
@@ -476,69 +473,51 @@ impl CliOptions {
     Ok(Self {
       flags,
       initial_cwd,
-      maybe_lockfile,
       main_module_cell: std::sync::OnceLock::new(),
       start_dir,
     })
   }
 
-  pub async fn from_flags(
-    sys: &CliSys,
+  pub fn from_flags(
     flags: Arc<Flags>,
     initial_cwd: PathBuf,
-    maybe_external_import_map: Option<&ExternalImportMap>,
     start_dir: Arc<WorkspaceDirectory>,
-    registry_info_provider: &(dyn deno_lockfile::NpmPackageInfoProvider
-        + Send
-        + Sync),
   ) -> Result<Self, AnyError> {
     for diagnostic in start_dir.workspace.diagnostics() {
       log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
     }
 
-    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
-
-    let maybe_lock_file = CliLockfile::discover(
-      sys,
-      &flags,
-      &start_dir.workspace,
-      maybe_external_import_map.as_ref().map(|v| &v.value),
-      registry_info_provider,
-      use_lockfile_v5,
-    )
-    .await?;
-
     log::debug!("Finished config loading.");
 
-    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+    Self::new(flags, initial_cwd, start_dir)
   }
 
-  pub fn from_flags_current_version(
-    sys: &CliSys,
-    flags: Arc<Flags>,
-    initial_cwd: PathBuf,
-    maybe_external_import_map: Option<&ExternalImportMap>,
-    start_dir: Arc<WorkspaceDirectory>,
-  ) -> Result<Self, crate::args::lockfile::ReadCurrentVersionError> {
-    for diagnostic in start_dir.workspace.diagnostics() {
-      log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
-    }
+  // pub fn from_flags_current_version(
+  //   sys: &CliSys,
+  //   flags: Arc<Flags>,
+  //   initial_cwd: PathBuf,
+  //   maybe_external_import_map: Option<&ExternalImportMap>,
+  //   start_dir: Arc<WorkspaceDirectory>,
+  // ) -> Result<Self, crate::args::lockfile::ReadCurrentVersionError> {
+  //   for diagnostic in start_dir.workspace.diagnostics() {
+  //     log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
+  //   }
 
-    let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
+  //   let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
 
-    let maybe_lock_file = CliLockfile::discover_current_version(
-      sys,
-      &flags,
-      &start_dir.workspace,
-      maybe_external_import_map.as_ref().map(|v| &v.value),
-      use_lockfile_v5,
-    )?;
+  //   let maybe_lock_file = CliLockfile::discover_current_version(
+  //     sys,
+  //     &flags,
+  //     &start_dir.workspace,
+  //     maybe_external_import_map.as_ref().map(|v| &v.value),
+  //     use_lockfile_v5,
+  //   )?;
 
-    log::debug!("Finished config loading.");
+  //   log::debug!("Finished config loading.");
 
-    Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
-      .map_err(crate::args::lockfile::ReadCurrentVersionError::Other)
-  }
+  //   Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
+  //     .map_err(crate::args::lockfile::ReadCurrentVersionError::Other)
+  // }
 
   #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
@@ -766,10 +745,6 @@ impl CliOptions {
       host,
       DENO_VERSION_INFO.user_agent,
     )?))
-  }
-
-  pub fn maybe_lockfile(&self) -> Option<&Arc<CliLockfile>> {
-    self.maybe_lockfile.as_ref()
   }
 
   pub fn resolve_fmt_options_for_members(
@@ -1285,7 +1260,10 @@ impl CliOptions {
   }
 }
 
-fn unstable_lockfile_v5(flags: &Flags, workspace: &Workspace) -> bool {
+pub(crate) fn unstable_lockfile_v5(
+  flags: &Flags,
+  workspace: &Workspace,
+) -> bool {
   flags.unstable_config.lockfile_v5 || workspace.has_unstable("lockfile-v5")
 }
 

@@ -70,7 +70,7 @@ pub async fn kernel(
   // TODO(bartlomieju): should we run with all permissions?
   let permissions =
     PermissionsContainer::allow_all(factory.permission_desc_parser()?.clone());
-  let npm_installer = factory.npm_installer_if_managed()?.cloned();
+  let npm_installer = factory.npm_installer_if_managed().await?.cloned();
   let tsconfig_resolver = factory.tsconfig_resolver()?;
   let resolver = factory.resolver().await?.clone();
   let worker_factory = factory.create_cli_main_worker_factory().await?;

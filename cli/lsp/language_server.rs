@@ -354,11 +354,9 @@ impl LanguageServer {
 
       // Update the lockfile on the file system with anything new
       // found after caching
-      if let Ok(cli_options) = factory.cli_options() {
-        if let Some(lockfile) = cli_options.maybe_lockfile() {
-          if let Err(err) = &lockfile.write_if_changed() {
-            lsp_warn!("{:#}", err);
-          }
+      if let Ok(Some(lockfile)) = factory.maybe_lockfile().await {
+        if let Err(err) = &lockfile.write_if_changed() {
+          lsp_warn!("{:#}", err);
         }
       }
 

@@ -56,6 +56,7 @@ use once_cell::sync::OnceCell;
 use sys_traits::EnvCurrentDir;
 
 use crate::args::deno_json::TsConfigResolver;
+use crate::args::CliLockfile;
 use crate::args::CliOptions;
 use crate::args::ConfigFlag;
 use crate::args::DenoSubcommand;
@@ -346,6 +347,7 @@ struct CliFactoryServices {
   workspace_external_import_map_loader:
     Deferred<Arc<WorkspaceExternalImportMapLoader>>,
   workspace_npm_patch_packages: Deferred<Arc<WorkspaceNpmPatchPackages>>,
+  lockfile: Deferred<Option<Arc<CliLockfile>>>,
 }
 
 #[derive(Debug, Default)]
@@ -391,55 +393,53 @@ impl CliFactory {
     self.overrides.workspace_directory = Some(dir);
   }
 
+  pub async fn maybe_lockfile(
+    &self,
+  ) -> Result<Option<&Arc<CliLockfile>>, AnyError> {
+    self
+      .services
+      .lockfile
+      .get_or_try_init_async(async move {
+        let workspace_factory = self.workspace_factory()?;
+        let workspace_directory = workspace_factory.workspace_directory()?;
+        let maybe_external_import_map =
+          self.workspace_external_import_map_loader()?.get_or_load()?;
+        let provider = self.npm_registry_info_provider()?.clone();
+        let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
+          provider.as_npm_registry_api(),
+        ));
+
+        let use_lockfile_v5 = crate::args::unstable_lockfile_v5(
+          &self.flags,
+          &workspace_directory.workspace,
+        );
+        let maybe_lock_file = CliLockfile::discover(
+          &self.sys(),
+          &self.flags,
+          &workspace_directory.workspace,
+          maybe_external_import_map.as_ref().map(|v| &v.value),
+          &adapter,
+          use_lockfile_v5,
+        )
+        .await?
+        .map(Arc::new);
+
+        Ok(maybe_lock_file)
+      })
+      .await
+      .map(|c| c.as_ref())
+  }
+
   pub fn cli_options(&self) -> Result<&Arc<CliOptions>, AnyError> {
     self.services.cli_options.get_or_try_init(|| {
       let workspace_factory = self.workspace_factory()?;
       let workspace_directory = workspace_factory.workspace_directory()?;
-      let maybe_external_import_map =
-        self.workspace_external_import_map_loader()?.get_or_load()?;
-      match CliOptions::from_flags_current_version(
-        &self.sys(),
+      CliOptions::from_flags(
         self.flags.clone(),
         workspace_factory.initial_cwd().clone(),
-        maybe_external_import_map,
         workspace_directory.clone(),
-      ) {
-        Ok(cli_options) => Ok(Arc::new(cli_options)),
-        Err(crate::args::ReadCurrentVersionError::Other(err)) => Err(err),
-        Err(err @ crate::args::ReadCurrentVersionError::UnsupportedV5) => {
-          Err(err.into())
-        }
-        Err(crate::args::ReadCurrentVersionError::NeedsUpgrade) => {
-          let provider = self.npm_registry_info_provider()?.clone();
-          let initial_cwd = workspace_factory.initial_cwd().clone();
-          let flags = self.flags.clone();
-          let sys = self.sys();
-          let maybe_external_import_map = maybe_external_import_map.cloned();
-          let workspace_directory = workspace_directory.clone();
-          std::thread::spawn(move || {
-            let runtime = deno_runtime::tokio_util::create_basic_runtime();
-            runtime
-              .block_on(async move {
-                let sys = sys;
-                let adapter = crate::npm::NpmPackageInfoApiAdapter(Arc::new(
-                  provider.as_npm_registry_api(),
-                ));
-                CliOptions::from_flags(
-                  &sys,
-                  flags,
-                  initial_cwd,
-                  maybe_external_import_map.as_ref(),
-                  workspace_directory,
-                  &adapter,
-                )
-                .await
-              })
-              .map(Arc::new)
-          })
-          .join()
-          .unwrap()
-        }
-      }
+      )
+      .map(Arc::new)
     })
   }
 
@@ -609,54 +609,62 @@ impl CliFactory {
     Ok(self.resolver_factory()?.npm_resolution())
   }
 
-  pub fn npm_graph_resolver(
+  pub async fn npm_graph_resolver(
     &self,
   ) -> Result<&Arc<CliNpmGraphResolver>, AnyError> {
-    self.services.npm_graph_resolver.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      Ok(Arc::new(CliNpmGraphResolver::new(
-        self.npm_installer_if_managed()?.cloned(),
-        self.services.found_pkg_json_dep_flag.clone(),
-        cli_options.unstable_bare_node_builtins(),
-        cli_options.default_npm_caching_strategy(),
-      )))
-    })
+    self
+      .services
+      .npm_graph_resolver
+      .get_or_try_init_async(async move {
+        let cli_options = self.cli_options()?;
+        Ok(Arc::new(CliNpmGraphResolver::new(
+          self.npm_installer_if_managed().await?.cloned(),
+          self.services.found_pkg_json_dep_flag.clone(),
+          cli_options.unstable_bare_node_builtins(),
+          cli_options.default_npm_caching_strategy(),
+        )))
+      })
+      .await
   }
 
-  pub fn npm_installer_if_managed(
+  pub async fn npm_installer_if_managed(
     &self,
   ) -> Result<Option<&Arc<NpmInstaller>>, AnyError> {
     if self.resolver_factory()?.use_byonm()? || self.cli_options()?.no_npm() {
       Ok(None)
     } else {
-      Ok(Some(self.npm_installer()?))
+      Ok(Some(self.npm_installer().await?))
     }
   }
 
-  pub fn npm_installer(&self) -> Result<&Arc<NpmInstaller>, AnyError> {
-    self.services.npm_installer.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      let workspace_factory = self.workspace_factory()?;
-      Ok(Arc::new(NpmInstaller::new(
-        self.npm_cache()?.clone(),
-        Arc::new(NpmInstallDepsProvider::from_workspace(
-          cli_options.workspace(),
-        )),
-        Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
-        self.npm_resolution()?.clone(),
-        self.npm_resolution_initializer()?.clone(),
-        self.npm_resolution_installer()?.clone(),
-        self.text_only_progress_bar(),
-        self.sys(),
-        self.npm_tarball_cache()?.clone(),
-        cli_options.maybe_lockfile().cloned(),
-        workspace_factory
-          .node_modules_dir_path()?
-          .map(|p| p.to_path_buf()),
-        cli_options.lifecycle_scripts_config(),
-        cli_options.npm_system_info(),
-      )))
-    })
+  pub async fn npm_installer(&self) -> Result<&Arc<NpmInstaller>, AnyError> {
+    self
+      .services
+      .npm_installer
+      .get_or_try_init_async(async move {
+        let cli_options = self.cli_options()?;
+        let workspace_factory = self.workspace_factory()?;
+        Ok(Arc::new(NpmInstaller::new(
+          self.npm_cache()?.clone(),
+          Arc::new(NpmInstallDepsProvider::from_workspace(
+            cli_options.workspace(),
+          )),
+          Arc::new(self.npm_registry_info_provider()?.as_npm_registry_api()),
+          self.npm_resolution()?.clone(),
+          self.npm_resolution_initializer().await?.clone(),
+          self.npm_resolution_installer().await?.clone(),
+          self.text_only_progress_bar(),
+          self.sys(),
+          self.npm_tarball_cache()?.clone(),
+          self.maybe_lockfile().await?.cloned(),
+          workspace_factory
+            .node_modules_dir_path()?
+            .map(|p| p.to_path_buf()),
+          cli_options.lifecycle_scripts_config(),
+          cli_options.npm_system_info(),
+        )))
+      })
+      .await
   }
 
   pub fn npm_registry_info_provider(
@@ -674,14 +682,13 @@ impl CliFactory {
       })
   }
 
-  pub fn npm_resolution_initializer(
+  pub async fn npm_resolution_initializer(
     &self,
   ) -> Result<&Arc<NpmResolutionInitializer>, AnyError> {
     self
       .services
       .npm_resolution_initializer
-      .get_or_try_init(|| {
-        let cli_options = self.cli_options()?;
+      .get_or_try_init_async(async move {
         Ok(Arc::new(NpmResolutionInitializer::new(
           self.npm_registry_info_provider()?.clone(),
           self.npm_resolution()?.clone(),
@@ -690,7 +697,7 @@ impl CliFactory {
             Some(snapshot) => {
               CliNpmResolverManagedSnapshotOption::Specified(Some(snapshot))
             }
-            None => match cli_options.maybe_lockfile() {
+            None => match self.maybe_lockfile().await? {
               Some(lockfile) => {
                 CliNpmResolverManagedSnapshotOption::ResolveFromLockfile(
                   lockfile.clone(),
@@ -701,20 +708,24 @@ impl CliFactory {
           },
         )))
       })
+      .await
   }
 
-  pub fn npm_resolution_installer(
+  pub async fn npm_resolution_installer(
     &self,
   ) -> Result<&Arc<NpmResolutionInstaller>, AnyError> {
-    self.services.npm_resolution_installer.get_or_try_init(|| {
-      let cli_options = self.cli_options()?;
-      Ok(Arc::new(NpmResolutionInstaller::new(
-        self.npm_registry_info_provider()?.clone(),
-        self.npm_resolution()?.clone(),
-        cli_options.maybe_lockfile().cloned(),
-        self.workspace_npm_patch_packages()?.clone(),
-      )))
-    })
+    self
+      .services
+      .npm_resolution_installer
+      .get_or_try_init_async(async move {
+        Ok(Arc::new(NpmResolutionInstaller::new(
+          self.npm_registry_info_provider()?.clone(),
+          self.npm_resolution()?.clone(),
+          self.maybe_lockfile().await?.cloned(),
+          self.workspace_npm_patch_packages()?.clone(),
+        )))
+      })
+      .await
   }
 
   pub fn workspace_npm_patch_packages(
@@ -880,7 +891,8 @@ impl CliFactory {
     let npm_resolver = self.resolver_factory()?.npm_resolver()?;
     if npm_resolver.is_managed() {
       self
-        .npm_resolution_initializer()?
+        .npm_resolution_initializer()
+        .await?
         .ensure_initialized()
         .await?;
     }
@@ -968,7 +980,7 @@ impl CliFactory {
             cli_options.clone(),
             self.module_graph_builder().await?.clone(),
             self.node_resolver().await?.clone(),
-            self.npm_installer_if_managed()?.cloned(),
+            self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.sys(),
             self.tsconfig_resolver()?.clone(),
@@ -1000,11 +1012,11 @@ impl CliFactory {
             self.file_fetcher()?.clone(),
             self.global_http_cache()?.clone(),
             self.in_npm_pkg_checker()?.clone(),
-            cli_options.maybe_lockfile().cloned(),
+            self.maybe_lockfile().await?.cloned(),
             self.maybe_file_watcher_reporter().clone(),
             self.module_info_cache()?.clone(),
-            self.npm_graph_resolver()?.clone(),
-            self.npm_installer_if_managed()?.cloned(),
+            self.npm_graph_resolver().await?.clone(),
+            self.npm_installer_if_managed().await?.cloned(),
             self.npm_resolver().await?.clone(),
             self.parsed_source_cache().clone(),
             self.resolver().await?.clone(),
@@ -1029,7 +1041,7 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(ModuleGraphCreator::new(
             cli_options.clone(),
-            self.npm_installer_if_managed()?.cloned(),
+            self.npm_installer_if_managed().await?.cloned(),
             self.module_graph_builder().await?.clone(),
             self.type_checker().await?.clone(),
           )))
@@ -1081,7 +1093,7 @@ impl CliFactory {
           let cli_options = self.cli_options()?;
           Ok(Arc::new(ModuleLoadPreparer::new(
             cli_options.clone(),
-            cli_options.maybe_lockfile().cloned(),
+            self.maybe_lockfile().await?.cloned(),
             self.module_graph_builder().await?.clone(),
             self.text_only_progress_bar().clone(),
             self.type_checker().await?.clone(),
@@ -1269,8 +1281,8 @@ impl CliFactory {
     Ok(CliMainWorkerFactory::new(
       lib_main_worker_factory,
       maybe_file_watcher_communicator,
-      cli_options.maybe_lockfile().cloned(),
-      self.npm_installer_if_managed()?.cloned(),
+      self.maybe_lockfile().await?.cloned(),
+      self.npm_installer_if_managed().await?.cloned(),
       npm_resolver.clone(),
       self.sys(),
       self.create_cli_main_worker_options()?,
