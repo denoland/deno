@@ -492,33 +492,6 @@ impl CliOptions {
     Self::new(flags, initial_cwd, start_dir)
   }
 
-  // pub fn from_flags_current_version(
-  //   sys: &CliSys,
-  //   flags: Arc<Flags>,
-  //   initial_cwd: PathBuf,
-  //   maybe_external_import_map: Option<&ExternalImportMap>,
-  //   start_dir: Arc<WorkspaceDirectory>,
-  // ) -> Result<Self, crate::args::lockfile::ReadCurrentVersionError> {
-  //   for diagnostic in start_dir.workspace.diagnostics() {
-  //     log::warn!("{} {}", colors::yellow("Warning"), diagnostic);
-  //   }
-
-  //   let use_lockfile_v5 = unstable_lockfile_v5(&flags, &start_dir.workspace);
-
-  //   let maybe_lock_file = CliLockfile::discover_current_version(
-  //     sys,
-  //     &flags,
-  //     &start_dir.workspace,
-  //     maybe_external_import_map.as_ref().map(|v| &v.value),
-  //     use_lockfile_v5,
-  //   )?;
-
-  //   log::debug!("Finished config loading.");
-
-  //   Self::new(flags, initial_cwd, maybe_lock_file.map(Arc::new), start_dir)
-  //     .map_err(crate::args::lockfile::ReadCurrentVersionError::Other)
-  // }
-
   #[inline(always)]
   pub fn initial_cwd(&self) -> &Path {
     &self.initial_cwd
