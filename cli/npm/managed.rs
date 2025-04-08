@@ -180,6 +180,7 @@ async fn resolve_snapshot(
 
 #[derive(Debug, Error, Clone, JsError)]
 pub enum SnapshotFromLockfileError {
+  // TODO(nathanwhit): remove once we've migrated to lockfile v5
   #[error(transparent)]
   #[class(inherit)]
   IncompleteError(
@@ -190,26 +191,59 @@ pub enum SnapshotFromLockfileError {
   SnapshotFromLockfile(#[from] deno_npm::resolution::SnapshotFromLockfileError),
 }
 
+pub(crate) struct DefaultTarballUrl;
+
+impl deno_npm::resolution::DefaultTarballUrlProvider for DefaultTarballUrl {
+  fn default_tarball_url(&self, id: &deno_npm::NpmPackageId) -> String {
+    let scope = id.nv.scope();
+    let package_name = if let Some(scope) = scope {
+      id.nv
+        .name
+        .strip_prefix(scope)
+        .unwrap_or(&id.nv.name)
+        .trim_start_matches('/')
+    } else {
+      &id.nv.name
+    };
+    format!(
+      "https://registry.npmjs.org/{}/-/{}-{}.tgz",
+      id.nv.name, package_name, id.nv.version
+    )
+  }
+}
+
 async fn snapshot_from_lockfile(
   lockfile: Arc<CliLockfile>,
   api: &dyn NpmRegistryApi,
   patch_packages: &WorkspaceNpmPatchPackages,
 ) -> Result<ValidSerializedNpmResolutionSnapshot, SnapshotFromLockfileError> {
-  let (incomplete_snapshot, skip_integrity_check) = {
-    let lock = lockfile.lock();
-    (
-      deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
-      lock.overwrite,
+  if lockfile.use_lockfile_v5() {
+    let snapshot = deno_npm::resolution::snapshot_from_lockfile_v5(
+      deno_npm::resolution::SnapshotFromLockfileV5Params {
+        patch_packages: &patch_packages.0,
+        lockfile: &lockfile.lock(),
+        default_tarball_url: &DefaultTarballUrl,
+      },
+    )?;
+
+    Ok(snapshot)
+  } else {
+    let (incomplete_snapshot, skip_integrity_check) = {
+      let lock = lockfile.lock();
+      (
+        deno_npm::resolution::incomplete_snapshot_from_lockfile(&lock)?,
+        lock.overwrite,
+      )
+    };
+    let snapshot = deno_npm::resolution::snapshot_from_lockfile(
+      deno_npm::resolution::SnapshotFromLockfileParams {
+        incomplete_snapshot,
+        api,
+        patch_packages: &patch_packages.0,
+        skip_integrity_check,
+      },
     )
-  };
-  let snapshot = deno_npm::resolution::snapshot_from_lockfile(
-    deno_npm::resolution::SnapshotFromLockfileParams {
-      incomplete_snapshot,
-      api,
-      patch_packages: &patch_packages.0,
-      skip_integrity_check,
-    },
-  )
-  .await?;
-  Ok(snapshot)
+    .await?;
+    Ok(snapshot)
+  }
 }

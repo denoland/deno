@@ -59,15 +59,15 @@ deno_config = { version = "=0.52.0", features = ["workspace"] }
 deno_doc = "=0.169.1"
 deno_graph = "=0.89.4"
 deno_lint = "=0.74.0"
-deno_lockfile = "=0.25.0"
+deno_lockfile = "=0.26.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
-deno_npm = "=0.30.3"
+deno_npm = "=0.31.0"
 deno_path_util = "=0.3.2"
 deno_permissions = { version = "0.58.0", path = "./runtime/permissions" }
 deno_runtime = { version = "0.207.0", path = "./runtime" }
 deno_semver = "=0.7.1"
 deno_terminal = "=0.2.2"
-eszip = "0.83.0"
+eszip = "=0.84.0"
 napi_sym = { version = "0.129.0", path = "./ext/napi/sym" }
 test_util = { package = "test_server", path = "./tests/util/server" }
 
@@ -503,4 +503,12 @@ opt-level = 3
 [profile.release.package.httpdate]
 opt-level = 3
 [profile.release.package.deno_unsync]
+opt-level = 3
+[profile.release.package.deno_semver]
+opt-level = 3
+[profile.release.package.deno_npm]
+opt-level = 3
+[profile.release.package.deno_lockfile]
+opt-level = 3
+[profile.release.package.deno_npm_cache]
 opt-level = 3

@@ -4481,6 +4481,16 @@ impl CommandExt for Command {
         .hide(true)
         .help_heading(UNSTABLE_HEADING)
         .display_order(next_display_order()),
+    ).arg(
+      Arg::new("unstable-lockfile-v5")
+        .long("unstable-lockfile-v5")
+        .help("Enable unstable lockfile v5")
+        .env("DENO_UNSTABLE_LOCKFILE_V5")
+        .value_parser(FalseyValueParser::new())
+        .action(ArgAction::SetTrue)
+        .help_heading(UNSTABLE_HEADING)
+        .hide(true)
+        .display_order(next_display_order()),
     );
 
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS.iter() {
@@ -6100,6 +6110,7 @@ fn unstable_args_parse(
     matches.get_flag("unstable-sloppy-imports");
   flags.unstable_config.npm_lazy_caching =
     matches.get_flag("unstable-npm-lazy-caching");
+  flags.unstable_config.lockfile_v5 = matches.get_flag("unstable-lockfile-v5");
 
   if matches!(cfg, UnstableArgsConfig::ResolutionAndRuntime) {
     for granular_flag in crate::UNSTABLE_GRANULAR_FLAGS {

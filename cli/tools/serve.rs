@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use deno_core::error::AnyError;
+use deno_core::futures::FutureExt;
 use deno_core::futures::TryFutureExt;
 use deno_core::ModuleSpecifier;
 
@@ -175,6 +176,7 @@ async fn serve_with_watch(
       })
     },
   )
+  .boxed_local()
   .await?;
   Ok(0)
 }
