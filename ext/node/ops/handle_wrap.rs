@@ -160,3 +160,61 @@ impl HandleWrap {
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use std::future::poll_fn;
+  use std::task::Poll;
+
+  use deno_core::JsRuntime;
+  use deno_core::RuntimeOptions;
+
+  #[tokio::test]
+  async fn test_handle_wrap() {
+    deno_core::extension!(
+      test_ext,
+      objects = [super::AsyncWrap, super::HandleWrap,],
+      state = |state| {
+        state.put::<super::AsyncId>(super::AsyncId::default());
+      }
+    );
+
+    let mut runtime = JsRuntime::new(RuntimeOptions {
+      extensions: vec![test_ext::init_ops()],
+      ..Default::default()
+    });
+
+    let source_code = r#"
+          const { HandleWrap } = Deno.core.ops;
+
+          let called = false;
+          class MyHandleWrap extends HandleWrap {
+            constructor() {
+              super(0, null);
+            }
+
+            _onClose() {
+              called = true;
+            }
+          }
+
+          const handleWrap = new MyHandleWrap();
+          handleWrap.close();
+
+          if (!called) {
+            throw new Error("HandleWrap._onClose was not called");
+          }
+        "#;
+
+    poll_fn(move |cx| {
+      runtime
+        .execute_script("file://handle_wrap_test.js", source_code)
+        .unwrap();
+
+      let result = runtime.poll_event_loop(cx, Default::default());
+      assert!(matches!(result, Poll::Ready(Ok(()))));
+      Poll::Ready(())
+    })
+    .await;
+  }
+}
