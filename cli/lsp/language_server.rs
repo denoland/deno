@@ -4055,7 +4055,6 @@ impl tower_lsp::LanguageServer for LanguageServer {
   }
 
   async fn notebook_did_open(&self, params: DidOpenNotebookDocumentParams) {
-    dbg!(&params.notebook_document.notebook_type);
     if !self.init_flag.is_raised() {
       self.init_flag.wait_raised().await;
     }
