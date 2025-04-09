@@ -421,8 +421,9 @@ export const parseArgs = (config = { __proto__: null }) => {
           }
           value = false;
         } else if (optionsGetOwn(options, name, "type") !== "boolean") {
-          throw new ERR_PARSE_ARGS_INVALID_OPTION_VALUE(
-            `Option '--no-${name}' does not take an argument`,
+          throw new ERR_PARSE_ARGS_UNKNOWN_OPTION(
+            token.rawName,
+            allowPositionals,
           );
         } else {
           value = false;
