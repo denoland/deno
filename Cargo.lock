@@ -336,9 +336,9 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.80"
+version = "0.1.88"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6fa2087f2753a7da8cc1c0dbfcf89579dd57458e36769de5ac750b4671737ca"
+checksum = "e539d3fca749fcee5236ab05e93a52867dd549cc157c8cb7f99595f3cedffdb5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -900,7 +900,7 @@ dependencies = [
  "chrono",
  "deno_bench_util",
  "deno_cache_dir",
- "deno_lockfile 0.25.0",
+ "deno_lockfile",
  "deno_semver",
  "deno_terminal 0.2.2",
  "deno_tower_lsp",
@@ -1476,9 +1476,9 @@ dependencies = [
  "deno_graph",
  "deno_lib",
  "deno_lint",
- "deno_lockfile 0.25.0",
+ "deno_lockfile",
  "deno_media_type",
- "deno_npm 0.30.3",
+ "deno_npm",
  "deno_npm_cache",
  "deno_package_json",
  "deno_panic",
@@ -2128,7 +2128,7 @@ dependencies = [
  "deno_fs",
  "deno_media_type",
  "deno_node",
- "deno_npm 0.30.3",
+ "deno_npm",
  "deno_path_util",
  "deno_resolver",
  "deno_runtime",
@@ -2170,22 +2170,11 @@ dependencies = [
 
 [[package]]
 name = "deno_lockfile"
-version = "0.24.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632e835a53ed667d62fdd766c5780fe8361c831d3e3fbf1a760a0b7896657587"
+checksum = "bf38d2df0cfe7ca030a0328c2039afaba39d13c775be9d2cf5fd7705ad2b5c72"
 dependencies = [
- "deno_semver",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
-]
-
-[[package]]
-name = "deno_lockfile"
-version = "0.25.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a77c5c11d1a40430ec193e7a64a824f7893cc561a7512b489d6569ceb373a1c6"
-dependencies = [
+ "async-trait",
  "deno_semver",
  "serde",
  "serde_json",
@@ -2344,34 +2333,14 @@ dependencies = [
 
 [[package]]
 name = "deno_npm"
-version = "0.27.2"
+version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4adceb4c34f10e837d0e3ae76e88dddefb13e83c05c1ef1699fa5519241c9d27"
+checksum = "352510920cdb72896495893f9baa344175df4f9317a24858c3c224a58f6f8d2d"
 dependencies = [
  "async-trait",
  "capacity_builder",
  "deno_error",
- "deno_lockfile 0.24.0",
- "deno_semver",
- "futures",
- "log",
- "monch",
- "serde",
- "serde_json",
- "thiserror 2.0.12",
- "url",
-]
-
-[[package]]
-name = "deno_npm"
-version = "0.30.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "459d5cdced5fb532db6819148111f5d344d977bec1be72e49baee7471a5d244a"
-dependencies = [
- "async-trait",
- "capacity_builder",
- "deno_error",
- "deno_lockfile 0.25.0",
+ "deno_lockfile",
  "deno_semver",
  "futures",
  "indexmap 2.8.0",
@@ -2392,7 +2361,7 @@ dependencies = [
  "boxed_error",
  "deno_cache_dir",
  "deno_error",
- "deno_npm 0.30.3",
+ "deno_npm",
  "deno_path_util",
  "deno_semver",
  "deno_unsync",
@@ -2552,7 +2521,7 @@ dependencies = [
  "deno_config",
  "deno_error",
  "deno_media_type",
- "deno_npm 0.30.3",
+ "deno_npm",
  "deno_package_json",
  "deno_path_util",
  "deno_semver",
@@ -2958,7 +2927,7 @@ dependencies = [
  "deno_error",
  "deno_lib",
  "deno_media_type",
- "deno_npm 0.30.3",
+ "deno_npm",
  "deno_package_json",
  "deno_path_util",
  "deno_resolver",
@@ -3523,9 +3492,9 @@ checksum = "31ae425815400e5ed474178a7a22e275a9687086a12ca63ec793ff292d8fdae8"
 
 [[package]]
 name = "eszip"
-version = "0.83.0"
+version = "0.84.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39f4ac1d111015e1740ec02306e01801156d8a7832785ef0b73ea217ddc65769"
+checksum = "88b6e201a88de1a02c8a29389474d50a33d995caeeb9c947a1a45521fd41f3a2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3533,7 +3502,7 @@ dependencies = [
  "deno_ast",
  "deno_error",
  "deno_graph",
- "deno_npm 0.27.2",
+ "deno_npm",
  "deno_semver",
  "futures",
  "hashlink 0.8.4",
@@ -5211,11 +5180,12 @@ dependencies = [
 
 [[package]]
 name = "libsui"
-version = "0.5.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89795977654ad6250d6c0915411b622bac22f9efb4f852af94b2e00964cab832"
+checksum = "7550a110415b4780bf6064d280f2dc5b761fb80d9af92258a72e5dc82ca6f05a"
 dependencies = [
  "editpe",
+ "image",
  "libc",
  "sha2",
  "windows-sys 0.48.0",

@@ -9,4 +9,4 @@ This could be caused by:
   * the lock file may be corrupt
   * the source itself may be corrupt
 
-Investigate the lockfile; delete it to regenerate the lockfile at "[WILDCARD]lock.json".
+Investigate the lockfile; delete it to regenerate the lockfile at "lock.json".
