@@ -83,6 +83,9 @@ impl HandleWrap {
   }
 }
 
+static ON_CLOSE_STR: deno_core::FastStaticString =
+  deno_core::ascii_str!("_onClose");
+
 #[op2(inherit = AsyncWrap)]
 impl HandleWrap {
   #[constructor]
@@ -108,7 +111,7 @@ impl HandleWrap {
   ) -> Result<(), ResourceError> {
     // Call _onClose() on the JS handles. Not needed for Rust handles.
     let this = v8::Local::new(scope, this);
-    let on_close_str = v8::String::new(scope, "_onClose").unwrap();
+    let on_close_str = ON_CLOSE_STR.v8_string(scope).unwrap();
     let onclose = this.get(scope, on_close_str.into());
 
     if let Some(onclose) = onclose {
