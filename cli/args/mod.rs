@@ -1227,6 +1227,14 @@ impl CliOptions {
   pub fn default_npm_caching_strategy(&self) -> NpmCachingStrategy {
     if self.flags.unstable_config.npm_lazy_caching {
       NpmCachingStrategy::Lazy
+    } else if matches!(
+      self.sub_command(),
+      DenoSubcommand::Install(InstallFlags::Local(_))
+        | DenoSubcommand::Add(_)
+        | DenoSubcommand::Cache(_)
+        | DenoSubcommand::Outdated(_)
+    ) {
+      NpmCachingStrategy::Manual
     } else {
       NpmCachingStrategy::Eager
     }
