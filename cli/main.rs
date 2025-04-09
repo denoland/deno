@@ -370,11 +370,19 @@ fn setup_panic_hook() {
     eprintln!("Args: {:?}", env::args().collect::<Vec<_>>());
     eprintln!();
 
+    let info = &deno_lib::version::DENO_VERSION_INFO;
+    let version =
+      if info.release_channel == deno_lib::shared::ReleaseChannel::Canary {
+        format!("{}+{}", deno_lib::version::DENO_VERSION, info.git_hash)
+      } else {
+        info.deno.to_string()
+      };
+
     let trace = deno_panic::trace();
     eprintln!("View stack trace at:");
     eprintln!(
       "https://panic.deno.com/v{}/{}/{}",
-      deno_lib::version::DENO_VERSION_INFO.deno,
+      version,
       env!("TARGET"),
       trace
     );
