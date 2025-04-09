@@ -615,15 +615,18 @@ impl CliFactory {
     self
       .services
       .npm_graph_resolver
-      .get_or_try_init_async(async move {
-        let cli_options = self.cli_options()?;
-        Ok(Arc::new(CliNpmGraphResolver::new(
-          self.npm_installer_if_managed().await?.cloned(),
-          self.services.found_pkg_json_dep_flag.clone(),
-          cli_options.unstable_bare_node_builtins(),
-          cli_options.default_npm_caching_strategy(),
-        )))
-      })
+      .get_or_try_init_async(
+        async move {
+          let cli_options = self.cli_options()?;
+          Ok(Arc::new(CliNpmGraphResolver::new(
+            self.npm_installer_if_managed().await?.cloned(),
+            self.services.found_pkg_json_dep_flag.clone(),
+            cli_options.unstable_bare_node_builtins(),
+            cli_options.default_npm_caching_strategy(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
@@ -927,12 +930,16 @@ impl CliFactory {
     self
       .services
       .node_code_translator
-      .get_or_try_init_async(async {
-        let module_export_analyzer = self.cjs_module_export_analyzer().await?;
-        Ok(Arc::new(NodeCodeTranslator::new(
-          module_export_analyzer.clone(),
-        )))
-      })
+      .get_or_try_init_async(
+        async {
+          let module_export_analyzer =
+            self.cjs_module_export_analyzer().await?;
+          Ok(Arc::new(NodeCodeTranslator::new(
+            module_export_analyzer.clone(),
+          )))
+        }
+        .boxed_local(),
+      )
       .await
   }
 
