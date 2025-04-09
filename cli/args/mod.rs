@@ -1229,9 +1229,9 @@ impl CliOptions {
       NpmCachingStrategy::Lazy
     } else if matches!(
       self.sub_command(),
-      DenoSubcommand::Install(InstallFlags::Local(_))
-        | DenoSubcommand::Add(_)
-        | DenoSubcommand::Cache(_)
+      DenoSubcommand::Install(InstallFlags::Local(
+        InstallFlagsLocal::TopLevel | InstallFlagsLocal::Add(_)
+      )) | DenoSubcommand::Add(_)
         | DenoSubcommand::Outdated(_)
     ) {
       NpmCachingStrategy::Manual
