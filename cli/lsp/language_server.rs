@@ -1428,44 +1428,22 @@ impl Inner {
 
   async fn notebook_did_open(&mut self, params: DidOpenNotebookDocumentParams) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_open");
-    let notebook_uri = Arc::new(params.notebook_document.uri);
-    let mut diagnosable_uris =
-      Vec::with_capacity(params.cell_text_documents.len());
-    for cell in params.cell_text_documents {
-      let language_id = cell.language_id.parse().unwrap_or_else(|err| {
-        error!("{:#}", err);
-        LanguageId::Unknown
-      });
-      if language_id == LanguageId::Unknown {
-        lsp_warn!(
-          "Unsupported language id \"{}\" received for document \"{}\".",
-          cell.language_id,
-          cell.uri.as_str()
-        );
-      }
-      let document = self.document_modules.open_document(
-        cell.uri.clone(),
-        cell.version,
-        language_id,
-        cell.text.into(),
-        Some(notebook_uri.clone()),
-      );
-      if document.is_diagnosable() {
-        diagnosable_uris.push(document.uri.clone());
-      }
-    }
+    let documents = self.document_modules.open_notebook_document(
+      params.notebook_document.uri,
+      params.cell_text_documents,
+    );
+    let diagnosable_uris = documents
+      .iter()
+      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .collect::<Vec<_>>();
     if !diagnosable_uris.is_empty() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
       self.project_changed(
-        diagnosable_uris
-          .iter()
-          .map(|u| (u.as_ref(), ChangeKind::Opened)),
+        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Opened)),
         false,
       );
-      self.diagnostics_server.invalidate(
-        &diagnosable_uris.iter().map(Arc::as_ref).collect::<Vec<_>>(),
-      );
+      self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
     }
   }
@@ -1478,64 +1456,16 @@ impl Inner {
     let Some(cells) = params.change.cells else {
       return;
     };
-    let notebook_uri = Arc::new(params.notebook_document.uri);
-    let mut diagnosable_uris_with_change_kinds = Vec::new();
-    if let Some(structure) = cells.structure {
-      for closed in structure.did_close.into_iter().flatten() {
-        let document = match self.document_modules.close_document(&closed.uri) {
-          Ok(d) => d,
-          Err(err) => {
-            error!("{:#}", err);
-            continue;
-          }
-        };
-        if document.is_diagnosable() {
-          diagnosable_uris_with_change_kinds
-            .push((document.uri.clone(), ChangeKind::Closed));
-        }
-      }
-      for opened in structure.did_open.into_iter().flatten() {
-        let language_id = opened.language_id.parse().unwrap_or_else(|err| {
-          error!("{:#}", err);
-          LanguageId::Unknown
-        });
-        if language_id == LanguageId::Unknown {
-          lsp_warn!(
-            "Unsupported language id \"{}\" received for document \"{}\".",
-            opened.language_id,
-            opened.uri.as_str()
-          );
-        }
-        let document = self.document_modules.open_document(
-          opened.uri,
-          opened.version,
-          language_id,
-          opened.text.into(),
-          Some(notebook_uri.clone()),
-        );
-        if document.is_diagnosable() {
-          diagnosable_uris_with_change_kinds
-            .push((document.uri.clone(), ChangeKind::Opened));
-        }
-      }
-    }
-    for changed in cells.text_content.into_iter().flatten() {
-      let document = match self.document_modules.change_document(
-        &changed.document.uri,
-        changed.document.version,
-        changed.changes,
-      ) {
-        Ok(d) => d,
-        Err(err) => {
-          error!("{:#}", err);
-          continue;
-        }
-      };
-      if document.is_diagnosable() {
-        diagnosable_uris_with_change_kinds
-          .push((document.uri.clone(), ChangeKind::Modified));
-      }
-    }
+    let documents_with_change_kinds =
+      self.document_modules.change_notebook_document(
+        &params.notebook_document.uri,
+        cells.structure,
+        cells.text_content,
+      );
+    let diagnosable_uris_with_change_kinds = documents_with_change_kinds
+      .iter()
+      .filter_map(|(d, k)| d.is_diagnosable().then_some((d.uri.as_ref(), *k)))
+      .collect::<Vec<_>>();
     if !diagnosable_uris_with_change_kinds.is_empty() {
       let old_scopes_with_node_specifier =
         self.document_modules.scopes_with_node_specifier();
@@ -1549,15 +1479,13 @@ impl Inner {
         config_changed = true;
       }
       self.project_changed(
-        diagnosable_uris_with_change_kinds
-          .iter()
-          .map(|(u, k)| (u.as_ref(), *k)),
+        diagnosable_uris_with_change_kinds.iter().cloned(),
         config_changed,
       );
       self.diagnostics_server.invalidate(
         &diagnosable_uris_with_change_kinds
           .iter()
-          .map(|(u, _)| u.as_ref())
+          .map(|(u, _)| *u)
           .collect::<Vec<_>>(),
       );
       self.send_diagnostics_update();
@@ -1592,41 +1520,20 @@ impl Inner {
     params: DidCloseNotebookDocumentParams,
   ) {
     let _mark = self.performance.measure_scope("lsp.notebook_did_close");
-    let Some(cell_uris) = self
+    let documents = self
       .document_modules
-      .documents
-      .cells_for_notebook_uri(&params.notebook_document.uri)
-    else {
-      lsp_warn!(
-        "The URI \"{}\" does not refer to an open notebook document.",
-        params.notebook_document.uri.as_str()
-      );
-      return;
-    };
-    let mut diagnosable_uris = Vec::with_capacity(cell_uris.len());
-    for cell_uri in cell_uris {
-      let document = match self.document_modules.close_document(&cell_uri) {
-        Ok(d) => d,
-        Err(err) => {
-          error!("{:#}", err);
-          continue;
-        }
-      };
-      if document.is_diagnosable() {
-        diagnosable_uris.push(document.uri.clone());
-      }
-    }
+      .close_notebook_document(&params.notebook_document.uri);
+    let diagnosable_uris = documents
+      .iter()
+      .filter_map(|d| d.is_diagnosable().then_some(d.uri.as_ref()))
+      .collect::<Vec<_>>();
     if !diagnosable_uris.is_empty() {
       self.refresh_dep_info().await;
       self.project_changed(
-        diagnosable_uris
-          .iter()
-          .map(|u| (u.as_ref(), ChangeKind::Closed)),
+        diagnosable_uris.iter().map(|u| (*u, ChangeKind::Closed)),
         false,
       );
-      self.diagnostics_server.invalidate(
-        &diagnosable_uris.iter().map(Arc::as_ref).collect::<Vec<_>>(),
-      );
+      self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
     }
   }

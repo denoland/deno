@@ -58,6 +58,7 @@ use super::resolver::SingleReferrerGraphResolver;
 use super::testing::TestCollector;
 use super::testing::TestModule;
 use super::text::LineIndex;
+use super::tsc::ChangeKind;
 use super::tsc::NavigationTree;
 use super::urls::uri_is_file_like;
 use super::urls::uri_to_file_path;
@@ -517,14 +518,6 @@ impl Documents {
         self.file_like_uris_by_url.insert(url, doc.uri.clone());
       }
     }
-    // TODO(nayeemrmn): Remove!
-    if let Some(notebook_uri) = &doc.notebook_uri {
-      self
-        .cells_by_notebook_uri
-        .entry(notebook_uri.clone())
-        .or_default()
-        .insert(doc.uri.clone());
-    }
     doc
   }
 
@@ -562,16 +555,121 @@ impl Documents {
         ),
       )
     })?;
-    // TODO(nayeemrmn): Remove!
-    if let Some(notebook_uri) = &doc.notebook_uri {
-      if let Some(cells) = self.cells_by_notebook_uri.get_mut(notebook_uri) {
-        cells.shift_remove(&doc.uri);
-        if cells.is_empty() {
-          self.cells_by_notebook_uri.remove(notebook_uri);
+    Ok(doc)
+  }
+
+  fn open_notebook(
+    &mut self,
+    uri: Uri,
+    cells: Vec<lsp::TextDocumentItem>,
+  ) -> Vec<Arc<OpenDocument>> {
+    let uri = Arc::new(uri);
+    let mut documents = Vec::with_capacity(cells.len());
+    for cell in cells {
+      let language_id = cell.language_id.parse().unwrap_or_else(|err| {
+        lsp_warn!("{:#}", err);
+        LanguageId::Unknown
+      });
+      if language_id == LanguageId::Unknown {
+        lsp_warn!(
+          "Unsupported language id \"{}\" received for document \"{}\".",
+          cell.language_id,
+          cell.uri.as_str()
+        );
+      }
+      let document = self.open(
+        cell.uri.clone(),
+        cell.version,
+        language_id,
+        cell.text.into(),
+        Some(uri.clone()),
+      );
+      documents.push(document);
+    }
+    self
+      .cells_by_notebook_uri
+      .insert(uri, documents.iter().map(|d| d.uri.clone()).collect());
+    documents
+  }
+
+  pub fn change_notebook(
+    &mut self,
+    uri: &Uri,
+    structure: Option<lsp::NotebookDocumentCellChangeStructure>,
+    content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
+  ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
+    let uri = Arc::new(uri.clone());
+    let mut documents_with_change_kinds = Vec::new();
+    if let Some(structure) = structure {
+      for closed in structure.did_close.into_iter().flatten() {
+        let document = match self.close(&closed.uri) {
+          Ok(d) => d,
+          Err(err) => {
+            lsp_warn!("{:#}", err);
+            continue;
+          }
+        };
+        documents_with_change_kinds.push((document, ChangeKind::Closed));
+      }
+      for opened in structure.did_open.into_iter().flatten() {
+        let language_id = opened.language_id.parse().unwrap_or_else(|err| {
+          lsp_warn!("{:#}", err);
+          LanguageId::Unknown
+        });
+        if language_id == LanguageId::Unknown {
+          lsp_warn!(
+            "Unsupported language id \"{}\" received for document \"{}\".",
+            opened.language_id,
+            opened.uri.as_str()
+          );
         }
+        let document = self.open(
+          opened.uri,
+          opened.version,
+          language_id,
+          opened.text.into(),
+          Some(uri.clone()),
+        );
+        documents_with_change_kinds.push((document, ChangeKind::Opened));
       }
     }
-    Ok(doc)
+    for changed in content.into_iter().flatten() {
+      let document = match self.change(
+        &changed.document.uri,
+        changed.document.version,
+        changed.changes,
+      ) {
+        Ok(d) => d,
+        Err(err) => {
+          lsp_warn!("{:#}", err);
+          continue;
+        }
+      };
+      documents_with_change_kinds.push((document, ChangeKind::Modified));
+    }
+    documents_with_change_kinds
+  }
+
+  pub fn close_notebook(&mut self, uri: &Uri) -> Vec<Arc<OpenDocument>> {
+    let Some(cell_uris) = self.cells_by_notebook_uri.remove(uri) else {
+      lsp_warn!(
+        "The URI \"{}\" does not refer to an open notebook document.",
+        uri.as_str(),
+      );
+      return Default::default();
+    };
+    let mut documents = Vec::with_capacity(cell_uris.len());
+    for cell_uri in cell_uris {
+      let document = match self.close(&cell_uri) {
+        Ok(d) => d,
+        Err(err) => {
+          lsp_warn!("{:#}", err);
+          continue;
+        }
+      };
+      documents.push(document);
+    }
+    documents
   }
 
   pub fn get(&self, uri: &Uri) -> Option<Document> {
@@ -719,6 +817,7 @@ pub struct DocumentModuleOpenData {
 pub struct DocumentModule {
   pub uri: Arc<Uri>,
   pub open_data: Option<DocumentModuleOpenData>,
+  pub notebook_uri: Option<Arc<Uri>>,
   pub script_version: String,
   pub specifier: Arc<Url>,
   pub scope: Option<Arc<Url>>,
@@ -753,10 +852,11 @@ impl DocumentModule {
         Some(cache_entry.metadata.headers)
       })
       .flatten();
+    let open_document = document.open();
     let media_type = resolve_media_type(
       &specifier,
       headers.as_ref(),
-      document.open().map(|d| d.language_id),
+      open_document.map(|d| d.language_id),
     );
     let (parsed_source, maybe_module, resolution_mode) =
       if media_type_is_diagnosable(media_type) {
@@ -783,10 +883,11 @@ impl DocumentModule {
       get_maybe_test_module_fut(parsed_source.as_ref(), config);
     DocumentModule {
       uri: document.uri().clone(),
-      open_data: document.open().map(|d| DocumentModuleOpenData {
+      open_data: open_document.map(|d| DocumentModuleOpenData {
         version: d.version,
         parsed_source,
       }),
+      notebook_uri: open_document.and_then(|d| d.notebook_uri.clone()),
       script_version: document.script_version(),
       specifier,
       scope,
@@ -1004,6 +1105,33 @@ impl DocumentModules {
       self.documents.get(uri);
     }
     Ok(document)
+  }
+
+  pub fn open_notebook_document(
+    &mut self,
+    uri: Uri,
+    cells: Vec<lsp::TextDocumentItem>,
+  ) -> Vec<Arc<OpenDocument>> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.open_notebook(uri, cells)
+  }
+
+  pub fn change_notebook_document(
+    &mut self,
+    uri: &Uri,
+    structure: Option<lsp::NotebookDocumentCellChangeStructure>,
+    content: Option<Vec<lsp::NotebookDocumentChangeTextContent>>,
+  ) -> Vec<(Arc<OpenDocument>, ChangeKind)> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.change_notebook(uri, structure, content)
+  }
+
+  pub fn close_notebook_document(
+    &mut self,
+    uri: &Uri,
+  ) -> Vec<Arc<OpenDocument>> {
+    self.dep_info_by_scope = Default::default();
+    self.documents.close_notebook(uri)
   }
 
   pub fn release(&self, specifier: &Url, scope: Option<&Url>) {
