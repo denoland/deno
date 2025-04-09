@@ -46,6 +46,7 @@ use deno_core::RcRef;
 use deno_core::Resource;
 use deno_core::ResourceId;
 use deno_error::JsErrorBox;
+use deno_fs::CheckedPath;
 pub use deno_fs::FsError;
 use deno_path_util::PathToUrlError;
 use deno_permissions::PermissionCheckError;
@@ -400,10 +401,10 @@ pub trait FetchPermissions {
   #[must_use = "the resolved return value to mitigate time-of-check to time-of-use issues"]
   fn check_read<'a>(
     &mut self,
-    resolved: bool,
-    p: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError>;
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError>;
 }
 
 impl FetchPermissions for deno_permissions::PermissionsContainer {
@@ -419,23 +420,39 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
   #[inline(always)]
   fn check_read<'a>(
     &mut self,
-    resolved: bool,
-    path: &'a Path,
+    path: Cow<'a, Path>,
     api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
-    if resolved {
-      self
-        .check_special_file(path, api_name)
-        .map_err(FsError::NotCapable)?;
-      return Ok(Cow::Borrowed(path));
+    get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
+    if self.allows_all() {
+      return Ok(deno_fs::CheckedPath::Unresolved(path));
     }
 
-    deno_permissions::PermissionsContainer::check_read_path(
+    let (needs_canonicalize, normalized_path) = get_path.normalized(path)?;
+
+    let path = deno_permissions::PermissionsContainer::check_read_path(
       self,
-      path,
+      normalized_path,
       Some(api_name),
     )
-    .map_err(|_| FsError::NotCapable("read"))
+    .map_err(|_| FsError::NotCapable("read"))?;
+
+    let (resolved, path) = if needs_canonicalize {
+      let path = get_path.resolved(path)?;
+
+      (true, path)
+    } else {
+      (false, path)
+    };
+    self
+      .check_special_file(&path, api_name)
+      .map_err(FsError::NotCapable)?;
+
+    if resolved {
+      Ok(CheckedPath::Resolved(path))
+    } else {
+      Ok(CheckedPath::Unresolved(path))
+    }
   }
 }
 

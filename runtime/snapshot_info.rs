@@ -44,10 +44,10 @@ impl deno_fetch::FetchPermissions for Permissions {
 
   fn check_read<'a>(
     &mut self,
-    _resolved: bool,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
 }
@@ -88,7 +88,7 @@ impl deno_node::NodePermissions for Permissions {
   }
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
   }
@@ -145,7 +145,7 @@ impl deno_net::NetPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _p: &'a Path,
+    _p: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -155,12 +155,12 @@ impl deno_net::NetPermissions for Permissions {
 impl deno_fs::FsPermissions for Permissions {
   fn check_open<'a>(
     &mut self,
-    _resolved: bool,
     _read: bool,
     _write: bool,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
-  ) -> Result<Cow<'a, Path>, FsError> {
+    _get_path: &'a dyn deno_fs::GetPath,
+  ) -> Result<deno_fs::CheckedPath<'a>, FsError> {
     unreachable!("snapshotting!")
   }
 
@@ -222,7 +222,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_read_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -230,7 +230,7 @@ impl deno_fs::FsPermissions for Permissions {
 
   fn check_write_path<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")
@@ -248,7 +248,7 @@ impl deno_kv::sqlite::SqliteDbHandlerPermissions for Permissions {
 
   fn check_write<'a>(
     &mut self,
-    _path: &'a Path,
+    _path: Cow<'a, Path>,
     _api_name: &str,
   ) -> Result<Cow<'a, Path>, PermissionCheckError> {
     unreachable!("snapshotting!")

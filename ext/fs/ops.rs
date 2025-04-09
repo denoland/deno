@@ -32,11 +32,14 @@ use rand::Rng;
 use serde::Serialize;
 
 use crate::interface::AccessCheckFn;
+use crate::interface::CheckedPath;
 use crate::interface::FileSystemRc;
 use crate::interface::FsDirEntry;
 use crate::interface::FsFileType;
 use crate::FsPermissions;
+use crate::GetPath;
 use crate::OpenOptions;
+use crate::ResolvePathFn;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);
@@ -119,10 +122,10 @@ fn print_not_capable_info(standalone: bool, err: &'static str) -> String {
 fn cast<T>(t: T) -> T
 where
   T: for<'a> FnMut(
-    bool,
-    &'a Path,
+    Cow<'a, Path>,
     &'a OpenOptions,
-  ) -> deno_io::fs::FsResult<std::borrow::Cow<'a, Path>>,
+    &'a dyn GetPath,
+  ) -> deno_io::fs::FsResult<CheckedPath<'a>>,
 {
   t
 }
@@ -131,33 +134,25 @@ fn sync_permission_check<'a, P: FsPermissions + 'static>(
   permissions: &'a mut P,
   api_name: &'static str,
 ) -> Option<impl AccessCheckFn + 'a> {
-  if permissions.allows_all() {
-    None
-  } else {
-    Some(cast(move |resolved, path, options| {
-      permissions.check(resolved, options, path, api_name)
-    }))
-  }
+  Some(cast(move |path, options, resolve| {
+    permissions.check(options, path, api_name, resolve)
+  }))
 }
 
 fn async_permission_check<P: FsPermissions + 'static>(
   state: Rc<RefCell<OpState>>,
   api_name: &'static str,
 ) -> Option<impl AccessCheckFn> {
-  let allows_all = {
-    let mut permissions = state.borrow_mut();
-    let permissions = permissions.borrow_mut::<P>();
-    permissions.allows_all()
-  };
-  if allows_all {
-    None
-  } else {
-    Some(cast(move |resolved, path, options| {
-      let mut state = state.borrow_mut();
-      let permissions = state.borrow_mut::<P>();
-      permissions.check(resolved, options, path, api_name)
-    }))
-  }
+  // let allows_all = {
+  //   let mut permissions = state.borrow_mut();
+  //   let permissions = permissions.borrow_mut::<P>();
+  //   permissions.allows_all()
+  // };
+  Some(cast(move |path, options, resolve| {
+    let mut state = state.borrow_mut();
+    let permissions = state.borrow_mut::<P>();
+    permissions.check(options, path, api_name, resolve)
+  }))
 }
 
 fn map_permission_error(

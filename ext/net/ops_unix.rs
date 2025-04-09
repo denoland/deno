@@ -102,9 +102,9 @@ where
       .borrow_mut::<NP>()
       .check_read(&address_path, "Deno.connect()")
       .map_err(NetError::Permission)?;
-    _ = state_
+    let address_path = state_
       .borrow_mut::<NP>()
-      .check_write_path(&address_path, "Deno.connect()")
+      .check_write_path(Cow::Owned(address_path), "Deno.connect()")
       .map_err(NetError::Permission)?;
     address_path
   };
@@ -188,8 +188,8 @@ where
   let address_path = permissions
     .check_read(&address_path, &api_call_expr)
     .map_err(NetError::Permission)?;
-  _ = permissions
-    .check_write_path(&address_path, &api_call_expr)
+  let address_path = permissions
+    .check_write_path(Cow::Owned(address_path), &api_call_expr)
     .map_err(NetError::Permission)?;
   let listener = UnixListener::bind(address_path)?;
   let local_addr = listener.local_addr()?;
@@ -210,8 +210,8 @@ where
   let address_path = permissions
     .check_read(&address_path, "Deno.listenDatagram()")
     .map_err(NetError::Permission)?;
-  _ = permissions
-    .check_write_path(&address_path, "Deno.listenDatagram()")
+  let address_path = permissions
+    .check_write_path(Cow::Owned(address_path), "Deno.listenDatagram()")
     .map_err(NetError::Permission)?;
   let socket = UnixDatagram::bind(address_path)?;
   let local_addr = socket.local_addr()?;
