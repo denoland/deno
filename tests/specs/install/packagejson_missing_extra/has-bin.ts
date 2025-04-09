@@ -11,7 +11,7 @@ function exists(path: string) {
 
 if (
   !(exists(`node_modules/.bin/${name}`) ||
-    exists(`node_modules/.bin/${name}.bat`))
+    exists(`node_modules/.bin/${name}.cmd`))
 ) {
   console.log("missing bin");
   console.log(`node_modules/.bin/${name}`);
