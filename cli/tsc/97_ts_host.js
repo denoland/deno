@@ -174,6 +174,15 @@ export const LAST_REQUEST_SCOPE = {
   },
 };
 
+/** @type {string | null} */
+let lastRequestNotebookUri = null;
+export const LAST_REQUEST_NOTEBOOK_URI = {
+  get: () => lastRequestNotebookUri,
+  set: (notebookUri) => {
+    lastRequestNotebookUri = notebookUri;
+  },
+};
+
 /** @param sourceFile {ts.SourceFile} */
 function isNodeSourceFile(sourceFile) {
   const fileName = sourceFile.fileName;
@@ -379,14 +388,15 @@ class CancellationToken {
  *    ls: ts.LanguageService & { [k:string]: any },
  *    compilerOptions: ts.CompilerOptions,
  *  }} LanguageServiceEntry */
-/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry> }} */
+/** @type {{ unscoped: LanguageServiceEntry, byScope: Map<string, LanguageServiceEntry>, byNotebookUri: Map<string, LanguageServiceEntry> }} */
 export const LANGUAGE_SERVICE_ENTRIES = {
   // @ts-ignore Will be set later.
   unscoped: null,
   byScope: new Map(),
+  byNotebookUri: new Map(),
 };
 
-/** @type {{ unscoped: string[], byScope: Map<string, string[]> } | null} */
+/** @type {{ unscoped: string[], byScope: Map<string, string[]>, byNotebookUri: Map<string, string[]> } | null} */
 let SCRIPT_NAMES_CACHE = null;
 
 export function clearScriptNamesCache() {
@@ -668,16 +678,22 @@ const hostImpl = {
       debug("host.getScriptFileNames()");
     }
     if (!SCRIPT_NAMES_CACHE) {
-      const { unscoped, byScope } = ops.op_script_names();
+      const { unscoped, byScope, byNotebookUri } = ops.op_script_names();
       SCRIPT_NAMES_CACHE = {
         unscoped,
         byScope: new Map(Object.entries(byScope)),
+        byNotebookUri: new Map(Object.entries(byNotebookUri)),
       };
     }
     const lastRequestScope = LAST_REQUEST_SCOPE.get();
-    return (lastRequestScope
-      ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
-      : null) ?? SCRIPT_NAMES_CACHE.unscoped;
+    const lastRequestNotebookUri = LAST_REQUEST_NOTEBOOK_URI.get();
+    return (lastRequestNotebookUri
+      ? SCRIPT_NAMES_CACHE.byNotebookUri.get(lastRequestNotebookUri)
+      : null) ??
+      (lastRequestScope
+        ? SCRIPT_NAMES_CACHE.byScope.get(lastRequestScope)
+        : null) ??
+      SCRIPT_NAMES_CACHE.unscoped;
   },
   getScriptVersion(specifier) {
     if (logDebug) {
@@ -797,7 +813,10 @@ export function filterMapDiagnostic(diagnostic) {
     return false;
   }
   const isClassicScript = !diagnostic.file?.["externalModuleIndicator"];
-  if (diagnostic.code === 2451 && isClassicScript) {
+  if (
+    // TLA and variable redeclaration diagnostics.
+    isClassicScript && (diagnostic.code === 1375 || diagnostic.code === 2451)
+  ) {
     return false;
   }
   // make the diagnostic for using an `export =` in an es module a warning

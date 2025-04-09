@@ -1063,7 +1063,7 @@ async fn generate_ts_diagnostics(
       {
         if config.specifier_enabled(&module.specifier) {
           enabled_modules_by_scope
-            .entry(module.scope.clone())
+            .entry((module.scope.clone(), module.notebook_uri.clone()))
             .or_default()
             .push(module);
           continue;
@@ -1084,18 +1084,21 @@ async fn generate_ts_diagnostics(
     });
   }
   let mut enabled_modules_with_diagnostics = Vec::new();
-  for (scope, enabled_modules) in enabled_modules_by_scope {
+  for ((scope, notebook_uri), enabled_modules) in enabled_modules_by_scope {
     let (diagnostics_list, ambient_modules) = ts_server
       .get_diagnostics(
         snapshot.clone(),
         enabled_modules.iter().map(|m| m.specifier.as_ref()),
         scope.as_ref(),
+        notebook_uri.as_ref(),
         &token,
       )
       .await?;
     enabled_modules_with_diagnostics
       .extend(enabled_modules.into_iter().zip(diagnostics_list));
-    ambient_modules_by_scope.insert(scope.clone(), ambient_modules);
+    if notebook_uri.is_none() {
+      ambient_modules_by_scope.insert(scope, ambient_modules);
+    }
   }
   for (module, mut diagnostics) in enabled_modules_with_diagnostics {
     let suggestion_actions_settings = snapshot

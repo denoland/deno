@@ -485,7 +485,7 @@ impl Document {
 pub struct Documents {
   open: IndexMap<Uri, Arc<OpenDocument>>,
   server: Arc<DashMap<Uri, Arc<ServerDocument>>>,
-  cells_by_notebook_uri: HashMap<Arc<Uri>, IndexSet<Arc<Uri>>>,
+  cells_by_notebook_uri: BTreeMap<Arc<Uri>, IndexSet<Arc<Uri>>>,
   file_like_uris_by_url: Arc<DashMap<Url, Arc<Uri>>>,
   /// These URLs can not be recovered from the URIs we assign them without these
   /// maps. We want to be able to discard old documents from here but keep these
@@ -755,11 +755,10 @@ impl Documents {
     }
   }
 
-  pub fn cells_for_notebook_uri(
+  pub fn cells_by_notebook_uri(
     &self,
-    uri: &Uri,
-  ) -> Option<IndexSet<Arc<Uri>>> {
-    self.cells_by_notebook_uri.get(uri).cloned()
+  ) -> &BTreeMap<Arc<Uri>, IndexSet<Arc<Uri>>> {
+    &self.cells_by_notebook_uri
   }
 
   pub fn open_docs(&self) -> impl Iterator<Item = &Arc<OpenDocument>> {
@@ -1141,6 +1140,28 @@ impl DocumentModules {
     self.documents.remove_server_doc(&module.uri);
   }
 
+  fn infer_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+    if let Some(document) = document.server() {
+      match &document.kind {
+        ServerDocumentKind::Fs { .. } => {}
+        ServerDocumentKind::RemoteUrl { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::DataUrl { url, .. } => return Some(url.clone()),
+        ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
+      }
+    }
+    let uri = document.uri();
+    let url = uri_to_url(uri);
+    if url.scheme() != "file" {
+      return None;
+    }
+    if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
+      if let Some(remote_specifier) = self.cache.unvendored_specifier(&url) {
+        return Some(Arc::new(remote_specifier));
+      }
+    }
+    Some(Arc::new(url))
+  }
+
   fn module_inner(
     &self,
     document: &Document,
@@ -1153,35 +1174,7 @@ impl DocumentModules {
     }
     let specifier = specifier
       .cloned()
-      .or_else(|| {
-        if let Some(document) = document.server() {
-          match &document.kind {
-            ServerDocumentKind::Fs { .. } => {}
-            ServerDocumentKind::RemoteUrl { url, .. } => {
-              return Some(url.clone())
-            }
-            ServerDocumentKind::DataUrl { url, .. } => {
-              return Some(url.clone())
-            }
-            ServerDocumentKind::Asset { url, .. } => return Some(url.clone()),
-          }
-        }
-        None
-      })
-      .or_else(|| {
-        let uri = document.uri();
-        let url = uri_to_url(uri);
-        if url.scheme() != "file" {
-          return None;
-        }
-        if uri.scheme().is_some_and(|s| s.eq_lowercase("file")) {
-          if let Some(remote_specifier) = self.cache.unvendored_specifier(&url)
-          {
-            return Some(Arc::new(remote_specifier));
-          }
-        }
-        Some(Arc::new(url))
-      })?;
+      .or_else(|| self.infer_specifier(document))?;
     let module = Arc::new(DocumentModule::new(
       document,
       specifier,
@@ -1276,6 +1269,12 @@ impl DocumentModules {
       if modules_with_scopes.contains_key(uri) {
         continue;
       }
+      if uri.scheme().is_some_and(|s| {
+        s.eq_lowercase("vscode-notebook-cell")
+          || s.eq_lowercase("deno-notebook-cell")
+      }) {
+        continue;
+      }
       let url = uri_to_url(uri);
       if document.open().is_none()
         && (url.scheme() != "file"
@@ -1285,14 +1284,7 @@ impl DocumentModules {
       {
         continue;
       }
-      let scope = if uri.scheme().is_some_and(|s| {
-        s.eq_lowercase("vscode-notebook-cell")
-          || s.eq_lowercase("deno-notebook-cell")
-      }) {
-        None
-      } else {
-        self.config.tree.scope_for_specifier(&url).cloned()
-      };
+      let scope = self.config.tree.scope_for_specifier(&url).cloned();
       let Some(module) = self.module(&document, scope.as_deref()) else {
         continue;
       };
@@ -1342,23 +1334,6 @@ impl DocumentModules {
     self.modules_unscoped.get(document)
   }
 
-  /// This will not create any module entries, only retrieve existing entries.
-  pub fn inspect_modules_by_scope(
-    &self,
-    document: &Document,
-  ) -> BTreeMap<Option<Arc<Url>>, Arc<DocumentModule>> {
-    let mut result = BTreeMap::new();
-    for (scope, modules) in self.modules_by_scope.iter() {
-      if let Some(module) = modules.get(document) {
-        result.insert(Some(scope.clone()), module);
-      }
-    }
-    if let Some(module) = self.modules_unscoped.get(document) {
-      result.insert(None, module);
-    }
-    result
-  }
-
   /// This will not store any module entries, only retrieve existing entries or
   /// create temporary entries for scopes where one doesn't exist.
   pub fn inspect_or_temp_modules_by_scope(
@@ -1403,19 +1378,20 @@ impl DocumentModules {
     }
   }
 
-  fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
-    if uri.scheme().is_some_and(|s| {
-      s.eq_lowercase("vscode-notebook-cell")
-        || s.eq_lowercase("deno-notebook-cell")
-    }) {
-      return Some(None);
-    }
+  pub fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
       let scope = self.config.tree.scope_for_specifier(&url);
       return Some(scope);
     }
     None
+  }
+
+  pub fn primary_specifier(&self, document: &Document) -> Option<Arc<Url>> {
+    self
+      .inspect_primary_module(document)
+      .map(|m| m.specifier.clone())
+      .or_else(|| self.infer_specifier(document))
   }
 
   pub fn remove_expired_modules(&self) {

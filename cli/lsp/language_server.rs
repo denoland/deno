@@ -676,6 +676,7 @@ impl Inner {
             self.snapshot(),
             &module.specifier,
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -1224,7 +1225,7 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed([], true);
+    self.project_changed([], true, false);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1266,8 +1267,11 @@ impl Inner {
     if document.is_diagnosable() {
       self.check_semantic_tokens_capabilities();
       self.refresh_dep_info().await;
-      self
-        .project_changed([(document.uri.as_ref(), ChangeKind::Opened)], false);
+      self.project_changed(
+        [(document.uri.as_ref(), ChangeKind::Opened)],
+        false,
+        false,
+      );
       self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
       self.send_testing_update();
@@ -1314,6 +1318,7 @@ impl Inner {
       self.project_changed(
         [(document.uri.as_ref(), ChangeKind::Modified)],
         config_changed,
+        false,
       );
       self.diagnostics_server.invalidate(&[&document.uri]);
       self.send_diagnostics_update();
@@ -1416,6 +1421,7 @@ impl Inner {
       self.project_changed(
         [(&params.text_document.uri, ChangeKind::Closed)],
         false,
+        false,
       );
       self
         .diagnostics_server
@@ -1442,6 +1448,7 @@ impl Inner {
       self.project_changed(
         diagnosable_uris.iter().map(|u| (*u, ChangeKind::Opened)),
         false,
+        true,
       );
       self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
@@ -1481,6 +1488,7 @@ impl Inner {
       self.project_changed(
         diagnosable_uris_with_change_kinds.iter().cloned(),
         config_changed,
+        false,
       );
       self.diagnostics_server.invalidate(
         &diagnosable_uris_with_change_kinds
@@ -1497,7 +1505,9 @@ impl Inner {
     let Some(cell_uris) = self
       .document_modules
       .documents
-      .cells_for_notebook_uri(&params.notebook_document.uri)
+      .cells_by_notebook_uri()
+      .get(&params.notebook_document.uri)
+      .cloned()
     else {
       lsp_warn!(
         "The URI \"{}\" does not refer to an open notebook document.",
@@ -1532,6 +1542,7 @@ impl Inner {
       self.project_changed(
         diagnosable_uris.iter().map(|u| (*u, ChangeKind::Closed)),
         false,
+        true,
       );
       self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
@@ -1620,6 +1631,7 @@ impl Inner {
       self.refresh_documents_config().await;
       self.project_changed(
         changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
+        false,
         false,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
@@ -1895,6 +1907,7 @@ impl Inner {
           &module.specifier,
           position,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2041,6 +2054,7 @@ impl Inner {
                   &module.specifier,
                 ),
                 module.scope.as_ref(),
+                module.notebook_uri.as_ref(),
                 token,
               )
               .await
@@ -2153,6 +2167,7 @@ impl Inner {
         params.context.trigger_kind,
         only,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2253,6 +2268,7 @@ impl Inner {
             &module.specifier,
           ),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2336,6 +2352,7 @@ impl Inner {
             &module.specifier,
           )),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2548,6 +2565,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         vec![module.specifier.as_ref().clone()],
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2619,6 +2637,8 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position.position)?,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -2685,6 +2705,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2747,6 +2768,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -2870,6 +2892,7 @@ impl Inner {
             .options)
             .into(),
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -2963,6 +2986,7 @@ impl Inner {
             )),
             data.data.clone(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await;
@@ -3046,6 +3070,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.text_document_position_params.position)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3112,6 +3137,7 @@ impl Inner {
         self.snapshot(),
         &module.specifier,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3181,6 +3207,7 @@ impl Inner {
             .line_index
             .offset_tsc(params.item.selection_range.start)?,
           scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3248,6 +3275,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.item.selection_range.start)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3310,6 +3338,7 @@ impl Inner {
           .line_index
           .offset_tsc(params.text_document_position_params.position)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3398,6 +3427,8 @@ impl Inner {
             &module.specifier,
           ),
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3474,6 +3505,7 @@ impl Inner {
           &module.specifier,
           module.line_index.offset_tsc(position)?,
           module.scope.as_ref(),
+          module.notebook_uri.as_ref(),
           token,
         )
         .await
@@ -3527,6 +3559,7 @@ impl Inner {
             &module.specifier,
             0..module.line_index.text_content_length_utf16().into(),
             module.scope.as_ref(),
+            module.notebook_uri.as_ref(),
             token,
           )
           .await
@@ -3595,6 +3628,7 @@ impl Inner {
         module.line_index.offset_tsc(params.range.start)?
           ..module.line_index.offset_tsc(params.range.end)?,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3663,6 +3697,7 @@ impl Inner {
           .offset_tsc(params.text_document_position_params.position)?,
         options,
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
@@ -3752,6 +3787,8 @@ impl Inner {
             ..Default::default()
           },
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3799,6 +3836,8 @@ impl Inner {
           Some(256),
           None,
           scope.as_ref(),
+          // TODO(nayeemrmn): Support notebook scopes here.
+          None,
           token,
         )
         .await
@@ -3835,20 +3874,15 @@ impl Inner {
     &mut self,
     changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
     config_changed: bool,
+    open_notebooks_changed: bool,
   ) {
     self.project_version += 1; // increment before getting the snapshot
     let modified_scripts = changed_docs
       .into_iter()
       .filter_map(|(u, k)| {
-        Some((self.document_modules.documents.inspect(u)?, k))
-      })
-      .flat_map(|(d, k)| {
-        self
-          .document_modules
-          .inspect_modules_by_scope(&d)
-          .values()
-          .map(|m| (m.specifier.clone(), k))
-          .collect::<Vec<_>>()
+        let document = self.document_modules.documents.inspect(u)?;
+        let specifier = self.document_modules.primary_specifier(&document)?;
+        Some((specifier, k))
       })
       .collect::<IndexMap<_, _>>();
     self.ts_server.project_changed(
@@ -3861,6 +3895,20 @@ impl Inner {
           .data_by_scope()
           .iter()
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
+          .collect()
+      }),
+      (open_notebooks_changed || config_changed).then(|| {
+        self
+          .document_modules
+          .documents
+          .cells_by_notebook_uri()
+          .keys()
+          .map(|u| {
+            (
+              u.clone(),
+              self.document_modules.primary_scope(u).flatten().cloned(),
+            )
+          })
           .collect()
       }),
     );
@@ -4643,7 +4691,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed([], true);
+    self.project_changed([], true, false);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
@@ -4802,6 +4850,7 @@ impl Inner {
           &module.specifier,
         ),
         module.scope.as_ref(),
+        module.notebook_uri.as_ref(),
         token,
       )
       .await
