@@ -561,7 +561,14 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
           return respond(
             id,
             [[], null],
-            formatErrorWithArgs(e, [id, method, args, scope, notebookUri, maybeChange]),
+            formatErrorWithArgs(e, [
+              id,
+              method,
+              args,
+              scope,
+              notebookUri,
+              maybeChange,
+            ]),
           );
         }
         return respond(id, [[], null]);
@@ -581,7 +588,14 @@ function serverRequestInner(id, method, args, scope, notebookUri, maybeChange) {
             return respond(
               id,
               null,
-              formatErrorWithArgs(e, [id, method, args, scope, notebookUri, maybeChange]),
+              formatErrorWithArgs(e, [
+                id,
+                method,
+                args,
+                scope,
+                notebookUri,
+                maybeChange,
+              ]),
             );
           }
           return respond(id);
