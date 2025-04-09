@@ -4535,10 +4535,7 @@ fn op_load<'s>(
     script_kind: crate::tsc::as_ts_script_kind(m.media_type),
     version: state.script_version(&specifier),
     is_cjs: m.resolution_mode == ResolutionMode::Require,
-    is_classic_script: m.uri.scheme().is_some_and(|s| {
-      s.eq_lowercase("vscode-notebook-cell")
-        || s.eq_lowercase("deno-notebook-cell")
-    }),
+    is_classic_script: m.notebook_uri.is_some(),
   });
   let serialized = serde_v8::to_v8(scope, maybe_load_response)?;
   state.performance.measure(mark);

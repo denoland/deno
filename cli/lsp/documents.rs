@@ -1269,14 +1269,12 @@ impl DocumentModules {
       if modules_with_scopes.contains_key(uri) {
         continue;
       }
-      if uri.scheme().is_some_and(|s| {
-        s.eq_lowercase("vscode-notebook-cell")
-          || s.eq_lowercase("deno-notebook-cell")
-      }) {
+      let open_document = document.open();
+      if open_document.is_some_and(|d| d.notebook_uri.is_some()) {
         continue;
       }
       let url = uri_to_url(uri);
-      if document.open().is_none()
+      if open_document.is_none()
         && (url.scheme() != "file"
           || !self.config.specifier_enabled(&url)
           || self.resolver.in_node_modules(&url)

@@ -936,10 +936,7 @@ fn generate_lint_diagnostics(
     // TODO(nayeemrmn): Support linting notebooks cells. Will require stitching
     // cells from the same notebook into one module, linting it and then
     // splitting/relocating the diagnostics to each cell.
-    if document.uri.scheme().is_some_and(|s| {
-      s.eq_lowercase("vscode-notebook-cell")
-        || s.eq_lowercase("deno-notebook-cell")
-    }) {
+    if document.notebook_uri.is_some() {
       continue;
     }
     let Some(module) = snapshot
