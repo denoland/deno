@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { buffer, text } from "node:stream/consumers";
-import { assertEquals, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 
 const rsaPrivateKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_private.pem", import.meta.url),
@@ -12,7 +12,7 @@ const rsaPublicKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_public.pem", import.meta.url),
 );
 
-const input = new TextEncoder().encode("hello world");
+const input = Buffer.from("hello world", "utf-8");
 
 function zeros(length: number): Uint8Array {
   return new Uint8Array(length);
@@ -26,6 +26,8 @@ Deno.test({
       Buffer.from(rsaPrivateKey),
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(encrypted));
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -49,10 +51,12 @@ Deno.test({
   name: "rsa private encrypt and private decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
+    assert(Buffer.isBuffer(encrypted));
     const decrypted = crypto.privateDecrypt(
       rsaPrivateKey,
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -61,6 +65,7 @@ Deno.test({
   name: "rsa public decrypt fail",
   fn() {
     const encrypted = crypto.publicEncrypt(rsaPublicKey, input);
+    assert(Buffer.isBuffer(encrypted));
     assertThrows(() =>
       crypto.publicDecrypt(rsaPublicKey, Buffer.from(encrypted))
     );
