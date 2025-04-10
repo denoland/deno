@@ -9,6 +9,7 @@ import { initializeDebugEnv } from "ext:deno_node/internal/util/debuglog.ts";
 import {
   op_getegid,
   op_geteuid,
+  op_node_load_env_file,
   op_node_process_kill,
   op_process_abort,
 } from "ext:core/ops";
@@ -787,6 +788,10 @@ process.getBuiltinModule = getBuiltinModule;
 
 // TODO(kt3k): Implement this when we added -e option to node compat mode
 process._eval = undefined;
+
+process.loadEnvFile = (path = ".env") => {
+  return op_node_load_env_file(path);
+};
 
 /** https://nodejs.org/api/process.html#processexecpath */
 
