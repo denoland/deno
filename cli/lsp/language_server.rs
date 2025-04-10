@@ -223,7 +223,7 @@ impl LanguageServerTaskQueue {
 }
 
 pub struct Inner {
-  cache: LspCache,
+  pub cache: LspCache,
   /// The LSP client that this LSP server is connected to.
   pub client: Client,
   /// Configuration information.
