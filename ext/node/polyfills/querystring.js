@@ -115,7 +115,7 @@ export function parse(
   str,
   sep = "&",
   eq = "=",
-  { decodeURIComponent = unescape, maxKeys = 1000 } = {},
+  { decodeURIComponent, maxKeys = 1000 } = {},
 ) {
   const obj = Object.create(null);
 
@@ -139,7 +139,7 @@ export function parse(
     pairs = maxKeys > 0 ? maxKeys : -1;
   }
 
-  let decode = unescape;
+  let decode = QS.unescape;
   if (decodeURIComponent) {
     decode = decodeURIComponent;
   }
@@ -469,8 +469,8 @@ function qsUnescape(s) {
 function decodeStr(s, decoder) {
   try {
     return decoder(s);
-  } catch {
-    return qsUnescape(s);
+  } catch (e) {
+    return QS.unescape(s);
   }
 }
 
@@ -483,7 +483,7 @@ function decodeStr(s, decoder) {
  */
 export const unescape = qsUnescape;
 
-export default {
+const QS = {
   parse,
   stringify,
   decode,
@@ -492,3 +492,5 @@ export default {
   escape,
   unescapeBuffer,
 };
+
+export default QS;
