@@ -21,7 +21,7 @@ enum HandleType {
 pub fn op_node_guess_handle_type(state: &mut OpState, rid: u32) -> u32 {
   let handle = match state.resource_table.get_handle(rid) {
     Ok(handle) => handle,
-    __ => return HandleType::Unknown as u32,
+    _ => return HandleType::Unknown as u32,
   };
 
   let handle_type = match handle {
