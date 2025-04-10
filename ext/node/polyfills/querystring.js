@@ -79,10 +79,10 @@ function addKeyVal(
   decode,
 ) {
   if (key.length > 0 && keyEncoded) {
-    key = decode(key);
+    key = decodeStr(key, decode);
   }
   if (value.length > 0 && valEncoded) {
-    value = decode(value);
+    value = decodeStr(value, decode);
   }
 
   if (obj[key] === undefined) {
@@ -463,6 +463,14 @@ function qsUnescape(s) {
     return decodeURIComponent(s);
   } catch {
     return unescapeBuffer(s).toString();
+  }
+}
+
+function decodeStr(s, decoder) {
+  try {
+    return decoder(s);
+  } catch {
+    return qsUnescape(s);
   }
 }
 
