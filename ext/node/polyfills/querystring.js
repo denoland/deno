@@ -469,7 +469,7 @@ function qsUnescape(s) {
 function decodeStr(s, decoder) {
   try {
     return decoder(s);
-  } catch (e) {
+  } catch {
     return QS.unescape(s);
   }
 }
