@@ -921,6 +921,44 @@ Deno.test("Plugin - Abstract class", async (t) => {
   );
 });
 
+Deno.test("Plugin - Decorators", async (t) => {
+  // Class declaration
+  await testSnapshot(
+    t,
+    `@deco class Foo {}`,
+    "ClassDeclaration",
+  );
+
+  // Class expression
+  await testSnapshot(
+    t,
+    `let foo = class Foo { @deco foo() {} }`,
+    "ClassExpression",
+  );
+
+  // Other
+  await testSnapshot(
+    t,
+    `class Foo { @deco foobar() {} }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco get foo() { return 2 } }`,
+    "MethodDefinition",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { @deco("arg") foo: string; constructor() { this.foo = "foo" } }`,
+    "ClassDeclaration",
+  );
+  await testSnapshot(
+    t,
+    `class Foo { foo(@deco foo: string) {} }`,
+    "ClassDeclaration",
+  );
+});
+
 Deno.test("Plugin - JSXElement + JSXOpeningElement + JSXClosingElement + JSXAttr", async (t) => {
   await testSnapshot(t, "<div />", "JSXElement");
   await testSnapshot(t, "<div></div>", "JSXElement");
