@@ -438,9 +438,9 @@ impl FetchPermissions for deno_permissions::PermissionsContainer {
     .map_err(|_| FsError::NotCapable("read"))?;
 
     let (resolved, path) = if needs_canonicalize {
-      let path = get_path.resolved(path)?;
+      let path = get_path.resolved(&path)?;
 
-      (true, path)
+      (true, Cow::Owned(path))
     } else {
       (false, path)
     };

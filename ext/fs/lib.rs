@@ -119,32 +119,32 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     api_name: &str,
     get_path: &'a dyn GetPath,
   ) -> Result<CheckedPath<'a>, FsError> {
+    eprintln!("check_open: {:?}", path);
     if self.allows_all() {
       return Ok(CheckedPath::Unresolved(path));
     }
 
-    let (needs_canonicalize, mut path) = get_path.normalized(path)?;
+    let (needs_canonicalize, path) = get_path.normalized(path)?;
     // If somehow read or write aren't specified, use read
     let read = read || !write;
-    if read {
-      let resolved_path =
-        FsPermissions::check_read_path(self, path.clone(), api_name)
-          .map_err(|_| FsError::NotCapable("read"))?;
-      if let Cow::Owned(resolved_path) = resolved_path {
-        path = Cow::Owned(resolved_path);
-      }
-    }
-    if write {
+    let path = if read {
+      let resolved_path = FsPermissions::check_read_path(self, path, api_name)
+        .map_err(|_| FsError::NotCapable("read"))?;
+      resolved_path
+    } else {
+      path
+    };
+    let path = if write {
       let resolved_path =
         FsPermissions::check_write_path(self, path.clone(), api_name)
           .map_err(|_| FsError::NotCapable("write"))?;
-      if let Cow::Owned(resolved_path) = resolved_path {
-        path = Cow::Owned(resolved_path);
-      }
-    }
+      resolved_path
+    } else {
+      path
+    };
 
     let resolved_path = if needs_canonicalize {
-      get_path.resolved(path)?
+      Cow::Owned(get_path.resolved(&path)?)
     } else {
       path
     };
@@ -323,14 +323,10 @@ deno_core::extension!(deno_fs,
   },
 );
 
-pub type ResolvePathFn<'a> =
-  &'a mut dyn FnMut(Cow<'a, Path>) -> Result<Cow<'a, Path>, FsError>;
-
 pub trait GetPath {
   fn normalized<'a>(
     &self,
     path: Cow<'a, Path>,
   ) -> Result<(bool, Cow<'a, Path>), FsError>;
-  fn resolved<'a>(&self, path: Cow<'a, Path>)
-    -> Result<Cow<'a, Path>, FsError>;
+  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError>;
 }

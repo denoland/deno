@@ -39,7 +39,6 @@ use crate::interface::FsFileType;
 use crate::FsPermissions;
 use crate::GetPath;
 use crate::OpenOptions;
-use crate::ResolvePathFn;
 
 #[derive(Debug, Boxed, deno_error::JsError)]
 pub struct FsOpsError(pub Box<FsOpsErrorKind>);

@@ -3,7 +3,6 @@
 #![allow(clippy::disallowed_methods)]
 
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::env::current_dir;
 use std::fs;
 use std::io;
@@ -1075,13 +1074,6 @@ pub fn open_with_access_check(
   Ok(opts.open(path)?)
 }
 
-fn cast<T>(t: T) -> T
-where
-  T: for<'a> FnMut(Cow<'a, Path>) -> FsResult<Cow<'a, Path>>,
-{
-  t
-}
-
 #[inline(always)]
 pub fn open_options_with_access_check(
   options: OpenOptions,
@@ -1162,10 +1154,18 @@ impl GetPath for StdGetPath {
     Ok((needs_canonicalization, path))
   }
 
-  fn resolved<'a>(
-    &self,
-    path: Cow<'a, Path>,
-  ) -> Result<Cow<'a, Path>, FsError> {
-    todo!()
+  fn resolved(&self, path: &Path) -> Result<PathBuf, FsError> {
+    match path.canonicalize() {
+      Ok(path) => Ok(path),
+      Err(_) => {
+        if let (Some(parent), Some(filename)) =
+          (path.parent(), path.file_name())
+        {
+          Ok(parent.canonicalize()?.join(filename))
+        } else {
+          return Err(std::io::ErrorKind::NotFound.into());
+        }
+      }
+    }
   }
 }
