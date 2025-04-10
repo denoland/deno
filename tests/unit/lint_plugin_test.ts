@@ -444,6 +444,22 @@ Deno.test("Plugin - visitor :not", () => {
   assertEquals(result[0].node.name, "bar");
 });
 
+Deno.test("Plugin - parent", () => {
+  let parent: Deno.lint.Node | undefined;
+
+  testPlugin("const foo = 1;", {
+    create() {
+      return {
+        VariableDeclaration(node) {
+          parent = node.parent;
+        },
+      };
+    },
+  });
+
+  assertEquals(parent?.type, "Program");
+});
+
 Deno.test("Plugin - Program", async (t) => {
   await testSnapshot(t, "", "Program");
 });
