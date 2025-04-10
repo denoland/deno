@@ -3740,13 +3740,6 @@ pub struct CompletionNormalizedAutoImportData {
   normalized: ModuleSpecifier,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-enum ResolutionLookup {
-  PrettySpecifier(String),
-  Preserve,
-  Invalid,
-}
-
 #[derive(Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionEntry {
@@ -3920,7 +3913,7 @@ impl CompletionEntry {
   }
 
   #[allow(clippy::too_many_arguments)]
-  fn as_completion_item(
+  pub fn as_completion_item(
     &self,
     line_index: Arc<LineIndex>,
     info: &CompletionInfo,
@@ -3928,9 +3921,9 @@ impl CompletionEntry {
     module: &DocumentModule,
     position: u32,
     language_server: &language_server::Inner,
-    resolution_lookup_cache: &mut HashMap<
+    resolution_cache: &mut HashMap<
       (ModuleSpecifier, Arc<ModuleSpecifier>),
-      ResolutionLookup,
+      String,
     >,
   ) -> Option<lsp::CompletionItem> {
     let mut label = self.name.clone();
@@ -3991,46 +3984,30 @@ impl CompletionEntry {
         let mut display_source = source.clone();
         let import_mapper =
           language_server.get_ts_response_import_mapper(module);
-        let resolution_lookup = resolution_lookup_cache
-          .entry((import_data.normalized.clone(), module.specifier.clone()))
-          .or_insert_with(|| {
-            if let Some(specifier) = import_mapper
+        let maybe_cached = resolution_cache
+          .get(&(import_data.normalized.clone(), module.specifier.clone()))
+          .cloned();
+        if let Some(mut new_specifier) = maybe_cached
+          .or_else(|| {
+            import_mapper
               .check_specifier(&import_data.normalized, &module.specifier)
-            {
-              return ResolutionLookup::PrettySpecifier(specifier);
-            }
-            if language_server
-              .resolver
-              .in_node_modules(&import_data.normalized)
-              || language_server
-                .cache
-                .in_cache_directory(&import_data.normalized)
-              || import_data
-                .normalized
-                .as_str()
-                .starts_with(jsr_url().as_str())
-            {
-              return ResolutionLookup::Invalid;
-            }
-            if let Some(specifier) =
-              relative_specifier(&module.specifier, &import_data.normalized)
-            {
-              return ResolutionLookup::PrettySpecifier(specifier);
-            }
-            if Url::parse(&import_data.raw.module_specifier).is_ok() {
-              return ResolutionLookup::PrettySpecifier(
-                import_data.normalized.to_string(),
-              );
-            }
-            ResolutionLookup::Preserve
-          });
-        if let ResolutionLookup::Invalid = resolution_lookup {
-          return None;
-        }
-        if let ResolutionLookup::PrettySpecifier(new_specifier) =
-          resolution_lookup
+          })
+          .or_else(|| {
+            relative_specifier(&module.specifier, &import_data.normalized)
+          })
+          .or_else(|| {
+            ModuleSpecifier::parse(&import_data.raw.module_specifier)
+              .is_ok()
+              .then(|| import_data.normalized.to_string())
+          })
         {
-          let mut new_specifier = new_specifier.clone();
+          resolution_cache.insert(
+            (import_data.normalized.clone(), module.specifier.clone()),
+            new_specifier.clone(),
+          );
+          if new_specifier.contains("/node_modules/") {
+            return None;
+          }
           let mut new_deno_types_specifier = None;
           if let Some(code_specifier) = language_server
             .resolver
@@ -4055,6 +4032,8 @@ impl CompletionEntry {
               new_deno_types_specifier,
             });
           }
+        } else if source.starts_with(jsr_url().as_str()) {
+          return None;
         }
         // We want relative or bare (import-mapped or otherwise) specifiers to
         // appear at the top.
