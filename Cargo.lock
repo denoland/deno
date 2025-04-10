@@ -2632,9 +2632,9 @@ dependencies = [
 
 [[package]]
 name = "deno_task_shell"
-version = "0.22.0"
+version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "126e6062adfcc544f0937d610d23dc4dc70c4d2aab8636b31a93bcb26177115d"
+checksum = "cdd929be1ec5a465cb8991d06098a484901a4fe4024d38f3871ada42bd304f7f"
 dependencies = [
  "anyhow",
  "deno_path_util",
@@ -8314,9 +8314,9 @@ dependencies = [
 
 [[package]]
 name = "sys_traits"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "638f0e61b5134e56b2abdf4c704fd44672603f15ca09013f314649056f3fee4d"
+checksum = "f3374191d43a934854e99a46cd47f8124369e690353e0f8db42769218d083690"
 dependencies = [
  "filetime",
  "getrandom",
