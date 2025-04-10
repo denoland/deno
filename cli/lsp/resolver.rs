@@ -825,7 +825,7 @@ impl<'a> ResolverFactory<'a> {
         npmrc.clone(),
       ));
       let npm_resolution_installer = Arc::new(NpmResolutionInstaller::new(
-        registry_info_provider,
+        registry_info_provider.clone(),
         self.services.npm_resolution.clone(),
         maybe_lockfile.clone(),
         patch_packages,
@@ -833,6 +833,7 @@ impl<'a> ResolverFactory<'a> {
       let npm_installer = Arc::new(NpmInstaller::new(
         npm_cache.clone(),
         Arc::new(NpmInstallDepsProvider::empty()),
+        Arc::new(registry_info_provider.as_npm_registry_api()),
         self.services.npm_resolution.clone(),
         npm_resolution_initializer.clone(),
         npm_resolution_installer,
