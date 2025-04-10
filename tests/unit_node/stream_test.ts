@@ -2,7 +2,7 @@
 
 import { assert, assertEquals } from "@std/assert";
 import { fromFileUrl, relative } from "@std/path";
-import { pipeline } from "node:stream/promises";
+import { finished, pipeline } from "node:stream/promises";
 import { getDefaultHighWaterMark, Stream } from "node:stream";
 import { createReadStream, createWriteStream } from "node:fs";
 import { EventEmitter } from "node:events";
@@ -34,4 +34,18 @@ Deno.test("stream getDefaultHighWaterMark", () => {
 Deno.test("stream is an instance of EventEmitter", () => {
   const stream = new Stream();
   assert(stream instanceof EventEmitter);
+});
+
+Deno.test("finished on web streams", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue("asd");
+      controller.close();
+    },
+  });
+  const promise = finished(stream as unknown as NodeJS.ReadableStream);
+  for await (const chunk of stream) {
+    assertEquals(chunk, "asd");
+  }
+  await promise;
 });

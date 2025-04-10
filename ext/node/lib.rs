@@ -33,6 +33,7 @@ pub use deno_package_json::PackageJson;
 use deno_permissions::PermissionCheckError;
 pub use node_resolver::PathClean;
 pub use node_resolver::DENO_SUPPORTED_BUILTIN_NODE_MODULES as SUPPORTED_BUILTIN_NODE_MODULES;
+use ops::handle_wrap::AsyncId;
 pub use ops::ipc::ChildPipeFd;
 use ops::vm;
 pub use ops::vm::create_v8_context;
@@ -406,6 +407,7 @@ deno_core::extension!(deno_node,
     ops::zlib::brotli::op_create_brotli_decompress,
     ops::zlib::brotli::op_brotli_decompress_stream,
     ops::zlib::brotli::op_brotli_decompress_stream_end,
+    ops::handle_wrap::op_node_new_async_id,
     ops::http::op_node_http_fetch_response_upgrade,
     ops::http::op_node_http_request_with_conn<P>,
     ops::http::op_node_http_await_information,
@@ -478,6 +480,8 @@ deno_core::extension!(deno_node,
     ops::perf_hooks::EldHistogram,
     ops::sqlite::DatabaseSync,
     ops::sqlite::Session,
+    ops::handle_wrap::AsyncWrap,
+    ops::handle_wrap::HandleWrap,
     ops::sqlite::StatementSync
   ],
   esm_entry_point = "ext:deno_node/02_init.js",
@@ -736,6 +740,8 @@ deno_core::extension!(deno_node,
       state.put(init.node_resolver.clone());
       state.put(init.pkg_json_resolver.clone());
     }
+
+    state.put(AsyncId::default());
   },
   global_template_middleware = global_template_middleware,
   global_object_middleware = global_object_middleware,

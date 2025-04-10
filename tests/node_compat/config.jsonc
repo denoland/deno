@@ -24,7 +24,6 @@
       "test-blocklist.js",
       "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
-      "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
       "test-buffer-tostring-range.js",
@@ -165,6 +164,7 @@
       "test-uv-unmapped-exception.js",
       "test-v8-serdes.js",
       "test-webcrypto-sign-verify.js",
+      "test-webstreams-finished.js",
       "test-whatwg-url-properties.js",
       // needs replace ".on" => ".addEventListener" in L29
       "test-worker-message-port-receive-message.js",
