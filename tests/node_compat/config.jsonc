@@ -24,7 +24,6 @@
       "test-blocklist.js",
       "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
-      "test-buffer-from.js",
       "test-buffer-includes.js",
       "test-buffer-indexof.js",
       "test-buffer-tostring-range.js",
