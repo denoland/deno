@@ -1,5 +1,6 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -71,15 +72,31 @@ impl AsyncWrap {
   }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
+enum State {
+  #[default]
+  Initialized,
+  Closing,
+  Closed,
+}
+
 pub struct HandleWrap {
   handle: Option<ResourceId>,
+  state: Rc<Cell<State>>,
 }
 
 impl GarbageCollected for HandleWrap {}
 
 impl HandleWrap {
   pub(crate) fn create(handle: Option<ResourceId>) -> Self {
-    Self { handle }
+    Self {
+      handle,
+      state: Rc::new(Cell::new(State::Initialized)),
+    }
+  }
+
+  fn is_alive(&self) -> bool {
+    self.state.get() != State::Closed
   }
 }
 
@@ -101,44 +118,50 @@ impl HandleWrap {
     )
   }
 
+  // Ported from Node.js
+  //
+  // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L65-L85
   #[reentrant]
   fn close(
     &self,
-    state: Rc<RefCell<OpState>>,
+    op_state: Rc<RefCell<OpState>>,
     #[this] this: v8::Global<v8::Object>,
     scope: &mut v8::HandleScope,
     #[global] cb: Option<v8::Global<v8::Function>>,
   ) -> Result<(), ResourceError> {
-    // Call _onClose() on the JS handles. Not needed for Rust handles.
-    let this = v8::Local::new(scope, this);
-    let on_close_str = ON_CLOSE_STR.v8_string(scope).unwrap();
-    let onclose = this.get(scope, on_close_str.into());
-
-    if let Some(onclose) = onclose {
-      let fn_: v8::Local<v8::Function> = onclose.try_into().unwrap();
-      fn_.call(scope, this.into(), &[]);
+    if self.state.get() != State::Initialized {
+      return Ok(());
     }
 
-    state
-      .borrow()
-      .borrow::<deno_core::V8TaskSpawner>()
-      .spawn(|scope| {
-        // Workaround for https://github.com/denoland/deno/pull/24656
-        //
-        // We need to delay 'cb' at least 2 ticks to avoid "close" event happening before "error"
-        // event in net.Socket.
-        //
-        // This is a temporary solution. We should support async close like `uv_close(handle, close_cb)`.
+    let state = self.state.clone();
+    // This effectively mimicks Node's OnClose callback.
+    //
+    // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L135-L157
+    let on_close = move |scope: &mut v8::HandleScope| {
+      assert!(state.get() == State::Closing);
+      state.set(State::Closed);
 
-        if let Some(cb) = cb {
-          let recv = v8::undefined(scope);
-          cb.open(scope).call(scope, recv.into(), &[]);
-        }
-      });
+      // Workaround for https://github.com/denoland/deno/pull/24656
+      //
+      // We need to delay 'cb' at least 2 ticks to avoid "close" event happening before "error"
+      // event in net.Socket.
+      //
+      // This is a temporary solution. We should support async close like `uv_close`.
+      if let Some(cb) = cb {
+        let recv = v8::undefined(scope);
+        cb.open(scope).call(scope, recv.into(), &[]);
+      }
+    };
+
+    uv_close(scope, op_state, this, on_close);
+    self.state.set(State::Closing);
 
     Ok(())
   }
 
+  // Ported from Node.js
+  //
+  // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L58-L62
   #[fast]
   fn has_ref(&self, state: &mut OpState) -> bool {
     if let Some(handle) = self.handle {
@@ -148,20 +171,54 @@ impl HandleWrap {
     true
   }
 
+  // Ported from Node.js
+  //
+  // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L40-L46
   #[fast]
   #[rename("r#ref")]
   fn ref_(&self, state: &mut OpState) {
-    if let Some(handle) = self.handle {
-      state.uv_ref(handle);
+    if self.is_alive() {
+      if let Some(handle) = self.handle {
+        state.uv_ref(handle);
+      }
     }
   }
 
+  // Ported from Node.js
+  //
+  // https://github.com/nodejs/node/blob/038d82980ab26cd79abe4409adc2fecad94d7c93/src/handle_wrap.cc#L49-L55
   #[fast]
   fn unref(&self, state: &mut OpState) {
-    if let Some(handle) = self.handle {
-      state.uv_unref(handle);
+    if self.is_alive() {
+      if let Some(handle) = self.handle {
+        state.uv_unref(handle);
+      }
     }
   }
+}
+
+fn uv_close<F>(
+  scope: &mut v8::HandleScope,
+  op_state: Rc<RefCell<OpState>>,
+  this: v8::Global<v8::Object>,
+  on_close: F,
+) where
+  F: FnOnce(&mut v8::HandleScope) + 'static,
+{
+  // Call _onClose() on the JS handles. Not needed for Rust handles.
+  let this = v8::Local::new(scope, this);
+  let on_close_str = ON_CLOSE_STR.v8_string(scope).unwrap();
+  let onclose = this.get(scope, on_close_str.into());
+
+  if let Some(onclose) = onclose {
+    let fn_: v8::Local<v8::Function> = onclose.try_into().unwrap();
+    fn_.call(scope, this.into(), &[]);
+  }
+
+  op_state
+    .borrow()
+    .borrow::<deno_core::V8TaskSpawner>()
+    .spawn(on_close);
 }
 
 #[cfg(test)]
@@ -172,8 +229,7 @@ mod tests {
   use deno_core::JsRuntime;
   use deno_core::RuntimeOptions;
 
-  #[tokio::test]
-  async fn test_handle_wrap() {
+  async fn js_test(source_code: &'static str) {
     deno_core::extension!(
       test_ext,
       objects = [super::AsyncWrap, super::HandleWrap,],
@@ -187,28 +243,6 @@ mod tests {
       ..Default::default()
     });
 
-    let source_code = r#"
-          const { HandleWrap } = Deno.core.ops;
-
-          let called = false;
-          class MyHandleWrap extends HandleWrap {
-            constructor() {
-              super(0, null);
-            }
-
-            _onClose() {
-              called = true;
-            }
-          }
-
-          const handleWrap = new MyHandleWrap();
-          handleWrap.close();
-
-          if (!called) {
-            throw new Error("HandleWrap._onClose was not called");
-          }
-        "#;
-
     poll_fn(move |cx| {
       runtime
         .execute_script("file://handle_wrap_test.js", source_code)
@@ -218,6 +252,34 @@ mod tests {
       assert!(matches!(result, Poll::Ready(Ok(()))));
       Poll::Ready(())
     })
+    .await;
+  }
+
+  #[tokio::test]
+  async fn test_handle_wrap() {
+    js_test(
+      r#"
+        const { HandleWrap } = Deno.core.ops;
+
+        let called = false;
+        class MyHandleWrap extends HandleWrap {
+          constructor() {
+            super(0, null);
+          }
+
+          _onClose() {
+            called = true;
+          }
+        }
+
+        const handleWrap = new MyHandleWrap();
+        handleWrap.close();
+
+        if (!called) {
+          throw new Error("HandleWrap._onClose was not called");
+        }
+      "#,
+    )
     .await;
   }
 }
