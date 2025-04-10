@@ -13,7 +13,9 @@ use deno_core::url::Url;
 #[allow(unused_imports)]
 use deno_core::v8;
 use deno_core::v8::ExternalReference;
+use deno_core::OpState;
 use deno_error::JsErrorBox;
+use deno_permissions::PermissionsContainer;
 use node_resolver::errors::ClosestPkgJsonError;
 use node_resolver::DenoIsBuiltInNodeModuleChecker;
 use node_resolver::InNpmPackageChecker;
@@ -184,6 +186,35 @@ pub static NODE_ENV_VAR_ALLOWLIST: Lazy<HashSet<String>> = Lazy::new(|| {
 #[string]
 fn op_node_build_os() -> String {
   env!("TARGET").split('-').nth(2).unwrap().to_string()
+}
+
+#[derive(Debug, thiserror::Error, deno_error::JsError)]
+enum DotEnvLoadErr {
+  #[class(generic)]
+  #[error(transparent)]
+  DotEnv(#[from] dotenvy::Error),
+  #[class(inherit)]
+  #[error(transparent)]
+  Permission(
+    #[from]
+    #[inherit]
+    PermissionCheckError,
+  ),
+}
+
+#[op2(fast)]
+fn op_node_load_env_file(
+  state: &mut OpState,
+  #[string] path: &str,
+) -> Result<(), DotEnvLoadErr> {
+  state
+    .borrow::<PermissionsContainer>()
+    .check_read_with_api_name(path, Some("process.loadEnvFile"))
+    .map_err(DotEnvLoadErr::Permission)?;
+
+  dotenvy::from_filename(path).map_err(DotEnvLoadErr::DotEnv)?;
+
+  Ok(())
 }
 
 #[derive(Clone)]
@@ -399,6 +430,7 @@ deno_core::extension!(deno_node,
     ops::os::op_cpus<P>,
     ops::os::op_homedir<P>,
     op_node_build_os,
+    op_node_load_env_file,
     ops::require::op_require_can_parse_as_esm,
     ops::require::op_require_init_paths,
     ops::require::op_require_node_module_paths<P, TSys>,
