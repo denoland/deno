@@ -660,6 +660,7 @@ pub async fn run(
     root_path,
     vfs,
   } = data;
+
   let root_cert_store_provider = Arc::new(StandaloneRootCertStoreProvider {
     ca_stores: metadata.ca_stores,
     ca_data: metadata.ca_data.map(CaData::Bytes),
@@ -786,7 +787,7 @@ pub async fn run(
     npm_resolver.clone(),
     pkg_json_resolver.clone(),
     node_resolution_sys,
-    node_resolver::ConditionsFromResolutionMode::default(),
+    node_resolver::NodeResolverOptions::default(),
   ));
   let cjs_tracker = Arc::new(CjsTracker::new(
     in_npm_pkg_checker.clone(),
@@ -964,6 +965,7 @@ pub async fn run(
     serve_port: None,
     serve_host: None,
     otel_config: metadata.otel_config,
+    no_legacy_abort: false,
     startup_snapshot: deno_snapshots::CLI_SNAPSHOT,
   };
   let worker_factory = LibMainWorkerFactory::new(

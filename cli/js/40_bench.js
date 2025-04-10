@@ -241,7 +241,7 @@ const allMaxLength = 10_000_000;
 let all = new Array(allMaxLength);
 const lowPrecisionThresholdInNs = 1e4;
 
-async function benchMeasure(timeBudget, fn, desc, context) {
+async function benchMeasure(fn, desc, context) {
   let n = 0;
   let avg = 0;
   let wavg = 0;
@@ -251,7 +251,7 @@ async function benchMeasure(timeBudget, fn, desc, context) {
 
   // warmup step
   let c = 0;
-  let iterations = desc.warmup > 0 ? desc.warmup : 20;
+  let iterations = desc.warmup >= 0 ? desc.warmup : 20;
   let budget = 10 * 1e6;
 
   if (!desc.async) {
@@ -298,7 +298,7 @@ async function benchMeasure(timeBudget, fn, desc, context) {
 
   // measure step
   iterations = desc.n > 0 ? desc.n : 10;
-  budget = timeBudget * 1e6;
+  budget = desc.n > 0 ? 10 * 1e6 : 500 * 1e6;
 
   if (wavg > lowPrecisionThresholdInNs) {
     if (!desc.async) {
@@ -475,10 +475,8 @@ function wrapBenchmark(desc) {
         });
       }
 
-      const benchTimeInMs = 500;
       const context = createBenchContext(desc);
       const stats = await benchMeasure(
-        benchTimeInMs,
         fn,
         desc,
         context,

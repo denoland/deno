@@ -324,8 +324,7 @@ class Kv {
           const _res = isPromise(result) ? (await result) : result;
           success = true;
         } catch (error) {
-          // deno-lint-ignore no-console
-          console.error("Exception in queue handler", error);
+          import.meta.log("error", "Exception in queue handler", error);
         } finally {
           const promise: Promise<void> = op_kv_finish_dequeued_message(
             handleId,

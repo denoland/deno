@@ -3,6 +3,7 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Path;
 use std::path::PathBuf;
 use std::pin::Pin;
@@ -21,7 +22,6 @@ use deno_core::error::ModuleLoaderError;
 use deno_core::futures::future::FutureExt;
 use deno_core::futures::io::BufReader;
 use deno_core::futures::stream::FuturesOrdered;
-use deno_core::futures::Future;
 use deno_core::futures::StreamExt;
 use deno_core::parking_lot::Mutex;
 use deno_core::resolve_url;
@@ -909,7 +909,11 @@ impl<TGraphContainer: ModuleGraphContainer>
               source,
             }));
           }
-          MediaType::Css | MediaType::Wasm | MediaType::SourceMap => {
+          MediaType::Css
+          | MediaType::Html
+          | MediaType::Sql
+          | MediaType::Wasm
+          | MediaType::SourceMap => {
             panic!("Unexpected media type {media_type} for {specifier}")
           }
         };

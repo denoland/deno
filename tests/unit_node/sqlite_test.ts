@@ -153,6 +153,17 @@ Deno.test({
       );
       db.close();
     }
+    {
+      const db = new DatabaseSync(":memory:");
+      assertThrows(
+        () => {
+          db.exec("ATTACH DATABASE 'test.db' AS test");
+        },
+        Error,
+        "too many attached databases - max 0",
+      );
+      db.close();
+    }
   },
 });
 
@@ -285,4 +296,40 @@ Deno.test("[node/sqlite] StatementSync reset guards don't lock db", () => {
   assertEquals(stmt.get(), { name: "foo", __proto__: null });
 
   db.exec("DROP TABLE IF EXISTS foo");
+});
+
+// https://github.com/denoland/deno/issues/28492
+Deno.test("[node/sqlite] StatementSync reset step change metadata", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec(`CREATE TABLE people (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  birthdate TEXT NOT NULL
+) STRICT`);
+
+  const insertPeople = db.prepare(`
+INSERT INTO people
+  (name, birthdate)
+VALUES
+  (:name, :birthdate)
+RETURNING id
+`);
+
+  const id1 = insertPeople.run({ name: "Flash", birthdate: "1956-07-16" });
+  assertEquals(id1, { lastInsertRowid: 1, changes: 1 });
+});
+
+Deno.test("[node/sqlite] StatementSync empty blob", () => {
+  const db = new DatabaseSync(":memory:");
+
+  db.exec("CREATE TABLE foo(a BLOB NOT NULL)");
+
+  db.prepare("INSERT into foo (a) values (?)")
+    .all(new Uint8Array([]));
+
+  const result = db.prepare("SELECT * from foo").get();
+  assertEquals(result, { a: new Uint8Array([]), __proto__: null });
+
+  db.close();
 });

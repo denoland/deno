@@ -196,7 +196,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       | MediaType::Tsx
       // treat these as unknown
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         match is_script {
           Some(true) => self.check_based_on_pkg_json(specifier).unwrap_or(ResolutionMode::Import),
@@ -241,7 +243,9 @@ impl<TInNpmPackageChecker: InNpmPackageChecker, TSys: FsRead>
       | MediaType::Tsx
       // treat these as unknown
       | MediaType::Css
+      | MediaType::Html
       | MediaType::SourceMap
+      | MediaType::Sql
       | MediaType::Unknown => {
         if let Some(value) = known_cache.get(specifier).map(|v| *v) {
           if value == ResolutionMode::Require && is_script == Some(false) {

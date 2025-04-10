@@ -15,12 +15,17 @@ use deno_core::v8;
 use deno_core::GarbageCollected;
 use deno_core::OpState;
 use deno_permissions::PermissionsContainer;
+use rusqlite::ffi as libsqlite3_sys;
+use rusqlite::limits::Limit;
 use serde::Deserialize;
 
 use super::session::SessionOptions;
 use super::Session;
 use super::SqliteError;
 use super::StatementSync;
+use crate::ops::sqlite::SqliteResultExt;
+const SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION: i32 = 1005;
+const SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE: i32 = 1021;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,13 +66,50 @@ pub struct DatabaseSync {
 
 impl GarbageCollected for DatabaseSync {}
 
+fn set_db_config(
+  conn: &rusqlite::Connection,
+  config: i32,
+  value: bool,
+) -> bool {
+  // SAFETY: call to sqlite3_db_config is safe because the connection
+  // handle is valid and the parameters are correct.
+  unsafe {
+    let mut set = 0;
+    let r = libsqlite3_sys::sqlite3_db_config(
+      conn.handle(),
+      config,
+      value as i32,
+      &mut set,
+    );
+
+    if r != libsqlite3_sys::SQLITE_OK {
+      panic!("Failed to set db config");
+    }
+
+    set == value as i32
+  }
+}
+
 fn open_db(
   state: &mut OpState,
   readonly: bool,
   location: &str,
 ) -> Result<rusqlite::Connection, SqliteError> {
   if location == ":memory:" {
-    return Ok(rusqlite::Connection::open_in_memory()?);
+    let conn = rusqlite::Connection::open_in_memory()?;
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
+
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    return Ok(conn);
   }
 
   state
@@ -75,17 +117,38 @@ fn open_db(
     .check_read_with_api_name(location, Some("node:sqlite"))?;
 
   if readonly {
-    return Ok(rusqlite::Connection::open_with_flags(
+    let conn = rusqlite::Connection::open_with_flags(
       location,
       rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )?);
+    )?;
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_ATTACH_WRITE,
+      false
+    ));
+    assert!(set_db_config(
+      &conn,
+      SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+      false
+    ));
+
+    conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+    return Ok(conn);
   }
 
   state
     .borrow::<PermissionsContainer>()
     .check_write_with_api_name(location, Some("node:sqlite"))?;
 
-  Ok(rusqlite::Connection::open(location)?)
+  let conn = rusqlite::Connection::open(location)?;
+  assert!(set_db_config(
+    &conn,
+    SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION,
+    false
+  ));
+  conn.set_limit(Limit::SQLITE_LIMIT_ATTACHED, 0)?;
+
+  Ok(conn)
 }
 
 // Represents a single connection to a SQLite database.
@@ -110,7 +173,8 @@ impl DatabaseSync {
       let db = open_db(state, options.read_only, &location)?;
 
       if options.enable_foreign_key_constraints {
-        db.execute("PRAGMA foreign_keys = ON", [])?;
+        db.execute("PRAGMA foreign_keys = ON", [])
+          .with_enhanced_errors(&db)?;
       }
       Some(db)
     } else {
@@ -137,7 +201,8 @@ impl DatabaseSync {
 
     let db = open_db(state, self.options.read_only, &self.location)?;
     if self.options.enable_foreign_key_constraints {
-      db.execute("PRAGMA foreign_keys = ON", [])?;
+      db.execute("PRAGMA foreign_keys = ON", [])
+        .with_enhanced_errors(&db)?;
     }
 
     *self.conn.borrow_mut() = Some(db);
@@ -166,7 +231,7 @@ impl DatabaseSync {
     let db = self.conn.borrow();
     let db = db.as_ref().ok_or(SqliteError::InUse)?;
 
-    db.execute_batch(sql)?;
+    db.execute_batch(sql).with_enhanced_errors(db)?;
 
     Ok(())
   }
