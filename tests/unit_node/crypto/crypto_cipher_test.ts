@@ -12,7 +12,7 @@ const rsaPublicKey = Deno.readTextFileSync(
   new URL("../testdata/rsa_public.pem", import.meta.url),
 );
 
-const input = new TextEncoder().encode("hello world");
+const input = Buffer.from("hello world", "utf-8");
 
 function zeros(length: number): Uint8Array {
   return new Uint8Array(length);
