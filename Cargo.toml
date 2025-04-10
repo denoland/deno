@@ -53,22 +53,23 @@ repository = "https://github.com/denoland/deno"
 deno_ast = { version = "=0.46.2", features = ["transpiling"] }
 deno_core = { version = "0.343.0" }
 
-deno_bench_util = { version = "0.193.0", path = "./bench_util" }
+deno_cache_dir = "=0.18.0"
 deno_config = { version = "=0.52.0", features = ["workspace"] }
 deno_doc = "=0.169.1"
+deno_error = "=0.5.6"
 deno_graph = "=0.89.4"
 deno_lint = "=0.74.0"
 deno_lockfile = "=0.26.0"
 deno_media_type = { version = "=0.2.8", features = ["module_specifier"] }
+deno_native_certs = "0.3.0"
 deno_npm = "=0.31.0"
+deno_package_json = { version = "=0.6.0", default-features = false }
 deno_path_util = "=0.3.2"
-deno_permissions = { version = "0.58.0", path = "./runtime/permissions" }
-deno_runtime = { version = "0.207.0", path = "./runtime" }
 deno_semver = "=0.7.1"
+deno_task_shell = "=0.22.0"
 deno_terminal = "=0.2.2"
-eszip = "=0.84.0"
-napi_sym = { version = "0.129.0", path = "./ext/napi/sym" }
-test_util = { package = "test_server", path = "./tests/util/server" }
+deno_unsync = "0.4.2"
+deno_whoami = "0.1.0"
 
 denokv_proto = "0.10.0"
 denokv_remote = "0.10.0"
@@ -103,17 +104,18 @@ deno_websocket = { version = "0.204.0", path = "./ext/websocket" }
 deno_webstorage = { version = "0.194.0", path = "./ext/webstorage" }
 
 # workspace libraries
+deno_bench_util = { version = "0.193.0", path = "./bench_util" }
 deno_lib = { version = "0.15.0", path = "./cli/lib" }
 deno_npm_cache = { version = "0.18.0", path = "./resolvers/npm_cache" }
+deno_permissions = { version = "0.58.0", path = "./runtime/permissions" }
 deno_resolver = { version = "0.30.0", path = "./resolvers/deno" }
+deno_runtime = { version = "0.207.0", path = "./runtime" }
 deno_snapshots = { version = "0.14.0", path = "./cli/snapshot" }
+napi_sym = { version = "0.129.0", path = "./ext/napi/sym" }
 node_resolver = { version = "0.37.0", path = "./resolvers/node" }
+test_util = { package = "test_server", path = "./tests/util/server" }
 
-aead-gcm-stream = "0.4"
-aes = "=0.8.3"
-aes-gcm = "0.10"
-aes-kw = "0.2.1"
-anstream = "0.6.14"
+# widely used libraries
 anyhow = "1.0.57"
 async-compression = "0.4"
 async-once-cell = "0.5.4"
@@ -123,8 +125,6 @@ base32 = "=0.5.1"
 base64 = "0.22.1"
 base64-simd = "0.8"
 bencher = "0.1"
-bincode = "=1.3.3"
-blake2 = "0.10.6"
 boxed_error = "0.2.3"
 brotli = "6.0.0"
 bytemuck = "1.17.1"
@@ -135,48 +135,14 @@ cbc = { version = "=0.1.2", features = ["alloc"] }
 # Note: Do not use the "clock" feature of chrono, as it links us to CoreFoundation on macOS.
 #       Instead use util::time::utc_now()
 chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
-clap = "=4.5.30"
-clap_complete = "=4.5.45"
-clap_complete_fig = "=4.5.2"
 color-print = "0.3.5"
-console_static_text = "=0.8.3"
-const-oid = "0.9.5"
-cranelift = "0.116"
-cranelift-native = "0.116"
-crossterm = "0.28.1"
-ctr = { version = "0.9.2", features = ["alloc"] }
-curve25519-dalek = "4.1.3"
 dashmap = "5.5.3"
 data-encoding = "2.3.3"
 data-url = "=0.3.1"
-deno_cache_dir = "=0.18.0"
-deno_error = "=0.5.6"
-deno_native_certs = "0.3.0"
-deno_package_json = { version = "=0.6.0", default-features = false }
-deno_task_shell = "=0.22.0"
-deno_unsync = "0.4.2"
-deno_whoami = "0.1.0"
-der = "0.7.9"
-dhat = "0.3.3"
-digest = "0.10.5"
-dissimilar = "=1.0.9"
-dlopen2 = "0.6.1"
 dotenvy = "0.15.7"
-dprint-plugin-json = "=0.20.0"
-dprint-plugin-jupyter = "=0.2.0"
-dprint-plugin-markdown = "=0.18.0"
-dprint-plugin-typescript = "=0.94.0"
-dsa = "0.6.3"
 dyn-clone = "1"
-ecb = "=0.1.2"
-ecdsa = "0.16.9"
-ed25519-dalek = "2.1.1"
-ed448-goldilocks = "0.8.3"
-elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 encoding_rs = "=0.8.35"
-env_logger = "=0.11.6"
 error_reporter = "1"
-fancy-regex = "=0.14.0"
 fast-socks5 = "0.9.6"
 faster-hex = "0.10.0"
 fastwebsockets = { version = "0.8", features = ["upgrade", "unstable-split"] }
@@ -203,7 +169,6 @@ hyper-rustls = { version = "0.27.2", default-features = false, features = ["http
 hyper-util = { version = "0.1.10", features = ["tokio", "client", "client-legacy", "server", "server-auto"] }
 hyper_v014 = { package = "hyper", version = "0.14.26", features = ["runtime", "http1"] }
 idna = "1.0.3"
-image = { version = "0.25.4", default-features = false }
 import_map = { version = "0.21.0", features = ["ext"] }
 indexmap = { version = "2", features = ["serde"] }
 ipnet = "2.3"
@@ -211,29 +176,15 @@ ipnetwork = "0.20.0"
 itertools = "0.10"
 jsonc-parser = { version = "=0.26.2", features = ["serde"] }
 jupyter_runtime = "=0.19.0"
-k256 = "0.13.1"
 lazy-regex = "3"
-lcms2 = "6.1.0"
 libc = "0.2.168"
-libffi = "=4.0.0"
-libffi-sys = "=3.2.0"
-libloading = "0.7"
 libsqlite3-sys = "0.30.1"
-libsui = "0.7.0"
-libuv-sys-lite = "=1.48.2"
 libz-sys = { version = "1.1.20", default-features = false }
 log = { version = "0.4.20", features = ["kv"] }
 lsp-types = "=0.97.0" # used by tower-lsp and "proposed" feature is unstable in patch releases
-malva = "=0.11.0"
-markup_fmt = "=0.18.0"
-md-5 = "0.10.5"
-md4 = "0.10.2"
 memchr = "2.7.4"
-memmap2 = "0.9"
 mime = "0.3.16"
 monch = "=0.5.0"
-napi-build = "1"
-napi-sys = { version = "=2.2.2", default-features = false }
 netif = "0.1.6"
 notify = "=6.1.1"
 ntest_timeout = "0.9.3"
@@ -242,23 +193,14 @@ num-bigint-dig = "0.8.2"
 num-integer = "0.1.45"
 num-traits = "0.2.19"
 once_cell = "1.17.1"
-open = "5.0.1"
 os_pipe = { version = "=1.2.1", features = ["io_safety"] }
-p224 = { version = "0.13.0", features = ["ecdh"] }
-p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
-p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
-p521 = "0.13.3"
 parking_lot = "0.12.0"
 path-clean = "=0.1.0"
-pathdiff = "0.2.1"
-pbkdf2 = "0.12.1"
 percent-encoding = "2.3.0"
 phf = { version = "0.11", features = ["macros"] }
 pin-project = "1.0.11" # don't pin because they yank crates from cargo
 pin-project-lite = "0.2.13"
-pkcs8 = "0.10.2"
 pretty_assertions = "=1.4.1"
-pretty_yaml = "=0.5.0"
 prost = "0.13"
 prost-build = "0.13"
 quick-junit = "0.3.5"
@@ -268,9 +210,7 @@ rayon = "1.8.0"
 regex = "^1.7.0"
 reqwest = { version = "=0.12.5", default-features = false, features = ["rustls-tls", "stream", "gzip", "brotli", "socks", "json", "http2"] } # pinned because of https://github.com/seanmonstar/reqwest/pull/1955
 ring = "^0.17.14"
-ripemd = "0.1.3"
 rusqlite = { version = "0.34.0", features = ["unlock_notify", "bundled", "session", "modern_sqlite", "limits"] } # "modern_sqlite": need sqlite >= 3.49.0 for some db configs
-rustc-hash = "2.1.1"
 rustls = { version = "0.23.11", default-features = false, features = ["logging", "std", "tls12", "ring"] }
 rustls-pemfile = "2"
 rustls-tokio-stream = "=0.5.0"
@@ -280,32 +220,20 @@ rustyline-derive = "=0.7.0"
 saffron = "=0.1.0"
 same-file = "1.0.6"
 scopeguard = "1.2.0"
-scrypt = "0.11.0"
-sec1 = "0.7"
 semver = "=1.0.25"
 serde = { version = "1.0.149", features = ["derive"] }
 serde-value = "0.7"
 serde_bytes = "0.11"
 serde_json = "1.0.85"
 serde_repr = "=0.1.19"
-sha1 = { version = "0.10.6", features = ["oid"] }
-sha2 = { version = "0.10.8", features = ["oid"] }
-sha3 = "0.10.8"
-signature = "2.1"
 simd-json = "0.14.0"
 slab = "0.4"
-sm3 = "0.4.2"
 smallvec = "1.8"
 socket2 = { version = "0.5.3", features = ["all"] }
-spki = "0.7.2"
-sqlformat = "=0.3.5"
-strsim = "0.11.1"
 sys_traits = "=0.1.8"
 tar = "=0.4.43"
 tempfile = "3.4.0"
 termcolor = "1.1.3"
-text-size = "=1.1.1"
-text_lines = "=0.6.0"
 thiserror = "2.0.12"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-eld = "0.2"
@@ -322,7 +250,6 @@ tracing-opentelemetry = "0.28.0"
 tracing-subscriber = "0.3.19"
 twox-hash = "=1.6.3"
 typed-arena = "=2.0.2"
-unicode-width = "0.1.3"
 url = { version = "2.5", features = ["serde", "expose_internals"] }
 urlpattern = "0.3.0"
 uuid = { version = "1.3.0", features = ["v4"] }
@@ -332,12 +259,9 @@ web-transport-proto = "0.2.3"
 webpki-root-certs = "0.26.5"
 webpki-roots = "0.26"
 which = "6"
-x25519-dalek = "2.0.0"
-x509-parser = "0.15.0"
 yoke = { version = "0.7.4", features = ["derive"] }
 zeromq = { version = "=0.4.1", default-features = false, features = ["tcp-transport", "tokio-runtime"] }
 zip = { version = "2.4.1", default-features = false, features = ["flate2"] }
-zstd = "=0.13.2"
 
 opentelemetry = "0.27.0"
 opentelemetry-http = "0.27.0"
@@ -345,9 +269,94 @@ opentelemetry-otlp = { version = "0.27.0", features = ["logs", "http-proto", "ht
 opentelemetry-semantic-conventions = { version = "0.27.0", features = ["semconv_experimental"] }
 opentelemetry_sdk = { version = "0.27.0", features = ["rt-tokio", "trace"] }
 
+# canvas
+image = { version = "0.25.4", default-features = false }
+lcms2 = "6.1.0"
+
+# cli
+anstream = "0.6.14"
+bincode = "=1.3.3"
+clap = "=4.5.30"
+clap_complete = "=4.5.45"
+clap_complete_fig = "=4.5.2"
+console_static_text = "=0.8.3"
+crossterm = "0.28.1"
+dhat = "0.3.3"
+dissimilar = "=1.0.9"
+dprint-plugin-json = "=0.20.0"
+dprint-plugin-jupyter = "=0.2.0"
+dprint-plugin-markdown = "=0.18.0"
+dprint-plugin-typescript = "=0.94.0"
+env_logger = "=0.11.6"
+eszip = "=0.84.0"
+fancy-regex = "=0.14.0"
+libsui = "0.7.0"
+malva = "=0.11.0"
+markup_fmt = "=0.18.0"
+open = "5.0.1"
+pathdiff = "0.2.1"
+pretty_yaml = "=0.5.0"
+rustc-hash = "2.1.1"
+sqlformat = "=0.3.5"
+strsim = "0.11.1"
+text-size = "=1.1.1"
+text_lines = "=0.6.0"
+unicode-width = "0.1.3"
+zstd = "=0.13.2"
+
 # crypto
+aead-gcm-stream = "0.4"
+aes = "=0.8.3"
+aes-gcm = "0.10"
+aes-kw = "0.2.1"
+blake2 = "0.10.6"
+const-oid = "0.9.5"
+ctr = { version = "0.9.2", features = ["alloc"] }
+curve25519-dalek = "4.1.3"
+der = "0.7.9"
+digest = "0.10.5"
+dsa = "0.6.3"
+ecb = "=0.1.2"
+ecdsa = "0.16.9"
+ed25519-dalek = "2.1.1"
+ed448-goldilocks = "0.8.3"
+elliptic-curve = { version = "0.13.4", features = ["alloc", "arithmetic", "ecdh", "std", "pem", "jwk"] }
 hkdf = "0.12.3"
+k256 = "0.13.1"
+md-5 = "0.10.5"
+md4 = "0.10.2"
+p224 = { version = "0.13.0", features = ["ecdh"] }
+p256 = { version = "0.13.2", features = ["ecdh", "jwk"] }
+p384 = { version = "0.13.0", features = ["ecdh", "jwk"] }
+p521 = "0.13.3"
+pbkdf2 = "0.12.1"
+pkcs8 = "0.10.2"
+ripemd = "0.1.3"
 rsa = { version = "0.9.3", default-features = false, features = ["std", "pem", "hazmat"] } # hazmat needed for PrehashSigner in ext/node
+scrypt = "0.11.0"
+sec1 = "0.7"
+sha1 = { version = "0.10.6", features = ["oid"] }
+sha2 = { version = "0.10.8", features = ["oid"] }
+sha3 = "0.10.8"
+signature = "2.1"
+sm3 = "0.4.2"
+spki = "0.7.2"
+x25519-dalek = "2.0.0"
+x509-parser = "0.15.0"
+
+# ffi
+cranelift = "0.116"
+cranelift-native = "0.116"
+dlopen2 = "0.6.1"
+libffi = "=4.0.0"
+libffi-sys = "=3.2.0"
+memmap2 = "0.9"
+
+# napi
+libloading = "0.7"
+libuv-sys-lite = "=1.48.2"
+napi-build = "1"
+napi-sys = { version = "=2.2.2", default-features = false }
 
 # webgpu
 raw-window-handle = "0.6.0"
@@ -358,7 +367,7 @@ wgpu-types = "24.0.0"
 quote = "1"
 syn = { version = "2", features = ["full", "extra-traits"] }
 
-# unix
+# unix deps
 nix = "=0.27.1"
 
 # windows deps
