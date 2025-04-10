@@ -6,6 +6,67 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.2.8 / 2025.04.05
+
+- fix(compile): ensure atime/birthtime/mtime/ctime is set in vfs (#28731)
+- fix(fmt): use non-zero exit code when formatting fails (#28523)
+- fix(lint): resolve plugin paths from proper config specifier (#28752)
+- fix(lsp): filter scheme in semantic tokens registration options (#28756)
+- fix: only strip local and debug symbols from macOS binary to fix Node API
+  (#28758)
+- fix: upgrade v8 to 135.1.0 (#28697)
+
+### 2.2.7 / 2025.04.04
+
+- feat(unstable/otel): v8js metrics (#28592)
+- fix(ext/node): better dns.lookup compatibility (#27936)
+- fix(ext/node): sqlite handle empty blob being NULL (#28674)
+- fix(ext/node): support the optional `previousValue` parameter for
+  process.cpuUsage() (#28550)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_lstat.ts`
+  (#28644)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_readv.ts`
+  (#28645)
+- fix(ext/node): use primordials in `ext/node/polyfills/_fs/_fs_realpath.ts`
+  (#28652)
+- fix(ext/webgpu): release current texture of surface after present (#28691)
+- fix(install): remove duplicate deprecated messages (#28738)
+- fix(lsp): format vscode-userdata schemed documents (#28706)
+- fix(lsp): preserve notification order after init flag is raised (#28733)
+- fix(lsp): url_to_uri() encoding on windows (#28737)
+- fix(npm): further reduce duplicates with optional peers (#28705)
+- fix(npm): reduce duplicate peers by preferring existing nv if nv anywhere in
+  ancestor peers (#28663)
+- fix(npm): use Deno instead of Node in more cases for lifecycle scripts
+  (#28715)
+- fix(runtime): fix duplicate unstable ids for no-legacy-abort (#28740)
+- fix(task): filter empty elements in `xargs` (#28714)
+- fix(test): ignore write errors in reporter (#28722)
+- fix(types): add `Error.isError` type (#28679)
+- fix(webgpu): move `isFallbackAdapter` from `GPUAdapter` to `GPUAdapterInfo`
+  (#28650)
+- fix: show referrer for Wasm module dependency errors (#28653)
+- perf: remote symbolicate stack traces (#28470)
+
+### 2.2.6 / 2025.03.28
+
+- feat(unstable/run): ability to lazily load statically analyzable dynamic
+  imports (#28593)
+- fix(ext/crypto): support cross-curve ECDSA sign and verify (#28574)
+- fix(ext/node): `mkdir()` parse file mode (#28609)
+- fix(ext/node): emit 'close' event on ServerResponse object when client aborted
+  the request (#28601)
+- fix(ext/node): propagate 'close' event of IncomingMessage to Socket (#28582)
+- fix(ext/node): sqlite error details (#28431)
+- fix(ext/websocket): cancel in-flight handshake on close() (#28598)
+- fix(npm): improve optional peer dep handling (#28651)
+- fix(npm): reduce occurrences of duplicate packages due to peer dep resolution
+  (#28586)
+- fix(npm): resolve non-version matching peer deps and warn instead (#28616)
+- fix(npm): set up bin entries for package even if it's already downloaded
+  (#28626)
+- perf(install): keep parsed npm package info in memory cache (#28636)
+
 ### 2.2.5 / 2025.03.21
 
 - feat(unstable): basic otel event recording (#28552)

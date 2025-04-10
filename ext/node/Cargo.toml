@@ -2,7 +2,7 @@
 
 [package]
 name = "deno_node"
-version = "0.134.0"
+version = "0.137.0"
 authors.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -89,6 +89,7 @@ sys_traits = { workspace = true, features = ["real", "winapi", "libc"] }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-eld.workspace = true
+tower-service.workspace = true
 url.workspace = true
 webpki-root-certs.workspace = true
 winapi.workspace = true

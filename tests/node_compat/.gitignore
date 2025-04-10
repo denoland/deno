@@ -1,3 +1,5 @@
 test/.tmp.*
 report.json
 report.json.gz
+summary.json
+summary.json.gz

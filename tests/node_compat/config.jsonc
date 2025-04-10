@@ -116,7 +116,6 @@
       "test-net-server-try-ports.js",
       "test-net-socket-timeout.js",
       "test-net-write-arguments.js",
-      "test-parse-args.mjs",
       "test-path-join.js",
       "test-path-makelong.js",
       "test-path-normalize.js",

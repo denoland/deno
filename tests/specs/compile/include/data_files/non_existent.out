@@ -3,5 +3,4 @@ error: Writing deno compile executable to temporary file 'main[WILDLINE]'
 
 Caused by:
     0: Including [WILDLINE]does_not_exist.txt
-    1: Reading [WILDLINE]does_not_exist.txt
-    2: [WILDLINE]
+    1: [WILDLINE]
