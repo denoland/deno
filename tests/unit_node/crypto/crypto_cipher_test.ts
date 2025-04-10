@@ -26,6 +26,8 @@ Deno.test({
       Buffer.from(rsaPrivateKey),
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(encrypted));
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -49,10 +51,12 @@ Deno.test({
   name: "rsa private encrypt and private decrypt",
   fn() {
     const encrypted = crypto.privateEncrypt(rsaPrivateKey, input);
+    assert(Buffer.isBuffer(encrypted));
     const decrypted = crypto.privateDecrypt(
       rsaPrivateKey,
       Buffer.from(encrypted),
     );
+    assert(Buffer.isBuffer(decrypted));
     assertEquals(decrypted, input);
   },
 });
@@ -61,6 +65,7 @@ Deno.test({
   name: "rsa public decrypt fail",
   fn() {
     const encrypted = crypto.publicEncrypt(rsaPublicKey, input);
+    assert(Buffer.isBuffer(encrypted));
     assertThrows(() =>
       crypto.publicDecrypt(rsaPublicKey, Buffer.from(encrypted))
     );
