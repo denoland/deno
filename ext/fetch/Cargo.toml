@@ -49,3 +49,6 @@ tower-service.workspace = true
 
 [dev-dependencies]
 fast-socks5.workspace = true
+
+[features]
+sandbox = ["deno_fetch_base/sandbox"]

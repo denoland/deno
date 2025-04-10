@@ -174,9 +174,14 @@ impl <FP: FetchPermissions + 'static> FetchHandler for DenoFetchHandler<FP> {
     fn custom_client(
         state: &mut deno_core::OpState,
         args: Self::CreateHttpClientArgs,
+        #[cfg(not(feature = "sandbox"))]
         tls_keys: &deno_tls::TlsKeysHolder,
     ) -> Result<ResourceId, Self::FetchError> {
-        op_fetch_custom_client::<FP>(state, args, tls_keys)
+        #[cfg(feature = "sandbox")]
+        return op_fetch_custom_client::<FP>(state, args, None);
+
+        #[cfg(not(feature = "sandbox"))]
+        return op_fetch_custom_client::<FP>(state, args, Some(tls_keys));
     }
 }
 
@@ -886,7 +891,7 @@ fn default_true() -> bool {
 pub fn op_fetch_custom_client<FP>(
   state: &mut OpState,
   args: CreateHttpClientArgs,
-  tls_keys: &TlsKeysHolder,
+  tls_keys: Option<&TlsKeysHolder>,
 ) -> Result<ResourceId, FetchError>
 where
   FP: FetchPermissions + 'static,
@@ -904,6 +909,11 @@ where
     .map(|cert| cert.into_bytes())
     .collect::<Vec<_>>();
 
+  let keys = match tls_keys  {
+    Some(keys) => keys.take().try_into().unwrap(),
+    None => None
+  };
+
   let client = create_http_client(
     &options.user_agent,
     CreateHttpClientOptions {
@@ -920,7 +930,7 @@ where
       unsafely_ignore_certificate_errors: options
         .unsafely_ignore_certificate_errors
         .clone(),
-      client_cert_chain_and_key: tls_keys.take().try_into().unwrap(),
+      client_cert_chain_and_key: keys,
       pool_max_idle_per_host: args.pool_max_idle_per_host,
       pool_idle_timeout: args.pool_idle_timeout.and_then(
         |timeout| match timeout {
