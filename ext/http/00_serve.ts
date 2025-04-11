@@ -46,6 +46,7 @@ const {
   TypedArrayPrototypeGetSymbolToStringTag,
   Uint8Array,
   Promise,
+  Number,
 } = primordials;
 
 import { InnerBody } from "ext:deno_fetch/22_body.js";
@@ -347,6 +348,13 @@ class InnerRequest {
         throw new TypeError("Request closed");
       }
       this.#methodAndUri = op_http_get_request_method_and_url(this.#external);
+    }
+    if (transport === "vsock") {
+      return {
+        transport,
+        cid: Number(this.#methodAndUri[3]),
+        port: this.#methodAndUri[4],
+      };
     }
     return {
       transport: "tcp",
@@ -769,6 +777,7 @@ function serve(arg1, arg2) {
 
   const wantsHttps = hasTlsKeyPairOptions(options);
   const wantsUnix = ObjectHasOwn(options, "path");
+  const wantsVsock = ObjectHasOwn(options, "cid");
   const signal = options.signal;
   const onError = options.onError ??
     function (error) {
@@ -788,6 +797,23 @@ function serve(arg1, arg2) {
         options.onListen(listener.addr);
       } else {
         import.meta.log("info", `Listening on ${path}`);
+      }
+    });
+  }
+
+  if (wantsVsock) {
+    const listener = listen({
+      transport: "vsock",
+      cid: options.cid,
+      port: options.port,
+      [listenOptionApiName]: "Deno.serve",
+    });
+    const { cid, port } = listener.addr;
+    return serveHttpOnListener(listener, signal, handler, onError, () => {
+      if (options.onListen) {
+        options.onListen(listener.addr);
+      } else {
+        import.meta.log("info", `Listening on vsock:${cid}:${port}`);
       }
     });
   }
