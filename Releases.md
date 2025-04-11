@@ -6,6 +6,17 @@ https://github.com/denoland/deno/releases
 We also have one-line install commands at:
 https://github.com/denoland/deno_install
 
+### 2.1.12 / 2025.04.11
+
+The 2.1.11 release had an incorrect version number when doing `deno -v`.
+
+- fix(ext/node): alias `shake-128` and `shake-256` hash algorithms (#28451)
+- fix(ext/node): return `Buffer` from crypto cipher APIs (#28826)
+- fix(ext/node): support input option in spawnSync (#28792)
+- fix(ext/node): use primordials in `ext/node/polyfills/path/separator.ts`
+  (#28669)
+- fix(node): add reset method to event loop delay histogram (#28788)
+
 ### 2.1.11 / 2025.04.08
 
 - docs: add examples for SubtleCrypto (#28068)
