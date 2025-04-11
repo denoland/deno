@@ -2664,7 +2664,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-zlib-crc32.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-crc32.js)
 - [parallel/test-zlib-deflate-constructors.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-deflate-constructors.js)
 - [parallel/test-zlib-destroy.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-destroy.js)
-- [parallel/test-zlib-dictionary-fail.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-dictionary-fail.js)
 - [parallel/test-zlib-dictionary.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-dictionary.js)
 - [parallel/test-zlib-failed-init.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-failed-init.js)
 - [parallel/test-zlib-flush-drain-longblock.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-zlib-flush-drain-longblock.js)

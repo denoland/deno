@@ -1322,6 +1322,7 @@
       "test-zlib-create-raw.js",
       "test-zlib-deflate-raw-inherits.js",
       "test-zlib-destroy-pipe.js",
+      "test-zlib-dictionary-fail.js",
       "test-zlib-empty-buffer.js",
       "test-zlib-flush-write-sync-interleaved.js",
       "test-zlib-from-string.js",
