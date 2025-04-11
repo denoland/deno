@@ -184,6 +184,13 @@ pub struct StateSnapshot {
   pub resolver: Arc<LspResolver>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+enum ProjectScopesChange {
+  None,
+  OpenNotebooks,
+  Config,
+}
+
 type LanguageServerTaskFn = Box<dyn FnOnce(LanguageServer) + Send + Sync>;
 
 /// Used to queue tasks from inside of the language server lock that must be
@@ -1225,7 +1232,7 @@ impl Inner {
     // a @types/node package and now's a good time to do that anyway
     self.refresh_dep_info().await;
 
-    self.project_changed([], true, false);
+    self.project_changed([], ProjectScopesChange::Config);
   }
 
   #[cfg_attr(feature = "lsp-tracing", tracing::instrument(skip_all))]
@@ -1269,8 +1276,7 @@ impl Inner {
       self.refresh_dep_info().await;
       self.project_changed(
         [(document.uri.as_ref(), ChangeKind::Opened)],
-        false,
-        false,
+        ProjectScopesChange::None,
       );
       self.diagnostics_server.invalidate(&[document.uri.as_ref()]);
       self.send_diagnostics_update();
@@ -1317,8 +1323,11 @@ impl Inner {
       }
       self.project_changed(
         [(document.uri.as_ref(), ChangeKind::Modified)],
-        config_changed,
-        false,
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
       );
       self.diagnostics_server.invalidate(&[&document.uri]);
       self.send_diagnostics_update();
@@ -1420,8 +1429,7 @@ impl Inner {
       drop(document);
       self.project_changed(
         [(&params.text_document.uri, ChangeKind::Closed)],
-        false,
-        false,
+        ProjectScopesChange::None,
       );
       self
         .diagnostics_server
@@ -1447,8 +1455,7 @@ impl Inner {
       self.refresh_dep_info().await;
       self.project_changed(
         diagnosable_uris.iter().map(|u| (*u, ChangeKind::Opened)),
-        false,
-        true,
+        ProjectScopesChange::OpenNotebooks,
       );
       self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
@@ -1487,8 +1494,11 @@ impl Inner {
       }
       self.project_changed(
         diagnosable_uris_with_change_kinds.iter().cloned(),
-        config_changed,
-        false,
+        if config_changed {
+          ProjectScopesChange::Config
+        } else {
+          ProjectScopesChange::None
+        },
       );
       self.diagnostics_server.invalidate(
         &diagnosable_uris_with_change_kinds
@@ -1541,8 +1551,7 @@ impl Inner {
       self.refresh_dep_info().await;
       self.project_changed(
         diagnosable_uris.iter().map(|u| (*u, ChangeKind::Closed)),
-        false,
-        true,
+        ProjectScopesChange::OpenNotebooks,
       );
       self.diagnostics_server.invalidate(&diagnosable_uris);
       self.send_diagnostics_update();
@@ -1631,8 +1640,7 @@ impl Inner {
       self.refresh_documents_config().await;
       self.project_changed(
         changes.iter().map(|(_, e)| (&e.uri, ChangeKind::Modified)),
-        false,
-        false,
+        ProjectScopesChange::None,
       );
       self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
       self.diagnostics_server.invalidate_all();
@@ -3873,8 +3881,7 @@ impl Inner {
   fn project_changed<'a>(
     &mut self,
     changed_docs: impl IntoIterator<Item = (&'a Uri, ChangeKind)>,
-    config_changed: bool,
-    open_notebooks_changed: bool,
+    scopes_change: ProjectScopesChange,
   ) {
     self.project_version += 1; // increment before getting the snapshot
     let modified_scripts = changed_docs
@@ -3888,7 +3895,7 @@ impl Inner {
     self.ts_server.project_changed(
       self.snapshot(),
       modified_scripts.iter().map(|(s, k)| (s.as_ref(), *k)),
-      config_changed.then(|| {
+      matches!(scopes_change, ProjectScopesChange::Config).then(|| {
         self
           .config
           .tree
@@ -3897,7 +3904,11 @@ impl Inner {
           .map(|(s, d)| (s.clone(), d.ts_config.clone()))
           .collect()
       }),
-      (open_notebooks_changed || config_changed).then(|| {
+      matches!(
+        scopes_change,
+        ProjectScopesChange::OpenNotebooks | ProjectScopesChange::Config
+      )
+      .then(|| {
         self
           .document_modules
           .documents
@@ -4691,7 +4702,7 @@ impl Inner {
     self.resolver.did_cache();
     self.refresh_dep_info().await;
     self.diagnostics_server.invalidate_all();
-    self.project_changed([], true, false);
+    self.project_changed([], ProjectScopesChange::Config);
     self.ts_server.cleanup_semantic_cache(self.snapshot()).await;
     self.send_diagnostics_update();
     self.send_testing_update();
