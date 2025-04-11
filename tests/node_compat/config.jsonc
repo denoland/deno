@@ -272,6 +272,7 @@
       "test-buffer-alloc.js",
       "test-buffer-arraybuffer.js",
       "test-buffer-ascii.js",
+      "test-buffer-backing-arraybuffer.js",
       "test-buffer-badhex.js",
       "test-buffer-bigint64.js",
       "test-buffer-bytelength.js",

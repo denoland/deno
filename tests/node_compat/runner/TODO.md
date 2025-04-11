@@ -282,7 +282,6 @@ NOTE: This file should not be manually edited. Please edit `tests/node_compat/co
 - [parallel/test-blocklist-clone.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-blocklist-clone.js)
 - [parallel/test-bootstrap-modules.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-bootstrap-modules.js)
 - [parallel/test-broadcastchannel-custom-inspect.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-broadcastchannel-custom-inspect.js)
-- [parallel/test-buffer-backing-arraybuffer.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-backing-arraybuffer.js)
 - [parallel/test-buffer-compare.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-compare.js)
 - [parallel/test-buffer-constructor-deprecation-error.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-deprecation-error.js)
 - [parallel/test-buffer-constructor-node-modules-paths.js](https://github.com/nodejs/node/tree/v23.9.0/test/parallel/test-buffer-constructor-node-modules-paths.js)
