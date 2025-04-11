@@ -1,7 +1,12 @@
 // Copyright 2018-2025 the Deno authors. MIT license.
 
 import { primordials } from "ext:core/mod.js";
-const { PromisePrototypeThen } = primordials;
+const {
+  PromisePrototypeThen,
+  ArrayPrototypePush,
+  SafePromiseAll,
+  SafePromisePrototypeFinally,
+} = primordials;
 import { notImplemented, warnNotImplemented } from "ext:deno_node/_utils.ts";
 
 export function run() {
@@ -110,7 +115,7 @@ class TestSuite {
       sanitizeOps: false,
       sanitizeResources: false,
     });
-    this.steps.push(step);
+    ArrayPrototypePush(this.steps, step);
   }
 
   addSuite(name, options, fn, overrides) {
@@ -125,7 +130,7 @@ class TestSuite {
       sanitizeOps: false,
       sanitizeResources: false,
     });
-    this.steps.push(step);
+    ArrayPrototypePush(this.steps, step);
     return promise;
   }
 }
@@ -198,8 +203,8 @@ function wrapSuiteFn(fn, resolve) {
       fn();
     } finally {
       currentSuite = prevSuite;
-      return Promise.all(suite.steps).finally(resolve);
     }
+    return SafePromisePrototypeFinally(SafePromiseAll(suite.steps), resolve);
   };
 }
 
