@@ -546,7 +546,12 @@ impl LspResolver {
       {
         let mut resolver_dep_info = resolver.dep_info.lock();
         if !npm_installer_dirty {
-          npm_installer_dirty = dep_info.npm_reqs != resolver_dep_info.npm_reqs;
+          npm_installer_dirty = dep_info.npm_reqs.len()
+            != resolver_dep_info.npm_reqs.len()
+            || dep_info
+              .npm_reqs
+              .keys()
+              .any(|k| !resolver_dep_info.npm_reqs.contains_key(k));
         }
         *resolver_dep_info = dep_info.clone();
       }
@@ -554,7 +559,7 @@ impl LspResolver {
         continue;
       }
       if let Some(npm_installer) = resolver.npm_installer.as_ref() {
-        let reqs = dep_info.npm_reqs.iter().cloned().collect::<Vec<_>>();
+        let reqs = dep_info.npm_reqs.keys().cloned().collect::<Vec<_>>();
         if let Err(err) = npm_installer.set_package_reqs(&reqs).await {
           lsp_warn!("Could not set npm package requirements: {:#}", err);
         }
@@ -592,7 +597,7 @@ impl LspResolver {
 #[derive(Debug, Default, Clone)]
 pub struct ScopeDepInfo {
   pub deno_types_to_code_resolutions: HashMap<ModuleSpecifier, ModuleSpecifier>,
-  pub npm_reqs: BTreeSet<PackageReq>,
+  pub npm_reqs: BTreeMap<PackageReq, Arc<Url>>,
   pub has_node_specifier: bool,
 }
 

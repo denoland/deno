@@ -1230,6 +1230,21 @@ impl DocumentModules {
     }
   }
 
+  /// Take care using this as it may get out of date.
+  pub fn document_urls_for_scope_for_tsc(
+    &self,
+    scope: Option<&Url>,
+  ) -> Vec<Arc<Uri>> {
+    let Some(modules) = self.modules_for_scope(scope) else {
+      return Vec::new();
+    };
+    modules
+      .inspect_values()
+      .into_iter()
+      .map(|d| d.uri.clone())
+      .collect()
+  }
+
   fn primary_scope(&self, uri: &Uri) -> Option<Option<&Arc<Url>>> {
     let url = uri_to_url(uri);
     if url.scheme() == "file" && !self.cache.in_global_cache_directory(&url) {
@@ -1290,14 +1305,22 @@ impl DocumentModules {
           if let Some(dep) = code_specifier {
             if dep.scheme() == "node" {
               dep_info.has_node_specifier = true;
+              dep_info.npm_reqs.insert(
+                PackageReq::from_str("@types/node").unwrap(),
+                module.specifier.clone(),
+              );
             }
             if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
+              dep_info
+                .npm_reqs
+                .insert(reference.into_inner().req, module.specifier.clone());
             }
           }
           if let Some(dep) = type_specifier {
             if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-              dep_info.npm_reqs.insert(reference.into_inner().req);
+              dep_info
+                .npm_reqs
+                .insert(reference.into_inner().req, module.specifier.clone());
             }
           }
           if dependency.maybe_deno_types_specifier.is_some() {
@@ -1318,7 +1341,9 @@ impl DocumentModules {
           .and_then(|d| d.dependency.maybe_specifier())
         {
           if let Ok(reference) = NpmPackageReqReference::from_specifier(dep) {
-            dep_info.npm_reqs.insert(reference.into_inner().req);
+            dep_info
+              .npm_reqs
+              .insert(reference.into_inner().req, module.specifier.clone());
           }
         }
       };
@@ -1367,17 +1392,16 @@ impl DocumentModules {
           let lockfile = lockfile.lock();
           for dep_req in lockfile.content.packages.specifiers.keys() {
             if dep_req.kind == deno_semver::package::PackageKind::Npm {
-              dep_info.npm_reqs.insert(dep_req.req.clone());
+              dep_info.npm_reqs.insert(
+                dep_req.req.clone(),
+                Arc::new(
+                  deno_path_util::url_from_file_path(&lockfile.filename)
+                    .unwrap(),
+                ),
+              );
             }
           }
         }
-      }
-      if dep_info.has_node_specifier
-        && !dep_info.npm_reqs.iter().any(|r| r.name == "@types/node")
-      {
-        dep_info
-          .npm_reqs
-          .insert(PackageReq::from_str("@types/node").unwrap());
       }
       (scope.cloned(), Arc::new(dep_info))
     };
