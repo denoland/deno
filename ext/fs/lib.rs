@@ -127,16 +127,14 @@ impl FsPermissions for deno_permissions::PermissionsContainer {
     // If somehow read or write aren't specified, use read
     let read = read || !write;
     let path = if read {
-      
       FsPermissions::check_read_path(self, path, api_name)
         .map_err(|_| FsError::NotCapable("read"))?
     } else {
       path
     };
     let path = if write {
-      
       FsPermissions::check_write_path(self, path.clone(), api_name)
-          .map_err(|_| FsError::NotCapable("write"))?
+        .map_err(|_| FsError::NotCapable("write"))?
     } else {
       path
     };

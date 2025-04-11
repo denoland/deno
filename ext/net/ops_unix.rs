@@ -102,7 +102,7 @@ where
       .borrow_mut::<NP>()
       .check_read(&address_path, "Deno.connect()")
       .map_err(NetError::Permission)?;
-    
+
     state_
       .borrow_mut::<NP>()
       .check_write_path(Cow::Owned(address_path), "Deno.connect()")
