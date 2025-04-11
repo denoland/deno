@@ -19,7 +19,6 @@ declare namespace ts {
         function setExitSpan(f: ExitSpan): void;
         function spanned<T>(name: string, f: () => T): T;
         function setIsNodeSourceFileCallback(callback: IsNodeSourceFileCallback): void;
-        function setIsClassicScript(callback: IsClassicScriptCallback): void;
         function setNodeOnlyGlobalNames(names: Set<string>): void;
         function setTypesNodeIgnorableNames(names: Set<string>): void;
         function createDenoForkContext({ mergeSymbol, globals, nodeGlobals }: {
@@ -30,7 +29,6 @@ declare namespace ts {
         function tryParseNpmPackageReference(text: string): NpmPackageReference | undefined;
         function parseNpmPackageReference(text: string): NpmPackageReference;
         type IsNodeSourceFileCallback = (sourceFile: ts.SourceFile) => boolean;
-        type IsClassicScriptCallback = (sourceFile: ts.SourceFile) => boolean;
         type EnterSpan = (name: string) => object;
         type ExitSpan = (span: object) => void;
         let enterSpan: EnterSpan;
