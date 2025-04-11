@@ -29,7 +29,7 @@ import { assert } from "ext:deno_node/_util/asserts.ts";
 import { EventEmitter } from "node:events";
 import { os } from "ext:deno_node/internal_binding/constants.ts";
 import { notImplemented } from "ext:deno_node/_utils.ts";
-import { Readable, Stream, Writable } from "node:stream";
+import { PassThrough, Readable, Stream, Writable } from "node:stream";
 import { isWindows } from "ext:deno_node/_util/os.ts";
 import { nextTick } from "ext:deno_node/_next_tick.ts";
 import {
@@ -232,13 +232,8 @@ export class ChildProcess extends EventEmitter {
   [kClosesReceived] = 0;
   [kCanDisconnect] = false;
 
-  constructor(
-    command: string,
-    args?: string[],
-    options?: ChildProcessOptions,
-  ) {
+  constructor(command: string, args?: string[], options?: ChildProcessOptions) {
     super();
-
     const {
       env = {},
       stdio = ["pipe", "pipe", "pipe"],
@@ -250,30 +245,46 @@ export class ChildProcess extends EventEmitter {
     } = options || {};
     const normalizedStdio = normalizeStdioOption(stdio);
     const [
-      stdin = "pipe",
-      stdout = "pipe",
-      stderr = "pipe",
+      stdinOpt = "pipe",
+      stdoutOpt = "pipe",
+      stderrOpt = "pipe",
       ...extraStdio
     ] = normalizedStdio;
-    const [cmd, cmdArgs] = buildCommand(
-      command,
-      args || [],
-      shell,
-    );
+    const [cmd, cmdArgs] = buildCommand(command, args || [], shell);
     this.spawnfile = cmd;
     this.spawnargs = [cmd, ...cmdArgs];
-
     const ipc = normalizedStdio.indexOf("ipc");
-
     const extraStdioOffset = 3; // stdin, stdout, stderr
-
+    // Pre-allocate stdio streams for 'pipe' to avoid null derefs in consumers
+    if (stdinOpt === "pipe") {
+      // allocate a PassThrough Writable so event handlers can be attached even
+      // if spawn ultimately fails
+      this.stdin = new PassThrough();
+    } else if (stdinOpt instanceof Stream) {
+      this.stdin = stdinOpt;
+    }
+    if (stdoutOpt === "pipe") {
+      this.stdout = new PassThrough();
+    } else if (stdoutOpt instanceof Stream) {
+      this.stdout = stdoutOpt;
+    }
+    if (stderrOpt === "pipe") {
+      this.stderr = new PassThrough();
+    } else if (stderrOpt instanceof Stream) {
+      this.stderr = stderrOpt;
+    }
+    // Initialize stdio array to match Node's shape even if spawn fails
+    this.stdio = [this.stdin, this.stdout, this.stderr];
+    if (ipc >= 0) {
+      this.stdio[ipc] = null;
+    }
+    // Compute extra stdio configuration
     const extraStdioNormalized: DenoStdio[] = [];
     for (let i = 0; i < extraStdio.length; i++) {
       const fd = i + extraStdioOffset;
       if (fd === ipc) extraStdioNormalized.push("null");
       extraStdioNormalized.push(toDenoStdio(extraStdio[i]));
     }
-
     const stringEnv = mapValues(env, (value) => value.toString());
     try {
       this.#process = new Deno.Command(cmd, {
@@ -281,9 +292,9 @@ export class ChildProcess extends EventEmitter {
         clearEnv: true,
         cwd,
         env: stringEnv,
-        stdin: toDenoStdio(stdin),
-        stdout: toDenoStdio(stdout),
-        stderr: toDenoStdio(stderr),
+        stdin: toDenoStdio(stdinOpt),
+        stdout: toDenoStdio(stdoutOpt),
+        stderr: toDenoStdio(stderrOpt),
         windowsRawArguments: windowsVerbatimArguments,
         [kIpc]: ipc, // internal
         [kExtraStdio]: extraStdioNormalized,
@@ -292,23 +303,12 @@ export class ChildProcess extends EventEmitter {
         [kNeedsNpmProcessState]: (options ?? {} as any)[kNeedsNpmProcessState],
       }).spawn();
       this.pid = this.#process.pid;
-
-      if (stdin === "pipe") {
+      // Replace stub streams with real process streams if spawn succeeded:
+      if (stdinOpt === "pipe") {
         assert(this.#process.stdin);
         this.stdin = Writable.fromWeb(this.#process.stdin);
       }
-
-      if (stdin instanceof Stream) {
-        this.stdin = stdin;
-      }
-      if (stdout instanceof Stream) {
-        this.stdout = stdout;
-      }
-      if (stderr instanceof Stream) {
-        this.stderr = stderr;
-      }
-
-      if (stdout === "pipe") {
+      if (stdoutOpt === "pipe") {
         assert(this.#process.stdout);
         this[kClosesNeeded]++;
         this.stdout = Readable.fromWeb(this.#process.stdout);
@@ -316,8 +316,7 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-
-      if (stderr === "pipe") {
+      if (stderrOpt === "pipe") {
         assert(this.#process.stderr);
         this[kClosesNeeded]++;
         this.stderr = Readable.fromWeb(this.#process.stderr);
@@ -325,15 +324,10 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-
+      // Update stdio array indices:
       this.stdio[0] = this.stdin;
       this.stdio[1] = this.stdout;
       this.stdio[2] = this.stderr;
-
-      if (ipc >= 0) {
-        this.stdio[ipc] = null;
-      }
-
       const pipeRids = internals.getExtraPipeRids(this.#process);
       for (let i = 0; i < pipeRids.length; i++) {
         const rid: number | null = pipeRids[i];
@@ -354,12 +348,10 @@ export class ChildProcess extends EventEmitter {
           });
         }
       }
-
       nextTick(() => {
         this.emit("spawn");
         this.#spawned.resolve();
       });
-
       if (signal) {
         const onAbortListener = () => {
           try {
@@ -374,13 +366,11 @@ export class ChildProcess extends EventEmitter {
           nextTick(onAbortListener);
         } else {
           signal.addEventListener("abort", onAbortListener, { once: true });
-          this.addListener(
-            "exit",
-            () => signal.removeEventListener("abort", onAbortListener),
-          );
+          this.addListener("exit", () => {
+            signal.removeEventListener("abort", onAbortListener);
+          });
         }
       }
-
       const pipeRid = internals.getIpcPipeRid(this.#process);
       if (typeof pipeRid == "number") {
         setupChannel(this, pipeRid);
@@ -389,7 +379,6 @@ export class ChildProcess extends EventEmitter {
           maybeClose(this);
         });
       }
-
       (async () => {
         const status = await this.#process.status;
         this.exitCode = status.code;
