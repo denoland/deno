@@ -30,3 +30,6 @@ thiserror.workspace = true
 tokio.workspace = true
 url.workspace = true
 web-transport-proto.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+tokio-vsock.workspace = true
